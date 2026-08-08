@@ -17,10 +17,12 @@
     )
 )]
 
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 
-use super::config::{EgressPolicy, SandboxEnforcement, SandboxPolicy};
+use koina::http::{HostResolver, is_private_ip};
+
+use super::config::{EgressPolicy, SandboxConfig, SandboxEnforcement, SandboxPolicy};
 
 /// Status of a sandbox guarantee for operator diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +78,252 @@ pub(crate) fn allowlist_is_loopback_only(entries: &[String]) -> bool {
         let ip_part = entry.split('/').next().unwrap_or(entry);
         ip_part.parse::<IpAddr>().is_ok_and(|a| is_loopback(&a))
     })
+}
+
+/// One parsed `egress_allowlist` entry (bare IP or CIDR range).
+///
+/// Unparseable entries are dropped by [`EgressGate::new`] with a warning
+/// rather than causing every check to silently fail closed on a typo, but
+/// also never silently match (see `EgressGate` doc).
+#[derive(Debug, Clone, Copy)]
+struct AllowedNetwork {
+    network: IpAddr,
+    prefix_len: u32,
+}
+
+impl AllowedNetwork {
+    /// Parse `entry` as a bare IP address (implicit /32 or /128) or CIDR.
+    fn parse(entry: &str) -> Option<Self> {
+        let (ip_part, prefix_part) = match entry.split_once('/') {
+            Some((ip, prefix)) => (ip, Some(prefix)),
+            None => (entry, None),
+        };
+        let network: IpAddr = ip_part.trim().parse().ok()?;
+        let max_prefix = match network {
+            IpAddr::V4(_) => 32,
+            IpAddr::V6(_) => 128,
+        };
+        let prefix_len = match prefix_part {
+            Some(p) => p.trim().parse::<u32>().ok().filter(|p| *p <= max_prefix)?,
+            None => max_prefix,
+        };
+        Some(Self {
+            network,
+            prefix_len,
+        })
+    }
+
+    /// Whether `target` falls inside this network.
+    fn contains(&self, target: IpAddr) -> bool {
+        match (self.network, target) {
+            (IpAddr::V4(net), IpAddr::V4(t)) => {
+                let mask = mask_u32(self.prefix_len);
+                (u32::from(net) & mask) == (u32::from(t) & mask)
+            }
+            (IpAddr::V6(net), IpAddr::V6(t)) => {
+                let mask = mask_u128(self.prefix_len);
+                (u128::from(net) & mask) == (u128::from(t) & mask)
+            }
+            // WHY: an IPv4 allowlist entry never matches an IPv6 target and
+            // vice versa. `to_ipv4_mapped` normalization is deliberately not
+            // applied here -- operators who want to allow a v4 destination
+            // reached via a v4-mapped v6 address should list it explicitly.
+            _ => false,
+        }
+    }
+}
+
+fn mask_u32(prefix_len: u32) -> u32 {
+    if prefix_len == 0 {
+        0
+    } else {
+        u32::MAX << (32 - prefix_len)
+    }
+}
+
+fn mask_u128(prefix_len: u32) -> u128 {
+    if prefix_len == 0 {
+        0
+    } else {
+        u128::MAX << (128 - prefix_len)
+    }
+}
+
+/// Network egress was refused by [`EgressGate`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EgressDenied(String);
+
+impl std::fmt::Display for EgressDenied {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "network egress denied by sandbox policy: {}", self.0)
+    }
+}
+
+impl std::error::Error for EgressDenied {}
+
+/// The single network-egress checkpoint every in-process, network-capable
+/// tool (`http_request`, `web_fetch`, `web_search`) must call before -- and
+/// after -- opening a connection.
+///
+/// SECURITY(#5071): `sandbox.egress` previously only gated child processes
+/// spawned through [`SubprocessRunner`](crate::subprocess::SubprocessRunner);
+/// these three tools build their own `reqwest` clients directly and never
+/// consulted it, so `egress = "deny"` reassured operators while doing
+/// nothing to stop them. Every egress decision for in-process tools now
+/// flows through this type so the three call sites cannot drift apart the
+/// way three separate ad hoc checks would.
+///
+/// SECURITY(#5232): `egress = "allowlist"` is enforced for real here --
+/// every candidate address is checked against parsed CIDR ranges, not
+/// treated as a synonym for `deny` the way the child-process network
+/// namespace path does (loopback-only there, see `allowlist_is_loopback_only`).
+#[derive(Debug, Clone)]
+pub struct EgressGate {
+    policy: EgressPolicy,
+    allowlist: Vec<AllowedNetwork>,
+}
+
+impl EgressGate {
+    /// Build a gate from an explicit policy and allowlist entries.
+    #[must_use]
+    pub fn new(policy: EgressPolicy, allowlist_entries: &[String]) -> Self {
+        let mut allowlist = Vec::with_capacity(allowlist_entries.len());
+        let mut invalid = Vec::new();
+        for entry in allowlist_entries {
+            match AllowedNetwork::parse(entry) {
+                Some(net) => allowlist.push(net),
+                None => invalid.push(entry.clone()),
+            }
+        }
+        if !invalid.is_empty() {
+            tracing::warn!(
+                entries = ?invalid,
+                "sandbox egress_allowlist entries could not be parsed as an IP address or \
+                 CIDR range; they will never match and every destination will be denied"
+            );
+        }
+        Self { policy, allowlist }
+    }
+
+    /// Build a gate from a [`SandboxConfig`]'s egress policy and allowlist.
+    #[must_use]
+    pub fn from_config(config: &SandboxConfig) -> Self {
+        Self::new(config.egress, &config.egress_allowlist)
+    }
+
+    /// The egress policy this gate enforces.
+    #[must_use]
+    pub fn policy(&self) -> EgressPolicy {
+        self.policy
+    }
+
+    /// Reject outright when no destination is known yet.
+    ///
+    /// Only `Deny` can be decided before DNS resolution; call this first so
+    /// a denied tool never performs a DNS lookup at all, matching the
+    /// child-process path where `egress = "deny"` blocks socket creation
+    /// before any connection attempt.
+    ///
+    /// # Errors
+    /// Returns [`EgressDenied`] when the policy is `Deny`.
+    pub fn check_before_connect(&self) -> Result<(), EgressDenied> {
+        if self.policy == EgressPolicy::Deny {
+            return Err(EgressDenied(
+                "egress = \"deny\": network access is blocked".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Check one resolved or connected address against policy.
+    ///
+    /// Called for every DNS-resolved candidate before connecting, and again
+    /// for the address a connection actually landed on -- so a rebinding
+    /// answer that differs between the two checks cannot slip through.
+    ///
+    /// # Errors
+    /// Returns [`EgressDenied`] when the policy is `Deny`, or when the
+    /// policy is `Allowlist` and `addr` matches no configured entry.
+    pub fn check_addr(&self, addr: IpAddr) -> Result<(), EgressDenied> {
+        match self.policy {
+            EgressPolicy::Deny => Err(EgressDenied(
+                "egress = \"deny\": network access is blocked".to_owned(),
+            )),
+            EgressPolicy::Allow => Ok(()),
+            EgressPolicy::Allowlist => {
+                if self.allowlist.iter().any(|net| net.contains(addr)) {
+                    Ok(())
+                } else {
+                    Err(EgressDenied(format!(
+                        "egress = \"allowlist\": {addr} is not in egress_allowlist"
+                    )))
+                }
+            }
+        }
+    }
+}
+
+/// Resolve `host:port` and check every candidate address against `gate`.
+///
+/// Called before connecting so `Deny` and a non-matching `Allowlist`
+/// destination are rejected before any bytes leave the process. `Allow`
+/// short-circuits without resolving: no per-address egress decision is
+/// needed, and the independent SSRF guard (private/internal address
+/// rejection) still applies regardless of egress policy.
+///
+/// # Errors
+/// Returns a message describing why egress was denied, or a DNS resolution
+/// failure surfaced by `resolver`.
+pub async fn check_egress<R>(
+    gate: &EgressGate,
+    host: &str,
+    port: u16,
+    resolver: &R,
+) -> Result<(), String>
+where
+    R: HostResolver + ?Sized,
+{
+    gate.check_before_connect().map_err(|e| e.to_string())?;
+    if gate.policy() == EgressPolicy::Allow {
+        return Ok(());
+    }
+    let addrs = resolver.resolve_host(host, port).await?;
+    for addr in &addrs {
+        gate.check_addr(addr.ip()).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// Re-check the address a connection actually landed on, after connecting.
+///
+/// SECURITY(#5229): DNS can change between [`check_egress`]'s resolution and
+/// the HTTP client's own connect-time resolution (rebinding). This closes
+/// that gap by validating the real peer instead of trusting the pre-connect
+/// answer, and applies unconditionally (not only under `egress =
+/// "allowlist"`): a private/internal peer is never an acceptable outcome for
+/// these tools regardless of egress policy, matching the pre-connect SSRF
+/// guard's behavior.
+///
+/// `addr` is `None` when the transport does not expose a peer address (some
+/// mocked clients in tests); there is nothing to re-validate in that case,
+/// the pre-connect check already ran.
+///
+/// # Errors
+/// Returns a message when the peer is a private/internal address, or when
+/// `gate`'s policy additionally rejects it (`Deny`, or `Allowlist` with no
+/// matching entry).
+pub fn check_egress_remote_addr(gate: &EgressGate, addr: Option<SocketAddr>) -> Result<(), String> {
+    let Some(addr) = addr else {
+        return Ok(());
+    };
+    if is_private_ip(&addr.ip()) {
+        return Err(format!(
+            "connection landed on private/internal address {} after DNS validation passed \
+             (possible DNS rebinding); rejecting",
+            addr.ip()
+        ));
+    }
+    gate.check_addr(addr.ip()).map_err(|e| e.to_string())
 }
 
 impl SandboxPolicy {

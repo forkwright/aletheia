@@ -21,6 +21,7 @@ use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::sandbox::{EgressGate, SandboxConfig, check_egress, check_egress_remote_addr};
 use crate::types::{
     AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory,
     ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -160,6 +161,7 @@ async fn send_with_safe_redirects<R>(
     body: Option<&str>,
     timeout: std::time::Duration,
     resolver: &R,
+    gate: &EgressGate,
 ) -> std::result::Result<reqwest::Response, String>
 where
     R: HostResolver + ?Sized,
@@ -170,6 +172,16 @@ where
     let mut redirects_followed = 0;
 
     loop {
+        // SECURITY(#5071): every hop -- including redirect targets, not just
+        // the original URL -- goes through the same egress checkpoint the
+        // subprocess sandbox uses so `egress = "deny"` cannot be bypassed by
+        // a redirect chain.
+        let host = current_url
+            .host_str()
+            .ok_or_else(|| "URL has no host".to_owned())?;
+        let port = current_url.port_or_known_default().unwrap_or(443);
+        check_egress(gate, host, port, resolver).await?;
+
         let mut req = client
             .request(current_method.clone(), current_url.clone())
             .timeout(timeout)
@@ -192,6 +204,11 @@ where
             .send()
             .await
             .map_err(|e| format!("request failed: {e}"))?;
+
+        // SECURITY(#5229): re-validate the address the connection actually
+        // landed on. DNS can change between check_egress's resolution above
+        // and reqwest's own connect-time resolution.
+        check_egress_remote_addr(gate, response.remote_addr())?;
 
         if !response.status().is_redirection() {
             return Ok(response);
@@ -218,7 +235,9 @@ where
     }
 }
 
-struct HttpRequestExecutor;
+struct HttpRequestExecutor {
+    egress: EgressGate,
+}
 
 impl ToolExecutor for HttpRequestExecutor {
     fn execute<'a>(
@@ -231,6 +250,14 @@ impl ToolExecutor for HttpRequestExecutor {
                 Ok(s) => s,
                 Err(r) => return Ok(r),
             };
+
+            // SECURITY(#5071): the egress checkpoint runs before any other
+            // work so `egress = "deny"` rejects immediately, matching the
+            // subprocess sandbox's behavior of blocking socket creation
+            // before a child process gets to run at all.
+            if let Err(e) = self.egress.check_before_connect() {
+                return Ok(ToolResult::error(e.to_string()));
+            }
 
             let url = extract_str(&input.arguments, "url", &input.name)?;
             let method_str = extract_opt_str(&input.arguments, "method").unwrap_or("GET");
@@ -266,6 +293,7 @@ impl ToolExecutor for HttpRequestExecutor {
                 body,
                 std::time::Duration::from_secs(timeout_secs),
                 &TokioHostResolver,
+                &self.egress,
             )
             .await
             {
@@ -333,8 +361,13 @@ impl ToolExecutor for HttpRequestExecutor {
 }
 
 /// Register the `http_request` tool.
-pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(http_request_def(), Box::new(HttpRequestExecutor))?;
+///
+/// # Errors
+///
+/// Returns an error if `http_request` is already registered.
+pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
+    let egress = EgressGate::from_config(sandbox);
+    registry.register(http_request_def(), Box::new(HttpRequestExecutor { egress }))?;
     Ok(())
 }
 
@@ -426,11 +459,70 @@ fn http_request_def() -> ToolDef {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::collections::HashMap;
+    use std::collections::HashSet;
     use std::net::SocketAddr;
+    use std::sync::{Arc, RwLock};
 
     use koina::http::ResolveHostFuture;
+    use koina::id::{NousId, SessionId};
+
+    use crate::sandbox::EgressPolicy;
+    use crate::testing::install_crypto_provider;
+    use crate::types::{ServerToolConfig, ToolHttpClients, ToolServices};
 
     use super::*;
+
+    fn mock_ctx() -> ToolContext {
+        install_crypto_provider();
+        ToolContext {
+            nous_id: NousId::new("test-agent").expect("valid"),
+            session_id: SessionId::new(),
+            turn_number: 0,
+            workspace: std::path::PathBuf::from("/tmp/test"),
+            allowed_roots: vec![std::path::PathBuf::from("/tmp")],
+            services: Some(Arc::new(ToolServices {
+                working_checkpoint_store: None,
+                cross_nous: None,
+                messenger: None,
+                note_store: None,
+                blackboard_store: None,
+                spawn: None,
+                planning: None,
+                knowledge: None,
+                http_clients: ToolHttpClients::for_tests(),
+                secret_vault: hermeneus::secret::SecretVault::new(),
+                lazy_tool_catalog: vec![],
+                server_tool_config: ServerToolConfig::default(),
+            })),
+            active_tools: Arc::new(RwLock::new(HashSet::new())),
+            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+        }
+    }
+
+    fn executor_with_egress(policy: EgressPolicy) -> HttpRequestExecutor {
+        HttpRequestExecutor {
+            egress: EgressGate::new(policy, &[]),
+        }
+    }
+
+    #[tokio::test]
+    async fn http_request_blocked_by_egress_deny() {
+        // SECURITY(#5071) regression: the anchor issue. With egress=deny,
+        // http_request must refuse before making any network attempt.
+        let ctx = mock_ctx();
+        let executor = executor_with_egress(EgressPolicy::Deny);
+        let input = ToolInput {
+            name: ToolName::from_static("http_request"),
+            tool_use_id: "toolu_deny".to_owned(),
+            arguments: serde_json::json!({"url": "https://example.com"}),
+        };
+        let result = executor.execute(&input, &ctx).await.expect("execute");
+        assert!(result.is_error, "egress=deny must block http_request");
+        assert!(
+            result.content.text_summary().contains("deny"),
+            "error should name the egress policy: {result:?}"
+        );
+    }
 
     #[derive(Default)]
     struct MockResolver {

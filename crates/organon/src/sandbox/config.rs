@@ -60,14 +60,17 @@ pub struct SandboxConfig {
     pub enabled: bool,
     /// Enforcement level: `enforcing` blocks violations, `permissive` logs them.
     pub enforcement: SandboxEnforcement,
-    /// Default filesystem root granted read access.
+    /// Additional filesystem root granted read access, beyond the
+    /// workspace and each agent's own `allowed_roots`.
     ///
-    /// Defaults to `~` which expands to the HOME environment variable at
-    /// policy-build time. Operators can set this to a stricter path to
-    /// prevent agents from reading files outside a specific directory.
-    ///
-    /// WHY: without a home-directory default, agents cannot read user files
-    /// (dotfiles, project repos, etc.) even in permissive mode.
+    /// SECURITY(#5064): empty by default. Read authority is derived from
+    /// the resolved agent workspace and its `allowed_roots` (see
+    /// [`build_policy`](Self::build_policy)) -- not a blanket grant. Set
+    /// this to `~` (or any path) to explicitly opt an agent's sandboxed
+    /// subprocesses into reading beyond their own roots; `~` expands to
+    /// the HOME environment variable at policy-build time. This is an
+    /// explicit widening an operator chooses, not an implicit default, and
+    /// [`validate`](Self::validate) flags it when set.
     pub allowed_root: PathBuf,
     /// Additional filesystem paths granted read access.
     pub extra_read_paths: Vec<PathBuf>,
@@ -100,7 +103,9 @@ impl Default for SandboxConfig {
         Self {
             enabled: true,
             enforcement: SandboxEnforcement::Permissive,
-            allowed_root: PathBuf::from("~"),
+            // SECURITY(#5064): no implicit HOME-wide read grant. See the
+            // field doc for how to opt back in explicitly.
+            allowed_root: PathBuf::new(),
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
             extra_exec_paths: Vec::new(),
@@ -133,7 +138,84 @@ pub struct SandboxPolicy {
     pub egress_allowlist: Vec<String>,
 }
 
+/// A configuration combination that makes [`SandboxConfig`]'s stated
+/// guarantees misleading, found by [`SandboxConfig::validate`].
+#[derive(Debug, Clone)]
+pub struct SandboxConfigIssue {
+    /// Human-readable description, suitable for a startup log line.
+    pub message: String,
+    /// Whether this issue represents a guarantee the sandbox cannot
+    /// actually provide under `enforcement = "enforcing"` (as opposed to
+    /// one that only degrades safety under `enforcement = "permissive"`,
+    /// where "logged but not blocked" is the documented behavior).
+    pub broken_under_enforcing: bool,
+}
+
 impl SandboxConfig {
+    /// Check for configuration combinations that make this config's stated
+    /// guarantees misleading, independent of any single tool invocation.
+    ///
+    /// SECURITY(#5081, #5064, #5232): `enabled = true` does not by itself
+    /// mean "safe" -- a permissive enforcement, an explicit broad
+    /// `allowed_root`, or an `egress = "allowlist"` policy the
+    /// child-process network-namespace path cannot enforce beyond loopback
+    /// are all states an operator could previously only discover by
+    /// reading source or scattered per-invocation log lines. Call this once
+    /// at startup (see `register_domain_tools`) and log every issue.
+    #[must_use]
+    pub fn validate(&self) -> Vec<SandboxConfigIssue> {
+        let mut issues = Vec::new();
+        if !self.enabled {
+            // WHY: an explicitly disabled sandbox has no guarantees to be
+            // misleading about; operators who disabled it know what that means.
+            return issues;
+        }
+
+        let permissive = self.enforcement == SandboxEnforcement::Permissive;
+        if permissive {
+            issues.push(SandboxConfigIssue {
+                message: "sandbox.enforcement = \"permissive\": filesystem, syscall, and \
+                          egress violations are logged but NOT blocked"
+                    .to_owned(),
+                broken_under_enforcing: false,
+            });
+        }
+
+        if !self.allowed_root.as_os_str().is_empty() {
+            issues.push(SandboxConfigIssue {
+                message: format!(
+                    "sandbox.allowedRoot = \"{}\" grants every sandboxed subprocess read \
+                     access beyond its own workspace and allowed_roots{}",
+                    self.allowed_root.display(),
+                    if permissive {
+                        " (enforcement=permissive means this grant, like everything else, is \
+                         logged but not actually enforced)"
+                    } else {
+                        ""
+                    }
+                ),
+                broken_under_enforcing: false,
+            });
+        }
+
+        if self.egress == EgressPolicy::Allowlist
+            && !super::policy::allowlist_is_loopback_only(&self.egress_allowlist)
+        {
+            issues.push(SandboxConfigIssue {
+                message: "sandbox.egress = \"allowlist\" with non-loopback entries: the \
+                          child-process network-namespace path can only enforce loopback \
+                          destinations without root privileges; non-loopback entries behave \
+                          as egress = \"deny\" for subprocess-sandboxed tools (in-process \
+                          tools -- http_request, web_fetch, web_search -- enforce the full \
+                          allowlist via their own egress checkpoint, independent of this path)"
+                    .to_owned(),
+                broken_under_enforcing: true,
+            });
+        }
+
+        issues
+    }
+
     /// Create a disabled sandbox config (no restrictions applied).
     #[must_use]
     #[cfg_attr(
@@ -221,11 +303,14 @@ impl SandboxConfig {
             }
         }
 
-        // WHY: allowed_root is the operator-configured default read root (defaults
-        // to HOME). Expand tilde so config files can use `~` portably.
-        let expanded_allowed_root = expand_tilde(&self.allowed_root);
-        if !read_paths.contains(&expanded_allowed_root) {
-            read_paths.push(expanded_allowed_root);
+        // SECURITY(#5064): allowed_root is empty by default (no implicit
+        // HOME grant); only apply it when an operator has explicitly set
+        // one. Expand tilde so config files can use `~` portably.
+        if !self.allowed_root.as_os_str().is_empty() {
+            let expanded_allowed_root = expand_tilde(&self.allowed_root);
+            if !read_paths.contains(&expanded_allowed_root) {
+                read_paths.push(expanded_allowed_root);
+            }
         }
 
         read_paths.extend(self.extra_read_paths.iter().cloned());

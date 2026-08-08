@@ -523,16 +523,28 @@ impl ToolExecutor for ExecExecutor {
                 Err(e) => return Ok(err_result(format!("invalid command syntax: {e}"))),
             };
 
-            let output_result = SubprocessRunner::new(self.sandbox.clone()).run(
-                SubprocessRequest::new(program, ctx.workspace.clone())
-                    .args(args)
-                    .timeout(Duration::from_millis(timeout_ms))
-                    .max_output_bytes(MAX_OUTPUT_BYTES),
-                ctx,
-            );
+            // SECURITY(#5230): SubprocessRunner::run polls with
+            // std::thread::sleep for up to the full command timeout (default
+            // tens of seconds). Running that inline in this async fn would
+            // block the Tokio worker thread for the same duration, stalling
+            // every other task scheduled on it. spawn_blocking moves the
+            // wait onto the blocking thread pool, matching the same pattern
+            // already used for computer_use's subprocess-backed actions
+            // (`computer_use/executor.rs`).
+            let sandbox = self.sandbox.clone();
+            let ctx_owned = ctx.clone();
+            let request = SubprocessRequest::new(program, ctx.workspace.clone())
+                .args(args)
+                .timeout(Duration::from_millis(timeout_ms))
+                .max_output_bytes(MAX_OUTPUT_BYTES);
+            let output_result = tokio::task::spawn_blocking(move || {
+                SubprocessRunner::new(sandbox).run(request, &ctx_owned)
+            })
+            .await;
             let out = match output_result {
-                Ok(out) => out,
-                Err(e) => return Ok(err_result(e.to_string())),
+                Ok(Ok(out)) => out,
+                Ok(Err(e)) => return Ok(err_result(e.to_string())),
+                Err(join_err) => return Ok(err_result(format!("exec task panicked: {join_err}"))),
             };
 
             let code = out.exit_code;
@@ -721,7 +733,15 @@ fn edit_def() -> ToolDef {
 fn exec_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("exec"), // kanon:ignore RUST/expect
-        description: "Execute a shell command in your workspace and return stdout/stderr"
+        // WHY(#4757): this is deliberately NOT "execute a shell command" --
+        // parse_command_args tokenizes into program + args and runs the
+        // program directly, with no shell in the loop. Shell metacharacters
+        // (|, &, ;, $, ...) are treated as literal text, not interpreted.
+        // Documenting it as a shell command would mislead callers into
+        // expecting pipes/redirects/expansion to work.
+        description: "Run a command in your workspace and return stdout/stderr. Not a shell: \
+                      the command is tokenized into a program and arguments and run directly \
+                      -- pipes, redirects, globs, and variable expansion are NOT interpreted."
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -730,7 +750,9 @@ fn exec_def() -> ToolDef {
                     "command".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "The shell command to execute".to_owned(),
+                        description: "The command to run, as program + arguments (no shell: \
+                                      quoting is honored, shell metacharacters are literal)"
+                            .to_owned(),
                         enum_values: None,
                         default: None,
                         ..Default::default()

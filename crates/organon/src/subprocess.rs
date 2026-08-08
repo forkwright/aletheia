@@ -289,7 +289,12 @@ impl SubprocessRunner {
             copy_env_var(&mut cmd, var);
         }
 
-        apply_resource_limits(&mut cmd, self.sandbox.nproc_limit, self.sandbox.enforcement);
+        apply_resource_limits(
+            &mut cmd,
+            self.sandbox.nproc_limit,
+            request.timeout,
+            self.sandbox.enforcement,
+        );
         isolate_process_group(&mut cmd);
 
         if let Some(policy) = self.policy_for_request(ctx, &request) {
@@ -408,16 +413,47 @@ fn copy_env_var(cmd: &mut Command, var: &'static str) {
     }
 }
 
+/// Write a diagnostic line directly to fd 2, bypassing Rust's buffered,
+/// `Mutex`-protected `Stderr` writer.
+///
+/// WHY: this is called only from inside a `pre_exec` closure (between `fork`
+/// and `exec` in the child). `eprintln!`/`io::stderr()` lock a process-wide
+/// mutex; if the parent thread held that lock at the moment of fork, the
+/// child inherits an already-locked copy -- fork duplicates memory, not lock
+/// ownership -- and any std stderr write then deadlocks forever. A raw
+/// `write(2)` syscall to fd 2 bypasses that lock entirely and is
+/// async-signal-safe, unlike buffered/formatted stdio.
+#[cfg(target_os = "linux")]
+fn write_stderr_signal_safe(msg: &str) {
+    // SAFETY: fd 2 (stderr) is a well-known standard descriptor that outlives
+    // the process; this borrows it without taking ownership or closing it.
+    #[expect(
+        unsafe_code,
+        reason = "borrowing the well-known stderr fd for a raw async-signal-safe write"
+    )]
+    let stderr = unsafe { std::os::fd::BorrowedFd::borrow_raw(2) };
+    let _ = rustix::io::write(stderr, msg.as_bytes());
+}
+
 #[cfg(target_os = "linux")]
 fn apply_resource_limits(
     cmd: &mut Command,
     nproc_limit: u32,
+    subprocess_timeout: Duration,
     enforcement: crate::sandbox::SandboxEnforcement,
 ) {
     use std::os::unix::process::CommandExt as _;
 
     let nproc_cap = u64::from(nproc_limit);
     let enforcing = enforcement == crate::sandbox::SandboxEnforcement::Enforcing;
+    // SECURITY(#5236): derive the CPU-seconds limit from the request's own
+    // wall-clock timeout instead of a hardcoded 60. A hardcoded RLIMIT_CPU
+    // shorter than an operator-configured longer timeout would silently
+    // SIGKILL a legitimate long-running command before its own timeout ever
+    // fired; deriving from the same value that already bounds wall-clock
+    // time keeps the two limits from drifting apart. `max(1)` because
+    // RLIMIT_CPU=0 is immediate SIGXCPU on some kernels, not "unlimited".
+    let cpu_limit_secs = subprocess_timeout.as_secs().max(1);
 
     #[expect(
         unsafe_code,
@@ -432,26 +468,37 @@ fn apply_resource_limits(
                 maximum: Some(nproc_cap),
             };
             // WHY: Under enforcing policy, resource limits are safety controls
-            // and must succeed. Under permissive policy, failures are logged
-            // but do not block execution.
-            if let Err(e) = setrlimit(Resource::Nproc, nproc_limit)
-                && enforcing
-            {
-                return Err(std::io::Error::other(format!(
-                    "setrlimit(RLIMIT_NPROC) failed: {e}"
-                )));
+            // and must succeed. Under permissive policy, failures do not block
+            // execution, but SAFETY/observability(#5236) requires they are
+            // still visible: a silently-dropped setrlimit failure previously
+            // left permissive deployments believing a limit was active when
+            // it was not. write_stderr_signal_safe is used instead of
+            // tracing/eprintln! because this closure runs between fork and
+            // exec, where std's buffered stdio can deadlock (see its doc).
+            if let Err(e) = setrlimit(Resource::Nproc, nproc_limit) {
+                if enforcing {
+                    return Err(std::io::Error::other(format!(
+                        "setrlimit(RLIMIT_NPROC) failed: {e}"
+                    )));
+                }
+                write_stderr_signal_safe(&format!(
+                    "organon: setrlimit(RLIMIT_NPROC) failed (permissive, continuing): {e}\n"
+                ));
             }
 
             let cpu_limit = Rlimit {
-                current: Some(60),
-                maximum: Some(60),
+                current: Some(cpu_limit_secs),
+                maximum: Some(cpu_limit_secs),
             };
-            if let Err(e) = setrlimit(Resource::Cpu, cpu_limit)
-                && enforcing
-            {
-                return Err(std::io::Error::other(format!(
-                    "setrlimit(RLIMIT_CPU) failed: {e}"
-                )));
+            if let Err(e) = setrlimit(Resource::Cpu, cpu_limit) {
+                if enforcing {
+                    return Err(std::io::Error::other(format!(
+                        "setrlimit(RLIMIT_CPU) failed: {e}"
+                    )));
+                }
+                write_stderr_signal_safe(&format!(
+                    "organon: setrlimit(RLIMIT_CPU) failed (permissive, continuing): {e}\n"
+                ));
             }
 
             Ok(())
@@ -463,6 +510,7 @@ fn apply_resource_limits(
 fn apply_resource_limits(
     _cmd: &mut Command,
     _nproc_limit: u32,
+    _subprocess_timeout: Duration,
     _enforcement: crate::sandbox::SandboxEnforcement,
 ) {
 }
@@ -483,13 +531,22 @@ fn kill_and_wait(guard: &mut ProcessGuard) {
     let _ = guard.get_mut().wait();
 }
 
-#[cfg(target_os = "linux")]
+// SECURITY(#5237): `killpg` (via rustix::process::kill_process_group) is a
+// POSIX facility, not a Linux-only one -- rustix's libc backend implements it
+// on every Unix target. The previous `target_os = "linux"` gate here (versus
+// `isolate_process_group`'s `cfg(unix)` gate that actually creates the
+// process group) meant a timed-out command on macOS/BSD had its children
+// isolated into a group but nothing ever signaled that group: grandchildren
+// leaked past the timeout on every non-Linux Unix. Matching the gate to
+// `cfg(unix)` closes that gap; only genuinely non-Unix targets (Windows,
+// where process groups are never created either) fall through to the no-op.
+#[cfg(unix)]
 fn kill_process_group(child: &std::process::Child) {
     let pid = rustix::process::Pid::from_child(child);
     let _ = rustix::process::kill_process_group(pid, rustix::process::Signal::KILL);
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(unix))]
 fn kill_process_group(_child: &std::process::Child) {}
 
 fn spawn_bounded_reader<R>(mut reader: R, max_bytes: usize) -> JoinHandle<String>
@@ -662,6 +719,31 @@ mod tests {
         assert_eq!(
             output.stdout, ":77|wayland-test|/tmp/test-xauthority|unset",
             "request allowlist should preserve display vars without leaking secrets"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn runner_derives_cpu_limit_from_request_timeout() {
+        // SECURITY(#5236) regression: RLIMIT_CPU must track the configured
+        // wall-clock timeout, not a hardcoded 60s that could kill a
+        // legitimately longer-configured command early (or, in the other
+        // direction, leave CPU-bound processes unbounded when the timeout
+        // is much shorter than 60s).
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let output = test_runner()
+            .run(
+                SubprocessRequest::new("sh", dir.path())
+                    .args(["-c", "ulimit -t"])
+                    .timeout(Duration::from_secs(5)),
+                &test_ctx(dir.path()),
+            )
+            .expect("run");
+
+        assert_eq!(
+            output.stdout.trim(),
+            "5",
+            "RLIMIT_CPU should equal the request's timeout in seconds"
         );
     }
 

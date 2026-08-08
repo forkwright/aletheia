@@ -10,5 +10,10 @@ mod policy;
 #[cfg(test)]
 mod tests;
 
-pub use config::{EgressPolicy, SandboxConfig, SandboxEnforcement, SandboxPolicy};
-pub use policy::{apply_sandbox, probe_landlock_abi};
+pub use config::{
+    EgressPolicy, SandboxConfig, SandboxConfigIssue, SandboxEnforcement, SandboxPolicy,
+};
+pub use policy::{
+    EgressDenied, EgressGate, apply_sandbox, check_egress, check_egress_remote_addr,
+    probe_landlock_abi,
+};

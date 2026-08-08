@@ -17,6 +17,7 @@ use koina::id::ToolName;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::sandbox::{EgressGate, SandboxConfig, check_egress, check_egress_remote_addr};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -67,6 +68,7 @@ async fn get_with_safe_redirects<R>(
     client: &reqwest::Client,
     url: &str,
     resolver: &R,
+    gate: &EgressGate,
 ) -> std::result::Result<reqwest::Response, String>
 where
     R: HostResolver + ?Sized,
@@ -75,6 +77,16 @@ where
     let mut redirects_followed = 0;
 
     loop {
+        // SECURITY(#5071): every hop -- including redirect targets, not just
+        // the original URL -- goes through the same egress checkpoint the
+        // subprocess sandbox uses so `egress = "deny"` cannot be bypassed by
+        // a redirect chain.
+        let host = current_url
+            .host_str()
+            .ok_or_else(|| "URL has no host".to_owned())?;
+        let port = current_url.port_or_known_default().unwrap_or(443);
+        check_egress(gate, host, port, resolver).await?;
+
         let response = client
             .get(current_url.clone())
             .header(
@@ -88,6 +100,11 @@ where
             .send()
             .await
             .map_err(|e| format!("fetch failed: {e}"))?;
+
+        // SECURITY(#5229): re-validate the address the connection actually
+        // landed on. DNS can change between check_egress's resolution above
+        // and reqwest's own connect-time resolution.
+        check_egress_remote_addr(gate, response.remote_addr())?;
 
         if !response.status().is_redirection() {
             return Ok(response);
@@ -107,7 +124,9 @@ where
     }
 }
 
-struct WebFetchExecutor;
+struct WebFetchExecutor {
+    egress: EgressGate,
+}
 
 impl ToolExecutor for WebFetchExecutor {
     // NOTE(#940): 109 lines: single SSRF-safe HTTP fetch operation: validate URL,
@@ -122,6 +141,14 @@ impl ToolExecutor for WebFetchExecutor {
                 Ok(s) => s,
                 Err(r) => return Ok(r),
             };
+
+            // SECURITY(#5071): the egress checkpoint runs before any other
+            // work so `egress = "deny"` rejects immediately, matching the
+            // subprocess sandbox's behavior of blocking socket creation
+            // before a child process gets to run at all.
+            if let Err(e) = self.egress.check_before_connect() {
+                return Ok(ToolResult::error(e.to_string()));
+            }
 
             let url = extract_str(&input.arguments, "url", &input.name)?;
             let max_length = extract_opt_u64(&input.arguments, "maxLength").unwrap_or(50_000);
@@ -141,6 +168,7 @@ impl ToolExecutor for WebFetchExecutor {
                 &services.http_clients.ssrf_safe,
                 url,
                 &TokioHostResolver,
+                &self.egress,
             )
             .await
             {
@@ -343,8 +371,13 @@ fn web_fetch_def() -> ToolDef {
 }
 
 /// Register the `web_fetch` research tool into the registry.
-pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(web_fetch_def(), Box::new(WebFetchExecutor))?;
+///
+/// # Errors
+///
+/// Returns an error if `web_fetch` is already registered.
+pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
+    let egress = EgressGate::from_config(sandbox);
+    registry.register(web_fetch_def(), Box::new(WebFetchExecutor { egress }))?;
     Ok(())
 }
 
@@ -466,10 +499,37 @@ mod tests {
         );
     }
 
+    fn test_executor() -> WebFetchExecutor {
+        WebFetchExecutor {
+            egress: EgressGate::new(crate::sandbox::EgressPolicy::Allow, &[]),
+        }
+    }
+
+    #[tokio::test]
+    async fn web_fetch_blocked_by_egress_deny() {
+        // SECURITY(#5071) regression: the anchor issue. With egress=deny,
+        // web_fetch must refuse before making any network attempt.
+        let ctx = mock_ctx();
+        let executor = WebFetchExecutor {
+            egress: EgressGate::new(crate::sandbox::EgressPolicy::Deny, &[]),
+        };
+        let input = ToolInput {
+            name: ToolName::from_static("web_fetch"),
+            tool_use_id: "toolu_deny".to_owned(),
+            arguments: serde_json::json!({"url": "https://example.com"}),
+        };
+        let result = executor.execute(&input, &ctx).await.expect("execute");
+        assert!(result.is_error, "egress=deny must block web_fetch");
+        assert!(
+            result.content.text_summary().contains("deny"),
+            "error should name the egress policy: {result:?}"
+        );
+    }
+
     #[tokio::test]
     async fn web_fetch_invalid_url() {
         let ctx = mock_ctx();
-        let executor = WebFetchExecutor;
+        let executor = test_executor();
         let input = ToolInput {
             name: ToolName::from_static("web_fetch"),
             tool_use_id: "toolu_1".to_owned(),
@@ -485,12 +545,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn web_fetch_uses_configured_ssrf_http_client() {
-        // WHY: verify that web_fetch routes through ToolServices.ssrf_http_client
-        // rather than constructing its own reqwest::Client. We start a local
+    async fn web_fetch_rejects_dns_rebound_response_from_configured_client() {
+        // SECURITY(#5229) regression + plumbing check, combined: start a local
         // HTTP server and use reqwest's per-client DNS override to point
-        // example.com at it; if web_fetch used a freshly built client, the
-        // override would be ignored and the request would hit the real example.com.
+        // example.com at it (a stand-in for a DNS answer changing between the
+        // pre-connect SSRF check and the client's own connect-time
+        // resolution). Two things must both be true:
+        //  1. The local server DID receive the request -- proving web_fetch
+        //     routed through the operator-configured `ssrf_http_client`
+        //     rather than building a fresh one (a fresh client would ignore
+        //     the override and either hit the real example.com or fail).
+        //  2. The result is nonetheless an error -- proving the post-connect
+        //     remote_addr() check rejects the rebound private/loopback peer
+        //     instead of silently returning its body to the LLM.
         install_crypto_provider();
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
@@ -531,7 +598,7 @@ mod tests {
             .build()
             .expect("test client should build");
         let ctx = mock_ctx_with_ssrf_client(ssrf_http_client);
-        let executor = WebFetchExecutor;
+        let executor = test_executor();
         let input = ToolInput {
             name: ToolName::from_static("web_fetch"),
             tool_use_id: "toolu_2".to_owned(),
@@ -539,19 +606,21 @@ mod tests {
         };
 
         let result = executor.execute(&input, &ctx).await.expect("execute");
-        assert!(
-            !result.is_error,
-            "expected successful fetch, got: {result:?}"
-        );
-        assert!(
-            result
-                .content
-                .text_summary()
-                .contains("hello from configured client"),
-            "expected response from local server, got: {result:?}"
-        );
 
+        // Proof 1: the local server saw the request (plumbing used the
+        // configured client + its DNS override), asserted inside `server`.
         server.await.expect("server task");
+
+        // Proof 2: the rebound (loopback) peer was rejected, not returned.
+        assert!(
+            result.is_error,
+            "a response from a DNS-rebound private address must be rejected, got: {result:?}"
+        );
+        let summary = result.content.text_summary();
+        assert!(
+            summary.contains("private") || summary.contains("rebind"),
+            "error should explain the rejection: {result:?}"
+        );
     }
 
     fn mock_ctx_with_ssrf_client(ssrf_http_client: reqwest::Client) -> ToolContext {

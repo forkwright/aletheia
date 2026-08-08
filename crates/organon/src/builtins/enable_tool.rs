@@ -516,7 +516,9 @@ mod tests {
             reason: "test".to_owned(),
         };
         let mut registry = ToolRegistry::new();
-        crate::builtins::web_search::register(&mut registry).expect("register web_search");
+        let sandbox = crate::sandbox::SandboxConfig::default();
+        crate::builtins::web_search::register(&mut registry, &sandbox)
+            .expect("register web_search");
         let services = ctx.services.as_ref().expect("services");
         let surface = Arc::new(registry.effective_surface(SurfaceInputs {
             policy: &policy,

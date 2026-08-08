@@ -1,5 +1,8 @@
 //! Tests for egress policy configuration and network namespace enforcement.
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::path::Path;
+
+use koina::http::HostResolver;
 
 use super::super::policy::allowlist_is_loopback_only;
 use super::super::*;
@@ -280,4 +283,188 @@ fn egress_graceful_fallback() {
         output.status.success(),
         "command must execute after egress setup"
     );
+}
+
+// ── EgressGate: the in-process checkpoint (#5071, #5232, #5229) ──────────
+
+struct StaticResolver(Vec<SocketAddr>);
+
+impl HostResolver for StaticResolver {
+    fn resolve_host<'a>(
+        &'a self,
+        _host: &'a str,
+        _port: u16,
+    ) -> koina::http::ResolveHostFuture<'a> {
+        let addrs = self.0.clone();
+        Box::pin(async move { Ok(addrs) })
+    }
+}
+
+fn public_addr() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::new(93, 184, 216, 34)), 443)
+}
+
+#[test]
+fn gate_deny_rejects_before_any_resolution() {
+    let gate = EgressGate::new(EgressPolicy::Deny, &[]);
+    let err = gate
+        .check_before_connect()
+        .expect_err("deny must reject before resolving");
+    assert!(err.to_string().contains("deny"), "error should name deny");
+}
+
+#[test]
+fn gate_allow_permits_any_address() {
+    let gate = EgressGate::new(EgressPolicy::Allow, &[]);
+    assert!(gate.check_before_connect().is_ok());
+    assert!(gate.check_addr(public_addr().ip()).is_ok());
+    assert!(
+        gate.check_addr(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)))
+            .is_ok(),
+        "Allow does not itself restrict destinations (SSRF guard is a separate layer)"
+    );
+}
+
+#[test]
+fn gate_deny_rejects_every_address() {
+    let gate = EgressGate::new(EgressPolicy::Deny, &[]);
+    assert!(gate.check_addr(public_addr().ip()).is_err());
+}
+
+#[test]
+fn gate_allowlist_permits_listed_cidr() {
+    let gate = EgressGate::new(
+        EgressPolicy::Allowlist,
+        &["93.184.216.0/24".to_owned(), "10.0.0.5".to_owned()],
+    );
+    assert!(
+        gate.check_addr(public_addr().ip()).is_ok(),
+        "address inside the allowed /24 must pass"
+    );
+    assert!(
+        gate.check_addr(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)))
+            .is_ok(),
+        "exact bare-IP entry must pass"
+    );
+}
+
+#[test]
+fn gate_allowlist_rejects_unlisted_destination() {
+    let gate = EgressGate::new(EgressPolicy::Allowlist, &["10.0.0.5".to_owned()]);
+    let err = gate
+        .check_addr(public_addr().ip())
+        .expect_err("address outside the allowlist must be rejected");
+    assert!(
+        err.to_string().contains("allowlist"),
+        "error should name allowlist: {err}"
+    );
+}
+
+#[test]
+fn gate_allowlist_with_unparseable_entry_never_matches() {
+    // WHY: an operator typo must fail closed (deny that entry), never
+    // silently match every destination.
+    let gate = EgressGate::new(EgressPolicy::Allowlist, &["not-an-ip".to_owned()]);
+    assert!(gate.check_addr(public_addr().ip()).is_err());
+    assert!(gate
+        .check_addr(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)))
+        .is_err());
+}
+
+#[tokio::test]
+async fn check_egress_deny_never_resolves() {
+    struct PanicResolver;
+    impl HostResolver for PanicResolver {
+        fn resolve_host<'a>(
+            &'a self,
+            _host: &'a str,
+            _port: u16,
+        ) -> koina::http::ResolveHostFuture<'a> {
+            Box::pin(async { panic!("deny must short-circuit before any DNS resolution") })
+        }
+    }
+
+    let gate = EgressGate::new(EgressPolicy::Deny, &[]);
+    let err = check_egress(&gate, "example.com", 443, &PanicResolver)
+        .await
+        .expect_err("deny must be rejected");
+    assert!(err.contains("deny"));
+}
+
+#[tokio::test]
+async fn check_egress_allow_does_not_resolve() {
+    // WHY: Allow needs no per-address decision; resolving would be wasted
+    // work and would couple egress checking to DNS availability.
+    struct PanicResolver;
+    impl HostResolver for PanicResolver {
+        fn resolve_host<'a>(
+            &'a self,
+            _host: &'a str,
+            _port: u16,
+        ) -> koina::http::ResolveHostFuture<'a> {
+            Box::pin(async { panic!("allow must not resolve") })
+        }
+    }
+
+    let gate = EgressGate::new(EgressPolicy::Allow, &[]);
+    check_egress(&gate, "example.com", 443, &PanicResolver)
+        .await
+        .expect("allow must pass without resolving");
+}
+
+#[tokio::test]
+async fn check_egress_allowlist_resolves_and_matches() {
+    let resolver = StaticResolver(vec![public_addr()]);
+    let gate = EgressGate::new(EgressPolicy::Allowlist, &["93.184.216.0/24".to_owned()]);
+    check_egress(&gate, "example.com", 443, &resolver)
+        .await
+        .expect("resolved address inside allowlist must pass");
+}
+
+#[tokio::test]
+async fn check_egress_allowlist_rejects_unresolved_match() {
+    let resolver = StaticResolver(vec![public_addr()]);
+    let gate = EgressGate::new(EgressPolicy::Allowlist, &["10.0.0.0/8".to_owned()]);
+    let err = check_egress(&gate, "example.com", 443, &resolver)
+        .await
+        .expect_err("resolved address outside allowlist must be rejected");
+    assert!(err.contains("allowlist"));
+}
+
+#[test]
+fn check_egress_remote_addr_rejects_private_after_public_validation() {
+    // SECURITY(#5229): regression for DNS rebinding -- the pre-connect check
+    // can pass on a public answer, then the actual connection can land on a
+    // private address if DNS changes between the two lookups. The
+    // post-connect check must catch this even under egress=allow.
+    let gate = EgressGate::new(EgressPolicy::Allow, &[]);
+    let rebound = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254)), 443);
+    let err = check_egress_remote_addr(&gate, Some(rebound))
+        .expect_err("private remote addr must be rejected regardless of egress=allow");
+    assert!(
+        err.contains("private") || err.contains("rebinding"),
+        "error should explain the rejection: {err}"
+    );
+}
+
+#[test]
+fn check_egress_remote_addr_permits_public_address() {
+    let gate = EgressGate::new(EgressPolicy::Allow, &[]);
+    check_egress_remote_addr(&gate, Some(public_addr())).expect("public peer must be permitted");
+}
+
+#[test]
+fn check_egress_remote_addr_none_is_ok() {
+    let gate = EgressGate::new(EgressPolicy::Deny, &[]);
+    check_egress_remote_addr(&gate, None)
+        .expect("no peer address available is not itself an error");
+}
+
+#[test]
+fn check_egress_remote_addr_enforces_allowlist_on_reconnect() {
+    let gate = EgressGate::new(EgressPolicy::Allowlist, &["10.0.0.5".to_owned()]);
+    let unlisted = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 6)), 443);
+    let err = check_egress_remote_addr(&gate, Some(unlisted))
+        .expect_err("post-connect address must also satisfy the allowlist");
+    assert!(err.contains("allowlist"));
 }
