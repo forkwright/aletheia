@@ -70,24 +70,32 @@
       "to": "W3_storage_trait_fts_index",
       "count": 4,
       "evidence": [
-        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::AsciiFoldingFilter",
-        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::RawTokenizer",
-        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::SimpleTokenizer",
-        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::TextAnalyzer"
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:12 -> crate::fts::tokenizer::AsciiFoldingFilter",
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:12 -> crate::fts::tokenizer::RawTokenizer",
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:12 -> crate::fts::tokenizer::SimpleTokenizer",
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:12 -> crate::fts::tokenizer::TextAnalyzer"
       ]
     },
     {
       "from": "W2b_stopwords",
       "to": "W3_storage_trait_fts_index",
-      "count": 7,
+      "count": 15,
       "evidence": [
-        "fts/tokenizer/stop_word_filter/mod.rs:11 -> crate::fts::error::TokenizationFailedSnafu",
-        "fts/tokenizer/stop_word_filter/mod.rs:154 -> crate::fts::tokenizer::tests::assert_token",
-        "fts/tokenizer/stop_word_filter/mod.rs:155 -> crate::fts::tokenizer::SimpleTokenizer",
-        "fts/tokenizer/stop_word_filter/mod.rs:155 -> crate::fts::tokenizer::StopWordFilter",
-        "fts/tokenizer/stop_word_filter/mod.rs:155 -> crate::fts::tokenizer::TextAnalyzer",
-        "fts/tokenizer/stop_word_filter/mod.rs:155 -> crate::fts::tokenizer::Token",
-        "fts/tokenizer/stop_word_filter/mod.rs:196 -> crate::fts::tokenizer::tests::collect_tokens"
+        "fts/tokenizer/stop_word_filter/derived/mod.rs:11 -> crate::fts::error::TokenizationFailedSnafu",
+        "fts/tokenizer/stop_word_filter/derived/mod.rs:154 -> crate::fts::tokenizer::tests::assert_token",
+        "fts/tokenizer/stop_word_filter/derived/mod.rs:155 -> crate::fts::tokenizer::SimpleTokenizer",
+        "fts/tokenizer/stop_word_filter/derived/mod.rs:155 -> crate::fts::tokenizer::StopWordFilter",
+        "fts/tokenizer/stop_word_filter/derived/mod.rs:155 -> crate::fts::tokenizer::TextAnalyzer",
+        "fts/tokenizer/stop_word_filter/derived/mod.rs:155 -> crate::fts::tokenizer::Token",
+        "fts/tokenizer/stop_word_filter/derived/mod.rs:196 -> crate::fts::tokenizer::tests::collect_tokens",
+        "fts/tokenizer/stop_word_filter/sovereign/mod.rs:174 -> crate::fts::tokenizer::tests::assert_token",
+        "fts/tokenizer/stop_word_filter/sovereign/mod.rs:175 -> crate::fts::tokenizer::SimpleTokenizer",
+        "fts/tokenizer/stop_word_filter/sovereign/mod.rs:175 -> crate::fts::tokenizer::StopWordFilter",
+        "fts/tokenizer/stop_word_filter/sovereign/mod.rs:175 -> crate::fts::tokenizer::TextAnalyzer",
+        "fts/tokenizer/stop_word_filter/sovereign/mod.rs:175 -> crate::fts::tokenizer::Token",
+        "fts/tokenizer/stop_word_filter/sovereign/mod.rs:228 -> crate::fts::tokenizer::tests::collect_tokens",
+        "fts/tokenizer/stop_word_filter/sovereign/mod.rs:236 -> crate::fts::tokenizer::tests::collect_tokens",
+        "fts/tokenizer/stop_word_filter/sovereign/mod.rs:24 -> crate::fts::error::TokenizationFailedSnafu"
       ]
     },
     {

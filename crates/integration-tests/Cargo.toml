@@ -13,7 +13,17 @@ workspace = true
 [features]
 default = ["knowledge-store"]
 engine-tests = ["mneme/mneme-engine"]
-knowledge-store = ["mneme/storage-fjall", "nous/knowledge-store", "pylon/knowledge-store"]
+# WHY: `mneme/crash-injection` (aletheia#5779 §8.4/F10) is enabled here
+# specifically because this crate hosts the migration crash-injection
+# matrix (`tests/migration_crash_injection.rs`,
+# `src/bin/migration_crash_child.rs`) — the one sanctioned place in the
+# workspace that needs `register_crash_hook` reachable.
+knowledge-store = [
+    "mneme/storage-fjall",
+    "mneme/crash-injection",
+    "nous/knowledge-store",
+    "pylon/knowledge-store",
+]
 # Test tiers (see docs/test-tiers.md)
 test-core = ["engine-tests"]
 test-full = ["test-core"]
