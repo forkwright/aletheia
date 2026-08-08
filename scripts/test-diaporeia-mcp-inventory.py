@@ -5,8 +5,12 @@ Verifies that the generator parses #[tool] methods, extracts tier/role,
 and classifies mutation capability deterministically from the implementation
 surface.
 
-Run with:
-    uv run scripts/test-diaporeia-mcp-inventory.py
+Enforced in CI by `mcp_inventory_generator_self_tests_pass` in
+crates/diaporeia/tests/mcp_inventory_drift.rs, which shells out to this file.
+Stdlib only, so no dependency resolution is needed.
+
+Run directly with:
+    python3 scripts/test-diaporeia-mcp-inventory.py
 """
 from __future__ import annotations
 
