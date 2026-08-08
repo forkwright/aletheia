@@ -7,8 +7,8 @@
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 206 files under `src/`: 168 derived, 28 sovereign, 10 dual
-- Mean verbatim match across the 168 derived files: 51.3% (unweighted average of the per-file `verbatim_pct` column below)
+- 210 files under `src/`: 164 derived, 32 sovereign, 14 dual
+- Mean verbatim match across the 164 derived files: 50.7% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -106,16 +106,20 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/fts/indexing.rs` | `fts/indexing.rs` | 35.8% | derived |
 | `src/fts/mod.rs` | `fts/mod.rs` | 47.3% | derived |
 | `src/fts/tokenizer/alphanum_only.rs` | `fts/tokenizer/alphanum_only.rs` | 74.2% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 3.7% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.1% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.5% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.5% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 3.5% | dual |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.1% | dual |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.5% | dual |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.5% | dual |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 78.8% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/tests/bmp_equivalence.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 0.4% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 0.5% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 0.4% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_t_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 0.7% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/tests/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 7.0% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/tests/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 6.9% | derived |
 | `src/fts/tokenizer/empty_tokenizer.rs` | `fts/tokenizer/empty_tokenizer.rs` | 88.6% | derived |
 | `src/fts/tokenizer/lower_caser.rs` | `fts/tokenizer/lower_caser.rs` | 81.7% | derived |
 | `src/fts/tokenizer/mod.rs` | `fts/tokenizer/mod.rs` | 68.4% | derived |

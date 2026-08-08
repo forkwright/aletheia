@@ -1,9 +1,11 @@
+use super::migration_atomic::{IndexSpec, RebuildSpec, rebuild_relation_atomically};
 use super::{
     CAUSAL_EDGES_DDL, DEFAULTS_DDL, DERIVED_FACTS_DDL, DERIVED_RULE_WATERMARKS_DDL,
     DERIVED_SOURCE_REVISION_DDL, EMBEDDING_META_DDL, ENTITY_FLAGS_DDL, FACT_ENTITIES_DDL,
     FACTS_DDL, KnowledgeStore, MERGE_AUDIT_DDL, PENDING_MERGES_DDL, PROVENANCE_DDL,
     PUBLISHED_FACTS_DDL, TYPE_HIERARCHY_DDL, entities_ddl, fts_ddl,
 };
+use crate::engine::{DataValue, NamedRows};
 
 pub(super) struct MigrationStep {
     pub(super) target_version: i64,
@@ -85,6 +87,160 @@ pub(super) const MIGRATIONS: &[MigrationStep] = &[
     },
 ];
 
+// ---------------------------------------------------------------------
+// `facts` rebuild: the current (v19-shape) column order, and a transform
+// that carries every old-shape column over unchanged and backfills any
+// column the old shape lacked with the literal value each migration
+// historically wrote for it (aletheia#5779, plan §8.2).
+// ---------------------------------------------------------------------
+
+const FACTS_FULL_COLUMNS: &[&str] = &[
+    "id",
+    "valid_from",
+    "content",
+    "nous_id",
+    "confidence",
+    "tier",
+    "valid_to",
+    "superseded_by",
+    "source_session_id",
+    "recorded_at",
+    "access_count",
+    "last_accessed_at",
+    "stability_hours",
+    "fact_type",
+    "is_forgotten",
+    "forgotten_at",
+    "forget_reason",
+    "scope",
+    "project_id",
+    "visibility",
+    "sensitivity",
+];
+
+fn facts_default_value(column: &str) -> DataValue {
+    match column {
+        "access_count" => DataValue::from(0_i64),
+        "last_accessed_at" | "fact_type" => DataValue::Str("".into()),
+        "stability_hours" => DataValue::from(720.0_f64),
+        "is_forgotten" => DataValue::Bool(false),
+        "visibility" => DataValue::Str("private".into()),
+        "sensitivity" => DataValue::Str("public".into()),
+        // "forgotten_at", "forget_reason", "scope", "project_id" — nullable,
+        // no declared default; every migration that predates them backfills
+        // explicit null rather than relying on the engine (which requires
+        // every non-key column to be either bound or `default`-bearing).
+        _ => DataValue::Null,
+    }
+}
+
+fn rebuild_facts_row(
+    old_columns: &[&str],
+    old_row: &[DataValue],
+) -> crate::error::Result<Vec<DataValue>> {
+    FACTS_FULL_COLUMNS
+        .iter()
+        .map(|col| match old_columns.iter().position(|c| c == col) {
+            Some(idx) => old_row.get(idx).cloned().ok_or_else(|| {
+                crate::error::EngineQuerySnafu {
+                    message: format!(
+                        "facts row shorter than its declared old-shape column list at '{col}'"
+                    ),
+                }
+                .build()
+            }),
+            None => Ok(facts_default_value(col)),
+        })
+        .collect()
+}
+
+/// Build a `facts` rebuild transform for a migration whose old shape had
+/// exactly `old_columns`, in that order (matching the migration's own
+/// `read_script` head clause).
+fn facts_rebuild_transform(
+    old_columns: &'static [&'static str],
+) -> impl Fn(&NamedRows) -> crate::error::Result<NamedRows> {
+    move |old: &NamedRows| {
+        let rows: Vec<Vec<DataValue>> = old
+            .rows
+            .iter()
+            .map(|row| rebuild_facts_row(old_columns, row))
+            .collect::<crate::error::Result<Vec<_>>>()?;
+        Ok(NamedRows::new(
+            FACTS_FULL_COLUMNS.iter().map(|c| (*c).to_owned()).collect(),
+            rows,
+        ))
+    }
+}
+
+fn facts_content_fts_index() -> Vec<IndexSpec> {
+    vec![IndexSpec {
+        name: "content_fts",
+        recreate_ddl: fts_ddl().to_owned(),
+    }]
+}
+
+// ---------------------------------------------------------------------
+// `causal_edges` rebuild: same pattern. `id` (minted fresh per row — no
+// prior identity exists to preserve, #4551) and `relationship_type`
+// ('caused' — the only relationship type that existed before v7 named the
+// concept) are the two columns every pre-v17 shape lacks.
+// ---------------------------------------------------------------------
+
+const CAUSAL_EDGES_FULL_COLUMNS: &[&str] = &[
+    "cause",
+    "effect",
+    "id",
+    "ordering",
+    "relationship_type",
+    "confidence",
+    "evidence_session_id",
+    "created_at",
+];
+
+fn rebuild_causal_edge_row(
+    old_columns: &[&str],
+    old_row: &[DataValue],
+) -> crate::error::Result<Vec<DataValue>> {
+    CAUSAL_EDGES_FULL_COLUMNS
+        .iter()
+        .map(|col| match old_columns.iter().position(|c| c == col) {
+            Some(idx) => old_row.get(idx).cloned().ok_or_else(|| {
+                crate::error::EngineQuerySnafu {
+                    message: format!(
+                        "causal_edges row shorter than its declared old-shape column list at '{col}'"
+                    ),
+                }
+                .build()
+            }),
+            None if *col == "id" => {
+                Ok(DataValue::Str(koina::ulid::Ulid::new().to_string().into()))
+            }
+            None if *col == "relationship_type" => Ok(DataValue::Str("caused".into())),
+            None => Ok(DataValue::Null),
+        })
+        .collect()
+}
+
+fn causal_edges_rebuild_transform(
+    old_columns: &'static [&'static str],
+) -> impl Fn(&NamedRows) -> crate::error::Result<NamedRows> {
+    move |old: &NamedRows| {
+        let rows: Vec<Vec<DataValue>> = old
+            .rows
+            .iter()
+            .map(|row| rebuild_causal_edge_row(old_columns, row))
+            .collect::<crate::error::Result<Vec<_>>>()?;
+        Ok(NamedRows::new(
+            CAUSAL_EDGES_FULL_COLUMNS
+                .iter()
+                .map(|c| (*c).to_owned())
+                .collect(),
+            rows,
+        ))
+    }
+}
+
 #[cfg(feature = "mneme-engine")]
 impl KnowledgeStore {
     /// Run a single DDL statement and wrap errors with `context`.
@@ -104,206 +260,75 @@ impl KnowledgeStore {
     }
 
     pub(super) fn migrate_v1_to_v2(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
+        const OLD_COLUMNS: &[&str] = &[
+            "id",
+            "valid_from",
+            "content",
+            "nous_id",
+            "confidence",
+            "tier",
+            "valid_to",
+            "superseded_by",
+            "source_session_id",
+            "recorded_at",
+        ];
         tracing::info!("migrating knowledge schema v1 -> v2");
-
-        let all_facts = self
-            .db
-            .run(
-                r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+        let transform = facts_rebuild_transform(OLD_COLUMNS);
+        rebuild_relation_atomically(
+            self,
+            &RebuildSpec {
+                relation: "facts",
+                label: "v1->v2",
+                target_version: 2,
+                read_script: r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
                     superseded_by, source_session_id, recorded_at] :=
                     *facts{id, valid_from, content, nous_id, confidence, tier,
                            valid_to, superseded_by, source_session_id, recorded_at}",
-                BTreeMap::new(),
-                ScriptMutability::Immutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v1->v2 read facts: {e}"),
-                }
-                .build()
-            })?;
-
-        let _ = self.db.run(
-            "::fts drop facts:content_fts",
-            BTreeMap::new(),
-            ScriptMutability::Mutable,
-        );
-
-        self.db
-            .run("::remove facts", BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v1->v2 remove facts: {e}"),
-                }
-                .build()
-            })?;
-
-        self.run_ddl(FACTS_DDL, "v1->v2 recreate facts")?;
-
-        for row in &all_facts.rows {
-            let script = r"
-                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-                  superseded_by, source_session_id, recorded_at,
-                  access_count, last_accessed_at, stability_hours, fact_type] <- [[
-                    $id, $valid_from, $content, $nous_id, $confidence, $tier, $valid_to,
-                    $superseded_by, $source_session_id, $recorded_at,
-                    0, '', 720.0, ''
-                ]]
-                :put facts {id, valid_from => content, nous_id, confidence, tier,
-                            valid_to, superseded_by, source_session_id, recorded_at,
-                            access_count, last_accessed_at, stability_hours, fact_type}
-            ";
-            let mut params = BTreeMap::new();
-            for (i, name) in [
-                "id",
-                "valid_from",
-                "content",
-                "nous_id",
-                "confidence",
-                "tier",
-                "valid_to",
-                "superseded_by",
-                "source_session_id",
-                "recorded_at",
-            ]
-            .iter()
-            .enumerate()
-            {
-                if let Some(val) = row.get(i) {
-                    params.insert((*name).to_owned(), val.clone());
-                }
-            }
-            self.db
-                .run(script, params, ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v1->v2 reinsert fact: {e}"),
-                    }
-                    .build()
-                })?;
-        }
-
-        self.db
-            .run(fts_ddl(), BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v1->v2 recreate FTS: {e}"),
-                }
-                .build()
-            })?;
-
-        self.stamp_schema_version(2, "v1->v2")?;
-
+                live_ddl: FACTS_DDL.to_owned(),
+                expected_indices: facts_content_fts_index(),
+                transform: &transform,
+            },
+        )?;
         tracing::info!("knowledge schema migration v1 -> v2 complete");
         Ok(())
     }
 
     pub(super) fn migrate_v2_to_v3(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
+        const OLD_COLUMNS: &[&str] = &[
+            "id",
+            "valid_from",
+            "content",
+            "nous_id",
+            "confidence",
+            "tier",
+            "valid_to",
+            "superseded_by",
+            "source_session_id",
+            "recorded_at",
+            "access_count",
+            "last_accessed_at",
+            "stability_hours",
+            "fact_type",
+        ];
         tracing::info!("migrating knowledge schema v2 -> v3");
-
-        let all_facts = self
-            .db
-            .run(
-                r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+        let transform = facts_rebuild_transform(OLD_COLUMNS);
+        rebuild_relation_atomically(
+            self,
+            &RebuildSpec {
+                relation: "facts",
+                label: "v2->v3",
+                target_version: 3,
+                read_script: r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
                     superseded_by, source_session_id, recorded_at,
                     access_count, last_accessed_at, stability_hours, fact_type] :=
                     *facts{id, valid_from, content, nous_id, confidence, tier,
                            valid_to, superseded_by, source_session_id, recorded_at,
                            access_count, last_accessed_at, stability_hours, fact_type}",
-                BTreeMap::new(),
-                ScriptMutability::Immutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v2->v3 read facts: {e}"),
-                }
-                .build()
-            })?;
-
-        let _ = self.db.run(
-            "::fts drop facts:content_fts",
-            BTreeMap::new(),
-            ScriptMutability::Mutable,
-        );
-
-        self.db
-            .run("::remove facts", BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v2->v3 remove facts: {e}"),
-                }
-                .build()
-            })?;
-
-        self.run_ddl(FACTS_DDL, "v2->v3 recreate facts")?;
-
-        for row in &all_facts.rows {
-            let script = r"
-                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-                  superseded_by, source_session_id, recorded_at,
-                  access_count, last_accessed_at, stability_hours, fact_type,
-                  is_forgotten, forgotten_at, forget_reason] <- [[
-                    $id, $valid_from, $content, $nous_id, $confidence, $tier, $valid_to,
-                    $superseded_by, $source_session_id, $recorded_at,
-                    $access_count, $last_accessed_at, $stability_hours, $fact_type,
-                    false, null, null
-                ]]
-                :put facts {id, valid_from => content, nous_id, confidence, tier,
-                            valid_to, superseded_by, source_session_id, recorded_at,
-                            access_count, last_accessed_at, stability_hours, fact_type,
-                            is_forgotten, forgotten_at, forget_reason}
-            ";
-            let mut params = BTreeMap::new();
-            for (i, name) in [
-                "id",
-                "valid_from",
-                "content",
-                "nous_id",
-                "confidence",
-                "tier",
-                "valid_to",
-                "superseded_by",
-                "source_session_id",
-                "recorded_at",
-                "access_count",
-                "last_accessed_at",
-                "stability_hours",
-                "fact_type",
-            ]
-            .iter()
-            .enumerate()
-            {
-                if let Some(val) = row.get(i) {
-                    params.insert((*name).to_owned(), val.clone());
-                }
-            }
-            self.db
-                .run(script, params, ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v2->v3 reinsert fact: {e}"),
-                    }
-                    .build()
-                })?;
-        }
-
-        self.db
-            .run(fts_ddl(), BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v2->v3 recreate FTS: {e}"),
-                }
-                .build()
-            })?;
-
-        self.stamp_schema_version(3, "v2->v3")?;
-
+                live_ddl: FACTS_DDL.to_owned(),
+                expected_indices: facts_content_fts_index(),
+                transform: &transform,
+            },
+        )?;
         tracing::info!("knowledge schema migration v2 -> v3 complete");
         Ok(())
     }
@@ -377,71 +402,28 @@ impl KnowledgeStore {
         Ok(())
     }
 
-    /// Migrate v6 → v7: add `relationship_type` to `causal_edges`.
+    /// Migrate v6 → v7: add `relationship_type` (and, since this rebuild
+    /// targets the current `CAUSAL_EDGES_DDL` shape like every other site in
+    /// this file, `id` + `evidence_session_id`) to `causal_edges`. `id` is
+    /// minted fresh per row exactly as `migrate_v16_to_v17` already does —
+    /// no prior identity exists to preserve.
     pub(super) fn migrate_v6_to_v7(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
+        const OLD_COLUMNS: &[&str] = &["cause", "effect", "ordering", "confidence", "created_at"];
         tracing::info!("migrating knowledge schema v6 -> v7");
-
-        let all_edges = self
-            .db
-            .run(
-                r"?[cause, effect, ordering, confidence, created_at] :=
+        let transform = causal_edges_rebuild_transform(OLD_COLUMNS);
+        rebuild_relation_atomically(
+            self,
+            &RebuildSpec {
+                relation: "causal_edges",
+                label: "v6->v7",
+                target_version: 7,
+                read_script: r"?[cause, effect, ordering, confidence, created_at] :=
                     *causal_edges{cause, effect, ordering, confidence, created_at}",
-                BTreeMap::new(),
-                ScriptMutability::Immutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v6->v7 read causal_edges: {e}"),
-                }
-                .build()
-            })?;
-
-        self.db
-            .run(
-                "::remove causal_edges",
-                BTreeMap::new(),
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v6->v7 remove causal_edges: {e}"),
-                }
-                .build()
-            })?;
-
-        self.run_ddl(CAUSAL_EDGES_DDL, "v6->v7 recreate causal_edges")?;
-
-        for row in &all_edges.rows {
-            let script = r"
-                ?[cause, effect, ordering, relationship_type, confidence, created_at] <- [[
-                    $cause, $effect, $ordering, 'caused', $confidence, $created_at
-                ]]
-                :put causal_edges {cause, effect => ordering, relationship_type, confidence, created_at}
-            ";
-            let mut params = BTreeMap::new();
-            for (i, name) in ["cause", "effect", "ordering", "confidence", "created_at"]
-                .iter()
-                .enumerate()
-            {
-                if let Some(val) = row.get(i) {
-                    params.insert((*name).to_owned(), val.clone());
-                }
-            }
-            self.db
-                .run(script, params, ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v6->v7 reinsert causal_edge: {e}"),
-                    }
-                    .build()
-                })?;
-        }
-
-        self.stamp_schema_version(7, "v6->v7")?;
-
+                live_ddl: CAUSAL_EDGES_DDL.to_owned(),
+                expected_indices: vec![],
+                transform: &transform,
+            },
+        )?;
         tracing::info!("knowledge schema migration v6 -> v7 complete");
         Ok(())
     }
@@ -525,20 +507,35 @@ impl KnowledgeStore {
     /// layer so that `apply_scope_quotas` and visibility filtering work
     /// end-to-end. Existing rows are backfilled with `scope = null` and
     /// `visibility = 'private'` to preserve existing semantics.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "migration is a single linear sequence"
-    )]
     pub(super) fn migrate_v10_to_v11(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
+        const OLD_COLUMNS: &[&str] = &[
+            "id",
+            "valid_from",
+            "content",
+            "nous_id",
+            "confidence",
+            "tier",
+            "valid_to",
+            "superseded_by",
+            "source_session_id",
+            "recorded_at",
+            "access_count",
+            "last_accessed_at",
+            "stability_hours",
+            "fact_type",
+            "is_forgotten",
+            "forgotten_at",
+            "forget_reason",
+        ];
         tracing::info!("migrating knowledge schema v10 -> v11");
-
-        let all_facts = self
-            .db
-            .run(
-                r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+        let transform = facts_rebuild_transform(OLD_COLUMNS);
+        rebuild_relation_atomically(
+            self,
+            &RebuildSpec {
+                relation: "facts",
+                label: "v10->v11",
+                target_version: 11,
+                read_script: r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
                     superseded_by, source_session_id, recorded_at,
                     access_count, last_accessed_at, stability_hours, fact_type,
                     is_forgotten, forgotten_at, forget_reason] :=
@@ -546,100 +543,11 @@ impl KnowledgeStore {
                            valid_to, superseded_by, source_session_id, recorded_at,
                            access_count, last_accessed_at, stability_hours, fact_type,
                            is_forgotten, forgotten_at, forget_reason}",
-                BTreeMap::new(),
-                ScriptMutability::Immutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v10->v11 read facts: {e}"),
-                }
-                .build()
-            })?;
-
-        let _ = self.db.run(
-            "::fts drop facts:content_fts",
-            BTreeMap::new(),
-            ScriptMutability::Mutable,
-        );
-
-        self.db
-            .run("::remove facts", BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v10->v11 remove facts: {e}"),
-                }
-                .build()
-            })?;
-
-        self.run_ddl(FACTS_DDL, "v10->v11 recreate facts")?;
-
-        for row in &all_facts.rows {
-            let script = r"
-                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-                  superseded_by, source_session_id, recorded_at,
-                  access_count, last_accessed_at, stability_hours, fact_type,
-                  is_forgotten, forgotten_at, forget_reason,
-                  scope, project_id, visibility] <- [[
-                    $id, $valid_from, $content, $nous_id, $confidence, $tier, $valid_to,
-                    $superseded_by, $source_session_id, $recorded_at,
-                    $access_count, $last_accessed_at, $stability_hours, $fact_type,
-                    $is_forgotten, $forgotten_at, $forget_reason,
-                    null, null, 'private'
-                ]]
-                :put facts {id, valid_from => content, nous_id, confidence, tier,
-                            valid_to, superseded_by, source_session_id, recorded_at,
-                            access_count, last_accessed_at, stability_hours, fact_type,
-                            is_forgotten, forgotten_at, forget_reason,
-                            scope, project_id, visibility}
-            ";
-            let mut params = BTreeMap::new();
-            for (i, name) in [
-                "id",
-                "valid_from",
-                "content",
-                "nous_id",
-                "confidence",
-                "tier",
-                "valid_to",
-                "superseded_by",
-                "source_session_id",
-                "recorded_at",
-                "access_count",
-                "last_accessed_at",
-                "stability_hours",
-                "fact_type",
-                "is_forgotten",
-                "forgotten_at",
-                "forget_reason",
-            ]
-            .iter()
-            .enumerate()
-            {
-                if let Some(val) = row.get(i) {
-                    params.insert((*name).to_owned(), val.clone());
-                }
-            }
-            self.db
-                .run(script, params, ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v10->v11 reinsert fact: {e}"),
-                    }
-                    .build()
-                })?;
-        }
-
-        self.db
-            .run(fts_ddl(), BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v10->v11 recreate FTS: {e}"),
-                }
-                .build()
-            })?;
-
-        self.stamp_schema_version(11, "v10->v11")?;
-
+                live_ddl: FACTS_DDL.to_owned(),
+                expected_indices: facts_content_fts_index(),
+                transform: &transform,
+            },
+        )?;
         tracing::info!("knowledge schema migration v10 -> v11 complete");
         Ok(())
     }
@@ -649,20 +557,37 @@ impl KnowledgeStore {
     /// Existing rows are backfilled with `project_id = null`, which preserves
     /// previous global recall semantics until runtime capture supplies a
     /// git-remote-derived partition.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "migration is a single linear sequence"
-    )]
     pub(super) fn migrate_v11_to_v12(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
+        const OLD_COLUMNS: &[&str] = &[
+            "id",
+            "valid_from",
+            "content",
+            "nous_id",
+            "confidence",
+            "tier",
+            "valid_to",
+            "superseded_by",
+            "source_session_id",
+            "recorded_at",
+            "access_count",
+            "last_accessed_at",
+            "stability_hours",
+            "fact_type",
+            "is_forgotten",
+            "forgotten_at",
+            "forget_reason",
+            "scope",
+            "visibility",
+        ];
         tracing::info!("migrating knowledge schema v11 -> v12");
-
-        let all_facts = self
-            .db
-            .run(
-                r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+        let transform = facts_rebuild_transform(OLD_COLUMNS);
+        rebuild_relation_atomically(
+            self,
+            &RebuildSpec {
+                relation: "facts",
+                label: "v11->v12",
+                target_version: 12,
+                read_script: r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
                     superseded_by, source_session_id, recorded_at,
                     access_count, last_accessed_at, stability_hours, fact_type,
                     is_forgotten, forgotten_at, forget_reason, scope, visibility] :=
@@ -670,102 +595,11 @@ impl KnowledgeStore {
                            valid_to, superseded_by, source_session_id, recorded_at,
                            access_count, last_accessed_at, stability_hours, fact_type,
                            is_forgotten, forgotten_at, forget_reason, scope, visibility}",
-                BTreeMap::new(),
-                ScriptMutability::Immutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v11->v12 read facts: {e}"),
-                }
-                .build()
-            })?;
-
-        let _ = self.db.run(
-            "::fts drop facts:content_fts",
-            BTreeMap::new(),
-            ScriptMutability::Mutable,
-        );
-
-        self.db
-            .run("::remove facts", BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v11->v12 remove facts: {e}"),
-                }
-                .build()
-            })?;
-
-        self.run_ddl(FACTS_DDL, "v11->v12 recreate facts")?;
-
-        for row in &all_facts.rows {
-            let script = r"
-                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-                  superseded_by, source_session_id, recorded_at,
-                  access_count, last_accessed_at, stability_hours, fact_type,
-                  is_forgotten, forgotten_at, forget_reason,
-                  scope, project_id, visibility] <- [[
-                    $id, $valid_from, $content, $nous_id, $confidence, $tier, $valid_to,
-                    $superseded_by, $source_session_id, $recorded_at,
-                    $access_count, $last_accessed_at, $stability_hours, $fact_type,
-                    $is_forgotten, $forgotten_at, $forget_reason,
-                    $scope, null, $visibility
-                ]]
-                :put facts {id, valid_from => content, nous_id, confidence, tier,
-                            valid_to, superseded_by, source_session_id, recorded_at,
-                            access_count, last_accessed_at, stability_hours, fact_type,
-                            is_forgotten, forgotten_at, forget_reason,
-                            scope, project_id, visibility}
-            ";
-            let mut params = BTreeMap::new();
-            for (i, name) in [
-                "id",
-                "valid_from",
-                "content",
-                "nous_id",
-                "confidence",
-                "tier",
-                "valid_to",
-                "superseded_by",
-                "source_session_id",
-                "recorded_at",
-                "access_count",
-                "last_accessed_at",
-                "stability_hours",
-                "fact_type",
-                "is_forgotten",
-                "forgotten_at",
-                "forget_reason",
-                "scope",
-                "visibility",
-            ]
-            .iter()
-            .enumerate()
-            {
-                if let Some(val) = row.get(i) {
-                    params.insert((*name).to_owned(), val.clone());
-                }
-            }
-            self.db
-                .run(script, params, ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v11->v12 reinsert fact: {e}"),
-                    }
-                    .build()
-                })?;
-        }
-
-        self.db
-            .run(fts_ddl(), BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v11->v12 recreate FTS: {e}"),
-                }
-                .build()
-            })?;
-
-        self.stamp_schema_version(12, "v11->v12")?;
-
+                live_ddl: FACTS_DDL.to_owned(),
+                expected_indices: facts_content_fts_index(),
+                transform: &transform,
+            },
+        )?;
         tracing::info!("knowledge schema migration v11 -> v12 complete");
         Ok(())
     }
@@ -786,84 +620,44 @@ impl KnowledgeStore {
     ///
     /// [`EmbeddingProvider`]: crate::embedding::EmbeddingProvider
     pub(super) fn migrate_v12_to_v13(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
         tracing::info!("migrating knowledge schema v12 -> v13");
-
-        let all_entities = self
-            .db
-            .run(
-                r"?[id, name, entity_type, aliases, created_at, updated_at] :=
-                    *entities{id, name, entity_type, aliases, created_at, updated_at}",
-                BTreeMap::new(),
-                ScriptMutability::Immutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v12->v13 read entities: {e}"),
-                }
-                .build()
-            })?;
-
-        self.db
-            .run(
-                "::remove entities",
-                BTreeMap::new(),
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v12->v13 remove entities: {e}"),
-                }
-                .build()
-            })?;
-
-        let entities_script = entities_ddl(self.dim);
-        self.db
-            .run(&entities_script, BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v12->v13 recreate entities: {e}"),
-                }
-                .build()
-            })?;
-
-        for row in &all_entities.rows {
-            let script = r"
-                ?[id, name, entity_type, aliases, created_at, updated_at, name_embedding] <- [[
-                    $id, $name, $entity_type, $aliases, $created_at, $updated_at, null
-                ]]
-                :put entities {id => name, entity_type, aliases, created_at, updated_at, name_embedding}
-            ";
-            let mut params = BTreeMap::new();
-            for (i, name) in [
+        let transform = |old: &NamedRows| -> crate::error::Result<NamedRows> {
+            const NEW_COLUMNS: &[&str] = &[
                 "id",
                 "name",
                 "entity_type",
                 "aliases",
                 "created_at",
                 "updated_at",
-            ]
-            .iter()
-            .enumerate()
-            {
-                if let Some(val) = row.get(i) {
-                    params.insert((*name).to_owned(), val.clone());
-                }
-            }
-            self.db
-                .run(script, params, ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v12->v13 reinsert entity: {e}"),
-                    }
-                    .build()
-                })?;
-        }
-
-        self.stamp_schema_version(13, "v12->v13")?;
-
+                "name_embedding",
+            ];
+            let rows: Vec<Vec<DataValue>> = old
+                .rows
+                .iter()
+                .map(|row| {
+                    let mut new_row = row.clone();
+                    new_row.push(DataValue::Null); // name_embedding: no prior column to carry over
+                    new_row
+                })
+                .collect();
+            Ok(NamedRows::new(
+                NEW_COLUMNS.iter().map(|c| (*c).to_owned()).collect(),
+                rows,
+            ))
+        };
+        rebuild_relation_atomically(
+            self,
+            &RebuildSpec {
+                relation: "entities",
+                label: "v12->v13",
+                target_version: 13,
+                read_script: r"?[id, name, entity_type, aliases, created_at, updated_at] :=
+                    *entities{id, name, entity_type, aliases, created_at, updated_at}",
+                live_ddl: entities_ddl(self.dim),
+                expected_indices: vec![],
+                transform: &transform,
+            },
+        )?;
         tracing::info!("knowledge schema migration v12 -> v13 complete");
         Ok(())
     }
@@ -875,20 +669,38 @@ impl KnowledgeStore {
     /// sensitivity edits and recall filtering then hydrate from the facts
     /// relation instead of reconstructing protected facts as public after a
     /// restart.
-    #[expect(
-        clippy::too_many_lines,
-        reason = "migration is a single linear sequence"
-    )]
     pub(super) fn migrate_v13_to_v14(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
+        const OLD_COLUMNS: &[&str] = &[
+            "id",
+            "valid_from",
+            "content",
+            "nous_id",
+            "confidence",
+            "tier",
+            "valid_to",
+            "superseded_by",
+            "source_session_id",
+            "recorded_at",
+            "access_count",
+            "last_accessed_at",
+            "stability_hours",
+            "fact_type",
+            "is_forgotten",
+            "forgotten_at",
+            "forget_reason",
+            "scope",
+            "project_id",
+            "visibility",
+        ];
         tracing::info!("migrating knowledge schema v13 -> v14");
-
-        let all_facts = self
-            .db
-            .run(
-                r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
+        let transform = facts_rebuild_transform(OLD_COLUMNS);
+        rebuild_relation_atomically(
+            self,
+            &RebuildSpec {
+                relation: "facts",
+                label: "v13->v14",
+                target_version: 14,
+                read_script: r"?[id, valid_from, content, nous_id, confidence, tier, valid_to,
                     superseded_by, source_session_id, recorded_at,
                     access_count, last_accessed_at, stability_hours, fact_type,
                     is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility] :=
@@ -896,103 +708,11 @@ impl KnowledgeStore {
                            valid_to, superseded_by, source_session_id, recorded_at,
                            access_count, last_accessed_at, stability_hours, fact_type,
                            is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility}",
-                BTreeMap::new(),
-                ScriptMutability::Immutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v13->v14 read facts: {e}"),
-                }
-                .build()
-            })?;
-
-        let _ = self.db.run(
-            "::fts drop facts:content_fts",
-            BTreeMap::new(),
-            ScriptMutability::Mutable,
-        );
-
-        self.db
-            .run("::remove facts", BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v13->v14 remove facts: {e}"),
-                }
-                .build()
-            })?;
-
-        self.run_ddl(FACTS_DDL, "v13->v14 recreate facts")?;
-
-        for row in &all_facts.rows {
-            let script = r"
-                ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-                  superseded_by, source_session_id, recorded_at,
-                  access_count, last_accessed_at, stability_hours, fact_type,
-                  is_forgotten, forgotten_at, forget_reason, scope, project_id,
-                  visibility, sensitivity] <- [[
-                    $id, $valid_from, $content, $nous_id, $confidence, $tier, $valid_to,
-                    $superseded_by, $source_session_id, $recorded_at,
-                    $access_count, $last_accessed_at, $stability_hours, $fact_type,
-                    $is_forgotten, $forgotten_at, $forget_reason, $scope, $project_id,
-                    $visibility, 'public'
-                ]]
-                :put facts {id, valid_from => content, nous_id, confidence, tier,
-                            valid_to, superseded_by, source_session_id, recorded_at,
-                            access_count, last_accessed_at, stability_hours, fact_type,
-                            is_forgotten, forgotten_at, forget_reason, scope, project_id,
-                            visibility, sensitivity}
-            ";
-            let mut params = BTreeMap::new();
-            for (i, name) in [
-                "id",
-                "valid_from",
-                "content",
-                "nous_id",
-                "confidence",
-                "tier",
-                "valid_to",
-                "superseded_by",
-                "source_session_id",
-                "recorded_at",
-                "access_count",
-                "last_accessed_at",
-                "stability_hours",
-                "fact_type",
-                "is_forgotten",
-                "forgotten_at",
-                "forget_reason",
-                "scope",
-                "project_id",
-                "visibility",
-            ]
-            .iter()
-            .enumerate()
-            {
-                if let Some(val) = row.get(i) {
-                    params.insert((*name).to_owned(), val.clone());
-                }
-            }
-            self.db
-                .run(script, params, ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v13->v14 reinsert fact: {e}"),
-                    }
-                    .build()
-                })?;
-        }
-
-        self.db
-            .run(fts_ddl(), BTreeMap::new(), ScriptMutability::Mutable)
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v13->v14 recreate FTS: {e}"),
-                }
-                .build()
-            })?;
-
-        self.stamp_schema_version(14, "v13->v14")?;
-
+                live_ddl: FACTS_DDL.to_owned(),
+                expected_indices: facts_content_fts_index(),
+                transform: &transform,
+            },
+        )?;
         tracing::info!("knowledge schema migration v13 -> v14 complete");
         Ok(())
     }
@@ -1045,83 +765,29 @@ impl KnowledgeStore {
     /// edge ID (no prior identity exists to preserve) and a null
     /// `evidence_session_id` (#4551). New edges carry both fields from insert.
     pub(super) fn migrate_v16_to_v17(&self) -> crate::error::Result<()> {
-        use std::collections::BTreeMap;
-
-        use crate::engine::ScriptMutability;
+        const OLD_COLUMNS: &[&str] = &[
+            "cause",
+            "effect",
+            "ordering",
+            "relationship_type",
+            "confidence",
+            "created_at",
+        ];
         tracing::info!("migrating knowledge schema v16 -> v17");
-
-        let all_edges = self
-            .db
-            .run(
-                r"?[cause, effect, ordering, relationship_type, confidence, created_at] :=
+        let transform = causal_edges_rebuild_transform(OLD_COLUMNS);
+        rebuild_relation_atomically(
+            self,
+            &RebuildSpec {
+                relation: "causal_edges",
+                label: "v16->v17",
+                target_version: 17,
+                read_script: r"?[cause, effect, ordering, relationship_type, confidence, created_at] :=
                     *causal_edges{cause, effect, ordering, relationship_type, confidence, created_at}",
-                BTreeMap::new(),
-                ScriptMutability::Immutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v16->v17 read causal_edges: {e}"),
-                }
-                .build()
-            })?;
-
-        self.db
-            .run(
-                "::remove causal_edges",
-                BTreeMap::new(),
-                ScriptMutability::Mutable,
-            )
-            .map_err(|e| {
-                crate::error::EngineQuerySnafu {
-                    message: format!("v16->v17 remove causal_edges: {e}"),
-                }
-                .build()
-            })?;
-
-        self.run_ddl(CAUSAL_EDGES_DDL, "v16->v17 recreate causal_edges")?;
-
-        for row in &all_edges.rows {
-            let script = r"
-                ?[cause, effect, id, ordering, relationship_type, confidence,
-                  evidence_session_id, created_at] <- [[
-                    $cause, $effect, $id, $ordering, $relationship_type, $confidence,
-                    null, $created_at
-                ]]
-                :put causal_edges {cause, effect => id, ordering, relationship_type,
-                    confidence, evidence_session_id, created_at}
-            ";
-            let mut params = BTreeMap::new();
-            for (i, name) in [
-                "cause",
-                "effect",
-                "ordering",
-                "relationship_type",
-                "confidence",
-                "created_at",
-            ]
-            .iter()
-            .enumerate()
-            {
-                if let Some(val) = row.get(i) {
-                    params.insert((*name).to_owned(), val.clone());
-                }
-            }
-            params.insert(
-                "id".to_owned(),
-                crate::engine::DataValue::Str(koina::ulid::Ulid::new().to_string().into()),
-            );
-            self.db
-                .run(script, params, ScriptMutability::Mutable)
-                .map_err(|e| {
-                    crate::error::EngineQuerySnafu {
-                        message: format!("v16->v17 reinsert causal_edge: {e}"),
-                    }
-                    .build()
-                })?;
-        }
-
-        self.stamp_schema_version(17, "v16->v17")?;
-
+                live_ddl: CAUSAL_EDGES_DDL.to_owned(),
+                expected_indices: vec![],
+                transform: &transform,
+            },
+        )?;
         tracing::info!("knowledge schema migration v16 -> v17 complete");
         Ok(())
     }

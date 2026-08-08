@@ -137,7 +137,15 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs": "fts/tokenizer/ascii_folding_filter.rs",
     "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs": "fts/tokenizer/ascii_folding_filter.rs",
     "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs": "fts/tokenizer/ascii_folding_filter.rs",
+    # wave2a/ascii-folding-table: regenerated from UCD + CLDR Latin-ASCII, not
+    # transcribed from cozo-core -- no upstream lineage.
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py": None,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs": None,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs": None,
     "fts/tokenizer/ascii_folding_filter/mod.rs": "fts/tokenizer/ascii_folding_filter.rs",
+    # wave2a/ascii-folding-table: the full-BMP-sweep conformance test proving
+    # fold_table_sovereign/ equivalent to fold_table/ -- no upstream lineage.
+    "fts/tokenizer/ascii_folding_filter/tests/bmp_equivalence.rs": None,
     "fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs": "fts/tokenizer/ascii_folding_filter.rs",
     "fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs": "fts/tokenizer/ascii_folding_filter.rs",
     "fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs": "fts/tokenizer/ascii_folding_filter.rs",
@@ -257,6 +265,27 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "utils.rs": "utils.rs",
 }
 
+# PLAN.md Sec.2 land-dark/soak/delete: paths still in UPSTREAM_MAP with a real
+# upstream_path (so they measure as "derived" by the branch below) but that
+# now have a sovereign replacement compiled in beside them, selected by a
+# compile-time cfg. Maps path -> soak_expires_at_commit_count (an ABSOLUTE
+# `git rev-list --count origin/main` target, per the ledger header note).
+# check-krites-provenance.py's check_soak_expiry fails the build once main
+# reaches that count without the pair having flipped to sovereign (dropping
+# the derived file) or the window being extended by an explicit ledger edit.
+DUAL_SOAK_WINDOW: dict[str, int] = {
+    # wave2a/ascii-folding-table: land-dark PR lands at commit count 2808.
+    # +30 commits is PLAN.md's own Q3 recommended window for low-blast-radius
+    # waves (2a, 2b, 5, 7) -- this is a LOW-risk, pure-data wave with a
+    # full-BMP-sweep conformance gate already proving equivalence
+    # (tests/bmp_equivalence.rs), so there is no soak-observation need beyond
+    # CI turning green on the sovereign feature.
+    "fts/tokenizer/ascii_folding_filter/fold_table.rs": 2838,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs": 2838,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs": 2838,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs": 2838,
+}
+
 _upstream_cache: dict[str, str] = {}
 
 
@@ -339,9 +368,18 @@ def main() -> None:
             )
             continue
         upstream_text = fetch_upstream(upstream_rel)
+        # WHY both sources, in this order: they solve different halves and either alone loses data.
+        # The ledger is authoritative for a transition that has ALREADY happened -- regenerating must
+        # not silently walk a `dual` row back to `derived`, which is what the original unconditional
+        # "derived" did and what would have quietly undone every land-dark wave on the next regen.
+        # DUAL_SOAK_WINDOW seeds a transition the ledger has not recorded yet, which is the only case
+        # preservation cannot cover: the first regen after a wave flips a file.
         preserved = graduated.get(rel)
-        status = preserved[0] if preserved else "derived"
-        soak = preserved[1] if preserved else 0
+        if preserved:
+            status, soak = preserved
+        else:
+            soak = DUAL_SOAK_WINDOW.get(rel, 0)
+            status = "dual" if soak else "derived"
         rows.append(
             {
                 "path": rel,
@@ -357,7 +395,11 @@ def main() -> None:
     NOTICE_PATH.write_text(render_notice(meta, rows))
     derived_ct = sum(1 for r in rows if r["status"] == "derived")
     sovereign_ct = sum(1 for r in rows if r["status"] == "sovereign")
-    print(f"wrote {LEDGER_PATH} ({len(rows)} rows: {derived_ct} derived, {sovereign_ct} sovereign)")
+    dual_ct = sum(1 for r in rows if r["status"] == "dual")
+    print(
+        f"wrote {LEDGER_PATH} ({len(rows)} rows: {derived_ct} derived, "
+        f"{dual_ct} dual, {sovereign_ct} sovereign)"
+    )
     print(f"wrote {NOTICE_PATH}")
 
 
