@@ -124,13 +124,13 @@ aletheia backup restore instance/data/backups/instance/<timestamp>
 ### List backups
 
 ```bash
-aletheia backup --list
+aletheia backup list
 ```
 
 ### Prune old backups
 
 ```bash
-aletheia backup --prune --keep 5
+aletheia backup prune --keep 5
 ```
 
 Keeps the 5 most recent backups, deletes the rest.

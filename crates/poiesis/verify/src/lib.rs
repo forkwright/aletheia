@@ -125,6 +125,14 @@ pub struct ArithCheck {
     pub note: Option<String>,
 }
 
+/// Minimum number of claims a manifest must carry for a `VERIFY PASSED`
+/// report to be a meaningful statement.
+///
+/// A manifest with fewer claims than this asserts nothing verifiable, so
+/// [`VerifyResult::any_failed`] treats it as a failure even when every
+/// present claim (if any) passes.
+pub const MIN_CLAIMS: usize = 1;
+
 /// Summary of a full manifest verification run.
 #[derive(Debug, Clone, Serialize)]
 pub struct VerifyResult {
@@ -136,6 +144,9 @@ pub struct VerifyResult {
     pub passed: usize,
     /// Number of failing claims.
     pub failed: usize,
+    /// True iff `total` is below [`MIN_CLAIMS`] — the manifest does not
+    /// carry enough claims for a PASS to be a meaningful statement.
+    pub insufficient_claims: bool,
 }
 
 impl VerifyResult {
@@ -144,17 +155,21 @@ impl VerifyResult {
         let total = claims.len();
         let passed = claims.iter().filter(|r| r.pass).count();
         let failed = total - passed;
+        let insufficient_claims = total < MIN_CLAIMS;
         Self {
             claims,
             total,
             passed,
             failed,
+            insufficient_claims,
         }
     }
 
-    /// Return true if any claim failed.
+    /// Return true if any claim failed, or if the manifest has fewer than
+    /// [`MIN_CLAIMS`] claims. An empty or near-empty manifest cannot
+    /// honestly be reported as PASSED — it verifies nothing.
     pub fn any_failed(&self) -> bool {
-        self.failed > 0
+        self.failed > 0 || self.insufficient_claims
     }
 }
 
@@ -578,5 +593,43 @@ mod tests {
         assert_eq!(r.total, 2, "total must be 2");
         assert_eq!(r.passed, 1, "passed must be 1");
         assert_eq!(r.failed, 1, "failed must be 1");
+        assert!(
+            !r.insufficient_claims,
+            "two-claim manifest must not be flagged insufficient"
+        );
+    }
+
+    #[test]
+    fn empty_manifest_fails_verification() {
+        // WHY: regression test for issue #6610 — a manifest with zero claims
+        // must never report VERIFY PASSED, since it asserts nothing.
+        let r = VerifyResult::from_claims(vec![]);
+        assert_eq!(r.total, 0, "total must be 0");
+        assert_eq!(r.passed, 0, "passed must be 0");
+        assert_eq!(r.failed, 0, "failed must be 0 (no claim failed)");
+        assert!(
+            r.insufficient_claims,
+            "zero-claim manifest must be flagged insufficient"
+        );
+        assert!(
+            r.any_failed(),
+            "zero-claim manifest must never report PASSED via any_failed()"
+        );
+    }
+
+    #[test]
+    fn single_passing_claim_meets_minimum() {
+        let manifest = derived_manifest("100", 100.0, 0.0);
+        let v = Verifier::new();
+        let results = v.verify(&manifest);
+        let r = VerifyResult::from_claims(results);
+        assert!(
+            !r.insufficient_claims,
+            "a manifest at MIN_CLAIMS must not be flagged insufficient"
+        );
+        assert!(
+            !r.any_failed(),
+            "a single passing claim at the minimum must PASS"
+        );
     }
 }
