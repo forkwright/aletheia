@@ -1,5 +1,6 @@
 //! Tests for the ASCII folding filter.
 
+mod bmp_equivalence;
 mod foldings_a_i;
 mod foldings_j_s;
 mod foldings_num_sym;
