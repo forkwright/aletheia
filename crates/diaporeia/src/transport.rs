@@ -9,6 +9,7 @@ use rmcp::transport::streamable_http_server::tower::StreamableHttpService;
 
 use crate::auth;
 use crate::error::{self, Result};
+use crate::rate_limit::RateLimiter;
 use crate::server::DiaporeiaServer;
 use crate::state::DiaporeiaState;
 
@@ -86,9 +87,20 @@ pub fn streamable_http_router_with_config(
         }
     }
 
+    // WHY(#5182, #4843): build the rate limiter ONCE per transport bind and
+    // share it via `Arc` into every session's server. Building it inside the
+    // per-session factory below (as before) gave each session its own
+    // limiter, so a client could reset an exhausted budget by opening a new
+    // session.
+    let rate_limiter = Arc::new(RateLimiter::from_config(&rate_cfg));
     let auth_state = Arc::clone(&state);
     let service = StreamableHttpService::new(
-        move || Ok(DiaporeiaServer::with_state(Arc::clone(&state), &rate_cfg)),
+        move || {
+            Ok(DiaporeiaServer::with_state(
+                Arc::clone(&state),
+                Arc::clone(&rate_limiter),
+            ))
+        },
         LocalSessionManager::default().into(),
         config,
     );
@@ -107,7 +119,8 @@ pub fn streamable_http_router_with_config(
 #[tracing::instrument(skip_all)]
 pub async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
     let rate_cfg = state.config.read().await.mcp.rate_limit.clone();
-    let server = DiaporeiaServer::with_state(state, &rate_cfg);
+    let rate_limiter = Arc::new(RateLimiter::from_config(&rate_cfg));
+    let server = DiaporeiaServer::with_state(state, rate_limiter);
     let service = server
         .serve(rmcp::transport::io::stdio())
         .await

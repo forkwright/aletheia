@@ -52,29 +52,24 @@ const DEFAULT_SESSION_LIST_LIMIT: usize = 50;
 /// Mirrors pylon's `pagination::MAX_LIMIT`.
 const MAX_SESSION_LIST_LIMIT: usize = 1_000;
 
-/// Check if the caller has operator-level access or above.
-///
-/// Returns `true` if:
-/// - Auth mode is "none" (single-operator mode)
-/// - Caller has `Role::Operator` or `Role::Admin`
-fn is_operator_or_above(
-    server: &DiaporeiaServer,
-    context: &RequestContext<rmcp::RoleServer>,
-) -> bool {
-    resolve_caller(&server.state, context).is_some_and(|caller| caller.role >= Role::Operator)
-}
-
 /// Require at least the given role, returning an MCP error if insufficient.
 ///
 /// Used by tools and resources that need RBAC enforcement beyond the
-/// operator-or-above check (e.g. session creation, config access).
+/// operator-or-above check (e.g. session creation, config access). Applies
+/// the shared rate limit for `tier`, keyed by the resolved caller's subject
+/// (or the shared unauthenticated bucket when no caller resolves), before
+/// enforcing the role requirement.
 fn require_role(
     server: &DiaporeiaServer,
     context: &RequestContext<rmcp::RoleServer>,
+    tier: Tier,
     minimum: Role,
     operation: &str,
 ) -> Result<McpCaller, rmcp::ErrorData> {
     let caller = resolve_caller(&server.state, context);
+    server
+        .rate_limiter
+        .check(tier, caller.as_ref().map(|c| c.sub.as_str()))?;
     match caller {
         Some(caller) if caller.role >= minimum => Ok(caller),
         Some(caller) => {
@@ -99,6 +94,34 @@ fn require_role(
             .into())
         }
     }
+}
+
+/// Resolve the caller and enforce the shared rate limit for `tier`, failing
+/// closed with an `Unauthorized` error when no caller resolves.
+///
+/// Used ahead of [`require_caller_role`] by tools that need the full
+/// [`McpCaller`] (for claims-scoped filtering) rather than just a
+/// minimum-role gate. WHY(#5182, #4843): folding the rate-limit check in
+/// here means every call site funnels through one place that keys the check
+/// by the resolved principal, rather than checking an un-keyed, per-instance
+/// bucket before authentication runs.
+fn require_authenticated(
+    server: &DiaporeiaServer,
+    context: &RequestContext<rmcp::RoleServer>,
+    tier: Tier,
+    operation: &str,
+) -> Result<McpCaller, rmcp::ErrorData> {
+    let caller = resolve_caller(&server.state, context);
+    server
+        .rate_limiter
+        .check(tier, caller.as_ref().map(|c| c.sub.as_str()))?;
+    caller.ok_or_else(|| {
+        UnauthorizedSnafu {
+            message: format!("{operation} requires authentication"),
+        }
+        .build()
+        .into()
+    })
 }
 
 /// Require at least the given role for a verified caller.
@@ -333,6 +356,60 @@ fn resolve_store(
         .ok_or_else(|| KnowledgeStoreUnavailableSnafu {}.build())
 }
 
+/// Forget a fact on a blocking-pool thread, flattening the join and store
+/// errors to strings.
+///
+/// WHY: shared by `memory_correct`'s supersede write and its compensating
+/// rollback so both go through the same error-flattening path.
+#[cfg(feature = "knowledge-store")]
+async fn forget_fact_spawned(
+    store: std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    fact_id: mneme::id::FactId,
+    reason: mneme::knowledge::ForgetReason,
+) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || store.forget_fact(&fact_id, reason))
+        .await
+        .map_err(|e| e.to_string())?
+        .map(|_fact| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Outcome when marking a fact superseded fails after its replacement was
+/// already inserted, carrying the original supersede error.
+#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+#[cfg(feature = "knowledge-store")]
+enum SupersedeFailure {
+    /// The supersede write failed but rolling back the new fact succeeded —
+    /// no fact was left in an inconsistent state; retrying is safe.
+    RolledBack(String),
+    /// The supersede write failed AND the rollback also failed — both facts
+    /// are now live; the caller must reconcile manually.
+    Inconsistent(String, String),
+}
+
+/// Mark the original fact superseded; on failure, roll back by forgetting
+/// the newly-inserted replacement.
+///
+/// WHY(#5185): the knowledge store exposes no cross-record transaction —
+/// insertion and supersession are two separate writes (`memory_correct`
+/// inserts the replacement fact and awaits that before calling this).
+/// Extracted as a standalone function, taking the two remaining steps as
+/// futures, so the rollback/inconsistency behavior is unit-testable against
+/// fake operations, independent of the real store (see `tests` below).
+#[cfg(feature = "knowledge-store")]
+async fn supersede_with_rollback(
+    supersede_old: impl std::future::Future<Output = Result<(), String>>,
+    rollback_new: impl std::future::Future<Output = Result<(), String>>,
+) -> Result<(), SupersedeFailure> {
+    if let Err(supersede_err) = supersede_old.await {
+        return Err(match rollback_new.await {
+            Ok(()) => SupersedeFailure::RolledBack(supersede_err),
+            Err(rollback_err) => SupersedeFailure::Inconsistent(supersede_err, rollback_err),
+        });
+    }
+    Ok(())
+}
+
 /// Return whether a recall result is owned by the scoped nous agent.
 #[cfg(feature = "knowledge-store")]
 fn recall_owned_by_scope(
@@ -513,8 +590,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::SessionCreateParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        let caller = require_role(self, &context, Role::Operator, "session_create")?;
+        let caller = require_role(self, &context, Tier::Expensive, Role::Operator, "session_create")?;
         require_nous_access_for_caller(&caller, &params.nous_id, "session_create")?;
         let session_key = params.session_key.as_deref().unwrap_or("main");
         parse_session_or_agent_id(&params.nous_id).map_err(|e| {
@@ -587,13 +663,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::SessionListParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "session_list requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Cheap, "session_list")?;
         require_caller_role(&caller, Role::Agent, "session_list")?;
         let effective_nous =
             resolve_nous_scope(&caller, params.nous_id.as_deref(), "session_list")?;
@@ -666,8 +736,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::SessionMessageParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        let caller = require_role(self, &context, Role::Operator, "session_message")?;
+        let caller = require_role(self, &context, Tier::Expensive, Role::Operator, "session_message")?;
         require_nous_access_for_caller(&caller, &params.nous_id, "session_message")?;
         let handle = self
             .state
@@ -721,13 +790,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::SessionHistoryParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "session_history requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Cheap, "session_history")?;
         require_caller_role(&caller, Role::Agent, "session_history")?;
 
         let store = self.state.session_store.lock().await;
@@ -783,13 +846,7 @@ impl DiaporeiaServer {
         &self,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "nous_list requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Cheap, "nous_list")?;
         require_caller_role(&caller, Role::Agent, "nous_list")?;
         let show_reliability = caller.role >= Role::Operator;
         let statuses = if show_reliability {
@@ -844,13 +901,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::NousIdParam>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "nous_status requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Cheap, "nous_status")?;
         require_caller_role(&caller, Role::Agent, "nous_status")?;
         let show_reliability = caller.role >= Role::Operator;
 
@@ -923,13 +974,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::NousIdParam>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "nous_tools requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Cheap, "nous_tools")?;
         require_caller_role(&caller, Role::Agent, "nous_tools")?;
         let config = self
             .state
@@ -1001,13 +1046,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::KnowledgeSearchParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "knowledge_search requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Expensive, "knowledge_search")?;
         require_caller_role(&caller, Role::Operator, "knowledge_search")?;
         let config = require_knowledge_graph(self).await?;
 
@@ -1055,13 +1094,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::KnowledgeRecallParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "knowledge_recall requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Expensive, "knowledge_recall")?;
         require_caller_role(&caller, Role::Agent, "knowledge_recall")?;
         let config = require_knowledge_graph(self).await?;
 
@@ -1119,13 +1152,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::KnowledgeGetParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "knowledge_get requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Cheap, "knowledge_get")?;
         require_caller_role(&caller, Role::Agent, "knowledge_get")?;
         require_knowledge_graph(self).await?;
 
@@ -1186,8 +1213,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::KnowledgeInsertParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        let caller = require_role(self, &context, Role::Operator, "knowledge_insert")?;
+        let caller = require_role(self, &context, Tier::Expensive, Role::Operator, "knowledge_insert")?;
         let effective_nous =
             resolve_nous_scope(&caller, Some(&params.nous_id), "knowledge_insert")?
                 .unwrap_or_else(|| params.nous_id.clone());
@@ -1298,8 +1324,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::KnowledgeForgetParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        let caller = require_role(self, &context, Role::Operator, "knowledge_forget")?;
+        let caller = require_role(self, &context, Tier::Expensive, Role::Operator, "knowledge_forget")?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -1382,13 +1407,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::KnowledgeGraphNeighborsParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "knowledge_graph_neighbors requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Expensive, "knowledge_graph_neighbors")?;
         require_caller_role(&caller, Role::Agent, "knowledge_graph_neighbors")?;
         // WHY(#4841): Agent callers must be scoped; unscoped traversal would let
         // them wander across party boundaries. Operator/Admin callers may remain
@@ -1432,8 +1451,7 @@ impl DiaporeiaServer {
         &self,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "repomix_templates_list")?;
+        require_role(self, &context, Tier::Cheap, Role::Agent, "repomix_templates_list")?;
         require_repomix(self).await?;
 
         let templates = crate::repomix::list_templates();
@@ -1454,8 +1472,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::RepomixTemplateGetParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "repomix_template_get")?;
+        require_role(self, &context, Tier::Cheap, Role::Agent, "repomix_template_get")?;
         require_repomix(self).await?;
 
         let template = crate::repomix::get_template(&params.name).map_err(rmcp::ErrorData::from)?;
@@ -1488,8 +1505,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::RepomixPackParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Operator, "repomix_pack")?;
+        require_role(self, &context, Tier::Expensive, Role::Operator, "repomix_pack")?;
         let config = require_repomix(self).await?;
 
         // NOTE: `validate_startup` rejects a config that enables repomix
@@ -1552,8 +1568,7 @@ impl DiaporeiaServer {
         &self,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "config_get")?;
+        require_role(self, &context, Tier::Cheap, Role::Operator, "config_get")?;
         let config = self.state.config.read().await;
 
         let redacted = serde_json::json!({
@@ -1596,8 +1611,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::CredsSetParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "creds_set")?;
+        require_role(self, &context, Tier::Cheap, Role::Operator, "creds_set")?;
 
         let vault = self
             .state
@@ -1628,8 +1642,7 @@ impl DiaporeiaServer {
         &self,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "creds_list")?;
+        require_role(self, &context, Tier::Cheap, Role::Operator, "creds_list")?;
 
         let vault = self
             .state
@@ -1662,8 +1675,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::CredsRmParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "creds_rm")?;
+        require_role(self, &context, Tier::Cheap, Role::Operator, "creds_rm")?;
 
         let vault = self
             .state
@@ -1694,9 +1706,8 @@ impl DiaporeiaServer {
         &self,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "system_health")?;
-        let show_reliability = is_operator_or_above(self, &context);
+        let caller = require_role(self, &context, Tier::Cheap, Role::Agent, "system_health")?;
+        let show_reliability = caller.role >= Role::Operator;
         let health = self.state.nous_manager.check_health().await;
         let uptime = self.state.start_time.elapsed();
 
@@ -1748,13 +1759,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::MemoryNoteParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "memory_note requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Cheap, "memory_note")?;
         require_caller_role(&caller, Role::Agent, "memory_note")?;
 
         let store = self
@@ -1890,13 +1895,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::MemoryBlackboardParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "memory_blackboard requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Cheap, "memory_blackboard")?;
         require_caller_role(&caller, Role::Agent, "memory_blackboard")?;
 
         let store = self
@@ -2063,13 +2062,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::MemorySearchParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        let caller = resolve_caller(&self.state, &context).ok_or_else(|| {
-            UnauthorizedSnafu {
-                message: "memory_search requires authentication".to_owned(),
-            }
-            .build()
-        })?;
+        let caller = require_authenticated(self, &context, Tier::Expensive, "memory_search")?;
         require_caller_role(&caller, Role::Operator, "memory_search")?;
         let config = require_knowledge_graph(self).await?;
 
@@ -2126,8 +2119,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::MemoryCorrectParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = require_role(self, &context, Role::Operator, "memory_correct")?;
+        let caller = require_role(self, &context, Tier::Cheap, Role::Operator, "memory_correct")?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -2135,7 +2127,7 @@ impl DiaporeiaServer {
             use mneme::id::FactId;
             use mneme::knowledge::{
                 EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-                default_stability_hours, far_future,
+                ForgetReason, default_stability_hours, far_future,
             };
 
             let store = resolve_store(self).map_err(rmcp::ErrorData::from)?;
@@ -2166,6 +2158,31 @@ impl DiaporeiaServer {
                 )
             })?;
             require_nous_access_for_caller(&caller, &old_fact.nous_id, "memory_correct")?;
+
+            // WHY(#5185): the knowledge store exposes no cross-record
+            // transaction — insertion and supersession below are two
+            // separate writes. Reject re-correcting a fact that a previous,
+            // fully-successful call already superseded, so a naive client
+            // retry after success cannot silently fork a second corrected
+            // copy of the same claim. This does NOT fire for a retry after a
+            // partial failure (insert succeeded, forget failed): the
+            // rollback below un-inserts the new fact on that path, so
+            // `old_fact` is still live when the retry re-reads it.
+            if old_fact.lifecycle.is_forgotten
+                && old_fact.lifecycle.forget_reason == Some(ForgetReason::Superseded)
+            {
+                return Err(rmcp::ErrorData::from(
+                    InvalidInputSnafu {
+                        message: format!(
+                            "fact {} was already corrected and superseded; \
+                             call memory_correct on its replacement instead",
+                            params.fact_id
+                        ),
+                    }
+                    .build(),
+                ));
+            }
+
             let requested_nous_id = params.nous_id.as_deref().unwrap_or(&old_fact.nous_id);
             let effective_nous =
                 resolve_nous_scope(&caller, Some(requested_nous_id), "memory_correct")?
@@ -2223,27 +2240,38 @@ impl DiaporeiaServer {
                 )
             })?;
 
-            let fact_id_clone = fact_id.clone();
-            tokio::task::spawn_blocking(move || {
-                store.forget_fact(&fact_id_clone, mneme::knowledge::ForgetReason::Superseded)
-            })
-            .await
-            .map_err(|e| {
-                rmcp::ErrorData::from(
-                    KnowledgeStoreSnafu {
-                        message: e.to_string(),
-                    }
-                    .build(),
-                )
-            })?
-            .map_err(|e| {
-                rmcp::ErrorData::from(
-                    KnowledgeStoreSnafu {
-                        message: e.to_string(),
-                    }
-                    .build(),
-                )
-            })?;
+            // WHY(#5185): if marking the old fact superseded fails after the
+            // new fact is already live, roll the insert back (forget the new
+            // fact) rather than leaving two live facts for the same claim.
+            // If the rollback ALSO fails, surface both fact IDs so the
+            // inconsistency is visible instead of silently duplicated state.
+            // See `supersede_with_rollback` for the tested orchestration.
+            let supersede_old = forget_fact_spawned(
+                std::sync::Arc::clone(&store),
+                fact_id.clone(),
+                ForgetReason::Superseded,
+            );
+            let rollback_new =
+                forget_fact_spawned(store, new_fact_id.clone(), ForgetReason::Incorrect);
+
+            if let Err(failure) = supersede_with_rollback(supersede_old, rollback_new).await {
+                let old_id = fact_id.as_str();
+                let new_id = new_fact_id.as_str();
+                let message = match failure {
+                    SupersedeFailure::RolledBack(err) => format!(
+                        "memory_correct: failed to mark fact {old_id} superseded ({err}); \
+                         rolled back the new fact {new_id} — no changes were made, retry is safe"
+                    ),
+                    SupersedeFailure::Inconsistent(err, rollback_err) => format!(
+                        "memory_correct: failed to mark fact {old_id} superseded ({err}) AND \
+                         failed to roll back the new fact {new_id} ({rollback_err}) — both facts \
+                         are now live; manual reconciliation required"
+                    ),
+                };
+                return Err(rmcp::ErrorData::from(
+                    KnowledgeStoreSnafu { message }.build(),
+                ));
+            }
 
             let json = serde_json::to_string_pretty(&serde_json::json!({
                 "new_fact_id": new_fact_id.as_str(),
@@ -2271,8 +2299,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::MemoryRetractParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = require_role(self, &context, Role::Operator, "memory_retract")?;
+        let caller = require_role(self, &context, Tier::Cheap, Role::Operator, "memory_retract")?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -2346,8 +2373,7 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::MemoryForgetParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        let caller = require_role(self, &context, Role::Operator, "memory_forget")?;
+        let caller = require_role(self, &context, Tier::Cheap, Role::Operator, "memory_forget")?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -2579,8 +2605,10 @@ mod tests {
             mneme::store::SessionStore::open(&oikos.sessions_db()).expect("open sessions store"),
         ));
         let state = make_server_state(Arc::clone(&store), oikos);
-        let server =
-            DiaporeiaServer::with_state(state, &taxis::config::McpRateLimitConfig::default());
+        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::from_config(
+            &taxis::config::McpRateLimitConfig::default(),
+        ));
+        let server = DiaporeiaServer::with_state(state, rate_limiter);
 
         let (client_io, server_io) = tokio::io::duplex(16 * 1024);
         let server_task = tokio::spawn(async move { rmcp::serve_server(server, server_io).await });
@@ -2686,6 +2714,141 @@ mod tests {
         assert!(
             miss.is_empty(),
             "unmatched query should return no backend hits"
+        );
+    }
+
+    // ── #5185: memory_correct insert/supersede failure injection ──
+    //
+    // WHY: the knowledge store exposes no cross-record transaction, so
+    // `memory_correct` performs insert-then-supersede as two separate
+    // writes. These tests exercise `supersede_with_rollback`'s handling of
+    // the second write failing — deterministically, via fake async
+    // operations, rather than trying to force a real store failure between
+    // two calls on the live backend.
+
+    #[cfg(feature = "knowledge-store")]
+    #[tokio::test]
+    async fn supersede_with_rollback_succeeds_when_supersede_succeeds() {
+        let result = supersede_with_rollback(
+            async { Ok(()) },
+            async { panic!("rollback must not run when supersede succeeds") },
+        )
+        .await;
+        assert!(result.is_ok());
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[tokio::test]
+    async fn supersede_with_rollback_reports_rolled_back_when_rollback_succeeds() {
+        // FAILURE INJECTION: the supersede write fails (as it would if
+        // `forget_fact` errored after `insert_fact_async` already
+        // succeeded). The rollback must run and, on its own success, the
+        // caller must be told this is a clean, retry-safe state — not
+        // silently swallowed and not conflated with a genuinely
+        // inconsistent outcome.
+        let result = supersede_with_rollback(
+            async { Err("supersede failed: store unavailable".to_owned()) },
+            async { Ok(()) },
+        )
+        .await;
+        assert_eq!(
+            result,
+            Err(SupersedeFailure::RolledBack(
+                "supersede failed: store unavailable".to_owned()
+            )),
+            "a failed supersede with a successful rollback must be reported as RolledBack, \
+             preserving the original supersede error for the operator"
+        );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[tokio::test]
+    async fn supersede_with_rollback_reports_inconsistent_when_rollback_also_fails() {
+        // FAILURE INJECTION: BOTH writes fail — the worst case, where the
+        // new fact and the old fact are both left live. This must never be
+        // silently swallowed: the caller needs both error messages to
+        // reconcile manually.
+        let result = supersede_with_rollback(
+            async { Err("supersede failed: store unavailable".to_owned()) },
+            async { Err("rollback failed: store unavailable".to_owned()) },
+        )
+        .await;
+        assert_eq!(
+            result,
+            Err(SupersedeFailure::Inconsistent(
+                "supersede failed: store unavailable".to_owned(),
+                "rollback failed: store unavailable".to_owned(),
+            )),
+            "when the rollback ALSO fails, both errors must surface — this is the state \
+             that needs manual reconciliation, so it must never be reported as merely \
+             RolledBack"
+        );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[tokio::test]
+    async fn memory_correct_rolls_back_new_fact_when_supersede_fails() {
+        // End-to-end against the real in-memory store (not fakes): racing
+        // `memory_correct`'s own read against a concurrent forget of the
+        // same old fact is not reproducible from a single-threaded test, so
+        // this drives the same two calls `memory_correct` makes
+        // (`forget_fact_spawned` for the supersede write, then for the
+        // rollback) directly, with the supersede write pointed at an ID that
+        // cannot succeed — proving the rollback leaves no duplicate live
+        // fact behind on the real backend, not just in the fake-driven
+        // orchestration tests above.
+        use mneme::knowledge::ForgetReason;
+
+        // WHY: `open_mem()` already returns `Arc<KnowledgeStore>` (matching
+        // `resolve_store`'s return type) — no extra `Arc::new` wrapping.
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
+        let old_fact = make_fact("f-correct-src", "alice", "original claim");
+        store.insert_fact(&old_fact).expect("insert original fact");
+
+        let new_fact = make_fact("f-correct-new", "alice", "corrected claim");
+        store
+            .insert_fact_async(new_fact.clone())
+            .await
+            .expect("insert corrected fact");
+
+        // Simulate the supersede write failing (e.g. a transient store
+        // error) by pointing it at a fact ID that no longer exists —
+        // `forget_fact` fails closed with FactNotFound rather than silently
+        // no-oping.
+        let missing_id = mneme::id::FactId::new("f-does-not-exist").expect("valid id");
+        let supersede_old =
+            forget_fact_spawned(Arc::clone(&store), missing_id, ForgetReason::Superseded);
+        let rollback_new = forget_fact_spawned(
+            Arc::clone(&store),
+            new_fact.id.clone(),
+            ForgetReason::Incorrect,
+        );
+
+        let result = supersede_with_rollback(supersede_old, rollback_new).await;
+        assert!(
+            matches!(result, Err(SupersedeFailure::RolledBack(_))),
+            "expected a rolled-back failure, got {result:?}"
+        );
+
+        // The original fact is untouched (never forgotten)...
+        let original_still_live = store
+            .read_facts_by_id(old_fact.id.as_str())
+            .expect("read original fact");
+        assert!(
+            original_still_live
+                .first()
+                .is_some_and(|f| !f.lifecycle.is_forgotten),
+            "the original fact must be untouched when the supersede write fails"
+        );
+
+        // ...and the new fact was rolled back (forgotten), so recall does
+        // not surface two live facts for the same claim.
+        let new_fact_after = store
+            .read_facts_by_id(new_fact.id.as_str())
+            .expect("read new fact");
+        assert!(
+            new_fact_after.first().is_some_and(|f| f.lifecycle.is_forgotten),
+            "the newly-inserted fact must be forgotten (rolled back) after a failed supersede"
         );
     }
 
