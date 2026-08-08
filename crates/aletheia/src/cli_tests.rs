@@ -437,64 +437,43 @@ fn init_instance_root_alias_accepted() {
 fn backup_default_parses() {
     let cli = Cli::parse_from(["aletheia", "backup"]);
     match cli.command {
-        Some(Command::Backup(BackupArgs {
-            action: None,
-            list,
-            prune,
-            ..
-        })) => {
-            assert!(!list, "list flag should default to false");
-            assert!(!prune, "prune flag should default to false");
-        }
+        Some(Command::Backup(BackupArgs { action: None })) => {}
         _ => panic!("expected Backup command with no action"),
     }
 }
 
+// WHY(#5107): the legacy top-level `--list`/`--prune`/`--keep`/`--json`/
+// `--yes` flags let `--list` and `--prune` combine and parse together,
+// silently dispatching list before prune. They are retired in favor of the
+// `list`/`prune`/`create` subcommands, so none of them should parse any
+// more — a conflicting combination now fails at CLI-parse time instead of
+// reaching backup state.
+
 #[test]
-fn backup_list_flag_parses() {
-    let cli = Cli::parse_from(["aletheia", "backup", "--list"]);
-    match cli.command {
-        Some(Command::Backup(BackupArgs {
-            action: None, list, ..
-        })) => assert!(list, "list flag should be set"),
-        _ => panic!("expected Backup command"),
-    }
+fn backup_legacy_list_flag_rejected() {
+    let result = Cli::try_parse_from(["aletheia", "backup", "--list"]);
+    assert!(
+        result.is_err(),
+        "legacy --list flag should be retired in favor of the `list` subcommand"
+    );
 }
 
 #[test]
-fn backup_list_with_json_flag_parses() {
-    let cli = Cli::parse_from(["aletheia", "backup", "--list", "--json"]);
-    match cli.command {
-        Some(Command::Backup(BackupArgs {
-            action: None,
-            list,
-            json,
-            ..
-        })) => {
-            assert!(list, "list flag should be set");
-            assert!(json, "json flag should be set");
-        }
-        _ => panic!("expected Backup command"),
-    }
+fn backup_legacy_prune_flags_rejected() {
+    let result = Cli::try_parse_from(["aletheia", "backup", "--prune", "--keep", "3", "--yes"]);
+    assert!(
+        result.is_err(),
+        "legacy --prune flags should be retired in favor of the `prune` subcommand"
+    );
 }
 
 #[test]
-fn backup_prune_with_keep_parses() {
-    let cli = Cli::parse_from(["aletheia", "backup", "--prune", "--keep", "3", "--yes"]);
-    match cli.command {
-        Some(Command::Backup(BackupArgs {
-            action: None,
-            prune,
-            keep,
-            yes,
-            ..
-        })) => {
-            assert!(prune, "prune flag should be set");
-            assert_eq!(keep, Some(3), "keep count should be set");
-            assert!(yes, "yes flag should be set");
-        }
-        _ => panic!("expected Backup command"),
-    }
+fn backup_legacy_conflicting_list_and_prune_flags_rejected() {
+    let result = Cli::try_parse_from(["aletheia", "backup", "--list", "--prune"]);
+    assert!(
+        result.is_err(),
+        "conflicting legacy flags must fail to parse, not silently prioritize list over prune"
+    );
 }
 
 #[test]

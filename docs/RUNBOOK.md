@@ -125,7 +125,7 @@ backupRetentionCount = 7
 
 ```bash
 aletheia backup          # create an instance backup set
-aletheia backup --list   # list snapshots
+aletheia backup list   # list snapshots
 ```
 
 ## Cron setup (daily at 02:00)
@@ -361,6 +361,12 @@ journalctl --user -u aletheia --since "1 hour ago" | grep -E "latency|slow|timeo
 
 ## Backup and restore
 
+Subcommands (`create`, `list`, `prune`, `verify`, `restore`) are the only
+supported grammar for `aletheia backup`. The legacy top-level `--list`,
+`--prune`, `--keep`, `--json`, and `--yes` flags accepted invalid
+combinations of `--list` and `--prune` together and silently dispatched
+list before prune (#5107); they are removed, not deprecated.
+
 ## Create a backup
 
 ```bash
@@ -371,8 +377,8 @@ aletheia backup
 ## List available backups
 
 ```bash
-aletheia backup --list
-aletheia backup --list --json    # machine-readable
+aletheia backup list
+aletheia backup list --json    # machine-readable
 ```
 
 ## Restore from backup
@@ -398,8 +404,8 @@ as `stores/sessions.db`, or target paths such as `data/archive`.
 ## Prune old backups
 
 ```bash
-aletheia backup --prune --keep 5    # interactive
-aletheia backup --prune --keep 5 --yes    # skip confirmation
+aletheia backup prune --keep 5    # interactive
+aletheia backup prune --keep 5 --yes    # skip confirmation
 ```
 
 ## Export sessions as JSON (before deletion)
