@@ -405,6 +405,39 @@ pub(super) async fn app_with_anthropic_provider() -> (axum::Router, tempfile::Te
     (build_router(state, &test_security_config()), dir)
 }
 
+/// Test helper: app with a registered provider whose `LlmProvider::name()`
+/// is exactly `name`.
+///
+/// WHY(#4875): `credential_runtime.validate_provider` only accepts the
+/// canonical managed names ("anthropic"/"claude") or a name registered in
+/// the live `ProviderRegistry` -- this lets a test exercise credential
+/// mutation/validation endpoints for a provider this crate has no live-check
+/// strategy for, so a `validate()` call stays network-free and deterministic.
+///
+/// NOTE: does not reuse `test_state_with_provider_name_private_and_auth_mode`
+/// -- its `provider_name` argument becomes `MockProvider::new`'s canned
+/// response text, not the registered name (`MockProvider::name()` stays the
+/// static `"mock"` unless `.named(...)` is called). `.named()` is what
+/// actually sets the registered name.
+pub(super) async fn app_with_provider_name(
+    name: &'static str,
+) -> (axum::Router, tempfile::TempDir) {
+    let (state, dir) = state_with_provider_name(name).await;
+    (build_router(state, &test_security_config()), dir)
+}
+
+/// Same as [`app_with_provider_name`] but returns the state too, for tests
+/// that need to subscribe to `state.event_bus` before driving a request
+/// through the router.
+pub(super) async fn state_with_provider_name(
+    name: &'static str,
+) -> (Arc<AppState>, tempfile::TempDir) {
+    let provider = MockProvider::new("mock response")
+        .named(name)
+        .models(&["mock-model"]);
+    test_state_with_mock_provider(Some(provider), false, "token").await
+}
+
 pub(super) fn json_request(
     method: &str,
     uri: &str,

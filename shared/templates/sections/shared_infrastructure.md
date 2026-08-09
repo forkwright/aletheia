@@ -17,6 +17,6 @@ Convention-based paths (no mapping files needed):
 - `$ALETHEIA_SHARED/USER.md` - Human context (symlinked to all nous)
 
 ### Coordination
-- **Blackboard:** `bb post/claim/complete/msg` - Quick coordination
-- **Task contracts:** `task-create/task-send` - Formal handoffs
+- **Blackboard:** the `blackboard` tool - actions `write`/`read`/`list`/`delete` (JSON args: `key`, `value`, `ttl_seconds`) - Quick coordination
+- **Formal hand-offs:** no standalone task-contract tool exists - use `sessions_send`/`sessions_ask` directly, or a `HANDOFF:`-tagged entry in your daily memory file (see Team topology)
 - **Agent health:** `aletheia health` - Ecosystem monitoring

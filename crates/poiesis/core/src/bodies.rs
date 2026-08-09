@@ -126,7 +126,7 @@ pub enum WorkbookCell {
 /// The Pandoc-aligned `Block` / `Inline` evolution named in the planning
 /// doc is render-side work; it ships with [[B-006]] and gains a typed
 /// `DocBlock` enum at that time.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DocumentBody {
     /// The wrapped legacy document.
     pub document: Document,
