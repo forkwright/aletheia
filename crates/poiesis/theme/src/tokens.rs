@@ -1,6 +1,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
+use crate::error::{InvalidTokenKeySnafu, ThemeError};
 use crate::id::ThemeId;
 
 /// A theme as authored: the TOML on disk parses into this shape. Token
@@ -30,6 +31,98 @@ pub struct Theme {
     /// `[chart]` table.
     #[serde(default)]
     pub chart: ChartTokens,
+}
+
+impl Theme {
+    /// Validate every token-namespace key against the identifier-safe
+    /// charset every sink (`css`, `typst`, `latex`) relies on when it
+    /// interpolates a key into generated markup: lowercase ASCII letters,
+    /// digits, `_`, `-`; must start with a letter. Mirrors the
+    /// `validate_fs_safe` pattern in `poiesis-core/src/ids.rs` locally so
+    /// this crate does not need a `poiesis-core` dependency for one
+    /// predicate.
+    ///
+    /// Covers every namespace whose keys a sink emits as an identifier
+    /// fragment: `[color.role]`, `[color.tone]`, `[color.surface]`,
+    /// `[type.family]`, `[type.scale]`, `[type.role]`, `[space]`. Values
+    /// (hex literals, tone/surface role references, family stacks) are
+    /// validated separately — [`HexColor::parse`] for the former,
+    /// resolution failure ([`crate::resolved::ResolvedTheme::from_theme`])
+    /// for the latter.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ThemeError::InvalidTokenKey`] naming the first offending
+    /// namespace, key, and reason.
+    pub fn validate_token_keys(&self) -> Result<(), ThemeError> {
+        let id = self.meta.id.as_str();
+        for key in self.color.role.keys() {
+            validate_token_key(id, "color.role", key)?;
+        }
+        for key in self.color.tone.keys() {
+            validate_token_key(id, "color.tone", key)?;
+        }
+        for key in self.color.surface.keys() {
+            validate_token_key(id, "color.surface", key)?;
+        }
+        for key in self.r#type.family.keys() {
+            validate_token_key(id, "type.family", key)?;
+        }
+        for key in self.r#type.scale.keys() {
+            validate_token_key(id, "type.scale", key)?;
+        }
+        for key in self.r#type.role.keys() {
+            validate_token_key(id, "type.role", key)?;
+        }
+        for key in self.space.slots.keys() {
+            validate_token_key(id, "space", key)?;
+        }
+        Ok(())
+    }
+}
+
+/// Validate a single token key against the identifier-safe charset:
+/// lowercase ASCII `a-z`, digits `0-9`, `_`, `-`; first character must be a
+/// lowercase letter.
+fn validate_token_key(
+    theme_id: &str,
+    namespace: &'static str,
+    key: &str,
+) -> Result<(), ThemeError> {
+    let mut chars = key.chars();
+    match chars.next() {
+        None => {
+            return InvalidTokenKeySnafu {
+                theme_id: theme_id.to_owned(),
+                namespace,
+                key: key.to_owned(),
+                reason: "key is empty".to_owned(),
+            }
+            .fail();
+        }
+        Some(first) if !first.is_ascii_lowercase() => {
+            return InvalidTokenKeySnafu {
+                theme_id: theme_id.to_owned(),
+                namespace,
+                key: key.to_owned(),
+                reason: format!("first character {first:?} must be a lowercase ASCII letter"),
+            }
+            .fail();
+        }
+        _ => {}
+    }
+    for ch in chars {
+        if !(ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_' || ch == '-') {
+            return InvalidTokenKeySnafu {
+                theme_id: theme_id.to_owned(),
+                namespace,
+                key: key.to_owned(),
+                reason: format!("character {ch:?} is not in [a-z0-9_-]"),
+            }
+            .fail();
+        }
+    }
+    Ok(())
 }
 
 /// Theme-level metadata. The `id` here must match the on-disk filename and
@@ -315,5 +408,98 @@ mod tests {
     fn hex_body_strips_hash() {
         let c = HexColor::parse("#318891").expect("#318891 must parse");
         assert_eq!(c.body(), "318891");
+    }
+
+    fn theme_with_role_key(key: &str) -> Theme {
+        let mut role = IndexMap::new();
+        role.insert(
+            key.to_owned(),
+            HexColor::parse("#232E54").expect("hex parses"),
+        );
+        Theme {
+            meta: Meta {
+                id: ThemeId::parse("summus").expect("id parses"),
+                title: None,
+                description: None,
+            },
+            color: ColorTokens {
+                role,
+                tone: IndexMap::new(),
+                surface: IndexMap::new(),
+            },
+            r#type: TypeTokens::default(),
+            space: SpaceTokens::default(),
+            grid: GridTokens::default(),
+            table: TableTokens::default(),
+            chart: ChartTokens::default(),
+        }
+    }
+
+    #[test]
+    fn validate_token_keys_accepts_canonical_key() {
+        theme_with_role_key("navy_2")
+            .validate_token_keys()
+            .expect("canonical key must pass");
+    }
+
+    #[test]
+    fn validate_token_keys_rejects_css_injection_key() {
+        // SECURITY(#5633): a crafted key attempting to break out of the
+        // `--color-<key>: <hex>;` declaration and open a new ruleset.
+        let err = theme_with_role_key("x}: body { color: red; --y")
+            .validate_token_keys()
+            .expect_err("CSS-breaking key must reject");
+        assert!(matches!(
+            err,
+            ThemeError::InvalidTokenKey {
+                namespace: "color.role",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn validate_token_keys_rejects_uppercase() {
+        let err = theme_with_role_key("Navy")
+            .validate_token_keys()
+            .expect_err("uppercase must reject");
+        assert!(matches!(err, ThemeError::InvalidTokenKey { .. }));
+    }
+
+    #[test]
+    fn validate_token_keys_rejects_leading_digit() {
+        let err = theme_with_role_key("2navy")
+            .validate_token_keys()
+            .expect_err("leading digit must reject");
+        assert!(matches!(err, ThemeError::InvalidTokenKey { .. }));
+    }
+
+    #[test]
+    fn validate_token_keys_rejects_empty_key() {
+        let err = theme_with_role_key("")
+            .validate_token_keys()
+            .expect_err("empty key must reject");
+        assert!(matches!(err, ThemeError::InvalidTokenKey { .. }));
+    }
+
+    #[test]
+    fn validate_token_keys_rejects_newline_in_type_family_key() {
+        // SECURITY(#5633): a key with an embedded newline could close a
+        // Typst `//` comment or a LaTeX `%%` comment line early.
+        let mut theme = theme_with_role_key("navy");
+        theme
+            .r#type
+            .family
+            .insert("sans\n#panic()".to_owned(), vec!["Geist".to_owned()]);
+        let err = theme
+            .validate_token_keys()
+            .expect_err("newline in key must reject");
+        assert!(matches!(
+            err,
+            ThemeError::InvalidTokenKey {
+                namespace: "type.family",
+                ..
+            }
+        ));
     }
 }
