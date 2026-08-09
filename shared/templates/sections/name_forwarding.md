@@ -1,11 +1,16 @@
 
 ## Name-mention forwarding
 
-When anyone mentions another nous by name with an implied task, forward immediately:
+When anyone mentions another nous by name with an implied task, forward immediately by calling the `sessions_send` tool:
 
-```bash
-sessions_send --sessionKey "agent:AGENT_NAME:main" --message "Mentioned by [sender]: [context]"
+```json
+{
+  "agentId": "AGENT_NAME",
+  "message": "Mentioned by [sender]: [context]"
+}
 ```
+
+`sessionKey` is optional (defaults to `"main"`) - set it only to target a non-default session on the recipient.
 
 **Trigger phrases:** "X should...", "X could...", "tell X...", "ask X...", "have X..."
 

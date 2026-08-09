@@ -12,7 +12,7 @@ use jiff::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::BodyKind;
-use crate::bodies::{Deck, Workbook};
+use crate::bodies::{Deck, DocumentBody, Workbook};
 use crate::components::ComponentRegistry;
 use crate::error::{MissingMetaFieldSnafu, SpecError, UnknownThemeSnafu};
 use crate::factbase::Factbase;
@@ -117,24 +117,11 @@ impl Meta {
 pub enum Body {
     /// A deck of slides.
     Deck(Deck),
-    /// A prose document (wraps the pre-envelope
-    /// [`crate::document::Document`]).
-    Document(DocumentBodyRepr),
+    /// A prose document, wrapping the pre-envelope
+    /// [`crate::document::Document`] via [`DocumentBody`].
+    Document(DocumentBody),
     /// A workbook of sheets.
     Workbook(Workbook),
-}
-
-/// Serde-friendly representation of [`DocumentBody`] — the legacy
-/// [`crate::document::Document`] does not derive `Serialize` / `Deserialize`
-/// today, so the envelope path carries an opaque serializable wrapper.
-/// Render-side code consumes [`crate::bodies::DocumentBody`] directly
-/// through [`Body::as_document_body`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DocumentBodyRepr {
-    /// The document title — duplicated from [`Meta`] for self-containment
-    /// at the body level (renderers that only see `Body` still have a
-    /// title to thread through).
-    pub title: String,
 }
 
 impl Body {
@@ -145,6 +132,16 @@ impl Body {
             Self::Deck(_) => BodyKind::Deck,
             Self::Document(_) => BodyKind::Document,
             Self::Workbook(_) => BodyKind::Workbook,
+        }
+    }
+
+    /// Borrow the wrapped [`DocumentBody`] when `self` is [`Body::Document`].
+    /// Returns `None` for `Deck` and `Workbook` bodies.
+    #[must_use]
+    pub fn as_document_body(&self) -> Option<&DocumentBody> {
+        match self {
+            Self::Document(body) => Some(body),
+            Self::Deck(_) | Self::Workbook(_) => None,
         }
     }
 }
@@ -421,9 +418,9 @@ mod tests {
             meta: Meta::new("Untitled").unwrap(),
             theme: ThemeId::new("missing").unwrap(),
             facts: empty_factbase(),
-            body: Body::Document(DocumentBodyRepr {
-                title: "Untitled".to_owned(),
-            }),
+            body: Body::Document(DocumentBody::new(crate::document::Document::new(
+                "Untitled",
+            ))),
         };
         let known = vec![ThemeId::new("summus").unwrap()];
         let err = spec
