@@ -198,7 +198,7 @@ fn render_side_by_side_line(
 /// immediately followed by a run of `Add` lines is paired 1:1, same as the
 /// old koilon-local `DiffChange::Replace` collapsing did.
 #[derive(Debug)]
-pub(super) enum RenderLine {
+pub(crate) enum RenderLine {
     Single(DiffLine),
     Replace { old: DiffLine, new: DiffLine },
 }
@@ -208,7 +208,7 @@ pub(super) enum RenderLine {
     clippy::indexing_slicing,
     reason = "while loop maintains i < lines.len() invariant; look-ahead i+1 is guarded by the preceding i+1 < lines.len() check"
 )]
-pub(super) fn collapse_to_replacements(lines: &[DiffLine]) -> Vec<RenderLine> {
+pub(crate) fn collapse_to_replacements(lines: &[DiffLine]) -> Vec<RenderLine> {
     let mut collapsed = Vec::new();
     let mut i = 0;
 

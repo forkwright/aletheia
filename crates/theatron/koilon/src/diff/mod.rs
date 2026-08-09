@@ -25,7 +25,7 @@ pub(crate) use render::{
     RenderLine, collapse_to_replacements, render_side_by_side, render_unified, render_word_diff,
 };
 #[cfg(test)]
-use types::DiffMode;
+pub(crate) use types::DiffMode;
 
 #[cfg(test)]
 #[expect(
