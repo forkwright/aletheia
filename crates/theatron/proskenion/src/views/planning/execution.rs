@@ -31,19 +31,6 @@ const HEADER_ROW: &str = "\
     justify-content: space-between;\
 ";
 
-const REFRESH_BTN: &str = "\
-    background: var(--border); \
-    color: var(--text-primary); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-1) var(--space-3); \
-    font-size: var(--text-xs); \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
 const PROGRESS_BAR_TRACK: &str = "\
     height: 6px; \
     background: var(--border); \
@@ -74,7 +61,7 @@ const PLACEHOLDER_STYLE: &str = "\
 #[component]
 pub(crate) fn ExecutionView(project_id: String) -> Element {
     let _ = &project_id;
-    let mut fetch_state = use_signal(|| ExecutionFetchState::NotAvailable);
+    let fetch_state = use_signal(|| ExecutionFetchState::NotAvailable);
 
     rsx! {
         div {
@@ -82,11 +69,6 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
             div {
                 style: "{HEADER_ROW}",
                 h3 { style: "font-size: var(--text-md); margin: 0; color: var(--text-primary);", "Execution" }
-                button {
-                    style: "{REFRESH_BTN}",
-                    onclick: move |_| fetch_state.set(ExecutionFetchState::NotAvailable),
-                    "Refresh"
-                }
             }
 
             match &*fetch_state.read() {

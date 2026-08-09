@@ -38,19 +38,6 @@ const PENDING_BANNER: &str = "\
     margin-bottom: var(--space-3);\
 ";
 
-const REFRESH_BTN: &str = "\
-    background: var(--border); \
-    color: var(--text-primary); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-1) var(--space-3); \
-    font-size: var(--text-xs); \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
 const PLACEHOLDER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
@@ -67,7 +54,7 @@ const PLACEHOLDER_STYLE: &str = "\
 /// Pending gates appear at the top of the list once checkpoint routes land.
 #[component]
 pub(crate) fn CheckpointsView(project_id: String) -> Element {
-    let mut fetch_state = use_signal(|| FetchState::NotAvailable);
+    let fetch_state = use_signal(|| FetchState::NotAvailable);
     // WHY: incrementing this signal causes the fetch effect to re-run.
     let mut fetch_trigger = use_signal(|| 0u32);
 
@@ -79,13 +66,6 @@ pub(crate) fn CheckpointsView(project_id: String) -> Element {
             div {
                 style: "{HEADER_ROW}",
                 h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Checkpoints" }
-                button {
-                    style: "{REFRESH_BTN}",
-                    onclick: move |_| {
-                        fetch_state.set(FetchState::NotAvailable);
-                    },
-                    "Refresh"
-                }
             }
 
             match &*fetch_state.read() {

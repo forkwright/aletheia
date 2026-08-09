@@ -86,19 +86,6 @@ const META_STYLE: &str = "\
     margin-top: var(--space-2);\
 ";
 
-const REFRESH_BTN: &str = "\
-    background: var(--bg-surface); \
-    color: var(--text-primary); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-1) var(--space-3); \
-    font-size: var(--text-sm); \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
 const PLACEHOLDER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
@@ -149,11 +136,6 @@ pub(crate) fn Planning() -> Element {
             div {
                 style: "display: flex; align-items: center; justify-content: space-between;",
                 h2 { style: "font-size: var(--text-xl); margin: 0;", "Planning" }
-                button {
-                    style: "{REFRESH_BTN}",
-                    onclick: move |_| do_refresh(),
-                    "Refresh"
-                }
             }
 
             match &*fetch_state.read() {
