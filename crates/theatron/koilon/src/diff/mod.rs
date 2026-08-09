@@ -120,7 +120,9 @@ mod tests {
     fn collapse_leaves_standalone_delete() {
         let lines = vec![diff_line(ChangeType::Remove, "removed")];
         let collapsed = collapse_to_replacements(&lines);
-        assert!(matches!(&collapsed[0], RenderLine::Single(l) if l.change_type == ChangeType::Remove));
+        assert!(
+            matches!(&collapsed[0], RenderLine::Single(l) if l.change_type == ChangeType::Remove)
+        );
     }
 
     #[test]

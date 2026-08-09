@@ -85,7 +85,11 @@ fn render_unified_line(line: &DiffLine, theme: &Theme) -> Line<'static> {
 }
 
 /// Render hunks in a side-by-side layout.
-pub(crate) fn render_side_by_side(file: &DiffFile, width: u16, theme: &Theme) -> Vec<Line<'static>> {
+pub(crate) fn render_side_by_side(
+    file: &DiffFile,
+    width: u16,
+    theme: &Theme,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let half_width = usize::from(width) / 2;
     // NOTE: 6-char line-number gutter "NNNN "
@@ -119,7 +123,12 @@ pub(crate) fn render_side_by_side(file: &DiffFile, width: u16, theme: &Theme) ->
         )]));
 
         for line in &hunk.lines {
-            lines.push(render_side_by_side_line(line, half_width, content_width, theme));
+            lines.push(render_side_by_side_line(
+                line,
+                half_width,
+                content_width,
+                theme,
+            ));
         }
     }
 
@@ -132,7 +141,10 @@ fn render_side_by_side_line(
     content_width: usize,
     theme: &Theme,
 ) -> Line<'static> {
-    let truncated = pad_to(truncate_cols_ellipsis(&line.content, content_width), content_width);
+    let truncated = pad_to(
+        truncate_cols_ellipsis(&line.content, content_width),
+        content_width,
+    );
     match line.change_type {
         ChangeType::Context => {
             let left = format!("{:>4} {truncated} ", display_no(line.old_line_no));
@@ -147,7 +159,10 @@ fn render_side_by_side_line(
             let left = format!("{:>4} {truncated} ", display_no(line.old_line_no));
             let right = format!("{:>4} {:<content_width$}", "", "");
             Line::from(vec![
-                Span::styled(pad_to(left, half_width), Style::default().fg(theme.status.error)),
+                Span::styled(
+                    pad_to(left, half_width),
+                    Style::default().fg(theme.status.error),
+                ),
                 Span::styled("│", theme.style_dim()),
                 Span::styled(right, theme.style_dim()),
             ])
@@ -416,4 +431,3 @@ pub(super) fn pad_to(s: String, width: usize) -> String {
         format!("{s}{}", " ".repeat(width - cols))
     }
 }
-
