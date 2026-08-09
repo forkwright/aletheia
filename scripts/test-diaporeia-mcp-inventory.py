@@ -61,8 +61,7 @@ impl DiaporeiaServer {
         &self,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<(), rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Expensive)?;
-        require_role(self, &context, Role::Operator, "session_create").await?;
+        require_role(self, &context, Tier::Expensive, Role::Operator, "session_create")?;
         let store = self.state.session_store.lock().await;
         store.find_or_create_session("id", "nous", "main", None, None)?;
         Ok(())
@@ -74,8 +73,8 @@ impl DiaporeiaServer {
         &self,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<(), rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Agent, "session_list").await?;
+        let caller = require_authenticated(self, &context, Tier::Cheap, "session_list")?;
+        require_caller_role(&caller, Role::Agent, "session_list")?;
         let store = self.state.session_store.lock().await;
         let _ = store.list_sessions(None)?;
         Ok(())
@@ -87,8 +86,7 @@ impl DiaporeiaServer {
         &self,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<(), rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-        require_role(self, &context, Role::Operator, "config_get").await?;
+        require_role(self, &context, Tier::Cheap, Role::Operator, "config_get")?;
         let _ = self.state.config.read().await;
         Ok(())
     }

@@ -14,7 +14,6 @@ use rmcp::model::{
 use rmcp::tool_handler;
 
 use symbolon::types::Role;
-use taxis::config::McpRateLimitConfig;
 
 use crate::auth::{McpCaller, resolve_caller};
 use crate::error::UnauthorizedSnafu;
@@ -38,18 +37,21 @@ pub struct DiaporeiaServer {
 }
 
 impl DiaporeiaServer {
-    /// Create a new server instance with shared state and a rate-limit snapshot.
+    /// Create a new server instance sharing the given rate limiter.
     ///
-    /// Each instance gets its own rate limiter (per-session limiting). The
-    /// caller passes a `McpRateLimitConfig` snapshot taken at transport
-    /// setup time so this constructor can run inside a tokio runtime
-    /// (`tokio::sync::RwLock::blocking_read` panics from inside the runtime,
-    /// which is where both stdio and HTTP transports invoke this).
+    /// WHY(#5182, #4843): the streamable HTTP transport constructs a fresh
+    /// `DiaporeiaServer` per session; the rate limiter must NOT be built
+    /// fresh alongside it or quota would reset every time a client opens a
+    /// new session. Callers build one `RateLimiter` per transport bind (see
+    /// `transport.rs`) and pass the shared `Arc` into every session's
+    /// `with_state` call. A standalone caller (a single-session stdio
+    /// connection, a test) builds its own with
+    /// `Arc::new(RateLimiter::from_config(&rate_cfg))`.
     #[must_use]
-    pub fn with_state(state: Arc<DiaporeiaState>, rate_cfg: &McpRateLimitConfig) -> Self {
+    pub fn with_state(state: Arc<DiaporeiaState>, rate_limiter: Arc<RateLimiter>) -> Self {
         Self {
             state,
-            rate_limiter: Arc::new(RateLimiter::from_config(rate_cfg)),
+            rate_limiter,
             tool_router: Self::tool_router(),
         }
     }
@@ -58,13 +60,19 @@ impl DiaporeiaServer {
     ///
     /// Resolves the caller from auth state: uses the configured `none_role` in
     /// auth-disabled mode, otherwise validates through the shared MCP resolver.
+    /// Applies the shared rate limit for `tier`, keyed by the resolved
+    /// caller's subject (or the shared unauthenticated bucket when no caller
+    /// resolves), before enforcing the role requirement.
     fn require_resource_role(
         &self,
         context: &rmcp::service::RequestContext<rmcp::RoleServer>,
+        tier: Tier,
         minimum: Role,
         operation: &str,
     ) -> Result<McpCaller, rmcp::ErrorData> {
         let caller = resolve_caller(&self.state, context);
+        self.rate_limiter
+            .check(tier, caller.as_ref().map(|c| c.sub.as_str()))?;
         match caller {
             Some(caller) if caller.role >= minimum => Ok(caller),
             Some(caller) => {
@@ -142,12 +150,15 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         _params: Option<rmcp::model::PaginatedRequestParams>,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ListResourceTemplatesResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-
         // WHY(#3337): resource templates reveal what internal state is
         // accessible. Restrict to Operator+ so Readonly users cannot
         // discover agent workspace files or config structure.
-        self.require_resource_role(&context, Role::Operator, "list_resource_templates")?;
+        self.require_resource_role(
+            &context,
+            Tier::Cheap,
+            Role::Operator,
+            "list_resource_templates",
+        )?;
 
         let mut templates: Vec<ResourceTemplate> = resources::nous::resource_templates();
         templates.extend(resources::config::resource_templates());
@@ -163,9 +174,8 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         _params: Option<rmcp::model::PaginatedRequestParams>,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ListResourcesResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
-
-        let caller = self.require_resource_role(&context, Role::Operator, "list_resources")?;
+        let caller =
+            self.require_resource_role(&context, Tier::Cheap, Role::Operator, "list_resources")?;
 
         let mut resources: Vec<Resource> = Vec::new();
 
@@ -214,13 +224,12 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         params: ReadResourceRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ReadResourceResult, rmcp::ErrorData> {
-        self.rate_limiter.check(Tier::Cheap)?;
         let uri = params.uri.as_str();
 
         // WHY(#3337): all MCP resources expose internal state (agent workspace
         // files, runtime config). Require Operator+ to prevent Readonly users
         // from enumerating agents, config, or knowledge.
-        let caller = self.require_resource_role(&context, Role::Operator, uri)?;
+        let caller = self.require_resource_role(&context, Tier::Cheap, Role::Operator, uri)?;
 
         let contents = if uri.starts_with("aletheia://nous/") {
             let (nous_id, _) = resources::nous::parse_resource_uri(uri)?;
