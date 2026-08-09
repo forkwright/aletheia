@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import pathlib
+
 import tomllib
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -45,7 +46,34 @@ def iter_src_files() -> list[str]:
 
 
 def nonblank_lines(text: str) -> list[str]:
-    return [line.rstrip("\n") for line in text.splitlines() if line.strip() != ""]
+    # WHY(aletheia#6656): strip leading AND trailing whitespace, not just the
+    # trailing newline splitlines() already drops on its own. A pure
+    # re-indentation carries no content change but shifts every line's
+    # column position — before this fix, wrapping storage/mem.rs's preserved
+    # copy in `mod derived { }` (a formatting-only PLAN.md land-dark step)
+    # dropped its measured verbatim_pct from ~69% to 4.5% as a side effect,
+    # because every line gained four leading spaces the upstream file never
+    # had and stopped matching character-for-character. Stripping both ends
+    # makes the comparison track expression, not incidental column position;
+    # re-measuring the same pair post-fix gives 31.1%.
+    return [line.strip() for line in text.splitlines() if line.strip() != ""]
+
+
+# INVARIANT(aletheia#6656): a contiguous matched run shorter than this many
+# non-blank lines does not count as verbatim evidence. Below this length, a
+# match is as likely to be language-level boilerplate that any two unrelated
+# Rust files share by chance (a lone `}`, `#[cfg(test)]`, `mod tests {`, a
+# single `use` line) as it is real shared expression — the audit's
+# reproduction: `runtime/hnsw_sovereign/types.rs`, which has no authored
+# relationship to `runtime/hnsw.rs`, still scored 12.4% against it purely
+# from scattered 1-2 line collisions. Measured against the corpus (the known
+# aletheia#6656 transliteration vs. its real upstream match, against several
+# unrelated-file "noise" pairs scoring in the low-to-mid 30s under the old
+# floor of 1): raising the floor to 4 drops every measured noise pair below
+# 15% while the real match retains signal in the high 20s — a floor of 1,
+# 2, or 3 leaves noise and signal within a few points of each other, not
+# separable. Chosen from that measurement, not guessed.
+MIN_MATCH_BLOCK_LINES = 4
 
 
 def verbatim_pct(local_text: str, upstream_text: str | None) -> float:
@@ -54,7 +82,14 @@ def verbatim_pct(local_text: str, upstream_text: str | None) -> float:
         return 0.0
     upstream_lines = nonblank_lines(upstream_text)
     matcher = difflib.SequenceMatcher(None, local_lines, upstream_lines, autojunk=False)
-    matched = sum(block.size for block in matcher.get_matching_blocks())
+    # NOTE: the floor is capped at the file's own length so a file shorter
+    # than MIN_MATCH_BLOCK_LINES that matches upstream in full (a genuine,
+    # complete verbatim copy) still scores 100% instead of being floored to
+    # 0 by a threshold longer than the file itself.
+    floor = min(MIN_MATCH_BLOCK_LINES, len(local_lines))
+    matched = sum(
+        block.size for block in matcher.get_matching_blocks() if block.size >= floor
+    )
     return round(matched / len(local_lines) * 100, 1)
 
 
@@ -187,6 +222,46 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "path, `kcore`, RRF, the fixed-rule test suite, and `data/tests/proptest_memcmp` — all "
         "`sovereign` in the table above. They do not change the provenance of the derived files "
         "they extend."
+    )
+    lines.append("")
+    lines.append("## Reading `verbatim_pct`: what it can and cannot prove")
+    lines.append("")
+    lines.append(
+        "`verbatim_pct` is evidence of textual overlap, not a verdict on origin. Two files that "
+        "independently implement the same algorithm against the same crate vocabulary "
+        "(`DataValue`, `BTreeMap`, the `FixedRule` trait, `poison.check()?`) converge on real "
+        "line-for-line similarity that has nothing to do with copying — and at the file sizes in "
+        "this crate, that convergence is large enough to overlap with an actual transliteration."
+    )
+    lines.append("")
+    lines.append(
+        "aletheia#6656 measured this directly against `fixed_rule/algos/*_native.rs` — every one "
+        "nominally `sovereign` (`upstream_path = \"none\"`, no lineage claimed). Scored against the "
+        "same-algorithm upstream file each was written to replace, verbatim_pct ranges 14.9% "
+        "(`kruskal_native.rs`) to 32.1% (`degree_centrality_native.rs`); scored against an algorithm "
+        "it has no relationship to at all, `bfs_native.rs` vs. `degree_centrality.rs` still measures "
+        "7.4% from shared idiom alone. `dfs_native.rs` — confirmed by that audit to be a "
+        "statement-for-statement transliteration with renamed identifiers — measures 26.6% against "
+        "its real source: inside the same band as files with no such finding, and lower than "
+        "`degree_centrality_native.rs`'s 32.1%, which reads on manual inspection as an independent "
+        "rewrite (different data structures, different variable names, an added citation to "
+        "Freeman 1978) despite scoring higher. The metric alone cannot separate the two."
+    )
+    lines.append("")
+    lines.append(
+        "Treat any `verbatim_pct` figure — for a `derived`/`dual` row against its recorded "
+        "`upstream_path`, or for an ad hoc comparison run against a `sovereign` row for review — as "
+        "a triage signal that earns a manual read at any nontrivial value, never as proof of either "
+        "originality or copying by itself, and never as a substitute for reading the file."
+    )
+    lines.append("")
+    lines.append(
+        "`scripts/check-krites-verbatim-drift.py` is a separate, purpose-built answer to this same "
+        "gap — a token-shingle Jaccard metric that discards punctuation-only, `use`, and attribute "
+        "lines before comparing, precisely so shared idiom stops reading as evidence. It runs "
+        "report-only in CI today (not yet promoted to a gate; see its module docstring for the "
+        "promotion criteria) and is the tool to reach for when `verbatim_pct` alone is not enough "
+        "to settle a review."
     )
     lines.append("")
     lines.append("## A second vendored source: stop word lists")
