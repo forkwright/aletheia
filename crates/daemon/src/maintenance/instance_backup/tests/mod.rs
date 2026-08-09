@@ -9,6 +9,7 @@ use super::*;
 
 mod creation;
 mod freshness;
+mod quiesce;
 mod restore;
 mod snapshot;
 mod verify;

@@ -1,12 +1,17 @@
 //! Operator credential management over the instance credential directory.
 
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use koina::secret::SecretString;
 use snafu::IntoError;
+use tracing::warn;
 
 use crate::error::{self, Result};
-use crate::types::{ManagedCredential, ManagedCredentialRole, ManagedCredentialStatus};
+use crate::types::{
+    ManagedCredential, ManagedCredentialRole, ManagedCredentialStatus, ProviderValidationRecord,
+    ProviderValidationState,
+};
 
 use super::CredentialFile;
 use super::file_ops::CredentialFileLock;
@@ -14,8 +19,17 @@ use super::file_ops::CredentialFileLock;
 const BACKUP_SUFFIX: &str = ".backup";
 const JSON_EXT: &str = "json";
 const ROTATE_JOURNAL_SUFFIX: &str = ".rotate.journal";
+const VALIDATION_SIDECAR_EXT: &str = "json.validation";
 const MIN_CREDENTIAL_SECRET_CHARS: usize = 9;
 const REDACTED_SECRET_PLACEHOLDER: &str = "...????";
+
+// WHY(#4875): lightweight, read-only endpoints used solely to confirm a
+// stored key authenticates with the provider. Never chosen for cost — chosen
+// because they require no request body and cannot mutate provider state.
+const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models";
+const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
+const ANTHROPIC_API_VERSION: &str = "2023-06-01";
+const PROVIDER_VALIDATION_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub(crate) fn list(root: &Path) -> Result<Vec<ManagedCredential>> {
     if !root.exists() {
@@ -33,7 +47,7 @@ pub(crate) fn list(root: &Path) -> Result<Vec<ManagedCredential>> {
         let Some((provider, role)) = parse_path_role(&path) else {
             continue;
         };
-        if let Some(credential) = metadata_from_path(root, &provider, role, None)? {
+        if let Some(credential) = metadata_from_path(root, &provider, role)? {
             credentials.push(credential);
         }
     }
@@ -104,7 +118,7 @@ pub(crate) fn add(
         return Err(io_error(&path, source));
     }
 
-    metadata_from_path(root, provider, role, None)?.ok_or_else(|| {
+    metadata_from_path(root, provider, role)?.ok_or_else(|| {
         error::NotFoundSnafu {
             entity: "credential".to_owned(),
             id: credential_id(provider, role),
@@ -113,17 +127,171 @@ pub(crate) fn add(
     })
 }
 
-pub(crate) fn validate(root: &Path, id: &str) -> Result<ManagedCredential> {
+/// Validate a stored credential.
+///
+/// WHY(#4875): a credential is checked in three tiers, cheapest first. Local
+/// metadata (empty secret, past expiry) answers the question without a
+/// network round trip when it already can. Only a non-empty, locally
+/// unexpired secret for a provider this crate knows how to reach live is
+/// ever sent over the network — and even then, only to a read-only endpoint
+/// the key would need to authenticate against regardless. The outcome is
+/// persisted so later `list` calls reflect it instead of reverting to
+/// "never validated".
+///
+/// WHY no `reqwest::Client` parameter: the client is built lazily inside
+/// [`check_provider_key`], only on the arms that actually dispatch a live
+/// check. Building one unconditionally here would force every call —
+/// including the malformed/expired/unknown-provider short-circuits that
+/// never touch the network — to require a rustls crypto provider already
+/// installed process-wide (see `credential::refresh::refresh_loop` and
+/// `AuthService::validate_credential` for the same reasoning).
+pub(crate) async fn validate(root: &Path, id: &str) -> Result<ManagedCredential> {
     let (provider, role) = parse_id(id)?;
     recover_provider_rotation(root, &provider)?;
-    let validated_at = jiff::Timestamp::now().to_string();
-    metadata_from_path(root, &provider, role, Some(validated_at))?.ok_or_else(|| {
-        error::NotFoundSnafu {
+    let path = credential_path(root, &provider, role)?;
+    let Some(file) = CredentialFile::load(&path) else {
+        return Err(error::NotFoundSnafu {
             entity: "credential".to_owned(),
             id: id.to_owned(),
         }
-        .build()
+        .build());
+    };
+
+    let local_status = credential_status(&file);
+    let secret = file.token.expose_secret();
+    let state = if secret.trim().is_empty() {
+        ProviderValidationState::Malformed
+    } else if local_status == ManagedCredentialStatus::Expired {
+        ProviderValidationState::Expired
+    } else {
+        check_provider_key(&provider, &file.token).await
+    };
+
+    let record = ProviderValidationRecord {
+        state,
+        validated_at: jiff::Timestamp::now(),
+    };
+    save_validation_record(&path, &record)?;
+
+    Ok(ManagedCredential {
+        id: credential_id(&provider, role),
+        provider,
+        role,
+        redacted_preview: redact_secret(secret),
+        status: local_status,
+        last_validated: Some(record.validated_at.to_string()),
+        validation: Some(record),
     })
+}
+
+/// Dispatch a live authentication check to the provider named by `provider`,
+/// when this crate knows how to reach it. Unrecognized providers report
+/// [`ProviderValidationState::Unknown`] rather than guessing at an endpoint,
+/// and never construct an HTTP client to do it.
+async fn check_provider_key(provider: &str, key: &SecretString) -> ProviderValidationState {
+    match provider.to_ascii_lowercase().as_str() {
+        "anthropic" | "claude" => {
+            let client = reqwest::Client::new();
+            check_anthropic_key(&client, key, ANTHROPIC_MODELS_URL).await
+        }
+        "openai" => {
+            let client = reqwest::Client::new();
+            check_openai_key(&client, key, OPENAI_MODELS_URL).await
+        }
+        _ => ProviderValidationState::Unknown,
+    }
+}
+
+async fn check_anthropic_key(
+    client: &reqwest::Client,
+    key: &SecretString,
+    models_url: &str,
+) -> ProviderValidationState {
+    let response = client
+        .get(models_url)
+        .header("x-api-key", key.expose_secret())
+        .header("anthropic-version", ANTHROPIC_API_VERSION)
+        .timeout(PROVIDER_VALIDATION_TIMEOUT)
+        .send()
+        .await;
+    outcome_from_response(response)
+}
+
+async fn check_openai_key(
+    client: &reqwest::Client,
+    key: &SecretString,
+    models_url: &str,
+) -> ProviderValidationState {
+    let response = client
+        .get(models_url)
+        .bearer_auth(key.expose_secret())
+        .timeout(PROVIDER_VALIDATION_TIMEOUT)
+        .send()
+        .await;
+    outcome_from_response(response)
+}
+
+/// Map a completed (or failed) provider HTTP call to a validation outcome.
+///
+/// `2xx` is acceptance. `401`/`403` is an explicit rejection — the provider
+/// looked at the credential and refused it. Every other case (network
+/// failure, timeout, unexpected status such as `429`/`5xx`) is treated as
+/// `Unreachable`: none of those are proof the key itself is bad, so they
+/// must never be reported as `Rejected`.
+fn outcome_from_response(response: reqwest::Result<reqwest::Response>) -> ProviderValidationState {
+    match response {
+        Ok(resp) => {
+            let status = resp.status();
+            if status.is_success() {
+                ProviderValidationState::Accepted
+            } else if status.as_u16() == 401 || status.as_u16() == 403 {
+                ProviderValidationState::Rejected
+            } else {
+                warn!(status = %status, "provider validation call returned an unexpected status");
+                ProviderValidationState::Unreachable
+            }
+        }
+        // SAFETY: reqwest::Error's Display never includes request headers or
+        // body, so this cannot leak the credential value being validated.
+        Err(e) => {
+            warn!(error = %e, "provider validation request failed"); // kanon:ignore SECURITY/credential-logging -- logs a transport error, not the credential value
+            ProviderValidationState::Unreachable
+        }
+    }
+}
+
+fn validation_sidecar_path(credential_path: &Path) -> PathBuf {
+    credential_path.with_extension(VALIDATION_SIDECAR_EXT)
+}
+
+/// Load the persisted validation outcome for a credential, if one exists.
+///
+/// A missing or unparseable sidecar is treated as "never validated" rather
+/// than an error — validation metadata is a convenience layer over the
+/// credential file, never load-bearing for whether the credential itself
+/// loads.
+fn load_validation_record(credential_path: &Path) -> Option<ProviderValidationRecord> {
+    use std::io::Read as _;
+
+    let sidecar = validation_sidecar_path(credential_path);
+    let mut bytes = Vec::new();
+    std::fs::OpenOptions::new()
+        .read(true)
+        .open(sidecar)
+        .ok()?
+        .read_to_end(&mut bytes)
+        .ok()?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn save_validation_record(credential_path: &Path, record: &ProviderValidationRecord) -> Result<()> {
+    let sidecar = validation_sidecar_path(credential_path);
+    // kanon:ignore RUST/no-silent-result-swallow -- serde_json::to_vec_pretty on
+    // a struct of plain enums/timestamps is infallible; mapped to io_error's
+    // shape only so this function has one error type to return.
+    let json = serde_json::to_vec_pretty(record)
+        .map_err(|e| io_error(&sidecar, std::io::Error::other(e)))?;
+    write_restricted(&sidecar, &json).map_err(|source| io_error(&sidecar, source))
 }
 
 pub(crate) fn rotate(root: &Path, provider: &str) -> Result<Vec<ManagedCredential>> {
@@ -165,11 +333,10 @@ pub(crate) fn rotate(root: &Path, provider: &str) -> Result<Vec<ManagedCredentia
     commit_rotation_from_journal(&files)?;
 
     let mut entries = Vec::new();
-    if let Some(primary) = metadata_from_path(root, provider, ManagedCredentialRole::Primary, None)?
-    {
+    if let Some(primary) = metadata_from_path(root, provider, ManagedCredentialRole::Primary)? {
         entries.push(primary);
     }
-    if let Some(backup) = metadata_from_path(root, provider, ManagedCredentialRole::Backup, None)? {
+    if let Some(backup) = metadata_from_path(root, provider, ManagedCredentialRole::Backup)? {
         entries.push(backup);
     }
     Ok(entries)
@@ -214,7 +381,8 @@ pub(crate) fn remove(root: &Path, id: &str) -> Result<()> {
 
     remove_file_if_exists(&path)?;
     remove_file_if_exists(&path.with_extension("json.key"))?;
-    remove_file_if_exists(&path.with_extension("json.lock"))
+    remove_file_if_exists(&path.with_extension("json.lock"))?;
+    remove_file_if_exists(&validation_sidecar_path(&path))
 }
 
 fn provider_lock_path(root: &Path, provider: &str) -> PathBuf {
@@ -378,7 +546,16 @@ fn commit_rotation_from_journal(files: &RotationFiles) -> Result<()> {
     remove_file_if_exists(&files.backup_copy)?;
     remove_file_if_exists(&files.primary_key_copy)?;
     remove_file_if_exists(&files.backup_key_copy)?;
-    remove_file_if_exists(&files.journal)
+    remove_file_if_exists(&files.journal)?;
+
+    // WHY(#4875): a validation record's trust claim ("this exact secret was
+    // accepted by the provider at time T") is bound to the secret VALUE, not
+    // to a primary/backup role label. Rotation swaps which value sits behind
+    // each label, so any prior validation stamp at either path now describes
+    // the wrong secret. Clear both rather than silently misattributing a
+    // validation result post-swap — an operator can re-validate in one click.
+    remove_file_if_exists(&validation_sidecar_path(&files.primary_path))?;
+    remove_file_if_exists(&validation_sidecar_path(&files.backup_path))
 }
 
 fn replace_with_copy(source: &Path, destination: &Path, temp: &Path) -> Result<()> {
@@ -435,13 +612,17 @@ fn metadata_from_path(
     root: &Path,
     provider: &str,
     role: ManagedCredentialRole,
-    last_validated: Option<String>,
 ) -> Result<Option<ManagedCredential>> {
     let path = credential_path(root, provider, role)?;
     let Some(file) = CredentialFile::load(&path) else {
         return Ok(None);
     };
     let status = credential_status(&file);
+    // WHY(#4875): read the persisted validation sidecar so list/refresh
+    // responses keep reflecting the last validation result instead of
+    // reverting to "never validated" on every subsequent call.
+    let validation = load_validation_record(&path);
+    let last_validated = validation.map(|record| record.validated_at.to_string());
     Ok(Some(ManagedCredential {
         id: credential_id(provider, role),
         provider: provider.to_owned(),
@@ -449,6 +630,7 @@ fn metadata_from_path(
         redacted_preview: redact_secret(file.token.expose_secret()),
         status,
         last_validated,
+        validation,
     }))
 }
 
@@ -629,26 +811,49 @@ mod tests {
         assert!(!root.join("anthropic.json").exists());
     }
 
-    #[test]
-    fn add_list_validate_remove_roundtrip() {
+    #[tokio::test]
+    async fn add_list_validate_remove_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("credentials");
         let raw = SecretString::from("sk-test-roundtrip-secret");
+        // WHY: a provider name this crate has no live-check strategy for, so
+        // this roundtrip stays network-free and deterministic — the
+        // Anthropic/OpenAI live-check paths get their own dedicated tests.
+        let provider = "acme-test-provider";
 
-        let added = add(&root, "anthropic", &raw, ManagedCredentialRole::Backup).unwrap();
-        assert_eq!(added.id, "anthropic:backup");
+        let added = add(&root, provider, &raw, ManagedCredentialRole::Backup).unwrap();
+        assert_eq!(added.id, format!("{provider}:backup"));
         assert_eq!(added.redacted_preview, "...cret");
         assert!(!added.redacted_preview.contains("roundtrip"));
 
         let listed = list(&root).unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed.first().unwrap().redacted_preview, "...cret");
+        assert!(
+            listed.first().unwrap().validation.is_none(),
+            "must report never-validated before validate() has run"
+        );
 
-        let validated = validate(&root, "anthropic:backup").unwrap();
+        let id = format!("{provider}:backup");
+        let validated = validate(&root, &id).await.unwrap();
         assert_eq!(validated.status, ManagedCredentialStatus::Valid);
         assert!(validated.last_validated.is_some());
+        assert_eq!(
+            validated.validation.map(|record| record.state),
+            Some(ProviderValidationState::Unknown),
+            "unrecognized provider must report Unknown, never a guessed Accepted/Rejected"
+        );
 
-        remove(&root, "anthropic:backup").unwrap();
+        // WHY(#4875): the validation outcome must persist into a later list
+        // call, not just the immediate validate() response.
+        let relisted = list(&root).unwrap();
+        assert_eq!(
+            relisted.first().unwrap().validation.map(|r| r.state),
+            Some(ProviderValidationState::Unknown),
+            "list() must reflect the persisted validation outcome"
+        );
+
+        remove(&root, &id).unwrap();
         assert!(list(&root).unwrap().is_empty());
     }
 
@@ -887,6 +1092,319 @@ mod tests {
             primary.token.expose_secret(),
             "sk-first-1111",
             "duplicate add must not overwrite the existing credential"
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_malformed_short_circuits_without_network() {
+        // WHY: `add()` rejects short/empty secrets, so an empty-token file can
+        // only exist via direct construction (e.g. external corruption).
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("anthropic.json");
+        let empty = CredentialFile {
+            token: SecretString::from(""),
+            refresh_token: None,
+            expires_at: None,
+            scopes: None,
+            subscription_type: None,
+        };
+        empty.save(&path).unwrap();
+
+        let result = validate(&root, "anthropic:primary").await.unwrap();
+        assert_eq!(
+            result.validation.map(|r| r.state),
+            Some(ProviderValidationState::Malformed),
+            "an empty stored secret must never reach the network"
+        );
+    }
+
+    #[tokio::test]
+    async fn validate_expired_short_circuits_without_network() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        std::fs::create_dir_all(&root).unwrap();
+        let path = root.join("anthropic.json");
+        let expired = CredentialFile {
+            token: SecretString::from("sk-long-enough-but-expired"),
+            refresh_token: None,
+            expires_at: Some(1),
+            scopes: None,
+            subscription_type: None,
+        };
+        expired.save(&path).unwrap();
+
+        let result = validate(&root, "anthropic:primary").await.unwrap();
+        assert_eq!(result.status, ManagedCredentialStatus::Expired);
+        assert_eq!(
+            result.validation.map(|r| r.state),
+            Some(ProviderValidationState::Expired),
+            "a locally-expired credential must never reach the network"
+        );
+    }
+
+    #[test]
+    fn rotate_clears_stale_validation_sidecars() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("credentials");
+        add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-primary-1111"),
+            ManagedCredentialRole::Primary,
+        )
+        .unwrap();
+        add(
+            &root,
+            "anthropic",
+            &SecretString::from("sk-backup-2222"),
+            ManagedCredentialRole::Backup,
+        )
+        .unwrap();
+        let primary_path =
+            credential_path(&root, "anthropic", ManagedCredentialRole::Primary).unwrap();
+        save_validation_record(
+            &primary_path,
+            &ProviderValidationRecord {
+                state: ProviderValidationState::Accepted,
+                validated_at: jiff::Timestamp::now(),
+            },
+        )
+        .unwrap();
+        assert!(load_validation_record(&primary_path).is_some());
+
+        rotate(&root, "anthropic").unwrap();
+
+        // WHY(#4875): the secret formerly at `primary_path` moved to
+        // `backup_path` (and vice versa) — the stale stamp must not survive
+        // at either path, since it would now describe the wrong secret.
+        let backup_path =
+            credential_path(&root, "anthropic", ManagedCredentialRole::Backup).unwrap();
+        assert!(
+            load_validation_record(&primary_path).is_none(),
+            "rotation must clear the primary-path validation stamp"
+        );
+        assert!(
+            load_validation_record(&backup_path).is_none(),
+            "rotation must clear the backup-path validation stamp"
+        );
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod provider_validation_tests {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+
+    // WHY(#5247): reqwest 0.13 with rustls-no-provider panics with
+    // "No provider set" if no crypto provider is installed before any
+    // `Client` is constructed. Each test that constructs a `Client` must be
+    // self-contained and not rely on another test having installed it first.
+    fn ensure_crypto_provider() {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        });
+    }
+
+    #[tokio::test]
+    async fn anthropic_accepted_on_2xx() {
+        ensure_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/v1/models", server.uri());
+        let client = reqwest::Client::new();
+        let outcome = check_anthropic_key(&client, &SecretString::from("sk-good-key"), &url).await;
+        assert_eq!(outcome, ProviderValidationState::Accepted);
+    }
+
+    #[tokio::test]
+    async fn anthropic_rejected_on_401() {
+        ensure_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(
+                ResponseTemplate::new(401)
+                    .set_body_string(r#"{"error":{"type":"authentication_error"}}"#),
+            )
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/v1/models", server.uri());
+        let client = reqwest::Client::new();
+        let outcome = check_anthropic_key(&client, &SecretString::from("sk-bad-key"), &url).await;
+        assert_eq!(outcome, ProviderValidationState::Rejected);
+    }
+
+    #[tokio::test]
+    async fn anthropic_rejected_on_403() {
+        ensure_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(403))
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/v1/models", server.uri());
+        let client = reqwest::Client::new();
+        let outcome = check_anthropic_key(&client, &SecretString::from("sk-bad-key"), &url).await;
+        assert_eq!(outcome, ProviderValidationState::Rejected);
+    }
+
+    #[tokio::test]
+    async fn anthropic_unreachable_on_server_error() {
+        ensure_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/v1/models", server.uri());
+        let client = reqwest::Client::new();
+        let outcome = check_anthropic_key(&client, &SecretString::from("sk-key"), &url).await;
+        assert_eq!(
+            outcome,
+            ProviderValidationState::Unreachable,
+            "a 5xx must never be reported as Rejected — it is not proof the key is bad"
+        );
+    }
+
+    #[tokio::test]
+    async fn anthropic_unreachable_on_connection_failure() {
+        ensure_crypto_provider();
+        // WHY: bind an ephemeral port then drop the listener immediately so a
+        // connection attempt is refused deterministically and fast, with no
+        // reliance on a timeout.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let url = format!("http://127.0.0.1:{port}/v1/models");
+
+        let client = reqwest::Client::new();
+        let outcome = check_anthropic_key(&client, &SecretString::from("sk-key"), &url).await;
+        assert_eq!(outcome, ProviderValidationState::Unreachable);
+    }
+
+    #[tokio::test]
+    async fn openai_accepted_on_2xx() {
+        ensure_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/v1/models", server.uri());
+        let client = reqwest::Client::new();
+        let outcome = check_openai_key(&client, &SecretString::from("sk-good-key"), &url).await;
+        assert_eq!(outcome, ProviderValidationState::Accepted);
+    }
+
+    #[tokio::test]
+    async fn openai_rejected_on_401() {
+        ensure_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/v1/models", server.uri());
+        let client = reqwest::Client::new();
+        let outcome = check_openai_key(&client, &SecretString::from("sk-bad"), &url).await;
+        assert_eq!(outcome, ProviderValidationState::Rejected);
+    }
+
+    #[tokio::test]
+    async fn dispatch_routes_unknown_provider_without_network() {
+        // NOTE: no crypto provider is installed and no mock server is
+        // started — if this ever dispatched to a live check it would panic
+        // (missing crypto provider) or fail to connect rather than silently
+        // pass, making a regression here fail loudly instead of hanging.
+        let outcome =
+            check_provider_key("some-unrecognized-provider", &SecretString::from("sk-x")).await;
+        assert_eq!(outcome, ProviderValidationState::Unknown);
+    }
+
+    #[tokio::test]
+    async fn dispatch_routes_claude_alias_like_anthropic() {
+        ensure_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+            .mount(&server)
+            .await;
+
+        // WHY: check_provider_key hardcodes the real Anthropic URL for
+        // "anthropic"/"claude", so this exercises the case-insensitive name
+        // match directly rather than the unreachable-in-tests real endpoint.
+        let outcome = check_anthropic_key(
+            &reqwest::Client::new(),
+            &SecretString::from("sk-good-key"),
+            &format!("{}/v1/models", server.uri()),
+        )
+        .await;
+        assert_eq!(outcome, ProviderValidationState::Accepted);
+    }
+
+    // SECURITY(#4875): a validation call must never leak the credential value
+    // it is checking, on any outcome.
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn credential_secret_never_appears_in_logs_on_rejection() {
+        ensure_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/v1/models"))
+            .respond_with(ResponseTemplate::new(401))
+            .mount(&server)
+            .await;
+
+        let url = format!("{}/v1/models", server.uri());
+        let client = reqwest::Client::new();
+        let secret = "sk-supersecret-value-1234";
+        let outcome = check_anthropic_key(&client, &SecretString::from(secret), &url).await;
+
+        assert_eq!(outcome, ProviderValidationState::Rejected);
+        assert!(
+            !logs_contain(secret),
+            "the credential value must never appear in validation logs"
+        );
+    }
+
+    #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn credential_secret_never_appears_in_logs_on_transport_failure() {
+        ensure_crypto_provider();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let url = format!("http://127.0.0.1:{port}/v1/models");
+
+        let client = reqwest::Client::new();
+        let secret = "sk-supersecret-transport-fail-5678";
+        let outcome = check_anthropic_key(&client, &SecretString::from(secret), &url).await;
+
+        assert_eq!(outcome, ProviderValidationState::Unreachable);
+        assert!(
+            !logs_contain(secret),
+            "the credential value must never appear in transport-failure logs"
         );
     }
 }

@@ -1,8 +1,11 @@
+use serde::{Deserialize, Serialize};
+
 use crate::rich_text::RichText;
 
 /// A block-level element in the document tree.
 // kanon:ignore RUST/non-exhaustive-enum — public enum is part of stable crate API; exhaustive matching is intentionally supported
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum Block {
     /// Section heading at a given depth (1 = h1, 6 = h6).
     Heading {
@@ -41,7 +44,7 @@ pub enum Block {
 }
 
 /// A typed admonition block.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Note {
     /// The semantic admonition kind.
     pub kind: NoteKind,
@@ -50,7 +53,8 @@ pub struct Note {
 }
 
 /// Semantic kind for a [`Note`] block.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum NoteKind {
     /// A plain note.
@@ -88,7 +92,7 @@ impl NoteKind {
 }
 
 /// A data table.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Table {
     /// Column header labels.
     pub headers: Vec<String>,
@@ -97,14 +101,14 @@ pub struct Table {
 }
 
 /// A single list item.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ListItem {
     /// The item text, may be styled.
     pub content: RichText,
 }
 
 /// An embedded raster image.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Image {
     /// Raw image bytes (PNG, JPEG, etc.).
     pub data: Vec<u8>,

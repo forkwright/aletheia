@@ -370,7 +370,11 @@ fn persist_refresh_success(
             // SAFETY: logging write-failure error, not the token value
             error!(error = %e, "failed to write refreshed credential file, keeping previous in-memory token"); // kanon:ignore SECURITY/credential-logging -- logs write-failure error, not the token
             crate::metrics::record_credential_write_failure();
-            crate::metrics::record_token_refresh(true);
+            // SECURITY(#5457): a refresh that obtained new tokens but failed to
+            // persist them is a real degraded state, not a success — the
+            // in-memory token advances while the on-disk credential goes stale.
+            // Must count against the error rate, never the ok rate.
+            crate::metrics::record_token_refresh(false);
         }
     }
 }

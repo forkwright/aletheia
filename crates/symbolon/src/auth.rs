@@ -98,7 +98,17 @@ impl AuthService {
             error::InvalidCredentialsSnafu.build()
         })?;
 
-        let valid = password::verify_password(password, &user.password_hash)?;
+        // SECURITY(#5459): verify_password's Err path (e.g. a corrupted or
+        // malformed stored hash) must still count as a failed attempt — the
+        // `?` early-return used to bypass the metric entirely, making
+        // corrupted-hash logins invisible to brute-force/anomaly monitoring.
+        let valid = match password::verify_password(password, &user.password_hash) {
+            Ok(v) => v,
+            Err(e) => {
+                crate::metrics::record_auth_attempt("password", false);
+                return Err(e);
+            }
+        };
         if !valid {
             crate::metrics::record_auth_attempt("password", false);
             return Err(error::InvalidCredentialsSnafu.build());
@@ -274,11 +284,24 @@ impl AuthService {
         crate::credential::admin::add(root, provider, key, role)
     }
 
-    /// Validate a managed provider credential using local secret-file semantics.
+    /// Validate a managed provider credential.
+    ///
+    /// Checks local metadata first (empty secret, past expiry) and only makes
+    /// a network round trip to the provider when local inspection cannot
+    /// already answer the question and the provider is one this crate knows
+    /// how to reach live. See [`crate::credential::admin::validate`].
     ///
     /// The response never contains raw secret material.
-    pub fn validate_credential(&self, root: &Path, id: &str) -> Result<ManagedCredential> {
-        crate::credential::admin::validate(root, id)
+    ///
+    /// WHY: no HTTP client is held as an `AuthService` field or built here.
+    /// [`crate::credential::admin::validate`] builds one lazily, only when a
+    /// live provider round trip is actually needed — building one eagerly
+    /// (in this method, or in `new`/`in_memory`) would force every call,
+    /// including validations that short-circuit locally, to require a
+    /// rustls crypto provider already installed process-wide, which only
+    /// the real server binary's `main` does.
+    pub async fn validate_credential(&self, root: &Path, id: &str) -> Result<ManagedCredential> {
+        crate::credential::admin::validate(root, id).await
     }
 
     /// Swap a provider's primary and backup credentials.
@@ -415,6 +438,59 @@ mod tests {
         let svc = memory_service();
         let result = svc.login("nobody", &secret("password"));
         assert!(result.is_err());
+    }
+
+    /// Extract the numeric value of the metric line matching `prefix`, or 0 if absent.
+    fn counter_value(out: &str, prefix: &str) -> u64 {
+        for line in out.lines() {
+            if let Some(rest) = line.strip_prefix(prefix)
+                && let Ok(v) = rest.trim().parse::<u64>()
+            {
+                return v;
+            }
+        }
+        0
+    }
+
+    // SECURITY(#5459): a `verify_password` error (malformed/corrupted stored
+    // hash) must still count as a failed auth attempt — the `?` early-return
+    // used to bypass the metric entirely.
+    #[test]
+    fn login_with_malformed_stored_hash_records_failed_attempt() {
+        let svc = memory_service();
+        let id = koina::ulid::Ulid::new().to_string();
+        // Bypass hash_password to plant a hash string that fails to parse as
+        // a PHC-formatted Argon2 hash, forcing `verify_password` to return Err.
+        svc.store
+            .create_user(&id, "corrupted", "not-a-valid-phc-hash", Role::Operator)
+            .unwrap();
+
+        let registry = koina::metrics::MetricsRegistry::new();
+        registry.with_registry(crate::metrics::register);
+        let mut before_buf = String::new();
+        registry.encode(&mut before_buf).unwrap();
+        let before = counter_value(
+            &before_buf,
+            "aletheia_auth_attempts_total{method=\"password\",status=\"error\"} ",
+        );
+
+        let result = svc.login("corrupted", &secret("whatever"));
+        assert!(
+            result.is_err(),
+            "login against a malformed stored hash must fail"
+        );
+
+        let mut after_buf = String::new();
+        registry.encode(&mut after_buf).unwrap();
+        let after = counter_value(
+            &after_buf,
+            "aletheia_auth_attempts_total{method=\"password\",status=\"error\"} ",
+        );
+        assert_eq!(
+            after - before,
+            1,
+            "verify_password's Err path must record a failed auth attempt; before={before_buf} after={after_buf}"
+        );
     }
 
     #[test]

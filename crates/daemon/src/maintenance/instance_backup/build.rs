@@ -19,7 +19,30 @@ impl BackupBuild {
             total_bytes: 0,
             total_files: 0,
             snapshot_time: jiff::Zoned::now().to_string(),
+            first_entry_copied_at: None,
+            last_entry_copied_at: None,
         }
+    }
+
+    /// Record that an entry's copy just completed, for skew measurement.
+    fn record_copy_instant(&mut self) {
+        let now = std::time::Instant::now();
+        self.first_entry_copied_at.get_or_insert(now);
+        self.last_entry_copied_at = Some(now);
+    }
+
+    /// Observed wall-clock spread between the first and last entry actually
+    /// copied into this backup set, in seconds.
+    ///
+    /// WHY(#6442): `snapshot_epoch` is stamped once before any copying starts
+    /// and cannot show cross-store skew. This is sampled from a monotonic
+    /// clock around each real copy, so it is immune to wall-clock
+    /// adjustments and genuinely answers "how non-atomic was this backup".
+    /// `None` when fewer than two entries were copied (nothing to measure).
+    pub(crate) fn observed_snapshot_skew_seconds(&self) -> Option<f64> {
+        let first = self.first_entry_copied_at?;
+        let last = self.last_entry_copied_at?;
+        Some(last.saturating_duration_since(first).as_secs_f64())
     }
 
     pub(crate) fn copy_entry(
@@ -36,11 +59,12 @@ impl BackupBuild {
         let restore_path = self.restore_path_for_source(&src)?;
         self.total_bytes += bytes;
         self.total_files += file_count;
+        self.record_copy_instant();
         let entry = StoreEntry {
             name: String::from(name),
             source_path: src,
             backup_path,
-            snapshot_time: self.snapshot_time.clone(),
+            snapshot_time: jiff::Zoned::now().to_string(),
             byte_count: bytes,
             status: String::from(STATUS_OK),
             agent_id: None,
@@ -78,11 +102,12 @@ impl BackupBuild {
         let restore_path = self.restore_path_for_source(&src)?;
         self.total_bytes += bytes;
         self.total_files += file_count;
+        self.record_copy_instant();
         let entry = StoreEntry {
             name: String::from(name),
             source_path: src,
             backup_path,
-            snapshot_time: self.snapshot_time.clone(),
+            snapshot_time: jiff::Zoned::now().to_string(),
             byte_count: bytes,
             status: String::from(STATUS_OK),
             agent_id: Some(agent_id),

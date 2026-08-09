@@ -3,13 +3,14 @@
 use std::collections::BTreeMap;
 
 use poiesis_core::bodies::{Sheet, Workbook, WorkbookCell};
-use poiesis_core::factbase::ResolvedFact;
+use poiesis_core::factbase::{Factbase, ResolvedFact};
 use poiesis_core::ids::FactId;
 use poiesis_core::scalar::{Scalar, ScalarKind, Unit};
 use poiesis_theme::resolved::ResolvedTheme;
 use rust_xlsxwriter::{Format, Workbook as XlsxWorkbook};
 
 use crate::format::{cell_format, header_format, totals_format};
+use crate::sources::append_sources_sheet;
 use crate::totals::compute_totals;
 
 /// Shorthand for workbook-level results.
@@ -23,16 +24,26 @@ type Result<T> = std::result::Result<T, crate::error::WorkbookError>;
 ///
 /// `theme` drives header formatting via [`crate::format::header_format`] and
 /// cell number formats via [`crate::format::cell_format`].
+///
+/// `provenance`, when `Some`, appends a "Sources" worksheet tracing every
+/// cited fact back to its [`poiesis_core::factbase::Source`] (B-007 §5:
+/// per-cell provenance from the factbase through xlsx emission). `None`
+/// renders the data sheets only, unchanged from the pre-tracing shape.
 pub fn render_workbook(
     // kanon:ignore RUST/pub-visibility — public crate API re-exported from lib.rs; no sibling consumer yet
     wb: &Workbook,
     facts: &BTreeMap<FactId, ResolvedFact>,
     theme: &ResolvedTheme,
+    provenance: Option<&Factbase>,
 ) -> std::result::Result<Vec<u8>, crate::error::WorkbookError> {
     let mut xlsx_wb = XlsxWorkbook::new();
 
     for sheet in &wb.sheets {
         render_sheet(&mut xlsx_wb, sheet, facts, theme)?;
+    }
+
+    if let Some(factbase) = provenance {
+        append_sources_sheet(&mut xlsx_wb, wb, factbase, theme)?;
     }
 
     xlsx_wb
