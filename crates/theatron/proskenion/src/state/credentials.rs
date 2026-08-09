@@ -383,7 +383,10 @@ mod tests {
 
     #[test]
     fn validation_status_from_wire_parses_every_known_state() {
-        assert_eq!(ValidationStatus::from_wire("valid"), ValidationStatus::Valid);
+        assert_eq!(
+            ValidationStatus::from_wire("valid"),
+            ValidationStatus::Valid
+        );
         assert_eq!(
             ValidationStatus::from_wire("invalid"),
             ValidationStatus::Invalid
@@ -420,8 +423,7 @@ mod tests {
 
     fn fake_jwt_with_role(role: &str) -> String {
         let payload = serde_json::json!({"role": role, "sub": "test"});
-        let payload_b64 =
-            koina::base64::encode_url_safe_no_pad(payload.to_string().as_bytes());
+        let payload_b64 = koina::base64::encode_url_safe_no_pad(payload.to_string().as_bytes());
         format!("header.{payload_b64}.signature")
     }
 
@@ -468,8 +470,7 @@ mod tests {
     #[test]
     fn decode_role_claim_none_when_role_claim_absent() {
         let payload = serde_json::json!({"sub": "test"});
-        let payload_b64 =
-            koina::base64::encode_url_safe_no_pad(payload.to_string().as_bytes());
+        let payload_b64 = koina::base64::encode_url_safe_no_pad(payload.to_string().as_bytes());
         let token = format!("header.{payload_b64}.sig");
         assert_eq!(decode_role_claim(&token), None);
     }
