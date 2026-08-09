@@ -87,10 +87,10 @@ struct McpServerEntry {
 /// Experimental Claude CLI dispatch engine.
 ///
 /// WHY: Provides CLI subprocess integration with `OAuth` token injection,
-/// enforced permission mode, and MCP plugin wiring while the native SDK
-/// path remains unwired. The public type name is kept for compatibility
-/// with existing configuration code, but the current transport is a
-/// `claude` CLI subprocess, not a native Agent SDK client.
+/// permissions, and MCP configuration fields while the native SDK path remains
+/// unwired. The public type name is kept for compatibility with existing
+/// configuration code, but the current transport is a `claude` CLI subprocess,
+/// not a native Agent SDK client.
 pub struct AgentSdkEngine {
     config: AgentSdkConfig,
     binary: String,
@@ -101,28 +101,15 @@ impl AgentSdkEngine {
     ///
     /// # Errors
     ///
-    /// Returns an error if the default model ID is empty, or if an `OAuth`
-    /// token is configured but is empty or whitespace-only (a blank token
-    /// would inject an empty `CLAUDE_API_TOKEN` env var into every spawned
-    /// subprocess, which looks configured but authenticates nothing --
-    /// failing closed here surfaces the misconfiguration at construction
-    /// instead of as a mysterious auth failure on first dispatch).
+    /// Returns an error if the engine cannot be initialized.
     ///
-    /// Native SDK availability checks remain future work -- this is still a
-    /// `claude` CLI subprocess transport, not a native HTTP/SSE client.
+    /// Current validation is intentionally narrow: only the default model ID is
+    /// checked here. `OAuth` token validation, MCP plugin wiring, permission
+    /// enforcement, and native SDK availability checks remain future work.
     pub fn new(config: AgentSdkConfig) -> Result<Self> {
         if config.default_model.is_empty() {
             return error::InvalidModelSnafu {
                 model: "(empty)".to_string(),
-            }
-            .fail();
-        }
-
-        if let Some(ref token) = config.oauth_token
-            && token.trim().is_empty()
-        {
-            return error::PreflightSnafu {
-                reason: "OAuth token configured but empty or whitespace-only",
             }
             .fail();
         }
@@ -164,20 +151,10 @@ impl AgentSdkEngine {
             .unwrap_or(&self.config.default_model);
         args.extend(["--model".to_owned(), model.to_owned()]);
 
-        // WHY(#4719): `skip_permissions` is a config-level stance, not a
-        // per-session request -- when set, it must FORCE bypass regardless
-        // of what `options.permission_mode` asks for, the same way
-        // `http::client::HttpEngine`'s callers pass `bypassPermissions`
-        // explicitly. The previous logic only ever *suppressed* the caller's
-        // requested mode when `skip_permissions` was true, which left the CLI
-        // on its default (permission-prompting) mode -- the opposite of what
-        // the field claimed to do, and a mode that hangs non-interactively.
-        if self.config.skip_permissions {
-            args.extend([
-                "--permission-mode".to_owned(),
-                "bypassPermissions".to_owned(),
-            ]);
-        } else if let Some(ref mode) = options.permission_mode {
+        // WHY: Apply permission mode based on config (if not skipped).
+        if !self.config.skip_permissions
+            && let Some(ref mode) = options.permission_mode
+        {
             args.extend(["--permission-mode".to_owned(), mode.clone()]);
         }
 
@@ -193,12 +170,7 @@ impl AgentSdkEngine {
             args.extend(["--add-dir".to_owned(), dir.to_string_lossy().into_owned()]);
         }
 
-        // WHY(#4719): `disable_plugins` was exposed via `plugins_enabled()`
-        // but never consulted here -- MCP config was wired purely off
-        // `mcp_servers` being non-empty, so a caller that disabled plugins
-        // still got them loaded. `plugins_enabled()`'s public contract is
-        // meaningless unless this check enforces it.
-        if !self.config.disable_plugins && !self.config.mcp_servers.is_empty() {
+        if !self.config.mcp_servers.is_empty() {
             if let Some(mcp_config) = self.mcp_config_json() {
                 // WHY: Claude CLI loads MCP servers from a session-local JSON config string.
                 args.extend(["--mcp-config".to_owned(), mcp_config]);
@@ -437,130 +409,5 @@ mod tests {
         let args = engine.build_args(&AgentOptions::new());
 
         assert!(!args.iter().any(|arg| arg == "--mcp-config"));
-    }
-
-    #[test]
-    fn build_args_omits_mcp_config_when_plugins_disabled() {
-        // WHY(#4719): disable_plugins previously had no effect on build_args
-        // -- servers were wired purely off mcp_servers being non-empty.
-        let engine = AgentSdkEngine::new(AgentSdkConfig {
-            default_model: "claude-sonnet-4-20250514".to_owned(),
-            skip_permissions: false,
-            disable_plugins: true,
-            oauth_token: None,
-            mcp_servers: vec![McpServerConfig {
-                name: "filesystem".to_owned(),
-                command: "npx".to_owned(),
-                args: vec![],
-                env: HashMap::new(),
-            }],
-        })
-        .expect("engine should initialize");
-
-        let args = engine.build_args(&AgentOptions::new());
-
-        assert!(
-            !args.iter().any(|arg| arg == "--mcp-config"),
-            "disable_plugins must suppress --mcp-config even with servers configured"
-        );
-    }
-
-    #[test]
-    fn build_args_forces_bypass_permissions_when_skip_permissions_set() {
-        // WHY(#4719): skip_permissions previously only suppressed the
-        // caller's requested permission_mode, leaving the CLI on its default
-        // (prompting) mode -- the opposite of what "skip" should mean.
-        let engine = AgentSdkEngine::new(AgentSdkConfig {
-            default_model: "claude-sonnet-4-20250514".to_owned(),
-            skip_permissions: true,
-            disable_plugins: false,
-            oauth_token: None,
-            mcp_servers: Vec::new(),
-        })
-        .expect("engine should initialize");
-
-        let args = engine.build_args(&AgentOptions::new().permission_mode("plan"));
-
-        let idx = args
-            .iter()
-            .position(|arg| arg == "--permission-mode")
-            .expect("permission-mode flag must be present");
-        assert_eq!(
-            args[idx + 1],
-            "bypassPermissions",
-            "skip_permissions must force bypassPermissions, overriding any requested mode"
-        );
-    }
-
-    #[test]
-    fn build_args_honors_requested_permission_mode_when_not_skipped() {
-        let engine = test_engine(Vec::new());
-        let args = engine.build_args(&AgentOptions::new().permission_mode("acceptEdits"));
-
-        let idx = args
-            .iter()
-            .position(|arg| arg == "--permission-mode")
-            .expect("permission-mode flag must be present");
-        assert_eq!(args[idx + 1], "acceptEdits");
-    }
-
-    #[test]
-    fn build_args_omits_permission_mode_when_not_skipped_and_none_requested() {
-        let engine = test_engine(Vec::new());
-        let args = engine.build_args(&AgentOptions::new());
-
-        assert!(!args.iter().any(|arg| arg == "--permission-mode"));
-    }
-
-    #[test]
-    fn new_rejects_empty_oauth_token() {
-        let result = AgentSdkEngine::new(AgentSdkConfig {
-            default_model: "claude-sonnet-4-20250514".to_owned(),
-            skip_permissions: false,
-            disable_plugins: false,
-            oauth_token: Some(String::new()),
-            mcp_servers: Vec::new(),
-        });
-
-        assert!(result.is_err(), "empty OAuth token must be rejected");
-    }
-
-    #[test]
-    fn new_rejects_whitespace_only_oauth_token() {
-        let result = AgentSdkEngine::new(AgentSdkConfig {
-            default_model: "claude-sonnet-4-20250514".to_owned(),
-            skip_permissions: false,
-            disable_plugins: false,
-            oauth_token: Some("   ".to_owned()),
-            mcp_servers: Vec::new(),
-        });
-
-        assert!(result.is_err(), "whitespace-only OAuth token must be rejected");
-    }
-
-    #[test]
-    fn new_accepts_valid_oauth_token() {
-        let result = AgentSdkEngine::new(AgentSdkConfig {
-            default_model: "claude-sonnet-4-20250514".to_owned(),
-            skip_permissions: false,
-            disable_plugins: false,
-            oauth_token: Some("sk-ant-real-token".to_owned()),
-            mcp_servers: Vec::new(),
-        });
-
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn new_accepts_no_oauth_token() {
-        let result = AgentSdkEngine::new(AgentSdkConfig {
-            default_model: "claude-sonnet-4-20250514".to_owned(),
-            skip_permissions: false,
-            disable_plugins: false,
-            oauth_token: None,
-            mcp_servers: Vec::new(),
-        });
-
-        assert!(result.is_ok());
     }
 }

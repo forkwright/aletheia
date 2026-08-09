@@ -234,18 +234,6 @@ pub enum SessionEvent {
         /// Error description.
         message: String,
     },
-    /// Rate limit utilization update from the provider.
-    ///
-    /// WHY(#4719): previously the wire layer (`http::stream::EventStream`)
-    /// silently swallowed every rate-limit reading below its hardcoded abort
-    /// threshold -- nothing observed utilization until the session was
-    /// already being aborted. Surfacing it as a typed event lets the abort
-    /// threshold logic (and future consumers) see the trend, not just the
-    /// terminal breach.
-    RateLimit {
-        /// Fraction of rate limit consumed, `0.0` to `1.0`.
-        utilization: f64,
-    },
 }
 
 /// Final result of a completed session.

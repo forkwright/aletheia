@@ -18,9 +18,6 @@ pub(crate) struct EventAccumulator {
     pub num_turns: u32,
     /// Collected text fragments from assistant output.
     pub text_fragments: Vec<String>,
-    /// Highest rate-limit utilization observed during this stream, `0.0` if
-    /// no `SessionEvent::RateLimit` was seen.
-    pub peak_rate_limit_utilization: f64,
 }
 
 impl EventAccumulator {
@@ -29,7 +26,6 @@ impl EventAccumulator {
             cost_usd: 0.0,
             num_turns: 0,
             text_fragments: Vec::new(),
-            peak_rate_limit_utilization: 0.0,
         }
     }
 }
@@ -145,16 +141,6 @@ pub(crate) async fn process_events(
                     message,
                 };
             }
-            SessionEvent::RateLimit { utilization } => {
-                // WHY(#4719): the hard abort decision still lives at the wire
-                // layer (http::stream::EventStream, against the same
-                // RATE_LIMIT_ABORT_THRESHOLD constant) so a session already
-                // over threshold never reaches here as a normal event. This
-                // tracks the peak for a below-threshold stream so a caller
-                // can inspect how close a session ran to the limit without
-                // needing to relocate the abort decision itself.
-                acc.peak_rate_limit_utilization = acc.peak_rate_limit_utilization.max(utilization);
-            }
         }
     }
 }
@@ -197,9 +183,17 @@ pub fn extract_pr_url(text: &str) -> Option<&str> {
 /// The utilization threshold above which sessions should be aborted.
 ///
 /// WHY: At >98% utilization the API will start rejecting requests imminently.
-/// Aborting early avoids wasting turns on requests that will fail. This is
-/// the single source of truth for the cutoff -- `http::stream::EventStream`
-/// reads it rather than carrying its own literal (#4719).
+/// Aborting early avoids wasting turns on requests that will fail.
+///
+/// NOTE: Will be consumed by the session manager once `SessionEvent` gains a
+/// rate-limit variant (pending Agent SDK integration).
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "constant defined for use once SessionEvent gains rate-limit events"
+    )
+)]
 pub(crate) const RATE_LIMIT_ABORT_THRESHOLD: f64 = 0.98;
 
 #[cfg(test)]
@@ -337,32 +331,6 @@ mod tests {
                     Some("hello ")
                 );
                 assert_eq!(acc.text_fragments.get(1).map(String::as_str), Some("world"));
-            }
-            other => panic!("expected Complete, got {other:?}"),
-        }
-    }
-
-    #[tokio::test]
-    async fn process_events_tracks_peak_rate_limit_utilization() {
-        let engine = MockEngine::new(vec![MockOutcome::Success {
-            events: vec![
-                SessionEvent::RateLimit { utilization: 0.3 },
-                SessionEvent::TurnComplete { turn: 1 },
-                SessionEvent::RateLimit { utilization: 0.6 },
-                SessionEvent::RateLimit { utilization: 0.4 },
-            ],
-            result: make_result("sess-rl", true),
-        }]);
-
-        let mut handle = engine
-            .spawn_session(&make_spec(), &AgentOptions::new())
-            .await
-            .unwrap();
-
-        let outcome = process_events(&mut handle, None, None).await;
-        match outcome {
-            StreamOutcome::Complete(acc) => {
-                assert!((acc.peak_rate_limit_utilization - 0.6).abs() < f64::EPSILON);
             }
             other => panic!("expected Complete, got {other:?}"),
         }

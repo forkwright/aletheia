@@ -753,13 +753,11 @@ impl EnergeiaStore {
 
     /// Export a dispatch bundled with all of its child session records.
     ///
-    /// WHY(#4800): dispatch is one of the places Aletheia can become a
-    /// serious harness rather than a chat surface -- each child agent run
-    /// should be inspectable after the fact. This bundles the parent
-    /// dispatch with its full per-session attribution (model, cost, cache
-    /// usage, failure class, resumes) in one call so external tooling (a CLI
-    /// command, an HTTP endpoint) doesn't need to know this crate's fjall
-    /// key layout.
+    /// WHY(#4800): store consumers need one typed read that bundles a parent
+    /// dispatch with the prompt-level records currently persisted for it,
+    /// without depending on this crate's fjall key layout. This is a storage
+    /// helper; a user-facing inspection surface and complete attempt history
+    /// remain separate work.
     ///
     /// # Errors
     ///
@@ -777,7 +775,7 @@ impl EnergeiaStore {
     }
 
     /// Export the most recent dispatches (newest first) bundled with their
-    /// child session records, up to `limit`.
+    /// persisted prompt-level session records, up to `limit`.
     ///
     /// # Errors
     ///

@@ -497,13 +497,11 @@ fn store_roundtrip_across_reopen() {
 }
 
 #[test]
-fn multi_child_dispatch_reconstructs_after_process_restart() {
-    // WHY(#4800): a durable dispatch must be fully replayable from storage
-    // alone -- this simulates a process restart (drop the db handle, reopen
-    // a fresh one at the same path) after a multi-child dispatch completed,
-    // and verifies every child's full attribution (model, failure class,
-    // resume/corrective counts, cache usage, structured output) survives,
-    // not just the aggregate dispatch totals.
+fn session_attribution_survives_store_reopen() {
+    // WHY(#4800): drop and reopen the database to prove the optional terminal
+    // prompt fields and store-level export bundle survive storage reopening.
+    // The records are created directly, so this does not claim orchestration
+    // restart recovery or crash-safe in-flight checkpointing.
     let temp_dir = TempDir::new().unwrap();
     let spec = sample_dispatch_spec();
 
@@ -560,8 +558,8 @@ fn multi_child_dispatch_reconstructs_after_process_restart() {
 
         dispatch_id
     };
-    // WHY: dropping `store`/`db` here (end of the block above) simulates the
-    // process exiting; the reopen below simulates a fresh process starting.
+    // WHY: dropping `store`/`db` here proves the assertions below do not read
+    // from an in-memory handle or cache.
 
     let db2 = fjall::Database::builder(temp_dir.path()).open().unwrap();
     let store2 = EnergeiaStore::new(&db2).unwrap();
@@ -589,8 +587,14 @@ fn multi_child_dispatch_reconstructs_after_process_restart() {
     let s2 = &export.sessions[1];
     assert_eq!(s2.prompt_number, 2);
     assert_eq!(s2.status, SessionStatus::InfraFailure);
-    assert_eq!(s2.failure_class, Some(crate::types::FailureClass::RateLimit));
-    assert_eq!(s2.error.as_deref(), Some("rate limit utilization exceeded 98%"));
+    assert_eq!(
+        s2.failure_class,
+        Some(crate::types::FailureClass::RateLimit)
+    );
+    assert_eq!(
+        s2.error.as_deref(),
+        Some("rate limit utilization exceeded 98%")
+    );
 
     let s3 = &export.sessions[2];
     assert_eq!(s3.prompt_number, 3);

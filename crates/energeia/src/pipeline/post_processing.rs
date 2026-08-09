@@ -54,12 +54,10 @@ impl PipelineStage for PostProcessingStage {
             for outcome in &ctx.outcomes {
                 match store.create_session(store_id, outcome.prompt_number) {
                     Ok(_) => {
-                        // WHY(#4800): the full SessionOutcome attribution persists
-                        // here, not just the aggregate subset -- model/provider,
-                        // failure class, resume and corrective-attempt counts,
-                        // prompt-cache usage, and structured output all need to
-                        // survive a process restart for a child session to be
-                        // replayable from durable storage alone.
+                        // WHY(#4800): enrich the prompt record with whatever
+                        // terminal attribution this outcome made available.
+                        // This post-processing write is best-effort groundwork,
+                        // not crash-safe in-flight checkpointing or an attempt log.
                         let update = crate::store::records::SessionUpdate {
                             status: Some(outcome.status),
                             session_id: outcome.session_id.clone(),

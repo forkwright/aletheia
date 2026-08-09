@@ -64,11 +64,9 @@ impl std::fmt::Display for DispatchStatus {
 
 /// Persistent state of a single session within a dispatch.
 ///
-/// WHY(#4800): carries the same run-attribution fields as
-/// [`crate::types::SessionOutcome`] so a child session is fully replayable
-/// from durable storage alone -- model/provider, failure class, resume and
-/// corrective-attempt counts, prompt-cache usage, and structured output all
-/// persist here rather than living only in the in-memory dispatch result.
+/// WHY(#4800): preserves optional terminal prompt attribution that would
+/// otherwise exist only in the in-memory dispatch result. This record is not
+/// yet a crash-safe checkpoint or a complete per-attempt execution history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionRecord {
     /// Unique identifier for this session.
@@ -130,10 +128,8 @@ pub struct SessionRecord {
 
 /// Fields that can be updated on a session after creation.
 ///
-/// `None` means "leave unchanged"; every field is written at most once, in
-/// the single post-processing update per outcome, so "leave unchanged" and
-/// "not yet known" coincide -- there is no need to distinguish "unset" from
-/// "explicitly cleared."
+/// `None` means "leave unchanged." This update shape cannot explicitly clear
+/// an optional field once it has been persisted.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionUpdate {
     /// New status for the session, if changed.
@@ -168,10 +164,10 @@ pub struct SessionUpdate {
 
 /// A dispatch record bundled with all of its child session records.
 ///
-/// WHY(#4800): inspection/export tooling outside this crate (a CLI command,
-/// an HTTP endpoint) needs the parent dispatch plus its full per-session
-/// attribution without knowing this crate's fjall key layout. This is the
-/// exported shape.
+/// WHY(#4800): store consumers need the parent dispatch and its currently
+/// persisted prompt-level session records without knowing the fjall key
+/// layout. User-facing inspection and complete attempt history remain
+/// separate work.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DispatchExport {
     /// The parent dispatch record.
@@ -403,7 +399,10 @@ mod tests {
         assert_eq!(back.corrective_attempts, 1);
         assert_eq!(back.cache_hit_tokens, 500);
         assert_eq!(back.cache_miss_tokens, 100);
-        assert_eq!(back.structured_output, Some(serde_json::json!({"kind": "feature"})));
+        assert_eq!(
+            back.structured_output,
+            Some(serde_json::json!({"kind": "feature"}))
+        );
     }
 
     #[test]
