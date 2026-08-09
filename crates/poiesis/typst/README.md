@@ -85,8 +85,9 @@ crates, not by shelling out to the `typst` binary. Rationale:
 
 ## Attribution
 
-The compiler `World` implementation is adapted from a prior private project,
-used with permission per issue #3450. Changes from the original:
+The compiler `World` implementation is adapted from an earlier report-tooling
+implementation; see [#3450](https://github.com/forkwright/aletheia/issues/3450)
+for the architecture-adoption decision. Changes from the original:
 
 - in-memory source instead of disk-backed root;
 - synthesized `data.json` virtual file for JSON injection;
