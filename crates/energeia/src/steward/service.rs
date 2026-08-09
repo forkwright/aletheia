@@ -460,7 +460,6 @@ async fn act_on_classified(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test assertions on known-length collections"
