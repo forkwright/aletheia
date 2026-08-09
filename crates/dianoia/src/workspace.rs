@@ -199,20 +199,23 @@ impl ProjectWorkspace {
 /// check cannot see.
 fn reject_traversal_component(blockers_dir: &Path, phase_id: &str) -> Result<PathBuf> {
     let mut components = Path::new(phase_id).components();
-    match (components.next(), components.next()) {
-        (Some(std::path::Component::Normal(_)), None) => Ok(blockers_dir.join(phase_id)),
-        _ => {
-            let candidate = blockers_dir.join(phase_id);
-            let invalid = std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                format!(
-                    "phase_id must be a single path segment with no separators, \
-                     '.', or '..' components (got {phase_id:?})"
-                ),
-            );
-            Err(invalid).context(error::WorkspaceIoSnafu { path: candidate })
-        }
+    let is_single_normal_segment = matches!(
+        (components.next(), components.next()),
+        (Some(std::path::Component::Normal(_)), None)
+    );
+    if is_single_normal_segment {
+        return Ok(blockers_dir.join(phase_id));
     }
+
+    let candidate = blockers_dir.join(phase_id);
+    let invalid = std::io::Error::new(
+        std::io::ErrorKind::InvalidInput,
+        format!(
+            "phase_id must be a single path segment with no separators, \
+             '.', or '..' components (got {phase_id:?})"
+        ),
+    );
+    Err(invalid).context(error::WorkspaceIoSnafu { path: candidate })
 }
 
 #[cfg(test)]
