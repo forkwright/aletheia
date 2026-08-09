@@ -64,6 +64,12 @@ impl From<symbolon::types::ProviderValidationState> for CredentialValidationStat
             symbolon::types::ProviderValidationState::Malformed => Self::Malformed,
             symbolon::types::ProviderValidationState::Unreachable => Self::Unreachable,
             symbolon::types::ProviderValidationState::Unknown => Self::Unknown,
+            // WHY: symbolon's enum is #[non_exhaustive] so it can grow new
+            // variants without a breaking change there. Any future variant
+            // this match doesn't yet know about must fall back to `Unknown`
+            // — never silently mapped to Accepted/Rejected, which would be a
+            // provider-acceptance claim this crate cannot back up.
+            _ => Self::Unknown,
         }
     }
 }
