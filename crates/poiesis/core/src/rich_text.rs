@@ -1,5 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 /// A sequence of inline spans forming a run of styled text.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RichText {
     /// Ordered list of styled inline spans.
     pub spans: Vec<Span>,
@@ -30,7 +32,8 @@ impl From<String> for RichText {
 
 /// A single styled inline run of text.
 // kanon:ignore RUST/non-exhaustive-enum — public enum is part of stable crate API; exhaustive matching is intentionally supported
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
 pub enum Span {
     /// Unstyled text.
     Plain(String),

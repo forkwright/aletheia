@@ -2,8 +2,10 @@
 //! poiesis-lint: report prose quality linting.
 //!
 //! Checks banned words, citation coverage, structural patterns, required
-//! sections, and header length. Ported from a prior private project, used with
-//! permission.
+//! sections, and header length. Adapted from an earlier report-tooling
+//! implementation; see
+//! [#3450](https://github.com/forkwright/aletheia/issues/3450) for the
+//! architecture-adoption decision.
 
 mod banned_words;
 mod citations;

@@ -87,9 +87,7 @@ fn acceptance_round_trip_document_spec() {
         meta: Meta::new("README").expect("title"),
         theme: ThemeId::new("summus").expect("theme id"),
         facts: empty_factbase(),
-        body: Body::Document(poiesis_core::envelope::DocumentBodyRepr {
-            title: "README".to_owned(),
-        }),
+        body: Body::Document(DocumentBody::new(Document::new("README"))),
     };
     let json_text = serde_json::to_string(&spec).expect("ser");
     let back: DeliverableSpec = serde_json::from_str(&json_text).expect("de");
@@ -184,9 +182,7 @@ fn acceptance_reject_unknown_theme_when_registry_supplied() {
         meta: Meta::new("x").expect("title"),
         theme: ThemeId::new("missing").expect("theme id"),
         facts: empty_factbase(),
-        body: Body::Document(poiesis_core::envelope::DocumentBodyRepr {
-            title: "x".to_owned(),
-        }),
+        body: Body::Document(DocumentBody::new(Document::new("x"))),
     };
     let known = vec![ThemeId::new("summus").expect("theme id")];
     let err = spec

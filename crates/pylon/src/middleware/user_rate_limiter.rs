@@ -59,12 +59,17 @@ impl EndpointCategory {
         // WHY(#4773): Approval decisions, event subscriptions, and knowledge
         // mutations are control-plane operations with outsized backend impact;
         // they should not share a bucket with low-risk general traffic.
+        //
+        // WHY(#4878): credential add/validate/rotate/remove are high-trust
+        // operations (a defect here is a disclosure, not a bug) and belong in
+        // the same sensitive category, not the unrestricted general bucket.
         if path.contains("/approvals")
             || path.contains("/events/subscribe")
             || path.contains("/knowledge/ingest")
             || path.contains("/knowledge/import")
             || path.contains("/knowledge/bulk")
             || path.contains("/knowledge/entities/merge")
+            || path.contains("/system/credentials")
         {
             return Self::ControlPlane;
         }
@@ -558,4 +563,52 @@ pub fn spawn_stale_cleanup(
         }
         .instrument(span),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // SECURITY(#4878): credential add/validate/rotate/remove must never fall
+    // into the unrestricted General bucket — a defect here is a disclosure,
+    // not a bug, and they belong in the same sensitive category as approvals
+    // and knowledge mutations (#4773).
+    #[test]
+    fn credential_endpoints_are_control_plane_not_general() {
+        for path in [
+            "/api/v1/system/credentials",
+            "/api/v1/system/credentials/anthropic:primary",
+            "/api/v1/system/credentials/anthropic:primary/validate",
+            "/api/v1/system/credentials/rotate",
+        ] {
+            assert_eq!(
+                EndpointCategory::from_path(path),
+                EndpointCategory::ControlPlane,
+                "expected {path} to classify as ControlPlane, not General"
+            );
+        }
+    }
+
+    #[test]
+    fn unrelated_paths_still_classify_as_general() {
+        // WHY: a substring match ("credentials") must not accidentally widen
+        // to unrelated paths that merely contain similar text.
+        for path in ["/api/v1/system/config", "/api/v1/sessions"] {
+            assert_eq!(EndpointCategory::from_path(path), EndpointCategory::General);
+        }
+    }
+
+    #[test]
+    fn llm_and_tool_classification_still_take_precedence() {
+        // WHY: guards against a future edit reordering the if-chain and
+        // silently reclassifying LLM/tool traffic as ControlPlane.
+        assert_eq!(
+            EndpointCategory::from_path("/api/v1/sessions/messages"),
+            EndpointCategory::Llm
+        );
+        assert_eq!(
+            EndpointCategory::from_path("/api/v1/system/tools"),
+            EndpointCategory::Tool
+        );
+    }
 }
