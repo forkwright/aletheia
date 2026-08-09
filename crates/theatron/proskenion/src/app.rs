@@ -16,7 +16,6 @@ use crate::state::app::TabBar;
 use crate::state::chat::ChatSelection;
 use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionState;
-use crate::state::metrics::BudgetConfig;
 use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::planning::PlanningCapabilities;
 use crate::state::platform::{QuickInputState, WindowState};

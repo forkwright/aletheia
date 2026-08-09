@@ -366,11 +366,6 @@ pub(crate) fn load_in(base: &Path) -> Result<SettingsConfig, SettingsConfigError
 ///
 /// Returns an error if the directory cannot be created or the file cannot
 /// be written.
-pub(crate) fn save(config: &SettingsConfig) -> Result<(), SettingsConfigError> {
-    let base = dirs::config_dir().ok_or(SettingsConfigError::NoConfigDir)?;
-    save_in(config, &base)
-}
-
 pub(crate) fn save_in(config: &SettingsConfig, base: &Path) -> Result<(), SettingsConfigError> {
     let path = settings_path_from(base);
     let parent = path.parent().ok_or(SettingsConfigError::NoConfigDir)?;
