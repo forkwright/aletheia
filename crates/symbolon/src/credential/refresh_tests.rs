@@ -477,6 +477,135 @@ fn persist_refresh_success_records_circuit_breaker_success() {
     );
 }
 
+/// Extract the numeric value of the metric line matching `prefix`, or 0 if absent.
+fn counter_value(out: &str, prefix: &str) -> u64 {
+    for line in out.lines() {
+        if let Some(rest) = line.strip_prefix(prefix)
+            && let Ok(v) = rest.trim().parse::<u64>()
+        {
+            return v;
+        }
+    }
+    0
+}
+
+// SECURITY(#5457): a refresh that obtains new tokens but fails to persist
+// them is a degraded state, not a success — the in-memory token would
+// otherwise advance while the on-disk credential goes stale, and callers of
+// `TOKEN_REFRESHES_TOTAL` need the failure counted against the error rate.
+#[test]
+fn persist_refresh_success_write_failure_records_error_not_ok() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let sub = dir.path().join("locked");
+    std::fs::create_dir(&sub).expect("create subdir");
+    let path = sub.join("cred.json");
+    write_cred(&path, "tok-old", "rt-old", 1);
+
+    // Make the containing directory read-only so save()'s lock-file creation
+    // fails deterministically.
+    let mut perms = std::fs::metadata(&sub).expect("metadata").permissions();
+    perms.set_readonly(true);
+    std::fs::set_permissions(&sub, perms).expect("set readonly");
+
+    // WHY: skip when running as root — root bypasses permission-bit checks,
+    // so save() would succeed here and every assertion below would break.
+    let root_probe = sub.join(".root-probe");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "test probes whether the read-only permission bit is actually enforced"
+    )]
+    let is_root = std::fs::write(&root_probe, b"x").is_ok();
+    let _ = std::fs::remove_file(&root_probe);
+    if is_root {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&sub).expect("metadata").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&sub, perms).expect("restore perms");
+        eprintln!(
+            "skipping: running as root, which bypasses the permission bits this test relies on"
+        );
+        return;
+    }
+
+    let state = wrap_state(RefreshState {
+        current_token: SecretString::from("tok-old"),
+        refresh_token: SecretString::from("rt-old"),
+        expires_at_ms: 1,
+        subscription_type: None,
+    });
+    let mut tracker = FileMtimeTracker::new(&path);
+    let cb = CircuitBreaker::new(CircuitBreakerConfig::default());
+
+    let registry = koina::metrics::MetricsRegistry::new();
+    registry.with_registry(crate::metrics::register);
+    let mut before_buf = String::new();
+    registry.encode(&mut before_buf).expect("encode");
+    let before_ok = counter_value(
+        &before_buf,
+        "aletheia_token_refreshes_total{status=\"ok\"} ",
+    );
+    let before_err = counter_value(
+        &before_buf,
+        "aletheia_token_refreshes_total{status=\"error\"} ",
+    );
+    let before_write_fail =
+        counter_value(&before_buf, "aletheia_credential_write_failures_total ");
+
+    persist_refresh_success(
+        &state,
+        &path,
+        &mut tracker,
+        &cb,
+        RefreshSuccessPayload::new(
+            SecretString::from("tok-new"),
+            SecretString::from("rt-new"),
+            3600,
+            None,
+            None,
+        ),
+    );
+
+    // Restore write access so tempdir cleanup on drop doesn't fail.
+    let mut perms = std::fs::metadata(&sub).expect("metadata").permissions();
+    perms.set_readonly(false);
+    std::fs::set_permissions(&sub, perms).expect("restore perms");
+
+    let mut after_buf = String::new();
+    registry.encode(&mut after_buf).expect("encode");
+    let after_ok = counter_value(&after_buf, "aletheia_token_refreshes_total{status=\"ok\"} ");
+    let after_err = counter_value(
+        &after_buf,
+        "aletheia_token_refreshes_total{status=\"error\"} ",
+    );
+    let after_write_fail = counter_value(&after_buf, "aletheia_credential_write_failures_total ");
+
+    assert_eq!(
+        after_ok, before_ok,
+        "a write failure must NOT increment the ok counter; before={before_buf} after={after_buf}"
+    );
+    assert_eq!(
+        after_err - before_err,
+        1,
+        "a write failure must increment the error counter exactly once; before={before_buf} after={after_buf}"
+    );
+    assert_eq!(
+        after_write_fail - before_write_fail,
+        1,
+        "a write failure must still increment the write-failure counter"
+    );
+
+    // In-memory state must be left untouched on a write failure — the
+    // previous token stays current, per the "keeping previous in-memory
+    // token" contract in the Err branch.
+    let guard = state.read().expect("state lock");
+    let s = guard.as_ref().expect("state present");
+    assert_eq!(
+        s.current_token.expose_secret(),
+        "tok-old",
+        "in-memory state must not advance when persistence fails"
+    );
+}
+
 // ── try_reload_from_file mutant kills ──
 
 #[test]
