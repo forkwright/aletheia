@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::backend::StewardBackend;
 use super::types::{
-    CiStatus, ClassifiedPr, MergeAction, MergeOptions, MergeResult, StewardResult,
+    CiStatus, ClassifiedPr, MergeAction, MergeOptions, MergeResult, PullRequest, StewardResult,
 };
 use super::{classify, merge};
 
@@ -165,116 +165,19 @@ pub async fn run_once(config: &StewardConfig, backend: &dyn StewardBackend) -> S
     let mut blocked = Vec::new();
 
     for pr in prs {
-        let pr_number = pr.number;
-        let sha = pr.head_sha.clone().unwrap_or_default();
+        let (cp, diff_text) = classify_pr(pr, backend, config).await;
+        let action = act_on_classified(&cp, &diff_text, backend, &merge_opts).await;
 
-        let checks = backend.check_runs(&sha).await.unwrap_or_else(|e| {
-            tracing::warn!(pr_number, error = %e, "failed to fetch check runs");
-            Vec::new()
-        });
-        let has_gate_trailer = backend
-            .has_gate_trailer(pr_number)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(pr_number, error = %e, "failed to check gate trailer");
-                false
-            });
-        let ci_status = classify::apply_gate_trailer_override(
-            classify::determine_ci_status(&checks, &config.required_checks),
-            has_gate_trailer,
-            pr_number,
-        );
-
-        let changed_files = backend.changed_files(pr_number).await.unwrap_or_else(|e| {
-            tracing::warn!(pr_number, error = %e, "failed to fetch changed files");
-            Vec::new()
-        });
-
-        let declared_blast_radius = backend
-            .declared_blast_radius(pr_number)
-            .await
-            .unwrap_or_else(|e| {
-                tracing::warn!(pr_number, error = %e, "failed to resolve declared blast radius");
-                None
-            });
-        let blast_radius_ok = match declared_blast_radius.as_deref() {
-            Some(radius) => crate::diff::all_files_within_blast_radius(&changed_files, radius),
-            None => true,
-        };
-
-        let diff_text = backend.diff(pr_number).await.unwrap_or_else(|e| {
-            tracing::warn!(pr_number, error = %e, "failed to fetch diff");
-            String::new()
-        });
-        let suppression_findings = classify::parse_suppressions(&diff_text);
-        // WHY: suppression findings are informational at the merge-decision
-        // level (merge.rs only warns, never blocks, on `!merge_safe` when CI
-        // is already green) -- CI already enforces the workspace-level lint
-        // denials. A non-empty finding set still marks the PR unsafe so the
-        // warning path in `make_merge_decision` fires.
-        let merge_safe = suppression_findings.is_empty();
-        let prompt_number = classify::extract_prompt_number(&pr);
-        let qa_verdict = classify::extract_qa_verdict_from_body(pr.body.as_deref());
-
-        let cp = ClassifiedPr {
-            pr,
-            ci_status,
-            changed_files,
-            prompt_number,
-            blast_radius_ok,
-            merge_safe,
-            has_gate_trailer,
-            suppression_findings,
-            qa_verdict,
-        };
-
-        match cp.ci_status {
-            CiStatus::Red => {
-                classified.push(cp.clone());
-                needs_fix.push(cp);
-            }
-            CiStatus::Pending | CiStatus::Unknown => {
-                classified.push(cp);
-            }
-            CiStatus::Green => {
-                let decision = merge::make_merge_decision(&cp, &merge_opts, Some(&diff_text));
-                match &decision.action {
-                    MergeAction::Merge(method) => {
-                        if config.dry_run {
-                            merged.push(MergeResult {
-                                pr_number,
-                                decision,
-                                success: false,
-                                error: Some("dry_run: merge skipped".to_owned()),
-                            });
-                        } else {
-                            match backend.merge(pr_number, *method).await {
-                                Ok(()) => merged.push(MergeResult {
-                                    pr_number,
-                                    decision,
-                                    success: true,
-                                    error: None,
-                                }),
-                                Err(e) => merged.push(MergeResult {
-                                    pr_number,
-                                    decision,
-                                    success: false,
-                                    error: Some(e.to_string()),
-                                }),
-                            }
-                        }
-                    }
-                    MergeAction::Blocked(reason) => {
-                        blocked.push((pr_number, reason.clone()));
-                    }
-                    MergeAction::HoldForArchitect(_)
-                    | MergeAction::NeedsReview
-                    | MergeAction::NeedsFix
-                    | MergeAction::Skip(_) => {}
-                }
-                classified.push(cp);
-            }
+        if action.needs_fix {
+            needs_fix.push(cp.clone());
         }
+        if let Some(merge_result) = action.merge_result {
+            merged.push(merge_result);
+        }
+        if let Some(entry) = action.blocked {
+            blocked.push(entry);
+        }
+        classified.push(cp);
     }
 
     StewardResult {
@@ -291,6 +194,165 @@ pub async fn run_once(config: &StewardConfig, backend: &dyn StewardBackend) -> S
     }
 }
 
+/// Fetch and classify a single PR against `backend`.
+///
+/// Returns the classification alongside its diff text -- the caller
+/// ([`act_on_classified`]) needs the diff again for the public-API-surface
+/// check, so it is fetched once here rather than twice.
+async fn classify_pr(
+    pr: PullRequest,
+    backend: &dyn StewardBackend,
+    config: &StewardConfig,
+) -> (ClassifiedPr, String) {
+    let pr_number = pr.number;
+    let sha = pr.head_sha.clone().unwrap_or_default();
+
+    let checks = backend.check_runs(&sha).await.unwrap_or_else(|e| {
+        tracing::warn!(pr_number, error = %e, "failed to fetch check runs");
+        Vec::new()
+    });
+    let has_gate_trailer = backend
+        .has_gate_trailer(pr_number)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(pr_number, error = %e, "failed to check gate trailer");
+            false
+        });
+    let ci_status = classify::apply_gate_trailer_override(
+        classify::determine_ci_status(&checks, &config.required_checks),
+        has_gate_trailer,
+        pr_number,
+    );
+
+    let changed_files = backend.changed_files(pr_number).await.unwrap_or_else(|e| {
+        tracing::warn!(pr_number, error = %e, "failed to fetch changed files");
+        Vec::new()
+    });
+
+    let declared_blast_radius = backend
+        .declared_blast_radius(pr_number)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!(pr_number, error = %e, "failed to resolve declared blast radius");
+            None
+        });
+    let blast_radius_ok = match declared_blast_radius.as_deref() {
+        Some(radius) => crate::diff::all_files_within_blast_radius(&changed_files, radius),
+        None => true,
+    };
+
+    let diff_text = backend.diff(pr_number).await.unwrap_or_else(|e| {
+        tracing::warn!(pr_number, error = %e, "failed to fetch diff");
+        String::new()
+    });
+    let suppression_findings = classify::parse_suppressions(&diff_text);
+    // WHY: suppression findings are informational at the merge-decision
+    // level (merge.rs only warns, never blocks, on `!merge_safe` when CI is
+    // already green) -- CI already enforces the workspace-level lint
+    // denials. A non-empty finding set still marks the PR unsafe so the
+    // warning path in `make_merge_decision` fires.
+    let merge_safe = suppression_findings.is_empty();
+    let prompt_number = classify::extract_prompt_number(&pr);
+    let qa_verdict = classify::extract_qa_verdict_from_body(pr.body.as_deref());
+
+    let cp = ClassifiedPr {
+        pr,
+        ci_status,
+        changed_files,
+        prompt_number,
+        blast_radius_ok,
+        merge_safe,
+        has_gate_trailer,
+        suppression_findings,
+        qa_verdict,
+    };
+
+    (cp, diff_text)
+}
+
+/// Bucketed outcome of acting on one already-classified PR.
+struct PrAction {
+    merge_result: Option<MergeResult>,
+    needs_fix: bool,
+    blocked: Option<(u64, String)>,
+}
+
+/// Decide and, unless dry-run, execute the action for a classified PR.
+///
+/// A `CiStatus::Red` PR goes straight to `needs_fix` without a merge
+/// decision -- CI must go green before a merge tier is meaningful. Pending
+/// or Unknown status means "re-evaluate next pass," so nothing is bucketed.
+/// Only a Green PR reaches [`merge::make_merge_decision`].
+async fn act_on_classified(
+    cp: &ClassifiedPr,
+    diff_text: &str,
+    backend: &dyn StewardBackend,
+    merge_opts: &MergeOptions,
+) -> PrAction {
+    let pr_number = cp.pr.number;
+
+    match cp.ci_status {
+        CiStatus::Red => PrAction {
+            merge_result: None,
+            needs_fix: true,
+            blocked: None,
+        },
+        CiStatus::Pending | CiStatus::Unknown => PrAction {
+            merge_result: None,
+            needs_fix: false,
+            blocked: None,
+        },
+        CiStatus::Green => {
+            let decision = merge::make_merge_decision(cp, merge_opts, Some(diff_text));
+            match decision.action {
+                MergeAction::Merge(method) => {
+                    let merge_result = if merge_opts.dry_run {
+                        MergeResult {
+                            pr_number,
+                            decision,
+                            success: false,
+                            error: Some("dry_run: merge skipped".to_owned()),
+                        }
+                    } else {
+                        match backend.merge(pr_number, method).await {
+                            Ok(()) => MergeResult {
+                                pr_number,
+                                decision,
+                                success: true,
+                                error: None,
+                            },
+                            Err(e) => MergeResult {
+                                pr_number,
+                                decision,
+                                success: false,
+                                error: Some(e.to_string()),
+                            },
+                        }
+                    };
+                    PrAction {
+                        merge_result: Some(merge_result),
+                        needs_fix: false,
+                        blocked: None,
+                    }
+                }
+                MergeAction::Blocked(ref reason) => PrAction {
+                    merge_result: None,
+                    needs_fix: false,
+                    blocked: Some((pr_number, reason.clone())),
+                },
+                MergeAction::HoldForArchitect(_)
+                | MergeAction::NeedsReview
+                | MergeAction::NeedsFix
+                | MergeAction::Skip(_) => PrAction {
+                    merge_result: None,
+                    needs_fix: false,
+                    blocked: None,
+                },
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
@@ -300,7 +362,7 @@ mod tests {
     use std::sync::Mutex;
 
     use crate::error::Result;
-    use crate::steward::types::{CheckRun, MergeMethod, PullRequest};
+    use crate::steward::types::{CheckRun, MergeMethod};
 
     use super::*;
 

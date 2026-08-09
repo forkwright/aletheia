@@ -576,7 +576,7 @@ mod tests {
         // (the check is strictly `>`, matching the constant's own doc).
         let at_threshold = crate::session::events::RATE_LIMIT_ABORT_THRESHOLD;
         let ndjson = [
-            r#"{"type":"system","subtype":"init","session_id":"sess-rl4"}"#,
+            r#"{"type":"system","subtype":"init","session_id":"sess-rl4"}"#.to_owned(),
             format!(
                 r#"{{"type":"rate_limit_event","rate_limit_info":{{"status":"allowed_warning","utilization":{at_threshold}}}}}"#
             ),

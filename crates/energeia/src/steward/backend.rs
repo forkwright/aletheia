@@ -22,6 +22,10 @@ use super::types::{CheckRun, CiStatus, MergeMethod, PullRequest};
 /// status, and executing merges.
 ///
 /// Implementations live outside this crate (see the module-level WHY).
+#[expect(
+    clippy::type_complexity,
+    reason = "async trait methods returning boxed trait objects require nested generics, matching crate::backend::DispatchBackend's own trait"
+)]
 pub trait StewardBackend: Send + Sync {
     /// Fetch all open pull requests for the configured project.
     fn list_open_prs<'a>(
