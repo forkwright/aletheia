@@ -1323,16 +1323,12 @@ mod provider_validation_tests {
 
     #[tokio::test]
     async fn dispatch_routes_unknown_provider_without_network() {
-        ensure_crypto_provider();
-        // NOTE: no mock server is started — if this ever dispatched to a
-        // network call it would fail to connect rather than silently pass,
-        // making a regression here fail loudly instead of hanging.
-        let outcome = check_provider_key(
-            &reqwest::Client::new(),
-            "some-unrecognized-provider",
-            &SecretString::from("sk-x"),
-        )
-        .await;
+        // NOTE: no crypto provider is installed and no mock server is
+        // started — if this ever dispatched to a live check it would panic
+        // (missing crypto provider) or fail to connect rather than silently
+        // pass, making a regression here fail loudly instead of hanging.
+        let outcome =
+            check_provider_key("some-unrecognized-provider", &SecretString::from("sk-x")).await;
         assert_eq!(outcome, ProviderValidationState::Unknown);
     }
 
