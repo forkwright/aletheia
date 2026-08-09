@@ -412,7 +412,7 @@ pub(super) async fn app_with_anthropic_provider() -> (axum::Router, tempfile::Te
 /// canonical managed names ("anthropic"/"claude") or a name registered in
 /// the live `ProviderRegistry` -- this lets a test exercise credential
 /// mutation/validation endpoints for a provider this crate has no live-check
-/// strategy for, so a validate() call stays network-free and deterministic.
+/// strategy for, so a `validate()` call stays network-free and deterministic.
 ///
 /// NOTE: does not reuse `test_state_with_provider_name_private_and_auth_mode`
 /// -- its `provider_name` argument becomes `MockProvider::new`'s canned

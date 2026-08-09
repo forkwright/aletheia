@@ -36,7 +36,7 @@ pub struct CredentialsListResponse {
 /// Outcome of a provider-aware credential validation call.
 ///
 /// WHY(#4875): mirrors `symbolon::types::ProviderValidationState` on the wire
-/// with a typed schema (rather than a bare string) so OpenAPI documents the
+/// with a typed schema (rather than a bare string) so `OpenAPI` documents the
 /// exact set of validation states a caller must handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -63,11 +63,11 @@ impl From<symbolon::types::ProviderValidationState> for CredentialValidationStat
             symbolon::types::ProviderValidationState::Expired => Self::Expired,
             symbolon::types::ProviderValidationState::Malformed => Self::Malformed,
             symbolon::types::ProviderValidationState::Unreachable => Self::Unreachable,
-            symbolon::types::ProviderValidationState::Unknown => Self::Unknown,
-            // WHY: symbolon's enum is #[non_exhaustive] so it can grow new
-            // variants without a breaking change there. Any future variant
-            // this match doesn't yet know about must fall back to `Unknown`
-            // — never silently mapped to Accepted/Rejected, which would be a
+            // WHY: covers `Unknown` plus any future variant this match
+            // doesn't yet know about — symbolon's enum is #[non_exhaustive]
+            // so it can grow without a breaking change there. Every
+            // unrecognized variant must fall back to `Unknown`, never
+            // silently mapped to Accepted/Rejected, which would be a
             // provider-acceptance claim this crate cannot back up.
             _ => Self::Unknown,
         }
