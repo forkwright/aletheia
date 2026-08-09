@@ -7,8 +7,8 @@
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 210 files under `src/`: 162 derived, 32 sovereign, 16 dual
-- Mean verbatim match across the 162 derived files: 50.5% (unweighted average of the per-file `verbatim_pct` column below)
+- 228 files under `src/`: 143 derived, 50 sovereign, 35 dual
+- Mean verbatim match across the 143 derived files: 50.0% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -67,25 +67,40 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/data/value.rs` | `data/value.rs` | 68.3% | derived |
 | `src/datalog.pest` | `cozoscript.pest` | 99.6% | derived |
 | `src/error.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/algos/all_pairs_shortest_path.rs` | `fixed_rule/algos/all_pairs_shortest_path.rs` | 39.6% | derived |
-| `src/fixed_rule/algos/astar.rs` | `fixed_rule/algos/astar.rs` | 49.1% | derived |
-| `src/fixed_rule/algos/bfs.rs` | `fixed_rule/algos/bfs.rs` | 61.7% | derived |
-| `src/fixed_rule/algos/degree_centrality.rs` | `fixed_rule/algos/degree_centrality.rs` | 55.3% | derived |
-| `src/fixed_rule/algos/dfs.rs` | `fixed_rule/algos/dfs.rs` | 57.8% | derived |
+| `src/fixed_rule/algos/all_pairs_shortest_path.rs` | `fixed_rule/algos/all_pairs_shortest_path.rs` | 39.6% | dual |
+| `src/fixed_rule/algos/all_pairs_shortest_path_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/astar.rs` | `fixed_rule/algos/astar.rs` | 49.1% | dual |
+| `src/fixed_rule/algos/astar_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/bfs.rs` | `fixed_rule/algos/bfs.rs` | 61.7% | dual |
+| `src/fixed_rule/algos/bfs_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/degree_centrality.rs` | `fixed_rule/algos/degree_centrality.rs` | 55.3% | dual |
+| `src/fixed_rule/algos/degree_centrality_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/dfs.rs` | `fixed_rule/algos/dfs.rs` | 57.8% | dual |
+| `src/fixed_rule/algos/dfs_native.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/kcore.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/algos/kruskal.rs` | `fixed_rule/algos/kruskal.rs` | 45.3% | derived |
-| `src/fixed_rule/algos/label_propagation.rs` | `fixed_rule/algos/label_propagation.rs` | 44.0% | derived |
+| `src/fixed_rule/algos/kruskal.rs` | `fixed_rule/algos/kruskal.rs` | 45.3% | dual |
+| `src/fixed_rule/algos/kruskal_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/label_propagation.rs` | `fixed_rule/algos/label_propagation.rs` | 44.0% | dual |
+| `src/fixed_rule/algos/label_propagation_native.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/louvain.rs` | `fixed_rule/algos/louvain.rs` | 41.4% | derived |
-| `src/fixed_rule/algos/mod.rs` | `fixed_rule/algos/mod.rs` | 91.9% | derived |
+| `src/fixed_rule/algos/mod.rs` | `fixed_rule/algos/mod.rs` | 33.0% | dual |
 | `src/fixed_rule/algos/pagerank.rs` | `fixed_rule/algos/pagerank.rs` | 45.7% | derived |
-| `src/fixed_rule/algos/prim.rs` | `fixed_rule/algos/prim.rs` | 49.3% | derived |
-| `src/fixed_rule/algos/random_walk.rs` | `fixed_rule/algos/random_walk.rs` | 40.8% | derived |
-| `src/fixed_rule/algos/shortest_path_bfs.rs` | `fixed_rule/algos/shortest_path_bfs.rs` | 68.1% | derived |
-| `src/fixed_rule/algos/shortest_path_dijkstra.rs` | `fixed_rule/algos/shortest_path_dijkstra.rs` | 56.4% | derived |
-| `src/fixed_rule/algos/strongly_connected_components.rs` | `fixed_rule/algos/strongly_connected_components.rs` | 45.0% | derived |
-| `src/fixed_rule/algos/top_sort.rs` | `fixed_rule/algos/top_sort.rs` | 44.1% | derived |
-| `src/fixed_rule/algos/triangles.rs` | `fixed_rule/algos/triangles.rs` | 47.3% | derived |
-| `src/fixed_rule/algos/yen.rs` | `fixed_rule/algos/yen.rs` | 56.1% | derived |
+| `src/fixed_rule/algos/prim.rs` | `fixed_rule/algos/prim.rs` | 49.3% | dual |
+| `src/fixed_rule/algos/prim_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/random_walk.rs` | `fixed_rule/algos/random_walk.rs` | 40.8% | dual |
+| `src/fixed_rule/algos/random_walk_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/shortest_path_bfs.rs` | `fixed_rule/algos/shortest_path_bfs.rs` | 68.1% | dual |
+| `src/fixed_rule/algos/shortest_path_bfs_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/shortest_path_dijkstra.rs` | `fixed_rule/algos/shortest_path_dijkstra.rs` | 56.4% | dual |
+| `src/fixed_rule/algos/shortest_path_dijkstra_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/strongly_connected_components.rs` | `fixed_rule/algos/strongly_connected_components.rs` | 45.0% | dual |
+| `src/fixed_rule/algos/strongly_connected_components_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/top_sort.rs` | `fixed_rule/algos/top_sort.rs` | 44.1% | dual |
+| `src/fixed_rule/algos/top_sort_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/triangles.rs` | `fixed_rule/algos/triangles.rs` | 47.3% | dual |
+| `src/fixed_rule/algos/triangles_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/yen.rs` | `fixed_rule/algos/yen.rs` | 56.1% | dual |
+| `src/fixed_rule/algos/yen_native.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/csr/mod.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/csr/page_rank.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/error.rs` | — | 0.0% | sovereign |
@@ -95,9 +110,12 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/fixed_rule/tests/mod.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/path_algorithms.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/proptest_algos.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/utilities/constant.rs` | `fixed_rule/utilities/constant.rs` | 39.9% | derived |
-| `src/fixed_rule/utilities/mod.rs` | `fixed_rule/utilities/mod.rs` | 57.1% | derived |
-| `src/fixed_rule/utilities/reorder_sort.rs` | `fixed_rule/utilities/reorder_sort.rs` | 70.0% | derived |
+| `src/fixed_rule/tests/wave5_reference_semantics.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/utilities/constant.rs` | `fixed_rule/utilities/constant.rs` | 39.9% | dual |
+| `src/fixed_rule/utilities/constant_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/utilities/mod.rs` | `fixed_rule/utilities/mod.rs` | 20.0% | dual |
+| `src/fixed_rule/utilities/reorder_sort.rs` | `fixed_rule/utilities/reorder_sort.rs` | 70.0% | dual |
+| `src/fixed_rule/utilities/reorder_sort_native.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/utilities/rrf.rs` | — | 0.0% | sovereign |
 | `src/fts/README.md` | `fts/README.md` | 100.0% | derived |
 | `src/fts/ast.rs` | `fts/ast.rs` | 79.6% | derived |

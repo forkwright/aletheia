@@ -67,8 +67,8 @@
     {
       "from": "fixed_rule",
       "to": "data",
-      "count": 86,
-      "production_count": 82,
+      "count": 149,
+      "production_count": 144,
       "test_only": false,
       "first_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:25",
       "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:25"
@@ -76,8 +76,8 @@
     {
       "from": "fixed_rule",
       "to": "parse",
-      "count": 22,
-      "production_count": 22,
+      "count": 39,
+      "production_count": 39,
       "test_only": false,
       "first_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:32",
       "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:32"
@@ -85,8 +85,8 @@
     {
       "from": "fixed_rule",
       "to": "root",
-      "count": 22,
-      "production_count": 22,
+      "count": 39,
+      "production_count": 39,
       "test_only": false,
       "first_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:28",
       "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:28"
@@ -94,8 +94,8 @@
     {
       "from": "fixed_rule",
       "to": "runtime",
-      "count": 52,
-      "production_count": 48,
+      "count": 87,
+      "production_count": 82,
       "test_only": false,
       "first_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:33",
       "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:33"
@@ -380,8 +380,8 @@
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
-  "file_count": 204,
-  "statement_count": 986,
+  "file_count": 222,
+  "statement_count": 1141,
   "required_edges_present": [
     [
       "runtime",
