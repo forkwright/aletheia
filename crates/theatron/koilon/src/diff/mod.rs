@@ -1,10 +1,16 @@
 //! Tool execution diff viewer.
+//!
+//! Structural diff parsing and types are adopted from `gramma` (the
+//! theatron crate that owns git-diff parsing); this module keeps only
+//! what's koilon-specific: rendering (`render.rs`), the 3-way view mode
+//! and scroll state (`types.rs`), and a `similar`-backed text-to-diff
+//! adapter for the "diff a tool result's before/after content" path that
+//! gramma has no equivalent for.
 
-mod parse;
 mod render;
 mod types;
 
-pub(crate) use parse::parse_git_diff;
+pub(crate) use gramma::diff::parse_git_diff;
 #[cfg(test)]
 pub(crate) use render::render_diff_view;
 pub(crate) use render::render_diff_view_immutable;
@@ -13,13 +19,13 @@ pub(crate) use types::{DiffViewState, compute_diff};
 #[cfg(test)]
 use crate::theme::Theme;
 #[cfg(test)]
-use parse::pad_to;
+use render::pad_to;
 #[cfg(test)]
-pub(crate) use parse::parse_hunk_header;
+pub(crate) use render::{
+    RenderLine, collapse_to_replacements, render_side_by_side, render_unified, render_word_diff,
+};
 #[cfg(test)]
-pub(crate) use render::{render_side_by_side, render_unified, render_word_diff};
-#[cfg(test)]
-pub(crate) use types::{DiffChange, DiffHunk, DiffMode, FileDiff, collapse_to_replacements};
+use types::DiffMode;
 
 #[cfg(test)]
 #[expect(
@@ -27,6 +33,7 @@ pub(crate) use types::{DiffChange, DiffHunk, DiffMode, FileDiff, collapse_to_rep
     reason = "test assertions use direct indexing for clarity"
 )]
 mod tests {
+    use gramma::diff::{ChangeType, DiffFile, DiffLine};
     use ratatui::layout::Rect;
     use ratatui::text::Span;
     use unicode_width::UnicodeWidthStr;
@@ -65,25 +72,25 @@ mod tests {
     fn compute_diff_simple_addition() {
         let diff = compute_diff("test.rs", "line1\n", "line1\nline2\n");
         assert!(!diff.hunks.is_empty());
-        let changes = &diff.hunks[0].changes;
-        assert!(changes.iter().any(|c| matches!(c, DiffChange::Insert(_))));
+        let lines = &diff.hunks[0].lines;
+        assert!(lines.iter().any(|l| l.change_type == ChangeType::Add));
     }
 
     #[test]
     fn compute_diff_simple_deletion() {
         let diff = compute_diff("test.rs", "line1\nline2\n", "line1\n");
         assert!(!diff.hunks.is_empty());
-        let changes = &diff.hunks[0].changes;
-        assert!(changes.iter().any(|c| matches!(c, DiffChange::Delete(_))));
+        let lines = &diff.hunks[0].lines;
+        assert!(lines.iter().any(|l| l.change_type == ChangeType::Remove));
     }
 
     #[test]
     fn compute_diff_modification() {
         let diff = compute_diff("test.rs", "old line\n", "new line\n");
         assert!(!diff.hunks.is_empty());
-        let changes = &diff.hunks[0].changes;
-        assert!(changes.iter().any(|c| matches!(c, DiffChange::Delete(_))));
-        assert!(changes.iter().any(|c| matches!(c, DiffChange::Insert(_))));
+        let lines = &diff.hunks[0].lines;
+        assert!(lines.iter().any(|l| l.change_type == ChangeType::Remove));
+        assert!(lines.iter().any(|l| l.change_type == ChangeType::Add));
     }
 
     #[test]
@@ -94,44 +101,47 @@ mod tests {
 
     // ── collapse_to_replacements ──
 
+    fn diff_line(change_type: ChangeType, content: &str) -> DiffLine {
+        DiffLine::new(change_type, Some(1), Some(1), content, Vec::new())
+    }
+
     #[test]
     fn collapse_pairs_delete_insert_to_replace() {
-        let hunks = vec![DiffHunk {
-            old_start: 1,
-            new_start: 1,
-            changes: vec![
-                DiffChange::Delete("old\n".to_string()),
-                DiffChange::Insert("new\n".to_string()),
-            ],
-        }];
-        let collapsed = collapse_to_replacements(&hunks);
-        assert_eq!(collapsed[0].changes.len(), 1);
-        assert!(matches!(
-            &collapsed[0].changes[0],
-            DiffChange::Replace { .. }
-        ));
+        let lines = vec![
+            diff_line(ChangeType::Remove, "old"),
+            diff_line(ChangeType::Add, "new"),
+        ];
+        let collapsed = collapse_to_replacements(&lines);
+        assert_eq!(collapsed.len(), 1);
+        assert!(matches!(collapsed[0], RenderLine::Replace { .. }));
     }
 
     #[test]
     fn collapse_leaves_standalone_delete() {
-        let hunks = vec![DiffHunk {
-            old_start: 1,
-            new_start: 1,
-            changes: vec![DiffChange::Delete("removed\n".to_string())],
-        }];
-        let collapsed = collapse_to_replacements(&hunks);
-        assert!(matches!(&collapsed[0].changes[0], DiffChange::Delete(_)));
+        let lines = vec![diff_line(ChangeType::Remove, "removed")];
+        let collapsed = collapse_to_replacements(&lines);
+        assert!(matches!(&collapsed[0], RenderLine::Single(l) if l.change_type == ChangeType::Remove));
     }
 
     #[test]
     fn collapse_leaves_standalone_insert() {
-        let hunks = vec![DiffHunk {
-            old_start: 1,
-            new_start: 1,
-            changes: vec![DiffChange::Insert("added\n".to_string())],
-        }];
-        let collapsed = collapse_to_replacements(&hunks);
-        assert!(matches!(&collapsed[0].changes[0], DiffChange::Insert(_)));
+        let lines = vec![diff_line(ChangeType::Add, "added")];
+        let collapsed = collapse_to_replacements(&lines);
+        assert!(matches!(&collapsed[0], RenderLine::Single(l) if l.change_type == ChangeType::Add));
+    }
+
+    #[test]
+    fn replace_line_carries_old_and_new_content() {
+        let lines = vec![
+            diff_line(ChangeType::Remove, "before"),
+            diff_line(ChangeType::Add, "after"),
+        ];
+        let collapsed = collapse_to_replacements(&lines);
+        let RenderLine::Replace { old, new } = &collapsed[0] else {
+            panic!("expected RenderLine::Replace");
+        };
+        assert_eq!(old.content, "before");
+        assert_eq!(new.content, "after");
     }
 
     // ── Unified rendering ──
@@ -220,11 +230,7 @@ mod tests {
     fn word_diff_highlights_changed_tokens() {
         let theme = default_theme();
         let diff = compute_diff("test.rs", "let x = 42;\n", "let x = 99;\n");
-        let collapsed_file = FileDiff {
-            path: diff.path,
-            hunks: collapse_to_replacements(&diff.hunks),
-        };
-        let lines = render_word_diff(&collapsed_file, &theme);
+        let lines = render_word_diff(&diff, &theme);
         let all_spans: Vec<&Span> = lines.iter().flat_map(|l| l.spans.iter()).collect();
         assert!(
             all_spans.len() > 2,
@@ -299,10 +305,10 @@ index abc1234..def5678 100644
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "src/main.rs");
         assert!(!files[0].hunks.is_empty());
-        let changes = &files[0].hunks[0].changes;
-        assert!(changes.iter().any(|c| matches!(c, DiffChange::Delete(_))));
-        assert!(changes.iter().any(|c| matches!(c, DiffChange::Insert(_))));
-        assert!(changes.iter().any(|c| matches!(c, DiffChange::Equal(_))));
+        let lines = &files[0].hunks[0].lines;
+        assert!(lines.iter().any(|l| l.change_type == ChangeType::Remove));
+        assert!(lines.iter().any(|l| l.change_type == ChangeType::Add));
+        assert!(lines.iter().any(|l| l.change_type == ChangeType::Context));
     }
 
     #[test]
@@ -331,16 +337,6 @@ diff --git a/b.rs b/b.rs
     fn parse_git_diff_empty() {
         let files = parse_git_diff("");
         assert!(files.is_empty());
-    }
-
-    #[test]
-    fn parse_hunk_header_standard() {
-        assert_eq!(parse_hunk_header("@@ -10,5 +20,7 @@"), (10, 20));
-    }
-
-    #[test]
-    fn parse_hunk_header_no_count() {
-        assert_eq!(parse_hunk_header("@@ -1 +1 @@"), (1, 1));
     }
 
     // ── render_diff_view ──
@@ -484,8 +480,8 @@ diff --git a/b.rs b/b.rs
         let diff = compute_diff("src/important.rs", "old\n", "new\n");
 
         for render_fn in [
-            |f: &FileDiff, t: &Theme| render_unified(f, t),
-            |f: &FileDiff, t: &Theme| render_word_diff(f, t),
+            |f: &DiffFile, t: &Theme| render_unified(f, t),
+            |f: &DiffFile, t: &Theme| render_word_diff(f, t),
         ] {
             let lines = render_fn(&diff, &theme);
             let all_text: String = lines
@@ -506,32 +502,6 @@ diff --git a/b.rs b/b.rs
             .map(|s| s.content.to_string())
             .collect();
         assert!(sbs_text.contains("important.rs"));
-    }
-
-    // ── DiffChange variants ──
-
-    #[test]
-    fn diff_change_replace_has_old_and_new() {
-        let change = DiffChange::Replace {
-            old: "before\n".to_string(),
-            new: "after\n".to_string(),
-        };
-        if let DiffChange::Replace { old, new } = change {
-            assert_eq!(old, "before\n", "Replace.old must hold the old text");
-            assert_eq!(new, "after\n", "Replace.new must hold the new text");
-        } else {
-            panic!("expected DiffChange::Replace");
-        }
-    }
-
-    #[test]
-    fn diff_change_variants_are_distinct() {
-        let eq = DiffChange::Equal("x\n".to_string());
-        let ins = DiffChange::Insert("x\n".to_string());
-        let del = DiffChange::Delete("x\n".to_string());
-        assert_ne!(eq, ins, "Equal != Insert");
-        assert_ne!(ins, del, "Insert != Delete");
-        assert_ne!(eq, del, "Equal != Delete");
     }
 
     // ── FileDiff / DiffHunk fields ──
@@ -569,9 +539,12 @@ diff --git a/b.rs b/b.rs
 
     #[test]
     fn diff_view_state_is_empty_when_all_hunks_empty() {
-        let diff = FileDiff {
+        let diff = DiffFile {
             path: "empty.rs".to_string(),
             hunks: vec![],
+            additions: 0,
+            deletions: 0,
+            mode: gramma::diff::DiffViewMode::default(),
         };
         let state = DiffViewState::new(vec![diff]);
         assert!(
