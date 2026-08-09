@@ -293,16 +293,15 @@ impl AuthService {
     ///
     /// The response never contains raw secret material.
     ///
-    /// WHY: the HTTP client is built here, at the point of use, rather than
-    /// held as an `AuthService` field — mirroring `credential::refresh`'s
-    /// `refresh_loop`, the only other place this crate builds one. Building
-    /// it eagerly in `new`/`in_memory` would force every `AuthService`
-    /// construction (including test harnesses that never validate a
-    /// credential) to require a rustls crypto provider already installed
-    /// process-wide, which only the real server binary's `main` does.
+    /// WHY: no HTTP client is held as an `AuthService` field or built here.
+    /// [`crate::credential::admin::validate`] builds one lazily, only when a
+    /// live provider round trip is actually needed — building one eagerly
+    /// (in this method, or in `new`/`in_memory`) would force every call,
+    /// including validations that short-circuit locally, to require a
+    /// rustls crypto provider already installed process-wide, which only
+    /// the real server binary's `main` does.
     pub async fn validate_credential(&self, root: &Path, id: &str) -> Result<ManagedCredential> {
-        let client = reqwest::Client::new();
-        crate::credential::admin::validate(root, id, &client).await
+        crate::credential::admin::validate(root, id).await
     }
 
     /// Swap a provider's primary and backup credentials.

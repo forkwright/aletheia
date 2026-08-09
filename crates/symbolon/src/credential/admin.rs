@@ -137,11 +137,15 @@ pub(crate) fn add(
 /// the key would need to authenticate against regardless. The outcome is
 /// persisted so later `list` calls reflect it instead of reverting to
 /// "never validated".
-pub(crate) async fn validate(
-    root: &Path,
-    id: &str,
-    client: &reqwest::Client,
-) -> Result<ManagedCredential> {
+///
+/// WHY no `reqwest::Client` parameter: the client is built lazily inside
+/// [`check_provider_key`], only on the arms that actually dispatch a live
+/// check. Building one unconditionally here would force every call —
+/// including the malformed/expired/unknown-provider short-circuits that
+/// never touch the network — to require a rustls crypto provider already
+/// installed process-wide (see `credential::refresh::refresh_loop` and
+/// `AuthService::validate_credential` for the same reasoning).
+pub(crate) async fn validate(root: &Path, id: &str) -> Result<ManagedCredential> {
     let (provider, role) = parse_id(id)?;
     recover_provider_rotation(root, &provider)?;
     let path = credential_path(root, &provider, role)?;
@@ -160,7 +164,7 @@ pub(crate) async fn validate(
     } else if local_status == ManagedCredentialStatus::Expired {
         ProviderValidationState::Expired
     } else {
-        check_provider_key(client, &provider, &file.token).await
+        check_provider_key(&provider, &file.token).await
     };
 
     let record = ProviderValidationRecord {
@@ -182,17 +186,18 @@ pub(crate) async fn validate(
 
 /// Dispatch a live authentication check to the provider named by `provider`,
 /// when this crate knows how to reach it. Unrecognized providers report
-/// [`ProviderValidationState::Unknown`] rather than guessing at an endpoint.
-async fn check_provider_key(
-    client: &reqwest::Client,
-    provider: &str,
-    key: &SecretString,
-) -> ProviderValidationState {
+/// [`ProviderValidationState::Unknown`] rather than guessing at an endpoint,
+/// and never construct an HTTP client to do it.
+async fn check_provider_key(provider: &str, key: &SecretString) -> ProviderValidationState {
     match provider.to_ascii_lowercase().as_str() {
         "anthropic" | "claude" => {
-            check_anthropic_key(client, key, ANTHROPIC_MODELS_URL).await
+            let client = reqwest::Client::new();
+            check_anthropic_key(&client, key, ANTHROPIC_MODELS_URL).await
         }
-        "openai" => check_openai_key(client, key, OPENAI_MODELS_URL).await,
+        "openai" => {
+            let client = reqwest::Client::new();
+            check_openai_key(&client, key, OPENAI_MODELS_URL).await
+        }
         _ => ProviderValidationState::Unknown,
     }
 }
@@ -820,9 +825,8 @@ mod tests {
             "must report never-validated before validate() has run"
         );
 
-        let client = reqwest::Client::new();
         let id = format!("{provider}:backup");
-        let validated = validate(&root, &id, &client).await.unwrap();
+        let validated = validate(&root, &id).await.unwrap();
         assert_eq!(validated.status, ManagedCredentialStatus::Valid);
         assert!(validated.last_validated.is_some());
         assert_eq!(
@@ -1099,8 +1103,7 @@ mod tests {
         };
         empty.save(&path).unwrap();
 
-        let client = reqwest::Client::new();
-        let result = validate(&root, "anthropic:primary", &client).await.unwrap();
+        let result = validate(&root, "anthropic:primary").await.unwrap();
         assert_eq!(
             result.validation.map(|r| r.state),
             Some(ProviderValidationState::Malformed),
@@ -1123,8 +1126,7 @@ mod tests {
         };
         expired.save(&path).unwrap();
 
-        let client = reqwest::Client::new();
-        let result = validate(&root, "anthropic:primary", &client).await.unwrap();
+        let result = validate(&root, "anthropic:primary").await.unwrap();
         assert_eq!(result.status, ManagedCredentialStatus::Expired);
         assert_eq!(
             result.validation.map(|r| r.state),
