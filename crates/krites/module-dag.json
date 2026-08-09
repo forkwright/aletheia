@@ -355,8 +355,8 @@
     {
       "from": "storage",
       "to": "data",
-      "count": 12,
-      "production_count": 12,
+      "count": 28,
+      "production_count": 28,
       "test_only": false,
       "first_evidence": "storage/fjall_backend.rs:8",
       "first_production_evidence": "storage/fjall_backend.rs:8"
@@ -364,8 +364,8 @@
     {
       "from": "storage",
       "to": "root",
-      "count": 6,
-      "production_count": 6,
+      "count": 8,
+      "production_count": 8,
       "test_only": false,
       "first_evidence": "storage/fjall_backend.rs:10",
       "first_production_evidence": "storage/fjall_backend.rs:10"
@@ -373,15 +373,15 @@
     {
       "from": "storage",
       "to": "runtime",
-      "count": 9,
-      "production_count": 9,
+      "count": 15,
+      "production_count": 15,
       "test_only": false,
       "first_evidence": "storage/fjall_backend.rs:7",
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
   "file_count": 204,
-  "statement_count": 966,
+  "statement_count": 986,
   "required_edges_present": [
     [
       "runtime",
