@@ -10,6 +10,14 @@ use serde::Deserialize;
 
 use crate::error::{self, ApiErrorContext};
 
+/// Maximum bytes of a provider error body preserved in logs and error
+/// messages.
+///
+/// WHY(#5261): raw provider bodies can carry echoed prompt fragments, tool
+/// payloads, or credential-shaped strings. Matches the Anthropic adapter's
+/// bound so both providers cap diagnostic text the same way.
+const MAX_ERROR_BODY_LOG_BYTES: usize = 512;
+
 /// Wire shape of an OpenAI error response body.
 ///
 /// Field set matches the documented OpenAI error envelope. Also accepted
@@ -63,13 +71,20 @@ pub(crate) async fn map_error_response(
             if body.is_empty() {
                 format!("HTTP {status}")
             } else {
-                // WHY: bounded slice so we do not paste a multi-megabyte HTML
-                // error page into the error chain.
-                let trimmed: String = body.chars().take(512).collect();
-                format!("HTTP {status}: {trimmed}")
+                // WHY(#5261): redact known secret patterns before bounding
+                // length — truncating first could split a token at the
+                // boundary and leave a partial credential unredacted. Also
+                // guards against pasting a multi-megabyte HTML error page
+                // into the error chain.
+                let sanitized =
+                    crate::secret::sanitize_provider_text(&body, MAX_ERROR_BODY_LOG_BYTES);
+                format!("HTTP {status}: {sanitized}")
             }
         },
-        |d| d.message.clone(),
+        // WHY(#5261): the parsed `message` field is provider-controlled text
+        // (echoed request content on some malformed-request errors) and must
+        // be sanitized the same as the unparsed body fallback above.
+        |d| crate::secret::sanitize_provider_text(&d.message, MAX_ERROR_BODY_LOG_BYTES),
     );
 
     tracing::warn!(

@@ -54,8 +54,27 @@ DESCRIPTION_RE = re.compile(
     re.DOTALL,
 )
 STRING_LITERAL_RE = re.compile(r'"(?:\\.|[^"\\])*"', re.DOTALL)
-TIER_RE = re.compile(r"self\.rate_limiter\.check\(Tier::(?P<tier>\w+)\)")
-ROLE_RE = re.compile(r"require(?:_caller)?_role\s*\(\s*(?:self\s*,\s*&context|&caller)\s*,\s*Role::(?P<role>\w+)")
+# WHY(#5182, #4843): the tier check moved off a standalone
+# `self.rate_limiter.check(Tier::X)` line and into a `tier: Tier` argument on
+# the `require_role`/`require_authenticated` helpers (rate limiter is now
+# shared via Arc, keyed by resolved principal, ahead of the RBAC check). Match
+# the tier wherever it is actually enforced rather than assuming one fixed
+# call shape.
+TIER_RE = re.compile(
+    r"(?:self\.rate_limiter\.check\(|"
+    r"require_role\s*\(\s*self\s*,\s*&context\s*,\s*|"
+    r"require_authenticated\s*\(\s*self\s*,\s*&context\s*,\s*)"
+    r"Tier::(?P<tier>\w+)"
+)
+# The single-step `require_role` call now carries `Tier::X` between `&context`
+# and `Role::Y`; the two-step `require_caller_role(&caller, Role::Y, ...)`
+# (paired with `require_authenticated`, which has no minimum role of its own)
+# is unaffected and still matches via the `&caller` branch.
+ROLE_RE = re.compile(
+    r"require(?:_caller)?_role\s*\(\s*"
+    r"(?:self\s*,\s*&context\s*,\s*(?:Tier::\w+\s*,\s*)?|&caller\s*,\s*)"
+    r"Role::(?P<role>\w+)"
+)
 
 # WHY: resource templates are statically defined as tuples or RawResourceTemplate::new calls.
 # Parse the WORKSPACE_FILES constant for the nous templates and the config resource separately.
@@ -71,9 +90,12 @@ RAW_RESOURCE_TEMPLATE_RE = re.compile(
     r'(?:.*?\.with_description\(\s*"(?P<desc>[^"]+)"\s*\))?',
     re.DOTALL,
 )
-# Extract RBAC role from require_resource_role call context in server.rs
+# Extract RBAC role from require_resource_role call context in server.rs.
+# WHY(#5182, #4843): require_resource_role also gained a `tier: Tier`
+# argument between `&context` and `Role::Y` for the same shared-limiter reason
+# as TIER_RE/ROLE_RE above.
 RESOURCE_ROLE_RE = re.compile(
-    r'require_resource_role\s*\(\s*&context\s*,\s*Role::(?P<role>\w+)\s*,\s*"[^"]*"\s*\)'
+    r'require_resource_role\s*\(\s*&context\s*,\s*(?:Tier::\w+\s*,\s*)?Role::(?P<role>\w+)\s*,\s*"[^"]*"\s*\)'
 )
 NOUS_URI_PREFIX = "aletheia://nous/{nous_id}/"
 
