@@ -98,12 +98,10 @@ fn shared_templates_never_invoke_real_tools_as_shell_commands() {
                 continue;
             };
             for line in body.lines() {
-                let Some(token) = line
-                    .trim_start_matches('$')
-                    .trim()
-                    .split_whitespace()
-                    .next()
-                else {
+                // WHY no .trim() here: split_whitespace already skips leading and trailing
+                // whitespace, so trimming first does the same work twice. The
+                // trim_start_matches('$') stays — stripping a sigil is not whitespace handling.
+                let Some(token) = line.trim_start_matches('$').split_whitespace().next() else {
                     continue;
                 };
                 assert!(
