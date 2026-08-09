@@ -239,6 +239,13 @@ impl SpawnServiceImpl {
             },
             domains: Vec::new(),
             private: false,
+            // WHY(#5823): every ephemeral sub-agent is a cross-agent call by
+            // construction, regardless of true nesting level — `ToolContext`
+            // does not thread the parent's own depth through `SpawnContext`,
+            // and `score_complexity`'s cross-agent branch treats any
+            // `depth > 0` identically, so a constant `1` is exact for
+            // present routing semantics.
+            spawn_depth: 1,
             episteme_cohort: std::sync::Arc::from("shared"),
             workspace,
             allowed_roots,
@@ -564,6 +571,59 @@ mod tests {
         assert!(
             !config.allowed_roots.contains(&oikos.root().to_path_buf()),
             "spawned agent must not inherit the entire oikos root"
+        );
+    }
+
+    // WHY(#5823): a hand-set `ComplexityInput.depth` only proves the scorer
+    // works in isolation — it does not prove any production caller ever
+    // reaches that branch. This drives the real path: `build_spawn_config`
+    // (what every ephemeral sub-agent gets) into `routed_model_for_turn`
+    // (what `execute` actually calls to pick a turn's model), with a
+    // deliberately boring message that would score well under the Opus
+    // threshold on content alone. A pass can only be explained by the
+    // `spawn_depth` signal reaching `score_complexity`'s cross-agent branch.
+    #[test]
+    fn spawn_config_routes_cross_agent_turns_to_opus() {
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, mut config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+        );
+        assert!(
+            config.spawn_depth > 0,
+            "an ephemeral sub-agent config must carry a non-zero cross-agent depth"
+        );
+
+        config.generation.complexity = hermeneus::complexity::ComplexityConfig {
+            enabled: true,
+            ..hermeneus::complexity::ComplexityConfig::default()
+        };
+
+        let mut ctx = crate::pipeline::PipelineContext::default();
+        ctx.messages
+            .push(crate::pipeline::PipelineMessage::text("user", "hi", 1));
+
+        let providers = make_providers();
+        let tools = ToolRegistry::new();
+
+        let opus_model = koina::models::tier_default(koina::models::ModelTier::Opus);
+        assert_ne!(
+            config.generation.model, opus_model,
+            "spawn's base model must differ from the opus tier for this test to be meaningful"
+        );
+
+        let routed = crate::execute::routed_model_for_turn(&ctx, &config, &providers, &tools);
+        assert_eq!(
+            routed, opus_model,
+            "a spawned sub-agent turn must route to the Opus tier via the cross-agent branch"
         );
     }
 
