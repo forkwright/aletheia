@@ -14,10 +14,11 @@ use super::super::{KnowledgeConfig, KnowledgeStore};
 #[tokio::test]
 async fn rule_dir_config_wires_hot_reloaded_rule_into_queries() {
     let dir = tempfile::tempdir().expect("create temp rule dir");
-    std::fs::write(
+    tokio::fs::write(
         dir.path().join("wiring_probe.mnm"),
         "wiring_probe[marker] := marker = \"hot-reload-wired\"\n",
     )
+    .await
     .expect("write probe rule file");
 
     let config = KnowledgeConfig {
