@@ -33,6 +33,57 @@ pub struct CredentialsListResponse {
     pub runtime_effect: Option<CredentialMutationEffect>,
 }
 
+/// Outcome of a provider-aware credential validation call.
+///
+/// WHY(#4875): mirrors `symbolon::types::ProviderValidationState` on the wire
+/// with a typed schema (rather than a bare string) so OpenAPI documents the
+/// exact set of validation states a caller must handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CredentialValidationState {
+    /// The provider authenticated the credential.
+    Accepted,
+    /// The provider explicitly rejected the credential.
+    Rejected,
+    /// The credential is expired according to locally-known metadata.
+    Expired,
+    /// The stored credential value is empty or otherwise malformed.
+    Malformed,
+    /// The provider could not be reached; not evidence the key is bad.
+    Unreachable,
+    /// No live-check strategy exists for this provider; local inspection only.
+    Unknown,
+}
+
+impl From<symbolon::types::ProviderValidationState> for CredentialValidationState {
+    fn from(state: symbolon::types::ProviderValidationState) -> Self {
+        match state {
+            symbolon::types::ProviderValidationState::Accepted => Self::Accepted,
+            symbolon::types::ProviderValidationState::Rejected => Self::Rejected,
+            symbolon::types::ProviderValidationState::Expired => Self::Expired,
+            symbolon::types::ProviderValidationState::Malformed => Self::Malformed,
+            symbolon::types::ProviderValidationState::Unreachable => Self::Unreachable,
+            symbolon::types::ProviderValidationState::Unknown => Self::Unknown,
+        }
+    }
+}
+
+impl CredentialValidationState {
+    /// The `status` string this validation state maps to. `Unknown` has no
+    /// mapping — callers fall back to the local-inspection status instead of
+    /// reporting a provider claim this crate cannot back up.
+    fn as_status_str(self) -> Option<&'static str> {
+        match self {
+            Self::Accepted => Some("valid"),
+            Self::Rejected => Some("invalid"),
+            Self::Expired => Some("expired"),
+            Self::Malformed => Some("malformed"),
+            Self::Unreachable => Some("unreachable"),
+            Self::Unknown => None,
+        }
+    }
+}
+
 /// Secret-safe credential metadata returned to clients.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CredentialResponse {
@@ -46,8 +97,26 @@ pub struct CredentialResponse {
     /// Redacted preview of the credential, never raw secret material.
     #[serde(rename = "masked_key")]
     pub redacted_preview: String,
-    /// Local validation status.
+    /// Effective status: the persisted provider-validation outcome when one
+    /// exists, otherwise local-inspection status (does the file load, has it
+    /// not locally expired). `provider_verified` says which kind this is.
     pub status: String,
+    /// `true` when `status` reflects an actual provider round trip
+    /// (`validation_state` is `Some` and not `unknown`), `false` when it is
+    /// local inspection only.
+    ///
+    /// WHY(#4875): `status: "valid"` previously meant only "the file loaded
+    /// and isn't locally expired" — never that the provider accepted the
+    /// key. This flag lets the UI distinguish the two without guessing from
+    /// the string value.
+    pub provider_verified: bool,
+    /// The raw persisted provider-validation outcome, when this credential
+    /// has ever been validated. `None` means never validated — distinct from
+    /// every [`CredentialValidationState`] variant, all of which mean an
+    /// attempt was made (including `unknown`, for a provider this crate has
+    /// no live-check strategy for).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub validation_state: Option<CredentialValidationState>,
     /// Last validation timestamp when produced by a validation call.
     pub last_validated: Option<String>,
     /// Whether per-credential usage counters are backed by authoritative
@@ -192,12 +261,22 @@ pub async fn add_credential(
 }
 
 /// POST /api/v1/system/credentials/{id}/validate: validate one credential.
+///
+/// WHY(#4875): this performs a real, provider-aware validation — a network
+/// round trip against the provider's own API for providers this crate knows
+/// how to reach live, skipped only when local metadata (empty secret, past
+/// expiry) already answers the question. The outcome is persisted, so a
+/// non-empty but invalid key can never come back as `status: "valid"`, and a
+/// subsequent `GET /credentials` reflects the same result rather than
+/// reverting to "never validated". See `CredentialResponse::validation_state`
+/// for the full outcome set and `provider_verified` for whether `status`
+/// reflects a real provider round trip or local inspection only.
 #[utoipa::path(
     post,
     path = "/api/v1/system/credentials/{id}/validate",
     params(("id" = String, Path, description = "Credential id in provider:role form")),
     responses(
-        (status = 200, description = "Credential validation result", body = CredentialResponse),
+        (status = 200, description = "Credential validation result. `validation_state` is one of accepted, rejected, expired, malformed, unreachable, unknown; `status` and `provider_verified` summarize it.", body = CredentialResponse),
         (status = 400, description = "Invalid credential id"),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
@@ -222,6 +301,7 @@ pub async fn validate_credential(
     let credential = state
         .auth_facade
         .validate_credential(&root, &id)
+        .await
         .map_err(map_symbolon_error)?;
     Ok(Json(CredentialResponse::from_managed(credential, None)))
 }
@@ -389,12 +469,29 @@ impl CredentialResponse {
         credential: ManagedCredential,
         runtime_effect: Option<CredentialMutationEffect>,
     ) -> Self {
+        let local_status = status_str(credential.status);
+        // WHY(#4875): `status` must never claim provider acceptance it can't
+        // back up. A persisted validation record wins when it carries an
+        // actual outcome; `Unknown` (no live-check strategy for this
+        // provider) falls back to local-inspection status, same as no
+        // validation record at all.
+        let validation_state = credential
+            .validation
+            .map(|record| CredentialValidationState::from(record.state));
+        let status = validation_state
+            .and_then(CredentialValidationState::as_status_str)
+            .unwrap_or(local_status)
+            .to_owned();
+        let provider_verified = validation_state
+            .is_some_and(|state| state.as_status_str().is_some());
         Self {
             id: credential.id,
             provider: credential.provider,
             role: credential.role.as_str().to_owned(),
             redacted_preview: credential.redacted_preview,
-            status: status_str(credential.status).to_owned(),
+            status,
+            provider_verified,
+            validation_state,
             last_validated: credential.last_validated,
             // WHY: no authoritative provider/session telemetry exists yet, so
             // omit the counters entirely rather than return hardcoded zeros.
