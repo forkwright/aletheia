@@ -1090,11 +1090,14 @@ mod tests {
         // Before the fix this refresh would drop the outcome just recorded.
         store.refresh().await.unwrap();
 
+        // WHY: `.unwrap()` on the outer AND inner `Option` — a `None` here
+        // means the interactive outcome did not survive the refresh, which
+        // is exactly the regression this test exists to catch.
         let stats = store
             .rolling_stats(&provider, &TaskCategory::Feature, DEFAULT_ROUTING_WINDOW)
             .await
             .unwrap()
-            .expect("interactive outcome must survive a refresh");
+            .unwrap();
         assert_eq!(stats.total, 1);
         assert_eq!(stats.successes, 1);
     }
@@ -1110,7 +1113,7 @@ mod tests {
 
         let interactive_dir = tmp.path().join("interactive");
         let mut entries = std::fs::read_dir(&interactive_dir)
-            .expect("interactive dir must exist after record_outcome")
+            .unwrap()
             .collect::<std::io::Result<Vec<_>>>()
             .unwrap();
         assert_eq!(entries.len(), 1, "one day-partitioned JSONL file");
@@ -1138,11 +1141,13 @@ mod tests {
 
         let store = AfterActionStore::new(tmp.path().to_owned());
         store.refresh().await.unwrap();
+        // WHY: a `None` here means the durably-logged interactive outcome
+        // did not survive a fresh store instance reading it back from disk.
         let stats = store
             .rolling_stats(&provider, &TaskCategory::Feature, DEFAULT_ROUTING_WINDOW)
             .await
             .unwrap()
-            .expect("durably-logged interactive outcome must survive a fresh store instance");
+            .unwrap();
         assert_eq!(stats.total, 1);
     }
 
@@ -1169,6 +1174,8 @@ mod tests {
         let store = AfterActionStore::new(tmp.path().to_owned());
         store.refresh().await.unwrap();
 
+        // WHY: a `None` here means the well-formed line alongside the
+        // malformed one was not counted either.
         let stats = store
             .rolling_stats(
                 &ProviderId::new("claude"),
@@ -1177,7 +1184,7 @@ mod tests {
             )
             .await
             .unwrap()
-            .expect("the well-formed line must still be counted");
+            .unwrap();
         assert_eq!(stats.total, 1);
         assert_eq!(
             store.skipped_malformed_lines(),
