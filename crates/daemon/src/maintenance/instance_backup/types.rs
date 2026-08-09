@@ -57,7 +57,13 @@ pub struct StoreEntry {
     pub source_path: PathBuf,
     /// Relative backup path inside the backup set.
     pub backup_path: PathBuf,
-    /// ISO 8601 snapshot timestamp.
+    /// ISO 8601 timestamp captured immediately after this entry's own copy
+    /// finished.
+    ///
+    /// WHY(#6442): each entry records its OWN capture time rather than a
+    /// value shared with every other entry, so a consumer can see the real
+    /// wall-clock spread between stores in a non-quiesced backup instead of
+    /// a single stamp that falsely implies simultaneity.
     pub snapshot_time: String,
     /// Total bytes copied for this store.
     pub byte_count: u64,
@@ -97,17 +103,33 @@ pub struct BackupManifest {
     pub workspace_omissions: Vec<WorkspaceOmission>,
     /// Total bytes copied across all stores.
     pub total_bytes: u64,
-    /// Snapshot epoch: the ISO 8601 timestamp that bounds this coherent backup set.
+    /// ISO 8601 timestamp recorded once, when this backup run began.
     ///
-    /// WHY(#4950): all stores in the set are copied under this single epoch so
-    /// restore can detect cross-store time skew.
+    /// WHY(#4950): a coarse start marker for the whole run.
+    /// WHY(#6442): this alone does NOT prove the stores were captured
+    /// together — it is stamped before any copying starts. Each
+    /// [`StoreEntry::snapshot_time`] carries the real per-entry capture time,
+    /// which is what actually lets a consumer detect cross-store skew.
     #[serde(default)]
     pub snapshot_epoch: String,
     /// Snapshot protocol version. Bumped when the staging/verify/publish protocol changes.
     #[serde(default)]
     pub snapshot_protocol_version: String,
-    /// Whether writers were quiesced before copying. `false` means the backup is
-    /// a live snapshot and may contain minor cross-store write-point skew.
+    /// Whether a caller-supplied quiesce mechanism actually ran before this
+    /// backup's stores were copied. `false` means the backup is a live,
+    /// non-atomic export that may contain cross-store write-point skew —
+    /// treat it as a crash-consistent, best-effort export, never as a
+    /// guaranteed point-in-time recovery set.
+    ///
+    /// WHY(#6442): this is a fact DERIVED from
+    /// [`InstanceBackup::create_backup_with_quiesce`]'s hook having actually
+    /// executed and reported a mechanism, never a bare declaration.
+    /// `instance_backup` holds no live store handles of its own — it copies
+    /// filesystem paths, in-process or out-of-process alike — and so cannot
+    /// quiesce writers by itself; [`InstanceBackup::create_backup`] supplies
+    /// a no-op hook and is therefore always `false`. A caller that owns the
+    /// live handles (writer pause, WAL flush, checkpoint) supplies the real
+    /// hook.
     #[serde(default)]
     pub quiesced: bool,
     /// Per-fjall-store generation (seqno) captured from the staged copy.
@@ -271,6 +293,15 @@ pub(crate) struct BackupBuild {
     pub(crate) total_bytes: u64,
     pub(crate) total_files: u64,
     pub(crate) snapshot_time: String,
+    /// Monotonic instant sampled around the first entry actually copied.
+    ///
+    /// WHY(#6442): paired with `last_entry_copied_at` to compute an honest,
+    /// wall-clock-jump-immune measure of how non-atomic a backup run was.
+    /// Never serialized — the manifest carries only the derived seconds
+    /// value, injected as evidence alongside `total_files`.
+    pub(crate) first_entry_copied_at: Option<std::time::Instant>,
+    /// Monotonic instant sampled around the last entry actually copied.
+    pub(crate) last_entry_copied_at: Option<std::time::Instant>,
 }
 
 #[derive(Debug, Clone)]
