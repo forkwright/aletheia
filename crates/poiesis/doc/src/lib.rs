@@ -22,6 +22,8 @@
 //!   the clean-room ZIP/XML backend.
 //! - [`render_doc`] — unified dispatch: routes `Document` to Typst (PDF
 //!   fast-lane) or Pandoc (all other formats).
+//! - [`render_deliverable`] — the same dispatch, entered from a typed
+//!   [`poiesis_core::DeliverableSpec`] rather than a bare `Document`.
 //! - [`pandoc::ast::document_to_pandoc_json`] — serialize a `Document` to
 //!   Pandoc JSON AST bytes.
 //!
@@ -49,6 +51,8 @@ pub mod pandoc;
 pub use error::Error;
 /// Re-export of the system `LaTeX` engine probe.
 pub use latex_probe::{LatexProbe, LatexProbeError};
+/// Re-export of the spec-level Pandoc dispatcher.
+pub use pandoc::render_deliverable;
 /// Re-export of the Pandoc dispatcher for callers that want it directly.
 pub use pandoc::render_doc;
 pub use pandoc_probe::{PandocProbe, PandocProbeError};

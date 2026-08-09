@@ -202,6 +202,95 @@ impl ManagedCredentialStatus {
     }
 }
 
+/// Outcome of a provider-aware credential validation call.
+///
+/// WHY(#4875): [`ManagedCredentialStatus`] only ever reflects local file
+/// inspection (does the file load, has its locally-known expiry passed) — it
+/// can never tell an operator whether the provider itself would accept the
+/// key. This type is the missing dimension: the result of an actual
+/// authenticated round trip to the provider, when the provider is one this
+/// crate knows how to check live.
+// kanon:ignore RUST/no-debug-derive-on-public-types — validation-state enum contains no secret data; Debug is safe
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum ProviderValidationState {
+    /// The provider authenticated the credential.
+    Accepted,
+    /// The provider explicitly rejected the credential (401/403-class response).
+    Rejected,
+    /// The credential is expired according to locally-known metadata; no
+    /// network round trip was made because the local expiry already answers
+    /// the question.
+    Expired,
+    /// The stored credential value is empty or otherwise malformed; no
+    /// network round trip was made because no provider would accept it.
+    Malformed,
+    /// The provider could not be reached (network failure, timeout, or a
+    /// server-side error that does not indicate the key itself is bad).
+    Unreachable,
+    /// This crate has no live-check strategy for the named provider; only
+    /// local inspection is possible for it.
+    Unknown,
+}
+
+impl ProviderValidationState {
+    /// Stable wire string for the validation state.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Accepted => "accepted",
+            Self::Rejected => "rejected",
+            Self::Expired => "expired",
+            Self::Malformed => "malformed",
+            Self::Unreachable => "unreachable",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+impl std::fmt::Display for ProviderValidationState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A persisted provider-validation outcome with the timestamp it was observed.
+///
+/// WHY(#4875): validation metadata must survive past the single response that
+/// produced it — a subsequent `list` call must still see the last validation
+/// result rather than reporting `last_validated: None` again. Stored as a
+/// plaintext sidecar next to the credential file (never the secret itself).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProviderValidationRecord {
+    /// The validation outcome.
+    pub state: ProviderValidationState,
+    /// ISO 8601 timestamp of the validation attempt.
+    pub validated_at: jiff::Timestamp,
+}
+
+impl Serialize for ProviderValidationState {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ProviderValidationState {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        match raw.as_str() {
+            "accepted" => Ok(Self::Accepted),
+            "rejected" => Ok(Self::Rejected),
+            "expired" => Ok(Self::Expired),
+            "malformed" => Ok(Self::Malformed),
+            "unreachable" => Ok(Self::Unreachable),
+            "unknown" => Ok(Self::Unknown),
+            other => Err(serde::de::Error::custom(format!(
+                "unknown provider validation state: {other}"
+            ))),
+        }
+    }
+}
+
 /// Secret-safe credential metadata for operator APIs.
 // kanon:ignore RUST/no-debug-derive-on-public-types — redacted_preview is masked; raw secret material is never stored in this type
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -214,10 +303,16 @@ pub struct ManagedCredential {
     pub role: ManagedCredentialRole,
     /// Redacted key preview, never raw credential material.
     pub redacted_preview: String,
-    /// Local validation status.
+    /// Local validation status: does the file load, has it not locally expired.
+    /// Never a claim about provider acceptance — see `validation` for that.
     pub status: ManagedCredentialStatus,
     /// Last validation timestamp, when this response was produced by validation.
     pub last_validated: Option<String>,
+    /// The last persisted provider-validation outcome, if this credential has
+    /// ever been validated. `None` means "never validated" — distinct from
+    /// any [`ProviderValidationState`] variant, all of which mean an attempt
+    /// was made.
+    pub validation: Option<ProviderValidationRecord>,
 }
 
 /// Stored user record.

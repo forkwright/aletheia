@@ -25,6 +25,9 @@ mod format;
 mod totals;
 
 #[cfg(feature = "workbook")]
+mod sources;
+
+#[cfg(feature = "workbook")]
 pub mod workbook;
 
 #[cfg(feature = "workbook")]
