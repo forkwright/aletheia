@@ -34,6 +34,14 @@ const MAX_OUTPUT_LINES: usize = 100_000;
 /// excessive memory before the request reaches Kimi.
 const MAX_SYSTEM_PROMPT_BYTES: usize = 100 * 1024;
 
+/// Maximum bytes of subprocess stderr or a raw stdout line preserved in an
+/// error message or diagnostic log.
+///
+/// WHY(#5261): Kimi's stderr and malformed stdout lines can carry echoed
+/// prompt fragments or credential-shaped strings; sanitize before either
+/// reaches an error returned to the caller or a log line.
+const MAX_DIAGNOSTIC_TEXT_BYTES: usize = 512;
+
 fn scrub_kimi_auth_env(cmd: &mut Command) {
     // WHY: The Kimi CLI owns its OAuth credential flow. If MOONSHOT_API_KEY is
     // inherited from the parent, the subprocess can accidentally switch to
@@ -178,15 +186,19 @@ pub(crate) async fn run_completion(
 
             if !status.success() {
                 let stderr_text = read_stderr(child.stderr.take()).await;
+                // WHY(#5261): stderr can carry echoed prompt fragments or
+                // credential-shaped strings; sanitize before it reaches the
+                // caller in an error message.
+                let stderr_display = if stderr_text.trim().is_empty() {
+                    "(no stderr)".to_owned()
+                } else {
+                    crate::secret::sanitize_provider_text(
+                        stderr_text.trim(),
+                        MAX_DIAGNOSTIC_TEXT_BYTES,
+                    )
+                };
                 return Err(error::ApiRequestSnafu {
-                    message: format!(
-                        "Kimi process exited with {status}: {}",
-                        if stderr_text.is_empty() {
-                            "(no stderr)"
-                        } else {
-                            stderr_text.trim()
-                        }
-                    ),
+                    message: format!("Kimi process exited with {status}: {stderr_display}"),
                 }
                 .build());
             }
@@ -258,15 +270,19 @@ pub(crate) async fn run_streaming(
             })?;
             if !status.success() {
                 let stderr_text = read_stderr(child.stderr.take()).await;
+                // WHY(#5261): stderr can carry echoed prompt fragments or
+                // credential-shaped strings; sanitize before it reaches the
+                // caller in an error message.
+                let stderr_display = if stderr_text.trim().is_empty() {
+                    "(no stderr)".to_owned()
+                } else {
+                    crate::secret::sanitize_provider_text(
+                        stderr_text.trim(),
+                        MAX_DIAGNOSTIC_TEXT_BYTES,
+                    )
+                };
                 return Err(error::ApiRequestSnafu {
-                    message: format!(
-                        "Kimi process exited with {status}: {}",
-                        if stderr_text.is_empty() {
-                            "(no stderr)"
-                        } else {
-                            stderr_text.trim()
-                        }
-                    ),
+                    message: format!("Kimi process exited with {status}: {stderr_display}"),
                 }
                 .build());
             }
@@ -415,7 +431,12 @@ where
                 }
                 Ok(None) => {}
                 Err(e) => {
-                    warn!(error = %e, line = %trimmed, "failed to parse Kimi stream-json output");
+                    // WHY(#5261): a malformed stream-json line can carry an
+                    // echoed prompt fragment or credential-shaped string;
+                    // sanitize before logging it.
+                    let sanitized_line =
+                        crate::secret::sanitize_provider_text(trimmed, MAX_DIAGNOSTIC_TEXT_BYTES);
+                    warn!(error = %e, line = %sanitized_line, "failed to parse Kimi stream-json output");
                 }
             }
             continue;

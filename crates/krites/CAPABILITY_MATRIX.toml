@@ -64,7 +64,7 @@ exec_site = "crates/krites/src/runtime/sys.rs:211"
 dest_wave = "wave-1"
 dest_module = "episteme/knowledge_store/migration.rs (column_probe, Sec 8.3)"
 gate = "`column_probe()`: live column set from `::columns` equals `new_columns` exactly, driving resume-at-8 vs. full rebuild (Sec 8.3)."
-call_sites = 1
+call_sites = 10
 call_sites_method = "grep -rn -- '[\"'\\''`]::columns' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Second consumer beyond the migration sweep: crates/episteme/src/consolidation/engine.rs:821."
 
@@ -77,7 +77,7 @@ exec_site = "crates/krites/src/runtime/sys.rs:212"
 dest_wave = "wave-1"
 dest_module = "episteme/knowledge_store/migration.rs (index enumeration, Sec 8.3)"
 gate = "Index enumeration taken live via `::indices`, never a caller-supplied spec list; an unexpected index fails the migration (Sec 8.3, B26)."
-call_sites = 0
+call_sites = 7
 call_sites_method = "grep -rn -- '[\"'\\''`]::indices' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero-call-site, not named as such in Appendix A -- report to T0."
 
@@ -90,7 +90,7 @@ exec_site = "crates/krites/src/runtime/sys.rs:84"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs"
 gate = "`::relations` lists exactly the live relation set (temp-store names excluded per current semantics)."
-call_sites = 3
+call_sites = 7
 call_sites_method = "grep -rn -- '[\"'\\''`]::relations' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
@@ -153,7 +153,7 @@ exec_site = "crates/krites/src/runtime/sys.rs:95"
 dest_wave = "wave-8"
 dest_module = "relation/relation_crud.rs"
 gate = "`destroy_relation` refuses a relation with attached indices (relation_crud.rs:196-202, Sec 8.2 step 5 precondition); persisted key ranges release only after the call returns."
-call_sites = 11
+call_sites = 18
 call_sites_method = "grep -rn -- '[\"'\\''`]::remove' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
@@ -165,7 +165,7 @@ exec_site = "crates/krites/src/runtime/sys.rs:213"
 dest_wave = "wave-1"
 dest_module = "episteme/knowledge_store/migration.rs (atomic swap, Sec 8.1)"
 gate = "`::rename` is a single-transaction, O(1) atomic swap; sub-relation index metadata keyed `{name}:{k}` renames too, closing B26 (relation/index_management.rs:213-254 vs relation_crud.rs:210-213)."
-call_sites = 0
+call_sites = 10
 call_sites_method = "grep -rn -- '[\"'\\''`]::rename' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "The current (pre-wave-1) migration.rs does not yet use ::rename at all -- it is the mechanism wave 1 INTRODUCES (Sec 8.1-8.2), not one exercised by any live path today. Its correctness in production conditions is unproven by existing usage, which is exactly why Sec 8.4's crash-injection matrix carries the whole correctness argument -- report to T0 as a scope-relevant finding, not merely a zero-call-site curiosity."
 
@@ -240,7 +240,7 @@ exec_site = "crates/krites/src/runtime/sys.rs:158"
 dest_wave = "wave-3"
 dest_module = "Storage trait + BM25/FTS index"
 gate = "F02 zero-guard: finite score, never NaN/Inf, on a cold index plus a zero-df term; golden BM25 fixtures frozen before the port."
-call_sites = 1
+call_sites = 3
 call_sites_method = "grep -rn -- '[\"'\\''`]::fts create' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
@@ -264,9 +264,9 @@ exec_site = "crates/krites/src/runtime/sys.rs:182"
 dest_wave = "wave-8"
 dest_module = "relation/index_management.rs (pairs with CreateIndex; the B26 sub-relation-rename hazard site)"
 gate = "Removing an index releases its persisted key range and its `{name}:{k}` sub-relation metadata row together -- never leaving one behind (B26)."
-call_sites = 6
-call_sites_method = "sum of quote-anchored grep for '::index drop', '::hnsw drop', '::fts drop', '::lsh drop' across crates/ excluding crates/krites/ (0+0+6+0)"
-notes = "All 6 measured sites are '::fts drop' (crates/episteme/src/knowledge_store/migration.rs and tests). Standard/hnsw/lsh drop forms are zero-call-site."
+call_sites = 16
+call_sites_method = "sum of quote-anchored grep for '::index drop', '::hnsw drop', '::fts drop', '::lsh drop' across crates/ excluding crates/krites/ (3+3+7+3)"
+notes = "Wave 1's recovery sweep enumerates every index kind before a staging swap, so all four drop forms now have sites (3+3+7+3). No form is zero-call-site any more."
 
 [[capability]]
 id = "sysop-describe-relation"
@@ -299,7 +299,7 @@ source = "crates/krites/src/data/value.rs:186"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Sorts before every other variant; byte-identity of encoding (Sec 6.1)."
-call_sites = 48
+call_sites = 53
 call_sites_method = "grep -rn 'DataValue::Null\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
@@ -310,7 +310,7 @@ source = "crates/krites/src/data/value.rs:188"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding (Sec 6.1)."
-call_sites = 19
+call_sites = 22
 call_sites_method = "grep -rn 'DataValue::Bool\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
@@ -321,7 +321,7 @@ source = "crates/krites/src/data/value.rs:190"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding, including integer-vs-float ordering (Sec 6.1); per-op differential in wave 7 for the ~102 functions consuming Num."
-call_sites = 2
+call_sites = 3
 call_sites_method = "grep -rn 'DataValue::Num\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
@@ -332,7 +332,7 @@ source = "crates/krites/src/data/value.rs:192"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding via CompactString inline storage (Sec 6.1)."
-call_sites = 394
+call_sites = 401
 call_sites_method = "grep -rn 'DataValue::Str\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
@@ -343,7 +343,7 @@ source = "crates/krites/src/data/value.rs:195"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding via serde_bytes; raw byte sequence round-trips unchanged (Sec 6.1)."
-call_sites = 0
+call_sites = 1
 call_sites_method = "grep -rn 'DataValue::Bytes\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see. Not flagged in Appendix A -- report to T0."
 
@@ -379,7 +379,7 @@ source = "crates/krites/src/data/value.rs:201"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding for an ordered sequence (Sec 6.1); Set (wave 6) coerces to List at the output boundary."
-call_sites = 2
+call_sites = 3
 call_sites_method = "grep -rn 'DataValue::List\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
@@ -413,7 +413,7 @@ source = "crates/krites/src/data/value.rs:207"
 dest_wave = "wave-6"
 dest_module = "data/value.rs + data/json.rs"
 gate = "Recorded-vector oracle only, never upstream (data/tests/json.rs is 27.8% verbatim -- krites already diverged there); round-trip through encode/decode preserves the value; ordering vs. other variants stays byte-stable (Appendix A row: DataValue::Json + data/json.rs)."
-call_sites = 0
+call_sites = 1
 call_sites_method = "grep -rn 'DataValue::Json\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see."
 
@@ -437,7 +437,7 @@ source = "crates/krites/src/data/value.rs:211"
 dest_wave = "wave-6"
 dest_module = "data/value.rs (engine-internal sentinel)"
 gate = "Sorts after every other variant; used as the upper-bound key in range scans -- wave-10 range-scan queries against the bound remain correct."
-call_sites = 0
+call_sites = 1
 call_sites_method = "grep -rn 'DataValue::Bot\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Doc-comment-declared engine-internal; zero external sites is expected by design, not a gap."
 
@@ -558,7 +558,7 @@ source = "crates/krites/src/lib.rs:39"
 dest_wave = "wave-1b"
 dest_module = "storage/{mem,temp}.rs (durability knobs)"
 gate = "Each PersistMode produces its declared post-crash visibility (Appendix A row: DbConfig / PersistMode)."
-call_sites = 77
+call_sites = 79
 call_sites_method = "grep -rn 'with_config(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme/mneme wrapper methods of the same name)"
 
 [[capability]]
@@ -591,7 +591,7 @@ source = "crates/krites/src/lib.rs:39"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs (ReadOnlyViolationSnafu enforcement)"
 gate = "Every mutating SysOp arm rejects an Immutable script identically to today -- all ReadOnlyViolationSnafu sites in runtime/sys.rs (Compact, RemoveRelation, CreateIndex, CreateVectorIndex, CreateFtsIndex, CreateMinHashLshIndex, RemoveIndex, RenameRelation, SetTriggers, SetAccessLevel: 10 of the 19 SysOp arms)."
-call_sites = 103
+call_sites = 62
 call_sites_method = "grep -rn 'ScriptMutability' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Not zero-call-site: episteme imports and constructs ScriptMutability directly (crate::engine::ScriptMutability) and passes it into Db::run/run_read_only at every DDL/query call site, e.g. knowledge_store/migration.rs:94,96 and knowledge_store/derived_rules.rs:23,460. Load-bearing, not merely wave-boundary-adjacent."
 
@@ -660,7 +660,7 @@ source = "crates/krites/src/lib.rs:163"
 dest_wave = "wave-1b"
 dest_module = "storage/mem.rs"
 gate = "Same gate as api-mem-storage."
-call_sites = 127
+call_sites = 129
 call_sites_method = "grep -rn 'open_mem(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
 
 [[capability]]
@@ -671,7 +671,7 @@ source = "crates/krites/src/lib.rs:174"
 dest_wave = "sovereign"
 dest_module = "storage/fjall_backend.rs"
 gate = "Insertion point for wave 1's pre-migration filesystem-level snapshot, taken BEFORE this call in the startup path (Sec 8.5) -- not inside migration.rs, which cannot re-open a keyspace this process already holds."
-call_sites = 43
+call_sites = 48
 call_sites_method = "grep -rn 'open_fjall(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
 
 [[capability]]
@@ -748,7 +748,7 @@ source = "crates/krites/src/lib.rs:257"
 dest_wave = "wave-1"
 dest_module = "the crash matrix's comparison mechanism (Sec 8.4)"
 gate = "Wave 1 makes this load-bearing: round-trip identity on the full seeded corpus (Appendix A row: export_relations / import_relations)."
-call_sites = 1
+call_sites = 3
 call_sites_method = "grep -rn 'export_relations(' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Appendix A: 'zero production call sites, exercised only by crates/integration-tests/tests/engine_facade.rs:57,70' -- this grep's single hit is that test file; consistent."
 
@@ -815,7 +815,7 @@ source = "crates/krites/src/lib.rs:362,379,404,413"
 dest_wave = "wave-11"
 dest_module = "MultiTransaction"
 gate = "Same gate as api-transaction-payload; INVARIANT preserved: send -> recv -> send -> recv, never pipelined (both channels capacity 1, per lib.rs:363-365 comment)."
-call_sites = 0
+call_sites = 1
 call_sites_method = "grep -rn 'MultiTransaction\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 # ---------------------------------------------------------------------------

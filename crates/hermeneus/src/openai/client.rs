@@ -306,6 +306,15 @@ impl OpenAiProvider {
     }
 
     async fn execute_inner(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+        // WHY(#5255): READ-ONLY gate against the tracker shared with the
+        // registry via `health_tracker()`. Per-attempt success/failure is
+        // deliberately NOT recorded on this tracker anymore — the caller
+        // (via `ProviderRegistry::record_success`/`record_error`) records
+        // once per logical request, matching CC/Kimi/Codex's granularity.
+        // Recording per internal HTTP retry attempt AND per logical request
+        // on the same tracker would double-count a single caller-visible
+        // failure, tripping the breaker faster than the configured
+        // threshold intends.
         if let Err(health) = self.health.check_available() {
             return Err(error::ApiRequestSnafu {
                 message: format!("provider circuit-breaker open: {health:?}"),
@@ -339,7 +348,6 @@ impl OpenAiProvider {
                 Ok(r) => r,
                 Err(e) => {
                     let err = map_request_error(&e);
-                    self.health.record_error(&err);
                     if !err.is_retryable() {
                         return Err(err);
                     }
@@ -357,7 +365,6 @@ impl OpenAiProvider {
                     .build()
                 })?;
                 let mut resp = self.parse_response_body(&text)?;
-                self.health.record_success();
                 let cost_usd = estimate_cost(
                     &self.pricing,
                     &request.model,
@@ -377,7 +384,6 @@ impl OpenAiProvider {
             }
 
             let err = map_error_response(response, &request.model, self.credential_source()).await;
-            self.health.record_error(&err);
             if !err.is_retryable() {
                 tracing::Span::current().record("llm.retries", attempt);
                 tracing::Span::current().record(
@@ -437,15 +443,14 @@ impl OpenAiProvider {
         result
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "WHY(#5044): streaming retry loop records each terminal path while applying configured retry policy"
-    )]
     async fn execute_streaming_inner(
         &self,
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        // WHY(#5255): READ-ONLY gate against the tracker shared with the
+        // registry — see the identical note on `execute_inner` for why
+        // per-attempt recording was removed from this loop.
         if let Err(health) = self.health.check_available() {
             return Err(error::ApiRequestSnafu {
                 message: format!("provider circuit-breaker open: {health:?}"),
@@ -470,7 +475,6 @@ impl OpenAiProvider {
             let mut response = match self.send_streaming_request(&url, &body).await {
                 Ok(r) => r,
                 Err(err) => {
-                    self.health.record_error(&err);
                     if !err.is_retryable() {
                         record_stream_failure(start, attempt, &self.config.name, request);
                         return Err(err);
@@ -484,7 +488,6 @@ impl OpenAiProvider {
             if !response.status().is_success() {
                 let err =
                     map_error_response(response, &request.model, self.credential_source()).await;
-                self.health.record_error(&err);
                 if !err.is_retryable() {
                     record_stream_http_failure(start, attempt, &self.config.name, request, status);
                     return Err(err);
@@ -510,7 +513,6 @@ impl OpenAiProvider {
 
             match resp {
                 Ok(mut resp) => {
-                    self.health.record_success();
                     let cost_usd = estimate_cost(
                         &self.pricing,
                         &request.model,
@@ -528,7 +530,6 @@ impl OpenAiProvider {
                     return Ok(resp);
                 }
                 Err(err) => {
-                    self.health.record_error(&err);
                     if content_started {
                         // WHY(#4887): content already delivered; retry would duplicate output.
                         tracing::error!("SSE error after content started streaming; cannot retry");
@@ -763,6 +764,13 @@ impl LlmProvider for OpenAiProvider {
         request: &'a CompletionRequest,
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(self.execute(request))
+    }
+
+    // WHY(#5255): share this exact tracker with the registry instead of
+    // letting it construct an independent one — see
+    // `LlmProvider::health_tracker` for why that matters.
+    fn health_tracker(&self) -> Option<Arc<ProviderHealthTracker>> {
+        Some(Arc::clone(&self.health))
     }
 
     fn supported_models(&self) -> &[&str] {
