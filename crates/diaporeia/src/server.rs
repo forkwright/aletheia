@@ -153,7 +153,12 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         // WHY(#3337): resource templates reveal what internal state is
         // accessible. Restrict to Operator+ so Readonly users cannot
         // discover agent workspace files or config structure.
-        self.require_resource_role(&context, Tier::Cheap, Role::Operator, "list_resource_templates")?;
+        self.require_resource_role(
+            &context,
+            Tier::Cheap,
+            Role::Operator,
+            "list_resource_templates",
+        )?;
 
         let mut templates: Vec<ResourceTemplate> = resources::nous::resource_templates();
         templates.extend(resources::config::resource_templates());
@@ -169,7 +174,8 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
         _params: Option<rmcp::model::PaginatedRequestParams>,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
     ) -> Result<ListResourcesResult, rmcp::ErrorData> {
-        let caller = self.require_resource_role(&context, Tier::Cheap, Role::Operator, "list_resources")?;
+        let caller =
+            self.require_resource_role(&context, Tier::Cheap, Role::Operator, "list_resources")?;
 
         let mut resources: Vec<Resource> = Vec::new();
 

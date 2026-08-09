@@ -590,7 +590,13 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::SessionCreateParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let caller = require_role(self, &context, Tier::Expensive, Role::Operator, "session_create")?;
+        let caller = require_role(
+            self,
+            &context,
+            Tier::Expensive,
+            Role::Operator,
+            "session_create",
+        )?;
         require_nous_access_for_caller(&caller, &params.nous_id, "session_create")?;
         let session_key = params.session_key.as_deref().unwrap_or("main");
         parse_session_or_agent_id(&params.nous_id).map_err(|e| {
@@ -736,7 +742,13 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::SessionMessageParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let caller = require_role(self, &context, Tier::Expensive, Role::Operator, "session_message")?;
+        let caller = require_role(
+            self,
+            &context,
+            Tier::Expensive,
+            Role::Operator,
+            "session_message",
+        )?;
         require_nous_access_for_caller(&caller, &params.nous_id, "session_message")?;
         let handle = self
             .state
@@ -1213,7 +1225,13 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::KnowledgeInsertParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let caller = require_role(self, &context, Tier::Expensive, Role::Operator, "knowledge_insert")?;
+        let caller = require_role(
+            self,
+            &context,
+            Tier::Expensive,
+            Role::Operator,
+            "knowledge_insert",
+        )?;
         let effective_nous =
             resolve_nous_scope(&caller, Some(&params.nous_id), "knowledge_insert")?
                 .unwrap_or_else(|| params.nous_id.clone());
@@ -1324,7 +1342,13 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::KnowledgeForgetParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let caller = require_role(self, &context, Tier::Expensive, Role::Operator, "knowledge_forget")?;
+        let caller = require_role(
+            self,
+            &context,
+            Tier::Expensive,
+            Role::Operator,
+            "knowledge_forget",
+        )?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -1407,7 +1431,8 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::KnowledgeGraphNeighborsParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let caller = require_authenticated(self, &context, Tier::Expensive, "knowledge_graph_neighbors")?;
+        let caller =
+            require_authenticated(self, &context, Tier::Expensive, "knowledge_graph_neighbors")?;
         require_caller_role(&caller, Role::Agent, "knowledge_graph_neighbors")?;
         // WHY(#4841): Agent callers must be scoped; unscoped traversal would let
         // them wander across party boundaries. Operator/Admin callers may remain
@@ -1451,7 +1476,13 @@ impl DiaporeiaServer {
         &self,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        require_role(self, &context, Tier::Cheap, Role::Agent, "repomix_templates_list")?;
+        require_role(
+            self,
+            &context,
+            Tier::Cheap,
+            Role::Agent,
+            "repomix_templates_list",
+        )?;
         require_repomix(self).await?;
 
         let templates = crate::repomix::list_templates();
@@ -1472,7 +1503,13 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::RepomixTemplateGetParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        require_role(self, &context, Tier::Cheap, Role::Agent, "repomix_template_get")?;
+        require_role(
+            self,
+            &context,
+            Tier::Cheap,
+            Role::Agent,
+            "repomix_template_get",
+        )?;
         require_repomix(self).await?;
 
         let template = crate::repomix::get_template(&params.name).map_err(rmcp::ErrorData::from)?;
@@ -1505,7 +1542,13 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::RepomixPackParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        require_role(self, &context, Tier::Expensive, Role::Operator, "repomix_pack")?;
+        require_role(
+            self,
+            &context,
+            Tier::Expensive,
+            Role::Operator,
+            "repomix_pack",
+        )?;
         let config = require_repomix(self).await?;
 
         // NOTE: `validate_startup` rejects a config that enables repomix
@@ -2119,7 +2162,13 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::MemoryCorrectParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let caller = require_role(self, &context, Tier::Cheap, Role::Operator, "memory_correct")?;
+        let caller = require_role(
+            self,
+            &context,
+            Tier::Cheap,
+            Role::Operator,
+            "memory_correct",
+        )?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -2299,7 +2348,13 @@ impl DiaporeiaServer {
         Parameters(params): Parameters<params::MemoryRetractParams>,
         context: RequestContext<rmcp::RoleServer>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        let caller = require_role(self, &context, Tier::Cheap, Role::Operator, "memory_retract")?;
+        let caller = require_role(
+            self,
+            &context,
+            Tier::Cheap,
+            Role::Operator,
+            "memory_retract",
+        )?;
         require_knowledge_graph(self).await?;
 
         #[cfg(feature = "knowledge-store")]
@@ -2729,10 +2784,9 @@ mod tests {
     #[cfg(feature = "knowledge-store")]
     #[tokio::test]
     async fn supersede_with_rollback_succeeds_when_supersede_succeeds() {
-        let result = supersede_with_rollback(
-            async { Ok(()) },
-            async { panic!("rollback must not run when supersede succeeds") },
-        )
+        let result = supersede_with_rollback(async { Ok(()) }, async {
+            panic!("rollback must not run when supersede succeeds")
+        })
         .await;
         assert!(result.is_ok());
     }
@@ -2847,7 +2901,9 @@ mod tests {
             .read_facts_by_id(new_fact.id.as_str())
             .expect("read new fact");
         assert!(
-            new_fact_after.first().is_some_and(|f| f.lifecycle.is_forgotten),
+            new_fact_after
+                .first()
+                .is_some_and(|f| f.lifecycle.is_forgotten),
             "the newly-inserted fact must be forgotten (rolled back) after a failed supersede"
         );
     }

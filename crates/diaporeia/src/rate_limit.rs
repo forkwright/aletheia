@@ -331,7 +331,9 @@ mod tests {
             );
         }
         assert!(
-            limiter.check(Tier::Expensive, Some("agent-overflow")).is_err(),
+            limiter
+                .check(Tier::Expensive, Some("agent-overflow"))
+                .is_err(),
             "the (GLOBAL_CAPACITY_MULTIPLIER + 1)-th distinct principal must be denied by \
              the global aggregate ceiling even though it has never made a request before"
         );
