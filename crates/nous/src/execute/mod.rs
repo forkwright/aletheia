@@ -434,6 +434,12 @@ fn record_llm_stream_send_error(
 /// [`execute_streaming_with_deadline`] for cooperative budget handling.
 // WHY(#4713): test-only wrapper — stages call execute_streaming_with_deadline directly.
 #[cfg(test)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors execute_streaming_with_deadline's parameter list on purpose: this wrapper \
+              exists so tests exercise the same surface production callers see, and grouping its \
+              arguments into a struct would stop it mirroring the thing it stands in for"
+)]
 pub async fn execute_streaming(
     ctx: &PipelineContext,
     session: &SessionState,
@@ -719,9 +725,13 @@ async fn run_execute_loop(
             &turn_route,
             fallback_config.as_ref(),
             session.nous_id.as_str(),
+            // WHY the annotated closure rather than `as`: this is an unsizing coercion to a trait
+            // object, not a numeric cast, but `clippy::as_conversions` cannot tell the two apart.
+            // Declaring the return type performs the same coercion implicitly, so the lint stays on
+            // to catch real silent narrowing elsewhere.
             on_event
                 .as_mut()
-                .map(|f| f as &mut (dyn FnMut(LlmStreamEvent) + Send)),
+                .map(|f| -> &mut (dyn FnMut(LlmStreamEvent) + Send) { f }),
         )?;
 
         let completion = if let Some(deadline) = deadline {
