@@ -185,6 +185,12 @@ pub fn failure_class_counts(extraction: &AfterActionExtraction) -> HashMap<Strin
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixtures write files synchronously; the ban exists to push production \
+              code onto tokio::fs or a trait boundary, neither of which applies to a \
+              tempdir fixture in a sync #[test] — same exemption skill_tests.rs takes"
+)]
 mod tests {
     use super::*;
 
@@ -206,7 +212,7 @@ mod tests {
             "qa_verdict": "pass",
             "prompt_hash": "h1",
         });
-        std::fs::write(dir.path().join("2026-08-04.jsonl"), line.to_string() + "\n")
+        std::fs::write(dir.path().join("2026-08-04.jsonl"), format!("{line}\n"))
             .expect("write fixture");
 
         let extraction = extract_from_after_action_logs(dir.path()).expect("extract");
@@ -230,7 +236,7 @@ mod tests {
             "qa_verdict": "fail",
             "prompt_hash": "h2",
         });
-        std::fs::write(dir.path().join("2026-08-04.jsonl"), line.to_string() + "\n")
+        std::fs::write(dir.path().join("2026-08-04.jsonl"), format!("{line}\n"))
             .expect("write fixture");
 
         let extraction = extract_from_after_action_logs(dir.path()).expect("extract");
