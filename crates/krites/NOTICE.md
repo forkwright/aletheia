@@ -7,8 +7,8 @@
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 228 files under `src/`: 145 derived, 50 sovereign, 33 dual
-- Mean verbatim match across the 145 derived files: 50.4% (unweighted average of the per-file `verbatim_pct` column below)
+- 228 files under `src/`: 143 derived, 50 sovereign, 35 dual
+- Mean verbatim match across the 143 derived files: 50.0% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -236,9 +236,9 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/runtime/transact.rs` | `runtime/transact.rs` | 16.2% | derived |
 | `src/storage/error.rs` | — | 0.0% | sovereign |
 | `src/storage/fjall_backend.rs` | — | 0.0% | sovereign |
-| `src/storage/mem.rs` | `storage/mem.rs` | 69.4% | derived |
+| `src/storage/mem.rs` | `storage/mem.rs` | 4.5% | dual |
 | `src/storage/mod.rs` | `storage/mod.rs` | 64.4% | derived |
-| `src/storage/temp.rs` | `storage/temp.rs` | 78.1% | derived |
+| `src/storage/temp.rs` | `storage/temp.rs` | 2.2% | dual |
 | `src/utils.rs` | `utils.rs` | 71.4% | derived |
 
 Aletheia's own additions are real and sit alongside the derived files — `async_surface`, `counterfactual`, `hot_reload`, `query_cache`, `storage/fjall_backend`, the CSR PageRank path, `kcore`, RRF, the fixed-rule test suite, and `data/tests/proptest_memcmp` — all `sovereign` in the table above. They do not change the provenance of the derived files they extend.

@@ -8,6 +8,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use koina::secret::SecretString;
 
@@ -214,6 +215,28 @@ pub trait LlmProvider: Send + Sync {
     /// before the runtime begins draining in-flight requests. The default
     /// implementation is a no-op for stateless providers.
     fn shutdown(&self) {}
+
+    /// The provider's own health tracker, if it maintains one internally.
+    ///
+    /// WHY(#5255): HTTP-based providers (Anthropic, `OpenAI`) gate their own
+    /// outbound calls with a READ-ONLY `check_available()` check against an
+    /// internal tracker, so a bare provider used outside a
+    /// [`ProviderRegistry`] still short-circuits on a known-down state.
+    /// Returning `Some` here lets [`ProviderRegistry::register_with_config`]
+    /// share that exact tracker instead of constructing an independent one,
+    /// so the provider's own gate and the registry's routing decisions read
+    /// one health state, not two that can drift apart. Writes to the shared
+    /// tracker come from exactly one place — the external per-logical-request
+    /// call through [`ProviderRegistry::record_success`]/[`ProviderRegistry::record_error`]
+    /// — never from inside the provider's own internal retry loop, so an
+    /// external caller's single request never counts as more than one
+    /// success or failure toward the threshold no matter how many internal
+    /// HTTP attempts it took. Subprocess-based providers (CC, Kimi, Codex)
+    /// have no internal tracker of their own and use the default `None`,
+    /// which leaves the registry as the sole owner end to end.
+    fn health_tracker(&self) -> Option<Arc<ProviderHealthTracker>> {
+        None
+    }
 }
 
 /// Per-model pricing rates for cost estimation.
@@ -422,7 +445,10 @@ pub(crate) fn owned_model_list(models: &[String]) -> Vec<Cow<'_, str>> {
 
 struct ProviderEntry {
     provider: Box<dyn LlmProvider>,
-    health: ProviderHealthTracker,
+    // WHY(#5255): `Arc` so a provider that exposes its own tracker via
+    // `LlmProvider::health_tracker` can share the identical instance with
+    // the registry instead of the registry constructing an independent one.
+    health: Arc<ProviderHealthTracker>,
 }
 
 /// Provider registry: maps model IDs to providers with health tracking.
@@ -456,13 +482,22 @@ impl ProviderRegistry {
     }
 
     /// Register a provider with custom health thresholds.
+    ///
+    /// WHY(#5255): `config` only takes effect when the provider does not
+    /// already expose its own tracker via [`LlmProvider::health_tracker`] —
+    /// a provider that owns an internal circuit breaker is the single
+    /// source of truth for its health, and the registry shares that
+    /// instance rather than layering a second, independently-configured
+    /// one on top.
     pub fn register_with_config(&mut self, provider: Box<dyn LlmProvider>, config: HealthConfig) {
         // kanon:ignore RUST/pub-visibility
-        let provider_name = provider.name().to_owned();
-        self.providers.push(ProviderEntry {
-            provider,
-            health: ProviderHealthTracker::new(provider_name, config),
+        let health = provider.health_tracker().unwrap_or_else(|| {
+            Arc::new(ProviderHealthTracker::new(
+                provider.name().to_owned(),
+                config,
+            ))
         });
+        self.providers.push(ProviderEntry { provider, health });
     }
 
     /// Signal every registered provider to shut down.

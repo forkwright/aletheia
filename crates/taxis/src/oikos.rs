@@ -233,15 +233,17 @@ impl Oikos {
         Ok(())
     }
 
-    /// Validate that a workspace path from agent config resolves to an existing directory.
+    /// Validate that a workspace path from agent config resolves to an
+    /// existing directory contained within the instance root.
     ///
-    /// Relative paths are resolved against the instance root. Absolute paths are
-    /// used as-is.
+    /// Relative paths are resolved against the instance root. Absolute paths
+    /// are accepted only when they canonicalize to somewhere inside the
+    /// instance root.
     ///
     /// # Errors
     ///
-    /// Returns an error if the path does not
-    /// exist or is not a directory.
+    /// Returns an error if the path does not exist, is not a directory, or
+    /// resolves outside the instance root.
     // kanon:ignore RUST/validate-returns-unit — returns Result<()> where Err carries the specific failure reason; Ok(()) signals validation passed
     pub fn validate_workspace_path(&self, workspace: &str) -> crate::error::Result<()> {
         use crate::error::WorkspacePathInvalidSnafu;
@@ -252,7 +254,21 @@ impl Oikos {
             self.root.join(workspace)
         };
 
-        ensure!(path.is_dir(), WorkspacePathInvalidSnafu { path });
+        ensure!(
+            path.is_dir(),
+            WorkspacePathInvalidSnafu { path: path.clone() }
+        );
+
+        // SECURITY(#5561): an absolute `agents.list[].workspace` path was
+        // previously accepted as-is once it existed as a directory, with no
+        // check that it stayed under the instance root. `resolve_allowed_roots`
+        // (aletheia runtime) places this resolved path as the first entry in
+        // the agent's `allowed_roots`, so an operator- or config-supplied
+        // absolute path outside the instance (e.g. `/home`) widened the
+        // agent's file-tool access past the instance boundary that
+        // `contained_nous_file` already enforces for per-agent files. Fail
+        // closed the same way.
+        self.canonical_path_under_root(path)?;
 
         Ok(())
     }
@@ -728,6 +744,50 @@ mod tests {
         assert!(
             oikos.validate_workspace_path(&abs).is_ok(),
             "absolute nous/ path should be accepted"
+        );
+    }
+
+    #[test]
+    fn validate_workspace_path_rejects_absolute_path_outside_root() {
+        // SECURITY(#5561) regression: an absolute workspace path pointing at
+        // a real, existing directory OUTSIDE the instance root must be
+        // rejected -- previously `path.is_dir()` was the only check, so any
+        // absolute path the operator or a compromised config supplied
+        // (e.g. `/home`, `/etc`) was accepted and became the agent's first
+        // `allowed_root`.
+        let dir = make_valid_instance();
+        let outside = tempfile::tempdir().expect("create outside temp dir");
+        let oikos = Oikos::from_root(dir.path());
+        let abs = outside.path().to_string_lossy().into_owned();
+
+        let err = oikos
+            .validate_workspace_path(&abs)
+            .expect_err("absolute path outside instance root must be rejected");
+
+        assert!(
+            matches!(err, crate::error::Error::PathOutsideRoot { .. }),
+            "expected PathOutsideRoot, got {err:?}"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn validate_workspace_path_rejects_symlink_escape() {
+        // SECURITY(#5561): an in-root path that symlinks out must also fail
+        // containment, matching `contained_nous_file`'s existing guarantee.
+        let dir = make_valid_instance();
+        let outside = tempfile::tempdir().expect("create outside temp dir");
+        let link = dir.path().join("nous").join("escape");
+        std::os::unix::fs::symlink(outside.path(), &link).expect("create symlink");
+
+        let oikos = Oikos::from_root(dir.path());
+        let err = oikos
+            .validate_workspace_path("nous/escape")
+            .expect_err("symlink escape must be rejected");
+
+        assert!(
+            matches!(err, crate::error::Error::PathOutsideRoot { .. }),
+            "expected PathOutsideRoot, got {err:?}"
         );
     }
 
