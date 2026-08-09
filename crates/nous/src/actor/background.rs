@@ -1183,7 +1183,8 @@ mod tests {
     /// each `merge_flush` call was made with.
     #[test]
     fn merge_flush_persists_real_session_id_not_a_generic_label() {
-        let store = Arc::new(mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store"));
+        let store =
+            Arc::new(mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store"));
         let target = KnowledgeStoreConsolidationTarget::new(Arc::clone(&store), None);
 
         let flush = melete::flush::MemoryFlush {
