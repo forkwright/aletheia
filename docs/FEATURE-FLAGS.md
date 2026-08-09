@@ -100,6 +100,8 @@ Cargo metadata cannot infer.
 | **krites** | `hot-reload` | no | Rule hot-reloading | `dep:notify`, `dep:arc-swap` |
 | **krites** | `storage-fjall` | no | fjall storage backend | `dep:fjall` |
 | **krites** | `krites_sovereign_ascii_folding_table` | no | Land-dark switch: selects the sovereign implementation over the derived one while both are present | - |
+| **krites** | `krites_sovereign_algos` | no | Land-dark switch: selects the fresh graph-algorithm implementations over the CozoDB-derived ones while both are present | - |
+| **krites** | `krites_sovereign_utilities` | no | Land-dark switch: selects the fresh fixed-rule utilities over the CozoDB-derived ones while both are present | - |
 | **krites** | `krites_sovereign_hnsw` | no | Land-dark switch: selects the sovereign HNSW implementation over the CozoDB-derived one while both are present | - |
 | **krites** | `test-core` | no | - | `storage-fjall` |
 | **krites** | `test-full` | no | - | `test-core` |
