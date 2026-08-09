@@ -405,6 +405,20 @@ pub(super) async fn app_with_anthropic_provider() -> (axum::Router, tempfile::Te
     (build_router(state, &test_security_config()), dir)
 }
 
+/// Test helper: app with a registered provider under an arbitrary `name`.
+///
+/// WHY(#4875): `credential_runtime.validate_provider` only accepts the
+/// canonical managed names ("anthropic"/"claude") or a name registered in
+/// the live `ProviderRegistry` -- this lets a test exercise credential
+/// mutation/validation endpoints for a provider this crate has no live-check
+/// strategy for, so a validate() call stays network-free and deterministic.
+pub(super) async fn app_with_provider_name(name: &str) -> (axum::Router, tempfile::TempDir) {
+    let (state, dir) =
+        test_state_with_provider_name_private_and_auth_mode(true, Some(name), false, "token")
+            .await;
+    (build_router(state, &test_security_config()), dir)
+}
+
 pub(super) fn json_request(
     method: &str,
     uri: &str,

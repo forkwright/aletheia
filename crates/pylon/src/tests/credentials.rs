@@ -59,15 +59,15 @@ async fn credentials_list_redacts_secret_material() {
 
 #[tokio::test]
 async fn credentials_validate_redacts_secret_material() {
-    let (app, _dir) = app().await;
+    // WHY(#4875): use a provider this crate has no live-check strategy for
+    // (unlike "anthropic"/"claude"), so validation stays network-free and
+    // deterministic while still exercising the full add -> validate ->
+    // redaction path. The live Anthropic/OpenAI round-trip paths are covered
+    // directly in symbolon's own tests (crates/symbolon/src/credential/admin.rs,
+    // provider_validation_tests).
+    let (app, _dir) = app_with_provider_name("acme-test-provider").await;
     let raw_secret = "sk-test-validate-redaction-marker";
 
-    // WHY(#4875): use a provider this crate has no live-check strategy for
-    // (unlike "anthropic"), so validation stays network-free and
-    // deterministic in this test while still exercising the full
-    // add -> validate -> redaction path. The live Anthropic/OpenAI
-    // round-trip paths are covered directly in symbolon's own tests
-    // (crates/symbolon/src/credential/admin.rs, provider_validation_tests).
     let add = app
         .clone()
         .oneshot(authed_request(
