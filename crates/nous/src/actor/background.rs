@@ -527,6 +527,8 @@ impl NousActor {
 /// orphan the lock (and its throttle history) on every restart.
 #[cfg(feature = "knowledge-store")]
 fn instance_lock_tag(oikos_root: &std::path::Path) -> String {
+    use std::fmt::Write as _;
+
     use sha2::{Digest, Sha256};
     let mut hasher = Sha256::new();
     hasher.update(oikos_root.to_string_lossy().as_bytes());
@@ -534,7 +536,12 @@ fn instance_lock_tag(oikos_root: &std::path::Path) -> String {
     // WHY: 8 hex chars (32 bits) is enough entropy to avoid accidental
     // collisions between the handful of oikos roots one user runs
     // concurrently, while keeping the lock filename short.
-    digest.iter().take(4).map(|b| format!("{b:02x}")).collect()
+    let mut tag = String::with_capacity(8);
+    for byte in digest.iter().take(4) {
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
+        let _ = write!(tag, "{byte:02x}");
+    }
+    tag
 }
 
 #[cfg(feature = "knowledge-store")]
@@ -1179,7 +1186,7 @@ mod tests {
     /// WHY: `KnowledgeStoreConsolidationTarget::merge_flush` previously
     /// hardcoded the fact's source session to the literal `"auto-dream"`
     /// for every consolidated transcript, collapsing real session lineage.
-    /// Persisted facts must instead carry the real, distinct session_id
+    /// Persisted facts must instead carry the real, distinct `session_id`
     /// each `merge_flush` call was made with.
     #[test]
     fn merge_flush_persists_real_session_id_not_a_generic_label() {

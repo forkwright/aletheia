@@ -435,7 +435,7 @@ async fn load_all_records(workspace: &Path) -> Result<Vec<CorrectionRecord>, std
     }
 }
 
-/// List every correction recorded for a nous_id, regardless of status or
+/// List every correction recorded for a `nous_id`, regardless of status or
 /// session — for operator review/audit tooling.
 ///
 /// WHY(#5403): unlike [`load_corrections`] (injection-facing: active-only,
