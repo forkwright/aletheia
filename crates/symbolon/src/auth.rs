@@ -30,6 +30,10 @@ pub struct AuthConfig {
 pub struct AuthService {
     jwt: JwtManager,
     store: AuthStore,
+    /// Shared HTTP client for provider-aware credential validation (#4875).
+    /// One client per `AuthService` so connection pooling is reused across
+    /// validate calls rather than paying a fresh handshake each time.
+    http_client: reqwest::Client,
 }
 
 /// Canonical production auth facade.
@@ -63,7 +67,11 @@ impl AuthService {
     pub fn new(config: AuthConfig, db_path: &Path) -> Result<Self> {
         let store = AuthStore::open(db_path)?;
         let jwt = JwtManager::new(config.jwt);
-        Ok(Self { jwt, store })
+        Ok(Self {
+            jwt,
+            store,
+            http_client: reqwest::Client::new(),
+        })
     }
 
     /// Create an auth service with an in-memory auth store.
@@ -74,7 +82,11 @@ impl AuthService {
     pub fn in_memory(config: AuthConfig) -> Result<Self> {
         let store = AuthStore::open_in_memory()?;
         let jwt = JwtManager::new(config.jwt);
-        Ok(Self { jwt, store })
+        Ok(Self {
+            jwt,
+            store,
+            http_client: reqwest::Client::new(),
+        })
     }
 
     /// Register a new user with a hashed password.
@@ -284,11 +296,16 @@ impl AuthService {
         crate::credential::admin::add(root, provider, key, role)
     }
 
-    /// Validate a managed provider credential using local secret-file semantics.
+    /// Validate a managed provider credential.
+    ///
+    /// Checks local metadata first (empty secret, past expiry) and only makes
+    /// a network round trip to the provider when local inspection cannot
+    /// already answer the question and the provider is one this crate knows
+    /// how to reach live. See [`crate::credential::admin::validate`].
     ///
     /// The response never contains raw secret material.
-    pub fn validate_credential(&self, root: &Path, id: &str) -> Result<ManagedCredential> {
-        crate::credential::admin::validate(root, id)
+    pub async fn validate_credential(&self, root: &Path, id: &str) -> Result<ManagedCredential> {
+        crate::credential::admin::validate(root, id, &self.http_client).await
     }
 
     /// Swap a provider's primary and backup credentials.
