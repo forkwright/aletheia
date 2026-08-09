@@ -22,7 +22,8 @@ pub mod auth;
 pub mod client;
 /// Diaporeia-specific error types and result alias.
 pub mod error;
-pub(crate) mod rate_limit;
+/// Rate limiting shared across MCP sessions, keyed by authenticated principal.
+pub mod rate_limit;
 mod repomix;
 mod resources;
 pub(crate) mod sanitize;

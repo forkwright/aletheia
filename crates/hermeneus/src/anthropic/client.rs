@@ -414,6 +414,15 @@ impl AnthropicProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        // WHY(#5255): this is a READ-ONLY gate against the tracker shared
+        // with the registry via `health_tracker()`. Per-attempt
+        // success/failure is deliberately NOT recorded here anymore — the
+        // caller (via `ProviderRegistry::record_success`/`record_error`)
+        // records once per logical request at the same granularity CC,
+        // Kimi, and Codex already use. Recording per internal HTTP retry
+        // attempt AND per logical request on the same tracker would double
+        // (or worse) count a single caller-visible failure, tripping the
+        // breaker faster than the configured threshold intends.
         if let Err(health) = self.health.check_available() {
             tracing::warn!(?health, "circuit-breaker open; streaming request rejected");
             return Err(error::ApiRequestSnafu {
@@ -458,7 +467,6 @@ impl AnthropicProvider {
                 Ok(r) => r,
                 Err(e) => {
                     let err = super::error::map_request_error(&e);
-                    self.health.record_error(&err);
                     last_error = Some(err);
                     continue;
                 }
@@ -469,7 +477,6 @@ impl AnthropicProvider {
                 let err =
                     super::error::map_error_response(response, &request.model, &credential_source)
                         .await;
-                self.health.record_error(&err);
                 if status == 401 || ((400..500).contains(&status) && status != 429) {
                     #[expect(
                         clippy::cast_possible_truncation,
@@ -523,7 +530,6 @@ impl AnthropicProvider {
 
             match stream_result {
                 Ok(mut resp) => {
-                    self.health.record_success();
                     let duration_ms =
                         u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                     #[expect(
@@ -576,7 +582,6 @@ impl AnthropicProvider {
                     // produce duplicates. Propagate immediately.
                     if content_started {
                         tracing::error!("SSE error after content started streaming — cannot retry");
-                        self.health.record_error(&e);
                         #[expect(
                             clippy::cast_possible_truncation,
                             clippy::as_conversions,
@@ -597,11 +602,9 @@ impl AnthropicProvider {
                     }
                     if e.is_retryable() {
                         tracing::warn!("SSE stream returned retryable error before content");
-                        self.health.record_error(&e);
                         last_error = Some(e);
                         continue;
                     }
-                    self.health.record_error(&e);
                     #[expect(
                         clippy::cast_possible_truncation,
                         clippy::as_conversions,
@@ -910,6 +913,9 @@ impl AnthropicProvider {
         &self,
         request: &CompletionRequest,
     ) -> Result<CompletionResponse> {
+        // WHY(#5255): READ-ONLY gate against the tracker shared with the
+        // registry — see the identical note on `complete_streaming_inner`
+        // for why per-attempt recording was removed from this loop.
         if let Err(health) = self.health.check_available() {
             tracing::warn!(
                 ?health,
@@ -966,7 +972,6 @@ impl AnthropicProvider {
                 Ok(r) => r,
                 Err(e) => {
                     let err = super::error::map_request_error(&e);
-                    self.health.record_error(&err);
                     last_error = Some(err);
                     continue;
                 }
@@ -987,7 +992,6 @@ impl AnthropicProvider {
                             .map_err(|msg| error::ApiRequestSnafu { message: msg }.build())
                     });
                 if let Ok(mut resp) = parsed {
-                    self.health.record_success();
                     let duration_ms =
                         u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                     #[expect(
@@ -1038,7 +1042,6 @@ impl AnthropicProvider {
             let err =
                 super::error::map_error_response(response, &request.model, &credential_source)
                     .await;
-            self.health.record_error(&err);
 
             if status == 401 || (400..500).contains(&status) {
                 #[expect(
@@ -1104,6 +1107,13 @@ impl AnthropicProvider {
 impl LlmProvider for AnthropicProvider {
     fn shutdown(&self) {
         self.credential_provider.shutdown();
+    }
+
+    // WHY(#5255): share this exact tracker with the registry instead of
+    // letting it construct an independent one — see
+    // `LlmProvider::health_tracker` for why that matters.
+    fn health_tracker(&self) -> Option<Arc<ProviderHealthTracker>> {
+        Some(Arc::clone(&self.health))
     }
 
     fn complete<'a>(

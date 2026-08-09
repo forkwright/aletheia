@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use koina::system::{Environment, RealSystem};
 use tracing::{debug, info, warn};
 
+use crate::RetryPolicy;
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind};
@@ -182,6 +183,61 @@ impl CodexProvider {
         warned
     }
 
+    /// Run the Codex subprocess for a completion, retrying the subprocess
+    /// call itself (not just the surrounding call) on a transient spawn or
+    /// timeout failure.
+    ///
+    /// WHY(#5763): mirrors `CcProvider::run_completion_with_retry` — a
+    /// single-shot spawn race (binary mid-update) or a transient OS
+    /// resource exhaustion previously propagated to the caller immediately
+    /// with no self-healing. Safe to retry unconditionally: Codex has no
+    /// real per-line streaming (see `execute_streaming`'s doc comment), so
+    /// no partial output can have reached the caller before this resolves —
+    /// unlike `CcProvider`/`KimiProvider`, one retry helper covers both
+    /// `execute` and `execute_streaming`.
+    async fn run_completion_with_retry(
+        &self,
+        system_prompt: Option<&str>,
+        prompt: &str,
+    ) -> Result<process::CodexOutput> {
+        let retry_policy = RetryPolicy::default();
+        let mut last_error = None;
+        for attempt in 0..=retry_policy.max_retries {
+            if attempt > 0 {
+                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
+            }
+            match Box::pin(process::run_completion(
+                &self.codex_binary,
+                self.working_directory.as_deref(),
+                system_prompt,
+                prompt,
+                self.timeout,
+            ))
+            .await
+            {
+                Ok(output) => return Ok(output),
+                Err(err) => {
+                    if attempt == retry_policy.max_retries || !err.is_retryable() {
+                        return Err(err);
+                    }
+                    warn!(
+                        provider = %self.name,
+                        attempt,
+                        error = %err,
+                        "Codex subprocess call failed; retrying"
+                    );
+                    last_error = Some(err);
+                }
+            }
+        }
+        Err(last_error.unwrap_or_else(|| {
+            error::ApiRequestSnafu {
+                message: "Codex subprocess retry loop exhausted with no recorded error".to_owned(),
+            }
+            .build()
+        }))
+    }
+
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
@@ -189,14 +245,9 @@ impl CodexProvider {
         let prompt = Self::format_prompt(request);
 
         let outcome: Result<CompletionResponse> = async {
-            let output = Box::pin(process::run_completion(
-                &self.codex_binary,
-                self.working_directory.as_deref(),
-                request.system.as_deref(),
-                &prompt,
-                self.timeout,
-            ))
-            .await?;
+            let output = self
+                .run_completion_with_retry(request.system.as_deref(), &prompt)
+                .await?;
             let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
             let response = parse::text_to_response(&text, usage, model);
             // WHY(#4658): Codex reports cached_input_tokens as cache reads; emit
@@ -252,14 +303,9 @@ impl CodexProvider {
         let prompt = Self::format_prompt(request);
 
         let outcome: Result<CompletionResponse> = async {
-            let output = Box::pin(process::run_completion(
-                &self.codex_binary,
-                self.working_directory.as_deref(),
-                request.system.as_deref(),
-                &prompt,
-                self.timeout,
-            ))
-            .await?;
+            let output = self
+                .run_completion_with_retry(request.system.as_deref(), &prompt)
+                .await?;
             let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
 
             // WHY: Codex's CLI does not support line-by-line streaming; we emit the
@@ -750,14 +796,14 @@ mod tests {
             working_directory: None,
             models: Vec::new(),
             default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
-            timeout: Duration::from_secs(300),
+            timeout: Duration::from_mins(5),
             deployment_target: DeploymentTarget::Cloud,
         };
         assert_eq!(
             provider.cli_binary(),
             &PathBuf::from("/usr/local/bin/codex")
         );
-        assert_eq!(provider.subprocess_timeout(), Duration::from_secs(300));
+        assert_eq!(provider.subprocess_timeout(), Duration::from_mins(5));
         assert_eq!(provider.cli_product_name(), "codex");
     }
 
@@ -817,5 +863,122 @@ mod tests {
             ),
             "codex must not emit zero cache write metrics: {buf}"
         );
+    }
+
+    /// Write an executable shell script and return its path.
+    ///
+    /// WHY: mirrors `cc::provider::tests::write_flaky_script` — write to a
+    /// temp sibling and `sync_all` before renaming into place so a spawn
+    /// immediately after this returns does not race a kernel `ETXTBSY`.
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    fn write_flaky_script(name: &str, body: &str) -> PathBuf {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt as _;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static NONCE: AtomicU64 = AtomicU64::new(0);
+        let nonce = NONCE.fetch_add(1, Ordering::Relaxed);
+        let final_path = std::env::temp_dir().join(format!(
+            "hermeneus_codex_retry_test_{name}_{}_{nonce}.sh",
+            std::process::id()
+        ));
+        let tmp_path = final_path.with_extension("sh.tmp");
+        let script = format!("#!/bin/sh\n{body}\n");
+        {
+            let mut f = std::fs::File::create(&tmp_path).unwrap_or_else(|e| {
+                panic!("create {}: {e}", tmp_path.display());
+            });
+            f.write_all(script.as_bytes()).unwrap();
+            f.sync_all().unwrap();
+        }
+        std::fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::rename(&tmp_path, &final_path).unwrap();
+        final_path
+    }
+
+    fn flaky_provider(codex_binary: PathBuf) -> CodexProvider {
+        CodexProvider {
+            name: "codex".to_owned(),
+            codex_binary,
+            working_directory: None,
+            models: Vec::new(),
+            default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
+            timeout: Duration::from_secs(10),
+            deployment_target: DeploymentTarget::Cloud,
+        }
+    }
+
+    fn single_message_request() -> CompletionRequest {
+        use crate::types::Message;
+
+        CompletionRequest {
+            model: koina::models::names::codex().to_owned(),
+            messages: vec![Message {
+                role: Role::User,
+                content: Content::Text("hello".to_owned()),
+                cache_breakpoint: false,
+            }],
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    #[expect(clippy::unwrap_used, reason = "test assertions")]
+    async fn execute_recovers_from_a_single_transient_spawn_failure() {
+        // WHY(#5763): before the retry loop, a single subprocess failure
+        // (binary-update race, momentary OS resource exhaustion) propagated
+        // to the caller immediately with no self-healing. This script fails
+        // its first invocation and succeeds on the second (leaving a marker
+        // file so it can tell the two apart); `execute` must recover instead
+        // of returning the first failure.
+        let marker = std::env::temp_dir().join(format!(
+            "hermeneus_codex_retry_marker_{}_{}",
+            std::process::id(),
+            koina::uuid::uuid_v4()
+        ));
+        let _ = std::fs::remove_file(&marker);
+        let script = write_flaky_script(
+            "recovers",
+            &format!(
+                "cat > /dev/null\nif [ ! -f '{m}' ]; then\n  touch '{m}'\n  exit 1\nfi\nprintf '{{\"type\":\"item.completed\",\"item\":{{\"type\":\"agent_message\",\"text\":\"ok after retry\"}}}}\\n'",
+                m = marker.display()
+            ),
+        );
+
+        let provider = flaky_provider(script.clone());
+        let request = single_message_request();
+
+        let response = provider.execute(&request).await.unwrap();
+
+        match response.content.first() {
+            Some(ContentBlock::Text { text, .. }) => assert_eq!(text, "ok after retry"),
+            other => panic!("expected a single text content block, got {other:?}"),
+        }
+        assert!(
+            marker.exists(),
+            "the flaky script's first invocation must have run and failed"
+        );
+
+        let _ = std::fs::remove_file(&script);
+        let _ = std::fs::remove_file(&marker);
+    }
+
+    #[tokio::test]
+    async fn execute_still_fails_once_the_retry_budget_is_exhausted() {
+        // WHY(#5763): a persistently-failing subprocess must still surface an
+        // error once retries are exhausted, not retry forever.
+        let script = write_flaky_script("always_fails", "cat > /dev/null\nexit 1");
+        let provider = flaky_provider(script.clone());
+        let request = single_message_request();
+
+        match provider.execute(&request).await {
+            Ok(response) => panic!("expected a persistent failure, got: {response:?}"),
+            Err(err) => assert!(
+                err.is_retryable(),
+                "a bare non-zero exit must classify as a retryable subprocess failure, got: {err}"
+            ),
+        }
+
+        let _ = std::fs::remove_file(&script);
     }
 }

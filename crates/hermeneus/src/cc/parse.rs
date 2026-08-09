@@ -177,9 +177,13 @@ pub(crate) fn parse_event(line: &str) -> Option<CcEvent> {
     match serde_json::from_str::<CcEvent>(trimmed) {
         Ok(event) => Some(event),
         Err(e) => {
+            // WHY(#5261): a malformed stream-json line can carry an echoed
+            // prompt fragment or credential-shaped string; sanitize before
+            // logging it.
+            let sanitized_line = crate::secret::sanitize_provider_text(trimmed, 512);
             tracing::warn!(
                 error = %e,
-                line = %trimmed,
+                line = %sanitized_line,
                 "failed to parse CC stream-json event"
             );
             None

@@ -24,7 +24,10 @@ use koina::system::{FileSystem, RealSystem};
 
 use crate::config::AletheiaConfig;
 use crate::config_decrypt;
-use crate::error::{ConfigLoadSnafu, LoadSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu};
+use crate::error::{
+    ConfigLoadSnafu, ConfigPathEscapesRootSnafu, LoadSnafu, Result, SerializeTomlSnafu,
+    WriteConfigSnafu,
+};
 use crate::interpolate;
 use crate::oikos::Oikos;
 
@@ -118,9 +121,75 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
     let applied_env_vars = apply_env_overlay(&mut root, "ALETHEIA_", "__");
     mirror_data_retention(&mut root);
 
-    serde_json::from_value::<AletheiaConfig>(root).context(ConfigLoadSnafu {
+    let config = serde_json::from_value::<AletheiaConfig>(root).context(ConfigLoadSnafu {
         reason: deserialize_reason(&applied_env_vars),
-    })
+    })?;
+
+    validate_contained_relative_paths(&config)?;
+
+    Ok(config)
+}
+
+/// Validate config-referenced paths that are documented as relative to the
+/// instance root actually stay contained there.
+///
+/// SECURITY(#5385): `training.path` is documented (`docs/CONFIGURATION.md`,
+/// `eidos::training::TrainingConfig`) as relative to the instance root, but
+/// nothing previously enforced that. An absolute path or a `..`-containing
+/// path let the training corpus land outside the instance, bypassing the
+/// backup, retention, permission, and portability boundaries the instance
+/// root exists to draw.
+///
+/// # Errors
+///
+/// Returns [`Error::ConfigPathEscapesRoot`] naming the offending field.
+fn validate_contained_relative_paths(config: &AletheiaConfig) -> Result<()> {
+    validate_relative_contained("training.path", &config.training.path)
+}
+
+/// Reject `raw` unless it is a non-empty, relative path made up entirely of
+/// plain (`Normal`) components -- no absolute prefix, no `.`/`..`, no root.
+///
+/// WHY a lexical check rather than `fs::canonicalize`: the directories this
+/// guards (training corpus output in particular) are created lazily on first
+/// write and commonly do not exist yet at config-load time, so an
+/// existence-requiring containment check would reject a perfectly valid
+/// fresh-instance config.
+fn validate_relative_contained(field: &'static str, raw: &str) -> Result<()> {
+    if raw.is_empty() {
+        return ConfigPathEscapesRootSnafu {
+            field,
+            path: raw.to_owned(),
+            reason: "must not be empty",
+        }
+        .fail();
+    }
+
+    let path = std::path::Path::new(raw);
+    if path.is_absolute() {
+        return ConfigPathEscapesRootSnafu {
+            field,
+            path: raw.to_owned(),
+            reason: "must be relative to the instance root, not absolute",
+        }
+        .fail();
+    }
+
+    for component in path.components() {
+        if !matches!(component, std::path::Component::Normal(_)) {
+            return ConfigPathEscapesRootSnafu {
+                field,
+                path: raw.to_owned(),
+                reason: format!(
+                    "contains a disallowed path component ({component:?}); only plain \
+                     directory/file names are allowed"
+                ),
+            }
+            .fail();
+        }
+    }
+
+    Ok(())
 }
 
 fn mirror_data_retention(root: &mut JsonValue) {

@@ -376,6 +376,9 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
             duration_secs,
         } => {
             use crate::state::notification::Toast;
+            // SAFETY: sanitized at ingestion — message may originate from a
+            // server-pushed SSE event.
+            let message = crate::sanitize::sanitize_for_display(&message).into_owned();
             let toast = Toast::with_duration(message.clone(), kind, duration_secs);
             app.viewport.toasts.push(toast);
             app.layout
@@ -384,7 +387,11 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         }
         Msg::ErrorBannerSet(msg) => {
             use crate::state::notification::ErrorBanner;
-            app.viewport.error_banner = Some(ErrorBanner { message: msg });
+            // SAFETY: sanitized at ingestion — message originates from a
+            // server-pushed SSE error event.
+            app.viewport.error_banner = Some(ErrorBanner {
+                message: crate::sanitize::sanitize_for_display(&msg).into_owned(),
+            });
         }
         Msg::ErrorBannerDismiss => {
             app.viewport.error_banner = None;
@@ -544,6 +551,67 @@ mod tests {
             app.viewport.success_toast.as_ref().unwrap().message,
             "saved"
         );
+    }
+
+    // WHY(#6357): koilon#event-bridge -- end-to-end regression coverage for the
+    // SSE API event bridge (SseEvent -> map_event -> Msg -> update -> state).
+    // A regression to the pre-bridge state (`_ => Msg::Tick` in map_sse, or
+    // Ctrl+D unbound) makes these fail, not merely "types compile".
+    #[tokio::test]
+    async fn sse_error_event_traverses_bridge_to_error_banner() {
+        let mut app = test_app();
+        let event = crate::events::Event::Sse(crate::api::types::SseEvent::Error {
+            message: "gateway unreachable".to_string(),
+        });
+        let msg = app.map_event(event).unwrap();
+        update(&mut app, msg).await;
+        assert_eq!(
+            app.viewport
+                .error_banner
+                .as_ref()
+                .map(|b| b.message.as_str()),
+            Some("gateway unreachable")
+        );
+    }
+
+    #[tokio::test]
+    async fn sse_nous_lifecycle_event_traverses_bridge_to_toast() {
+        let mut app = test_app();
+        let event = crate::events::Event::Sse(crate::api::types::SseEvent::NousLifecycle {
+            nous_id: "syn".into(),
+            event: "created".to_string(),
+            restart_required: true,
+        });
+        let msg = app.map_event(event).unwrap();
+        update(&mut app, msg).await;
+
+        let toast = app.viewport.toasts.last().unwrap();
+        assert_eq!(toast.kind, crate::msg::NotificationKind::Warning);
+        assert!(toast.message.contains("syn"));
+
+        // WHY: the bridge must also feed the cross-agent notification log, not
+        // just the transient toast queue, or the notification history overlay
+        // (`OverlayKind::NotificationHistory`) stays permanently empty.
+        assert_eq!(app.layout.notifications.unread_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn ctrl_d_dismisses_error_banner_end_to_end() {
+        let mut app = test_app();
+        app.viewport.error_banner = Some(crate::state::notification::ErrorBanner {
+            message: "boom".to_string(),
+        });
+
+        let key_event = crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
+            crossterm::event::KeyCode::Char('d'),
+            crossterm::event::KeyModifiers::CONTROL,
+        ));
+        let msg = app
+            .map_event(crate::events::Event::Terminal(key_event))
+            .unwrap();
+        update(&mut app, msg).await;
+
+        assert!(app.viewport.error_banner.is_none());
     }
 
     #[tokio::test]
