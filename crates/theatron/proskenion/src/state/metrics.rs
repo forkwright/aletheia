@@ -134,7 +134,7 @@ impl TokenSeriesPoint {
         not(test),
         expect(
             dead_code,
-            reason = "used when series filtering by agent/model is implemented"
+            reason = "used when series filtering by agent/model is implemented (#6666)"
         )
     )]
     pub(crate) fn total(&self) -> u64 {

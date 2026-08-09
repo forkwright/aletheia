@@ -12,7 +12,10 @@ use crate::state::discussion::{
 
 /// Fetch state for discussions, with a 404 variant for unavailable endpoints.
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "discussion routes are pending B23 backend work")]
+#[expect(
+    dead_code,
+    reason = "discussion routes are pending B23 backend work (#4482)"
+)]
 enum DiscussionFetchState {
     Loading,
     Loaded(Vec<Discussion>),

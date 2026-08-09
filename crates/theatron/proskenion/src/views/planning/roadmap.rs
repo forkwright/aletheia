@@ -8,7 +8,10 @@ use crate::components::timeline::{
 use crate::state::planning::{Phase, RoadmapStore, phase_border_color, phase_status_color};
 
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "roadmap route is pending B23 backend work")]
+#[expect(
+    dead_code,
+    reason = "roadmap route is pending B23 backend work (#4482)"
+)]
 enum FetchState {
     Loading,
     Loaded(RoadmapStore),

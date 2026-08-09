@@ -8,7 +8,10 @@ use crate::state::planning::{
 };
 
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "project-list route is pending B23 backend work")]
+#[expect(
+    dead_code,
+    reason = "project-list route is pending B23 backend work (#4482)"
+)]
 enum FetchState {
     Loading,
     Loaded(ProjectStore),

@@ -6,7 +6,10 @@ use crate::components::checkpoint_card::CheckpointCard;
 use crate::state::checkpoints::{Checkpoint, CheckpointStore};
 
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "checkpoint routes are pending B23 backend work")]
+#[expect(
+    dead_code,
+    reason = "checkpoint routes are pending B23 backend work (#4482)"
+)]
 enum FetchState {
     Loading,
     Loaded(CheckpointStore),

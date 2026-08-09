@@ -10,22 +10,22 @@
 mod render;
 mod types;
 
-pub(crate) use gramma::diff::parse_git_diff;
 #[cfg(test)]
-pub(crate) use render::render_diff_view;
-pub(crate) use render::render_diff_view_immutable;
-pub(crate) use types::{DiffViewState, compute_diff};
+pub(crate) use self::render::render_diff_view;
+pub(crate) use self::render::render_diff_view_immutable;
+pub(crate) use self::types::{DiffViewState, compute_diff};
+pub(crate) use gramma::diff::parse_git_diff;
 
 #[cfg(test)]
-use crate::theme::Theme;
+use self::render::pad_to;
 #[cfg(test)]
-use render::pad_to;
-#[cfg(test)]
-pub(crate) use render::{
+pub(crate) use self::render::{
     RenderLine, collapse_to_replacements, render_side_by_side, render_unified, render_word_diff,
 };
 #[cfg(test)]
-pub(crate) use types::DiffMode;
+pub(crate) use self::types::DiffMode;
+#[cfg(test)]
+use crate::theme::Theme;
 
 #[cfg(test)]
 #[expect(

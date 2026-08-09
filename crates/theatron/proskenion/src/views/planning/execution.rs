@@ -8,7 +8,10 @@ use crate::state::execution::{ExecutionState, ExecutionStore};
 
 /// Fetch state for execution data.
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "execution route is pending B23 backend work")]
+#[expect(
+    dead_code,
+    reason = "execution route is pending B23 backend work (#4482)"
+)]
 enum ExecutionFetchState {
     Loading,
     Loaded(ExecutionState),
