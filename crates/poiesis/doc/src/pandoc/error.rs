@@ -117,6 +117,18 @@ pub enum PandocError {
         /// Underlying SVG rasterization error.
         source: crate::raster::RasterError,
     },
+
+    /// [`render_deliverable`](crate::pandoc::render_deliverable) was given a
+    /// [`DeliverableSpec`](poiesis_core::DeliverableSpec) whose body is not
+    /// [`Body::Document`](poiesis_core::Body::Document) — the Pandoc dispatch
+    /// path only produces document-family artifacts (deck/workbook render
+    /// through their own family-specific entry points).
+    #[snafu(display("render_deliverable requires a Document body; spec body is {kind}"))]
+    UnsupportedBody {
+        /// Canonical short name of the body kind the spec actually carried
+        /// (`"deck"` / `"document"` / `"workbook"`).
+        kind: &'static str,
+    },
 }
 
 impl From<crate::latex_probe::LatexProbeError> for PandocError {

@@ -6,6 +6,8 @@
 
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
+A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
+
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
 - 228 files under `src/`: 143 derived, 50 sovereign, 35 dual
 - Mean verbatim match across the 143 derived files: 50.0% (unweighted average of the per-file `verbatim_pct` column below)
@@ -68,39 +70,39 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/datalog.pest` | `cozoscript.pest` | 99.6% | derived |
 | `src/error.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/all_pairs_shortest_path.rs` | `fixed_rule/algos/all_pairs_shortest_path.rs` | 39.6% | dual |
-| `src/fixed_rule/algos/all_pairs_shortest_path_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/all_pairs_shortest_path_native.rs` | cf. `fixed_rule/algos/all_pairs_shortest_path.rs` | 21.1% | sovereign |
 | `src/fixed_rule/algos/astar.rs` | `fixed_rule/algos/astar.rs` | 49.1% | dual |
-| `src/fixed_rule/algos/astar_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/astar_native.rs` | cf. `fixed_rule/algos/astar.rs` | 29.7% | sovereign |
 | `src/fixed_rule/algos/bfs.rs` | `fixed_rule/algos/bfs.rs` | 61.7% | dual |
-| `src/fixed_rule/algos/bfs_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/bfs_native.rs` | cf. `fixed_rule/algos/bfs.rs` | 31.8% | sovereign |
 | `src/fixed_rule/algos/degree_centrality.rs` | `fixed_rule/algos/degree_centrality.rs` | 55.3% | dual |
-| `src/fixed_rule/algos/degree_centrality_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/degree_centrality_native.rs` | cf. `fixed_rule/algos/degree_centrality.rs` | 38.1% | sovereign |
 | `src/fixed_rule/algos/dfs.rs` | `fixed_rule/algos/dfs.rs` | 57.8% | dual |
-| `src/fixed_rule/algos/dfs_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/dfs_native.rs` | cf. `fixed_rule/algos/dfs.rs` | 41.4% | sovereign |
 | `src/fixed_rule/algos/kcore.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/kruskal.rs` | `fixed_rule/algos/kruskal.rs` | 45.3% | dual |
-| `src/fixed_rule/algos/kruskal_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/kruskal_native.rs` | cf. `fixed_rule/algos/kruskal.rs` | 25.0% | sovereign |
 | `src/fixed_rule/algos/label_propagation.rs` | `fixed_rule/algos/label_propagation.rs` | 44.0% | dual |
-| `src/fixed_rule/algos/label_propagation_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/label_propagation_native.rs` | cf. `fixed_rule/algos/label_propagation.rs` | 20.4% | sovereign |
 | `src/fixed_rule/algos/louvain.rs` | `fixed_rule/algos/louvain.rs` | 41.4% | derived |
 | `src/fixed_rule/algos/mod.rs` | `fixed_rule/algos/mod.rs` | 33.0% | dual |
 | `src/fixed_rule/algos/pagerank.rs` | `fixed_rule/algos/pagerank.rs` | 45.7% | derived |
 | `src/fixed_rule/algos/prim.rs` | `fixed_rule/algos/prim.rs` | 49.3% | dual |
-| `src/fixed_rule/algos/prim_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/prim_native.rs` | cf. `fixed_rule/algos/prim.rs` | 23.6% | sovereign |
 | `src/fixed_rule/algos/random_walk.rs` | `fixed_rule/algos/random_walk.rs` | 40.8% | dual |
-| `src/fixed_rule/algos/random_walk_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/random_walk_native.rs` | cf. `fixed_rule/algos/random_walk.rs` | 27.8% | sovereign |
 | `src/fixed_rule/algos/shortest_path_bfs.rs` | `fixed_rule/algos/shortest_path_bfs.rs` | 68.1% | dual |
-| `src/fixed_rule/algos/shortest_path_bfs_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/shortest_path_bfs_native.rs` | cf. `fixed_rule/algos/shortest_path_bfs.rs` | 23.4% | sovereign |
 | `src/fixed_rule/algos/shortest_path_dijkstra.rs` | `fixed_rule/algos/shortest_path_dijkstra.rs` | 56.4% | dual |
-| `src/fixed_rule/algos/shortest_path_dijkstra_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/shortest_path_dijkstra_native.rs` | cf. `fixed_rule/algos/shortest_path_dijkstra.rs` | 18.0% | sovereign |
 | `src/fixed_rule/algos/strongly_connected_components.rs` | `fixed_rule/algos/strongly_connected_components.rs` | 45.0% | dual |
-| `src/fixed_rule/algos/strongly_connected_components_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/strongly_connected_components_native.rs` | cf. `fixed_rule/algos/strongly_connected_components.rs` | 23.7% | sovereign |
 | `src/fixed_rule/algos/top_sort.rs` | `fixed_rule/algos/top_sort.rs` | 44.1% | dual |
-| `src/fixed_rule/algos/top_sort_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/top_sort_native.rs` | cf. `fixed_rule/algos/top_sort.rs` | 31.0% | sovereign |
 | `src/fixed_rule/algos/triangles.rs` | `fixed_rule/algos/triangles.rs` | 47.3% | dual |
-| `src/fixed_rule/algos/triangles_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/triangles_native.rs` | cf. `fixed_rule/algos/triangles.rs` | 28.4% | sovereign |
 | `src/fixed_rule/algos/yen.rs` | `fixed_rule/algos/yen.rs` | 56.1% | dual |
-| `src/fixed_rule/algos/yen_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/yen_native.rs` | cf. `fixed_rule/algos/yen.rs` | 18.4% | sovereign |
 | `src/fixed_rule/csr/mod.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/csr/page_rank.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/error.rs` | — | 0.0% | sovereign |
@@ -112,10 +114,10 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/fixed_rule/tests/proptest_algos.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/wave5_reference_semantics.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/utilities/constant.rs` | `fixed_rule/utilities/constant.rs` | 39.9% | dual |
-| `src/fixed_rule/utilities/constant_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/utilities/constant_native.rs` | cf. `fixed_rule/utilities/constant.rs` | 25.9% | sovereign |
 | `src/fixed_rule/utilities/mod.rs` | `fixed_rule/utilities/mod.rs` | 20.0% | dual |
 | `src/fixed_rule/utilities/reorder_sort.rs` | `fixed_rule/utilities/reorder_sort.rs` | 70.0% | dual |
-| `src/fixed_rule/utilities/reorder_sort_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/utilities/reorder_sort_native.rs` | cf. `fixed_rule/utilities/reorder_sort.rs` | 32.5% | sovereign |
 | `src/fixed_rule/utilities/rrf.rs` | — | 0.0% | sovereign |
 | `src/fts/README.md` | `fts/README.md` | 100.0% | derived |
 | `src/fts/ast.rs` | `fts/ast.rs` | 79.6% | derived |
@@ -261,4 +263,4 @@ The related trap, since it is what produced the gap: `docs/HUBS.md` asks memory 
 
 ## Anti-backsliding
 
-`scripts/check-krites-provenance.py` runs in CI (wired into the repo's required `gate` check, not a side workflow) and fails the build if: any file under `crates/krites/src/` is missing from the ledger; this file drifts from what the ledger renders; the set of `derived` rows grows relative to the PR's base commit; a row's status skips the `derived` → `dual` → `sovereign` sequence; a `sovereign` row carries a nonzero `verbatim_pct`; a `dual` row's soak window has expired against the current commit count on `main`; or — when the offline upstream snapshot is present — a `derived` row's stored `verbatim_pct` no longer matches a fresh recomputation. The status-sequence and sovereign/verbatim_pct checks together make a direct `derived` → `sovereign` jump structurally impossible, not merely discouraged: neither check alone stops a bypass that clears the other (flip status alone leaves verbatim_pct as evidence; zero the field too and the sequence check still requires a `dual` commit in between).
+`scripts/check-krites-provenance.py` runs in CI (wired into the repo's required `gate` check, not a side workflow) and fails the build if: any file under `crates/krites/src/` is missing from the ledger; this file drifts from what the ledger renders; the set of `derived` rows grows relative to the PR's base commit; a row's status skips the `derived` → `dual` → `sovereign` sequence; a `dual` → `sovereign` transition drops or rewrites the `replaced_upstream_path` it carried forward from that row's own `upstream_path`; a `sovereign` row with no retained predecessor (`replaced_upstream_path == 'none'`) carries a nonzero `verbatim_pct`; a `dual` row's soak window has expired against the current commit count on `main`; or — when the offline upstream snapshot is present — a `derived`/`dual` row's stored `verbatim_pct` no longer matches a fresh recomputation against `upstream_path`, **or a `sovereign` row's stored `verbatim_pct` no longer matches a fresh recomputation against its retained `replaced_upstream_path`**. That last clause is what makes a `sovereign` claim keep proving itself instead of being measured once and trusted forever — the original gap this file's own existence (see "Why this notice exists" above) was written to close, and that a transliterated file could still slip past a status flip that quietly zeroed its evidence (aletheia#6656). The status-sequence and sovereign/verbatim_pct checks together make a direct `derived` → `sovereign` jump structurally impossible, not merely discouraged: neither check alone stops a bypass that clears the other (flip status alone leaves verbatim_pct as evidence; zero the field too and the sequence check still requires a `dual` commit in between).

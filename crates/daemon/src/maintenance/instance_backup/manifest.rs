@@ -8,7 +8,8 @@ use crate::error;
 
 use super::{
     BackupBuild, BackupManifest, EntryManifestMetadata, MANIFEST_CHECKPOINT_GENERATIONS_FIELD,
-    MANIFEST_FILE_COUNT_FIELD, MANIFEST_RESTORE_PATH_FIELD, MANIFEST_TOTAL_FILES_FIELD,
+    MANIFEST_FILE_COUNT_FIELD, MANIFEST_OBSERVED_SKEW_SECONDS_FIELD,
+    MANIFEST_QUIESCE_MECHANISM_FIELD, MANIFEST_RESTORE_PATH_FIELD, MANIFEST_TOTAL_FILES_FIELD,
     MANIFEST_VERSION, ManifestEvidence, ManifestSection, SNAPSHOT_PROTOCOL_VERSION,
     STATUS_EXCLUDED, STATUS_OK, SYMLINK_POLICY, StoreEntry,
 };
@@ -169,6 +170,38 @@ pub(crate) fn inject_entry_evidence(
     }
 
     Ok(())
+}
+
+/// Inject the quiesce-mechanism name and observed skew as raw manifest
+/// evidence, mirroring how `total_files`/`checkpoint_generations` are added
+/// alongside the typed `BackupManifest` fields.
+///
+/// WHY(#6442): neither value is a `BackupManifest` struct field. Adding one
+/// there would force every out-of-crate `BackupManifest { .. }` literal
+/// (e.g. the `aletheia` CLI's own tests) to be updated for a field they have
+/// no reason to construct; the existing evidence-injection side channel
+/// already exists precisely to carry derived, structurally-optional data
+/// like this without that coupling.
+pub(crate) fn inject_quiesce_evidence(
+    manifest_value: &mut serde_json::Value,
+    build: &BackupBuild,
+    quiesce_mechanism: Option<&str>,
+) {
+    let Some(object) = manifest_value.as_object_mut() else {
+        return;
+    };
+    if let Some(mechanism) = quiesce_mechanism {
+        object.insert(
+            String::from(MANIFEST_QUIESCE_MECHANISM_FIELD),
+            serde_json::Value::from(mechanism),
+        );
+    }
+    if let Some(skew_seconds) = build.observed_snapshot_skew_seconds() {
+        object.insert(
+            String::from(MANIFEST_OBSERVED_SKEW_SECONDS_FIELD),
+            serde_json::Value::from(skew_seconds),
+        );
+    }
 }
 
 pub(crate) fn checkpoint_generations_for_entry(

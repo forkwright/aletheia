@@ -13,8 +13,8 @@ use super::{
     BackupBuild, BackupManifest, InstanceBackup, InstanceBackupConfig, InstanceBackupReport,
     MANIFEST_VERSION, OptionalStoreRecord, SNAPSHOT_PROTOCOL_VERSION, STAGING_DIR_PREFIX,
     STATUS_EXCLUDED, SYMLINK_POLICY, WorkspaceOmission, classify_workspace_source, dir_size,
-    inject_manifest_evidence, manifest_created_time, resolve_workspace_source, set_dir_restrictive,
-    set_files_restrictive, write_text_file,
+    inject_manifest_evidence, inject_quiesce_evidence, manifest_created_time,
+    resolve_workspace_source, set_dir_restrictive, set_files_restrictive, write_text_file,
 };
 
 static BACKUP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -45,9 +45,53 @@ impl InstanceBackup {
     /// or corrupted backup set is never published as a valid backup.
     ///
     /// After creating the backup, old backups beyond `retention_count` are pruned.
+    ///
+    /// Equivalent to [`Self::create_backup_with_quiesce`] with a no-op hook:
+    /// the manifest it publishes always records `quiesced: false`.
     // kanon:ignore RUST/pub-visibility -- consumed by aletheia backup and maintenance commands
     pub fn create_backup(&self) -> error::Result<InstanceBackupReport> {
+        self.create_backup_with_quiesce(|| Ok(None))
+    }
+
+    /// Create a whole-instance backup, first invoking `quiesce`.
+    ///
+    /// WHY(#6442): `instance_backup` holds no live handle to the stores it
+    /// copies — it operates purely on filesystem paths, whether called
+    /// in-process by the daemon's own scheduled task or out-of-process by the
+    /// standalone `aletheia backup` CLI. It therefore cannot itself pause
+    /// writers, flush a WAL, or checkpoint a fjall store; only code that owns
+    /// those live handles can. `quiesce` is that coordination point: a caller
+    /// that owns them pauses/drains writers and flushes every participating
+    /// store, then returns `Ok(Some(mechanism))` naming what ran. This is why
+    /// [`BackupManifest::quiesced`] is a fact DERIVED from the hook actually
+    /// executing and reporting a mechanism, never a bare declaration — see
+    /// [`Self::create_backup`], whose no-op hook makes every backup it
+    /// produces honestly `quiesced: false`. Returning `Err` aborts before any
+    /// store is copied.
+    pub fn create_backup_with_quiesce<F>(&self, quiesce: F) -> error::Result<InstanceBackupReport>
+    where
+        F: FnOnce() -> error::Result<Option<String>>,
+    {
         let (staging_path, final_path) = self.prepare_staging_path()?;
+
+        let quiesce_mechanism = match quiesce() {
+            Ok(mechanism) => mechanism,
+            Err(err) => {
+                // WHY(#6442): nothing has been copied yet, so — unlike a
+                // verify failure — an empty staging dir here carries no
+                // diagnostic value; best-effort remove it rather than
+                // leaving inspection-free clutter in backup_dir.
+                if let Err(cleanup_err) = fs::remove_dir_all(&staging_path) {
+                    warn!(
+                        path = %staging_path.display(),
+                        error = %cleanup_err,
+                        "failed to remove staging dir after quiesce hook failure"
+                    );
+                }
+                return Err(err);
+            }
+        };
+
         let mut build = BackupBuild::new(self.config.instance_root.clone());
 
         self.copy_required_stores(&staging_path, &mut build)?;
@@ -68,7 +112,13 @@ impl InstanceBackup {
 
         // Write a preliminary manifest so verify_backup can confirm the set
         // structure; it will be rewritten with captured generation IDs below.
-        self.write_manifest(&staging_path, &build, &snapshot_epoch, &HashMap::new())?;
+        self.write_manifest(
+            &staging_path,
+            &build,
+            &snapshot_epoch,
+            &HashMap::new(),
+            quiesce_mechanism.as_deref(),
+        )?;
 
         let verify = InstanceBackup::verify_backup(&staging_path)?;
         if let Some(err) = verify.first_error {
@@ -84,6 +134,7 @@ impl InstanceBackup {
             &build,
             &snapshot_epoch,
             &verify.store_generations,
+            quiesce_mechanism.as_deref(),
         )?;
 
         // WHY(#4950): atomic publish on the same filesystem as backup_dir.
@@ -467,6 +518,7 @@ impl InstanceBackup {
         build: &BackupBuild,
         snapshot_epoch: &str,
         store_generations: &HashMap<String, u64>,
+        quiesce_mechanism: Option<&str>,
     ) -> error::Result<()> {
         let manifest = BackupManifest {
             version: String::from(MANIFEST_VERSION),
@@ -478,7 +530,9 @@ impl InstanceBackup {
             total_bytes: build.total_bytes,
             snapshot_epoch: String::from(snapshot_epoch),
             snapshot_protocol_version: String::from(SNAPSHOT_PROTOCOL_VERSION),
-            quiesced: false,
+            // WHY(#6442): derived, not declared — true only when a caller's
+            // quiesce hook actually ran and named a mechanism.
+            quiesced: quiesce_mechanism.is_some(),
             store_generations: store_generations.clone(),
             symlink_policy: String::from(SYMLINK_POLICY),
         };
@@ -492,6 +546,7 @@ impl InstanceBackup {
             .context(error::MaintenanceIoSnafu {
                 context: String::from("serializing backup manifest integrity evidence"),
             })?;
+        inject_quiesce_evidence(&mut manifest_value, build, quiesce_mechanism);
         let manifest_path = backup_path.join("manifest.json");
         let manifest_json = serde_json::to_string_pretty(&manifest_value)
             .map_err(std::io::Error::other)

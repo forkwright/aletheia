@@ -17,7 +17,7 @@ include_sections: []
 operations: ""
   # ## Session Start
   # 1. Read MEMORY.md for continuity
-  # 2. Run `assemble-context --nous example` - compiled state + recent context
+  # 2. Workspace context is assembled automatically by the runtime bootstrap
   # 3. Check active tasks: `tw`
   #
   # ## Pre-Compaction
