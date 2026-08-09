@@ -3,9 +3,13 @@
 //! Sensitive values in `aletheia.toml` (API keys, signing keys, secrets) can be
 //! encrypted with a primary key. Encrypted values are stored with an `enc:` prefix
 //! followed by base64-encoded ciphertext. On config load, `enc:` values are
-//! transparently decrypted. If the primary key is missing but `enc:` values are
-//! present, startup fails with an actionable error listing the affected fields.
+//! transparently decrypted. Both a missing primary key and a *present but
+//! wrong* primary key (rotation mismatch, corrupted ciphertext) fail startup
+//! with an actionable error listing the affected fields -- neither case is
+//! allowed to boot the server with literal ciphertext standing in for a
+//! secret (#5452).
 
+use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
 use chacha20poly1305::aead::generic_array::GenericArray;
@@ -301,32 +305,83 @@ pub fn encrypt_config_file(toml_path: &Path, primary_key: &[u8; KEY_LEN]) -> Res
 /// Recursively decrypt all `enc:`-prefixed string values in a TOML value tree.
 ///
 /// If `primary_key` is `None`, logs a warning for each encrypted value found
-/// and leaves it unchanged (plaintext fallback).
-pub(crate) fn decrypt_toml_values(value: &mut toml::Value, primary_key: Option<&[u8; KEY_LEN]>) {
+/// and leaves it unchanged (plaintext fallback) -- the caller
+/// (`config_decrypt::decrypt_toml_value`) already fails closed before reaching
+/// this function whenever `enc:` values are present with no key available, so
+/// this branch only fires for callers that intentionally probe without a key.
+///
+/// # Errors
+///
+/// SECURITY(#5452): a *present* key that fails to decrypt a value (wrong key
+/// after rotation, corrupted ciphertext, truncated base64) is a distinct case
+/// from "no key available" and must fail closed the same way: returns
+/// [`Error::ConfigDecryptFailed`] listing every dotted path that failed,
+/// rather than silently leaving literal `enc:...` ciphertext as the live
+/// config value. Previously this case only logged a warning and returned
+/// `()`, so a wrong decryption key could boot the server with ciphertext in
+/// place of secrets such as `gateway.auth.signingKey`.
+pub(crate) fn decrypt_toml_values(
+    value: &mut toml::Value,
+    primary_key: Option<&[u8; KEY_LEN]>,
+) -> Result<()> {
+    let mut failed_paths = Vec::new();
+    decrypt_toml_values_inner(value, primary_key, &mut String::new(), &mut failed_paths);
+    if failed_paths.is_empty() {
+        Ok(())
+    } else {
+        Err(error::ConfigDecryptFailedSnafu {
+            fields: failed_paths.join(", "),
+        }
+        .build())
+    }
+}
+
+fn decrypt_toml_values_inner(
+    value: &mut toml::Value,
+    primary_key: Option<&[u8; KEY_LEN]>,
+    path: &mut String,
+    failed: &mut Vec<String>,
+) {
     match value {
         toml::Value::String(s) if is_encrypted(s) => {
             if let Some(key) = primary_key {
                 match decrypt_value(s, key) {
                     Ok(plaintext) => *s = plaintext,
                     Err(e) => {
-                        warn!(error = %e, "failed to decrypt config value, leaving encrypted");
+                        warn!(error = %e, path = %path, "failed to decrypt config value");
+                        failed.push(if path.is_empty() {
+                            "<root>".to_owned()
+                        } else {
+                            path.clone()
+                        });
                     }
                 }
             } else {
                 warn!(
+                    path = %path,
                     "encrypted config value found but no primary key available \
                      -- value will remain encrypted"
                 );
             }
         }
         toml::Value::Table(table) => {
-            for (_key, val) in table.iter_mut() {
-                decrypt_toml_values(val, primary_key);
+            for (key, val) in table.iter_mut() {
+                let mark = path.len();
+                if !path.is_empty() {
+                    path.push('.');
+                }
+                path.push_str(key);
+                decrypt_toml_values_inner(val, primary_key, path, failed);
+                path.truncate(mark);
             }
         }
         toml::Value::Array(arr) => {
-            for item in arr {
-                decrypt_toml_values(item, primary_key);
+            for (i, item) in arr.iter_mut().enumerate() {
+                let mark = path.len();
+                // kanon:ignore RUST/no-result-unwrap-or-default — write! to a String never fails
+                let _ = write!(path, "[{i}]");
+                decrypt_toml_values_inner(item, primary_key, path, failed);
+                path.truncate(mark);
             }
         }
         _ => {
@@ -391,6 +446,7 @@ fn is_sensitive_key(key: &str) -> bool {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: TOML string-key indexing panics only if key is absent"
@@ -534,7 +590,7 @@ mod tests {
             "#
         );
         let mut value: toml::Value = toml::from_str(&toml_str).unwrap();
-        decrypt_toml_values(&mut value, Some(&key));
+        decrypt_toml_values(&mut value, Some(&key)).unwrap();
 
         let signing_key = value["gateway"]["auth"]["signingKey"].as_str().unwrap();
         assert_eq!(
@@ -555,12 +611,83 @@ mod tests {
             "#
         );
         let mut value: toml::Value = toml::from_str(&toml_str).unwrap();
-        decrypt_toml_values(&mut value, None);
+        decrypt_toml_values(&mut value, None).unwrap();
 
         let signing_key = value["gateway"]["auth"]["signingKey"].as_str().unwrap();
         assert!(
             is_encrypted(signing_key),
             "without primary key, value must stay encrypted"
+        );
+    }
+
+    #[test]
+    fn decrypt_toml_with_wrong_key_fails_closed() {
+        // SECURITY(#5452) regression: a *present* but wrong key must error,
+        // not silently leave literal `enc:...` ciphertext as the live config
+        // value (which would boot the server with ciphertext as e.g. the JWT
+        // signing key).
+        let key1 = fixture_key();
+        let mut key2 = fixture_key();
+        key2[0] ^= 0xff;
+        let encrypted = encrypt_value("my-jwt-signing-key", &key1).unwrap();
+
+        let toml_str = format!(
+            r#"
+            [gateway.auth]
+            signingKey = "{encrypted}"
+            "#
+        );
+        let mut value: toml::Value = toml::from_str(&toml_str).unwrap();
+        let err = decrypt_toml_values(&mut value, Some(&key2))
+            .expect_err("wrong key must fail closed, not warn-and-leave-ciphertext");
+
+        assert!(
+            matches!(err, error::Error::ConfigDecryptFailed { .. }),
+            "expected ConfigDecryptFailed, got {err:?}"
+        );
+        assert!(
+            err.to_string().contains("gateway.auth.signingKey"),
+            "error should name the failing field: {err}"
+        );
+
+        // WHY: the tree must not have been silently left with the
+        // ciphertext masquerading as the plaintext signing key -- the
+        // caller is expected to treat `Err` as fatal and never read `value`.
+        let signing_key = value["gateway"]["auth"]["signingKey"].as_str().unwrap();
+        assert!(
+            is_encrypted(signing_key),
+            "field must remain untouched ciphertext on failure, not a partial mutation"
+        );
+    }
+
+    #[test]
+    fn decrypt_toml_with_wrong_key_collects_every_failing_field() {
+        let key1 = fixture_key();
+        let mut key2 = fixture_key();
+        key2[0] ^= 0xff;
+        let secret1 = encrypt_value("first-secret", &key1).unwrap();
+        let secret2 = encrypt_value("second-secret", &key1).unwrap();
+
+        let toml_str = format!(
+            r#"
+            [gateway.auth]
+            signingKey = "{secret1}"
+
+            [providers.openai]
+            api_key = "{secret2}"
+            "#
+        );
+        let mut value: toml::Value = toml::from_str(&toml_str).unwrap();
+        let err = decrypt_toml_values(&mut value, Some(&key2)).unwrap_err();
+
+        let msg = err.to_string();
+        assert!(
+            msg.contains("gateway.auth.signingKey"),
+            "error should list first failing field: {msg}"
+        );
+        assert!(
+            msg.contains("providers.openai.api_key"),
+            "error should list second failing field: {msg}"
         );
     }
 
