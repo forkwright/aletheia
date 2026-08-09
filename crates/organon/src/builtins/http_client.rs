@@ -153,19 +153,32 @@ fn redirect_method(method: &Method, status: StatusCode) -> Method {
     }
 }
 
+/// The request half of a redirect-following send, grouped so the policy half
+/// (`resolver`, `gate`) stays visually distinct at the call site.
+struct SafeRequest<'a> {
+    method: Method,
+    url: &'a str,
+    headers: &'a HashMap<String, String>,
+    body: Option<&'a str>,
+    timeout: std::time::Duration,
+}
+
 async fn send_with_safe_redirects<R>(
     client: &reqwest::Client,
-    method: Method,
-    url: &str,
-    headers: &HashMap<String, String>,
-    body: Option<&str>,
-    timeout: std::time::Duration,
+    request: SafeRequest<'_>,
     resolver: &R,
     gate: &EgressGate,
 ) -> std::result::Result<reqwest::Response, String>
 where
     R: HostResolver + ?Sized,
 {
+    let SafeRequest {
+        method,
+        url,
+        headers,
+        body,
+        timeout,
+    } = request;
     let mut current_url: reqwest::Url = url.parse().map_err(|e| format!("invalid URL: {e}"))?;
     let mut current_method = method;
     let mut include_body = body.is_some();
@@ -287,11 +300,13 @@ impl ToolExecutor for HttpRequestExecutor {
 
             let response = match send_with_safe_redirects(
                 &services.http_clients.ssrf_safe,
-                method.clone(),
-                url,
-                &headers,
-                body,
-                std::time::Duration::from_secs(timeout_secs),
+                SafeRequest {
+                    method: method.clone(),
+                    url,
+                    headers: &headers,
+                    body,
+                    timeout: std::time::Duration::from_secs(timeout_secs),
+                },
                 &TokioHostResolver,
                 &self.egress,
             )

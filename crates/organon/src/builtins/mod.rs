@@ -235,7 +235,6 @@ pub(crate) fn register_domain_tools(
     communication::register(registry)?;
     filesystem::register_with_sandbox(registry, sandbox.clone())?;
     fs_ops::register(registry)?;
-    git_ops::register_with_sandbox(registry, sandbox.clone())?;
     http_client::register(registry, &sandbox)?;
     view_file::register(registry)?;
     agent::register(registry)?;
@@ -247,6 +246,12 @@ pub(crate) fn register_domain_tools(
     #[cfg(feature = "z3")]
     z3_solver::register(registry)?;
     web_search::register(registry, &sandbox)?;
+    // WHY here, and moved rather than cloned: every registrar above either borrows or takes
+    // its own copy, so this is the final owner of `sandbox`. Consuming it is what makes the
+    // by-value parameter honest — clippy::needless_pass_by_value fires on a value the body
+    // never actually takes, and cloning into the last use is the shape that triggers it.
+    // Registration order is immaterial: each call inserts under its own distinct tool name.
+    git_ops::register_with_sandbox(registry, sandbox)?;
     triage::register(registry)?;
     parameters::register(registry)?;
     #[cfg(feature = "energeia")]
