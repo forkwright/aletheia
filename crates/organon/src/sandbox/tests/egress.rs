@@ -366,9 +366,10 @@ fn gate_allowlist_with_unparseable_entry_never_matches() {
     // silently match every destination.
     let gate = EgressGate::new(EgressPolicy::Allowlist, &["not-an-ip".to_owned()]);
     assert!(gate.check_addr(public_addr().ip()).is_err());
-    assert!(gate
-        .check_addr(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)))
-        .is_err());
+    assert!(
+        gate.check_addr(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)))
+            .is_err()
+    );
 }
 
 #[tokio::test]
