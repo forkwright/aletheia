@@ -1325,8 +1325,12 @@ fn subsystem_from_check(
         last_checked: generated_at.to_owned(),
         last_success: None,
         last_failure: None,
-        degraded_reason: (status == "degraded").then(|| check.message.clone()).flatten(),
-        failure_reason: (status == "failed").then(|| check.message.clone()).flatten(),
+        degraded_reason: (status == "degraded")
+            .then(|| check.message.clone())
+            .flatten(),
+        failure_reason: (status == "failed")
+            .then(|| check.message.clone())
+            .flatten(),
         details: check.details,
         suggested_action: (status != "healthy")
             .then(|| suggested_action.map(str::to_owned))
@@ -1517,7 +1521,11 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
         ),
         subsystem_event_bus(state, generated_at).await,
         subsystem_from_check(
-            combine_checks("config_security_posture", &checks.gateway, &checks.rate_limit),
+            combine_checks(
+                "config_security_posture",
+                &checks.gateway,
+                &checks.rate_limit,
+            ),
             "config_security_posture",
             "Gateway Config & Security Posture",
             "crates/pylon::security",
@@ -1648,7 +1656,11 @@ async fn subsystem_tool_execution_history(
     state: &HealthState,
     generated_at: &str,
 ) -> SubsystemStatus {
-    let result = state.session_store.lock().await.recent_tool_audit_records(1);
+    let result = state
+        .session_store
+        .lock()
+        .await
+        .recent_tool_audit_records(1);
     match result {
         Ok(_) => SubsystemStatus {
             id: "tool_execution_history".to_owned(),
@@ -1697,8 +1709,7 @@ fn subsystem_training_qa_persistence(generated_at: &str) -> SubsystemStatus {
         last_failure: None,
         degraded_reason: None,
         failure_reason: Some(
-            "no pylon-reachable status signal for DPO/training-corpus persistence yet"
-                .to_owned(),
+            "no pylon-reachable status signal for DPO/training-corpus persistence yet".to_owned(),
         ),
         details: None,
         suggested_action: Some(

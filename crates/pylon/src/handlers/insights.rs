@@ -1358,7 +1358,11 @@ fn select_tool_detail(
     tool_filter: Option<&str>,
     window_start: jiff::civil::Date,
     today: jiff::civil::Date,
-) -> (Vec<ToolStat>, Vec<ToolTimeSeriesBucket>, Vec<ToolInvocationRecord>) {
+) -> (
+    Vec<ToolStat>,
+    Vec<ToolTimeSeriesBucket>,
+    Vec<ToolInvocationRecord>,
+) {
     let in_window =
         |r: &&ToolAuditRecord| tool_record_date(r).is_some_and(|d| d >= window_start && d <= today);
 
@@ -1399,7 +1403,11 @@ fn select_tool_detail(
             .into_iter()
             .map(|(date, counts)| ToolTimeSeriesBucket { date, counts })
             .collect();
-        let invocations = records.iter().filter(in_window).map(invocation_record).collect();
+        let invocations = records
+            .iter()
+            .filter(in_window)
+            .map(invocation_record)
+            .collect();
         (tools, time_series, invocations)
     };
     time_series.sort_by(|a, b| a.date.cmp(&b.date));
