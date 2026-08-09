@@ -32,6 +32,9 @@ Dispatch orchestration: actualization of plans into execution. Absorbs kanon's p
 | `SessionHandle` | `engine.rs` | Trait: event stream, wait, abort for a running session |
 | `QaGate` | `qa.rs` | Trait: evaluate PR quality, mechanical checks |
 | `CronTask` / `CronScheduler` | `cron.rs` | Recurring dispatch driven by `jiff-cron`; fjall-backed cross-restart lock and per-task overlap policy. Feature: `storage-fjall`. |
+| `StewardBackend` | `steward/backend.rs` | Trait: PR fetch, CI status, merge execution -- the external-I/O boundary for `steward::run_once_with_backend`. Implementations live outside this crate. |
+| `SessionRecord` / `SessionUpdate` | `store/records.rs` | Durable per-child-session state: full `SessionOutcome` attribution (model, failure class, resume/corrective counts, cache usage, structured output). Feature: `storage-fjall`. |
+| `DispatchExport` | `store/records.rs` | A dispatch bundled with all its child `SessionRecord`s, via `EnergeiaStore::export_dispatch`/`list_recent_dispatch_exports`. Feature: `storage-fjall`. |
 
 ## Patterns
 
