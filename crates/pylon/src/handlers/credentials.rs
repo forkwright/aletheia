@@ -488,8 +488,8 @@ impl CredentialResponse {
             .and_then(CredentialValidationState::as_status_str)
             .unwrap_or(local_status)
             .to_owned();
-        let provider_verified = validation_state
-            .is_some_and(|state| state.as_status_str().is_some());
+        let provider_verified =
+            validation_state.is_some_and(|state| state.as_status_str().is_some());
         Self {
             id: credential.id,
             provider: credential.provider,

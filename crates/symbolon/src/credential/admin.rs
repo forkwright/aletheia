@@ -271,7 +271,16 @@ fn validation_sidecar_path(credential_path: &Path) -> PathBuf {
 /// credential file, never load-bearing for whether the credential itself
 /// loads.
 fn load_validation_record(credential_path: &Path) -> Option<ProviderValidationRecord> {
-    let bytes = std::fs::read(validation_sidecar_path(credential_path)).ok()?;
+    use std::io::Read as _;
+
+    let sidecar = validation_sidecar_path(credential_path);
+    let mut bytes = Vec::new();
+    std::fs::OpenOptions::new()
+        .read(true)
+        .open(sidecar)
+        .ok()?
+        .read_to_end(&mut bytes)
+        .ok()?;
     serde_json::from_slice(&bytes).ok()
 }
 

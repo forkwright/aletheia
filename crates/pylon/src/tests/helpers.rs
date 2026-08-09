@@ -419,8 +419,12 @@ pub(super) async fn app_with_anthropic_provider() -> (axum::Router, tempfile::Te
 /// response text, not the registered name (`MockProvider::name()` stays the
 /// static `"mock"` unless `.named(...)` is called). `.named()` is what
 /// actually sets the registered name.
-pub(super) async fn app_with_provider_name(name: &'static str) -> (axum::Router, tempfile::TempDir) {
-    let provider = MockProvider::new("mock response").named(name).models(&["mock-model"]);
+pub(super) async fn app_with_provider_name(
+    name: &'static str,
+) -> (axum::Router, tempfile::TempDir) {
+    let provider = MockProvider::new("mock response")
+        .named(name)
+        .models(&["mock-model"]);
     let (state, dir) = test_state_with_mock_provider(Some(provider), false, "token").await;
     (build_router(state, &test_security_config()), dir)
 }
