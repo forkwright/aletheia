@@ -422,11 +422,20 @@ pub(super) async fn app_with_anthropic_provider() -> (axum::Router, tempfile::Te
 pub(super) async fn app_with_provider_name(
     name: &'static str,
 ) -> (axum::Router, tempfile::TempDir) {
+    let (state, dir) = state_with_provider_name(name).await;
+    (build_router(state, &test_security_config()), dir)
+}
+
+/// Same as [`app_with_provider_name`] but returns the state too, for tests
+/// that need to subscribe to `state.event_bus` before driving a request
+/// through the router.
+pub(super) async fn state_with_provider_name(
+    name: &'static str,
+) -> (Arc<AppState>, tempfile::TempDir) {
     let provider = MockProvider::new("mock response")
         .named(name)
         .models(&["mock-model"]);
-    let (state, dir) = test_state_with_mock_provider(Some(provider), false, "token").await;
-    (build_router(state, &test_security_config()), dir)
+    test_state_with_mock_provider(Some(provider), false, "token").await
 }
 
 pub(super) fn json_request(
