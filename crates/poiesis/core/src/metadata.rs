@@ -1,7 +1,8 @@
 use jiff::Timestamp;
+use serde::{Deserialize, Serialize};
 
 /// Document-level metadata.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Metadata {
     /// Document title shown in viewer toolbars and export filenames.
     pub title: String,

@@ -80,9 +80,11 @@ pub fn render_chart(
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use poiesis_core::{RichText, Span};
+
     use crate::model::{
         Axes, AxisSide, Chart, ChartKind, CiteOrScalar, CiteOrText, Domain, FactCite, FactId,
-        Inlines, LegendSpec, Point, Series, SeriesStyle, Ticks, ToneRef, Unit,
+        LegendSpec, Point, Series, SeriesStyle, Ticks, ToneRef, Unit,
     };
     use crate::render::canvas::DeckCanvas;
 
@@ -379,10 +381,12 @@ mod tests {
             )],
             false,
         );
-        spec.caption = Some(Inlines(vec![
-            "Fig 1:".to_owned(),
-            "caption text".to_owned(),
-        ]));
+        spec.caption = Some(RichText {
+            spans: vec![
+                Span::Plain("Fig 1: ".to_owned()),
+                Span::Bold("caption text".to_owned()),
+            ],
+        });
         let theme = ResolvedTheme::summus_stub();
         let svg = render_chart(
             &spec,

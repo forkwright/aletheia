@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::block::Block;
 use crate::metadata::Metadata;
 
@@ -9,7 +11,7 @@ use crate::metadata::Metadata;
 /// each [`Block`] to the target format.
 ///
 /// [`Renderer`]: crate::renderer::Renderer
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
     /// Document-level properties (title, author, creation time).
     pub metadata: Metadata,

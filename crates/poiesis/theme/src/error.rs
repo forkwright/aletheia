@@ -122,4 +122,25 @@ pub enum ThemeError {
         /// Error message from the zip writer.
         message: String,
     },
+
+    /// SECURITY(#5633): a theme token-namespace key contains characters
+    /// unsafe to interpolate into a CSS custom-property name, a Typst `#let`
+    /// identifier, or a `LaTeX` `\definecolor`/`\newcommand` name. Every sink
+    /// that iterates a token map trusts each key it emits to already satisfy
+    /// this charset; catching an unsafe key here, at resolve time, keeps a
+    /// crafted theme TOML (e.g. from a CI artifact or external registry)
+    /// from injecting content into generated CSS/Typst/LaTeX output.
+    #[snafu(display(
+        "theme {theme_id} defines an unsafe token key {key:?} in [{namespace}]: {reason}"
+    ))]
+    InvalidTokenKey {
+        /// The theme carrying the offending key.
+        theme_id: String,
+        /// The token namespace the key was found in (e.g. `"color.role"`).
+        namespace: &'static str,
+        /// The offending key, verbatim.
+        key: String,
+        /// Human-readable reason the key was rejected.
+        reason: String,
+    },
 }
