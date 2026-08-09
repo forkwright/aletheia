@@ -169,14 +169,6 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
-
-    /// A required capability was not configured on this backend instance.
-    #[snafu(display("not configured: {what}"))]
-    NotConfigured {
-        what: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
 }
 
 /// Convenience alias for results with [`Error`].
@@ -317,15 +309,6 @@ mod tests {
         }
         .build();
         assert!(err.to_string().contains("2 -> 99"));
-    }
-
-    #[test]
-    fn error_display_not_configured() {
-        let err = NotConfiguredSnafu {
-            what: "steward backend",
-        }
-        .build();
-        assert!(err.to_string().contains("steward backend"));
     }
 
     #[test]
