@@ -22,6 +22,13 @@ storage-fjall = ["dep:fjall"]
 # CozoDB-derived match-table (fold_table/), off by default during the soak
 # window. See fts/tokenizer/ascii_folding_filter/fold_table.rs.
 krites_sovereign_ascii_folding_table = []
+# WHY: wave-5 land-dark selectors (PLAN.md Sec.2) -- each derived
+# fixed_rule::algos/utilities module stays default; the feature swaps in its fresh
+# sovereign_native.rs counterpart instead (see algos/mod.rs and utilities/mod.rs's
+# #[path] swaps). Off by default so the soak window starts from an explicit opt-in,
+# never a silent flip.
+krites_sovereign_algos = []
+krites_sovereign_utilities = []
 test-core = ["storage-fjall"]
 test-full = ["test-core"]
 
