@@ -7,8 +7,8 @@
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 236 files under `src/`: 143 derived, 50 sovereign, 43 dual
-- Mean verbatim match across the 143 derived files: 50.0% (unweighted average of the per-file `verbatim_pct` column below)
+- 236 files under `src/`: 136 derived, 58 sovereign, 42 dual
+- Mean verbatim match across the 136 derived files: 51.1% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -210,22 +210,22 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/runtime/db.rs` | `runtime/db.rs` | 45.5% | derived |
 | `src/runtime/error.rs` | — | 0.0% | sovereign |
 | `src/runtime/exec.rs` | `runtime/db.rs` | 77.8% | derived |
-| `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 3.3% | derived |
-| `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 50.0% | derived |
-| `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 2.8% | derived |
-| `src/runtime/hnsw/put.rs` | `runtime/hnsw.rs` | 33.6% | derived |
-| `src/runtime/hnsw/remove.rs` | `runtime/hnsw.rs` | 53.7% | derived |
-| `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 26.4% | derived |
-| `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 29.4% | derived |
+| `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 3.3% | dual |
+| `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 50.0% | dual |
+| `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 2.8% | dual |
+| `src/runtime/hnsw/put.rs` | `runtime/hnsw.rs` | 33.6% | dual |
+| `src/runtime/hnsw/remove.rs` | `runtime/hnsw.rs` | 53.7% | dual |
+| `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 26.4% | dual |
+| `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 29.4% | dual |
 | `src/runtime/hnsw/visited_pool.rs` | `runtime/hnsw.rs` | 10.8% | derived |
-| `src/runtime/hnsw_sovereign/adaptive.rs` | `runtime/hnsw.rs` | 3.1% | dual |
-| `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | `runtime/hnsw.rs` | 5.6% | dual |
-| `src/runtime/hnsw_sovereign/graph.rs` | `runtime/hnsw.rs` | 25.3% | dual |
-| `src/runtime/hnsw_sovereign/mod.rs` | `runtime/hnsw.rs` | 1.6% | dual |
-| `src/runtime/hnsw_sovereign/put.rs` | `runtime/hnsw.rs` | 13.1% | dual |
-| `src/runtime/hnsw_sovereign/remove.rs` | `runtime/hnsw.rs` | 20.7% | dual |
-| `src/runtime/hnsw_sovereign/search.rs` | `runtime/hnsw.rs` | 11.7% | dual |
-| `src/runtime/hnsw_sovereign/types.rs` | `runtime/hnsw.rs` | 12.4% | dual |
+| `src/runtime/hnsw_sovereign/adaptive.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/graph.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/mod.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/put.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/remove.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/search.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/types.rs` | — | 0.0% | sovereign |
 | `src/runtime/imperative.rs` | `runtime/imperative.rs` | 44.2% | derived |
 | `src/runtime/minhash_lsh.rs` | `runtime/minhash_lsh.rs` | 59.6% | derived |
 | `src/runtime/mod.rs` | `runtime/mod.rs` | 3.1% | derived |

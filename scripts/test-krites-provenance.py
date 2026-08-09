@@ -8,6 +8,11 @@ variant (verbatim_pct zeroed too, only the status-sequence check catches
 it); an unresolvable --base-ref must fail closed, not silently pass as a
 bootstrap commit; soak expiry must fire; offline recompute must fire when a
 snapshot is present and skip cleanly when it is not.
+
+Also covers aletheia#6656: a 'sovereign'-named path must always carry
+status=sovereign (the structural fix for the hnsw dual/sovereign
+inversion), and the three provenance scripts must cite a real, resolvable
+status-authority document rather than a nonexistent "PLAN.md §N".
 """
 
 from __future__ import annotations
@@ -244,6 +249,70 @@ def test_verbatim_recompute_skips_without_snapshot() -> None:
             CHECKER.UPSTREAM_SNAPSHOT_DIR = orig
 
 
+# --- aletheia#6656: sovereign-path naming rule (the dual/sovereign inversion) ---
+
+
+def test_sovereign_path_status_mismatch_rejected() -> None:
+    # WHY: the exact aletheia#6656 reproduction — runtime/hnsw_sovereign/*.rs
+    # (the fresh rewrite) carried status=dual (the label for the file about
+    # to be deleted) while the actual retiring runtime/hnsw/*.rs copies
+    # carried derived with no expiry. A 'sovereign'-named path must never
+    # carry anything but status=sovereign.
+    rows = [row("runtime/hnsw_sovereign/graph.rs", "runtime/hnsw.rs", 25.3, "dual", soak=3058)]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a 'sovereign'-named path carrying status=dual (the hnsw inversion) must be rejected",
+    )
+
+
+def test_sovereign_path_status_mismatch_rejected_for_derived() -> None:
+    rows = [row("fts/tokenizer/stop_word_filter/sovereign/mod.rs", "fts/tokenizer.rs", 40.0, "derived")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a 'sovereign'-named path carrying status=derived must be rejected",
+    )
+
+
+def test_sovereign_path_status_match_accepted() -> None:
+    rows = [row("runtime/hnsw_sovereign/graph.rs", "none", 0.0, "sovereign")]
+    try:
+        LIB.validate_rows(rows)
+    except LIB.LedgerError as exc:
+        _FAILURES.append(f"a correctly-labeled sovereign-named row must be accepted: {exc}")
+
+
+def test_non_sovereign_path_unaffected_by_naming_rule() -> None:
+    # A path with no 'sovereign' substring is untouched by this rule at any status.
+    rows = [row("runtime/hnsw/graph.rs", "runtime/hnsw.rs", 50.0, "dual", soak=3058)]
+    try:
+        LIB.validate_rows(rows)
+    except LIB.LedgerError as exc:
+        _FAILURES.append(f"a non-sovereign-named dual row must be unaffected: {exc}")
+
+
+# --- aletheia#6656: citations must resolve to a real, versioned document ---
+
+
+def test_no_phantom_plan_citation_remains() -> None:
+    # WHY: aletheia#6656 found krites_provenance_lib.py, check-krites-provenance.py,
+    # and krites-provenance-transition.py all citing "PLAN.md §2 / §3 wave 0.1 /
+    # §9 kill criterion 8" for the meaning of every status — a section numbering
+    # that exists in no PLAN.md reachable from this repo or from kanon. Guard
+    # against the citation rotting back into a dead reference.
+    scripts_dir = Path(__file__).resolve().parent
+    real_citation = "PROVENANCE-LEDGER.md"
+    for name in (
+        "krites_provenance_lib.py",
+        "check-krites-provenance.py",
+        "krites-provenance-transition.py",
+    ):
+        text = (scripts_dir / name).read_text()
+        expect("PLAN.md" not in text, f"{name}: still cites a bare PLAN.md section — the exact aletheia#6656 defect")
+        expect(real_citation in text, f"{name}: missing a citation to the real status-authority document")
+
+
 def test_verbatim_recompute_detects_drift() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -296,6 +365,11 @@ def main() -> int:
         test_soak_expiry_fails_closed_when_commit_count_unavailable,
         test_verbatim_recompute_skips_without_snapshot,
         test_verbatim_recompute_detects_drift,
+        test_sovereign_path_status_mismatch_rejected,
+        test_sovereign_path_status_mismatch_rejected_for_derived,
+        test_sovereign_path_status_match_accepted,
+        test_non_sovereign_path_unaffected_by_naming_rule,
+        test_no_phantom_plan_citation_remains,
     ):
         test_fn()
 

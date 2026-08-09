@@ -18,9 +18,10 @@ UPSTREAM_SNAPSHOT_DIR = KRITES_DIR / "upstream-snapshot" / "cozo-core-src"
 
 STATUSES = ("derived", "sovereign", "dual")
 # INVARIANT(P1): the only legal forward status transitions — a row may only
-# leave 'derived' by first sitting in 'dual' (PLAN.md §2 land-dark/soak/
-# delete). A direct 'derived' -> 'sovereign' jump, or any transition out of
-# 'sovereign', is a backslide. Checked by check-krites-provenance.py's
+# leave 'derived' by first sitting in 'dual' (land-dark/soak/delete;
+# kanon/projects/aletheia/phases/05g-krites-overhaul/PROVENANCE-LEDGER.md
+# "Transitions"). A direct 'derived' -> 'sovereign' jump, or any transition
+# out of 'sovereign', is a backslide. Checked by check-krites-provenance.py's
 # check_status_sequence against the PR's base ref.
 ALLOWED_TRANSITIONS = frozenset({("derived", "dual"), ("dual", "sovereign")})
 # WARNING(P3): extend this tuple, not a bespoke glob elsewhere, if another
@@ -90,6 +91,25 @@ def validate_rows(rows: list[dict]) -> None:
                 "this file still carries a real similarity score and must land through 'dual' "
                 f"first, never jump directly from 'derived' (got verbatim_pct={row['verbatim_pct']})"
             )
+        # INVARIANT: every wave that has landed a fresh, CozoDB-independent
+        # replacement under this scheme has put the substring 'sovereign' in
+        # its path (hnsw_sovereign/, fold_table_sovereign/,
+        # stop_word_filter/sovereign/) — kanon/projects/aletheia/phases/
+        # 05g-krites-overhaul/PROVENANCE-LEDGER.md "Naming convention". A
+        # path carrying that substring is never legitimately the retiring
+        # copy, so it must never carry 'derived' or 'dual'. This is the
+        # structural fix for aletheia#6656: nine runtime/hnsw_sovereign/*.rs
+        # rows — the fresh rewrite — carried 'dual' (the label for the file
+        # about to be deleted) while the actual retiring runtime/hnsw/*.rs
+        # copies carried 'derived' with no expiry at all. A naming-convention
+        # violation now fails here, before any transition or soak logic runs.
+        if "sovereign" in path and row["status"] != "sovereign":
+            raise LedgerError(
+                f"{path}: path names this a sovereign (CozoDB-independent) replacement, but "
+                f"status={row['status']!r} — a 'sovereign'-named path must carry status=sovereign; "
+                "a 'dual' or 'derived' status here means the retiring-copy and fresh-replacement "
+                "labels are inverted (aletheia#6656)"
+            )
 
 
 def parse_ledger(text: str) -> tuple[dict, list[dict]]:
@@ -112,12 +132,15 @@ def dump_ledger(meta: dict, rows: list[dict]) -> str:
         "# NOTE: soak_expires_at_commit_count = 0 means the file is not in dual",
         "# NOTE: (land-dark/soak) state. A nonzero value is an ABSOLUTE target: the",
         "# NOTE: count of `git rev-list --count origin/main` at or past which CI",
-        "# NOTE: fails the build (PLAN.md §2 expiry gate) — not a duration and not",
-        "# NOTE: relative to when the row entered dual. Extend by explicit ledger edit.",
-        "# NOTE: status = derived | sovereign | dual (PLAN.md §2, §3 wave 0.1); the",
-        "# NOTE: only legal transition out of derived is derived -> dual -> sovereign,",
-        "# NOTE: CI-enforced (check_status_sequence) — a direct derived -> sovereign",
-        "# NOTE: jump is rejected regardless of verbatim_pct.",
+        "# NOTE: fails the build (kanon/projects/aletheia/phases/05g-krites-overhaul/",
+        "# NOTE: PROVENANCE-LEDGER.md \"Soak fuse\") — not a duration and not relative",
+        "# NOTE: to when the row entered dual. Extend by explicit ledger edit.",
+        "# NOTE: status = derived | sovereign | dual (PROVENANCE-LEDGER.md \"Statuses\");",
+        "# NOTE: the only legal transition out of derived is derived -> dual ->",
+        "# NOTE: sovereign, CI-enforced (check_status_sequence) — a direct derived ->",
+        "# NOTE: sovereign jump is rejected regardless of verbatim_pct. A path",
+        "# NOTE: containing 'sovereign' must carry status=sovereign (\"Naming",
+        "# NOTE: convention\") — validate_rows rejects the row otherwise.",
         "",
         "[meta]",
         f"upstream_repo = {_toml_str(meta['upstream_repo'])}",
