@@ -153,6 +153,37 @@ impl CredentialRuntimeManager {
         }
     }
 
+    /// Whether a credential mutation for `provider` is consumed by the live
+    /// harness without a restart.
+    ///
+    /// WHY(#4878): health/capability output needs a static per-provider
+    /// capability flag, not just the effect of whatever mutation happened to
+    /// run most recently (which may never have happened for a given
+    /// provider). Derived from [`Self::mutation_effect`] — the single
+    /// source of truth for whether a provider's credential chain can be
+    /// hot-reloaded stays that method; this just names the boolean.
+    #[must_use]
+    pub fn hot_apply_supported(&self, provider: &str) -> bool {
+        matches!(
+            self.mutation_effect(provider),
+            CredentialMutationEffect::Applied | CredentialMutationEffect::PendingReload
+        )
+    }
+
+    /// Current availability of `provider`, per the live provider health
+    /// tracker, when a provider instance with that name is registered.
+    ///
+    /// WHY(#4878): a canonical managed provider name (e.g. "anthropic") can
+    /// have credential files on disk with no corresponding registered
+    /// provider instance yet (a no-credential start, #4872) — `None` is the
+    /// honest answer for "not yet registered", distinct from any
+    /// [`hermeneus::health::ProviderHealth`] variant, all of which mean a
+    /// provider instance exists and is being tracked.
+    #[must_use]
+    pub fn provider_availability(&self, provider: &str) -> Option<hermeneus::health::ProviderHealth> {
+        self.provider_registry.provider_health(provider)
+    }
+
     /// Record the effect of a mutation for health/capability output.
     pub async fn record_effect(&self, provider: &str, effect: CredentialMutationEffect) {
         let mut guard = self.last_effect.lock().await;
@@ -214,4 +245,59 @@ pub enum CredentialRuntimeError {
         /// Supported provider names at the time of the request.
         supported: Vec<String>,
     },
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod tests {
+    use hermeneus::health::ProviderHealth;
+    use hermeneus::test_utils::MockProvider;
+
+    use super::*;
+
+    fn manager_with(provider: Option<MockProvider>) -> CredentialRuntimeManager {
+        let mut registry = ProviderRegistry::new();
+        if let Some(p) = provider {
+            registry.register(Box::new(p));
+        }
+        CredentialRuntimeManager::new(Arc::new(registry))
+    }
+
+    // ── hot_apply_supported (#4878) ──
+
+    #[test]
+    fn hot_apply_supported_false_for_managed_provider() {
+        // WHY: mirrors mutation_effect's honest RestartRequired answer for
+        // canonical managed providers -- pylon cannot hot-clear the
+        // RefreshingCredentialProvider/FileCredentialProvider caches yet
+        // (#4872). If that ever changes, mutation_effect changes and this
+        // derived flag follows without a second edit.
+        let manager = manager_with(None);
+        assert!(!manager.hot_apply_supported("anthropic"));
+        assert!(!manager.hot_apply_supported("claude"));
+    }
+
+    #[test]
+    fn hot_apply_supported_false_for_unmanaged_registered_provider() {
+        let manager = manager_with(Some(MockProvider::new("hi").named("custom-llm")));
+        assert!(!manager.hot_apply_supported("custom-llm"));
+    }
+
+    // ── provider_availability (#4878) ──
+
+    #[test]
+    fn provider_availability_none_for_unregistered_name() {
+        let manager = manager_with(None);
+        assert_eq!(manager.provider_availability("anthropic"), None);
+    }
+
+    #[test]
+    fn provider_availability_some_for_registered_provider() {
+        let manager = manager_with(Some(MockProvider::new("hi").named("custom-llm")));
+        assert_eq!(
+            manager.provider_availability("custom-llm"),
+            Some(ProviderHealth::Up),
+            "a freshly-registered provider starts healthy"
+        );
+    }
 }
