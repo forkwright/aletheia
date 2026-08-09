@@ -228,11 +228,14 @@ fn create_backup_with_quiesce_preserves_cross_store_invariant_under_concurrent_w
         let sessions_ks = sessions_ks.clone();
         std::thread::spawn(move || {
             while running.load(Ordering::SeqCst) {
+                // Publish intent first: after raising `paused`, observing no
+                // write in progress proves no writer can begin another pair.
+                write_in_progress.store(true, Ordering::SeqCst);
                 if paused.load(Ordering::SeqCst) {
+                    write_in_progress.store(false, Ordering::SeqCst);
                     std::thread::yield_now();
                     continue;
                 }
-                write_in_progress.store(true, Ordering::SeqCst);
                 let n = seq.fetch_add(1, Ordering::SeqCst) + 1;
                 let bytes = n.to_le_bytes().to_vec();
                 knowledge_ks.insert("seq", bytes.clone()).unwrap();
@@ -242,9 +245,7 @@ fn create_backup_with_quiesce_preserves_cross_store_invariant_under_concurrent_w
         })
     };
 
-    while seq.load(Ordering::SeqCst) < 5 {
-        std::thread::yield_now();
-    }
+    wait_for_seq(&seq, 5);
 
     let manager = InstanceBackup::new(InstanceBackupConfig {
         enabled: true,
@@ -326,4 +327,10 @@ fn restored_seq(restore_root: &Path, store_name: &str) -> Vec<u8> {
         .expect("read restored seq")
         .expect("seq present in restore")
         .to_vec()
+}
+
+fn wait_for_seq(seq: &AtomicU64, minimum: u64) {
+    while seq.load(Ordering::SeqCst) < minimum {
+        std::thread::yield_now();
+    }
 }
