@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -304,34 +305,25 @@ fn create_backup_with_quiesce_preserves_cross_store_invariant_under_concurrent_w
         .restore_backup(&InstanceRestoreOptions::all_entries(backup_path))
         .expect("restore succeeds");
 
-    let restored_knowledge =
-        fjall::SingleWriterTxDatabase::builder(restore_root.join("data").join("knowledge.fjall"))
-            .worker_threads_unchecked(0)
-            .open()
-            .expect("open restored knowledge store");
-    let restored_sessions =
-        fjall::SingleWriterTxDatabase::builder(restore_root.join("data").join("sessions.db"))
-            .worker_threads_unchecked(0)
-            .open()
-            .expect("open restored sessions store");
-
-    let restored_knowledge_seq = restored_knowledge
-        .keyspace("seq", fjall::KeyspaceCreateOptions::default)
-        .unwrap()
-        .get("seq")
-        .unwrap()
-        .expect("knowledge seq present in restore");
-    let restored_sessions_seq = restored_sessions
-        .keyspace("seq", fjall::KeyspaceCreateOptions::default)
-        .unwrap()
-        .get("seq")
-        .unwrap()
-        .expect("sessions seq present in restore");
-
     assert_eq!(
-        restored_knowledge_seq.as_ref(),
-        restored_sessions_seq.as_ref(),
+        restored_seq(&restore_root, "knowledge.fjall"),
+        restored_seq(&restore_root, "sessions.db"),
         "cross-store invariant must hold at the quiesced boundary: knowledge \
          and sessions must show the identical seq the writer paused at"
     );
+}
+
+fn restored_seq(restore_root: &Path, store_name: &str) -> Vec<u8> {
+    let database =
+        fjall::SingleWriterTxDatabase::builder(restore_root.join("data").join(store_name))
+            .worker_threads_unchecked(0)
+            .open()
+            .unwrap_or_else(|error| panic!("open restored {store_name}: {error}"));
+    database
+        .keyspace("seq", fjall::KeyspaceCreateOptions::default)
+        .expect("open restored seq keyspace")
+        .get("seq")
+        .expect("read restored seq")
+        .expect("seq present in restore")
+        .to_vec()
 }
