@@ -61,6 +61,7 @@ Cargo metadata cannot infer.
 | **episteme** | `openai-embed` | no | OpenAI-compatible embedding provider | `dep:reqwest`, `dep:tokio`, `dep:rustls` |
 | **episteme** | `online-tests` | no | Network-dependent candle tests | - |
 | **episteme** | `test-support` | no | Test helpers | - |
+| **episteme** | `crash-injection` | no | Migration crash-injection seam; enabled only by `integration-tests` | - |
 | **episteme** | `mneme-engine` | no | Datalog knowledge store + typed query builder | `dep:krites`, `dep:tokio`, `graphe/mneme-engine` |
 | **episteme** | `storage-fjall` | no | fjall storage backend | `mneme-engine`, `krites/storage-fjall` |
 | **episteme** | `embed-candle` | no | Candle embedding model loading | `dep:candle-core`, `dep:candle-nn`, `dep:candle-transformers`, `dep:tokenizers`, `dep:hf-hub` |
@@ -98,6 +99,7 @@ Cargo metadata cannot infer.
 | **krites** | `async` | no | Async engine entry points | - |
 | **krites** | `hot-reload` | no | Rule hot-reloading | `dep:notify`, `dep:arc-swap` |
 | **krites** | `storage-fjall` | no | fjall storage backend | `dep:fjall` |
+| **krites** | `krites_sovereign_ascii_folding_table` | no | Land-dark switch: selects the sovereign implementation over the derived one while both are present | - |
 | **krites** | `test-core` | no | - | `storage-fjall` |
 | **krites** | `test-full` | no | - | `test-core` |
 | **melete** | `test-core` | no | - | - |
@@ -116,6 +118,7 @@ Cargo metadata cannot infer.
 | **mneme** | `storage-fjall` | no | fjall knowledge storage | `mneme-engine`, `episteme/storage-fjall` |
 | **mneme** | `test-core` | no | - | `mneme-engine`, `storage-fjall` |
 | **mneme** | `test-full` | no | - | `test-core`, `embed-candle`, `online-tests` |
+| **mneme** | `crash-injection` | no | Forwards `episteme/crash-injection` for integration tests | `episteme/crash-injection` |
 | **nous** | `knowledge-store` | no | Knowledge-store CRUD in agent pipeline | `mneme/mneme-engine` |
 | **nous** | `reranker` | no | Async reranker facade (`HttpReranker` / `NaiveReranker`) | `mneme/reranker` |
 | **nous** | `gliner` | no | GLiNER bookkeeping provider facade | `mneme/gliner` |

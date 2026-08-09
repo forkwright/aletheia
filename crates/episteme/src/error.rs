@@ -202,6 +202,35 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// A destructive migration's staging+rename recovery sweep (aletheia#5779)
+    /// hit a state it cannot repair automatically — an unexpected live index,
+    /// a retired relation that survives force-detach + bounded retry, or a
+    /// relation missing entirely. Operator intervention (backup restore or
+    /// manual inspection) is required; the store is left as found rather than
+    /// guessed at.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display("migration integrity: {message}"))]
+    MigrationIntegrity {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A destructive migration's pre-flight free-space check found less
+    /// headroom on the store's filesystem than the staged rebuild is
+    /// estimated to need.
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display(
+        "insufficient disk headroom to migrate '{relation}': need ~{needed_bytes} bytes, {available_bytes} available"
+    ))]
+    MigrationDiskHeadroom {
+        relation: String,
+        needed_bytes: u64,
+        available_bytes: u64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using episteme's [`Error`] type.

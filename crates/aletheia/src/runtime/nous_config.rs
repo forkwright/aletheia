@@ -232,6 +232,10 @@ pub(super) fn build_nous_runtime_config(
         ),
         domains: overlay.domains,
         private: resolved.private,
+        // WHY(#5823): a top-level agent built from static config is never a
+        // spawned sub-agent — cross-agent depth only enters through
+        // `SpawnServiceImpl::build_spawn_config`.
+        spawn_depth: 0,
         episteme_cohort: resolved.episteme_cohort,
         workspace,
         allowed_roots: resolve_allowed_roots(oikos, &resolved.workspace, &resolved.allowed_roots),

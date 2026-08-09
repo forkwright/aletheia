@@ -287,7 +287,10 @@ impl ScheduleSource {
             Self::Cron(expr) => Schedule::Cron(expr.to_owned()),
             Self::FixedIntervalSecs(secs) => Schedule::Interval(Duration::from_secs(secs)),
             Self::InstanceBackupIntervalHours => {
-                Schedule::Interval(Duration::from_hours(config.instance_backup.interval_hours))
+                Schedule::Interval(Duration::from_hours(floor_cadence_hours(
+                    "maintenance.backup.backupIntervalHours",
+                    config.instance_backup.interval_hours,
+                )))
             }
             Self::DerivedRulesMaterializationInterval => Schedule::Interval(
                 config
@@ -301,12 +304,59 @@ impl ScheduleSource {
             Self::SerendipityCadence => {
                 Schedule::Cron(config.knowledge_maintenance.serendipity.cadence.clone())
             }
-            Self::CronEvolutionInterval => Schedule::Interval(config.cron.evolution.interval),
-            Self::CronReflectionInterval => Schedule::Interval(config.cron.reflection.interval),
-            Self::CronGraphCleanupInterval => {
-                Schedule::Interval(config.cron.graph_cleanup.interval)
-            }
+            Self::CronEvolutionInterval => Schedule::Interval(floor_cadence_duration(
+                "maintenance.cronTasks.evolution.intervalSecs",
+                config.cron.evolution.interval,
+            )),
+            Self::CronReflectionInterval => Schedule::Interval(floor_cadence_duration(
+                "maintenance.cronTasks.reflection.intervalSecs",
+                config.cron.reflection.interval,
+            )),
+            Self::CronGraphCleanupInterval => Schedule::Interval(floor_cadence_duration(
+                "maintenance.cronTasks.graphCleanup.intervalSecs",
+                config.cron.graph_cleanup.interval,
+            )),
         }
+    }
+}
+
+/// WHY(#5141): `taxis::validate::validate_config` rejects a zero backup/cron
+/// cadence on the primary server-startup path
+/// (`crates/aletheia/src/runtime/mod.rs`), but `aletheia maintenance
+/// status`/`run` load config via `taxis::loader::load_config` directly and
+/// never call `validate_config` (`crates/aletheia/src/commands/maintenance.rs`),
+/// so a zero cadence can still reach this scheduler through that path. A zero
+/// `Duration` reschedules to `now` on every tick (`Schedule::next_run`) --  an
+/// unbounded spin that would run the task (whole-instance backup, in this
+/// case) continuously. This is a backstop for that bypass, not the primary
+/// contract: floor to the smallest sane cadence and log loudly (not just a
+/// silent clamp) so the misconfiguration is visible, rather than let the
+/// daemon spin.
+fn floor_cadence_hours(field: &'static str, hours: u64) -> u64 {
+    if hours == 0 {
+        tracing::error!(
+            field,
+            "zero maintenance cadence would spin the scheduler on every tick; \
+             flooring to 1h -- fix the config value (see docs/CONFIGURATION.md)"
+        );
+        1
+    } else {
+        hours
+    }
+}
+
+/// Cron-task counterpart of [`floor_cadence_hours`]: floors a zero interval
+/// to 60s rather than let it spin (#5141).
+fn floor_cadence_duration(field: &'static str, interval: Duration) -> Duration {
+    if interval.is_zero() {
+        tracing::error!(
+            field,
+            "zero maintenance cadence would spin the scheduler on every tick; \
+             flooring to 60s -- fix the config value (see docs/CONFIGURATION.md)"
+        );
+        Duration::from_mins(1)
+    } else {
+        interval
     }
 }
 
@@ -917,6 +967,75 @@ mod tests {
     use std::collections::BTreeSet;
 
     use super::*;
+
+    #[test]
+    fn zero_backup_interval_hours_floors_instead_of_spinning() {
+        // WHY(#5141): `taxis::validate::validate_config` is the primary
+        // reject-at-config-load gate, but `ScheduleSource::build` is a
+        // backstop reachable through `aletheia maintenance status`/`run`,
+        // which load config directly and skip that gate. A raw `0` must
+        // never reach `Schedule::Interval` here.
+        let mut config = super::super::MaintenanceConfig::default();
+        config.instance_backup.interval_hours = 0;
+
+        let schedule = ScheduleSource::InstanceBackupIntervalHours.build(&config);
+        let Schedule::Interval(duration) = schedule else {
+            panic!("expected Schedule::Interval, got {schedule:?}");
+        };
+        assert_eq!(
+            duration,
+            Duration::from_hours(1),
+            "zero backupIntervalHours must floor to a safe minimum, not spin at 0"
+        );
+    }
+
+    #[test]
+    fn nonzero_backup_interval_hours_passes_through_unchanged() {
+        let mut config = super::super::MaintenanceConfig::default();
+        config.instance_backup.interval_hours = 6;
+
+        let schedule = ScheduleSource::InstanceBackupIntervalHours.build(&config);
+        let Schedule::Interval(duration) = schedule else {
+            panic!("expected Schedule::Interval, got {schedule:?}");
+        };
+        assert_eq!(duration, Duration::from_hours(6));
+    }
+
+    #[test]
+    fn zero_cron_interval_floors_instead_of_spinning() {
+        let mut config = super::super::MaintenanceConfig::default();
+        config.cron.evolution.interval = Duration::ZERO;
+        config.cron.reflection.interval = Duration::ZERO;
+        config.cron.graph_cleanup.interval = Duration::ZERO;
+
+        for (source, label) in [
+            (ScheduleSource::CronEvolutionInterval, "evolution"),
+            (ScheduleSource::CronReflectionInterval, "reflection"),
+            (ScheduleSource::CronGraphCleanupInterval, "graphCleanup"),
+        ] {
+            let schedule = source.build(&config);
+            let Schedule::Interval(duration) = schedule else {
+                panic!("expected Schedule::Interval for {label}, got {schedule:?}");
+            };
+            assert_eq!(
+                duration,
+                Duration::from_mins(1),
+                "zero {label} intervalSecs must floor to a safe minimum, not spin at 0"
+            );
+        }
+    }
+
+    #[test]
+    fn nonzero_cron_interval_passes_through_unchanged() {
+        let mut config = super::super::MaintenanceConfig::default();
+        config.cron.evolution.interval = Duration::from_mins(2);
+
+        let schedule = ScheduleSource::CronEvolutionInterval.build(&config);
+        let Schedule::Interval(duration) = schedule else {
+            panic!("expected Schedule::Interval, got {schedule:?}");
+        };
+        assert_eq!(duration, Duration::from_mins(2));
+    }
 
     #[test]
     fn registry_task_ids_are_unique() {

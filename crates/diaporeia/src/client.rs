@@ -121,6 +121,23 @@ impl McpAuth {
     }
 }
 
+/// Build the sandbox policy applied to a spawned stdio MCP server.
+///
+/// WHY(#4634): the configured `cwd` becomes the sandbox's writable
+/// workspace root — the server's own declared working directory, mirroring
+/// how organon derives a tool's workspace. Servers with no configured `cwd`
+/// get the system temp directory rather than an unrestricted policy, so
+/// omitting `cwd` cannot be used to opt out of sandboxing.
+///
+/// `SandboxConfig::default()` runs in `Permissive` enforcement (violations
+/// logged, not blocked) — organon's own rollout default — so an existing
+/// server that needs paths outside the default allowlist keeps working
+/// while the posture is visible in logs from day one.
+fn stdio_sandbox_policy(cwd: Option<&std::path::Path>) -> organon::sandbox::SandboxPolicy {
+    let workspace = cwd.map_or_else(std::env::temp_dir, std::path::Path::to_path_buf);
+    organon::sandbox::SandboxConfig::default().build_policy(&workspace, &[])
+}
+
 /// Running external MCP client connection.
 #[derive(Clone)]
 pub struct ExternalMcpClient {
@@ -139,7 +156,8 @@ impl ExternalMcpClient {
         let args = config.args.clone();
         let cwd = config.cwd.clone();
         let env = config.env.clone();
-        let transport = TokioChildProcess::new(tokio::process::Command::new(&command).configure(
+        let mut cmd = tokio::process::Command::new(&command).configure({
+            let cwd = cwd.clone();
             move |cmd| {
                 // WHY(#5186, #5346): clear the inherited parent env first so the
                 // child never receives secrets, tokens, or deployment metadata.
@@ -150,9 +168,26 @@ impl ExternalMcpClient {
                     cmd.current_dir(dir);
                 }
                 cmd.envs(env);
-            },
-        ))
-        .map_err(|e| {
+            }
+        });
+
+        // WHY(#4634): operator-configured stdio MCP servers are executable
+        // code run outside the agent tool-call path, with no trust policy of
+        // their own. Apply the same Landlock+seccomp+egress sandbox organon
+        // applies to in-agent tool exec (`organon::builtins::workspace`) so a
+        // malicious or compromised server cannot read arbitrary filesystem
+        // paths. `apply_sandbox` itself logs the resolved guarantees
+        // (WHY(#4634): this is the "diagnostics show the effective sandbox
+        // posture" requirement — no separate log needed here).
+        let sandbox_policy = stdio_sandbox_policy(cwd.as_deref());
+        organon::sandbox::apply_sandbox(cmd.as_std_mut(), sandbox_policy).map_err(|e| {
+            TransportSnafu {
+                message: format!("failed to sandbox stdio MCP server '{command}': {e}"),
+            }
+            .build()
+        })?;
+
+        let transport = TokioChildProcess::new(cmd).map_err(|e| {
             TransportSnafu {
                 message: format!("failed to spawn stdio MCP server '{command}': {e}"),
             }
@@ -355,9 +390,61 @@ mod tests {
     use std::fs;
     use std::io::Write as _;
 
+    use organon::sandbox::{EgressPolicy, SandboxEnforcement};
     use tempfile::TempDir;
 
     use super::*;
+
+    // ── #4634: stdio MCP servers spawn under an explicit sandbox policy ──
+
+    #[test]
+    fn stdio_sandbox_policy_is_enabled_by_default() {
+        // WHY(#4634): the acceptance criterion is that stdio MCP entries
+        // have an EXPLICIT sandbox policy — the default must not be "no
+        // restrictions at all".
+        let policy = super::stdio_sandbox_policy(None);
+        assert!(policy.enabled, "sandboxing must be on by default");
+        assert_eq!(
+            policy.enforcement,
+            SandboxEnforcement::Permissive,
+            "default enforcement logs violations rather than blocking, so an existing \
+             server's undeclared paths do not hard-break on rollout"
+        );
+    }
+
+    #[test]
+    fn stdio_sandbox_policy_grants_configured_cwd_as_writable_workspace() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let policy = super::stdio_sandbox_policy(Some(dir.path()));
+        assert!(
+            policy.write_paths.contains(&dir.path().to_path_buf()),
+            "the server's configured cwd must be writable, matching how organon \
+             treats a tool's own workspace: {:?}",
+            policy.write_paths
+        );
+    }
+
+    #[test]
+    fn stdio_sandbox_policy_falls_back_to_temp_dir_without_cwd() {
+        // WHY(#4634): a server with no configured `cwd` must not fall back to
+        // an unrestricted policy — omitting `cwd` is not a sandbox opt-out.
+        let policy = super::stdio_sandbox_policy(None);
+        assert!(policy.enabled);
+        assert!(
+            policy.write_paths.contains(&std::env::temp_dir()),
+            "no cwd configured must still grant a scoped, non-empty write root: {:?}",
+            policy.write_paths
+        );
+    }
+
+    #[test]
+    fn stdio_sandbox_policy_does_not_restrict_network_egress_by_default() {
+        // WHY(#4634): many legitimate MCP servers (web search, HTTP
+        // fetchers) need outbound network access; the filesystem/process
+        // sandbox must not silently also cut network.
+        let policy = super::stdio_sandbox_policy(None);
+        assert_eq!(policy.egress, EgressPolicy::Allow);
+    }
 
     fn fake_mcp_server() -> (TempDir, StdioMcpServerConfig) {
         let dir = tempfile::tempdir().expect("tempdir");

@@ -2718,6 +2718,7 @@ dependencies = [
  "candle-transformers",
  "criterion",
  "eidos",
+ "fjall",
  "graphe",
  "hf-hub",
  "jiff",

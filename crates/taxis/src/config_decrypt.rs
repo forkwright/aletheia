@@ -40,8 +40,7 @@ pub(crate) fn decrypt_toml_value(value: &mut toml::Value) -> Result<()> {
         }
     }
 
-    encrypt::decrypt_toml_values(value, primary_key.as_ref());
-    Ok(())
+    encrypt::decrypt_toml_values(value, primary_key.as_ref())
 }
 
 /// Parse TOML content, decrypt any `enc:` values, and serialize back.
@@ -107,6 +106,7 @@ fn collect_encrypted_paths(value: &toml::Value, prefix: String, out: &mut Vec<St
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
     use crate::test_support::EnvJail;
@@ -136,6 +136,43 @@ mod tests {
         assert!(
             matches!(result, Err(crate::error::Error::ConfigDecrypt { .. })),
             "missing primary key with enc: values must fail with ConfigDecrypt, not a warning"
+        );
+    }
+
+    #[test]
+    fn decrypt_toml_content_fails_when_primary_key_is_wrong() {
+        // SECURITY(#5452) regression: exercises the full `decrypt_toml_content`
+        // pipeline (not just `encrypt::decrypt_toml_values` directly) with a
+        // *present* but wrong primary key file on disk, proving the fix
+        // propagates end-to-end rather than only at the unit level.
+        let mut jail = EnvJail::new();
+        let key_path = jail.directory().join("primary.key");
+        crate::encrypt::generate_primary_key(&key_path).expect("generate wrong key");
+        let wrong_key = crate::encrypt::load_primary_key(&key_path)
+            .expect("load wrong key")
+            .expect("wrong key present");
+        jail.set_env(
+            "ALETHEIA_PRIMARY_KEY",
+            key_path.to_str().expect("utf-8 path"),
+        );
+
+        // Encrypt with a *different* key than the one on disk.
+        let mut right_key = wrong_key;
+        right_key[0] ^= 0xff;
+        let encrypted =
+            crate::encrypt::encrypt_value("jwt-signing-secret", &right_key).expect("encrypt");
+
+        let content = format!("[gateway.auth]\nsigningKey = \"{encrypted}\"\n");
+        let result = decrypt_toml_content(&content);
+
+        let err = result.expect_err("wrong key must fail closed through decrypt_toml_content");
+        assert!(
+            matches!(err, crate::error::Error::ConfigDecryptFailed { .. }),
+            "expected ConfigDecryptFailed, got {err:?}"
+        );
+        assert!(
+            err.to_string().contains("gateway.auth.signingKey"),
+            "error should name the failing field: {err}"
         );
     }
 

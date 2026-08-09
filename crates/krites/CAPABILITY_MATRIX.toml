@@ -1,0 +1,1128 @@
+# krites capability-coverage matrix (wave 0.4 of the retirement plan).
+#
+# One row per capability the crate exposes: every `SysOp` variant, every
+# `DataValue` variant, every public item at the `Db`/crate-root boundary, and
+# every ranked capability named in the plan's Appendix A. `unmapped` --
+# present in source but absent from this file -- is a build failure, checked
+# by scripts/check-krites-capability-matrix.py in CI. A row with no matching
+# source item (stale) fails the same way, so drift is caught both directions.
+#
+# WHY(appendix_a rows): the plan (canon:
+# metis-ops/deliverables/krites-replacement/PLAN.md, Appendix A) lives in a
+# sibling repo the checker cannot read from CI. These rows are a committed
+# mirror, captured at PLAN.md's Appendix A as of 33 data rows. The checker
+# verifies internal completeness (row count floor, required fields, unique
+# ids) in CI; `--plan-md <path>` does an optional local live-diff when both
+# repos are checked out side by side (never CI-gating -- see script header).
+#
+# `call_sites` is a measured integer with the exact command recorded in
+# `call_sites_method`, never a guess. Zero call sites is never grounds to
+# drop a row -- see the plan's B7 finding and kill criterion 10.
+# check_call_sites_measured (scripts/check-krites-capability-matrix.py)
+# re-executes every call_sites_method in CI and fails the build if it
+# doesn't reproduce the declared count -- this is not just a convention.
+#
+# `call_sites = -1` is the ONE documented exception: "not measured", legal
+# only when `call_sites_method` states why -- prefixed `not measured:` /
+# `not separately measured:` (too generic a token/type to grep meaningfully)
+# or `covered under <other-row-id>; not separately re-measured` (a sibling
+# row already counts it). -1 is never a stand-in for a guessed 0.
+#
+# dest_wave values: "wave-0".."wave-12" per PLAN.md Sec 4/Sec 7; "sovereign"
+# for code that already carries forward unrewritten (PLAN.md Sec 4 totals);
+# "n/a" for a third-party re-export with no krites-owned gate.
+
+# ---------------------------------------------------------------------------
+# category = "sysop" -- all 19 SysOp variants, parse/sys/mod.rs:20-56.
+# call_sites_method: quote-anchored grep for the literal DSL keyword (from
+# datalog.pest) as an embedded script string, workspace-wide, excluding
+# crates/krites/. `SysOp::<Variant>` itself has zero Rust-level call sites
+# for every variant (the dispatch site is runtime/sys.rs; consumers never
+# construct SysOp directly, only through parsed script text) -- so the DSL
+# keyword is the only call-site signal that means anything here.
+# ---------------------------------------------------------------------------
+
+[[capability]]
+id = "sysop-compact"
+category = "sysop"
+item = "SysOp::Compact"
+source = "crates/krites/src/parse/sys/mod.rs:20"
+exec_site = "crates/krites/src/runtime/sys.rs:74"
+dest_wave = "wave-11"
+dest_module = "runtime/sys.rs"
+gate = "`::compact` completes and the `export_relations` snapshot taken immediately after is identical to the one taken immediately before (Appendix A row: Compact/DescribeRelation)."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::compact' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Zero-call-site, not named as such in Appendix A -- report to T0."
+
+[[capability]]
+id = "sysop-list-columns"
+category = "sysop"
+item = "SysOp::ListColumns"
+source = "crates/krites/src/parse/sys/mod.rs:22"
+exec_site = "crates/krites/src/runtime/sys.rs:211"
+dest_wave = "wave-1"
+dest_module = "episteme/knowledge_store/migration.rs (column_probe, Sec 8.3)"
+gate = "`column_probe()`: live column set from `::columns` equals `new_columns` exactly, driving resume-at-8 vs. full rebuild (Sec 8.3)."
+call_sites = 10
+call_sites_method = "grep -rn -- '[\"'\\''`]::columns' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Second consumer beyond the migration sweep: crates/episteme/src/consolidation/engine.rs:821."
+
+[[capability]]
+id = "sysop-list-indices"
+category = "sysop"
+item = "SysOp::ListIndices"
+source = "crates/krites/src/parse/sys/mod.rs:24"
+exec_site = "crates/krites/src/runtime/sys.rs:212"
+dest_wave = "wave-1"
+dest_module = "episteme/knowledge_store/migration.rs (index enumeration, Sec 8.3)"
+gate = "Index enumeration taken live via `::indices`, never a caller-supplied spec list; an unexpected index fails the migration (Sec 8.3, B26)."
+call_sites = 7
+call_sites_method = "grep -rn -- '[\"'\\''`]::indices' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Zero-call-site, not named as such in Appendix A -- report to T0."
+
+[[capability]]
+id = "sysop-list-relations"
+category = "sysop"
+item = "SysOp::ListRelations"
+source = "crates/krites/src/parse/sys/mod.rs:26"
+exec_site = "crates/krites/src/runtime/sys.rs:84"
+dest_wave = "wave-11"
+dest_module = "runtime/sys.rs"
+gate = "`::relations` lists exactly the live relation set (temp-store names excluded per current semantics)."
+call_sites = 7
+call_sites_method = "grep -rn -- '[\"'\\''`]::relations' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "sysop-list-running"
+category = "sysop"
+item = "SysOp::ListRunning"
+source = "crates/krites/src/parse/sys/mod.rs:28"
+exec_site = "crates/krites/src/runtime/sys.rs:232"
+dest_wave = "wave-11"
+dest_module = "runtime/sys.rs (query registry)"
+gate = "A long-running query appears in `ListRunning` with a stable id (Appendix A row: Query registry)."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::running' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "sysop-list-fixed-rules"
+category = "sysop"
+item = "SysOp::ListFixedRules"
+source = "crates/krites/src/parse/sys/mod.rs:30"
+exec_site = "crates/krites/src/runtime/sys.rs:85"
+dest_wave = "wave-5"
+dest_module = "fixed_rule registry (pairs with register_fixed_rule)"
+gate = "A registered `FixedRule` name appears in `::fixed_rules` output (Appendix A row: register_fixed_rule, wave 5)."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::fixed_rules' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Zero-call-site, not named as such in Appendix A -- report to T0."
+
+[[capability]]
+id = "sysop-kill-running"
+category = "sysop"
+item = "SysOp::KillRunning"
+source = "crates/krites/src/parse/sys/mod.rs:32"
+exec_site = "crates/krites/src/runtime/sys.rs:233"
+dest_wave = "wave-11"
+dest_module = "runtime/sys.rs (query registry)"
+gate = "`KillRunning(id)` terminates the running query and the caller observes `QueryKilled` as a class, never a string (Appendix A row: Query registry)."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::kill' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "The unanchored grep for '::kill' also hits libc::kill (crates/melete/src/dream/lock.rs:349) -- confirmed unrelated on inspection, excluded from this count."
+
+[[capability]]
+id = "sysop-explain"
+category = "sysop"
+item = "SysOp::Explain"
+source = "crates/krites/src/parse/sys/mod.rs:34"
+exec_site = "crates/krites/src/runtime/sys.rs:67"
+dest_wave = "wave-10"
+dest_module = "query engine (magic-set rewrite + stratified compile)"
+gate = "`::explain` output is frozen as its own vector class, independent of row-result vectors (Sec 3 wave 0.5); a plan change is visible and intentional, never silent."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::explain' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Zero external DSL call sites (unanchored '::explain' matches are all a different feature -- episteme's recall::explain, e.g. crates/pylon/src/handlers/knowledge/search.rs -- confirmed false positives on inspection). Not named zero-call-site anywhere in Appendix A -- report to T0."
+
+[[capability]]
+id = "sysop-remove-relation"
+category = "sysop"
+item = "SysOp::RemoveRelation"
+source = "crates/krites/src/parse/sys/mod.rs:36"
+exec_site = "crates/krites/src/runtime/sys.rs:95"
+dest_wave = "wave-8"
+dest_module = "relation/relation_crud.rs"
+gate = "`destroy_relation` refuses a relation with attached indices (relation_crud.rs:196-202, Sec 8.2 step 5 precondition); persisted key ranges release only after the call returns."
+call_sites = 18
+call_sites_method = "grep -rn -- '[\"'\\''`]::remove' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "sysop-rename-relation"
+category = "sysop"
+item = "SysOp::RenameRelation"
+source = "crates/krites/src/parse/sys/mod.rs:38"
+exec_site = "crates/krites/src/runtime/sys.rs:213"
+dest_wave = "wave-1"
+dest_module = "episteme/knowledge_store/migration.rs (atomic swap, Sec 8.1)"
+gate = "`::rename` is a single-transaction, O(1) atomic swap; sub-relation index metadata keyed `{name}:{k}` renames too, closing B26 (relation/index_management.rs:213-254 vs relation_crud.rs:210-213)."
+call_sites = 10
+call_sites_method = "grep -rn -- '[\"'\\''`]::rename' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "The current (pre-wave-1) migration.rs does not yet use ::rename at all -- it is the mechanism wave 1 INTRODUCES (Sec 8.1-8.2), not one exercised by any live path today. Its correctness in production conditions is unproven by existing usage, which is exactly why Sec 8.4's crash-injection matrix carries the whole correctness argument -- report to T0 as a scope-relevant finding, not merely a zero-call-site curiosity."
+
+[[capability]]
+id = "sysop-show-trigger"
+category = "sysop"
+item = "SysOp::ShowTrigger"
+source = "crates/krites/src/parse/sys/mod.rs:40"
+exec_site = "crates/krites/src/runtime/sys.rs:252"
+dest_wave = "wave-11"
+dest_module = "runtime/sys.rs (triggers)"
+gate = "Put/rm/replace trigger scripts round-trip through `::show_triggers` in registration order (Appendix A row: Triggers)."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::show_triggers' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "sysop-set-triggers"
+category = "sysop"
+item = "SysOp::SetTriggers"
+source = "crates/krites/src/parse/sys/mod.rs:42"
+exec_site = "crates/krites/src/runtime/sys.rs:273"
+dest_wave = "wave-11"
+dest_module = "runtime/sys.rs (triggers)"
+gate = "Put/rm/replace scripts fire in declared order on the matching operation, inside the mutating transaction; a failing trigger aborts the mutation (Appendix A row: Triggers)."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::set_triggers' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "sysop-set-access-level"
+category = "sysop"
+item = "SysOp::SetAccessLevel"
+source = "crates/krites/src/parse/sys/mod.rs:44"
+exec_site = "crates/krites/src/runtime/sys.rs:283"
+dest_wave = "wave-11"
+dest_module = "runtime/sys.rs (access levels)"
+gate = "Each of Hidden/ReadOnly/Protected/Normal rejects exactly the operation set it rejects today, asserted against relation_crud.rs:203-208 and index_management.rs:234-239 (Appendix A row: Access levels)."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::access_level' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "sysop-create-index"
+category = "sysop"
+item = "SysOp::CreateIndex"
+source = "crates/krites/src/parse/sys/mod.rs:46"
+exec_site = "crates/krites/src/runtime/sys.rs:134"
+dest_wave = "wave-8"
+dest_module = "relation/index_management.rs (standard B-tree index)"
+gate = "A standard B-tree index round-trips: created columns are queryable and the index-scan row set is identical to a full-scan-then-filter over the same predicate."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::index create' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Zero external call sites -- appears NOWHERE in Appendix A, not even as part of the RemoveIndex/B26 discussion. Report to T0: this is a capability the coverage matrix found that the plan's Appendix A never names."
+
+[[capability]]
+id = "sysop-create-vector-index"
+category = "sysop"
+item = "SysOp::CreateVectorIndex"
+source = "crates/krites/src/parse/sys/mod.rs:48"
+exec_site = "crates/krites/src/runtime/sys.rs:146"
+dest_wave = "wave-4"
+dest_module = "HNSW (relation/index_management.rs create_hnsw_index)"
+gate = "E04/E05: exactly one canary node (level=1, all-Null tuple key), byte-compatible; insert -> close -> reopen -> search recall vs. the E25 exact-kNN oracle."
+call_sites = 1
+call_sites_method = "grep -rn -- '[\"'\\''`]::hnsw create' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "1 measured site: episteme/src/knowledge_store/mod.rs:264 (hnsw_ddl, the format! that builds the DSL string). The pattern deliberately does not match mod.rs:46's `//! ::hnsw create ...` doc-comment example -- no leading quote/backtick before the keyword there, so the quote-anchor excludes it correctly."
+
+[[capability]]
+id = "sysop-create-fts-index"
+category = "sysop"
+item = "SysOp::CreateFtsIndex"
+source = "crates/krites/src/parse/sys/mod.rs:50"
+exec_site = "crates/krites/src/runtime/sys.rs:158"
+dest_wave = "wave-3"
+dest_module = "Storage trait + BM25/FTS index"
+gate = "F02 zero-guard: finite score, never NaN/Inf, on a cold index plus a zero-df term; golden BM25 fixtures frozen before the port."
+call_sites = 3
+call_sites_method = "grep -rn -- '[\"'\\''`]::fts create' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "sysop-create-minhash-lsh-index"
+category = "sysop"
+item = "SysOp::CreateMinHashLshIndex"
+source = "crates/krites/src/parse/sys/mod.rs:52"
+exec_site = "crates/krites/src/runtime/sys.rs:170"
+dest_wave = "wave-11"
+dest_module = "runtime/minhash_lsh.rs (478 lines, third first-class index type)"
+gate = "Build an index over a seeded corpus, assert Jaccard-estimate error bounds vs. exact pairwise Jaccard; band/row parameters from n_gram/n_perm/false_positive_weight/false_negative_weight reproduce the Simpson's-rule optimum; delete + re-add leaves estimates stable (Appendix A row: MinHash LSH index)."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::lsh create' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "sysop-remove-index"
+category = "sysop"
+item = "SysOp::RemoveIndex"
+source = "crates/krites/src/parse/sys/mod.rs:54"
+exec_site = "crates/krites/src/runtime/sys.rs:182"
+dest_wave = "wave-8"
+dest_module = "relation/index_management.rs (pairs with CreateIndex; the B26 sub-relation-rename hazard site)"
+gate = "Removing an index releases its persisted key range and its `{name}:{k}` sub-relation metadata row together -- never leaving one behind (B26)."
+call_sites = 16
+call_sites_method = "sum of quote-anchored grep for '::index drop', '::hnsw drop', '::fts drop', '::lsh drop' across crates/ excluding crates/krites/ (3+3+7+3)"
+notes = "Wave 1's recovery sweep enumerates every index kind before a staging swap, so all four drop forms now have sites (3+3+7+3). No form is zero-call-site any more."
+
+[[capability]]
+id = "sysop-describe-relation"
+category = "sysop"
+item = "SysOp::DescribeRelation"
+source = "crates/krites/src/parse/sys/mod.rs:56"
+exec_site = "crates/krites/src/runtime/sys.rs:130"
+dest_wave = "wave-11"
+dest_module = "runtime/sys.rs"
+gate = "`DescribeRelation` round-trips the comment (Appendix A row: Compact, DescribeRelation)."
+call_sites = 0
+call_sites_method = "grep -rn -- '[\"'\\''`]::describe' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+# ---------------------------------------------------------------------------
+# category = "datavalue" -- all 13 DataValue variants, data/value.rs:184-212.
+# All retire under wave 6 (byte-identity-of-encoding gate, Sec 6.1); rows
+# below name the wave-6 gate plus each variant's distinguishing risk.
+# call_sites_method: word-boundary grep for `DataValue::<Variant>` (Rust
+# constructor/pattern usage), workspace-wide, excluding crates/krites/. This
+# undercounts variants exercised only through `From`/`Into` conversions
+# (never a literal `DataValue::X` token) -- Bytes/Uuid/Json are the likely
+# undercounts; do not read a 0 here as "never constructed".
+# ---------------------------------------------------------------------------
+
+[[capability]]
+id = "datavalue-null"
+category = "datavalue"
+item = "DataValue::Null"
+source = "crates/krites/src/data/value.rs:186"
+dest_wave = "wave-6"
+dest_module = "data/value.rs"
+gate = "Sorts before every other variant; byte-identity of encoding (Sec 6.1)."
+call_sites = 53
+call_sites_method = "grep -rn 'DataValue::Null\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "datavalue-bool"
+category = "datavalue"
+item = "DataValue::Bool"
+source = "crates/krites/src/data/value.rs:188"
+dest_wave = "wave-6"
+dest_module = "data/value.rs"
+gate = "Byte-identity of encoding (Sec 6.1)."
+call_sites = 22
+call_sites_method = "grep -rn 'DataValue::Bool\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "datavalue-num"
+category = "datavalue"
+item = "DataValue::Num"
+source = "crates/krites/src/data/value.rs:190"
+dest_wave = "wave-6"
+dest_module = "data/value.rs"
+gate = "Byte-identity of encoding, including integer-vs-float ordering (Sec 6.1); per-op differential in wave 7 for the ~102 functions consuming Num."
+call_sites = 3
+call_sites_method = "grep -rn 'DataValue::Num\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "datavalue-str"
+category = "datavalue"
+item = "DataValue::Str"
+source = "crates/krites/src/data/value.rs:192"
+dest_wave = "wave-6"
+dest_module = "data/value.rs"
+gate = "Byte-identity of encoding via CompactString inline storage (Sec 6.1)."
+call_sites = 401
+call_sites_method = "grep -rn 'DataValue::Str\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "datavalue-bytes"
+category = "datavalue"
+item = "DataValue::Bytes"
+source = "crates/krites/src/data/value.rs:195"
+dest_wave = "wave-6"
+dest_module = "data/value.rs"
+gate = "Byte-identity of encoding via serde_bytes; raw byte sequence round-trips unchanged (Sec 6.1)."
+call_sites = 1
+call_sites_method = "grep -rn 'DataValue::Bytes\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see. Not flagged in Appendix A -- report to T0."
+
+[[capability]]
+id = "datavalue-uuid"
+category = "datavalue"
+item = "DataValue::Uuid"
+source = "crates/krites/src/data/value.rs:197"
+dest_wave = "wave-6"
+dest_module = "data/value.rs (UuidWrapper)"
+gate = "Chronological v1-UUID field ordering preserved exactly: UuidWrapper::cmp compares (time_hi, time_mid, time_low, rest), not the RFC byte layout."
+call_sites = 0
+call_sites_method = "grep -rn 'DataValue::Uuid\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see. Not flagged in Appendix A -- report to T0."
+
+[[capability]]
+id = "datavalue-regex"
+category = "datavalue"
+item = "DataValue::Regex"
+source = "crates/krites/src/data/value.rs:199"
+dest_wave = "wave-6"
+dest_module = "data/value.rs (RegexWrapper, engine-internal)"
+gate = "Never serializes (serde impl returns a custom error on attempt, by design); Hash/Ord compare the source pattern string only, never compiled regex state."
+call_sites = 0
+call_sites_method = "grep -rn 'DataValue::Regex\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Doc-comment-declared engine-internal (never appears in user-facing query results); zero external sites is expected by design, not a gap."
+
+[[capability]]
+id = "datavalue-list"
+category = "datavalue"
+item = "DataValue::List"
+source = "crates/krites/src/data/value.rs:201"
+dest_wave = "wave-6"
+dest_module = "data/value.rs"
+gate = "Byte-identity of encoding for an ordered sequence (Sec 6.1); Set (wave 6) coerces to List at the output boundary."
+call_sites = 3
+call_sites_method = "grep -rn 'DataValue::List\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "datavalue-set"
+category = "datavalue"
+item = "DataValue::Set"
+source = "crates/krites/src/data/value.rs:203"
+dest_wave = "wave-6"
+dest_module = "data/value.rs (engine-internal)"
+gate = "Deduplicated ordered set coerces to List at the output boundary with element order preserved."
+call_sites = 0
+call_sites_method = "grep -rn 'DataValue::Set\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Doc-comment-declared engine-internal; zero external sites is expected by design, not a gap."
+
+[[capability]]
+id = "datavalue-vec"
+category = "datavalue"
+item = "DataValue::Vec"
+source = "crates/krites/src/data/value.rs:205"
+dest_wave = "wave-6"
+dest_module = "data/value.rs (Vector payload); cross-checked at wave-4 (HNSW)"
+gate = "Typed floating-point vector byte-encoding stable; dimension sourced from the embedding provider's reported dim, not a config constant (Appendix A row: HNSW durable entry point, E47)."
+call_sites = 9
+call_sites_method = "grep -rn 'DataValue::Vec\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "datavalue-json"
+category = "datavalue"
+item = "DataValue::Json"
+source = "crates/krites/src/data/value.rs:207"
+dest_wave = "wave-6"
+dest_module = "data/value.rs + data/json.rs"
+gate = "Recorded-vector oracle only, never upstream (data/tests/json.rs is 27.8% verbatim -- krites already diverged there); round-trip through encode/decode preserves the value; ordering vs. other variants stays byte-stable (Appendix A row: DataValue::Json + data/json.rs)."
+call_sites = 1
+call_sites_method = "grep -rn 'DataValue::Json\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see."
+
+[[capability]]
+id = "datavalue-validity"
+category = "datavalue"
+item = "DataValue::Validity"
+source = "crates/krites/src/data/value.rs:209"
+dest_wave = "wave-6"
+dest_module = "data/value.rs (Validity, ValidityTs); also wave-9 (grammar) and wave-10 (query engine)"
+gate = "ValidityTs encoding is byte-identical and memcmp(encode(a), encode(b)) == a.cmp(b) holds with the reversed (Reverse<i64>) ordering; N16 bitemporal sentinel byte-match on supersession (Appendix A row: Time-travel / Validity)."
+call_sites = 0
+call_sites_method = "grep -rn 'DataValue::Validity\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "One of the plan's original five zero-call-site unmapped items (B7); now named. Engine-internal per doc comment -- expected zero external constructor sites."
+
+[[capability]]
+id = "datavalue-bot"
+category = "datavalue"
+item = "DataValue::Bot"
+source = "crates/krites/src/data/value.rs:211"
+dest_wave = "wave-6"
+dest_module = "data/value.rs (engine-internal sentinel)"
+gate = "Sorts after every other variant; used as the upper-bound key in range scans -- wave-10 range-scan queries against the bound remain correct."
+call_sites = 1
+call_sites_method = "grep -rn 'DataValue::Bot\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Doc-comment-declared engine-internal; zero external sites is expected by design, not a gap."
+
+# ---------------------------------------------------------------------------
+# category = "public_api" -- every public item at the crate-root / Db
+# boundary, crates/krites/src/lib.rs (the wave-0.5 recorder's surface: "every
+# public Db method", plus the crate-root pub use re-exports).
+# call_sites_method: identifier-substring grep, workspace-wide, excluding
+# crates/krites/. Not disambiguated from a same-named method on episteme's
+# or mneme's own wrapper types (e.g. KnowledgeStore::open_mem_with_config) --
+# read as "this shape is exercised transitively", not a precise call count.
+# ---------------------------------------------------------------------------
+
+[[capability]]
+id = "api-error-result"
+category = "public_api"
+item = "Error, Result"
+source = "crates/krites/src/lib.rs:27"
+dest_wave = "sovereign"
+dest_module = "error.rs (one of the 8 already-sovereign snafu error modules, Sec 4 totals)"
+gate = "Error class (typed variant), not the string, is the oracle (Sec 6.1); krites::Error variants (lib.rs:73-104 convert_internal) map 1:1 to episteme's structural match (knowledge_store/mod.rs:1376-1397)."
+call_sites = -1
+call_sites_method = "not measured: 'Error'/'Result' are too generic to grep meaningfully; correctness is verified by the typed-variant match at knowledge_store/mod.rs:1376-1397, not a call-site count"
+
+[[capability]]
+id = "api-query-cache"
+category = "public_api"
+item = "QueryCache, QueryCacheStats"
+source = "crates/krites/src/lib.rs:28"
+dest_wave = "wave-10"
+dest_module = "sovereign today (query_cache.rs, Sec 4 totals); at risk from the wave-10 plan-store redesign"
+gate = "Hit/miss counters retained on the plan store: a repeated identical script increments hits, a schema-epoch bump increments misses (Appendix A row: QueryCacheStats, B25)."
+call_sites = 0
+call_sites_method = "grep -rn 'QueryCacheStats' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-async-db"
+category = "public_api"
+item = "AsyncDb"
+source = "crates/krites/src/lib.rs:33"
+dest_wave = "sovereign"
+dest_module = "async_surface.rs (282 sovereign lines, Sec 4 totals)"
+gate = "Async results equal sync results for the same script under concurrency, asserted at wave 11 against the recorded wave-0.5 boundary trace (Appendix A row: AsyncDb)."
+call_sites = 0
+call_sites_method = "grep -rn 'AsyncDb' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-datavalue-type"
+category = "public_api"
+item = "DataValue"
+source = "crates/krites/src/lib.rs:35"
+dest_wave = "wave-6"
+dest_module = "data/value.rs (the re-exported type; its 13 variants are the datavalue category rows above)"
+gate = "Byte-identity of encoding across all 13 variants (Sec 6.1); see the datavalue category rows for per-variant gates."
+call_sites = -1
+call_sites_method = "not separately measured: too generic a token to grep meaningfully at the type level; see per-variant datavalue rows"
+
+[[capability]]
+id = "api-validity-ts"
+category = "public_api"
+item = "ValidityTs"
+source = "crates/krites/src/lib.rs:35"
+dest_wave = "wave-6"
+dest_module = "data/value.rs"
+gate = "Same gate as datavalue-validity: byte-identical encoding, memcmp order matches Ord with the reversed key."
+call_sites = -1
+call_sites_method = "covered under datavalue-validity; not separately re-measured"
+
+[[capability]]
+id = "api-vector"
+category = "public_api"
+item = "Vector"
+source = "crates/krites/src/lib.rs:35"
+dest_wave = "wave-6"
+dest_module = "data/relation.rs (Vector payload of DataValue::Vec)"
+gate = "Same gate as datavalue-vec: byte-encoding stable, dimension sourced from the embedding provider."
+call_sites = -1
+call_sites_method = "covered under datavalue-vec; not separately re-measured"
+
+[[capability]]
+id = "api-fixed-rule-trait"
+category = "public_api"
+item = "FixedRule, FixedRuleInputRelation, FixedRulePayload"
+source = "crates/krites/src/lib.rs:36"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/ (graph algorithms extension point)"
+gate = "A test-only external FixedRule registers, is applied via `<~`, receives arity-checked inputs, and writes to the temp store (Appendix A row: register_fixed_rule)."
+call_sites = 0
+call_sites_method = "grep -rn 'FixedRuleInputRelation\\|FixedRulePayload' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-callback-op"
+category = "public_api"
+item = "CallbackOp"
+source = "crates/krites/src/lib.rs:37"
+dest_wave = "wave-11"
+dest_module = "runtime/callback.rs"
+gate = "Delivery ordering and coalescing recorded at the Db boundary (wave 0.5) is reproduced by wave 11's callback path; any replacement change-feed exposes callbacks as an ordering-identical adapter (Appendix A row: register_callback / CallbackOp)."
+call_sites = 0
+call_sites_method = "grep -rn 'CallbackOp' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-epoch-limit-const"
+category = "public_api"
+item = "DEFAULT_MAX_EVALUATION_EPOCHS"
+source = "crates/krites/src/lib.rs:39"
+dest_wave = "wave-10"
+dest_module = "query engine (semi-naive fixpoint evaluation)"
+gate = "EpochLimitExceeded fires at exactly DEFAULT_MAX_EVALUATION_EPOCHS on a generated deep-recursion program, matching the recorded vector (kill criterion 7)."
+call_sites = 0
+call_sites_method = "grep -rn 'DEFAULT_MAX_EVALUATION_EPOCHS' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-db-config"
+category = "public_api"
+item = "DbConfig"
+source = "crates/krites/src/lib.rs:39"
+dest_wave = "wave-1b"
+dest_module = "storage/{mem,temp}.rs (durability knobs)"
+gate = "Each PersistMode produces its declared post-crash visibility (Appendix A row: DbConfig / PersistMode)."
+call_sites = 79
+call_sites_method = "grep -rn 'with_config(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme/mneme wrapper methods of the same name)"
+
+[[capability]]
+id = "api-named-rows"
+category = "public_api"
+item = "NamedRows"
+source = "crates/krites/src/lib.rs:39"
+dest_wave = "wave-10"
+dest_module = "query engine (row-result contract)"
+gate = "Row multiset for unordered queries; row sequence only where the script requests an order (Sec 3 wave 0.5, B17). Freezing an unordered result as a sequence is a kill-criterion violation."
+call_sites = -1
+call_sites_method = "not separately measured: NamedRows is the return type of Db::run/run_read_only, covered by those rows' measurement"
+
+[[capability]]
+id = "api-persist-mode"
+category = "public_api"
+item = "PersistMode"
+source = "crates/krites/src/lib.rs:39"
+dest_wave = "wave-1b"
+dest_module = "storage/{mem,temp}.rs"
+gate = "Same gate as api-db-config: each PersistMode produces its declared post-crash visibility."
+call_sites = -1
+call_sites_method = "covered under api-db-config; not separately re-measured"
+
+[[capability]]
+id = "api-script-mutability"
+category = "public_api"
+item = "ScriptMutability"
+source = "crates/krites/src/lib.rs:39"
+dest_wave = "wave-11"
+dest_module = "runtime/sys.rs (ReadOnlyViolationSnafu enforcement)"
+gate = "Every mutating SysOp arm rejects an Immutable script identically to today -- all ReadOnlyViolationSnafu sites in runtime/sys.rs (Compact, RemoveRelation, CreateIndex, CreateVectorIndex, CreateFtsIndex, CreateMinHashLshIndex, RemoveIndex, RenameRelation, SetTriggers, SetAccessLevel: 10 of the 19 SysOp arms)."
+call_sites = 62
+call_sites_method = "grep -rn 'ScriptMutability' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Not zero-call-site: episteme imports and constructs ScriptMutability directly (crate::engine::ScriptMutability) and passes it into Db::run/run_read_only at every DDL/query call site, e.g. knowledge_store/migration.rs:94,96 and knowledge_store/derived_rules.rs:23,460. Load-bearing, not merely wave-boundary-adjacent."
+
+[[capability]]
+id = "api-transaction-payload"
+category = "public_api"
+item = "TransactionPayload"
+source = "crates/krites/src/lib.rs:40"
+dest_wave = "wave-11"
+dest_module = "MultiTransaction extension"
+gate = "A multi-statement transaction containing ::create + :put + ::rename commits atomically once MultiTransaction is extended to accept sys-ops (Appendix A row: MultiTransaction)."
+call_sites = 0
+call_sites_method = "grep -rn 'TransactionPayload' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-fjall-storage"
+category = "public_api"
+item = "FjallStorage"
+source = "crates/krites/src/lib.rs:43"
+dest_wave = "sovereign"
+dest_module = "storage/fjall_backend.rs (Sec 4 totals)"
+gate = "Wave-1b mem-vs-fjall differential across all 15 Storage trait methods stays green as an unmodified oracle side."
+call_sites = 0
+call_sites_method = "grep -rn 'FjallStorage' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-mem-storage"
+category = "public_api"
+item = "MemStorage"
+source = "crates/krites/src/lib.rs:44"
+dest_wave = "wave-1b"
+dest_module = "storage/mem.rs"
+gate = "Kept as the differential counterparty proving the fjall backend and the trait contract agree, plus the wave-1 crash-matrix control (Appendix A row: storage/mem.rs)."
+call_sites = 0
+call_sites_method = "grep -rn 'MemStorage' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Appendix A frames this as load-bearing precisely because it backs every fast episteme unit test via KnowledgeStore::open_mem_with_config -- a different symbol, so this grep (the type name itself) reads zero. Not a contradiction; see notes on this row's counting method."
+
+[[capability]]
+id = "api-array1"
+category = "public_api"
+item = "Array1"
+source = "crates/krites/src/lib.rs:45"
+dest_wave = "n/a"
+dest_module = "ndarray (third-party re-export)"
+gate = "Not owned code; DataValue::Vec (wave 6) is the only krites-owned surface around it -- no independent gate."
+call_sites = -1
+call_sites_method = "not measured: third-party re-export, not a krites capability"
+
+[[capability]]
+id = "api-poison"
+category = "public_api"
+item = "Poison"
+source = "crates/krites/src/lib.rs:429"
+dest_wave = "wave-11"
+dest_module = "runtime/db.rs (cross-checked at wave-10)"
+gate = "A cooperative cancel token is honoured by the executor and by long index operations (HNSW build, FTS reindex); cancelling mid-build shows bounded wind-down (Appendix A row: Poison / cancellation). D08: the poison boundary aborts after a structured log."
+call_sites = 0
+call_sites_method = "grep -rn '\\bPoison\\b' crates/ --include='*.rs' | grep -v ^crates/krites/ | grep -vP '^\\S+:[0-9]+:\\s*//'"
+notes = "Bare 'Poison' is a comment-only mention outside krites (crud.rs:22,23, prose about 'the Poison flag'), never a code call site -- the trailing grep -vP excludes comment lines so the measured figure matches the real code usage, not a text-search false positive."
+
+[[capability]]
+id = "api-db-open-mem"
+category = "public_api"
+item = "Db::open_mem"
+source = "crates/krites/src/lib.rs:163"
+dest_wave = "wave-1b"
+dest_module = "storage/mem.rs"
+gate = "Same gate as api-mem-storage."
+call_sites = 129
+call_sites_method = "grep -rn 'open_mem(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
+
+[[capability]]
+id = "api-db-open-fjall"
+category = "public_api"
+item = "Db::open_fjall"
+source = "crates/krites/src/lib.rs:174"
+dest_wave = "sovereign"
+dest_module = "storage/fjall_backend.rs"
+gate = "Insertion point for wave 1's pre-migration filesystem-level snapshot, taken BEFORE this call in the startup path (Sec 8.5) -- not inside migration.rs, which cannot re-open a keyspace this process already holds."
+call_sites = 48
+call_sites_method = "grep -rn 'open_fjall(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
+
+[[capability]]
+id = "api-db-with-cache"
+category = "public_api"
+item = "Db::with_cache"
+source = "crates/krites/src/lib.rs:190"
+dest_wave = "sovereign"
+dest_module = "query_cache.rs"
+gate = "Same gate as api-query-cache."
+call_sites = 26
+call_sites_method = "grep -rn 'with_cache(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from same-named wrapper methods)"
+
+[[capability]]
+id = "api-db-with-config"
+category = "public_api"
+item = "Db::with_config"
+source = "crates/krites/src/lib.rs:197"
+dest_wave = "wave-1b"
+dest_module = "storage/{mem,temp}.rs"
+gate = "Same gate as api-db-config."
+call_sites = -1
+call_sites_method = "covered under api-db-config; not separately re-measured"
+
+[[capability]]
+id = "api-db-with-rule-store"
+category = "public_api"
+item = "Db::with_rule_store"
+source = "crates/krites/src/lib.rs:208"
+dest_wave = "sovereign"
+dest_module = "hot_reload.rs (507 sovereign lines, Sec 4 totals)"
+gate = "V03: a malformed operator-edited ruleset leaves the previous ruleset active; watcher-task death surfaces as a distinct detectable signal (Appendix A row: with_rule_store hot-reload)."
+call_sites = 0
+call_sites_method = "grep -rn 'with_rule_store(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-db-cache-stats"
+category = "public_api"
+item = "Db::cache_stats"
+source = "crates/krites/src/lib.rs:222"
+dest_wave = "sovereign"
+dest_module = "query_cache.rs"
+gate = "Same gate as api-query-cache."
+call_sites = 0
+call_sites_method = "grep -rn 'cache_stats(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-db-run"
+category = "public_api"
+item = "Db::run"
+source = "crates/krites/src/lib.rs:230"
+dest_wave = "wave-10"
+dest_module = "query engine (primary script execution entrypoint; central wave-0.5 recorder target)"
+gate = "Full recorded-vector replay + fuzz corpus, row multiset + explicit-order sequences + error classes (Sec 4 wave 10)."
+call_sites = -1
+call_sites_method = "not separately measured: the wave-0.5 recorder intercepts every public Db method, this being the highest-traffic one; a substring grep for 'run(' is too generic to be meaningful"
+
+[[capability]]
+id = "api-db-run-read-only"
+category = "public_api"
+item = "Db::run_read_only"
+source = "crates/krites/src/lib.rs:248"
+dest_wave = "wave-10"
+dest_module = "query engine"
+gate = "Same gate as api-db-run, plus: enforces Immutable mutability identically to today."
+call_sites = -1
+call_sites_method = "not separately measured: substring grep for 'run_read_only(' collides with episteme wrapper methods of the same name; see api-db-run"
+
+[[capability]]
+id = "api-db-export-relations"
+category = "public_api"
+item = "Db::export_relations"
+source = "crates/krites/src/lib.rs:257"
+dest_wave = "wave-1"
+dest_module = "the crash matrix's comparison mechanism (Sec 8.4)"
+gate = "Wave 1 makes this load-bearing: round-trip identity on the full seeded corpus (Appendix A row: export_relations / import_relations)."
+call_sites = 3
+call_sites_method = "grep -rn 'export_relations(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "Appendix A: 'zero production call sites, exercised only by crates/integration-tests/tests/engine_facade.rs:57,70' -- this grep's single hit is that test file; consistent."
+
+[[capability]]
+id = "api-db-import-relations"
+category = "public_api"
+item = "Db::import_relations"
+source = "crates/krites/src/lib.rs:271"
+dest_wave = "wave-1"
+dest_module = "the crash matrix's comparison mechanism (Sec 8.4)"
+gate = "Same gate as api-db-export-relations."
+call_sites = 1
+call_sites_method = "grep -rn 'import_relations(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-db-register-fixed-rule"
+category = "public_api"
+item = "Db::register_fixed_rule"
+source = "crates/krites/src/lib.rs:281"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/"
+gate = "Same gate as api-fixed-rule-trait."
+call_sites = 0
+call_sites_method = "grep -rn 'register_fixed_rule(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-db-register-callback"
+category = "public_api"
+item = "Db::register_callback"
+source = "crates/krites/src/lib.rs:301"
+dest_wave = "wave-11"
+dest_module = "runtime/callback.rs"
+gate = "Same gate as api-callback-op."
+call_sites = 0
+call_sites_method = "grep -rn 'register_callback(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-db-multi-transaction"
+category = "public_api"
+item = "Db::multi_transaction"
+source = "crates/krites/src/lib.rs:318"
+dest_wave = "wave-11"
+dest_module = "MultiTransaction"
+gate = "Same gate as api-transaction-payload."
+call_sites = 0
+call_sites_method = "grep -rn 'multi_transaction(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-multi-transaction-error"
+category = "public_api"
+item = "MultiTransactionError (WorkerPanicked, SendFailed, Query)"
+source = "crates/krites/src/lib.rs:346"
+dest_wave = "wave-11"
+dest_module = "MultiTransaction"
+gate = "Error class oracle (Sec 6.1): each variant maps 1:1 to a distinguishable failure mode of the multi-transaction background worker."
+call_sites = 0
+call_sites_method = "grep -rn 'MultiTransactionError' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-multi-transaction-struct"
+category = "public_api"
+item = "MultiTransaction (transact, commit, abort)"
+source = "crates/krites/src/lib.rs:362,379,404,413"
+dest_wave = "wave-11"
+dest_module = "MultiTransaction"
+gate = "Same gate as api-transaction-payload; INVARIANT preserved: send -> recv -> send -> recv, never pipelined (both channels capacity 1, per lib.rs:363-365 comment)."
+call_sites = 1
+call_sites_method = "grep -rn 'MultiTransaction\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+# ---------------------------------------------------------------------------
+# category = "appendix_a" -- every ranked capability row in PLAN.md's
+# Appendix A (33 data rows as of this matrix's authoring; see file header
+# WHY note on the cross-repo boundary). `item` mirrors the row's first
+# markdown cell verbatim (minus inline code fences); `gate` mirrors the
+# row's conformance-assertion cell verbatim. Several rows are already
+# represented above under sysop/datavalue/public_api with the SAME id
+# cross-referenced via `overlaps_with` -- listed again here so this
+# category's row count matches Appendix A 1:1, which is what --check
+# verifies (a missing row here is "the matrix dropped a plan capability",
+# independent of whether a sysop/datavalue/public_api row also covers it).
+# ---------------------------------------------------------------------------
+
+[[capability]]
+id = "appendix-a-minhash-lsh"
+category = "appendix_a"
+item = "MinHash LSH index"
+source = "PLAN.md Appendix A row 1 (SysOp::CreateMinHashLshIndex, parse/sys/mod.rs:52; runtime/minhash_lsh.rs, 478 lines)"
+dest_wave = "wave-11"
+overlaps_with = "sysop-create-minhash-lsh-index"
+gate = "Named wave-11 gate: build an index over a seeded corpus, assert Jaccard-estimate error bounds vs exact pairwise Jaccard; band/row parameters from n_gram/n_perm/false_positive_weight/false_negative_weight reproduce the Simpson's-rule optimum; delete + re-add leaves estimates stable."
+
+[[capability]]
+id = "appendix-a-validity"
+category = "appendix_a"
+item = "Time-travel / Validity"
+source = "PLAN.md Appendix A row 2 (datalog.pest:76,225; data/value.rs:145,155; data/tests/validity.rs; query/stored/validation.rs)"
+dest_wave = "wave-6"
+overlaps_with = "datavalue-validity"
+gate = "Wave 6: ValidityTs encoding is byte-identical and memcmp(encode(a), encode(b)) == a.cmp(b) holds with the reversed ordering. Wave 9: @ clause parses at all four attachment sites. Wave 10: an as-of query at t returns the row set current at t, and a supersession at t+1 does not change it."
+
+[[capability]]
+id = "appendix-a-triggers"
+category = "appendix_a"
+item = "Triggers"
+source = "PLAN.md Appendix A row 3 (SysOp::ShowTrigger :40, SetTriggers :42)"
+dest_wave = "wave-11"
+overlaps_with = "sysop-show-trigger, sysop-set-triggers"
+gate = "Wave 11: put/rm/replace scripts fire in declared order on the matching operation, fire inside the mutating transaction, and a failing trigger aborts the mutation."
+
+[[capability]]
+id = "appendix-a-access-levels"
+category = "appendix_a"
+item = "Access levels"
+source = "PLAN.md Appendix A row 4 (SysOp::SetAccessLevel :44; runtime/relation/handles.rs:106-112)"
+dest_wave = "wave-11"
+overlaps_with = "sysop-set-access-level"
+gate = "Wave 11: each of Hidden/ReadOnly/Protected/Normal rejects exactly the operation set it rejects today, asserted against the two enforcement sites."
+
+[[capability]]
+id = "appendix-a-query-registry"
+category = "appendix_a"
+item = "Query registry"
+source = "PLAN.md Appendix A row 5 (SysOp::ListRunning :28, KillRunning :32)"
+dest_wave = "wave-11"
+overlaps_with = "sysop-list-running, sysop-kill-running"
+gate = "Wave 11: a long-running query appears in ListRunning with a stable id; KillRunning(id) terminates it and the caller observes QueryKilled (class, not string)."
+
+[[capability]]
+id = "appendix-a-compact-describe"
+category = "appendix_a"
+item = "Compact, DescribeRelation"
+source = "PLAN.md Appendix A row 6 (:20, :56)"
+dest_wave = "wave-11"
+overlaps_with = "sysop-compact, sysop-describe-relation"
+gate = "Wave 11: Compact completes and leaves an identical export_relations snapshot; DescribeRelation round-trips the comment."
+
+[[capability]]
+id = "appendix-a-datavalue-json"
+category = "appendix_a"
+item = "DataValue::Json + data/json.rs"
+source = "PLAN.md Appendix A row 7"
+dest_wave = "wave-6"
+overlaps_with = "datavalue-json"
+gate = "Wave 6/8: recorded-vector oracle only; round-trip through encode/decode preserves the value; ordering vs other variants is byte-stable."
+
+[[capability]]
+id = "appendix-a-multi-transaction"
+category = "appendix_a"
+item = "MultiTransaction"
+source = "PLAN.md Appendix A row 8 (transact.rs:302, parse/mod.rs:235-246)"
+dest_wave = "wave-11"
+overlaps_with = "api-transaction-payload, api-multi-transaction-struct"
+gate = "Kept and extended in wave 11 to accept sys-ops. Wave 11 gate: a multi-statement transaction containing ::create + :put + ::rename commits atomically; visibility semantics recorded at the Db boundary in wave 0.5."
+
+[[capability]]
+id = "appendix-a-callback"
+category = "appendix_a"
+item = "register_callback / CallbackOp"
+source = "PLAN.md Appendix A row 9"
+dest_wave = "wave-11"
+overlaps_with = "api-callback-op, api-db-register-callback"
+gate = "Wave 0.5 records delivery ordering and coalescing at the Db boundary. Wave 11 asserts the recorded trace. Any change feed that replaces the shape must expose callbacks as an adapter with identical ordering."
+
+[[capability]]
+id = "appendix-a-register-fixed-rule"
+category = "appendix_a"
+item = "register_fixed_rule"
+source = "PLAN.md Appendix A row 10"
+dest_wave = "wave-5"
+overlaps_with = "api-fixed-rule-trait, api-db-register-fixed-rule, sysop-list-fixed-rules"
+gate = "Wave 5: a test-only external FixedRule registers, is applied via <~, receives its arity-checked inputs, and writes to the temp store."
+
+[[capability]]
+id = "appendix-a-fixed-rule-algos"
+category = "appendix_a"
+item = "All 22 fixed-rule algorithms"
+source = "PLAN.md Appendix A row 11 (episteme/src/graph_intelligence.rs:202,206; episteme/src/query/queries.rs:447-448)"
+dest_wave = "wave-5"
+gate = "Per-algorithm reference-semantics property test, not krites-output comparison: Dijkstra vs Bellman-Ford agreement; Prim vs Kruskal MST weight equality; PageRank convergence + sum-to-1; SCC vs independent Tarjan; BFS/DFS reachability closure."
+
+[[capability]]
+id = "appendix-a-async-db"
+category = "appendix_a"
+item = "AsyncDb"
+source = "PLAN.md Appendix A row 12 (282 sovereign lines)"
+dest_wave = "sovereign"
+overlaps_with = "api-async-db"
+gate = "Wave 0.5 boundary recording; wave 11 asserts async results equal sync results for the same script under concurrency."
+
+[[capability]]
+id = "appendix-a-hot-reload"
+category = "appendix_a"
+item = "with_rule_store hot-reload"
+source = "PLAN.md Appendix A row 13 (507 sovereign lines)"
+dest_wave = "sovereign"
+overlaps_with = "api-db-with-rule-store"
+gate = "V03: a malformed operator-edited ruleset leaves the previous ruleset active; watcher-task death surfaces as a distinct detectable signal."
+
+[[capability]]
+id = "appendix-a-export-import-relations"
+category = "appendix_a"
+item = "export_relations / import_relations"
+source = "PLAN.md Appendix A row 14 (crates/integration-tests/tests/engine_facade.rs:57,70)"
+dest_wave = "wave-1"
+overlaps_with = "api-db-export-relations, api-db-import-relations"
+gate = "Wave 1 makes them load-bearing (the crash matrix's comparison mechanism). Round-trip identity on the full seeded corpus."
+
+[[capability]]
+id = "appendix-a-poison"
+category = "appendix_a"
+item = "Poison / cancellation"
+source = "PLAN.md Appendix A row 15"
+dest_wave = "wave-11"
+overlaps_with = "api-poison"
+gate = "Wave 10/11: a cooperative cancel token is honoured by the executor and by long index operations (HNSW build, FTS reindex), asserted by cancelling mid-build and observing bounded wind-down."
+
+[[capability]]
+id = "appendix-a-db-config-persist-mode"
+category = "appendix_a"
+item = "DbConfig / PersistMode"
+source = "PLAN.md Appendix A row 16"
+dest_wave = "wave-1b"
+overlaps_with = "api-db-config, api-persist-mode, api-db-with-config"
+gate = "Wave 0.5 records durability observations at the boundary; wave 1b asserts each PersistMode produces its declared post-crash visibility."
+
+[[capability]]
+id = "appendix-a-query-cache-stats"
+category = "appendix_a"
+item = "QueryCacheStats"
+source = "PLAN.md Appendix A row 17"
+dest_wave = "wave-10"
+overlaps_with = "api-query-cache"
+gate = "Counters retained on the plan store; a repeated identical script increments hits, a schema-epoch bump increments misses."
+
+[[capability]]
+id = "appendix-a-storage-mem"
+category = "appendix_a"
+item = "storage/mem.rs"
+source = "PLAN.md Appendix A row 18 (KnowledgeStore::open_mem_with_config, mod.rs:658)"
+dest_wave = "wave-1b"
+overlaps_with = "api-mem-storage, api-db-open-mem"
+gate = "Kept: it backs every fast episteme unit test and is the differential counterparty proving the fjall backend and the trait contract agree, plus the wave-1 crash-matrix control. Removing it removes an oracle."
+
+[[capability]]
+id = "appendix-a-swapvec"
+category = "appendix_a"
+item = "swapvec disk-spill in TempCollector"
+source = "PLAN.md Appendix A row 19"
+dest_wave = "wave-8"
+gate = "Deferred, not dropped. The >=50k-chunk corpus run under active compaction measures peak join memory; if it exceeds budget, spill-to-disk returns as a temp-store capability."
+
+[[capability]]
+id = "appendix-a-geiton-adaptive-search"
+category = "appendix_a"
+item = "geiton-class adaptive exact-vs-graph search"
+source = "PLAN.md Appendix A row 20"
+dest_wave = "wave-4"
+gate = "Sec 6.2 performance floor: search latency at small n must not regress against the recorded baseline, measured separately from recall."
+
+[[capability]]
+id = "appendix-a-magic-sets-seminaive"
+category = "appendix_a"
+item = "Magic-set rewriting + semi-naive evaluation"
+source = "PLAN.md Appendix A row 21"
+dest_wave = "wave-10"
+gate = "Sec 6.2: recursive-rule fixpoint floor on a generated deep-recursion program."
+
+[[capability]]
+id = "appendix-a-hnsw-entry-point"
+category = "appendix_a"
+item = "HNSW durable entry point (E04/E05/E24)"
+source = "PLAN.md Appendix A row 22"
+dest_wave = "wave-4"
+overlaps_with = "sysop-create-vector-index"
+gate = "E04 structural (exactly one canary node, level=1, all-Null tuple key, byte-compatible during Program A). E05 with close/reopen: insert N -> close -> reopen -> search vs E25 oracle; delete entry-point-adjacent subset -> close -> reopen -> search -> recall floor. Open-time cost assertion. E24 orphan consistency wired to scheduled maintenance, not left dead_code."
+
+[[capability]]
+id = "appendix-a-fts-zero-guards"
+category = "appendix_a"
+item = "FTS zero-guards (F02)"
+source = "PLAN.md Appendix A row 23"
+dest_wave = "wave-3"
+overlaps_with = "sysop-create-fts-index"
+gate = "Cold/empty index + zero-df term produces a finite score, never NaN/Inf; avgdl.max(1.0) clamp present."
+
+[[capability]]
+id = "appendix-a-coverage-accounting"
+category = "appendix_a"
+item = "Coverage accounting (F18-F22 / SC-17)"
+source = "PLAN.md Appendix A row 24"
+dest_wave = "wave-3"
+gate = "The query surface returns a typed error carrying mismatch counts and a fix command."
+
+[[capability]]
+id = "appendix-a-fold-stopwords"
+category = "appendix_a"
+item = "Fold table + stopword lists"
+source = "PLAN.md Appendix A row 25"
+dest_wave = "wave-2a-2b"
+gate = "Fold table regenerated from Unicode UCD, all 1,489 match arms identical over a full BMP sweep. Stopword lists vendored unchanged with attribution: token-multiset identity, 21,706/21,706 literals present, plus byte-identical token streams over a 50k-document corpus."
+
+[[capability]]
+id = "appendix-a-tristate-verdict"
+category = "appendix_a"
+item = "Tri-state Verdict (R21)"
+source = "PLAN.md Appendix A row 26"
+dest_wave = "wave-0"
+dest_module = "wave-0.5 conformance harness contract (Sec 3, Sec 6.3, Sec 6.4)"
+gate = "Unverifiable never collapses to Clean in any aggregation; a harness crash with discarded stderr reports Unverifiable."
+notes = "No current krites call site -- this is a harness-behavior convention the wave-0.5 recorder and every later wave's conformance runner must implement, not a type or function krites exposes today."
+
+[[capability]]
+id = "appendix-a-presence"
+category = "appendix_a"
+item = "Presence<T> (SC-12)"
+source = "PLAN.md Appendix A row 27"
+dest_wave = "wave-6"
+gate = "Absent | Empty | Present(T) makes the S27-class silent-drop (an entire table vanishing from every query) unrepresentable at adopting seams."
+
+[[capability]]
+id = "appendix-a-fixture-isolation"
+category = "appendix_a"
+item = "Fixture isolation (R14)"
+source = "PLAN.md Appendix A row 28"
+dest_wave = "wave-0"
+dest_module = "cross-cutting: every wave's test suite, verified by the wave-0.5 harness convention"
+gate = "Test fixtures leave the live repo unchanged; asserted by a clean git status after the suite."
+notes = "No current krites call site; a testing-hygiene lesson (R14) this program's own test suites must honor throughout, not a krites-owned type."
+
+[[capability]]
+id = "appendix-a-errata-needle-matching"
+category = "appendix_a"
+item = "Errata needle-matching (R23)"
+source = "PLAN.md Appendix A row 29"
+dest_wave = "wave-0"
+dest_module = "wave-0.5 conformance harness (recorded-vector mismatch reporting)"
+gate = "Errata match is anchored, not substring-loose; a near-miss needle reports no match rather than a wrong one."
+notes = "No current krites or fleet call site found (grep for 'errata'/'folio' across crates/ returns nothing) -- a prospective testing-lesson code (R23) with no source referent yet; mapped to the wave-0.5 harness as the nearest applicable mechanism. Report to T0: this row cannot be grounded in current source the way the other 32 can."
+
+[[capability]]
+id = "appendix-a-folio-page-roundtrip"
+category = "appendix_a"
+item = "Folio->page round-trip (R24)"
+source = "PLAN.md Appendix A row 30"
+dest_wave = "wave-0"
+dest_module = "wave-0.5 conformance harness (round-trip-identity pattern, generalized)"
+gate = "Round-trip identity on the full folio corpus."
+notes = "No current krites or fleet call site found (grep for 'folio' across crates/ returns nothing). Read as the general round-trip-identity PATTERN this program's harness must apply wherever it verifies round-trips (export_relations/import_relations wave 1, DataValue encode/decode wave 6), not a literal folio/page type in this crate. Report to T0: this row cannot be grounded in current source the way the other 32 can."
+
+[[capability]]
+id = "appendix-a-three-valued-expiry"
+category = "appendix_a"
+item = "Three-valued expiry (R25)"
+source = "PLAN.md Appendix A row 31"
+dest_wave = "wave-0"
+dest_module = "wave-0.5 harness pattern; generalizes to Sec 2's soak_expires_at_commit_count ledger expiry"
+gate = "Expiry is expired | live | unknown; unknown never collapses to live."
+notes = "No current krites call site; nearest applicable krites mechanism is the ledger's soak-expiry field (Sec 2), which does not yet exist (introduced by wave 0.1, a sibling wave-0 artifact this matrix does not own)."
+
+[[capability]]
+id = "appendix-a-cross-partition-atomic-write"
+category = "appendix_a"
+item = "Cross-partition atomic write"
+source = "PLAN.md Appendix A row 32 (storage/mem.rs:145-162, storage/fjall_backend.rs:307-330)"
+dest_wave = "wave-1b"
+overlaps_with = "api-mem-storage, api-fjall-storage"
+gate = "del_range_from_persisted records into the writer delta, not the base map; asserted by the wave-1b mem-vs-fjall differential across all 15 trait methods."
+
+[[capability]]
+id = "appendix-a-forensic-snapshot-read"
+category = "appendix_a"
+item = "Forensic snapshot read"
+source = "PLAN.md Appendix A row 33 (Sec 8.5)"
+dest_wave = "wave-1"
+dest_module = "episteme startup path, pre-migration snapshot (Sec 8.5)"
+overlaps_with = "api-db-open-fjall"
+gate = "Snapshot opens the copy with flush_workers(0).compaction_workers(0) and never the live source; verified-restorable count comparison per partition."
