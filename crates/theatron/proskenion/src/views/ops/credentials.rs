@@ -670,6 +670,8 @@ fn CredentialCard(
 ) -> Element {
     let config: Signal<ConnectionConfig> = use_context();
     let mut is_validating = use_signal(|| false);
+    let mut is_rotating = use_signal(|| false);
+    let mut is_removing = use_signal(|| false);
     let mut confirm_rotate = use_signal(|| false);
     let mut confirm_remove = use_signal(|| false);
     let mut card_error: Signal<Option<String>> = use_signal(|| None);
@@ -680,6 +682,11 @@ fn CredentialCard(
     let mut do_validate = {
         let id = entry_id.clone();
         move || {
+            // WHY(#4877): guard against a double-click submitting a second
+            // validate request while the first is still in flight.
+            if *is_validating.read() {
+                return;
+            }
             let cfg = config.read().clone();
             let id_v = id.clone();
             is_validating.set(true);
@@ -701,9 +708,9 @@ fn CredentialCard(
                         on_change.call(());
                     }
                     Ok(resp) => {
-                        let status = resp.status();
+                        let msg = describe_error_response("Validate", resp).await;
                         is_validating.set(false);
-                        card_error.set(Some(format!("Validate failed: {status}")));
+                        card_error.set(Some(msg));
                     }
                     Err(e) => {
                         is_validating.set(false);
@@ -717,29 +724,42 @@ fn CredentialCard(
     let mut do_rotate = {
         let provider = entry_provider.clone();
         move || {
+            // WHY(#4877): the confirm banner already hides once a rotate is
+            // triggered, but the underlying request could still be
+            // in-flight when the (now-hidden) Confirm is clicked again via a
+            // queued event -- guard on the pending flag itself, not just the
+            // banner's visibility.
+            if *is_rotating.read() {
+                return;
+            }
             let cfg = config.read().clone();
             let prov = provider.clone();
             confirm_rotate.set(false);
             card_error.set(None);
+            is_rotating.set(true);
 
             spawn(async move {
                 let client = match authenticated_client(&cfg) {
                     Ok(client) => client,
                     Err(err) => {
                         card_error.set(Some(err.to_string()));
+                        is_rotating.set(false);
                         return;
                     }
                 };
                 let url = credential_rotate_url(&cfg.server_url, &prov);
                 match client.post(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
+                        is_rotating.set(false);
                         on_change.call(());
                     }
                     Ok(resp) => {
-                        let status = resp.status();
-                        card_error.set(Some(format!("Rotate failed: {status}")));
+                        let msg = describe_error_response("Rotate", resp).await;
+                        is_rotating.set(false);
+                        card_error.set(Some(msg));
                     }
                     Err(e) => {
+                        is_rotating.set(false);
                         card_error.set(Some(format!("Connection error: {e}")));
                     }
                 }
@@ -750,29 +770,37 @@ fn CredentialCard(
     let mut do_remove = {
         let id = entry_id.clone();
         move || {
+            if *is_removing.read() {
+                return;
+            }
             let cfg = config.read().clone();
             let id_r = id.clone();
             confirm_remove.set(false);
             card_error.set(None);
+            is_removing.set(true);
 
             spawn(async move {
                 let client = match authenticated_client(&cfg) {
                     Ok(client) => client,
                     Err(err) => {
                         card_error.set(Some(err.to_string()));
+                        is_removing.set(false);
                         return;
                     }
                 };
                 let url = credential_url(&cfg.server_url, &id_r);
                 match client.delete(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
+                        is_removing.set(false);
                         on_change.call(());
                     }
                     Ok(resp) => {
-                        let status = resp.status();
-                        card_error.set(Some(format!("Remove failed: {status}")));
+                        let msg = describe_error_response("Remove", resp).await;
+                        is_removing.set(false);
+                        card_error.set(Some(msg));
                     }
                     Err(e) => {
+                        is_removing.set(false);
                         card_error.set(Some(format!("Connection error: {e}")));
                     }
                 }
@@ -781,6 +809,8 @@ fn CredentialCard(
     };
 
     let validating = *is_validating.read();
+    let rotating = *is_rotating.read();
+    let removing = *is_removing.read();
     let show_rotate = *confirm_rotate.read();
     let show_remove = *confirm_remove.read();
 
@@ -819,6 +849,17 @@ fn CredentialCard(
                                 background: {entry.status.color()}; display: inline-block;",
                     }
                     "{entry.status.label()}"
+                    // WHY(#4875): "Valid" alone is ambiguous -- it is the one
+                    // status value local inspection and a real provider
+                    // acceptance can both produce. Every other status is
+                    // unambiguous evidence either way (a rejection, a known
+                    // expiry, malformed content) and needs no qualifier.
+                    if entry.status == ValidationStatus::Valid && !entry.provider_verified {
+                        span {
+                            style: "color: var(--text-muted); font-size: var(--text-xs);",
+                            "(local only, not provider-verified)"
+                        }
+                    }
                 }
             }
 
@@ -847,7 +888,8 @@ fn CredentialCard(
 
                 if can_rotate {
                     button {
-                        style: "{BTN_STD}",
+                        style: if rotating { "{BTN_DISABLED}" } else { "{BTN_STD}" },
+                        disabled: rotating,
                         onclick: move |_| {
                             confirm_rotate.set(true);
                             confirm_remove.set(false);
@@ -865,7 +907,8 @@ fn CredentialCard(
                     }
                 } else {
                     button {
-                        style: "{BTN_DANGER}",
+                        style: if removing { "{BTN_DISABLED}" } else { "{BTN_DANGER}" },
+                        disabled: removing,
                         onclick: move |_| {
                             confirm_remove.set(true);
                             confirm_rotate.set(false);
@@ -883,13 +926,22 @@ fn CredentialCard(
                         "Swap primary and backup for {entry_provider}? \
                         If backup is untested or expired, API calls may fail."
                     }
-                    button {
-                        style: "{BTN_CONFIRM}",
-                        onclick: move |_| do_rotate(),
-                        "Confirm"
+                    // WHY(#4877): rotate now has real in-flight state -- the
+                    // banner used to hide immediately on click, so a fast
+                    // second click on the (already-vanished) Confirm could
+                    // still queue a duplicate request.
+                    if rotating {
+                        button { style: "{BTN_DISABLED}", disabled: true, "Rotating..." }
+                    } else {
+                        button {
+                            style: "{BTN_CONFIRM}",
+                            onclick: move |_| do_rotate(),
+                            "Confirm"
+                        }
                     }
                     button {
                         style: "{BTN_CANCEL}",
+                        disabled: rotating,
                         onclick: move |_| confirm_rotate.set(false),
                         "Cancel"
                     }
@@ -900,13 +952,18 @@ fn CredentialCard(
                 div {
                     style: "{CONFIRM_BANNER}",
                     span { style: "{WARN_TEXT}", "Permanently remove this credential?" }
-                    button {
-                        style: "{BTN_CONFIRM}",
-                        onclick: move |_| do_remove(),
-                        "Remove"
+                    if removing {
+                        button { style: "{BTN_DISABLED}", disabled: true, "Removing..." }
+                    } else {
+                        button {
+                            style: "{BTN_CONFIRM}",
+                            onclick: move |_| do_remove(),
+                            "Remove"
+                        }
                     }
                     button {
                         style: "{BTN_CANCEL}",
+                        disabled: removing,
                         onclick: move |_| confirm_remove.set(false),
                         "Cancel"
                     }
