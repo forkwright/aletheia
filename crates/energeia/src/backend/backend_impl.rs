@@ -132,7 +132,7 @@ impl DispatchBackend for EnergeiaBackend {
 }
 
 #[cfg(all(test, feature = "storage-fjall"))]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::future::Future as StdFuture;
     use std::pin::Pin as StdPin;

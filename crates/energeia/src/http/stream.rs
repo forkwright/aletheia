@@ -525,24 +525,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn event_stream_rate_limit_below_threshold() {
-        let ndjson = [
-            r#"{"type":"system","subtype":"init","session_id":"sess-rl2"}"#,
-            r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","utilization":0.75}}"#,
-            r#"{"type":"assistant","content":[{"type":"text","text":"still going"}]}"#,
-            r#"{"type":"result","session_id":"sess-rl2","subtype":"success","is_error":false,"num_turns":1,"duration_ms":100}"#,
-        ]
-        .join("\n");
-
-        let mut stream = event_stream_from_bytes(ndjson.as_bytes());
-
-        let e1 = stream.next_event().await;
-        assert!(matches!(e1, Some(SessionEvent::TextDelta { ref text }) if text == "still going"));
-
-        assert!(!stream.rate_limit_exceeded);
-    }
-
-    #[tokio::test]
     async fn event_stream_rate_limit_below_threshold_yields_typed_event() {
         // WHY(#4719): below-threshold rate-limit readings were previously
         // discarded entirely -- now they surface as SessionEvent::RateLimit

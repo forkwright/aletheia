@@ -461,11 +461,16 @@ async fn act_on_classified(
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions on known-length collections"
+)]
 mod tests {
     use std::collections::HashMap;
     use std::future::Future;
     use std::pin::Pin;
-    use std::sync::Mutex;
+
+    use parking_lot::Mutex;
 
     use crate::error::Result;
     use crate::steward::types::{CheckRun, MergeMethod};
@@ -606,7 +611,7 @@ mod tests {
             method: MergeMethod,
         ) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'a>> {
             Box::pin(async move {
-                self.merge_calls.lock().unwrap().push((pr_number, method));
+                self.merge_calls.lock().push((pr_number, method));
                 if self.merge_should_fail {
                     return Err(crate::error::EngineSnafu {
                         detail: "mock merge failure",
@@ -720,7 +725,7 @@ mod tests {
             MergeAction::Merge(MergeMethod::Squash)
         ));
         assert_eq!(
-            *backend.merge_calls.lock().unwrap(),
+            *backend.merge_calls.lock(),
             vec![(1, MergeMethod::Squash)]
         );
     }
@@ -748,7 +753,7 @@ mod tests {
                 .is_some_and(|e| e.contains("dry_run"))
         );
         assert!(
-            backend.merge_calls.lock().unwrap().is_empty(),
+            backend.merge_calls.lock().is_empty(),
             "dry_run must not execute the merge"
         );
     }
@@ -784,7 +789,7 @@ mod tests {
         assert_eq!(result.needs_fix[0].pr.number, 2);
         assert!(result.merged.is_empty());
         assert!(
-            backend.merge_calls.lock().unwrap().is_empty(),
+            backend.merge_calls.lock().is_empty(),
             "a red PR must never reach a merge decision"
         );
     }
@@ -838,6 +843,29 @@ mod tests {
                 .iter()
                 .any(|c| c.pr.number == 5 && !c.blast_radius_ok)
         );
+    }
+
+    #[tokio::test]
+    async fn run_once_holds_pr_with_public_api_change() {
+        let pr = make_pr(6, "sha6", "MERGEABLE", Some("<!-- qa-verdict: PASS -->"));
+        let backend = MockStewardBackend::new()
+            .with_pr(pr)
+            .with_checks("sha6", vec![green_check("build")])
+            .with_changed_files(6, vec!["crates/energeia/src/lib.rs".to_owned()])
+            .with_diff(
+                6,
+                "+++ b/crates/energeia/src/lib.rs\n+pub fn new_public_api() {}\n",
+            );
+        let config = StewardConfig::new("acme/repo".to_owned());
+
+        let result = run_once_with_backend(&config, &backend).await;
+
+        assert!(
+            result.merged.is_empty(),
+            "public API surface change must hold for architect review, not auto-merge"
+        );
+        assert!(result.blocked.is_empty());
+        assert!(result.classified.iter().any(|c| c.pr.number == 6));
     }
 
     #[tokio::test]
