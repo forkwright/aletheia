@@ -739,8 +739,10 @@ async fn run_execute_loop(
                             deployment_target: &deployment_target,
                             surface_hash: &surface_hash,
                             options: log.record_options(),
-                            chars_per_token: usize::try_from(config.generation.chars_per_token.max(1))
-                                .unwrap_or(4),
+                            chars_per_token: usize::try_from(
+                                config.generation.chars_per_token.max(1),
+                            )
+                            .unwrap_or(4),
                             request_id: Some(koina::ulid::Ulid::new().to_string()),
                         },
                     );

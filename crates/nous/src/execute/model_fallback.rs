@@ -201,7 +201,8 @@ pub(super) async fn complete_streaming_with_registry_fallback(
         }
 
         let routed_request = request_for_route(request, primary_route);
-        let raw = complete_streaming_once(providers, primary_route, &routed_request, on_event).await;
+        let raw =
+            complete_streaming_once(providers, primary_route, &routed_request, on_event).await;
         if raw.attempted {
             attempts += 1;
         }
