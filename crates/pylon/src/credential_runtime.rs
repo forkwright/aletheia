@@ -251,7 +251,6 @@ pub enum CredentialRuntimeError {
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use hermeneus::health::ProviderHealth;
     use hermeneus::test_utils::MockProvider;
