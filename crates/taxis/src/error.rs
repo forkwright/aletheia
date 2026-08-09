@@ -154,6 +154,17 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// A config field documented as relative-to-instance-root escapes it
+    /// (absolute, or contains `..`/root components) (#5385).
+    #[snafu(display("config field `{field}` (\"{path}\") escapes the instance root: {reason}"))]
+    ConfigPathEscapesRoot {
+        field: &'static str,
+        path: String,
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// The primary key file is invalid (wrong length, bad hex).
     #[snafu(display("invalid primary key at {}: {reason}", path.display()))]
     InvalidPrimaryKey {
@@ -196,6 +207,36 @@ pub enum Error {
     ))]
     ConfigDecrypt {
         fields: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// SECURITY(#5452): a primary key was found, but one or more `enc:`
+    /// fields failed to decrypt with it (wrong key after rotation, corrupted
+    /// ciphertext, truncated base64). Distinct from [`Error::ConfigDecrypt`]
+    /// (key missing entirely) -- both must fail closed the same way rather
+    /// than let ciphertext stand in for a secret.
+    #[snafu(display(
+        "encrypted config fields failed to decrypt with the configured primary key \
+         (wrong key or corrupted ciphertext): {fields}"
+    ))]
+    ConfigDecryptFailed {
+        fields: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// An interpolated environment value, substituted outside a quoted TOML
+    /// string, contained a newline. Bare/unquoted TOML value positions
+    /// cannot safely embed one: it would let the substituted value continue
+    /// past the current line and inject new keys or tables (#5249).
+    #[snafu(display(
+        "environment substitution for `${{{expr}}}` contains a newline, which is not \
+         permitted outside a quoted TOML string -- wrap the value in quotes in the config \
+         file, or ensure the environment value contains no newline"
+    ))]
+    EnvVarUnsafeSubstitution {
+        expr: String,
         #[snafu(implicit)]
         location: snafu::Location,
     },

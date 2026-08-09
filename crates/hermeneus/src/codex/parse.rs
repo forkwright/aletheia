@@ -31,9 +31,13 @@ pub(crate) fn parse_output(stdout: &str) -> Result<CodexParsedOutput> {
         let value: Value = match serde_json::from_str(trimmed) {
             Ok(value) => value,
             Err(e) => {
+                // WHY(#5261): a malformed stream-json line can carry an
+                // echoed prompt fragment or credential-shaped string;
+                // sanitize before logging it.
+                let sanitized_line = crate::secret::sanitize_provider_text(trimmed, 512);
                 warn!(
                     error = %e,
-                    line = %trimmed,
+                    line = %sanitized_line,
                     "failed to parse Codex stream-json event"
                 );
                 continue;

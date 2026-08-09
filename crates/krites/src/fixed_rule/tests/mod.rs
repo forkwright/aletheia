@@ -7,3 +7,4 @@ mod centrality_spanning;
 mod connectivity_misc;
 mod path_algorithms;
 mod proptest_algos;
+mod wave5_reference_semantics;

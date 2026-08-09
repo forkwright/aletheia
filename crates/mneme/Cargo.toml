@@ -22,6 +22,9 @@ path = "tests/ts_compat.rs"
 # session store API; mneme-engine layers the Datalog knowledge store on top.
 default = ["graph-algo", "mneme-engine", "portability"]
 graph-algo = ["episteme/graph-algo"]
+# Passthrough for the non-default migration crash-injection seam
+# (aletheia#5779 §8.4/F10) — enabled only by `integration-tests`.
+crash-injection = ["episteme/crash-injection"]
 # Agent export/import raw entry points (issue #4163). Default-on so the
 # aletheia CLI gets faithful round-trips without an explicit feature pick.
 portability = ["graphe/portability"]

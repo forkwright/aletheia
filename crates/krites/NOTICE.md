@@ -7,8 +7,8 @@
 This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-level provenance ledger — never hand-edited. `verbatim_pct` is the share of each file's non-blank lines that a line-level diff (Python `difflib.SequenceMatcher`, order-sensitive) matches against the upstream file at the pinned commit; it is measured per file, not assumed from a subsystem average.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 201 files under `src/`: 177 derived, 24 sovereign, 0 dual
-- Mean verbatim match across the 177 derived files: 49.7% (unweighted average of the per-file `verbatim_pct` column below)
+- 228 files under `src/`: 143 derived, 50 sovereign, 35 dual
+- Mean verbatim match across the 143 derived files: 50.0% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -67,25 +67,40 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/data/value.rs` | `data/value.rs` | 68.3% | derived |
 | `src/datalog.pest` | `cozoscript.pest` | 99.6% | derived |
 | `src/error.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/algos/all_pairs_shortest_path.rs` | `fixed_rule/algos/all_pairs_shortest_path.rs` | 39.6% | derived |
-| `src/fixed_rule/algos/astar.rs` | `fixed_rule/algos/astar.rs` | 49.1% | derived |
-| `src/fixed_rule/algos/bfs.rs` | `fixed_rule/algos/bfs.rs` | 61.7% | derived |
-| `src/fixed_rule/algos/degree_centrality.rs` | `fixed_rule/algos/degree_centrality.rs` | 55.3% | derived |
-| `src/fixed_rule/algos/dfs.rs` | `fixed_rule/algos/dfs.rs` | 57.8% | derived |
+| `src/fixed_rule/algos/all_pairs_shortest_path.rs` | `fixed_rule/algos/all_pairs_shortest_path.rs` | 39.6% | dual |
+| `src/fixed_rule/algos/all_pairs_shortest_path_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/astar.rs` | `fixed_rule/algos/astar.rs` | 49.1% | dual |
+| `src/fixed_rule/algos/astar_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/bfs.rs` | `fixed_rule/algos/bfs.rs` | 61.7% | dual |
+| `src/fixed_rule/algos/bfs_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/degree_centrality.rs` | `fixed_rule/algos/degree_centrality.rs` | 55.3% | dual |
+| `src/fixed_rule/algos/degree_centrality_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/dfs.rs` | `fixed_rule/algos/dfs.rs` | 57.8% | dual |
+| `src/fixed_rule/algos/dfs_native.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/kcore.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/algos/kruskal.rs` | `fixed_rule/algos/kruskal.rs` | 45.3% | derived |
-| `src/fixed_rule/algos/label_propagation.rs` | `fixed_rule/algos/label_propagation.rs` | 44.0% | derived |
+| `src/fixed_rule/algos/kruskal.rs` | `fixed_rule/algos/kruskal.rs` | 45.3% | dual |
+| `src/fixed_rule/algos/kruskal_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/label_propagation.rs` | `fixed_rule/algos/label_propagation.rs` | 44.0% | dual |
+| `src/fixed_rule/algos/label_propagation_native.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/louvain.rs` | `fixed_rule/algos/louvain.rs` | 41.4% | derived |
-| `src/fixed_rule/algos/mod.rs` | `fixed_rule/algos/mod.rs` | 91.9% | derived |
+| `src/fixed_rule/algos/mod.rs` | `fixed_rule/algos/mod.rs` | 33.0% | dual |
 | `src/fixed_rule/algos/pagerank.rs` | `fixed_rule/algos/pagerank.rs` | 45.7% | derived |
-| `src/fixed_rule/algos/prim.rs` | `fixed_rule/algos/prim.rs` | 49.3% | derived |
-| `src/fixed_rule/algos/random_walk.rs` | `fixed_rule/algos/random_walk.rs` | 40.8% | derived |
-| `src/fixed_rule/algos/shortest_path_bfs.rs` | `fixed_rule/algos/shortest_path_bfs.rs` | 68.1% | derived |
-| `src/fixed_rule/algos/shortest_path_dijkstra.rs` | `fixed_rule/algos/shortest_path_dijkstra.rs` | 56.4% | derived |
-| `src/fixed_rule/algos/strongly_connected_components.rs` | `fixed_rule/algos/strongly_connected_components.rs` | 45.0% | derived |
-| `src/fixed_rule/algos/top_sort.rs` | `fixed_rule/algos/top_sort.rs` | 44.1% | derived |
-| `src/fixed_rule/algos/triangles.rs` | `fixed_rule/algos/triangles.rs` | 47.3% | derived |
-| `src/fixed_rule/algos/yen.rs` | `fixed_rule/algos/yen.rs` | 56.1% | derived |
+| `src/fixed_rule/algos/prim.rs` | `fixed_rule/algos/prim.rs` | 49.3% | dual |
+| `src/fixed_rule/algos/prim_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/random_walk.rs` | `fixed_rule/algos/random_walk.rs` | 40.8% | dual |
+| `src/fixed_rule/algos/random_walk_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/shortest_path_bfs.rs` | `fixed_rule/algos/shortest_path_bfs.rs` | 68.1% | dual |
+| `src/fixed_rule/algos/shortest_path_bfs_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/shortest_path_dijkstra.rs` | `fixed_rule/algos/shortest_path_dijkstra.rs` | 56.4% | dual |
+| `src/fixed_rule/algos/shortest_path_dijkstra_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/strongly_connected_components.rs` | `fixed_rule/algos/strongly_connected_components.rs` | 45.0% | dual |
+| `src/fixed_rule/algos/strongly_connected_components_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/top_sort.rs` | `fixed_rule/algos/top_sort.rs` | 44.1% | dual |
+| `src/fixed_rule/algos/top_sort_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/triangles.rs` | `fixed_rule/algos/triangles.rs` | 47.3% | dual |
+| `src/fixed_rule/algos/triangles_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/algos/yen.rs` | `fixed_rule/algos/yen.rs` | 56.1% | dual |
+| `src/fixed_rule/algos/yen_native.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/csr/mod.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/csr/page_rank.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/error.rs` | — | 0.0% | sovereign |
@@ -95,9 +110,12 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/fixed_rule/tests/mod.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/path_algorithms.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/proptest_algos.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/utilities/constant.rs` | `fixed_rule/utilities/constant.rs` | 39.9% | derived |
-| `src/fixed_rule/utilities/mod.rs` | `fixed_rule/utilities/mod.rs` | 57.1% | derived |
-| `src/fixed_rule/utilities/reorder_sort.rs` | `fixed_rule/utilities/reorder_sort.rs` | 70.0% | derived |
+| `src/fixed_rule/tests/wave5_reference_semantics.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/utilities/constant.rs` | `fixed_rule/utilities/constant.rs` | 39.9% | dual |
+| `src/fixed_rule/utilities/constant_native.rs` | — | 0.0% | sovereign |
+| `src/fixed_rule/utilities/mod.rs` | `fixed_rule/utilities/mod.rs` | 20.0% | dual |
+| `src/fixed_rule/utilities/reorder_sort.rs` | `fixed_rule/utilities/reorder_sort.rs` | 70.0% | dual |
+| `src/fixed_rule/utilities/reorder_sort_native.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/utilities/rrf.rs` | — | 0.0% | sovereign |
 | `src/fts/README.md` | `fts/README.md` | 100.0% | derived |
 | `src/fts/ast.rs` | `fts/ast.rs` | 79.6% | derived |
@@ -106,16 +124,20 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/fts/indexing.rs` | `fts/indexing.rs` | 35.8% | derived |
 | `src/fts/mod.rs` | `fts/mod.rs` | 47.3% | derived |
 | `src/fts/tokenizer/alphanum_only.rs` | `fts/tokenizer/alphanum_only.rs` | 74.2% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 3.7% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.1% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.5% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.5% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 3.5% | dual |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.1% | dual |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.5% | dual |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.5% | dual |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 78.8% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/tests/bmp_equivalence.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 0.4% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 0.5% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 0.4% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_t_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 0.7% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/tests/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 7.0% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/tests/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 6.9% | derived |
 | `src/fts/tokenizer/empty_tokenizer.rs` | `fts/tokenizer/empty_tokenizer.rs` | 88.6% | derived |
 | `src/fts/tokenizer/lower_caser.rs` | `fts/tokenizer/lower_caser.rs` | 81.7% | derived |
 | `src/fts/tokenizer/mod.rs` | `fts/tokenizer/mod.rs` | 68.4% | derived |
@@ -125,15 +147,20 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/fts/tokenizer/simple_tokenizer.rs` | `fts/tokenizer/simple_tokenizer.rs` | 80.3% | derived |
 | `src/fts/tokenizer/split_compound_words.rs` | `fts/tokenizer/split_compound_words.rs` | 87.8% | derived |
 | `src/fts/tokenizer/stemmer.rs` | `fts/tokenizer/stemmer.rs` | 89.0% | derived |
-| `src/fts/tokenizer/stop_word_filter/gen_stopwords.py` | `fts/tokenizer/stop_word_filter/gen_stopwords.py` | 88.2% | derived |
-| `src/fts/tokenizer/stop_word_filter/mod.rs` | `fts/tokenizer/stop_word_filter/mod.rs` | 71.8% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/af_da.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.3% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/el_ja.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.2% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/ko_ro.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.7% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/mod.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/nl_de.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 2.5% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/ru_ur.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 4.2% | derived |
-| `src/fts/tokenizer/stop_word_filter/stopwords/vi_zu.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 4.6% | derived |
+| `src/fts/tokenizer/stop_word_filter/derived/gen_stopwords.py` | `fts/tokenizer/stop_word_filter/gen_stopwords.py` | 88.2% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/mod.rs` | `fts/tokenizer/stop_word_filter/mod.rs` | 71.3% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/af_da.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.3% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/el_ja.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.2% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/ko_ro.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 3.7% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/mod.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/nl_de.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 2.5% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/ru_ur.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 4.2% | dual |
+| `src/fts/tokenizer/stop_word_filter/derived/stopwords/vi_zu.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 4.6% | dual |
+| `src/fts/tokenizer/stop_word_filter/mod.rs` | `fts/tokenizer/stop_word_filter/mod.rs` | 3.8% | dual |
+| `src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/stop_word_filter/sovereign/stopwords.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/tokenized_string.rs` | `fts/tokenizer/tokenized_string.rs` | 79.2% | derived |
 | `src/fts/tokenizer/tokenizer_impl.rs` | `fts/tokenizer/tokenizer_impl.rs` | 81.9% | derived |
 | `src/fts/tokenizer/whitespace_tokenizer.rs` | `fts/tokenizer/whitespace_tokenizer.rs` | 80.3% | derived |
@@ -209,12 +236,16 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 | `src/runtime/transact.rs` | `runtime/transact.rs` | 16.2% | derived |
 | `src/storage/error.rs` | — | 0.0% | sovereign |
 | `src/storage/fjall_backend.rs` | — | 0.0% | sovereign |
-| `src/storage/mem.rs` | `storage/mem.rs` | 69.4% | derived |
+| `src/storage/mem.rs` | `storage/mem.rs` | 4.5% | dual |
 | `src/storage/mod.rs` | `storage/mod.rs` | 64.4% | derived |
-| `src/storage/temp.rs` | `storage/temp.rs` | 78.1% | derived |
+| `src/storage/temp.rs` | `storage/temp.rs` | 2.2% | dual |
 | `src/utils.rs` | `utils.rs` | 71.4% | derived |
 
 Aletheia's own additions are real and sit alongside the derived files — `async_surface`, `counterfactual`, `hot_reload`, `query_cache`, `storage/fjall_backend`, the CSR PageRank path, `kcore`, RRF, the fixed-rule test suite, and `data/tests/proptest_memcmp` — all `sovereign` in the table above. They do not change the provenance of the derived files they extend.
+
+## A second vendored source: stop word lists
+
+`fts/tokenizer/stop_word_filter`'s word lists are not CozoDB's expression, even in the rows above marked `derived`/`dual` against a CozoDB `upstream_path`: they are the [stopwords-iso](https://github.com/stopwords-iso/stopwords-iso/) project's data (copyright Gene Diaz, MIT license), which CozoDB itself vendored rather than authored. Krites vendors the same corpus a second time — CozoDB is a sibling vendor here, not the copyright source. The `upstream_path` column names CozoDB because that is where this crate's copy was copied from mechanically, which is a real and correctly-tracked lineage fact for the `derived`/`dual` rows in that module; it does not make CozoDB the author of the word data, and does not substitute for the MIT notice that data separately requires. That notice — attribution plus the full license text — lives at `src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` and [`LICENSE-MIT-stopwords-iso`](LICENSE-MIT-stopwords-iso), independent of this file and of this module's CozoDB-retirement status.
 
 ## What that requires
 
