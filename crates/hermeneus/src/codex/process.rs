@@ -30,6 +30,12 @@ pub(crate) const MAX_OUTPUT_LINES: usize = 100_000;
 /// the CC adapter's prompt envelope and avoid excessive subprocess input.
 pub(crate) const MAX_SYSTEM_PROMPT_BYTES: usize = 100 * 1024;
 
+/// Maximum bytes of subprocess stderr preserved in an error message.
+///
+/// WHY(#5261): Codex's stderr can carry echoed prompt fragments or
+/// credential-shaped strings; sanitize before it reaches the caller.
+const MAX_DIAGNOSTIC_TEXT_BYTES: usize = 512;
+
 /// Outcome of a Codex subprocess invocation.
 #[derive(Debug)]
 pub(crate) struct CodexOutput {
@@ -186,15 +192,16 @@ fn finish_output(status: ExitStatus, stdout: Vec<u8>, stderr: &[u8]) -> Result<C
     let stderr_text = String::from_utf8_lossy(stderr);
 
     if !status.success() {
+        // WHY(#5261): stderr can carry echoed prompt fragments or
+        // credential-shaped strings; sanitize before it reaches the caller
+        // in an error message.
+        let stderr_display = if stderr_text.trim().is_empty() {
+            "(no stderr)".to_owned()
+        } else {
+            crate::secret::sanitize_provider_text(stderr_text.trim(), MAX_DIAGNOSTIC_TEXT_BYTES)
+        };
         return Err(error::ApiRequestSnafu {
-            message: format!(
-                "Codex process exited with {status}: {}",
-                if stderr_text.trim().is_empty() {
-                    "(no stderr)"
-                } else {
-                    stderr_text.trim()
-                }
-            ),
+            message: format!("Codex process exited with {status}: {stderr_display}"),
         }
         .build());
     }
