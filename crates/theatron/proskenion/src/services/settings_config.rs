@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 
 use crate::services::secret_store::{self, SecretStoreError};
+use crate::state::metrics::BudgetConfig;
 use crate::state::settings::{
     AppearanceSettings, KeyCombo, KeybindingStore, ServerConfigStore, ServerEntry, UiDensity,
     server_token_ref,
@@ -123,6 +124,28 @@ impl From<SerializedAppearance> for AppearanceSettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+struct SerializedBudget {
+    #[serde(default)]
+    monthly_limit_usd: f64,
+}
+
+impl From<&BudgetConfig> for SerializedBudget {
+    fn from(b: &BudgetConfig) -> Self {
+        Self {
+            monthly_limit_usd: b.monthly_limit_usd,
+        }
+    }
+}
+
+impl From<SerializedBudget> for BudgetConfig {
+    fn from(s: SerializedBudget) -> Self {
+        Self {
+            monthly_limit_usd: s.monthly_limit_usd,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SerializedServer {
     id: String,
@@ -214,6 +237,8 @@ pub(crate) struct SettingsConfig {
     appearance: SerializedAppearance,
     #[serde(default)]
     keybinding_overrides: HashMap<String, SerializedCombo>,
+    #[serde(default)]
+    budget: SerializedBudget,
 }
 
 impl SettingsConfig {
@@ -250,6 +275,16 @@ impl SettingsConfig {
                 .map(|(k, v)| (k.clone(), KeyCombo::from(v.clone())))
                 .collect(),
         }
+    }
+
+    /// Build `BudgetConfig` from the persisted representation.
+    pub(crate) fn budget_config(&self) -> BudgetConfig {
+        self.budget.clone().into()
+    }
+
+    /// Write a `BudgetConfig` back into serializable form.
+    pub(crate) fn apply_budget(&mut self, budget: &BudgetConfig) {
+        self.budget = SerializedBudget::from(budget);
     }
 
     /// Build a `SettingsConfig` from in-memory state (for saving).
@@ -442,10 +477,54 @@ pub(crate) fn save_state(
     appearance: &AppearanceSettings,
     keybindings: &KeybindingStore,
 ) {
-    let config = SettingsConfig::from_state(server_store, appearance, keybindings);
-    if let Err(e) = save(&config) {
+    let Some(base) = dirs::config_dir() else {
+        tracing::warn!("failed to save settings: could not find user config directory");
+        return;
+    };
+    save_state_in(server_store, appearance, keybindings, &base);
+}
+
+pub(crate) fn save_state_in(
+    server_store: &ServerConfigStore,
+    appearance: &AppearanceSettings,
+    keybindings: &KeybindingStore,
+    base: &Path,
+) {
+    let mut config = SettingsConfig::from_state(server_store, appearance, keybindings);
+    // WHY: from_state builds a config with no knowledge of budget, so a save
+    // triggered from the appearance/server/keybinding panels must carry
+    // forward whatever budget is currently on disk rather than reset it —
+    // otherwise every unrelated settings change silently erases the budget.
+    if let Ok(existing) = load_in(base) {
+        config.budget = existing.budget;
+    }
+    if let Err(e) = save_in(&config, base) {
         tracing::warn!("failed to save settings: {e}");
     }
+}
+
+/// Save the monthly budget to disk without disturbing other persisted
+/// settings.
+///
+/// Loads the current settings file (or starts from defaults on first run),
+/// updates only the budget field, and writes back — mirroring `save_state`'s
+/// preserve-the-rest behavior in the other direction.
+pub(crate) fn save_budget(budget: &BudgetConfig) -> Result<(), SettingsConfigError> {
+    let base = dirs::config_dir().ok_or(SettingsConfigError::NoConfigDir)?;
+    save_budget_in(budget, &base)
+}
+
+pub(crate) fn save_budget_in(
+    budget: &BudgetConfig,
+    base: &Path,
+) -> Result<(), SettingsConfigError> {
+    let mut config = if is_first_run_in(base) {
+        SettingsConfig::default()
+    } else {
+        load_in(base)?
+    };
+    config.apply_budget(budget);
+    save_in(&config, base)
 }
 
 pub(crate) fn upsert_active_server_in(
@@ -821,5 +900,106 @@ auth_token = "{raw_token}"
         let store = config.server_store();
         assert_eq!(store.active().unwrap().url, "http://server-b:3000");
         assert_eq!(store.servers.len(), 2);
+    }
+
+    // --- Budget persistence (#5797) ---
+
+    #[test]
+    fn budget_survives_reload() {
+        let (_dir, base) = temp_base();
+        save_budget_in(
+            &BudgetConfig {
+                monthly_limit_usd: 500.0,
+            },
+            &base,
+        )
+        .unwrap();
+
+        let config = load_in(&base).unwrap();
+        assert_eq!(config.budget_config().monthly_limit_usd, 500.0);
+    }
+
+    #[test]
+    fn budget_defaults_to_zero_on_clean_profile() {
+        let (_dir, base) = temp_base();
+        let config = load_or_default_in(&base);
+        assert_eq!(config.budget_config().monthly_limit_usd, 0.0);
+    }
+
+    #[test]
+    fn missing_budget_key_in_existing_settings_deserializes_to_zero() {
+        // WHY: settings.toml files written before the budget field existed
+        // must still load — deny_unknown_fields only rejects unrecognized
+        // keys, not missing ones, but this pins that guarantee for `budget`
+        // specifically.
+        let (_dir, base) = temp_base();
+        let settings = settings_path_from(&base);
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(&settings, "active_server = \"srv_x\"\n").unwrap();
+
+        let config = load_in(&base).unwrap();
+        assert_eq!(config.budget_config().monthly_limit_usd, 0.0);
+    }
+
+    #[test]
+    fn saving_appearance_state_preserves_previously_set_budget() {
+        // WHY: this is the exact defect #5797 reports one step later — a
+        // save from an unrelated panel (appearance/server/keybindings) must
+        // not silently zero out a budget the operator already set.
+        let (_dir, base) = temp_base();
+        save_budget_in(
+            &BudgetConfig {
+                monthly_limit_usd: 250.0,
+            },
+            &base,
+        )
+        .unwrap();
+
+        let store = ServerConfigStore::default();
+        let appearance = AppearanceSettings {
+            theme: "dark".to_string(),
+            ..AppearanceSettings::default()
+        };
+        let keybindings = KeybindingStore::default();
+        save_state_in(&store, &appearance, &keybindings, &base);
+
+        let config = load_in(&base).unwrap();
+        assert_eq!(config.budget_config().monthly_limit_usd, 250.0);
+        assert_eq!(config.appearance_settings().theme, "dark");
+    }
+
+    #[test]
+    fn setting_budget_preserves_previously_saved_appearance() {
+        let (_dir, base) = temp_base();
+        let store = ServerConfigStore::default();
+        let appearance = AppearanceSettings {
+            theme: "light".to_string(),
+            ..AppearanceSettings::default()
+        };
+        let keybindings = KeybindingStore::default();
+        save_state_in(&store, &appearance, &keybindings, &base);
+
+        save_budget_in(
+            &BudgetConfig {
+                monthly_limit_usd: 75.0,
+            },
+            &base,
+        )
+        .unwrap();
+
+        let config = load_in(&base).unwrap();
+        assert_eq!(config.appearance_settings().theme, "light");
+        assert_eq!(config.budget_config().monthly_limit_usd, 75.0);
+    }
+
+    #[test]
+    fn budget_round_trips_through_toml() {
+        let mut config = SettingsConfig::default();
+        config.apply_budget(&BudgetConfig {
+            monthly_limit_usd: 1234.5,
+        });
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let restored: SettingsConfig = toml::from_str(&toml_str).unwrap();
+        assert_eq!(restored.budget_config().monthly_limit_usd, 1234.5);
     }
 }

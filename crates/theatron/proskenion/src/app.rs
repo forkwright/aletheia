@@ -16,6 +16,7 @@ use crate::state::app::TabBar;
 use crate::state::chat::ChatSelection;
 use crate::state::commands::CommandStore;
 use crate::state::connection::ConnectionState;
+use crate::state::metrics::BudgetConfig;
 use crate::state::notifications::{DndState, NotificationHistory};
 use crate::state::planning::PlanningCapabilities;
 use crate::state::platform::{QuickInputState, WindowState};
@@ -107,6 +108,7 @@ pub(crate) fn App() -> Element {
     let server_store = use_signal(|| loaded_settings.server_store());
     let appearance = use_signal(|| loaded_settings.appearance_settings());
     let keybindings = use_signal(|| loaded_settings.keybinding_store());
+    let budget = use_signal(|| loaded_settings.budget_config());
     let is_first_run = use_signal(|| first_run);
 
     // NOTE: Saved theme preference; defaults to Dark if unset or unrecognized.
@@ -119,6 +121,7 @@ pub(crate) fn App() -> Element {
     use_context_provider(|| server_store);
     use_context_provider(|| appearance);
     use_context_provider(|| keybindings);
+    use_context_provider(|| budget);
     use_context_provider(|| is_first_run);
     provide_toast_context();
 

@@ -370,9 +370,11 @@ impl CostMetricsResponse {
     }
 }
 
-// -- Budget config (local-only) -----------------------------------------------
+// -- Budget config (client-side only, persisted to settings.toml) ------------
 
-/// Monthly spend budget configured locally.
+/// Monthly spend budget configured client-side. The server has no budget
+/// concept; this is persisted via `services::settings_config` alongside
+/// appearance and server settings, not derived from telemetry.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct BudgetConfig {
     /// Monthly limit in USD. Zero means no budget set.
