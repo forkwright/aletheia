@@ -234,6 +234,11 @@ pub struct ExportedUsageRecord {
     pub cache_write_tokens: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// ISO 8601 timestamp when this usage was recorded (#5271).
+    /// `#[serde(default)]` keeps bundles exported before this field
+    /// existed importable.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub created_at: String,
 }
 
 /// Optional memory data (vectors and/or knowledge graph).
@@ -378,6 +383,7 @@ mod tests {
                     cache_read_tokens: 0,
                     cache_write_tokens: 0,
                     model: Some("claude-sonnet-4-6".to_owned()),
+                    created_at: "2026-03-05T10:00:00Z".to_owned(),
                 }]),
                 parent_session_id: Some("ses-parent".to_owned()),
                 thread_id: Some("thread-9".to_owned()),

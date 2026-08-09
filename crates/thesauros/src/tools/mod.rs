@@ -27,6 +27,8 @@ struct ShellToolExecutor {
     pack_root: PathBuf,
     runner: SubprocessRunner,
     timeout_ms: u64,
+    /// Identity of `command_path` captured at registration time (#5213).
+    expected_identity: FileIdentity,
 }
 
 impl ToolExecutor for ShellToolExecutor {
@@ -36,6 +38,19 @@ impl ToolExecutor for ShellToolExecutor {
         ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async {
+            // SECURITY(#5213): re-check the command file's identity against
+            // what was captured at registration time. A file swap after
+            // registration (the pack directory is on disk, not immutable)
+            // would otherwise execute silently under the tool's original,
+            // reviewed name — bind execution to the specific file that was
+            // validated, not just the path.
+            if let Err(reason) = self.expected_identity.verify(&self.command_path) {
+                return Ok(ToolResult::error(format!(
+                    "tool command {} changed since registration: {reason}",
+                    self.command_path.display()
+                )));
+            }
+
             let json_input = serde_json::to_string(&input.arguments).unwrap_or_else(|e| {
                 tracing::debug!("failed to serialize tool arguments: {e}");
                 String::new()
@@ -246,7 +261,7 @@ fn prepare_tool(
         });
     }
 
-    let command_path = validate_command_path(pack_root, &tool_def.command)?;
+    let (command_path, expected_identity) = validate_command_path(pack_root, &tool_def.command)?;
     let groups = parse_groups(tool_def, pack_name)?;
     let tags = parse_tags(tool_def, pack_name)?;
     let reversibility = parse_reversibility(tool_def, pack_name)?;
@@ -303,6 +318,7 @@ fn prepare_tool(
         pack_root: pack_root.to_path_buf(),
         runner,
         timeout_ms: effective_timeout_ms,
+        expected_identity,
     });
 
     Ok((def, executor))
@@ -380,8 +396,39 @@ fn tool_registration_error(
     }
 }
 
-/// Validate that a command path exists and stays within the pack root.
-fn validate_command_path(pack_root: &Path, command: &str) -> Result<PathBuf, error::Error> {
+/// Validate that a command path is a relative in-pack executable file, and
+/// capture its identity for later swap detection at execution time.
+///
+/// SECURITY(#5213): validation used to be canonicalize-then-contain only,
+/// which left three gaps: an absolute/`..` command string was rejected only
+/// after a filesystem round-trip (a syntactic pre-check is cheaper and
+/// fails before touching disk); a directory or non-executable file at the
+/// resolved path passed registration and only failed at first invocation
+/// (broken tools were exposed to callers until then); and nothing bound
+/// the registered tool to the specific file it validated, so a file swap
+/// on disk between registration and execution ran silently under the
+/// original, reviewed name.
+fn validate_command_path(
+    pack_root: &Path,
+    command: &str,
+) -> Result<(PathBuf, FileIdentity), error::Error> {
+    // WHY: reject absolute paths and `..`/root components in the *declared*
+    // string before any filesystem access. `Path::join` with an absolute
+    // second argument discards the first entirely (`pack_root.join("/etc/passwd")
+    // == "/etc/passwd"`), so this also closes that join-level surprise, not
+    // just an early-exit optimization over the canonicalize-based check below.
+    let declared = Path::new(command);
+    let is_relative_in_pack = !declared.is_absolute()
+        && declared
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir));
+    if !is_relative_in_pack {
+        return Err(error::Error::ToolCommandEscape {
+            path: declared.to_path_buf(),
+            location: snafu::location!(),
+        });
+    }
+
     let resolved = pack_root.join(command);
 
     let canonical =
@@ -407,7 +454,84 @@ fn validate_command_path(pack_root: &Path, command: &str) -> Result<PathBuf, err
         });
     }
 
-    Ok(canonical)
+    let identity = FileIdentity::of(&canonical).map_err(|reason| {
+        error::Error::ToolCommandNotExecutable {
+            path: canonical.clone(),
+            reason,
+            location: snafu::location!(),
+        }
+    })?;
+
+    Ok((canonical, identity))
+}
+
+/// Filesystem identity of a validated command file, captured at
+/// registration time and re-checked before every execution (#5213).
+///
+/// Binds by device + inode + size + mtime rather than content hash: pack
+/// tool scripts already require a filesystem stat on every execution (the
+/// re-check itself), and this needs no new dependency for the same
+/// TOCTOU-closing effect the issue asks for ("bind digest/inode"). It is
+/// not cryptographic — an attacker who can engineer an inode collision
+/// with matching size and mtime on a live filesystem could still swap
+/// content, but that requires write access to the pack directory, which is
+/// already the trust boundary this whole validation path assumes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileIdentity {
+    #[cfg(unix)]
+    dev: u64,
+    #[cfg(unix)]
+    ino: u64,
+    len: u64,
+    mtime_nanos: i128,
+}
+
+impl FileIdentity {
+    /// Capture the identity of `path`, which must be a regular file with at
+    /// least one executable permission bit set (owner, group, or other).
+    fn of(path: &Path) -> std::result::Result<Self, String> {
+        let metadata = std::fs::metadata(path).map_err(|e| format!("stat failed: {e}"))?;
+        if !metadata.is_file() {
+            return Err("not a regular file".to_owned());
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, PermissionsExt};
+            if metadata.permissions().mode() & 0o111 == 0 {
+                return Err("missing executable permission bit".to_owned());
+            }
+            let mtime_nanos =
+                i128::from(metadata.mtime()) * 1_000_000_000 + i128::from(metadata.mtime_nsec());
+            Ok(Self {
+                dev: metadata.dev(),
+                ino: metadata.ino(),
+                len: metadata.len(),
+                mtime_nanos,
+            })
+        }
+        #[cfg(not(unix))]
+        {
+            let mtime_nanos = metadata
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |d| d.as_nanos().cast_signed());
+            Ok(Self {
+                len: metadata.len(),
+                mtime_nanos,
+            })
+        }
+    }
+
+    /// Re-stat `path` and confirm it still matches this captured identity.
+    fn verify(&self, path: &Path) -> std::result::Result<(), String> {
+        let current = Self::of(path)?;
+        if current == *self {
+            Ok(())
+        } else {
+            Err("file identity does not match the version validated at registration".to_owned())
+        }
+    }
 }
 
 /// Convert a pack input schema to an organon `InputSchema`.

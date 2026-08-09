@@ -108,10 +108,16 @@ impl ProjectWorkspace {
     )]
     pub(crate) fn write_blocker(&self, phase_id: &str, blocker: &Blocker) -> Result<()> {
         let layout = self.layout();
-        let phase_blockers = layout.blockers_dir.join(phase_id);
-        std::fs::create_dir_all(&phase_blockers).context(error::WorkspaceIoSnafu {
-            path: &phase_blockers,
-        })?;
+        let candidate = reject_traversal_component(&layout.blockers_dir, phase_id)?;
+        std::fs::create_dir_all(&candidate)
+            .context(error::WorkspaceIoSnafu { path: &candidate })?;
+        // SECURITY(#5646): re-check containment after creation, catching a
+        // symlink swapped in between the component check above and this
+        // write (`reject_traversal_component` only proves the *string*
+        // shape is safe; the filesystem can still diverge from it).
+        let phase_blockers =
+            koina::fs::validate_within_root(&candidate, &layout.blockers_dir)
+                .context(error::WorkspaceIoSnafu { path: &candidate })?;
 
         let filename = format!("{}.json", blocker.plan_id);
         let path = phase_blockers.join(&filename);
@@ -129,11 +135,16 @@ impl ProjectWorkspace {
     )]
     pub(crate) fn read_blockers(&self, phase_id: &str) -> Result<Vec<Blocker>> {
         let layout = self.layout();
-        let phase_blockers = layout.blockers_dir.join(phase_id);
+        let candidate = reject_traversal_component(&layout.blockers_dir, phase_id)?;
 
-        if !phase_blockers.exists() {
+        if !candidate.exists() {
             return Ok(Vec::new());
         }
+        // SECURITY(#5646): re-check containment against the real filesystem
+        // (catches a symlink swapped in after the component check above)
+        // before reading anything under the resolved path.
+        let phase_blockers = koina::fs::validate_within_root(&candidate, &layout.blockers_dir)
+            .context(error::WorkspaceIoSnafu { path: &candidate })?;
 
         let mut blockers = Vec::new();
         let entries = std::fs::read_dir(&phase_blockers).context(error::WorkspaceIoSnafu {
@@ -170,6 +181,36 @@ impl ProjectWorkspace {
             phases_dir: root.join("phases"),
             blockers_dir: root.join(".dianoia").join("blockers"),
             artifacts_dir: root.join("artifacts"),
+        }
+    }
+}
+
+/// Join `phase_id` onto `blockers_dir`, rejecting any id that is not
+/// exactly one plain path segment.
+///
+/// SECURITY(#5646): `phase_id` is caller-supplied; an unsanitized
+/// `Path::join` incorporates `..` or absolute components, letting the
+/// constructed path escape `blockers_dir`. Requiring the id to parse as
+/// a single [`std::path::Component::Normal`] rejects traversal segments,
+/// `.`/`..`, and absolute paths before any filesystem access — the
+/// cheap, string-only half of the defense. Each caller does a
+/// canonicalize-and-contain check afterward against the live filesystem
+/// (see `koina::fs::validate_within_root`) for the symlink case this
+/// check cannot see.
+fn reject_traversal_component(blockers_dir: &Path, phase_id: &str) -> Result<PathBuf> {
+    let mut components = Path::new(phase_id).components();
+    match (components.next(), components.next()) {
+        (Some(std::path::Component::Normal(_)), None) => Ok(blockers_dir.join(phase_id)),
+        _ => {
+            let candidate = blockers_dir.join(phase_id);
+            let invalid = std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "phase_id must be a single path segment with no separators, \
+                     '.', or '..' components (got {phase_id:?})"
+                ),
+            );
+            Err(invalid).context(error::WorkspaceIoSnafu { path: candidate })
         }
     }
 }
@@ -223,6 +264,76 @@ mod tests {
         assert_eq!(blockers[0].description, "blocked on API design");
         assert_eq!(blockers[0].plan_id, plan_id);
         assert_eq!(blockers[0].detected_at, detected_at);
+    }
+
+    // SECURITY(#5646): `phase_id` must not be able to write or read outside
+    // `blockers_dir` via traversal, absolute paths, or embedded separators.
+    #[test]
+    fn write_blocker_rejects_path_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+        let blocker = Blocker {
+            description: "escape attempt".into(),
+            plan_id: koina::ulid::Ulid::new(),
+            detected_at: jiff::Timestamp::from_second(1_700_000_000).unwrap(),
+        };
+
+        for traversal in ["../escape", "../../etc", "a/../../escape"] {
+            assert!(
+                ws.write_blocker(traversal, &blocker).is_err(),
+                "expected {traversal:?} to be rejected"
+            );
+        }
+        assert!(
+            !dir.path().join("escape").exists(),
+            "traversal must not have created anything outside the workspace"
+        );
+    }
+
+    #[test]
+    fn write_blocker_rejects_absolute_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+        let blocker = Blocker {
+            description: "absolute path attempt".into(),
+            plan_id: koina::ulid::Ulid::new(),
+            detected_at: jiff::Timestamp::from_second(1_700_000_000).unwrap(),
+        };
+
+        assert!(ws.write_blocker("/etc/passwd", &blocker).is_err());
+    }
+
+    #[test]
+    fn write_blocker_rejects_embedded_separator() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+        let blocker = Blocker {
+            description: "nested segment attempt".into(),
+            plan_id: koina::ulid::Ulid::new(),
+            detected_at: jiff::Timestamp::from_second(1_700_000_000).unwrap(),
+        };
+
+        assert!(ws.write_blocker("phase/nested", &blocker).is_err());
+    }
+
+    #[test]
+    fn write_blocker_rejects_dot_component() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+        let blocker = Blocker {
+            description: "dot component attempt".into(),
+            plan_id: koina::ulid::Ulid::new(),
+            detected_at: jiff::Timestamp::from_second(1_700_000_000).unwrap(),
+        };
+
+        assert!(ws.write_blocker(".", &blocker).is_err());
+    }
+
+    #[test]
+    fn read_blockers_rejects_path_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = ProjectWorkspace::create(dir.path().join("project")).unwrap();
+        assert!(ws.read_blockers("../../etc").is_err());
     }
 
     #[test]
