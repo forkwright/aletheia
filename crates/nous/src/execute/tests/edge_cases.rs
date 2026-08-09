@@ -436,6 +436,10 @@ fn classify_signals_multiple_flags() {
 
 #[tokio::test]
 async fn max_iterations_one_exits_immediately() {
+    // WHY(#5369): a tool-use response on the very last allowed iteration
+    // exhausts the cap before those tool calls are ever dispatched — the
+    // model's requested action would otherwise vanish silently behind a
+    // normal-looking success. This is a hard error, not a truncated success.
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(
         MockProvider::with_responses(vec![make_tool_response(
@@ -451,7 +455,7 @@ async fn max_iterations_one_exits_immediately() {
     config.limits.max_tool_iterations = 1;
     config.limits.loop_detection_threshold = 100;
 
-    let result = execute(
+    let err = execute(
         &test_pipeline_ctx(),
         &test_session(),
         &config,
@@ -461,11 +465,11 @@ async fn max_iterations_one_exits_immediately() {
         None,
     )
     .await
-    .expect("should succeed");
+    .expect_err("max_tool_iterations=1 with a tool-use response must error, not truncate silently");
 
-    assert_eq!(
-        result.usage.llm_calls, 1,
-        "with max_tool_iterations=1, should exit after the first LLM call"
+    assert!(
+        err.to_string().contains("limit (1)"),
+        "error should report the configured max_tool_iterations value: {err}"
     );
 }
 

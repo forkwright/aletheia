@@ -77,9 +77,11 @@ pub mod theme;
 pub use error::Error;
 pub use model::{
     Axes, AxisSide, AxisSpec, Chart, ChartKind, CiteOrScalar, CiteOrText, Domain, FactCite, FactId,
-    Inlines, LegendSpec, NumFormat, Point, Scale as ScaleKind, Series, SeriesStyle, Ticks, ToneRef,
-    Unit,
+    LegendSpec, NumFormat, Point, Scale as ScaleKind, Series, SeriesStyle, Ticks, ToneRef, Unit,
 };
+/// Re-exported so caption authors do not need a direct `poiesis-core`
+/// dependency just to build a [`model::Chart::caption`].
+pub use poiesis_core::{RichText, Span};
 pub use render::{ColorMode, render_chart};
 pub use theme::ResolvedTheme;
 

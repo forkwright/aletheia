@@ -59,12 +59,34 @@ async fn credentials_list_redacts_secret_material() {
 
 #[tokio::test]
 async fn credentials_validate_redacts_secret_material() {
-    let (app, _dir) = app().await;
+    // WHY(#4875): use a provider this crate has no live-check strategy for
+    // (unlike "anthropic"/"claude"), so validation stays network-free and
+    // deterministic while still exercising the full add -> validate ->
+    // redaction path. The live Anthropic/OpenAI round-trip paths are covered
+    // directly in symbolon's own tests (crates/symbolon/src/credential/admin.rs,
+    // provider_validation_tests).
+    let (app, _dir) = app_with_provider_name("acme-test-provider").await;
+    let raw_secret = "sk-test-validate-redaction-marker";
+
+    let add = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "acme-test-provider",
+                "key": raw_secret,
+                "role": "primary"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add.status(), StatusCode::CREATED);
 
     let resp = app
         .oneshot(authed_request(
             "POST",
-            "/api/v1/system/credentials/anthropic:primary/validate",
+            "/api/v1/system/credentials/acme-test-provider:primary/validate",
             None,
         ))
         .await
@@ -72,10 +94,13 @@ async fn credentials_validate_redacts_secret_material() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
+    // WHY: an unrecognized provider has no live-check strategy, so `status`
+    // falls back to local inspection (file loaded, not locally expired).
     assert!(body.contains(r#""status":"valid""#));
+    assert!(body.contains(r#""validation_state":"unknown""#));
+    assert!(body.contains(r#""provider_verified":false"#));
     assert!(body.contains("last_validated"));
-    assert!(!body.contains("sk-ant-test-key-for-health-checks"));
-    assert!(!body.contains("health-checks"));
+    assert!(!body.contains(raw_secret));
 }
 
 #[tokio::test]
@@ -356,4 +381,239 @@ async fn credentials_post_rejects_non_operator() {
     let resp = app.oneshot(req).await.unwrap();
 
     assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+}
+
+// ── audit events (#4878) ──
+//
+// WHY: add/validate/rotate/remove previously left no audit trail at all --
+// no actor, no outcome, nothing to subscribe to. These tests drive each
+// endpoint against a subscribed event_bus receiver and assert the emitted
+// payload's shape directly, on both success and failure paths, and that no
+// raw credential value ever reaches the payload.
+
+async fn next_event(
+    events: &mut tokio::sync::broadcast::Receiver<crate::event_bus::DomainEvent>,
+) -> crate::event_bus::DomainEvent {
+    tokio::time::timeout(std::time::Duration::from_secs(2), events.recv())
+        .await
+        .expect("audit event was not published within the timeout")
+        .expect("event_bus receiver closed unexpectedly")
+}
+
+#[tokio::test]
+async fn add_credential_publishes_success_audit_event() {
+    let (state, _dir) = test_state().await;
+    let mut events = state.event_bus.subscribe();
+    let app = build_router(std::sync::Arc::clone(&state), &test_security_config());
+    let raw_secret = "sk-test-audit-add-success-marker";
+
+    let resp = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "anthropic",
+                "key": raw_secret,
+                "role": "backup"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+
+    let event = next_event(&mut events).await;
+    assert_eq!(event.topic, "credential.mutation");
+    assert_eq!(event.payload["action"], "add");
+    assert_eq!(event.payload["result"], "ok");
+    assert_eq!(event.payload["provider"], "anthropic");
+    assert_eq!(event.payload["credential_role"], "backup");
+    assert_eq!(event.payload["actor"], "test-user");
+    assert_eq!(event.payload["actor_role"], "operator");
+    assert_eq!(event.payload["error_code"], serde_json::Value::Null);
+    assert!(
+        event.payload["request_id"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+    );
+    assert_eq!(event.payload["runtime_effect"], "restart_required");
+
+    // SECURITY: the audit payload must never carry the raw credential value.
+    let serialized = event.payload.to_string();
+    assert!(!serialized.contains(raw_secret));
+}
+
+#[tokio::test]
+async fn add_credential_publishes_failure_audit_event_on_duplicate() {
+    let (state, _dir) = test_state().await;
+    let app = build_router(std::sync::Arc::clone(&state), &test_security_config());
+
+    let first = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "anthropic",
+                "key": "sk-test-audit-dup-first",
+                "role": "backup"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::CREATED);
+
+    let mut events = state.event_bus.subscribe();
+    let raw_secret = "sk-test-audit-dup-second-marker";
+    let second = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "anthropic",
+                "key": raw_secret,
+                "role": "backup"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::CONFLICT);
+
+    let event = next_event(&mut events).await;
+    assert_eq!(event.topic, "credential.mutation");
+    assert_eq!(event.payload["action"], "add");
+    assert_eq!(
+        event.payload["result"], "error",
+        "a failed add must still be audited, not silently dropped"
+    );
+    assert_eq!(event.payload["error_code"], "conflict");
+    assert_eq!(event.payload["provider"], "anthropic");
+    assert_eq!(event.payload["runtime_effect"], serde_json::Value::Null);
+
+    let serialized = event.payload.to_string();
+    assert!(!serialized.contains(raw_secret));
+}
+
+#[tokio::test]
+async fn validate_credential_publishes_audit_event_with_validation_state() {
+    let (state, _dir) = state_with_provider_name("acme-audit-provider").await;
+    let app = build_router(std::sync::Arc::clone(&state), &test_security_config());
+    let raw_secret = "sk-test-audit-validate-marker";
+
+    let add = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "acme-audit-provider",
+                "key": raw_secret,
+                "role": "primary"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add.status(), StatusCode::CREATED);
+
+    let mut events = state.event_bus.subscribe();
+    let resp = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/acme-audit-provider:primary/validate",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    assert!(body.contains(r#""validation_state":"unknown""#));
+    assert!(!body.contains(raw_secret));
+
+    let event = next_event(&mut events).await;
+    assert_eq!(event.topic, "credential.validation");
+    assert_eq!(event.payload["action"], "validate");
+    assert_eq!(event.payload["result"], "ok");
+    assert_eq!(event.payload["provider"], "acme-audit-provider");
+    assert_eq!(event.payload["credential_role"], "primary");
+    assert_eq!(event.payload["validation_state"], "unknown");
+    assert_eq!(event.payload["runtime_effect"], serde_json::Value::Null);
+
+    let serialized = event.payload.to_string();
+    assert!(!serialized.contains(raw_secret));
+}
+
+#[tokio::test]
+async fn rotate_credentials_publishes_audit_event_with_null_credential_role() {
+    let (state, _dir) = test_state().await;
+    let app = build_router(std::sync::Arc::clone(&state), &test_security_config());
+
+    app.clone()
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "anthropic",
+                "key": "sk-test-audit-rotate-backup",
+                "role": "backup"
+            })),
+        ))
+        .await
+        .unwrap();
+
+    let mut events = state.event_bus.subscribe();
+    let resp = app
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials/rotate?provider=anthropic",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let event = next_event(&mut events).await;
+    assert_eq!(event.topic, "credential.mutation");
+    assert_eq!(event.payload["action"], "rotate");
+    assert_eq!(event.payload["result"], "ok");
+    assert_eq!(
+        event.payload["credential_role"],
+        serde_json::Value::Null,
+        "rotate swaps both roles -- no single role is the subject"
+    );
+}
+
+#[tokio::test]
+async fn remove_credential_publishes_audit_event() {
+    let (state, _dir) = test_state().await;
+    let app = build_router(std::sync::Arc::clone(&state), &test_security_config());
+
+    app.clone()
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "anthropic",
+                "key": "sk-test-audit-remove-backup",
+                "role": "backup"
+            })),
+        ))
+        .await
+        .unwrap();
+
+    let mut events = state.event_bus.subscribe();
+    let resp = app
+        .oneshot(authed_request(
+            "DELETE",
+            "/api/v1/system/credentials/anthropic:backup",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let event = next_event(&mut events).await;
+    assert_eq!(event.topic, "credential.mutation");
+    assert_eq!(event.payload["action"], "remove");
+    assert_eq!(event.payload["result"], "ok");
+    assert_eq!(event.payload["credential_role"], "backup");
+    assert_eq!(event.payload["provider"], "anthropic");
 }
