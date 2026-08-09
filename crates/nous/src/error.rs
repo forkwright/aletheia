@@ -99,6 +99,27 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Tool-iteration limit exhausted without the model reaching a final
+    /// (non-tool-use) response.
+    ///
+    /// WHY(#5369): returning a normal successful `TurnResult` here let
+    /// finalize, training capture, and DPO extraction treat an exhausted
+    /// tool loop as a completed turn even though tool calls the model
+    /// requested were never dispatched, or their results never folded back
+    /// into a response the user saw. This mirrors [`Error::LoopDetected`] —
+    /// a tool loop that fails to converge to `EndTurn` within bounds is a
+    /// correctness failure, not a degraded-but-usable turn.
+    #[snafu(display(
+        "tool iteration limit ({max_iterations}) exhausted after {iterations} iterations \
+         without reaching a final response"
+    ))]
+    ToolIterationsExhausted {
+        max_iterations: u32,
+        iterations: u32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Session configuration error.
     #[snafu(display("session config error: {message}"))]
     Config {
@@ -352,6 +373,7 @@ impl koina::error_class::Classifiable for Error {
             Error::AddressRejected { .. } => ErrorClass::Permanent,
             Error::GuardRejected { .. } => ErrorClass::Permanent,
             Error::LoopDetected { .. } => ErrorClass::Permanent,
+            Error::ToolIterationsExhausted { .. } => ErrorClass::Permanent,
             Error::AskCycleDetected { .. } => ErrorClass::Permanent,
             Error::MutexPoisoned { .. } => ErrorClass::Permanent,
             Error::PipelinePanic { .. } => ErrorClass::Permanent,
@@ -412,6 +434,12 @@ impl koina::error_class::Classifiable for Error {
             },
             Error::LoopDetected { pattern, .. } => ErrorAction::Surface {
                 user_message: format!("Loop detected ({pattern}) — please rephrase your request."),
+            },
+            Error::ToolIterationsExhausted { max_iterations, .. } => ErrorAction::Surface {
+                user_message: format!(
+                    "The agent used {max_iterations} tool calls without finishing — please \
+                     rephrase your request or break it into smaller steps."
+                ),
             },
             Error::NousNotFound { nous_id, .. } => ErrorAction::Surface {
                 user_message: format!("Agent '{nous_id}' not found."),
