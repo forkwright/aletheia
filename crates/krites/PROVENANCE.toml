@@ -1479,7 +1479,7 @@ soak_expires_at_commit_count = 3058
 [[file]]
 path = "runtime/hnsw_sovereign/mod.rs"
 upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 1.9
+verbatim_pct = 1.6
 status = "dual"
 soak_expires_at_commit_count = 3058
 
@@ -1506,13 +1506,6 @@ soak_expires_at_commit_count = 3058
 
 [[file]]
 path = "runtime/hnsw_sovereign/types.rs"
-upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 12.4
-status = "dual"
-soak_expires_at_commit_count = 3058
-
-[[file]]
-path = "runtime/hnsw_sovereign/visited_pool.rs"
 upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 12.4
 status = "dual"

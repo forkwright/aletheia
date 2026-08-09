@@ -26,7 +26,11 @@
 //! - [`search`]: KNN search entry point
 //! - [`adaptive`]: exact-vs-approximate strategy selection and brute-force
 //!   flat search (the exact-kNN oracle)
-//! - [`visited_pool`]: pooled visited-set for search traversal
+//! - [`visited_pool`]: pooled visited-set for search traversal. Sourced
+//!   directly from the sibling `hnsw` tree's file (`#[path]` below), not a
+//!   second copy — the pool has no CozoDB lineage of its own (an original
+//!   perf addition to this crate, not an extraction), so there is nothing
+//!   here to reimplement independently.
 //! - `close_reopen_tests` (test-only, `storage-fjall`): E05 close/reopen
 //!   recall and the open-time cost assertion
 
@@ -38,6 +42,13 @@ mod put;
 mod remove;
 mod search;
 mod types;
+// WHY: `super::hnsw` cannot name the sibling tree here — under the
+// `krites_sovereign_hnsw` feature, that path resolves to THIS module
+// (runtime/mod.rs's own `#[path]` swap), not to the physical `hnsw/`
+// directory. Pointing this module declaration's own `#[path]` at the
+// sibling file is the only way to reach it, one level down from the same
+// mechanism runtime/mod.rs already uses.
+#[path = "../hnsw/visited_pool.rs"]
 pub(crate) mod visited_pool;
 
 pub(crate) use types::HnswIndexManifest;
