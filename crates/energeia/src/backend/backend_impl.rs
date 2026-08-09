@@ -108,7 +108,7 @@ impl DispatchBackend for EnergeiaBackend {
             let mut config = self.steward_config.clone();
             config.project = project.to_owned();
             config.once = true;
-            Ok(crate::steward::run_once(&config, backend).await)
+            Ok(crate::steward::run_once_with_backend(&config, backend).await)
         })
     }
 

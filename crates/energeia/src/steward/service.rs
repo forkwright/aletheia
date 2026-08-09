@@ -45,9 +45,9 @@ impl StewardConfig {
 
 /// Run the steward polling loop.
 ///
-/// Each cycle runs one [`run_once`] pass, then either exits (`once` mode) or
-/// waits out the poll interval before the next cycle. Respects the
-/// cancellation token for graceful shutdown between passes.
+/// Each cycle runs one [`run_once_with_backend`] pass, then either exits
+/// (`once` mode) or waits out the poll interval before the next cycle.
+/// Respects the cancellation token for graceful shutdown between passes.
 ///
 /// WHY: Separating the polling loop from the single-pass logic allows
 /// both daemon mode (polling) and CLI mode (single pass).
@@ -56,10 +56,10 @@ impl StewardConfig {
 ///
 /// Cancel-safe at loop boundaries only: cancellation is checked *between*
 /// passes, not during one. A token already cancelled before this call still
-/// lets the in-flight first pass complete -- `run_once` itself is not
-/// cancel-safe (see its own doc), so there is no safe point to interrupt it
-/// mid-pass. Dropping the future between iterations simply delays the next
-/// poll without losing state.
+/// lets the in-flight first pass complete -- `run_once_with_backend` itself
+/// is not cancel-safe (see its own doc), so there is no safe point to
+/// interrupt it mid-pass. Dropping the future between iterations simply
+/// delays the next poll without losing state.
 pub async fn run(
     config: &StewardConfig,
     backend: &dyn StewardBackend,
@@ -73,7 +73,7 @@ pub async fn run(
             "steward pass starting"
         );
 
-        results.push(run_once(config, backend).await);
+        results.push(run_once_with_backend(config, backend).await);
 
         if config.once {
             tracing::info!("single-pass mode, exiting");
@@ -93,7 +93,110 @@ pub async fn run(
     results
 }
 
-/// Run a single steward pass (classify, decide, act).
+/// Run a single steward pass with no backend attached.
+///
+/// WHY: this is a compatibility shim preserving `run_once`'s pre-#4718
+/// signature (`fn(&StewardConfig) -> StewardResult`, no backend parameter)
+/// for callers that predate the [`StewardBackend`] trait --
+/// `organon::builtins::energeia::steward`'s `epitropos` tool depends on this
+/// exact path and arity (`energeia::steward::service::run_once`), and
+/// updating that call site is outside this crate's ownership. It reproduces
+/// the original placeholder behavior (empty classification, no PR fetch/CI/
+/// merge I/O, `main_ci_status: CiStatus::Unknown`) by composing
+/// [`run_once_with_backend`] with a backend that answers every call with
+/// "nothing here," rather than duplicating the empty-result construction by
+/// hand.
+///
+/// New callers should supply a real [`StewardBackend`] and call
+/// [`run_once_with_backend`] directly -- see [`crate::backend::backend_impl::EnergeiaBackend::with_steward_backend`].
+pub async fn run_once(config: &StewardConfig) -> StewardResult {
+    run_once_with_backend(config, &NoopStewardBackend).await
+}
+
+/// A [`StewardBackend`] that returns no data and performs no side effects.
+///
+/// Used only by the [`run_once`] compatibility shim (see its WHY).
+struct NoopStewardBackend;
+
+impl StewardBackend for NoopStewardBackend {
+    fn list_open_prs<'a>(
+        &'a self,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = crate::error::Result<Vec<PullRequest>>> + Send + 'a>,
+    > {
+        Box::pin(async move { Ok(Vec::new()) })
+    }
+
+    fn check_runs<'a>(
+        &'a self,
+        _sha: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = crate::error::Result<Vec<super::types::CheckRun>>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move { Ok(Vec::new()) })
+    }
+
+    fn changed_files<'a>(
+        &'a self,
+        _pr_number: u64,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = crate::error::Result<Vec<String>>> + Send + 'a>,
+    > {
+        Box::pin(async move { Ok(Vec::new()) })
+    }
+
+    fn diff<'a>(
+        &'a self,
+        _pr_number: u64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::error::Result<String>> + Send + 'a>>
+    {
+        Box::pin(async move { Ok(String::new()) })
+    }
+
+    fn has_gate_trailer<'a>(
+        &'a self,
+        _pr_number: u64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::error::Result<bool>> + Send + 'a>>
+    {
+        Box::pin(async move { Ok(false) })
+    }
+
+    fn declared_blast_radius<'a>(
+        &'a self,
+        _pr_number: u64,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = crate::error::Result<Option<Vec<String>>>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move { Ok(None) })
+    }
+
+    fn merge<'a>(
+        &'a self,
+        _pr_number: u64,
+        _method: super::types::MergeMethod,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = crate::error::Result<()>> + Send + 'a>>
+    {
+        Box::pin(async move { Ok(()) })
+    }
+
+    fn main_branch_ci_status<'a>(
+        &'a self,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = crate::error::Result<CiStatus>> + Send + 'a>,
+    > {
+        Box::pin(async move { Ok(CiStatus::Unknown) })
+    }
+}
+
+/// Run a single steward pass (classify, decide, act) against `backend`.
 ///
 /// This is the unit of work for both polling and single-pass modes:
 ///
@@ -121,7 +224,10 @@ pub async fn run(
 ///
 /// Not cancel-safe. This performs side effects (merges) that are not
 /// idempotent. Do not use in `select!` branches.
-pub async fn run_once(config: &StewardConfig, backend: &dyn StewardBackend) -> StewardResult {
+pub async fn run_once_with_backend(
+    config: &StewardConfig,
+    backend: &dyn StewardBackend,
+) -> StewardResult {
     tracing::info!(
         project = %config.project,
         "steward single pass"
@@ -548,14 +654,36 @@ mod tests {
         }
     }
 
-    // ── run_once ──
+    // ── run_once compatibility shim (no backend) ──
+
+    #[tokio::test]
+    async fn run_once_without_backend_reproduces_original_placeholder_shape() {
+        // WHY(#4718): organon::builtins::energeia::steward calls
+        // `energeia::steward::service::run_once(&config)` directly, at that
+        // exact path and arity, and cannot be updated from this crate. This
+        // pins the compatibility shim's output to the pre-#4718 placeholder
+        // shape so a future change to run_once_with_backend or
+        // NoopStewardBackend can't silently break that external contract.
+        let config = StewardConfig::new("acme/repo".to_owned());
+
+        let result = run_once(&config).await;
+
+        assert!(result.classified.is_empty());
+        assert!(result.merged.is_empty());
+        assert!(result.needs_fix.is_empty());
+        assert!(result.blocked.is_empty());
+        assert_eq!(result.main_ci_status, CiStatus::Unknown);
+        assert!(!result.main_fix_attempted);
+    }
+
+    // ── run_once_with_backend ──
 
     #[tokio::test]
     async fn run_once_with_no_open_prs_returns_empty_result() {
         let backend = MockStewardBackend::new();
         let config = StewardConfig::new("acme/repo".to_owned());
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert!(result.classified.is_empty());
         assert!(result.merged.is_empty());
@@ -569,7 +697,7 @@ mod tests {
         let backend = MockStewardBackend::new().with_main_ci_status(CiStatus::Red);
         let config = StewardConfig::new("acme/repo".to_owned());
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert_eq!(result.main_ci_status, CiStatus::Red);
     }
@@ -583,7 +711,7 @@ mod tests {
             .with_changed_files(1, vec!["crates/energeia/src/lib.rs".to_owned()]);
         let config = StewardConfig::new("acme/repo".to_owned());
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert_eq!(result.merged.len(), 1);
         assert!(result.merged[0].success);
@@ -609,7 +737,7 @@ mod tests {
             ..StewardConfig::new("acme/repo".to_owned())
         };
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert_eq!(result.merged.len(), 1);
         assert!(!result.merged[0].success);
@@ -635,7 +763,7 @@ mod tests {
             .failing_merge();
         let config = StewardConfig::new("acme/repo".to_owned());
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert_eq!(result.merged.len(), 1);
         assert!(!result.merged[0].success);
@@ -650,7 +778,7 @@ mod tests {
             .with_checks("sha2", vec![red_check("build")]);
         let config = StewardConfig::new("acme/repo".to_owned());
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert_eq!(result.needs_fix.len(), 1);
         assert_eq!(result.needs_fix[0].pr.number, 2);
@@ -669,7 +797,7 @@ mod tests {
             .with_checks("sha3", vec![green_check("build")]);
         let config = StewardConfig::new("acme/repo".to_owned());
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert_eq!(result.blocked, vec![(3, "merge conflict".to_owned())]);
         assert!(result.merged.is_empty());
@@ -683,7 +811,7 @@ mod tests {
             .with_checks("sha4", vec![green_check("build")]);
         let config = StewardConfig::new("acme/repo".to_owned());
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert!(result.merged.is_empty());
         assert!(result.blocked.is_empty());
@@ -701,7 +829,7 @@ mod tests {
             .with_blast_radius(5, vec!["crates/energeia/".to_owned()]);
         let config = StewardConfig::new("acme/repo".to_owned());
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert!(result.merged.is_empty());
         assert!(
@@ -725,7 +853,7 @@ mod tests {
             .with_changed_files(6, vec!["crates/energeia/src/lib.rs".to_owned()]);
         let config = StewardConfig::new("acme/repo".to_owned());
 
-        let result = run_once(&config, &backend).await;
+        let result = run_once_with_backend(&config, &backend).await;
 
         assert_eq!(result.merged.len(), 1);
         assert!(result.merged[0].success);

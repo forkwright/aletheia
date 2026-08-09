@@ -39,7 +39,7 @@ pub use conflict::build_rebase_prompt;
 pub use fix::{classify_failure, fix_kind_category};
 pub use merge::{classify_merge_tier, has_hold_flag, has_public_api_changes, make_merge_decision};
 pub use overlap::{compute_merge_order, file_overlap};
-pub use service::{StewardConfig, run, run_once};
+pub use service::{StewardConfig, run, run_once, run_once_with_backend};
 pub use types::{
     CheckRun, CiFailure, CiFailureKind, CiStatus, ClassifiedPr, ConflictResult, ConflictStrategy,
     FixApplied, FixKind, FixResult, Issue, MergeAction, MergeDecision, MergeMethod, MergeOptions,
