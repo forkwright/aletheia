@@ -2,12 +2,15 @@
 # NOTE: soak_expires_at_commit_count = 0 means the file is not in dual
 # NOTE: (land-dark/soak) state. A nonzero value is an ABSOLUTE target: the
 # NOTE: count of `git rev-list --count origin/main` at or past which CI
-# NOTE: fails the build (PLAN.md §2 expiry gate) — not a duration and not
-# NOTE: relative to when the row entered dual. Extend by explicit ledger edit.
-# NOTE: status = derived | sovereign | dual (PLAN.md §2, §3 wave 0.1); the
-# NOTE: only legal transition out of derived is derived -> dual -> sovereign,
-# NOTE: CI-enforced (check_status_sequence) — a direct derived -> sovereign
-# NOTE: jump is rejected regardless of verbatim_pct.
+# NOTE: fails the build (kanon/projects/aletheia/phases/05g-krites-overhaul/
+# NOTE: PROVENANCE-LEDGER.md "Soak fuse") — not a duration and not relative
+# NOTE: to when the row entered dual. Extend by explicit ledger edit.
+# NOTE: status = derived | sovereign | dual (PROVENANCE-LEDGER.md "Statuses");
+# NOTE: the only legal transition out of derived is derived -> dual ->
+# NOTE: sovereign, CI-enforced (check_status_sequence) — a direct derived ->
+# NOTE: sovereign jump is rejected regardless of verbatim_pct. A path
+# NOTE: containing 'sovereign' must carry status=sovereign ("Naming
+# NOTE: convention") — validate_rows rejects the row otherwise.
 
 [meta]
 upstream_repo = "https://github.com/cozodb/cozo"
@@ -1403,50 +1406,50 @@ soak_expires_at_commit_count = 0
 path = "runtime/hnsw/adaptive.rs"
 upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 3.3
-status = "derived"
-soak_expires_at_commit_count = 0
+status = "dual"
+soak_expires_at_commit_count = 3058
 
 [[file]]
 path = "runtime/hnsw/graph.rs"
 upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 50.0
-status = "derived"
-soak_expires_at_commit_count = 0
+status = "dual"
+soak_expires_at_commit_count = 3058
 
 [[file]]
 path = "runtime/hnsw/mod.rs"
 upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 2.8
-status = "derived"
-soak_expires_at_commit_count = 0
+status = "dual"
+soak_expires_at_commit_count = 3058
 
 [[file]]
 path = "runtime/hnsw/put.rs"
 upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 33.6
-status = "derived"
-soak_expires_at_commit_count = 0
+status = "dual"
+soak_expires_at_commit_count = 3058
 
 [[file]]
 path = "runtime/hnsw/remove.rs"
 upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 53.7
-status = "derived"
-soak_expires_at_commit_count = 0
+status = "dual"
+soak_expires_at_commit_count = 3058
 
 [[file]]
 path = "runtime/hnsw/search.rs"
 upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 26.4
-status = "derived"
-soak_expires_at_commit_count = 0
+status = "dual"
+soak_expires_at_commit_count = 3058
 
 [[file]]
 path = "runtime/hnsw/types.rs"
 upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 29.4
-status = "derived"
-soak_expires_at_commit_count = 0
+status = "dual"
+soak_expires_at_commit_count = 3058
 
 [[file]]
 path = "runtime/hnsw/visited_pool.rs"
@@ -1457,59 +1460,59 @@ soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw_sovereign/adaptive.rs"
-upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 3.1
-status = "dual"
-soak_expires_at_commit_count = 3058
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw_sovereign/close_reopen_tests.rs"
-upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 5.6
-status = "dual"
-soak_expires_at_commit_count = 3058
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw_sovereign/graph.rs"
-upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 25.3
-status = "dual"
-soak_expires_at_commit_count = 3058
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw_sovereign/mod.rs"
-upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 1.6
-status = "dual"
-soak_expires_at_commit_count = 3058
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw_sovereign/put.rs"
-upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 13.1
-status = "dual"
-soak_expires_at_commit_count = 3058
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw_sovereign/remove.rs"
-upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 20.7
-status = "dual"
-soak_expires_at_commit_count = 3058
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw_sovereign/search.rs"
-upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 11.7
-status = "dual"
-soak_expires_at_commit_count = 3058
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw_sovereign/types.rs"
-upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 12.4
-status = "dual"
-soak_expires_at_commit_count = 3058
+upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/imperative.rs"

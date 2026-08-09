@@ -122,7 +122,8 @@ def check_notice_sync(meta: dict, rows: list[dict]) -> list[str]:
 
 
 def check_no_derived_growth(rows: list[dict], base_rows: list[dict] | None) -> list[str]:
-    """PLAN.md §9 kill criterion 8: a row already known to the ledger must
+    """kanon/projects/aletheia/phases/05g-krites-overhaul/PROVENANCE-LEDGER.md
+    "Kill criterion — ledger creep": a row already known to the ledger must
     never regress TO 'derived'. A path with no base-ref row at all is not a
     regression — it is either wave 0's initial population or a completeness
     fix closing an undercount (P3: fts/README.md and gen_stopwords.py sat
@@ -141,8 +142,8 @@ def check_no_derived_growth(rows: list[dict], base_rows: list[dict] | None) -> l
     if backslid:
         return [
             "ledger row(s) regressed TO 'derived' relative to the base commit — a file may only "
-            "be marked derived by wave 0's initial population, never afterward (PLAN.md §9 kill "
-            "criterion 8): " + ", ".join(backslid)
+            "be marked derived by wave 0's initial population, never afterward "
+            "(PROVENANCE-LEDGER.md \"Kill criterion — ledger creep\"): " + ", ".join(backslid)
         ]
     return []
 
@@ -167,14 +168,16 @@ def check_status_sequence(rows: list[dict], base_rows: list[dict] | None) -> lis
         if (prior, row["status"]) not in ALLOWED_TRANSITIONS:
             errors.append(
                 f"{path}: illegal status transition {prior!r} -> {row['status']!r} — the only "
-                "legal path out of 'derived' is derived -> dual -> sovereign (PLAN.md §2); a "
-                f"direct {prior!r} -> {row['status']!r} jump is not permitted in one PR"
+                "legal path out of 'derived' is derived -> dual -> sovereign "
+                "(PROVENANCE-LEDGER.md \"Transitions\"); a direct "
+                f"{prior!r} -> {row['status']!r} jump is not permitted in one PR"
             )
     return errors
 
 
 def check_soak_expiry(rows: list[dict], commit_count: int | None) -> list[str]:
-    """PLAN.md §2's forcing function: a 'dual' row cannot soak forever by
+    """kanon/projects/aletheia/phases/05g-krites-overhaul/PROVENANCE-LEDGER.md
+    "Soak fuse"'s forcing function: a 'dual' row cannot soak forever by
     neglect. soak_expires_at_commit_count is an ABSOLUTE target — the count
     of commits reachable from origin/main (see krites_provenance_lib.py's
     ledger header NOTE for why origin/main, not HEAD: on a PR, HEAD includes
@@ -201,8 +204,8 @@ def check_soak_expiry(rows: list[dict], commit_count: int | None) -> list[str]:
             errors.append(
                 f"{row['path']}: dual soak window expired — current commit count on main "
                 f"({commit_count}) has reached soak_expires_at_commit_count ({expiry}); flip to "
-                "sovereign or delete the module (PLAN.md §2), or extend the window with an "
-                "explicit, reviewable ledger edit"
+                "sovereign or delete the module (PROVENANCE-LEDGER.md \"Soak fuse\"), or extend "
+                "the window with an explicit, reviewable ledger edit"
             )
     return errors
 
@@ -217,11 +220,12 @@ def check_verbatim_recompute(rows: list[dict]) -> list[str]:
     on wave0/drift-metric.
 
     WHY dual is included: a 'dual' row's file is still, physically, the
-    unmodified CozoDB-lineage copy soaking before deletion (PLAN.md §2) — it
-    carries a real upstream_path the same as a 'derived' row, and drifting
-    silently during the soak window is exactly the failure this check
-    exists to catch. Only 'sovereign' rows (upstream_path == 'none',
-    nothing to recompute against) are exempt."""
+    unmodified CozoDB-lineage copy soaking before deletion
+    (kanon/projects/aletheia/phases/05g-krites-overhaul/PROVENANCE-LEDGER.md
+    "Statuses") — it carries a real upstream_path the same as a 'derived'
+    row, and drifting silently during the soak window is exactly the
+    failure this check exists to catch. Only 'sovereign' rows
+    (upstream_path == 'none', nothing to recompute against) are exempt."""
     if not UPSTREAM_SNAPSHOT_DIR.is_dir():
         print("krites-provenance: no upstream-snapshot/ present — skipping offline verbatim_pct recompute")
         return []

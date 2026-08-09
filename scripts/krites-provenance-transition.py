@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Apply a PLAN.md §2 status transition (derived -> dual, or dual ->
-sovereign) to named PROVENANCE.toml rows, and re-render NOTICE.md.
+"""Apply a status transition (derived -> dual, or dual -> sovereign; see
+kanon/projects/aletheia/phases/05g-krites-overhaul/PROVENANCE-LEDGER.md
+"Transitions") to named PROVENANCE.toml rows, and re-render NOTICE.md.
 
 WHY this exists as a script rather than a hand-edit: PROVENANCE.toml's own
 header says "do not hand-edit rows" — that norm exists to stop the ledger
@@ -8,9 +9,10 @@ drifting from measured reality (verbatim_pct, upstream_path). A status
 transition is a different kind of edit: a deliberate lifecycle decision, not
 a measurement. Routing it through parse_ledger/dump_ledger keeps it
 type-checked (illegal status values, duplicate rows, the sovereign/
-verbatim_pct cross-check) instead of a raw TOML text edit that could silently
-corrupt an unrelated field. This is infrastructure every wave's land-dark PR
-needs (PLAN.md §2's three-PR discipline), not specific to any one wave —
+verbatim_pct cross-check, the sovereign-path naming rule) instead of a raw
+TOML text edit that could silently corrupt an unrelated field. This is
+infrastructure every wave's land-dark PR needs (PROVENANCE-LEDGER.md's
+three-PR landing discipline), not specific to any one wave —
 scripts/measure-krites-provenance.py regenerates verbatim_pct/upstream_path
 but never asserts a status past 'derived' or 'sovereign' on its own, by
 design (see its load_graduated_status()).
