@@ -430,7 +430,11 @@ async fn add_credential_publishes_success_audit_event() {
     assert_eq!(event.payload["actor"], "test-user");
     assert_eq!(event.payload["actor_role"], "operator");
     assert_eq!(event.payload["error_code"], serde_json::Value::Null);
-    assert!(event.payload["request_id"].as_str().is_some_and(|s| !s.is_empty()));
+    assert!(
+        event.payload["request_id"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+    );
     assert_eq!(event.payload["runtime_effect"], "restart_required");
 
     // SECURITY: the audit payload must never carry the raw credential value.

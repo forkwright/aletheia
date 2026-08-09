@@ -180,7 +180,10 @@ impl CredentialRuntimeManager {
     /// [`hermeneus::health::ProviderHealth`] variant, all of which mean a
     /// provider instance exists and is being tracked.
     #[must_use]
-    pub fn provider_availability(&self, provider: &str) -> Option<hermeneus::health::ProviderHealth> {
+    pub fn provider_availability(
+        &self,
+        provider: &str,
+    ) -> Option<hermeneus::health::ProviderHealth> {
         self.provider_registry.provider_health(provider)
     }
 
