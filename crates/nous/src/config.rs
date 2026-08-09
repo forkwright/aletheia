@@ -309,6 +309,15 @@ pub struct NousConfig {
     /// Whether this agent's workspace is hidden from public discovery.
     #[serde(default)]
     pub private: bool,
+    /// Cross-agent spawn nesting depth (0 = top-level/user-facing agent;
+    /// 1+ = an ephemeral sub-agent spawned via `sessions_spawn`/`sessions_dispatch`).
+    ///
+    /// Feeds `hermeneus::complexity::ComplexityInput::depth`, which lets
+    /// `score_complexity` force the Opus tier for cross-agent turns. Static
+    /// agent configs never set this; `SpawnServiceImpl::build_spawn_config`
+    /// sets it for every ephemeral sub-agent it constructs.
+    #[serde(default)]
+    pub spawn_depth: u32,
     /// Episteme knowledge-store cohort for this agent.
     #[serde(default = "default_episteme_cohort", with = "arc_str")]
     pub episteme_cohort: Arc<str>,
@@ -471,6 +480,7 @@ impl Default for NousConfig {
             limits: NousLimits::default(),
             domains: Vec::new(),
             private: false,
+            spawn_depth: 0,
             episteme_cohort: default_episteme_cohort(),
             workspace: default_workspace(),
             allowed_roots: Vec::new(),
@@ -800,6 +810,7 @@ mod tests {
             },
             domains: vec!["medical".to_owned()],
             private: true,
+            spawn_depth: 0,
             episteme_cohort: std::sync::Arc::from("shared"),
             workspace: std::path::PathBuf::from("/tmp/analyst"),
             allowed_roots: vec![std::path::PathBuf::from("/tmp")],

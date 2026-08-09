@@ -41,7 +41,8 @@ use common::{StateBuilder, issue_token, issue_token_with_nous_id};
 /// Build a test router in stateless+json mode.
 fn test_router(state: &Arc<DiaporeiaState>) -> axum::Router {
     let rate_cfg = state.config.try_read().unwrap().mcp.rate_limit.clone();
-    let server = DiaporeiaServer::with_state(Arc::clone(state), &rate_cfg);
+    let rate_limiter = Arc::new(diaporeia::rate_limit::RateLimiter::from_config(&rate_cfg));
+    let server = DiaporeiaServer::with_state(Arc::clone(state), rate_limiter);
 
     let auth_state = Arc::clone(state);
     let service = rmcp::transport::streamable_http_server::tower::StreamableHttpService::new(

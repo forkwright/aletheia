@@ -148,6 +148,22 @@ fn oikos_validate_workspace_path_accepts_existing_relative_dir() {
 }
 
 #[test]
+fn oikos_validate_workspace_path_rejects_absolute_path_outside_root() {
+    // SECURITY(#5561): a real, existing directory outside the instance root
+    // must be rejected even when supplied as an absolute path.
+    let dir = make_valid_instance();
+    let outside = tempfile::tempdir().expect("outside temp dir");
+    let oikos = Oikos::from_root(dir.path());
+    let abs = outside.path().to_string_lossy().into_owned();
+
+    let err = oikos.validate_workspace_path(&abs).unwrap_err();
+    assert!(
+        matches!(err, Error::PathOutsideRoot { .. }),
+        "expected PathOutsideRoot, got {err:?}"
+    );
+}
+
+#[test]
 fn oikos_validate_workspace_path_rejects_missing_directory() {
     let dir = make_valid_instance();
     let oikos = Oikos::from_root(dir.path());

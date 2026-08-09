@@ -24,6 +24,8 @@ mod lesson_e2e;
 #[cfg(feature = "mneme-engine")]
 mod migration;
 #[cfg(feature = "mneme-engine")]
+mod migration_atomicity;
+#[cfg(feature = "mneme-engine")]
 mod proptests;
 #[cfg(feature = "mneme-engine")]
 mod search;

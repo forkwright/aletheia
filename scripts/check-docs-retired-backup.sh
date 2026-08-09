@@ -56,6 +56,11 @@ scan_pattern "--export-json flag" '--export-json'
 scan_pattern "backup-cron.sh helper" 'backup-cron\.sh'
 scan_pattern "aletheia-backup helper" '(^|[^[:alnum:]_.-])aletheia-backup([^[:alnum:]_.-]|$)'
 scan_pattern "ergon default path" '(~|\$HOME)/ergon|/ergon/(instance|bin)'
+# WHY(#5107): the top-level `backup --list`/`backup --prune` flags let
+# invalid combinations parse and silently dispatch list before prune.
+# They are retired in favor of the `list`/`prune` subcommands.
+scan_pattern "backup --list legacy flag" 'backup --list'
+scan_pattern "backup --prune legacy flag" 'backup --prune'
 
 if (( failures > 0 )); then
     exit 1

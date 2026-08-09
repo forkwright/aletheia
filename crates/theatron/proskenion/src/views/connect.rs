@@ -28,7 +28,7 @@ const CARD_STYLE: &str = "\
     background: var(--bg-surface); \
     border-radius: var(--radius-lg); \
     padding: 40px; \
-    width: 400px; \
+    width: min(var(--connect-width), calc(100vw - var(--space-8))); \
     display: flex; \
     flex-direction: column; \
     gap: var(--space-4);\

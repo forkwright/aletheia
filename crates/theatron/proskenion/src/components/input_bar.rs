@@ -5,92 +5,6 @@ use dioxus::prelude::*;
 use crate::state::commands::{CommandStore, CommandUiState};
 use crate::state::input::InputState;
 
-const INPUT_BAR_STYLE: &str = "\
-    display: flex; \
-    gap: var(--space-2); \
-    padding: var(--space-3) var(--space-4); \
-    background: var(--bg-surface); \
-    border-top: 1px solid var(--border); \
-    align-items: flex-end; \
-    box-shadow: 0 -1px 3px rgb(18 17 15 / 0.08);\
-";
-
-const TEXTAREA_STYLE: &str = "\
-    flex: 1; \
-    background: var(--input-bg); \
-    border: 1px solid var(--input-border); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-3) var(--space-4); \
-    color: var(--text-primary); \
-    font-size: var(--text-base); \
-    font-family: var(--font-body); \
-    resize: none; \
-    overflow-y: auto; \
-    min-height: 40px; \
-    max-height: 200px; \
-    line-height: var(--leading-normal);\
-";
-
-const TEXTAREA_DISABLED_STYLE: &str = "\
-    flex: 1; \
-    background: var(--bg-surface-dim); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-3) var(--space-4); \
-    color: var(--text-muted); \
-    font-size: var(--text-base); \
-    font-family: var(--font-body); \
-    resize: none; \
-    overflow-y: auto; \
-    min-height: 40px; \
-    max-height: 200px; \
-    line-height: var(--leading-normal);\
-";
-
-const SEND_BTN_STYLE: &str = "\
-    background: var(--accent); \
-    color: var(--text-inverse); \
-    border: none; \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
-    font-weight: var(--weight-semibold); \
-    cursor: pointer; \
-    white-space: nowrap; \
-    transition: background-color 150ms ease, transform 120ms ease; \
-    flex-shrink: 0; \
-    min-width: 70px;\
-";
-
-const SEND_BTN_DISABLED: &str = "\
-    background: var(--border); \
-    color: var(--text-muted); \
-    border: none; \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
-    font-weight: var(--weight-semibold); \
-    cursor: not-allowed; \
-    white-space: nowrap; \
-    flex-shrink: 0; \
-    min-width: 70px;\
-";
-
-const ABORT_BTN_STYLE: &str = "\
-    background: var(--status-error); \
-    color: var(--text-inverse); \
-    border: none; \
-    border-radius: var(--radius-md); \
-    padding: var(--space-2) var(--space-4); \
-    font-size: var(--text-sm); \
-    font-weight: var(--weight-semibold); \
-    cursor: pointer; \
-    white-space: nowrap; \
-    transition: background-color 150ms ease, transform 120ms ease; \
-    flex-shrink: 0; \
-    min-width: 70px;\
-";
-
 /// Props for the [`InputBar`] component.
 #[derive(Props, Clone, PartialEq)]
 pub(crate) struct InputBarProps {
@@ -153,9 +67,9 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
 
     rsx! {
         div {
-            style: "{INPUT_BAR_STYLE}",
+            class: "input-bar",
             textarea {
-                style: if is_streaming { "{TEXTAREA_DISABLED_STYLE}" } else { "{TEXTAREA_STYLE}" },
+                class: "input-bar-textarea",
                 placeholder: if is_streaming { "Streaming..." } else { "Type a message... (Enter to send, Shift+Enter for newline)" },
                 disabled: is_streaming,
                 rows: "1",
@@ -234,13 +148,13 @@ pub(crate) fn InputBar(props: InputBarProps) -> Element {
             }
             if is_streaming {
                 button {
-                    style: "{ABORT_BTN_STYLE}",
+                    class: "btn-chat-action btn-abort",
                     onclick: move |_| on_abort.call(()),
                     "Abort"
                 }
             } else {
                 button {
-                    style: if can_submit { "{SEND_BTN_STYLE}" } else { "{SEND_BTN_DISABLED}" },
+                    class: "btn-chat-action btn-send",
                     disabled: !can_submit,
                     onclick: move |_| do_submit(),
                     "Send"
