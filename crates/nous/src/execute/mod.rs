@@ -238,6 +238,32 @@ fn build_llm_future<'a>(
     }
 }
 
+/// What the execute loop runs against: the turn's context, session, config,
+/// and the environment handles (`providers`/`tools`/`tool_ctx`) needed to
+/// actually call an LLM and dispatch tools.
+pub(crate) struct ExecuteRequest<'a> {
+    pub(crate) ctx: &'a PipelineContext,
+    pub(crate) session: &'a SessionState,
+    pub(crate) config: &'a NousConfig,
+    pub(crate) providers: &'a ProviderRegistry,
+    pub(crate) tools: &'a ToolRegistry,
+    pub(crate) tool_ctx: &'a ToolContext,
+}
+
+/// Optional cross-cutting policy for one execute call: streaming output,
+/// human approval, lifecycle hooks, a cooperative wall-clock deadline, and
+/// prompt-audit logging. Distinct from [`ExecuteRequest`] because none of
+/// these change *what* the turn runs against, only how it is observed or
+/// bounded while it runs.
+#[derive(Default)]
+pub(crate) struct ExecuteAdapters<'a> {
+    pub(crate) stream_tx: Option<&'a mpsc::Sender<TurnStreamEvent>>,
+    pub(crate) approval_gate: Option<&'a ApprovalGate>,
+    pub(crate) hooks: Option<&'a HookRegistry>,
+    pub(crate) deadline: Option<Instant>,
+    pub(crate) audit_log: Option<&'a crate::audit::PromptAuditLog>,
+}
+
 /// Execute stage: calls the LLM and iterates on tool use.
 ///
 /// This is the core agent loop. It:
@@ -278,42 +304,49 @@ pub async fn execute(
     hooks: Option<&HookRegistry>,
 ) -> error::Result<TurnResult> {
     execute_with_deadline(
-        ctx, session, config, providers, tools, tool_ctx, None, None, hooks, None, None,
+        ExecuteRequest {
+            ctx,
+            session,
+            config,
+            providers,
+            tools,
+            tool_ctx,
+        },
+        ExecuteAdapters {
+            hooks,
+            ..Default::default()
+        },
     )
     .await
 }
 
-#[instrument(skip_all, fields(nous_id = %session.nous_id, session_id = %session.id))]
+#[instrument(skip_all, fields(nous_id = %request.session.nous_id, session_id = %request.session.id))]
 pub(crate) async fn execute_with_deadline(
-    ctx: &PipelineContext,
-    session: &SessionState,
-    config: &NousConfig,
-    providers: &ProviderRegistry,
-    tools: &ToolRegistry,
-    tool_ctx: &ToolContext,
-    stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
-    approval_gate: Option<&ApprovalGate>,
-    hooks: Option<&HookRegistry>,
-    deadline: Option<Instant>,
-    audit_log: Option<&crate::audit::PromptAuditLog>,
+    request: ExecuteRequest<'_>,
+    adapters: ExecuteAdapters<'_>,
 ) -> error::Result<TurnResult> {
-    let tool_count = config.tool_allowlist.as_ref().map_or_else(
-        || tools.definitions_for_policy(&config.tool_groups).len(),
+    let tool_count = request.config.tool_allowlist.as_ref().map_or_else(
+        || {
+            request
+                .tools
+                .definitions_for_policy(&request.config.tool_groups)
+                .len()
+        },
         Vec::len,
     );
-    let turn_route = resolve_turn_route(ctx, config, providers, tool_count);
+    let turn_route = resolve_turn_route(request.ctx, request.config, request.providers, tool_count);
     run_execute_loop(
-        ctx,
-        session,
-        config,
-        providers,
-        tools,
-        tool_ctx,
-        stream_tx,
-        approval_gate,
-        hooks,
-        deadline,
-        audit_log,
+        request.ctx,
+        request.session,
+        request.config,
+        request.providers,
+        request.tools,
+        request.tool_ctx,
+        adapters.stream_tx,
+        adapters.approval_gate,
+        adapters.hooks,
+        adapters.deadline,
+        adapters.audit_log,
         turn_route,
         LlmTransport::NonStreaming,
     )

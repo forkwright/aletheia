@@ -1,5 +1,7 @@
 //! Registry-backed model/provider fallback for the execute stage.
 
+use std::ops::ControlFlow;
+
 use hermeneus::anthropic::StreamEvent;
 use hermeneus::error as llm_error;
 use hermeneus::health::ProviderHealth;
@@ -43,14 +45,10 @@ struct RawAttempt {
     /// False when route/health resolution failed before any request left
     /// the process — see [`RegistryFallbackCompletion::attempts`].
     attempted: bool,
-}
-
-/// Outcome of one raw streaming provider call attempt.
-struct RawStreamingAttempt {
-    result: llm_error::Result<(CompletionResponse, String)>,
-    attempted: bool,
     /// True once at least one stream chunk reached the caller, past which a
-    /// route switch would risk duplicated or incoherent output.
+    /// route switch would risk duplicated or incoherent output. Always
+    /// `false` for a non-streaming attempt, which makes it a no-op in the
+    /// shared terminal-error check in [`record_attempt`].
     emitted_stream_event: bool,
 }
 
@@ -80,32 +78,16 @@ pub(super) async fn complete_with_registry_fallback(
 
         let routed_request = request_for_route(request, primary_route);
         let raw = complete_once(providers, primary_route, &routed_request).await;
-        if raw.attempted {
-            attempts += 1;
-        }
-        match raw.result {
-            Ok((response, provider)) => {
-                return Ok(RegistryFallbackCompletion {
-                    response,
-                    model: primary_route.model.clone(),
-                    provider,
-                    attempts,
-                });
-            }
-            Err(e) => {
-                if !e.is_retryable() {
-                    return Err(e);
-                }
-                tracing::warn!(
-                    model = %primary_route.model,
-                    provider = primary_route.provider.as_deref().unwrap_or("model-only"),
-                    attempt,
-                    error = %redact_sensitive(&e.to_string()),
-                    "primary model route failed with retryable error"
-                );
-                attempt_errors.push(format!("{primary_label}: {e}"));
-                last_error = Some(e);
-            }
+        if let ControlFlow::Break(result) = record_attempt(
+            primary_route,
+            raw,
+            "primary model route failed with retryable error",
+            attempt,
+            &mut attempts,
+            &mut attempt_errors,
+            &mut last_error,
+        ) {
+            return result;
         }
     }
 
@@ -133,32 +115,16 @@ pub(super) async fn complete_with_registry_fallback(
             }
 
             let raw = complete_once(providers, fallback_route, &routed_request).await;
-            if raw.attempted {
-                attempts += 1;
-            }
-            match raw.result {
-                Ok((response, provider)) => {
-                    return Ok(RegistryFallbackCompletion {
-                        response,
-                        model: fallback_route.model.clone(),
-                        provider,
-                        attempts,
-                    });
-                }
-                Err(e) => {
-                    if !e.is_retryable() {
-                        return Err(e);
-                    }
-                    tracing::warn!(
-                        model = %fallback_route.model,
-                        provider = fallback_route.provider.as_deref().unwrap_or("model-only"),
-                        attempt = fallback_attempt,
-                        error = %redact_sensitive(&e.to_string()),
-                        "fallback model route failed with retryable error"
-                    );
-                    attempt_errors.push(format!("{fallback_label}: {e}"));
-                    last_error = Some(e);
-                }
+            if let ControlFlow::Break(result) = record_attempt(
+                fallback_route,
+                raw,
+                "fallback model route failed with retryable error",
+                fallback_attempt,
+                &mut attempts,
+                &mut attempt_errors,
+                &mut last_error,
+            ) {
+                return result;
             }
         }
     }
@@ -203,32 +169,16 @@ pub(super) async fn complete_streaming_with_registry_fallback(
         let routed_request = request_for_route(request, primary_route);
         let raw =
             complete_streaming_once(providers, primary_route, &routed_request, on_event).await;
-        if raw.attempted {
-            attempts += 1;
-        }
-        match raw.result {
-            Ok((response, provider)) => {
-                return Ok(RegistryFallbackCompletion {
-                    response,
-                    model: primary_route.model.clone(),
-                    provider,
-                    attempts,
-                });
-            }
-            Err(e) => {
-                if raw.emitted_stream_event || !e.is_retryable() {
-                    return Err(e);
-                }
-                tracing::warn!(
-                    model = %primary_route.model,
-                    provider = primary_route.provider.as_deref().unwrap_or("model-only"),
-                    attempt,
-                    error = %redact_sensitive(&e.to_string()),
-                    "primary streaming model route failed with retryable error before stream output"
-                );
-                attempt_errors.push(format!("{primary_label}: {e}"));
-                last_error = Some(e);
-            }
+        if let ControlFlow::Break(result) = record_attempt(
+            primary_route,
+            raw,
+            "primary streaming model route failed with retryable error before stream output",
+            attempt,
+            &mut attempts,
+            &mut attempt_errors,
+            &mut last_error,
+        ) {
+            return result;
         }
     }
 
@@ -257,32 +207,16 @@ pub(super) async fn complete_streaming_with_registry_fallback(
 
             let raw =
                 complete_streaming_once(providers, fallback_route, &routed_request, on_event).await;
-            if raw.attempted {
-                attempts += 1;
-            }
-            match raw.result {
-                Ok((response, provider)) => {
-                    return Ok(RegistryFallbackCompletion {
-                        response,
-                        model: fallback_route.model.clone(),
-                        provider,
-                        attempts,
-                    });
-                }
-                Err(e) => {
-                    if raw.emitted_stream_event || !e.is_retryable() {
-                        return Err(e);
-                    }
-                    tracing::warn!(
-                        model = %fallback_route.model,
-                        provider = fallback_route.provider.as_deref().unwrap_or("model-only"),
-                        attempt = fallback_attempt,
-                        error = %redact_sensitive(&e.to_string()),
-                        "fallback streaming model route failed with retryable error before stream output"
-                    );
-                    attempt_errors.push(format!("{fallback_label}: {e}"));
-                    last_error = Some(e);
-                }
+            if let ControlFlow::Break(result) = record_attempt(
+                fallback_route,
+                raw,
+                "fallback streaming model route failed with retryable error before stream output",
+                fallback_attempt,
+                &mut attempts,
+                &mut attempt_errors,
+                &mut last_error,
+            ) {
+                return result;
             }
         }
     }
@@ -292,6 +226,51 @@ pub(super) async fn complete_streaming_with_registry_fallback(
         &attempt_errors,
         !config.fallback_routes.is_empty(),
     )
+}
+
+/// Fold one raw provider-call attempt into the running fallback state.
+///
+/// `ControlFlow::Break` carries the result that should propagate
+/// immediately: a completed response, or an error that is either
+/// non-retryable or arrived after streaming had already committed output to
+/// the caller. `ControlFlow::Continue` means the attempt was a retryable
+/// failure — it has been logged and recorded — and the caller should retry
+/// the route or move on to the next one.
+fn record_attempt(
+    route: &ModelProviderRoute,
+    raw: RawAttempt,
+    failure_label: &'static str,
+    attempt: u32,
+    attempts: &mut u32,
+    attempt_errors: &mut Vec<String>,
+    last_error: &mut Option<llm_error::Error>,
+) -> ControlFlow<llm_error::Result<RegistryFallbackCompletion>> {
+    if raw.attempted {
+        *attempts += 1;
+    }
+    match raw.result {
+        Ok((response, provider)) => ControlFlow::Break(Ok(RegistryFallbackCompletion {
+            response,
+            model: route.model.clone(),
+            provider,
+            attempts: *attempts,
+        })),
+        Err(e) => {
+            if raw.emitted_stream_event || !e.is_retryable() {
+                return ControlFlow::Break(Err(e));
+            }
+            tracing::warn!(
+                model = %route.model,
+                provider = route.provider.as_deref().unwrap_or("model-only"),
+                attempt,
+                error = %redact_sensitive(&e.to_string()),
+                "{failure_label}"
+            );
+            attempt_errors.push(format!("{}: {e}", route_label(route)));
+            *last_error = Some(e);
+            ControlFlow::Continue(())
+        }
+    }
 }
 
 async fn complete_once(
@@ -305,6 +284,7 @@ async fn complete_once(
             return RawAttempt {
                 result: Err(e),
                 attempted: false,
+                emitted_stream_event: false,
             };
         }
     };
@@ -322,6 +302,7 @@ async fn complete_once(
     RawAttempt {
         result,
         attempted: true,
+        emitted_stream_event: false,
     }
 }
 
@@ -330,11 +311,11 @@ async fn complete_streaming_once(
     route: &ModelProviderRoute,
     request: &CompletionRequest,
     on_event: &mut (dyn FnMut(StreamEvent) + Send),
-) -> RawStreamingAttempt {
+) -> RawAttempt {
     let provider = match resolve_provider_for_route(providers, route) {
         Ok(provider) => provider,
         Err(e) => {
-            return RawStreamingAttempt {
+            return RawAttempt {
                 result: Err(e),
                 attempted: false,
                 emitted_stream_event: false,
@@ -359,7 +340,7 @@ async fn complete_streaming_once(
         Err(e) => providers.record_error(&provider_name, e),
     }
 
-    RawStreamingAttempt {
+    RawAttempt {
         result: result.map(|response| (response, provider_name)),
         attempted: true,
         emitted_stream_event,

@@ -846,17 +846,21 @@ pub(super) async fn run_execute_stage(
             .await
         } else {
             crate::execute::execute_with_deadline(
-                ctx,
-                &input.session,
-                config,
-                providers,
-                tools,
-                tool_ctx,
-                None,
-                approval_gate,
-                hooks,
-                execute_deadline,
-                audit_log,
+                crate::execute::ExecuteRequest {
+                    ctx,
+                    session: &input.session,
+                    config,
+                    providers,
+                    tools,
+                    tool_ctx,
+                },
+                crate::execute::ExecuteAdapters {
+                    approval_gate,
+                    hooks,
+                    deadline: execute_deadline,
+                    audit_log,
+                    ..Default::default()
+                },
             )
             .await
         }
