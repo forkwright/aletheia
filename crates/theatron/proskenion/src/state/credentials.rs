@@ -24,23 +24,54 @@ impl CredentialRole {
     }
 }
 
-/// Validation status of a credential.
+/// Validation status of a credential, as surfaced by the last check.
+///
+/// WHY(#4875): this alone never distinguishes a real provider round trip from
+/// local-only inspection (does the file load, has it not locally expired) —
+/// pair it with `CredentialEntry::provider_verified` for that distinction.
+/// Previously this type collapsed everything but a bare "valid"/"expired"
+/// string into `Untested`, which meant an explicit provider *rejection*
+/// rendered identically to "never checked".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub(crate) enum ValidationStatus {
-    /// Credential tested and accepted by provider.
+    /// Accepted: the file loads and, when checked, the provider authenticated it.
     Valid,
-    /// Credential tested and rejected by provider.
+    /// The provider explicitly rejected the credential.
+    Invalid,
+    /// Locally known expired (kept distinct from an explicit rejection).
     Expired,
-    /// Credential has not been tested.
+    /// The stored credential value is empty or otherwise malformed.
+    Malformed,
+    /// The provider could not be reached; not evidence the key is bad.
+    Unreachable,
+    /// Never validated, or no live-check exists for this provider.
     Untested,
 }
 
 impl ValidationStatus {
+    /// Parse the wire `status` string returned by `GET`/`POST` credential
+    /// endpoints. Unrecognized values fall back to `Untested` rather than
+    /// panicking or guessing — a forward-compatible default for any future
+    /// server-side status this client doesn't know about yet.
+    pub(crate) fn from_wire(status: &str) -> Self {
+        match status {
+            "valid" => Self::Valid,
+            "invalid" => Self::Invalid,
+            "expired" => Self::Expired,
+            "malformed" => Self::Malformed,
+            "unreachable" => Self::Unreachable,
+            _ => Self::Untested,
+        }
+    }
+
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Valid => "Valid",
+            Self::Invalid => "Invalid",
             Self::Expired => "Expired",
+            Self::Malformed => "Malformed",
+            Self::Unreachable => "Unreachable",
             Self::Untested => "Untested",
         }
     }
@@ -48,7 +79,8 @@ impl ValidationStatus {
     pub(crate) fn color(self) -> &'static str {
         match self {
             Self::Valid => "var(--status-success)",
-            Self::Expired => "var(--status-error)",
+            Self::Invalid | Self::Expired | Self::Malformed => "var(--status-error)",
+            Self::Unreachable => "var(--status-warning)",
             Self::Untested => "var(--text-secondary)",
         }
     }

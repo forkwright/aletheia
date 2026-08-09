@@ -30,10 +30,6 @@ pub struct AuthConfig {
 pub struct AuthService {
     jwt: JwtManager,
     store: AuthStore,
-    /// Shared HTTP client for provider-aware credential validation (#4875).
-    /// One client per `AuthService` so connection pooling is reused across
-    /// validate calls rather than paying a fresh handshake each time.
-    http_client: reqwest::Client,
 }
 
 /// Canonical production auth facade.
@@ -67,11 +63,7 @@ impl AuthService {
     pub fn new(config: AuthConfig, db_path: &Path) -> Result<Self> {
         let store = AuthStore::open(db_path)?;
         let jwt = JwtManager::new(config.jwt);
-        Ok(Self {
-            jwt,
-            store,
-            http_client: reqwest::Client::new(),
-        })
+        Ok(Self { jwt, store })
     }
 
     /// Create an auth service with an in-memory auth store.
@@ -82,11 +74,7 @@ impl AuthService {
     pub fn in_memory(config: AuthConfig) -> Result<Self> {
         let store = AuthStore::open_in_memory()?;
         let jwt = JwtManager::new(config.jwt);
-        Ok(Self {
-            jwt,
-            store,
-            http_client: reqwest::Client::new(),
-        })
+        Ok(Self { jwt, store })
     }
 
     /// Register a new user with a hashed password.
@@ -304,8 +292,17 @@ impl AuthService {
     /// how to reach live. See [`crate::credential::admin::validate`].
     ///
     /// The response never contains raw secret material.
+    ///
+    /// WHY: the HTTP client is built here, at the point of use, rather than
+    /// held as an `AuthService` field — mirroring `credential::refresh`'s
+    /// `refresh_loop`, the only other place this crate builds one. Building
+    /// it eagerly in `new`/`in_memory` would force every `AuthService`
+    /// construction (including test harnesses that never validate a
+    /// credential) to require a rustls crypto provider already installed
+    /// process-wide, which only the real server binary's `main` does.
     pub async fn validate_credential(&self, root: &Path, id: &str) -> Result<ManagedCredential> {
-        crate::credential::admin::validate(root, id, &self.http_client).await
+        let client = reqwest::Client::new();
+        crate::credential::admin::validate(root, id, &client).await
     }
 
     /// Swap a provider's primary and backup credentials.

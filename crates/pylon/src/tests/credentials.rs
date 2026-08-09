@@ -60,11 +60,33 @@ async fn credentials_list_redacts_secret_material() {
 #[tokio::test]
 async fn credentials_validate_redacts_secret_material() {
     let (app, _dir) = app().await;
+    let raw_secret = "sk-test-validate-redaction-marker";
+
+    // WHY(#4875): use a provider this crate has no live-check strategy for
+    // (unlike "anthropic"), so validation stays network-free and
+    // deterministic in this test while still exercising the full
+    // add -> validate -> redaction path. The live Anthropic/OpenAI
+    // round-trip paths are covered directly in symbolon's own tests
+    // (crates/symbolon/src/credential/admin.rs, provider_validation_tests).
+    let add = app
+        .clone()
+        .oneshot(authed_request(
+            "POST",
+            "/api/v1/system/credentials",
+            Some(serde_json::json!({
+                "provider": "acme-test-provider",
+                "key": raw_secret,
+                "role": "primary"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(add.status(), StatusCode::CREATED);
 
     let resp = app
         .oneshot(authed_request(
             "POST",
-            "/api/v1/system/credentials/anthropic:primary/validate",
+            "/api/v1/system/credentials/acme-test-provider:primary/validate",
             None,
         ))
         .await
@@ -72,10 +94,13 @@ async fn credentials_validate_redacts_secret_material() {
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
+    // WHY: an unrecognized provider has no live-check strategy, so `status`
+    // falls back to local inspection (file loaded, not locally expired).
     assert!(body.contains(r#""status":"valid""#));
+    assert!(body.contains(r#""validation_state":"unknown""#));
+    assert!(body.contains(r#""provider_verified":false"#));
     assert!(body.contains("last_validated"));
-    assert!(!body.contains("sk-ant-test-key-for-health-checks"));
-    assert!(!body.contains("health-checks"));
+    assert!(!body.contains(raw_secret));
 }
 
 #[tokio::test]
