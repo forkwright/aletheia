@@ -497,6 +497,122 @@ fn store_roundtrip_across_reopen() {
 }
 
 #[test]
+fn multi_child_dispatch_reconstructs_after_process_restart() {
+    // WHY(#4800): a durable dispatch must be fully replayable from storage
+    // alone -- this simulates a process restart (drop the db handle, reopen
+    // a fresh one at the same path) after a multi-child dispatch completed,
+    // and verifies every child's full attribution (model, failure class,
+    // resume/corrective counts, cache usage, structured output) survives,
+    // not just the aggregate dispatch totals.
+    let temp_dir = TempDir::new().unwrap();
+    let spec = sample_dispatch_spec();
+
+    let dispatch_id = {
+        let db = fjall::Database::builder(temp_dir.path()).open().unwrap();
+        let store = EnergeiaStore::new(&db).unwrap();
+        let dispatch_id = store.create_dispatch("acme", &spec).unwrap();
+
+        store.create_session(&dispatch_id, 1).unwrap();
+        store
+            .update_session(
+                &dispatch_id,
+                1,
+                SessionUpdate {
+                    status: Some(SessionStatus::Success),
+                    session_id: Some("cc-sess-1".to_owned()),
+                    cost_usd: Some(0.42),
+                    num_turns: Some(12),
+                    duration_ms: Some(45_000),
+                    pr_url: Some("https://github.com/acme/repo/pull/1".to_owned()),
+                    model: Some("claude-opus-4".to_owned()),
+                    resume_count: Some(1),
+                    corrective_attempts: Some(2),
+                    cache_hit_tokens: Some(1_500),
+                    cache_miss_tokens: Some(300),
+                    structured_output: Some(serde_json::json!({"kind": "feature"})),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        store.create_session(&dispatch_id, 2).unwrap();
+        store
+            .update_session(
+                &dispatch_id,
+                2,
+                SessionUpdate {
+                    status: Some(SessionStatus::InfraFailure),
+                    cost_usd: Some(0.01),
+                    error: Some("rate limit utilization exceeded 98%".to_owned()),
+                    failure_class: Some(crate::types::FailureClass::RateLimit),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        store.create_session(&dispatch_id, 3).unwrap();
+        // Session 3 stays at its create_session defaults (Skipped): a
+        // prompt whose dependency failed before it ever dispatched.
+
+        store
+            .finish_dispatch(&dispatch_id, DispatchStatus::Completed)
+            .unwrap();
+
+        dispatch_id
+    };
+    // WHY: dropping `store`/`db` here (end of the block above) simulates the
+    // process exiting; the reopen below simulates a fresh process starting.
+
+    let db2 = fjall::Database::builder(temp_dir.path()).open().unwrap();
+    let store2 = EnergeiaStore::new(&db2).unwrap();
+
+    let export = store2.export_dispatch(&dispatch_id).unwrap();
+    assert_eq!(export.dispatch.status, DispatchStatus::Completed);
+    assert_eq!(export.dispatch.total_sessions, 3);
+    assert!((export.dispatch.total_cost_usd - 0.43).abs() < 0.001);
+    assert_eq!(export.sessions.len(), 3);
+
+    let s1 = &export.sessions[0];
+    assert_eq!(s1.prompt_number, 1);
+    assert_eq!(s1.status, SessionStatus::Success);
+    assert_eq!(s1.session_id.as_deref(), Some("cc-sess-1"));
+    assert_eq!(s1.model.as_deref(), Some("claude-opus-4"));
+    assert_eq!(s1.resume_count, 1);
+    assert_eq!(s1.corrective_attempts, 2);
+    assert_eq!(s1.cache_hit_tokens, 1_500);
+    assert_eq!(s1.cache_miss_tokens, 300);
+    assert_eq!(
+        s1.structured_output,
+        Some(serde_json::json!({"kind": "feature"}))
+    );
+
+    let s2 = &export.sessions[1];
+    assert_eq!(s2.prompt_number, 2);
+    assert_eq!(s2.status, SessionStatus::InfraFailure);
+    assert_eq!(s2.failure_class, Some(crate::types::FailureClass::RateLimit));
+    assert_eq!(s2.error.as_deref(), Some("rate limit utilization exceeded 98%"));
+
+    let s3 = &export.sessions[2];
+    assert_eq!(s3.prompt_number, 3);
+    assert_eq!(s3.status, SessionStatus::Skipped);
+
+    // list_recent_dispatch_exports must reconstruct the same dispatch too.
+    let recent = store2.list_recent_dispatch_exports(10).unwrap();
+    assert!(
+        recent
+            .iter()
+            .any(|d| d.dispatch.id == dispatch_id && d.sessions.len() == 3)
+    );
+}
+
+#[test]
+fn export_dispatch_returns_not_found_for_unknown_id() {
+    let (_dir, store) = setup_test_store();
+    let id = DispatchId::new("01NONEXISTENT");
+    assert!(store.export_dispatch(&id).is_err());
+}
+
+#[test]
 fn debug_format() {
     let temp_dir = TempDir::new().unwrap();
     let db = fjall::Database::builder(temp_dir.path()).open().unwrap();

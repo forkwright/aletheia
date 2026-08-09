@@ -218,13 +218,27 @@ impl EventStream {
                         .rate_limit_info
                         .and_then(|info| info.utilization)
                         .unwrap_or(0.0);
-                    if utilization > 0.98 {
+                    // WHY(#4719): RATE_LIMIT_ABORT_THRESHOLD in session::events
+                    // is the single source of truth for this cutoff -- it
+                    // used to be duplicated here as a bare 0.98 literal while
+                    // the named constant sat unused, an SSOT violation the
+                    // constant's own doc comment predicted ("pending Agent
+                    // SDK integration").
+                    if utilization > crate::session::events::RATE_LIMIT_ABORT_THRESHOLD {
                         tracing::warn!(
                             utilization,
-                            "rate limit utilization >98%, aborting session"
+                            "rate limit utilization exceeds abort threshold, aborting session"
                         );
                         self.rate_limit_exceeded = true;
                         return None;
+                    }
+                    // WHY: below-threshold readings were previously discarded
+                    // entirely -- surface them as a typed SessionEvent so a
+                    // consumer can observe the trend, not just the breach.
+                    self.pending
+                        .push_back(SessionEvent::RateLimit { utilization });
+                    if let Some(event) = self.pending.pop_front() {
+                        return Some(event);
                     }
                 }
                 WireMessage::Human { .. } | WireMessage::Unknown => {}
@@ -525,6 +539,58 @@ mod tests {
         let e1 = stream.next_event().await;
         assert!(matches!(e1, Some(SessionEvent::TextDelta { ref text }) if text == "still going"));
 
+        assert!(!stream.rate_limit_exceeded);
+    }
+
+    #[tokio::test]
+    async fn event_stream_rate_limit_below_threshold_yields_typed_event() {
+        // WHY(#4719): below-threshold rate-limit readings were previously
+        // discarded entirely -- now they surface as SessionEvent::RateLimit
+        // before the stream continues to the next wire message.
+        let ndjson = [
+            r#"{"type":"system","subtype":"init","session_id":"sess-rl3"}"#,
+            r#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","utilization":0.75}}"#,
+            r#"{"type":"assistant","content":[{"type":"text","text":"still going"}]}"#,
+            r#"{"type":"result","session_id":"sess-rl3","subtype":"success","is_error":false,"num_turns":1,"duration_ms":100}"#,
+        ]
+        .join("\n");
+
+        let mut stream = event_stream_from_bytes(ndjson.as_bytes());
+
+        let e1 = stream.next_event().await;
+        assert!(
+            matches!(e1, Some(SessionEvent::RateLimit { utilization }) if (utilization - 0.75).abs() < f64::EPSILON)
+        );
+
+        let e2 = stream.next_event().await;
+        assert!(matches!(e2, Some(SessionEvent::TextDelta { ref text }) if text == "still going"));
+
+        assert!(!stream.rate_limit_exceeded);
+    }
+
+    #[tokio::test]
+    async fn event_stream_rate_limit_uses_ssot_threshold_constant() {
+        // WHY(#4719): the abort cutoff must come from
+        // session::events::RATE_LIMIT_ABORT_THRESHOLD, not a duplicated
+        // literal. A reading exactly at the constant's value must NOT abort
+        // (the check is strictly `>`, matching the constant's own doc).
+        let at_threshold = crate::session::events::RATE_LIMIT_ABORT_THRESHOLD;
+        let ndjson = [
+            r#"{"type":"system","subtype":"init","session_id":"sess-rl4"}"#,
+            format!(
+                r#"{{"type":"rate_limit_event","rate_limit_info":{{"status":"allowed_warning","utilization":{at_threshold}}}}}"#
+            ),
+            r#"{"type":"result","session_id":"sess-rl4","subtype":"success","is_error":false,"num_turns":1,"duration_ms":100}"#.to_owned(),
+        ]
+        .join("\n");
+
+        let mut stream = event_stream_from_bytes(ndjson.as_bytes());
+
+        let e1 = stream.next_event().await;
+        assert!(
+            matches!(e1, Some(SessionEvent::RateLimit { utilization }) if (utilization - at_threshold).abs() < f64::EPSILON),
+            "a reading exactly at the threshold must not abort: {e1:?}"
+        );
         assert!(!stream.rate_limit_exceeded);
     }
 
