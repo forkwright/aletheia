@@ -548,8 +548,7 @@ fn persist_refresh_success_write_failure_records_error_not_ok() {
         &before_buf,
         "aletheia_token_refreshes_total{status=\"error\"} ",
     );
-    let before_write_fail =
-        counter_value(&before_buf, "aletheia_credential_write_failures_total ");
+    let before_write_fail = counter_value(&before_buf, "aletheia_credential_write_failures_total ");
 
     persist_refresh_success(
         &state,
@@ -566,9 +565,12 @@ fn persist_refresh_success_write_failure_records_error_not_ok() {
     );
 
     // Restore write access so tempdir cleanup on drop doesn't fail.
-    let mut perms = std::fs::metadata(&sub).expect("metadata").permissions();
-    perms.set_readonly(false);
-    std::fs::set_permissions(&sub, perms).expect("restore perms");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&sub).expect("metadata").permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&sub, perms).expect("restore perms");
+    }
 
     let mut after_buf = String::new();
     registry.encode(&mut after_buf).expect("encode");
