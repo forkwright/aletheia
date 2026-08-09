@@ -184,10 +184,10 @@ pub fn parse_changed_files(diff: &str) -> Vec<String> {
 
 /// Verify all changed files fall within the declared blast radius.
 ///
-/// Uses component-based path matching instead of string prefix matching
-/// to prevent path tricks. For example, `src/lib` as a blast radius does
-/// not match `src/library/mod.rs` because `library` is a different path
-/// component than `lib`.
+/// Path-matching rules live in [`crate::diff::all_files_within_blast_radius`],
+/// shared with the steward pipeline; this function additionally reports
+/// which specific file(s) fell outside scope, since only the QA gate needs
+/// per-file detail.
 fn check_blast_radius(
     changed_files: &[String],
     blast_radius: &[String],
@@ -198,21 +198,8 @@ fn check_blast_radius(
     }
 
     for file in changed_files {
-        let file_path = Path::new(file);
-        let within_scope = blast_radius.iter().any(|allowed| {
-            // WHY: A blast radius entry ending with `/` is a directory scope.
-            // Anything under that directory is allowed. Otherwise, exact file
-            // match only. We use component-based matching so that `src/lib/`
-            // does not match `src/library/mod.rs`.
-            if allowed.ends_with('/') {
-                let dir_path = Path::new(allowed.trim_end_matches('/'));
-                path_is_under(file_path, dir_path)
-            } else {
-                file_path == Path::new(allowed)
-            }
-        });
-
-        if !within_scope {
+        let single = std::slice::from_ref(file);
+        if !crate::diff::all_files_within_blast_radius(single, blast_radius) {
             issues.push(MechanicalIssue {
                 kind: MechanicalIssueKind::BlastRadiusViolation,
                 message: format!("file modified outside blast radius: {file}"),
@@ -220,25 +207,6 @@ fn check_blast_radius(
             });
         }
     }
-}
-
-/// Check if `child` is under `parent` using component-based matching.
-///
-/// Returns `true` if every component of `parent` matches the corresponding
-/// leading component of `child`. This prevents false positives from string
-/// prefix matching (e.g., `src/lib` would NOT match `src/library/mod.rs`).
-fn path_is_under(child: &Path, parent: &Path) -> bool {
-    let parent_components: Vec<_> = parent.components().collect();
-    let child_components: Vec<_> = child.components().collect();
-
-    if parent_components.len() > child_components.len() {
-        return false;
-    }
-
-    parent_components
-        .iter()
-        .zip(child_components.iter())
-        .all(|(p, c)| p == c)
 }
 
 /// Scan added lines in the diff for known anti-patterns.

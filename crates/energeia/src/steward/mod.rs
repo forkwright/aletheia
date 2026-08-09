@@ -13,6 +13,8 @@
 //! (GitHub API, git subprocess calls) are abstracted behind backend traits
 //! that callers provide.
 
+/// Backend trait abstracting PR fetch, CI status, and merge execution.
+pub mod backend;
 /// PR classification by CI status, blast radius, and suppression detection.
 pub mod classify;
 /// Merge conflict resolution types and prompt construction.
@@ -28,6 +30,7 @@ pub mod service;
 /// Shared types for steward operations.
 pub mod types;
 
+pub use backend::StewardBackend;
 pub use classify::{
     apply_gate_trailer_override, determine_ci_status, extract_prompt_number,
     extract_qa_verdict_from_body, parse_suppressions,

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use koina::newtype_id;
 
-use crate::types::{QaVerdict, SessionStatus};
+use crate::types::{FailureClass, QaVerdict, SessionStatus};
 
 newtype_id!(
     /// Unique identifier for a dispatch run (ULID, time-sortable).
@@ -63,6 +63,12 @@ impl std::fmt::Display for DispatchStatus {
 }
 
 /// Persistent state of a single session within a dispatch.
+///
+/// WHY(#4800): carries the same run-attribution fields as
+/// [`crate::types::SessionOutcome`] so a child session is fully replayable
+/// from durable storage alone -- model/provider, failure class, resume and
+/// corrective-attempt counts, prompt-cache usage, and structured output all
+/// persist here rather than living only in the in-memory dispatch result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionRecord {
     /// Unique identifier for this session.
@@ -89,9 +95,45 @@ pub struct SessionRecord {
     pub created_at: jiff::Timestamp,
     /// Timestamp of the last update to this session.
     pub updated_at: jiff::Timestamp,
+    // INVARIANT(#4800): `rmp_serde::to_vec` (used by `serialize_msgpack`, not
+    // `to_vec_named`) encodes structs positionally as arrays, not as maps
+    // keyed by field name. Every field below this point was added after
+    // `updated_at`, which is load-bearing: a shorter array from a
+    // pre-existing on-disk record decodes fine because serde fills exhausted
+    // *trailing* positions from `#[serde(default)]`, but it cannot do that
+    // for a field inserted in the middle -- every following field would
+    // silently decode from the wrong array slot. New fields on this struct
+    // must always be appended here, never inserted above.
+    /// LLM model used for this session, if known.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Typed reason bucket for failed sessions.
+    #[serde(default)]
+    pub failure_class: Option<FailureClass>,
+    /// Number of times the session was resumed via health checks.
+    #[serde(default)]
+    pub resume_count: u32,
+    /// Number of QA-driven corrective attempts made for this prompt.
+    #[serde(default)]
+    pub corrective_attempts: u32,
+    /// Tokens read from the prompt cache on this session.
+    #[serde(default)]
+    pub cache_hit_tokens: u64,
+    /// Tokens written to the prompt cache on this session.
+    #[serde(default)]
+    pub cache_miss_tokens: u64,
+    /// Parsed structured output from this session, if the prompt declared
+    /// an output format and the final result was valid JSON.
+    #[serde(default)]
+    pub structured_output: Option<serde_json::Value>,
 }
 
 /// Fields that can be updated on a session after creation.
+///
+/// `None` means "leave unchanged"; every field is written at most once, in
+/// the single post-processing update per outcome, so "leave unchanged" and
+/// "not yet known" coincide -- there is no need to distinguish "unset" from
+/// "explicitly cleared."
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SessionUpdate {
     /// New status for the session, if changed.
@@ -108,6 +150,34 @@ pub struct SessionUpdate {
     pub pr_url: Option<String>,
     /// Error message if the session failed.
     pub error: Option<String>,
+    /// LLM model used for this session.
+    pub model: Option<String>,
+    /// Typed reason bucket for a failed session.
+    pub failure_class: Option<FailureClass>,
+    /// Updated resume count.
+    pub resume_count: Option<u32>,
+    /// Updated corrective-attempt count.
+    pub corrective_attempts: Option<u32>,
+    /// Updated prompt-cache hit token count.
+    pub cache_hit_tokens: Option<u64>,
+    /// Updated prompt-cache miss token count.
+    pub cache_miss_tokens: Option<u64>,
+    /// Parsed structured output from the session.
+    pub structured_output: Option<serde_json::Value>,
+}
+
+/// A dispatch record bundled with all of its child session records.
+///
+/// WHY(#4800): inspection/export tooling outside this crate (a CLI command,
+/// an HTTP endpoint) needs the parent dispatch plus its full per-session
+/// attribution without knowing this crate's fjall key layout. This is the
+/// exported shape.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DispatchExport {
+    /// The parent dispatch record.
+    pub dispatch: DispatchRecord,
+    /// All session records belonging to this dispatch, ordered by prompt number.
+    pub sessions: Vec<SessionRecord>,
 }
 
 /// A lesson learned from dispatch execution.
@@ -314,6 +384,13 @@ mod tests {
             duration_ms: 30_000,
             pr_url: Some("https://github.com/acme/repo/pull/42".to_owned()),
             error: None,
+            model: Some("claude-3-5-sonnet".to_owned()),
+            failure_class: None,
+            resume_count: 2,
+            corrective_attempts: 1,
+            cache_hit_tokens: 500,
+            cache_miss_tokens: 100,
+            structured_output: Some(serde_json::json!({"kind": "feature"})),
             created_at: jiff::Timestamp::now(),
             updated_at: jiff::Timestamp::now(),
         };
@@ -321,6 +398,60 @@ mod tests {
         let back: SessionRecord = rmp_serde::from_slice(&bytes).unwrap();
         assert_eq!(back.prompt_number, 1);
         assert_eq!(back.cost_usd, 0.42);
+        assert_eq!(back.model.as_deref(), Some("claude-3-5-sonnet"));
+        assert_eq!(back.resume_count, 2);
+        assert_eq!(back.corrective_attempts, 1);
+        assert_eq!(back.cache_hit_tokens, 500);
+        assert_eq!(back.cache_miss_tokens, 100);
+        assert_eq!(back.structured_output, Some(serde_json::json!({"kind": "feature"})));
+    }
+
+    #[test]
+    fn session_record_deserializes_from_pre_attribution_msgpack() {
+        // WHY(#4800): records written before this field set existed must still
+        // deserialize -- the new fields all carry `#[serde(default)]`. Simulate
+        // an old record by hand-encoding only the original field set.
+        #[derive(serde::Serialize)]
+        struct LegacySessionRecord {
+            id: SessionId,
+            dispatch_id: DispatchId,
+            prompt_number: u32,
+            status: SessionStatus,
+            session_id: Option<String>,
+            cost_usd: f64,
+            num_turns: u32,
+            duration_ms: u64,
+            pr_url: Option<String>,
+            error: Option<String>,
+            created_at: jiff::Timestamp,
+            updated_at: jiff::Timestamp,
+        }
+
+        let legacy = LegacySessionRecord {
+            id: SessionId::new("01JQSESS02"),
+            dispatch_id: DispatchId::new("01JQXYZ456"),
+            prompt_number: 2,
+            status: SessionStatus::Success,
+            session_id: None,
+            cost_usd: 0.10,
+            num_turns: 3,
+            duration_ms: 1_000,
+            pr_url: None,
+            error: None,
+            created_at: jiff::Timestamp::now(),
+            updated_at: jiff::Timestamp::now(),
+        };
+        let bytes = rmp_serde::to_vec(&legacy).unwrap();
+        let back: SessionRecord = rmp_serde::from_slice(&bytes).unwrap();
+
+        assert_eq!(back.prompt_number, 2);
+        assert!(back.model.is_none());
+        assert!(back.failure_class.is_none());
+        assert_eq!(back.resume_count, 0);
+        assert_eq!(back.corrective_attempts, 0);
+        assert_eq!(back.cache_hit_tokens, 0);
+        assert_eq!(back.cache_miss_tokens, 0);
+        assert!(back.structured_output.is_none());
     }
 
     #[test]
