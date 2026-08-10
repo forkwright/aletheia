@@ -515,6 +515,7 @@ fn sse_event_message_complete_serializes_correctly() {
         },
         provider: None,
         request_id: Some("req-456".to_owned()),
+        error: None,
     };
     let result = sse_event_to_axum_with_id((3, event)).expect("infallible");
     drop(result);

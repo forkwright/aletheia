@@ -414,39 +414,12 @@ pub fn scan_skill_dir(dir: &std::path::Path) -> Result<Vec<(String, String)>, st
 
 /// Convert a skill name into a filesystem-safe slug.
 ///
-/// Lowercases, replaces whitespace/non-alphanumeric runs with `-`, and trims
-/// leading/trailing dashes.
-#[must_use]
-pub(crate) fn slugify(name: &str) -> String {
-    let slug: String = name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                '-'
-            }
-        })
-        .collect();
-
-    let mut result = String::with_capacity(slug.len());
-    let mut prev_dash = true;
-    for c in slug.chars() {
-        if c == '-' {
-            if !prev_dash {
-                result.push('-');
-            }
-            prev_dash = true;
-        } else {
-            result.push(c);
-            prev_dash = false;
-        }
-    }
-    if result.ends_with('-') {
-        result.pop();
-    }
-    result
-}
+/// Re-exported from [`crate::extract::utils::slugify`] so that a name resolves
+/// to one slug everywhere. This is a directory name on disk, and it is also an
+/// entity key elsewhere in the crate; two functions producing different answers
+/// for the same name is a correctness bug, not a style one.
+#[cfg(any(feature = "mneme-engine", test))]
+pub(crate) use crate::extract::utils::slugify;
 
 /// Format a [`SkillContent`] as a CC-native SKILL.md with YAML frontmatter.
 ///

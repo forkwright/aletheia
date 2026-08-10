@@ -58,6 +58,7 @@ fn tool_history_usage() -> UsageRecord {
         cache_read_tokens: 0,
         cache_write_tokens: 0,
         model: Some("test-model".to_owned()),
+        created_at: "2026-03-05T10:00:00Z".to_owned(),
     }
 }
 

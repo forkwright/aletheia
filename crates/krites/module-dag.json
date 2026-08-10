@@ -67,38 +67,38 @@
     {
       "from": "fixed_rule",
       "to": "data",
-      "count": 149,
-      "production_count": 144,
+      "count": 88,
+      "production_count": 83,
       "test_only": false,
-      "first_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:25",
-      "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:25"
+      "first_evidence": "fixed_rule/algos/all_pairs_shortest_path_native.rs:30",
+      "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path_native.rs:30"
     },
     {
       "from": "fixed_rule",
       "to": "parse",
-      "count": 39,
-      "production_count": 39,
+      "count": 22,
+      "production_count": 22,
       "test_only": false,
-      "first_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:32",
-      "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:32"
+      "first_evidence": "fixed_rule/algos/all_pairs_shortest_path_native.rs:36",
+      "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path_native.rs:36"
     },
     {
       "from": "fixed_rule",
       "to": "root",
-      "count": 39,
-      "production_count": 39,
+      "count": 22,
+      "production_count": 22,
       "test_only": false,
-      "first_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:28",
-      "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:28"
+      "first_evidence": "fixed_rule/algos/all_pairs_shortest_path_native.rs:33",
+      "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path_native.rs:33"
     },
     {
       "from": "fixed_rule",
       "to": "runtime",
-      "count": 87,
-      "production_count": 82,
+      "count": 52,
+      "production_count": 47,
       "test_only": false,
-      "first_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:33",
-      "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path.rs:33"
+      "first_evidence": "fixed_rule/algos/all_pairs_shortest_path_native.rs:37",
+      "first_production_evidence": "fixed_rule/algos/all_pairs_shortest_path_native.rs:37"
     },
     {
       "from": "fts",
@@ -380,8 +380,8 @@
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
-  "file_count": 222,
-  "statement_count": 1141,
+  "file_count": 201,
+  "statement_count": 976,
   "required_edges_present": [
     [
       "runtime",

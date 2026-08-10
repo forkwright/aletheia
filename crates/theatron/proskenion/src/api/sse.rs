@@ -25,6 +25,13 @@
 //!
 //! The `SseConnection` struct is intentionally framework-agnostic so it
 //! works with both the TUI event loop and Dioxus coroutines.
+//!
+//! Event parsing (`skene::api::sse::parse_sse_event`) is adopted directly
+//! from skene rather than re-derived here — this module owns only what's
+//! genuinely proskenion-specific: `CancellationToken`-based graceful
+//! shutdown for the Dioxus coroutine lifecycle, and delayed loss
+//! confirmation (`LOSS_CONFIRM_ATTEMPTS`/`LOSS_CONFIRM_WINDOW`) so a single
+//! transient blip never flips UI state or fires a lost/restored toast pair.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -32,14 +39,14 @@ use std::time::Instant;
 
 use futures_util::StreamExt;
 use reqwest::Client;
+use skene::api::sse::parse_sse_event;
 use skene::sse::SseStream;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
-use skene::api::error::{format_error_fields_for_display, format_http_error_body};
+use skene::api::error::format_http_error_body;
 use skene::api::types::SseEvent;
-use skene::id::{NousId, SessionId, TurnId};
 
 /// If no bytes arrive on the wire within this window, the connection is
 /// treated as stale. The subscription stream emits domain events when they
@@ -120,19 +127,23 @@ async fn run_sse_connection(
     // state or fires lost/restored toast pairs.
     let mut lost_at: Option<Instant> = None;
     let mut failed_attempts: u32 = 0;
+    // WHY: sent as Last-Event-ID on reconnect so the server can replay
+    // missed events from the last acknowledged cursor (RFC 7541).
+    let mut last_event_id: Option<String> = None;
 
     loop {
         if child.is_cancelled() {
             return;
         }
 
+        let mut req = client.get(&url).header("Accept", "text/event-stream");
+        if let Some(ref id) = last_event_id {
+            req = req.header("Last-Event-ID", id.as_str());
+        }
         let resp = match tokio::select! {
             biased;
             _ = child.cancelled() => return,
-            result = client
-                .get(&url)
-                .header("Accept", "text/event-stream")
-                .send() => result,
+            result = req.send() => result,
         } {
             Ok(resp) => resp,
             Err(e) => {
@@ -241,6 +252,11 @@ async fn run_sse_connection(
                 }
             };
 
+            // Track the last event ID for Last-Event-ID on reconnect.
+            if let Some(id) = event.id.clone() {
+                last_event_id = Some(id);
+            }
+
             if let Some(parsed) = parse_sse_event(&event.event, &event.data)
                 && tx.send(parsed).await.is_err()
             {
@@ -287,399 +303,39 @@ fn extract_error_message(body: &str, status_code: u16, reason: &str) -> String {
     format_http_error_body(status_code, reason, body)
 }
 
-fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> Option<&'a str> {
-    json.get(field).and_then(|v| v.as_str()).or_else(|| {
-        tracing::warn!(event_type, field, "missing required field in SSE event");
-        None
-    })
-}
-
-fn u32_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<u32> {
-    json.get(field)
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|n| u32::try_from(n).ok())
-        .or_else(|| {
-            tracing::warn!(
-                event_type,
-                field,
-                "missing or invalid u32 field in SSE event"
-            );
-            None
-        })
-}
-
-fn bool_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<bool> {
-    json.get(field)
-        .and_then(serde_json::Value::as_bool)
-        .or_else(|| {
-            tracing::warn!(
-                event_type,
-                field,
-                "missing or invalid bool field in SSE event"
-            );
-            None
-        })
-}
-
-fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
-    let json: serde_json::Value = match serde_json::from_str(data) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(event_type, error = %e, "failed to parse SSE event JSON");
-            return None;
-        }
-    };
-
-    match event_type {
-        "init" => {
-            let active_turns = json
-                .get("activeTurns")
-                .and_then(|v| serde_json::from_value(v.clone()).ok())
-                .or_else(|| {
-                    tracing::warn!("SSE init: missing or invalid activeTurns");
-                    None
-                })?;
-            Some(SseEvent::Init { active_turns })
-        }
-        "turn:before" => Some(SseEvent::TurnBefore {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
-            turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
-        }),
-        "turn:after" => Some(SseEvent::TurnAfter {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
-        }),
-        "tool:called" => Some(SseEvent::ToolCalled {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
-        }),
-        "tool:failed" => Some(SseEvent::ToolFailed {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            tool_name: str_field(&json, "toolName", event_type)?.to_string(),
-            error: json
-                .get("error")
-                .and_then(|e| e.as_str())
-                .unwrap_or("unknown")
-                .to_string(),
-        }),
-        "status:update" => Some(SseEvent::StatusUpdate {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            status: str_field(&json, "status", event_type)?.to_string(),
-        }),
-        "session:created" => Some(SseEvent::SessionCreated {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
-        }),
-        "session:archived" => Some(SseEvent::SessionArchived {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
-        }),
-        "distill:before" => Some(SseEvent::DistillBefore {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-        }),
-        "distill:stage" => Some(SseEvent::DistillStage {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            stage: str_field(&json, "stage", event_type)?.to_string(),
-        }),
-        "distill:after" => Some(SseEvent::DistillAfter {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-        }),
-        "turn.complete" => turn_complete_event(&json, event_type),
-        "fact.created" => fact_created_event(&json, event_type),
-        "nous.lifecycle" => nous_lifecycle_event(&json, event_type),
-        "ping" => Some(SseEvent::Ping),
-        "stream_lagged" => stream_lagged_event(&json),
-        "error" => Some(SseEvent::Error {
-            message: sse_error_message(&json),
-        }),
-        other => {
-            tracing::debug!("unknown SSE event type: {other}");
-            None
-        }
-    }
-}
-
-fn sse_error_message(json: &serde_json::Value) -> String {
-    let message = json
-        .get("message")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("server error");
-    format_error_fields_for_display(
-        message,
-        None,
-        json.get("code").and_then(serde_json::Value::as_str),
-        json.get("request_id")
-            .or_else(|| json.get("requestId"))
-            .and_then(serde_json::Value::as_str),
-        json.get("details"),
-    )
-}
-
-fn stream_lagged_event(json: &serde_json::Value) -> Option<SseEvent> {
-    let dropped = json
-        .get("dropped")
-        .and_then(serde_json::Value::as_u64)
-        .or_else(|| {
-            tracing::warn!("SSE stream_lagged: missing or invalid dropped");
-            None
-        })?;
-    Some(SseEvent::StreamLagged { dropped })
-}
-
-fn turn_complete_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
-    Some(SseEvent::TurnComplete {
-        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
-        session_id: SessionId::from(str_field(json, "session_id", event_type)?.to_string()),
-        turn_id: TurnId::from(str_field(json, "turn_id", event_type)?.to_string()),
-        input_tokens: u32_field(json, "input_tokens", event_type)?,
-        output_tokens: u32_field(json, "output_tokens", event_type)?,
-    })
-}
-
-fn fact_created_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
-    Some(SseEvent::FactCreated {
-        fact_id: str_field(json, "fact_id", event_type)?.to_string(),
-        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
-        content_preview: str_field(json, "content_preview", event_type)?.to_string(),
-    })
-}
-
-fn nous_lifecycle_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
-    Some(SseEvent::NousLifecycle {
-        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
-        event: str_field(json, "event", event_type)?.to_string(),
-        restart_required: bool_field(json, "restart_required", event_type)?,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // WHY(#5892): these two tests pin the specific gap the adoption closed —
+    // both would have returned `None`/silently dropped under proskenion's
+    // former local `parse_sse_event`, which had no `checkpoint:*` arms and
+    // collapsed decode failures to `None` instead of a typed variant. Full
+    // event-type coverage lives in skene's own test suite
+    // (`skene::api::sse::tests`); duplicating it here would just be the same
+    // parallel-maintenance burden this adoption was meant to remove.
+
     #[test]
-    fn parse_turn_before_valid() {
-        let data = r#"{"nousId":"syn","sessionId":"sess-1","turnId":"turn-1"}"#;
-        let result = parse_sse_event("turn:before", data);
-        assert!(result.is_some());
-        if let Some(SseEvent::TurnBefore {
-            nous_id,
-            session_id,
-            turn_id,
-        }) = result
-        {
-            assert_eq!(&*nous_id, "syn");
-            assert_eq!(&*session_id, "sess-1");
-            assert_eq!(&*turn_id, "turn-1");
-        } else {
-            panic!("expected TurnBefore");
-        }
+    fn checkpoint_created_reaches_proskenion_through_the_shared_parser() {
+        // WHY: `services/sse.rs` has handled `SseEvent::CheckpointCreated`
+        // since before this adoption, but the local parser never produced
+        // it — the handler was silently starved. This is the regression
+        // test for that gap.
+        let data = r#"{"projectId":"p1","checkpointId":"cp-1"}"#;
+        let result = parse_sse_event("checkpoint:created", data);
+        assert!(
+            matches!(result, Some(SseEvent::CheckpointCreated { .. })),
+            "expected CheckpointCreated, got {result:?}"
+        );
     }
 
     #[test]
-    fn parse_invalid_json_returns_none() {
+    fn decode_failure_is_a_typed_event_not_a_silent_drop() {
         let result = parse_sse_event("turn:before", "not json");
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn parse_missing_field_returns_none() {
-        let data = r#"{"nousId":"syn"}"#;
-        let result = parse_sse_event("turn:before", data);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn parse_unknown_event_returns_none() {
-        let data = r#"{"foo":"bar"}"#;
-        let result = parse_sse_event("custom:unknown", data);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn parse_init_with_active_turns() {
-        let data = r#"{"activeTurns":[{"nousId":"syn","sessionId":"s1","turnId":"t1"}]}"#;
-        let result = parse_sse_event("init", data);
-        assert!(result.is_some());
-        if let Some(SseEvent::Init { active_turns }) = result {
-            assert_eq!(active_turns.len(), 1);
-            assert_eq!(&*active_turns[0].nous_id, "syn");
-        } else {
-            panic!("expected Init");
-        }
-    }
-
-    #[test]
-    fn parse_ping() {
-        let data = "{}";
-        let result = parse_sse_event("ping", data);
-        assert!(matches!(result, Some(SseEvent::Ping)));
-    }
-
-    #[test]
-    fn parse_stream_lagged_valid() {
-        let data = r#"{"dropped":42}"#;
-        let result = parse_sse_event("stream_lagged", data);
-        assert!(matches!(
-            result,
-            Some(SseEvent::StreamLagged { dropped: 42 })
-        ));
-    }
-
-    #[test]
-    fn parse_stream_lagged_missing_dropped_returns_none() {
-        let result = parse_sse_event("stream_lagged", "{}");
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn parse_stream_lagged_invalid_dropped_returns_none() {
-        let result = parse_sse_event("stream_lagged", r#"{"dropped":"many"}"#);
-        assert!(result.is_none());
-    }
-
-    #[test]
-    fn parse_error_preserves_code_request_id_and_details() {
-        let data = r#"{"code":"stream_failed","message":"provider unavailable","request_id":"req-sse","details":{"provider":"synthetic"}}"#;
-        let result = parse_sse_event("error", data);
-        let Some(SseEvent::Error { message }) = result else {
-            panic!("expected Error");
-        };
-        assert!(message.contains("provider unavailable"));
-        assert!(message.contains("code stream_failed"));
-        assert!(message.contains("request_id req-sse"));
-        assert!(message.contains(r#""provider":"synthetic""#));
-    }
-
-    #[test]
-    fn parse_tool_called() {
-        let data = r#"{"nousId":"syn","toolName":"read_file"}"#;
-        let result = parse_sse_event("tool:called", data);
-        if let Some(SseEvent::ToolCalled { nous_id, tool_name }) = result {
-            assert_eq!(&*nous_id, "syn");
-            assert_eq!(tool_name, "read_file");
-        } else {
-            panic!("expected ToolCalled");
-        }
-    }
-
-    #[test]
-    fn parse_tool_failed_with_default_error() {
-        let data = r#"{"nousId":"syn","toolName":"exec"}"#;
-        let result = parse_sse_event("tool:failed", data);
-        if let Some(SseEvent::ToolFailed {
-            error, tool_name, ..
-        }) = result
-        {
-            assert_eq!(tool_name, "exec");
-            assert_eq!(error, "unknown");
-        } else {
-            panic!("expected ToolFailed");
-        }
-    }
-
-    #[test]
-    fn parse_distill_stage() {
-        let data = r#"{"nousId":"syn","stage":"extracting"}"#;
-        let result = parse_sse_event("distill:stage", data);
-        if let Some(SseEvent::DistillStage { nous_id, stage }) = result {
-            assert_eq!(&*nous_id, "syn");
-            assert_eq!(stage, "extracting");
-        } else {
-            panic!("expected DistillStage");
-        }
-    }
-
-    #[test]
-    fn parse_session_created() {
-        let data = r#"{"nousId":"syn","sessionId":"s-new"}"#;
-        let result = parse_sse_event("session:created", data);
-        if let Some(SseEvent::SessionCreated {
-            nous_id,
-            session_id,
-        }) = result
-        {
-            assert_eq!(&*nous_id, "syn");
-            assert_eq!(&*session_id, "s-new");
-        } else {
-            panic!("expected SessionCreated");
-        }
-    }
-
-    #[test]
-    fn parse_turn_complete_valid() {
-        let data = r#"{"nous_id":"syn","session_id":"sess-1","turn_id":"turn-1","input_tokens":100,"output_tokens":50}"#;
-        let result = parse_sse_event("turn.complete", data);
-        if let Some(SseEvent::TurnComplete {
-            nous_id,
-            session_id,
-            turn_id,
-            input_tokens,
-            output_tokens,
-        }) = result
-        {
-            assert_eq!(&*nous_id, "syn");
-            assert_eq!(&*session_id, "sess-1");
-            assert_eq!(&*turn_id, "turn-1");
-            assert_eq!(input_tokens, 100);
-            assert_eq!(output_tokens, 50);
-        } else {
-            panic!("expected TurnComplete");
-        }
-    }
-
-    #[test]
-    fn parse_turn_complete_missing_tokens_returns_none() {
-        let data = r#"{"nous_id":"syn","session_id":"sess-1","turn_id":"turn-1"}"#;
-        assert!(parse_sse_event("turn.complete", data).is_none());
-    }
-
-    #[test]
-    fn parse_fact_created_valid() {
-        let data = r#"{"fact_id":"fact-1","nous_id":"syn","content_preview":"hello world"}"#;
-        let result = parse_sse_event("fact.created", data);
-        if let Some(SseEvent::FactCreated {
-            fact_id,
-            nous_id,
-            content_preview,
-        }) = result
-        {
-            assert_eq!(fact_id, "fact-1");
-            assert_eq!(&*nous_id, "syn");
-            assert_eq!(content_preview, "hello world");
-        } else {
-            panic!("expected FactCreated");
-        }
-    }
-
-    #[test]
-    fn parse_fact_created_missing_field_returns_none() {
-        let data = r#"{"fact_id":"fact-1","nous_id":"syn"}"#;
-        assert!(parse_sse_event("fact.created", data).is_none());
-    }
-
-    #[test]
-    fn parse_nous_lifecycle_valid() {
-        let data = r#"{"nous_id":"syn","event":"created","restart_required":true}"#;
-        let result = parse_sse_event("nous.lifecycle", data);
-        if let Some(SseEvent::NousLifecycle {
-            nous_id,
-            event,
-            restart_required,
-        }) = result
-        {
-            assert_eq!(&*nous_id, "syn");
-            assert_eq!(event, "created");
-            assert!(restart_required);
-        } else {
-            panic!("expected NousLifecycle");
-        }
-    }
-
-    #[test]
-    fn parse_nous_lifecycle_missing_event_returns_none() {
-        let data = r#"{"nous_id":"syn","restart_required":false}"#;
-        assert!(parse_sse_event("nous.lifecycle", data).is_none());
+        assert!(
+            matches!(result, Some(SseEvent::DecodeError { .. })),
+            "expected DecodeError, got {result:?}"
+        );
     }
 
     #[test]

@@ -350,6 +350,162 @@ async fn atomic_write_uses_temp_and_rename() {
     assert!(tmp_files.is_empty(), "temp files must be cleaned up");
 }
 
+// -- Concurrency --
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concurrent_appends_do_not_lose_updates() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let dir_path = dir.path().to_path_buf();
+
+    // WHY: the observable consequence of correct locking is that every
+    // concurrent writer's record survives — a read-modify-write race would
+    // silently drop some of them without erroring, which a sequential test
+    // (persist_correction called in a loop, never actually overlapping)
+    // cannot detect.
+    let mut handles = Vec::new();
+    for i in 0_u64..20 {
+        let dir_path = dir_path.clone();
+        handles.push(tokio::spawn(async move {
+            let correction = CorrectionRecord::new(
+                "nous-concurrent",
+                "ses-concurrent",
+                i,
+                format!("Correction {i}"),
+                format!("unique source {i}"),
+            );
+            persist_correction(&dir_path, correction).await
+        }));
+    }
+
+    for handle in handles {
+        handle.await.expect("task join").expect("persist");
+    }
+
+    let all = load_all_records(&dir_path).await.expect("load all");
+    assert_eq!(
+        all.len(),
+        20,
+        "every concurrent write must survive under the write lock — a lost \
+         update would silently drop a subset instead of erroring"
+    );
+}
+
+// -- Dismiss / review tooling --
+
+#[tokio::test]
+async fn dismiss_correction_excludes_it_from_active_injection_but_keeps_it_for_review() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let correction = CorrectionRecord::new("nous-a", "ses-1", 1, "Text", "source");
+    let id = correction.id.clone();
+
+    persist_correction(dir.path(), correction)
+        .await
+        .expect("persist");
+
+    let dismissed = dismiss_correction(dir.path(), &id)
+        .await
+        .expect("dismiss call");
+    assert!(dismissed, "existing record should be found and dismissed");
+
+    let active = load_corrections(dir.path(), "nous-a", "ses-1")
+        .await
+        .expect("load active");
+    assert!(
+        active.is_empty(),
+        "dismissed correction must not be returned as active"
+    );
+
+    let review = review_corrections(dir.path(), "nous-a")
+        .await
+        .expect("review");
+    assert_eq!(review.len(), 1, "review tooling must still surface it");
+    assert_eq!(review[0].status, CorrectionStatus::Dismissed);
+    assert_eq!(
+        review[0].revision, 1,
+        "dismissal must bump the revision counter"
+    );
+}
+
+#[tokio::test]
+async fn dismiss_correction_unknown_id_returns_false_without_erroring() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let unknown = CorrectionId::for_scope("nous-a", "ses-1", "no-such-source");
+
+    let result = dismiss_correction(dir.path(), &unknown)
+        .await
+        .expect("dismiss call succeeds even when nothing matches");
+    assert!(
+        !result,
+        "dismissing a nonexistent id must return false, not error"
+    );
+}
+
+#[tokio::test]
+async fn dismiss_correction_on_missing_file_returns_false() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let id = CorrectionId::for_scope("nous-a", "ses-1", "irrelevant");
+
+    let result = dismiss_correction(dir.path(), &id)
+        .await
+        .expect("dismiss call succeeds with no corrections file yet");
+    assert!(!result, "no file means no record to dismiss");
+}
+
+#[tokio::test]
+async fn dismiss_is_idempotent_and_does_not_bump_revision_twice() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+    let correction = CorrectionRecord::new("nous-a", "ses-1", 1, "Text", "source");
+    let id = correction.id.clone();
+    persist_correction(dir.path(), correction)
+        .await
+        .expect("persist");
+
+    dismiss_correction(dir.path(), &id)
+        .await
+        .expect("first dismiss");
+    dismiss_correction(dir.path(), &id)
+        .await
+        .expect("second dismiss");
+
+    let review = review_corrections(dir.path(), "nous-a")
+        .await
+        .expect("review");
+    assert_eq!(review.len(), 1);
+    assert_eq!(
+        review[0].revision, 1,
+        "re-dismissing an already-dismissed record must not bump revision again"
+    );
+}
+
+#[tokio::test]
+async fn review_corrections_spans_every_session_and_status_for_the_nous_id() {
+    let dir = tempfile::tempdir().expect("create temp dir");
+
+    let active_a = CorrectionRecord::new("nous-a", "ses-1", 1, "Active in ses-1", "source a");
+    let active_b = CorrectionRecord::new("nous-a", "ses-2", 1, "Active in ses-2", "source b");
+    let other_nous = CorrectionRecord::new("nous-b", "ses-1", 1, "Belongs to nous-b", "source c");
+
+    persist_correction(dir.path(), active_a)
+        .await
+        .expect("persist a");
+    persist_correction(dir.path(), active_b)
+        .await
+        .expect("persist b");
+    persist_correction(dir.path(), other_nous)
+        .await
+        .expect("persist c");
+
+    let review = review_corrections(dir.path(), "nous-a")
+        .await
+        .expect("review");
+    assert_eq!(
+        review.len(),
+        2,
+        "review must span every session for the nous_id, unlike session-scoped load_corrections"
+    );
+    assert!(review.iter().all(|r| r.nous_id == "nous-a"));
+}
+
 #[test]
 fn status_transition_bumps_revision() {
     let mut record = CorrectionRecord::new("nous", "ses", 1, "Text", "source");
