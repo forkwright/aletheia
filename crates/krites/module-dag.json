@@ -286,8 +286,8 @@
       "count": 5,
       "production_count": 5,
       "test_only": false,
-      "first_evidence": "hot_reload.rs:371",
-      "first_production_evidence": "hot_reload.rs:371"
+      "first_evidence": "hot_reload.rs:364",
+      "first_production_evidence": "hot_reload.rs:364"
     },
     {
       "from": "runtime",

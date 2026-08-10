@@ -146,7 +146,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/tokenizer/tokenizer_impl.rs` | `fts/tokenizer/tokenizer_impl.rs` | 74.1% | derived |
 | `src/fts/tokenizer/whitespace_tokenizer.rs` | `fts/tokenizer/whitespace_tokenizer.rs` | 73.7% | derived |
 | `src/hot_reload.rs` | — | 0.0% | sovereign |
-| `src/lib.rs` | `lib.rs` | 1.0% | derived |
+| `src/lib.rs` | `lib.rs` | 0.9% | derived |
 | `src/parse/error.rs` | — | 0.0% | sovereign |
 | `src/parse/expr/bytecode.rs` | `parse/expr.rs` | 29.5% | derived |
 | `src/parse/expr/mod.rs` | `parse/expr.rs` | 24.1% | derived |
