@@ -558,7 +558,7 @@ source = "crates/krites/src/lib.rs:39"
 dest_wave = "wave-1b"
 dest_module = "storage/{mem,temp}.rs (durability knobs)"
 gate = "Each PersistMode produces its declared post-crash visibility (Appendix A row: DbConfig / PersistMode)."
-call_sites = 79
+call_sites = 80
 call_sites_method = "grep -rn 'with_config(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme/mneme wrapper methods of the same name)"
 
 [[capability]]
@@ -660,7 +660,7 @@ source = "crates/krites/src/lib.rs:163"
 dest_wave = "wave-1b"
 dest_module = "storage/mem.rs"
 gate = "Same gate as api-mem-storage."
-call_sites = 130
+call_sites = 131
 call_sites_method = "grep -rn 'open_mem(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
 
 [[capability]]
@@ -1126,3 +1126,14 @@ dest_wave = "wave-1"
 dest_module = "episteme startup path, pre-migration snapshot (Sec 8.5)"
 overlaps_with = "api-db-open-fjall"
 gate = "Snapshot opens the copy with flush_workers(0).compaction_workers(0) and never the live source; verified-restorable count comparison per partition."
+
+[[capability]]
+id = "api-db-attach-rule-store"
+category = "public_api"
+item = "Db::attach_rule_store"
+source = "crates/krites/src/lib.rs:247"
+dest_wave = "wave-1b"
+dest_module = "hot_reload.rs"
+gate = "Hot-reload watcher attaches a rule directory and reloads .mnm fixed rules on change; gated behind the hot-reload feature, so the wave that owns hot_reload.rs owns this."
+call_sites = 2
+call_sites_method = "grep -rn 'attach_rule_store(' crates/ --include='*.rs' | grep -v ^crates/krites/"

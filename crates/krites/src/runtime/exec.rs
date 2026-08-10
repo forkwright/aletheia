@@ -60,7 +60,28 @@ impl<'s, S: Storage<'s>> Db<S> {
             #[cfg(feature = "hot-reload")]
             if let Some(store) = &self.rule_store {
                 let rules = store.load();
-                if rules.rules_text.is_empty() {
+                // WHY prepend only to a script with an entry: the loaded rules exist to be
+                // referenced by a query's `?[...]` entry, and concatenating them onto anything else
+                // is both meaningless and fatal. Two classes were breaking in production:
+                //
+                //   `::relations` — datalog.pest anchors sys_script at start-of-input
+                //   (`sys_script = {SOI ~ "::" ~ ... ~ EOI}`), so anything ahead of the `::` leaves
+                //   the input matching no production: "syntax error ... 3:1 | ::relations".
+                //
+                //   `:create facts {...}` — a bare DDL has no entry, so prepending a named rule
+                //   yields a program with a rule and nothing to consume it: "Program has no entry".
+                //
+                // Both are reached while merely OPENING a store: init_schema issues the DDL and
+                // `::relations`, so with a populated rule directory every open failed before the
+                // caller ran a query, and `::columns`/`::remove` in the migration and consolidation
+                // paths would have failed for the store's whole lifetime.
+                //
+                // NOTE: `imperative_script` is anchored at SOI too and shares the first hazard. It
+                // has no consumers in this workspace and its statements have no single leading
+                // token to test for, so it is not covered here; it also carries no `?[` entry and
+                // is therefore skipped by this guard in practice.
+                let has_entry = payload.contains("?[");
+                if rules.rules_text.is_empty() || !has_entry {
                     Cow::Borrowed(payload)
                 } else {
                     Cow::Owned(format!("{}\n{payload}", rules.rules_text))

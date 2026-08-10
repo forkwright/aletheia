@@ -171,13 +171,6 @@ impl HotReloader {
         clippy::type_complexity,
         reason = "fixed_rules mirror type from Db runtime"
     )]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "called from tests; not yet wired into non-test Db startup"
-        )
-    )]
     pub fn start(
         rule_dir: impl AsRef<Path>,
         fixed_rules: &Arc<
@@ -372,6 +365,43 @@ mod tests {
 
     fn fresh_mem_db() -> Db<MemStorage> {
         crate::storage::mem::new_mem_db().unwrap()
+    }
+
+    /// A system op must still parse once a non-empty rule store is attached.
+    ///
+    /// `sys_script` is anchored at start-of-input in datalog.pest, so prepending the loaded
+    /// rule text ahead of `::relations` makes the script match no production at all. Without
+    /// the guard in `run_script` this fails with `syntax error ... 3:1 | ::relations`, and
+    /// because `init_schema` issues a bare `::relations` while opening a store, every open
+    /// against a populated rule directory failed before the caller ran a query.
+    // WHY tokio::test: HotReloader::start spawns the debounce task (hot_reload.rs:221), so it
+    // needs a reactor even though everything this test asserts is synchronous.
+    #[tokio::test]
+    async fn sys_ops_still_parse_with_a_populated_rule_store() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("probe.mnm"),
+            "wiring_probe[marker] := marker = \"attached\"\n",
+        )
+        .expect("write rule file");
+
+        let mut db = fresh_mem_db();
+        // Attaches the way Db::attach_rule_store does, at the layer the defect lives in.
+        let (_reloader, _rx, store) =
+            HotReloader::start(dir.path(), &db.fixed_rules).expect("start reloader");
+        db.rule_store = Some(store);
+
+        // Both entry-less classes that broke while merely opening a store.
+        db.run_default("::relations")
+            .expect("a system op must parse with rules attached; prepending breaks SOI anchoring");
+        db.run_default(":create probe_relation { id: String => value: String }")
+            .expect("a bare DDL must run with rules attached; prepending leaves it with no entry");
+
+        // The rules must still reach ordinary query scripts — the guard must not disable them.
+        let rows = db
+            .run_default("?[marker] := wiring_probe[marker]")
+            .expect("hot-reloaded rule should be visible to a query script");
+        assert_eq!(rows.rows.len(), 1, "the attached rule should yield its row");
     }
 
     async fn wait_for_event(rx: &mut tokio::sync::mpsc::Receiver<ReloadEvent>) -> ReloadEvent {

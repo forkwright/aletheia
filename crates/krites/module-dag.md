@@ -47,7 +47,7 @@ Source: 210 `.rs` files, 1030 `use crate::` statements under `crates/krites/src/
 | `root` | `fixed_rule` | 4 | 4 | no | async_surface.rs:33 |
 | `root` | `parse` | 2 | 2 | no | hot_reload.rs:23 |
 | `root` | `runtime` | 19 | 17 | no | async_surface.rs:32 |
-| `root` | `storage` | 5 | 5 | no | hot_reload.rs:371 |
+| `root` | `storage` | 5 | 5 | no | hot_reload.rs:364 |
 | `runtime` | `data` | 123 | 116 | no | runtime/db.rs:29 |
 | `runtime` | `fixed_rule` | 4 | 2 | no | runtime/db.rs:28 |
 | `runtime` | `fts` | 10 | 8 | no | runtime/db.rs:34 |

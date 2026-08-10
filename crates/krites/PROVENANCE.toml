@@ -1089,7 +1089,7 @@ soak_expires_at_commit_count = 0
 path = "lib.rs"
 upstream_path = "lib.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 1.0
+verbatim_pct = 0.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1441,7 +1441,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/exec.rs"
 upstream_path = "runtime/db.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 71.2
+verbatim_pct = 68.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
