@@ -1,7 +1,8 @@
 //! Minimal in-memory implementation of the Typst `World` trait.
 //!
-//! Adapted from a prior private project, used with permission per issue #3450.
-//! Changes from the original:
+//! Adapted from an earlier report-tooling implementation; see
+//! [#3450](https://github.com/forkwright/aletheia/issues/3450) for the
+//! architecture-adoption decision. Changes from the original:
 //! - source lives in memory (not on disk) so `render_typst` can be called
 //!   without touching the filesystem;
 //! - an optional `data.json` virtual file is synthesized so templates can load

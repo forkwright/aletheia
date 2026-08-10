@@ -257,6 +257,156 @@ async fn test_state_with_text_only_streaming_provider() -> (Arc<AppState>, tempf
     test_state_with_llm_provider(Some(Box::new(TextOnlyStreamingProvider)), false, "token").await
 }
 
+/// Streams one real text delta, then fails before reaching a terminal
+/// provider event — models a provider connection dropping mid-response
+/// after producing real output (#5375).
+struct PartialTextThenFailStreamingProvider;
+
+impl LlmProvider for PartialTextThenFailStreamingProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        Box::pin(async { Ok(provider_text_response()) })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["mock-model", "claude-opus-4-20250514"]
+    }
+
+    fn name(&self) -> &'static str {
+        "partial-text-then-fail-streaming"
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    fn complete_streaming<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+        on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        Box::pin(async move {
+            on_event(StreamEvent::MessageStart {
+                usage: provider_text_usage(),
+            });
+            on_event(StreamEvent::ContentBlockStart {
+                index: 0,
+                block_type: "text".to_owned(),
+            });
+            on_event(StreamEvent::TextDelta {
+                text: "Partial before the connection drops.".to_owned(),
+            });
+            // WHY(#5375): no `ContentBlockStop`/`MessageStop` — the call
+            // never reaches a terminal provider event, so it must not
+            // contribute to observed usage (usage is only known once a
+            // call completes).
+            hermeneus::error::ApiRequestSnafu {
+                message: "simulated mid-stream provider failure".to_owned(),
+            }
+            .fail()
+        })
+    }
+}
+
+async fn test_state_with_partial_text_then_fail_streaming_provider()
+-> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_llm_provider(
+        Some(Box::new(PartialTextThenFailStreamingProvider)),
+        false,
+        "token",
+    )
+    .await
+}
+
+/// First call completes a tool round-trip cleanly; the second call (made
+/// with the tool result folded back in) fails outright. Models a turn that
+/// executed real work before the provider broke (#5375).
+struct ToolThenFailStreamingProvider {
+    calls: AtomicUsize,
+}
+
+impl ToolThenFailStreamingProvider {
+    fn new() -> Self {
+        Self {
+            calls: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl LlmProvider for ToolThenFailStreamingProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        Box::pin(async { Ok(provider_tool_response()) })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["mock-model", "claude-opus-4-20250514"]
+    }
+
+    fn name(&self) -> &'static str {
+        "tool-then-fail-streaming"
+    }
+
+    fn supports_streaming(&self) -> bool {
+        true
+    }
+
+    fn complete_streaming<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+        on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
+    ) -> Pin<Box<dyn Future<Output = hermeneus::error::Result<CompletionResponse>> + Send + 'a>>
+    {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        Box::pin(async move {
+            if call == 0 {
+                on_event(StreamEvent::MessageStart {
+                    usage: provider_tool_usage(),
+                });
+                on_event(StreamEvent::ContentBlockStart {
+                    index: 0,
+                    block_type: "tool_use".to_owned(),
+                });
+                on_event(StreamEvent::InputJsonDelta {
+                    partial_json: r#"{"query":"acme"}"#.to_owned(),
+                });
+                on_event(StreamEvent::ContentBlockStop { index: 0 });
+                on_event(StreamEvent::MessageStop {
+                    stop_reason: StopReason::ToolUse,
+                    usage: provider_tool_usage(),
+                });
+                Ok(provider_tool_response())
+            } else {
+                // WHY(#5375): the follow-up call (tool result folded back
+                // into context) fails before any provider event at all —
+                // this call contributes nothing to observed usage, but the
+                // first call's tool round-trip and usage must still survive
+                // into the terminal outcome.
+                hermeneus::error::ApiRequestSnafu {
+                    message: "simulated provider failure after tool round-trip".to_owned(),
+                }
+                .fail()
+            }
+        })
+    }
+}
+
+async fn test_state_with_tool_then_fail_streaming_provider() -> (Arc<AppState>, tempfile::TempDir) {
+    test_state_with_llm_provider(
+        Some(Box::new(ToolThenFailStreamingProvider::new())),
+        false,
+        "token",
+    )
+    .await
+}
+
 /// Happy path: every `data:` line in the SSE stream must be valid JSON with a
 /// `type` field. Tests structural correctness of the event format.
 #[tokio::test]
@@ -919,6 +1069,96 @@ async fn stream_turn_provider_failure_error_event_preserves_code() {
 }
 
 #[tokio::test]
+async fn stream_turn_failure_after_text_delta_preserves_partial_output() {
+    let (state, _dir) = test_state_with_partial_text_then_fail_streaming_provider().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = router
+        .oneshot(stream_turn_req(
+            "stream-partial-text-failure",
+            "trigger a mid-stream drop",
+            "01ARZ3NDEKTSV4RRFFQ69G5FBD",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_string(resp).await;
+    let events = collect_sse_data_events(&body);
+
+    assert!(
+        find_sse_event(&events, "text_delta").is_some(),
+        "the delta that reached the client before the failure must still be live-streamed; body={body}"
+    );
+
+    let complete = find_sse_event(&events, "message_complete")
+        .unwrap_or_else(|| panic!("stream must still emit message_complete; body={body}"));
+    let outcome = &complete["outcome"];
+    assert_eq!(outcome["stop_reason"], "error");
+    assert!(
+        outcome["error"].is_string(),
+        "outcome must carry the failure message"
+    );
+    assert_eq!(
+        outcome["text"], "Partial before the connection drops.",
+        "terminal outcome must preserve the text observed before failure, not an empty string; body={body}"
+    );
+    assert_eq!(
+        outcome["tool_calls"], 0,
+        "no tool calls were observed before this failure"
+    );
+    assert_eq!(
+        outcome["input_tokens"], 0,
+        "the failing call never reached MessageStop, so it contributes no usage"
+    );
+}
+
+#[tokio::test]
+async fn stream_turn_failure_after_tool_result_preserves_partial_output() {
+    let (state, _dir) = test_state_with_tool_then_fail_streaming_provider().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = router
+        .oneshot(stream_turn_req(
+            "stream-partial-tool-failure",
+            "trigger failure after a tool round-trip",
+            "01ARZ3NDEKTSV4RRFFQ69G5FBE",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body = body_string(resp).await;
+    let events = collect_sse_data_events(&body);
+
+    assert!(
+        find_sse_event(&events, "tool_result").is_some(),
+        "the tool round-trip that completed before the failure must still be live-streamed; body={body}"
+    );
+
+    let complete = find_sse_event(&events, "message_complete")
+        .unwrap_or_else(|| panic!("stream must still emit message_complete; body={body}"));
+    let outcome = &complete["outcome"];
+    assert_eq!(outcome["stop_reason"], "error");
+    assert!(
+        outcome["error"].is_string(),
+        "outcome must carry the failure message"
+    );
+    assert_eq!(
+        outcome["tool_calls"], 1,
+        "the completed tool round-trip must be reflected in the failed outcome, not zeroed; body={body}"
+    );
+    let usage = provider_tool_usage();
+    assert_eq!(
+        outcome["input_tokens"], usage.input_tokens,
+        "usage from the completed provider call must survive into the failed outcome; body={body}"
+    );
+    assert_eq!(outcome["output_tokens"], usage.output_tokens);
+    assert_eq!(outcome["cache_read_tokens"], usage.cache_read_tokens);
+    assert_eq!(outcome["cache_write_tokens"], usage.cache_write_tokens);
+}
+
+#[tokio::test]
 async fn stream_turn_duplicate_client_turn_id_does_not_persist_duplicate_messages() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());
@@ -1074,6 +1314,42 @@ async fn send_message_start_event_includes_reconnect_ids() {
     assert!(
         start["turn_id"].as_str().is_some_and(|s| !s.is_empty()),
         "turn_id must be a non-empty string"
+    );
+}
+
+#[tokio::test]
+async fn send_message_failure_terminal_event_includes_error_field() {
+    // WHY(#5375): `send_message` (the legacy, non-streaming-to-pylon path) has
+    // no partial text/tool/usage state to preserve — the actor call is a
+    // single non-streaming reply, unlike `/sessions/stream`. The achievable
+    // fix here is an explicit `error` field on the terminal event itself, so
+    // a failed turn is self-describing instead of relying on the client
+    // having also retained the earlier, separate `error` SSE event.
+    let (state, _dir) = test_state_with_error_provider("simulated legacy provider failure").await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "trigger legacy provider failure" })),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_string(resp).await;
+    let events = collect_sse_data_events(&body);
+
+    let error = find_sse_event(&events, "error")
+        .unwrap_or_else(|| panic!("stream must emit diagnostic error event; body={body}"));
+    assert!(error["message"].is_string());
+
+    let complete = find_sse_event(&events, "message_complete")
+        .unwrap_or_else(|| panic!("stream must still emit message_complete; body={body}"));
+    assert_eq!(complete["stop_reason"], "error");
+    assert!(
+        complete["error"].is_string(),
+        "failed legacy terminal event must carry its own error field; body={body}"
     );
 }
 

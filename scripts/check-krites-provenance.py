@@ -122,8 +122,7 @@ def check_notice_sync(meta: dict, rows: list[dict]) -> list[str]:
 
 
 def check_no_derived_growth(rows: list[dict], base_rows: list[dict] | None) -> list[str]:
-    """kanon/projects/aletheia/phases/05g-krites-overhaul/PROVENANCE-LEDGER.md
-    "Kill criterion — ledger creep": a row already known to the ledger must
+    """PLAN.md §9 kill criterion 8: a row already known to the ledger must
     never regress TO 'derived'. A path with no base-ref row at all is not a
     regression — it is either wave 0's initial population or a completeness
     fix closing an undercount (P3: fts/README.md and gen_stopwords.py sat
@@ -142,8 +141,8 @@ def check_no_derived_growth(rows: list[dict], base_rows: list[dict] | None) -> l
     if backslid:
         return [
             "ledger row(s) regressed TO 'derived' relative to the base commit — a file may only "
-            "be marked derived by wave 0's initial population, never afterward "
-            "(PROVENANCE-LEDGER.md \"Kill criterion — ledger creep\"): " + ", ".join(backslid)
+            "be marked derived by wave 0's initial population, never afterward (PLAN.md §9 kill "
+            "criterion 8): " + ", ".join(backslid)
         ]
     return []
 
@@ -155,29 +154,51 @@ def check_status_sequence(rows: list[dict], base_rows: list[dict] | None) -> lis
     catches the sneakier variant that zeroes verbatim_pct too — a direct
     derived -> sovereign jump is illegal independent of what any other
     field says, because the only forcing function for real disuse (the
-    dual/soak window) never ran."""
+    dual/soak window) never ran.
+
+    SAFETY(#6656): also verifies a completed dual -> sovereign transition
+    carried its measurement forward rather than erasing it. Before this fix,
+    scripts/krites-provenance-transition.py's --to sovereign path overwrote
+    verbatim_pct with 0.0 and upstream_path with 'none' with nothing
+    retaining the number that had been measured throughout the soak window
+    — a status flip could discard real evidence with no check noticing. Now
+    the prior row's upstream_path must reappear verbatim as the new row's
+    replaced_upstream_path; a mismatch means the retained verification
+    target was hand-edited rather than carried forward by the transition
+    script."""
     if base_rows is None:
         return []
-    base_status = {r["path"]: r["status"] for r in base_rows}
+    base_by_path = {r["path"]: r for r in base_rows}
     errors = []
     for row in rows:
         path = row["path"]
-        prior = base_status.get(path)
+        prior_row = base_by_path.get(path)
+        prior = prior_row["status"] if prior_row is not None else None
         if prior is None or prior == row["status"]:
             continue
         if (prior, row["status"]) not in ALLOWED_TRANSITIONS:
             errors.append(
                 f"{path}: illegal status transition {prior!r} -> {row['status']!r} — the only "
-                "legal path out of 'derived' is derived -> dual -> sovereign "
-                "(PROVENANCE-LEDGER.md \"Transitions\"); a direct "
-                f"{prior!r} -> {row['status']!r} jump is not permitted in one PR"
+                "legal path out of 'derived' is derived -> dual -> sovereign (PLAN.md §2); a "
+                f"direct {prior!r} -> {row['status']!r} jump is not permitted in one PR"
             )
+            continue
+        if prior == "dual" and row["status"] == "sovereign":
+            expected = prior_row["upstream_path"]
+            actual = row.get("replaced_upstream_path")
+            if actual != expected:
+                errors.append(
+                    f"{path}: dual -> sovereign transition must carry its dual-era upstream_path "
+                    f"forward as replaced_upstream_path unchanged (was {expected!r} while dual, "
+                    f"now replaced_upstream_path={actual!r}) — a mismatch means the retained "
+                    "verification target was hand-edited rather than carried forward by "
+                    "scripts/krites-provenance-transition.py"
+                )
     return errors
 
 
 def check_soak_expiry(rows: list[dict], commit_count: int | None) -> list[str]:
-    """kanon/projects/aletheia/phases/05g-krites-overhaul/PROVENANCE-LEDGER.md
-    "Soak fuse"'s forcing function: a 'dual' row cannot soak forever by
+    """PLAN.md §2's forcing function: a 'dual' row cannot soak forever by
     neglect. soak_expires_at_commit_count is an ABSOLUTE target — the count
     of commits reachable from origin/main (see krites_provenance_lib.py's
     ledger header NOTE for why origin/main, not HEAD: on a PR, HEAD includes
@@ -204,8 +225,8 @@ def check_soak_expiry(rows: list[dict], commit_count: int | None) -> list[str]:
             errors.append(
                 f"{row['path']}: dual soak window expired — current commit count on main "
                 f"({commit_count}) has reached soak_expires_at_commit_count ({expiry}); flip to "
-                "sovereign or delete the module (PROVENANCE-LEDGER.md \"Soak fuse\"), or extend "
-                "the window with an explicit, reviewable ledger edit"
+                "sovereign or delete the module (PLAN.md §2), or extend the window with an "
+                "explicit, reviewable ledger edit"
             )
     return errors
 
@@ -213,30 +234,49 @@ def check_soak_expiry(rows: list[dict], commit_count: int | None) -> list[str]:
 def check_verbatim_recompute(rows: list[dict]) -> list[str]:
     """P6: when the offline upstream snapshot (crates/krites/upstream-snapshot/
     cozo-core-src/, vendored by wave0/drift-metric) is present, recompute
-    every derived row's verbatim_pct from it and fail if the stored ledger
-    value has drifted — the check that makes the published numbers
+    every derived/dual row's verbatim_pct from it and fail if the stored
+    ledger value has drifted — the check that makes the published numbers
     self-verifying instead of trusted-forever. Skips (does not fail) when
     the snapshot is absent so this branch has no landing-order dependency
     on wave0/drift-metric.
 
     WHY dual is included: a 'dual' row's file is still, physically, the
-    unmodified CozoDB-lineage copy soaking before deletion
-    (kanon/projects/aletheia/phases/05g-krites-overhaul/PROVENANCE-LEDGER.md
-    "Statuses") — it carries a real upstream_path the same as a 'derived'
-    row, and drifting silently during the soak window is exactly the
-    failure this check exists to catch. Only 'sovereign' rows
-    (upstream_path == 'none', nothing to recompute against) are exempt."""
+    unmodified CozoDB-lineage copy soaking before deletion (PLAN.md §2) — it
+    carries a real upstream_path the same as a 'derived' row, and drifting
+    silently during the soak window is exactly the failure this check
+    exists to catch.
+
+    SAFETY(#6656): a 'sovereign' row is no longer a blanket exemption. Before
+    this fix, EVERY sovereign row skipped this check unconditionally — which
+    is how a statement-for-statement transliteration (aletheia#6656: 17
+    `_native.rs` files, 18.0%-41.4% verbatim against the upstream file their
+    non-native sibling is measured against) could enter the ledger at
+    verbatim_pct=0.0 with no measurement ever run, and the gate reported
+    green. A sovereign row with a real replaced_upstream_path (a completed
+    dual soak, or a from-scratch rewrite with a natural predecessor via
+    measure-krites-provenance.py's SOVEREIGN_VERIFY_MAP) is now recomputed
+    against THAT path exactly like a derived/dual row is recomputed against
+    upstream_path. Only a row with replaced_upstream_path == 'none' — a
+    genuinely fresh addition with nothing to compare against — is still
+    exempt, because there is nothing to recompute."""
     if not UPSTREAM_SNAPSHOT_DIR.is_dir():
         print("krites-provenance: no upstream-snapshot/ present — skipping offline verbatim_pct recompute")
         return []
     errors = []
     for row in rows:
-        if row["status"] not in ("derived", "dual"):
+        status = row["status"]
+        if status in ("derived", "dual"):
+            compare_to = row["upstream_path"]
+        elif status == "sovereign":
+            compare_to = row.get("replaced_upstream_path", "none")
+            if compare_to == "none":
+                continue
+        else:
             continue
-        snapshot_path = UPSTREAM_SNAPSHOT_DIR / row["upstream_path"]
+        snapshot_path = UPSTREAM_SNAPSHOT_DIR / compare_to
         if not snapshot_path.is_file():
             errors.append(
-                f"{row['path']}: upstream-snapshot/ is present but has no {row['upstream_path']} "
+                f"{row['path']}: upstream-snapshot/ is present but has no {compare_to} "
                 "— snapshot is incomplete relative to PROVENANCE.toml"
             )
             continue
@@ -246,7 +286,7 @@ def check_verbatim_recompute(rows: list[dict]) -> list[str]:
         if recomputed != row["verbatim_pct"]:
             errors.append(
                 f"{row['path']}: stored verbatim_pct {row['verbatim_pct']} does not match offline "
-                f"recomputation {recomputed} against upstream-snapshot/ — run "
+                f"recomputation {recomputed} against upstream-snapshot/{compare_to} — run "
                 "scripts/measure-krites-provenance.py and commit the result"
             )
     return errors

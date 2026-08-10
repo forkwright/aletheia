@@ -1,12 +1,17 @@
-//! Versioned role-behavior contracts for QA validation.
+//! Versioned role-behavior contracts, wired into ephemeral sub-agent spawns.
 //!
-//! Each role gets a contract defining expected behaviors and constraints.
+//! Each role gets a contract defining expected behaviors, constraints, and
+//! spawn policy (`tool_groups`, `episteme_cohort`, `private`, `domains`).
 //! When a role's behavior changes, the version increments, enabling QA
 //! (dokimion) to validate against the correct version.
 //!
 //! Contracts are loaded from `roles.toml` in the oikos cascade
 //! (nous/{id}/ -> shared/ -> theke/). Hardcoded defaults are used when
-//! no file is found.
+//! no file is found. `SpawnServiceImpl::resolve_contract` (spawn_svc.rs) is
+//! the production caller (#4775) — behaviors/constraints append to the
+//! spawned agent's system prompt, `tool_groups` refines the coarse
+//! tool-group gate, and `episteme_cohort`/`private`/`domains` replace the
+//! hardcoded constants a spawned agent previously always got.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -37,6 +42,19 @@ pub struct RoleContract {
     /// Tool-group policy. Missing or empty configuration denies all tools.
     #[serde(default)]
     pub tool_groups: ToolGroupPolicy,
+    /// Episteme knowledge-store cohort for agents spawned under this role.
+    ///
+    /// `None` defers to the spawn service's own baseline cohort rather than
+    /// asserting one, so an unconfigured role keeps prior behavior exactly.
+    #[serde(default)]
+    pub episteme_cohort: Option<String>,
+    /// Whether agents spawned under this role are hidden from public
+    /// cross-nous discovery.
+    #[serde(default)]
+    pub private: bool,
+    /// Domain tags applied to agents spawned under this role.
+    #[serde(default)]
+    pub domains: Vec<String>,
 }
 
 impl RoleContract {
@@ -118,6 +136,12 @@ struct RoleContractToml {
     constraints: Vec<String>,
     #[serde(default)]
     tool_groups: ToolGroupPolicy,
+    #[serde(default)]
+    episteme_cohort: Option<String>,
+    #[serde(default)]
+    private: bool,
+    #[serde(default)]
+    domains: Vec<String>,
 }
 
 /// Registry of role contracts, keyed by role name.
@@ -190,6 +214,9 @@ impl ContractRegistry {
                 behaviors: toml_contract.behaviors,
                 constraints: toml_contract.constraints,
                 tool_groups: toml_contract.tool_groups,
+                episteme_cohort: toml_contract.episteme_cohort,
+                private: toml_contract.private,
+                domains: toml_contract.domains,
             };
             info!(
                 role = %role_name,
@@ -273,6 +300,9 @@ fn coder_contract() -> RoleContract {
             ToolGroupId::Command,
             ToolGroupId::Verify,
         ]),
+        episteme_cohort: None,
+        private: false,
+        domains: Vec::new(),
     }
 }
 
@@ -299,6 +329,9 @@ fn researcher_contract() -> RoleContract {
             ToolGroupId::Mcp,
             ToolGroupId::Plan,
         ]),
+        episteme_cohort: None,
+        private: false,
+        domains: Vec::new(),
     }
 }
 
@@ -325,6 +358,9 @@ fn reviewer_contract() -> RoleContract {
             ToolGroupId::Verify,
             ToolGroupId::Mcp,
         ]),
+        episteme_cohort: None,
+        private: false,
+        domains: Vec::new(),
     }
 }
 
@@ -344,6 +380,9 @@ fn explorer_contract() -> RoleContract {
             "Report findings without file paths".to_owned(),
         ],
         tool_groups: ToolGroupPolicy::groups(vec![ToolGroupId::Read, ToolGroupId::Plan]),
+        episteme_cohort: None,
+        private: false,
+        domains: Vec::new(),
     }
 }
 
@@ -368,6 +407,9 @@ fn runner_contract() -> RoleContract {
             ToolGroupId::Command,
             ToolGroupId::Verify,
         ]),
+        episteme_cohort: None,
+        private: false,
+        domains: Vec::new(),
     }
 }
 
@@ -497,6 +539,9 @@ constraints = ["Execute plans"]
             behaviors: vec!["Write code".to_owned(), "Run tests".to_owned()],
             constraints: vec!["Break the build".to_owned()],
             tool_groups: ToolGroupPolicy::groups(vec![ToolGroupId::Read, ToolGroupId::Edit]),
+            episteme_cohort: None,
+            private: false,
+            domains: Vec::new(),
         };
 
         let section = contract.to_prompt_section();
@@ -519,6 +564,9 @@ constraints = ["Execute plans"]
             behaviors: Vec::new(),
             constraints: Vec::new(),
             tool_groups: ToolGroupPolicy::DenyAll,
+            episteme_cohort: None,
+            private: false,
+            domains: Vec::new(),
         };
         let section = contract.to_prompt_section();
         assert!(
@@ -568,6 +616,9 @@ constraints = ["Custom constraint"]
             behaviors: vec!["Write code".to_owned()],
             constraints: vec!["Break things".to_owned()],
             tool_groups: ToolGroupPolicy::groups(vec![ToolGroupId::Read, ToolGroupId::Edit]),
+            episteme_cohort: Some("isolated".to_owned()),
+            private: true,
+            domains: vec!["medical".to_owned()],
         };
         let json = serde_json::to_string(&contract).unwrap();
         let back: RoleContract = serde_json::from_str(&json).unwrap();
@@ -638,6 +689,9 @@ constraints = ["Custom constraint"]
             behaviors: vec!["Write code".to_owned()],
             constraints: vec!["Break things".to_owned()],
             tool_groups: ToolGroupPolicy::groups(vec![ToolGroupId::Read, ToolGroupId::Edit]),
+            episteme_cohort: None,
+            private: false,
+            domains: Vec::new(),
         };
         let section = contract.to_prompt_section();
         assert!(
@@ -662,6 +716,9 @@ constraints = ["Custom constraint"]
             behaviors: vec!["Behave".to_owned()],
             constraints: vec!["Misbehave".to_owned()],
             tool_groups: ToolGroupPolicy::DenyAll,
+            episteme_cohort: None,
+            private: false,
+            domains: Vec::new(),
         };
         let section = contract.to_prompt_section();
         assert!(
@@ -717,5 +774,68 @@ tool_groups = []
             registry.get("empty").unwrap().tool_groups,
             ToolGroupPolicy::DenyAll
         );
+    }
+
+    // WHY(#5087): role contracts are the operator-approved spawn policy
+    // alternative to threading a parent's live config through the spawn
+    // path — cohort/privacy/domains must be overridable per role from TOML,
+    // not just tool_groups.
+    #[test]
+    fn from_toml_parses_spawn_policy_fields() {
+        let toml = r#"
+[reviewer]
+version = 2
+episteme_cohort = "isolated"
+private = true
+domains = ["medical", "legal"]
+"#;
+        let registry = ContractRegistry::from_toml(toml).unwrap();
+        let reviewer = registry.get("reviewer").unwrap();
+        assert_eq!(reviewer.episteme_cohort.as_deref(), Some("isolated"));
+        assert!(reviewer.private);
+        assert_eq!(reviewer.domains, vec!["medical", "legal"]);
+    }
+
+    #[test]
+    fn from_toml_omits_spawn_policy_fields_defaults_to_none() {
+        let toml = r#"
+[coder]
+version = 2
+behaviors = ["Write code"]
+"#;
+        let registry = ContractRegistry::from_toml(toml).unwrap();
+        let coder = registry.get("coder").unwrap();
+        assert_eq!(
+            coder.episteme_cohort, None,
+            "omitted episteme_cohort must not assert a cohort"
+        );
+        assert!(!coder.private, "omitted private must default to false");
+        assert!(
+            coder.domains.is_empty(),
+            "omitted domains must default to empty"
+        );
+    }
+
+    #[test]
+    fn default_contracts_have_no_spawn_policy_overrides() {
+        // WHY: default contracts must not silently assert a cohort/privacy/
+        // domains policy that spawn_svc.rs did not previously apply —
+        // wiring the contract registry into production must not change
+        // default spawned-agent behavior when roles.toml is absent.
+        let registry = ContractRegistry::defaults();
+        for (name, contract) in registry.all() {
+            assert_eq!(
+                contract.episteme_cohort, None,
+                "default contract for {name} must not assert a cohort"
+            );
+            assert!(
+                !contract.private,
+                "default contract for {name} must not be private"
+            );
+            assert!(
+                contract.domains.is_empty(),
+                "default contract for {name} must have no domains"
+            );
+        }
     }
 }

@@ -1,18 +1,30 @@
 # Role Behavior Contracts
 #
-# Each role gets a versioned contract defining expected behaviors and
-# constraints. When a role's behavior changes, increment the version so
+# Read by SpawnServiceImpl (nous/src/spawn_svc.rs) for every ephemeral
+# sub-agent spawn: `tool_groups` overrides the hardcoded per-role default at
+# the coarse group gate, `episteme_cohort`/`private`/`domains` set the
+# spawned agent's cohort/discovery/domain policy (default: no cohort
+# asserted, public, no domains — unchanged from before this file existed),
+# and `behaviors`/`constraints` are appended to the role's system prompt.
+# Each role also carries a version, incremented when behaviors change, so
 # QA (dokimion) can validate against the correct contract version.
 #
 # Place this file in:
 #   - shared/roles.toml     (applies to all agents)
-#   - nous/{id}/roles.toml  (agent-specific override)
+#   - nous/{id}/roles.toml  (agent-specific override; for a spawned
+#                            sub-agent, `{id}` is the PARENT's nous id — the
+#                            ephemeral child has no pre-existing nous dir of
+#                            its own to key an override against)
 #   - theke/roles.toml      (collaborative baseline)
 #
 # Cascade resolution: nous/{id}/ > shared/ > theke/
 #
 # Roles not defined here use hardcoded defaults. Custom roles (beyond the
-# built-in five) can be added as new TOML tables.
+# built-in five) can be added as new TOML tables, but only the built-in
+# five are wired into spawn behavior — a spawn request naming an
+# unrecognized role always falls back to the ADR-005 conservative
+# read-only allowlist regardless of what a custom TOML table for that name
+# says (#3958: an unrecognized role must never inherit unrestricted access).
 
 [coder]
 version = 1

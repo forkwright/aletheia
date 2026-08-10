@@ -16,6 +16,14 @@ pub(crate) const MANIFEST_TOTAL_FILES_FIELD: &str = "total_files";
 pub(crate) const MANIFEST_FILE_COUNT_FIELD: &str = "file_count";
 pub(crate) const MANIFEST_RESTORE_PATH_FIELD: &str = "restore_path";
 pub(crate) const MANIFEST_CHECKPOINT_GENERATIONS_FIELD: &str = "checkpoint_generations";
+/// WHY(#6442): names the mechanism that made `quiesced: true` true. Injected
+/// as raw manifest evidence (never a `BackupManifest` struct field) so
+/// out-of-crate callers that construct `BackupManifest` literals directly
+/// are unaffected by its addition.
+pub(crate) const MANIFEST_QUIESCE_MECHANISM_FIELD: &str = "quiesce_mechanism";
+/// WHY(#6442): the honest, derived answer to "how non-atomic was this
+/// backup" — see [`super::BackupBuild::observed_snapshot_skew_seconds`].
+pub(crate) const MANIFEST_OBSERVED_SKEW_SECONDS_FIELD: &str = "observed_snapshot_skew_seconds";
 
 /// Prefix for hidden staging directories inside `backup_dir`.
 ///

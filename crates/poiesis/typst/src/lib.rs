@@ -31,8 +31,10 @@
 //!
 //! ## Attribution
 //!
-//! The compiler `World` implementation is adapted from a prior private project,
-//! used with permission per issue #3450.
+//! The compiler `World` implementation is adapted from an earlier
+//! report-tooling implementation; see
+//! [#3450](https://github.com/forkwright/aletheia/issues/3450) for the
+//! architecture-adoption decision.
 
 mod error;
 mod world;

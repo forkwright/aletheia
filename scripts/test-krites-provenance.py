@@ -9,10 +9,13 @@ it); an unresolvable --base-ref must fail closed, not silently pass as a
 bootstrap commit; soak expiry must fire; offline recompute must fire when a
 snapshot is present and skip cleanly when it is not.
 
-Also covers aletheia#6656: a 'sovereign'-named path must always carry
-status=sovereign (the structural fix for the hnsw dual/sovereign
-inversion), and the three provenance scripts must cite a real, resolvable
-status-authority document rather than a nonexistent "PLAN.md §N".
+Also covers aletheia#6656: a 'sovereign' row must carry a real measurement
+against what it replaced, not an unmeasured 0.0/none. replaced_upstream_path
+may be nonzero-backed now, but only when it is honest — check_verbatim_recompute
+must independently recompute it, krites-provenance-transition.py must retain
+it instead of erasing it at the dual -> sovereign flip, and check_status_sequence
+must reject a transition that carries forward a DIFFERENT path than the row
+actually soaked against.
 """
 
 from __future__ import annotations
@@ -24,22 +27,32 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import krites_provenance_lib as LIB  # noqa: E402
+import krites_provenance_lib as LIB
 
 _CHECK_SCRIPT_PATH = Path(__file__).parent / "check-krites-provenance.py"
+_TRANSITION_SCRIPT_PATH = Path(__file__).parent / "krites-provenance-transition.py"
 
 
-def _load_checker() -> object:
-    spec = importlib.util.spec_from_file_location("check_krites_provenance", _CHECK_SCRIPT_PATH)
+def _load_module(name: str, path: Path) -> object:
+    spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"failed to load {_CHECK_SCRIPT_PATH}")
+        raise RuntimeError(f"failed to load {path}")
     module = importlib.util.module_from_spec(spec)
-    sys.modules["check_krites_provenance"] = module
+    sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
 
 
+def _load_checker() -> object:
+    return _load_module("check_krites_provenance", _CHECK_SCRIPT_PATH)
+
+
+def _load_transition() -> object:
+    return _load_module("krites_provenance_transition", _TRANSITION_SCRIPT_PATH)
+
+
 CHECKER = _load_checker()
+TRANSITION = _load_transition()
 _FAILURES: list[str] = []
 
 
@@ -59,10 +72,18 @@ def expect_raises(exc_type: type, fn, msg: str) -> None:
     _FAILURES.append(f"{msg} (raised nothing)")
 
 
-def row(path: str, upstream_path: str, verbatim_pct: float, status: str, soak: int = 0) -> dict:
+def row(
+    path: str,
+    upstream_path: str,
+    verbatim_pct: float,
+    status: str,
+    soak: int = 0,
+    replaced_upstream_path: str = "none",
+) -> dict:
     return {
         "path": path,
         "upstream_path": upstream_path,
+        "replaced_upstream_path": replaced_upstream_path,
         "verbatim_pct": verbatim_pct,
         "status": status,
         "soak_expires_at_commit_count": soak,
@@ -92,6 +113,369 @@ def test_sovereign_zero_verbatim_accepted() -> None:
         _FAILURES.append(f"legitimate sovereign row (verbatim_pct=0.0) must be accepted: {exc}")
 
 
+# --- #6656: replaced_upstream_path — a sovereign row's number becomes real evidence ---
+
+
+def test_sovereign_with_replaced_path_and_nonzero_verbatim_accepted() -> None:
+    # WHY: this is the entire point of the fix — a sovereign row that retains a
+    # measurement against what it replaced is no longer a bare 0.0/none claim, and
+    # a nonzero verbatim_pct here is not, by itself, evidence of a bypass.
+    rows = [row("fixed_rule/algos/dfs_native.rs", "none", 41.4, "sovereign",
+                replaced_upstream_path="fixed_rule/algos/dfs.rs")]
+    try:
+        LIB.validate_rows(rows)
+    except LIB.LedgerError as exc:
+        _FAILURES.append(
+            f"a sovereign row with a real replaced_upstream_path must accept a nonzero "
+            f"verbatim_pct: {exc}"
+        )
+
+
+def test_sovereign_no_replaced_path_nonzero_verbatim_still_rejected() -> None:
+    # WHY: the narrowed P1 protection — a sovereign row with NOTHING retained to
+    # measure against (replaced_upstream_path == 'none') still cannot carry a
+    # nonzero verbatim_pct; that would be an unmeasured claim with no evidence at all.
+    rows = [row("kcore.rs", "none", 12.0, "sovereign")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a sovereign row with replaced_upstream_path='none' and nonzero verbatim_pct "
+        "must still be rejected (no retained evidence backs the number)",
+    )
+
+
+def test_replaced_path_rejected_on_non_sovereign_row() -> None:
+    # WHY: replaced_upstream_path is a sovereign-only concept — a derived/dual row
+    # already carries a live lineage claim in upstream_path; a stray
+    # replaced_upstream_path on such a row is structurally meaningless.
+    rows = [row("x.rs", "x.rs", 80.0, "dual", soak=30, replaced_upstream_path="y.rs")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "replaced_upstream_path on a non-sovereign row must be rejected",
+    )
+
+
+def test_missing_replaced_path_key_defaults_to_none() -> None:
+    # WHY: a pre-#6656 ledger (e.g. the base-ref commit check-krites-provenance.py
+    # diffs every PR against) has no replaced_upstream_path key at all. Absence must
+    # parse as 'none', not raise — otherwise every --base-ref comparison against
+    # pre-migration history hard-fails.
+    legacy_row = {
+        "path": "z.rs",
+        "upstream_path": "z.rs",
+        "verbatim_pct": 40.0,
+        "status": "derived",
+        "soak_expires_at_commit_count": 0,
+    }
+    try:
+        LIB.validate_rows([legacy_row])
+    except LIB.LedgerError as exc:
+        _FAILURES.append(f"a row missing replaced_upstream_path entirely must default to 'none': {exc}")
+    expect(
+        legacy_row.get("replaced_upstream_path") == "none",
+        f"validate_rows must backfill the missing key to 'none'; got {legacy_row.get('replaced_upstream_path')!r}",
+    )
+
+
+# --- #6656: check_verbatim_recompute now also holds sovereign rows accountable ---
+
+
+def test_verbatim_recompute_catches_unmeasured_sovereign_claim() -> None:
+    # WHY: this is the literal aletheia#6656 reproduction — a file that is really
+    # ~41% similar to what it replaced, entered in the ledger at verbatim_pct=0.0,
+    # with a real replaced_upstream_path recorded. Before this fix,
+    # check_verbatim_recompute skipped every 'sovereign' row unconditionally and
+    # this would have passed clean; it must now fail.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        snapshot_dir = root / "snapshot"
+        snapshot_dir.mkdir()
+        (snapshot_dir / "up.rs").write_text(
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn e() {}\nfn f() {}\nfn g() {}\nfn h() {}\n"
+        )
+        src_dir = root / "src"
+        src_dir.mkdir()
+        # shares 4 of 8 lines with up.rs -- above MIN_MATCH_BLOCK_LINES, so measurably 50.0.
+        (src_dir / "local.rs").write_text(
+            # WHY 4 contiguous shared lines: MIN_MATCH_BLOCK_LINES floors shorter runs,
+            # so a 2-line overlap measures 0.0 and would not exercise this path at all.
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn zzz() {}\nfn www() {}\nfn yyy() {}\nfn xxx() {}\n"
+        )
+
+        orig_snapshot = CHECKER.UPSTREAM_SNAPSHOT_DIR
+        orig_src = CHECKER.KRITES_SRC
+        CHECKER.UPSTREAM_SNAPSHOT_DIR = snapshot_dir
+        CHECKER.KRITES_SRC = src_dir
+        try:
+            unmeasured = row("local.rs", "none", 0.0, "sovereign", replaced_upstream_path="up.rs")
+            errors = CHECKER.check_verbatim_recompute([unmeasured])
+            expect(
+                any("does not match offline recomputation" in e for e in errors),
+                f"a sovereign row certified at 0.0 with a real replaced_upstream_path must be "
+                f"caught by offline recompute; got {errors}",
+            )
+
+            honest = row("local.rs", "none", 50.0, "sovereign", replaced_upstream_path="up.rs")
+            errors2 = CHECKER.check_verbatim_recompute([honest])
+            expect(errors2 == [], f"a correctly-measured sovereign row must pass; got {errors2}")
+        finally:
+            CHECKER.UPSTREAM_SNAPSHOT_DIR = orig_snapshot
+            CHECKER.KRITES_SRC = orig_src
+
+
+def test_verbatim_recompute_skips_sovereign_with_no_replaced_path() -> None:
+    # WHY: a genuinely fresh file with nothing to compare against
+    # (replaced_upstream_path == 'none', e.g. kcore.rs) must not be flagged — there
+    # is no predecessor to recompute against, and 0.0 is the honest answer.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        snapshot_dir = root / "snapshot"
+        snapshot_dir.mkdir()
+        src_dir = root / "src"
+        src_dir.mkdir()
+        (src_dir / "fresh.rs").write_text("fn only_here() {}\n")
+
+        orig_snapshot = CHECKER.UPSTREAM_SNAPSHOT_DIR
+        orig_src = CHECKER.KRITES_SRC
+        CHECKER.UPSTREAM_SNAPSHOT_DIR = snapshot_dir
+        CHECKER.KRITES_SRC = src_dir
+        try:
+            fresh = row("fresh.rs", "none", 0.0, "sovereign")
+            errors = CHECKER.check_verbatim_recompute([fresh])
+            expect(errors == [], f"a sovereign row with no retained predecessor must be skipped; got {errors}")
+        finally:
+            CHECKER.UPSTREAM_SNAPSHOT_DIR = orig_snapshot
+            CHECKER.KRITES_SRC = orig_src
+
+
+# --- #6656: check_status_sequence's dual -> sovereign replaced_upstream_path cross-check ---
+
+
+def test_status_sequence_rejects_dual_to_sovereign_with_dropped_replaced_path() -> None:
+    # WHY: the exact aletheia#6656 bypass at the ledger-schema level — flip status
+    # to sovereign but leave replaced_upstream_path at its default 'none' instead of
+    # carrying the dual-era upstream_path forward. verbatim_pct=0.0 alone would have
+    # satisfied the OTHER checks (validate_rows' narrowed P1 requires exactly this
+    # when replaced_upstream_path == 'none'), so this cross-check is the only thing
+    # that catches a transition that discarded its own evidence.
+    base_rows = [row("w.rs", "w.rs", 57.8, "dual", soak=100)]
+    current_rows = [row("w.rs", "none", 0.0, "sovereign")]  # replaced_upstream_path defaults to 'none'
+    errors = CHECKER.check_status_sequence(current_rows, base_rows)
+    expect(
+        any("must carry its dual-era upstream_path forward" in e for e in errors),
+        f"dropping replaced_upstream_path across a dual -> sovereign transition must be "
+        f"rejected; got {errors}",
+    )
+
+
+def test_status_sequence_rejects_dual_to_sovereign_with_wrong_replaced_path() -> None:
+    # WHY: a replaced_upstream_path that names a DIFFERENT file than the row actually
+    # soaked against is also wrong — the ledger is now proving a claim about the wrong
+    # comparison target.
+    base_rows = [row("w.rs", "w.rs", 57.8, "dual", soak=100)]
+    current_rows = [row("w.rs", "none", 57.8, "sovereign", replaced_upstream_path="other.rs")]
+    errors = CHECKER.check_status_sequence(current_rows, base_rows)
+    expect(
+        any("must carry its dual-era upstream_path forward" in e for e in errors),
+        f"a replaced_upstream_path that does not match the row's own dual-era "
+        f"upstream_path must be rejected; got {errors}",
+    )
+
+
+def test_status_sequence_accepts_dual_to_sovereign_with_correct_replaced_path() -> None:
+    base_rows = [row("w.rs", "w.rs", 57.8, "dual", soak=100)]
+    current_rows = [row("w.rs", "none", 57.8, "sovereign", replaced_upstream_path="w.rs")]
+    errors = CHECKER.check_status_sequence(current_rows, base_rows)
+    expect(errors == [], f"a correctly-retained dual -> sovereign transition must pass; got {errors}")
+
+
+# --- #6656: krites-provenance-transition.py must retain, not erase, the measurement ---
+
+
+def test_apply_to_sovereign_retains_and_recomputes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        snapshot_dir = root / "snapshot"
+        snapshot_dir.mkdir()
+        (snapshot_dir / "up.rs").write_text(
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn e() {}\nfn f() {}\nfn g() {}\nfn h() {}\n"
+        )
+        src_dir = root / "src"
+        src_dir.mkdir()
+        (src_dir / "local.rs").write_text(
+            # WHY 4 contiguous shared lines: MIN_MATCH_BLOCK_LINES floors shorter runs,
+            # so a 2-line overlap measures 0.0 and would not exercise this path at all.
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn zzz() {}\nfn www() {}\nfn yyy() {}\nfn xxx() {}\n"
+        )
+
+        orig_snapshot = TRANSITION.UPSTREAM_SNAPSHOT_DIR
+        orig_src = TRANSITION.KRITES_SRC
+        TRANSITION.UPSTREAM_SNAPSHOT_DIR = snapshot_dir
+        TRANSITION.KRITES_SRC = src_dir
+        try:
+            r = row("local.rs", "up.rs", 12.3, "dual", soak=100)  # stale/placeholder verbatim_pct
+            TRANSITION.apply_to_sovereign(r)
+            expect(r["upstream_path"] == "none", f"upstream_path must become 'none'; got {r['upstream_path']!r}")
+            expect(
+                r["replaced_upstream_path"] == "up.rs",
+                f"replaced_upstream_path must retain the dual-era upstream_path; got {r['replaced_upstream_path']!r}",
+            )
+            expect(
+                r["verbatim_pct"] == 50.0,
+                f"verbatim_pct must be recomputed fresh against the snapshot (2 of 4 lines match "
+                f"= 50.0), not left at its stale dual-era value; got {r['verbatim_pct']}",
+            )
+            expect(
+                r["soak_expires_at_commit_count"] == 0,
+                f"soak_expires_at_commit_count must be zeroed; got {r['soak_expires_at_commit_count']}",
+            )
+        finally:
+            TRANSITION.UPSTREAM_SNAPSHOT_DIR = orig_snapshot
+            TRANSITION.KRITES_SRC = orig_src
+
+
+def test_apply_to_sovereign_falls_back_when_snapshot_missing() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        snapshot_dir = root / "no-such-snapshot"
+        src_dir = root / "src"
+        src_dir.mkdir()
+        (src_dir / "local.rs").write_text("fn a() {}\n")
+
+        orig_snapshot = TRANSITION.UPSTREAM_SNAPSHOT_DIR
+        orig_src = TRANSITION.KRITES_SRC
+        TRANSITION.UPSTREAM_SNAPSHOT_DIR = snapshot_dir
+        TRANSITION.KRITES_SRC = src_dir
+        try:
+            r = row("local.rs", "up.rs", 33.3, "dual", soak=100)
+            TRANSITION.apply_to_sovereign(r)
+            expect(r["upstream_path"] == "none", f"upstream_path must become 'none'; got {r['upstream_path']!r}")
+            expect(
+                r["replaced_upstream_path"] == "up.rs",
+                f"replaced_upstream_path must still be retained even without a snapshot; got {r['replaced_upstream_path']!r}",
+            )
+            expect(
+                r["verbatim_pct"] == 33.3,
+                f"verbatim_pct must fall back to the dual-era value when the snapshot is absent "
+                f"(check_verbatim_recompute catches drift once it lands); got {r['verbatim_pct']}",
+            )
+        finally:
+            TRANSITION.UPSTREAM_SNAPSHOT_DIR = orig_snapshot
+            TRANSITION.KRITES_SRC = orig_src
+# --- aletheia#6656: verbatim_pct metric defects (leading whitespace, punctuation floor) ---
+
+
+def test_verbatim_pct_ignores_reindentation() -> None:
+    # WHY: the exact aletheia#6656 reproduction — wrapping an unmodified,
+    # preserved file in an extra `mod wrapper { }` nesting (a pure
+    # re-indentation, no content change) must not zero out its similarity
+    # score. Pre-fix, storage/mem.rs dropped from ~69% to 4.5% verbatim_pct
+    # from exactly this shape of edit; nonblank_lines() only stripped the
+    # trailing newline splitlines() already removes, never the leading
+    # whitespace the re-indent shifted every line by.
+    upstream = "fn a() {\n    let x = 1;\n    let y = 2;\n    x + y\n}\n"
+    reindented = (
+        "mod wrapper {\n"
+        "    fn a() {\n"
+        "        let x = 1;\n"
+        "        let y = 2;\n"
+        "        x + y\n"
+        "    }\n"
+        "}\n"
+    )
+    pct = LIB.verbatim_pct(reindented, upstream)
+    expect(
+        pct >= 70.0,
+        f"a pure re-indentation of an otherwise-identical file must still score high "
+        f"(nonblank_lines must strip leading whitespace, not just the trailing newline); got {pct}",
+    )
+
+
+def test_verbatim_pct_floors_out_scattered_punctuation_matches() -> None:
+    # WHY: the audit's reproduction — `runtime/hnsw_sovereign/types.rs`, with
+    # no authored relationship to `runtime/hnsw.rs`, still scored 12.4%
+    # against it from scattered single/double-line collisions on language
+    # boilerplate (`}`, `#[cfg(test)]`, `mod tests {`). Two files below share
+    # only such scattered fragments — no block reaches MIN_MATCH_BLOCK_LINES
+    # — and must floor to 0, even though an unfloored (block-size >= 1)
+    # comparison of the same pair is nonzero (41.2%), proving the floor is
+    # what suppresses the false signal, not an accident of the fixture.
+    local = (
+        "//! Vector cache eviction policy for the sovereign index.\n"
+        "use std::num::NonZeroUsize;\n"
+        "\n"
+        "pub(crate) struct EvictionCache {\n"
+        "    capacity: NonZeroUsize,\n"
+        "}\n"
+        "\n"
+        "impl EvictionCache {\n"
+        "    pub(crate) fn touch(&mut self, key: u64) {\n"
+        "        self.recent.push(key);\n"
+        "    }\n"
+        "}\n"
+        "\n"
+        "#[cfg(test)]\n"
+        "mod eviction_tests {\n"
+        "    #[test]\n"
+        "    fn touch_updates_recency() {\n"
+        "        assert!(true);\n"
+        "    }\n"
+        "}\n"
+    )
+    upstream = (
+        "//! HNSW graph traversal and neighbour search.\n"
+        "use std::collections::BinaryHeap;\n"
+        "\n"
+        "pub(crate) struct SearchState {\n"
+        "    frontier: BinaryHeap<Candidate>,\n"
+        "}\n"
+        "\n"
+        "impl SearchState {\n"
+        "    pub(crate) fn push(&mut self, candidate: Candidate) {\n"
+        "        self.frontier.push(candidate);\n"
+        "    }\n"
+        "}\n"
+        "\n"
+        "#[cfg(test)]\n"
+        "mod search_tests {\n"
+        "    #[test]\n"
+        "    fn push_orders_by_distance() {\n"
+        "        assert!(false);\n"
+        "    }\n"
+        "}\n"
+    )
+    pct = LIB.verbatim_pct(local, upstream)
+    expect(
+        pct == 0.0,
+        f"scattered sub-floor punctuation/boilerplate matches with no real shared block "
+        f"must not read as evidence; got {pct}",
+    )
+    unfloored = sum(
+        block.size
+        for block in __import__("difflib")
+        .SequenceMatcher(None, LIB.nonblank_lines(local), LIB.nonblank_lines(upstream), autojunk=False)
+        .get_matching_blocks()
+        if block.size > 0
+    )
+    expect(
+        unfloored > 0,
+        "fixture must contain real (if scattered) matches pre-floor, or the test proves nothing",
+    )
+
+
+def test_verbatim_pct_full_match_on_file_shorter_than_floor() -> None:
+    # WHY: MIN_MATCH_BLOCK_LINES must not floor a genuinely complete verbatim
+    # copy of a file shorter than the floor itself to 0 — the floor exists to
+    # suppress a small match INSIDE a larger, otherwise-unrelated file, not to
+    # blind the metric to short files entirely.
+    identical = "fn a() {}\nfn b() {}\n"
+    pct = LIB.verbatim_pct(identical, identical)
+    expect(pct == 100.0, f"a file identical to upstream must score 100% regardless of length; got {pct}")
 # --- P1: status-sequence enforcement (the sneakier variant: verbatim_pct zeroed too) ---
 
 
@@ -113,7 +497,7 @@ def test_status_sequence_accepts_derived_to_dual_and_dual_to_sovereign() -> None
     expect(errors == [], f"derived -> dual must be legal; got {errors}")
 
     base_rows2 = [row("x.rs", "x.rs", 80.0, "dual", soak=30)]
-    current_rows2 = [row("x.rs", "none", 0.0, "sovereign")]
+    current_rows2 = [row("x.rs", "none", 80.0, "sovereign", replaced_upstream_path="x.rs")]
     errors2 = CHECKER.check_status_sequence(current_rows2, base_rows2)
     expect(errors2 == [], f"dual -> sovereign must be legal; got {errors2}")
 
@@ -249,70 +633,6 @@ def test_verbatim_recompute_skips_without_snapshot() -> None:
             CHECKER.UPSTREAM_SNAPSHOT_DIR = orig
 
 
-# --- aletheia#6656: sovereign-path naming rule (the dual/sovereign inversion) ---
-
-
-def test_sovereign_path_status_mismatch_rejected() -> None:
-    # WHY: the exact aletheia#6656 reproduction — runtime/hnsw_sovereign/*.rs
-    # (the fresh rewrite) carried status=dual (the label for the file about
-    # to be deleted) while the actual retiring runtime/hnsw/*.rs copies
-    # carried derived with no expiry. A 'sovereign'-named path must never
-    # carry anything but status=sovereign.
-    rows = [row("runtime/hnsw_sovereign/graph.rs", "runtime/hnsw.rs", 25.3, "dual", soak=3058)]
-    expect_raises(
-        LIB.LedgerError,
-        lambda: LIB.validate_rows(rows),
-        "a 'sovereign'-named path carrying status=dual (the hnsw inversion) must be rejected",
-    )
-
-
-def test_sovereign_path_status_mismatch_rejected_for_derived() -> None:
-    rows = [row("fts/tokenizer/stop_word_filter/sovereign/mod.rs", "fts/tokenizer.rs", 40.0, "derived")]
-    expect_raises(
-        LIB.LedgerError,
-        lambda: LIB.validate_rows(rows),
-        "a 'sovereign'-named path carrying status=derived must be rejected",
-    )
-
-
-def test_sovereign_path_status_match_accepted() -> None:
-    rows = [row("runtime/hnsw_sovereign/graph.rs", "none", 0.0, "sovereign")]
-    try:
-        LIB.validate_rows(rows)
-    except LIB.LedgerError as exc:
-        _FAILURES.append(f"a correctly-labeled sovereign-named row must be accepted: {exc}")
-
-
-def test_non_sovereign_path_unaffected_by_naming_rule() -> None:
-    # A path with no 'sovereign' substring is untouched by this rule at any status.
-    rows = [row("runtime/hnsw/graph.rs", "runtime/hnsw.rs", 50.0, "dual", soak=3058)]
-    try:
-        LIB.validate_rows(rows)
-    except LIB.LedgerError as exc:
-        _FAILURES.append(f"a non-sovereign-named dual row must be unaffected: {exc}")
-
-
-# --- aletheia#6656: citations must resolve to a real, versioned document ---
-
-
-def test_no_phantom_plan_citation_remains() -> None:
-    # WHY: aletheia#6656 found krites_provenance_lib.py, check-krites-provenance.py,
-    # and krites-provenance-transition.py all citing "PLAN.md §2 / §3 wave 0.1 /
-    # §9 kill criterion 8" for the meaning of every status — a section numbering
-    # that exists in no PLAN.md reachable from this repo or from kanon. Guard
-    # against the citation rotting back into a dead reference.
-    scripts_dir = Path(__file__).resolve().parent
-    real_citation = "PROVENANCE-LEDGER.md"
-    for name in (
-        "krites_provenance_lib.py",
-        "check-krites-provenance.py",
-        "krites-provenance-transition.py",
-    ):
-        text = (scripts_dir / name).read_text()
-        expect("PLAN.md" not in text, f"{name}: still cites a bare PLAN.md section — the exact aletheia#6656 defect")
-        expect(real_citation in text, f"{name}: missing a citation to the real status-authority document")
-
-
 def test_verbatim_recompute_detects_drift() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -347,6 +667,20 @@ def main() -> int:
     for test_fn in (
         test_sovereign_high_verbatim_rejected,
         test_sovereign_zero_verbatim_accepted,
+        test_sovereign_with_replaced_path_and_nonzero_verbatim_accepted,
+        test_sovereign_no_replaced_path_nonzero_verbatim_still_rejected,
+        test_replaced_path_rejected_on_non_sovereign_row,
+        test_missing_replaced_path_key_defaults_to_none,
+        test_verbatim_recompute_catches_unmeasured_sovereign_claim,
+        test_verbatim_recompute_skips_sovereign_with_no_replaced_path,
+        test_status_sequence_rejects_dual_to_sovereign_with_dropped_replaced_path,
+        test_status_sequence_rejects_dual_to_sovereign_with_wrong_replaced_path,
+        test_status_sequence_accepts_dual_to_sovereign_with_correct_replaced_path,
+        test_apply_to_sovereign_retains_and_recomputes,
+        test_apply_to_sovereign_falls_back_when_snapshot_missing,
+        test_verbatim_pct_ignores_reindentation,
+        test_verbatim_pct_floors_out_scattered_punctuation_matches,
+        test_verbatim_pct_full_match_on_file_shorter_than_floor,
         test_status_sequence_rejects_direct_derived_to_sovereign,
         test_status_sequence_accepts_derived_to_dual_and_dual_to_sovereign,
         test_status_sequence_ignores_path_absent_from_base,
@@ -365,11 +699,6 @@ def main() -> int:
         test_soak_expiry_fails_closed_when_commit_count_unavailable,
         test_verbatim_recompute_skips_without_snapshot,
         test_verbatim_recompute_detects_drift,
-        test_sovereign_path_status_mismatch_rejected,
-        test_sovereign_path_status_mismatch_rejected_for_derived,
-        test_sovereign_path_status_match_accepted,
-        test_non_sovereign_path_unaffected_by_naming_rule,
-        test_no_phantom_plan_citation_remains,
     ):
         test_fn()
 

@@ -53,12 +53,17 @@ impl ResolvedTheme {
     ///
     /// # Errors
     ///
+    /// Returns [`ThemeError::InvalidTokenKey`] (SECURITY(#5633)) if any
+    /// token-namespace key fails the identifier-safe charset every sink
+    /// relies on — checked first, before any sink can see the theme.
+    ///
     /// Returns [`ThemeError::UnknownRole`] if any `[color.tone]` or
     /// `[color.surface]` entry names a role that does not exist in
     /// `[color.role]`. This is one of the structural reasons B-002 names a
     /// theme registry rather than a free-form palette: tone references are
     /// resolved here, not at every sink.
     pub fn from_theme(theme: Theme) -> Result<Self, ThemeError> {
+        theme.validate_token_keys()?;
         let id = theme.meta.id;
         let role = theme.color.role;
         let tone = resolve_color_map(&id, &role, theme.color.tone, "tone")?;

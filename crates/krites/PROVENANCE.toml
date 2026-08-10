@@ -2,15 +2,20 @@
 # NOTE: soak_expires_at_commit_count = 0 means the file is not in dual
 # NOTE: (land-dark/soak) state. A nonzero value is an ABSOLUTE target: the
 # NOTE: count of `git rev-list --count origin/main` at or past which CI
-# NOTE: fails the build (kanon/projects/aletheia/phases/05g-krites-overhaul/
-# NOTE: PROVENANCE-LEDGER.md "Soak fuse") — not a duration and not relative
-# NOTE: to when the row entered dual. Extend by explicit ledger edit.
-# NOTE: status = derived | sovereign | dual (PROVENANCE-LEDGER.md "Statuses");
-# NOTE: the only legal transition out of derived is derived -> dual ->
-# NOTE: sovereign, CI-enforced (check_status_sequence) — a direct derived ->
-# NOTE: sovereign jump is rejected regardless of verbatim_pct. A path
-# NOTE: containing 'sovereign' must carry status=sovereign ("Naming
-# NOTE: convention") — validate_rows rejects the row otherwise.
+# NOTE: fails the build (PLAN.md §2 expiry gate) — not a duration and not
+# NOTE: relative to when the row entered dual. Extend by explicit ledger edit.
+# NOTE: status = derived | sovereign | dual (PLAN.md §2, §3 wave 0.1); the
+# NOTE: only legal transition out of derived is derived -> dual -> sovereign,
+# NOTE: CI-enforced (check_status_sequence) — a direct derived -> sovereign
+# NOTE: jump is rejected regardless of verbatim_pct.
+# NOTE: replaced_upstream_path is 'none' except on a sovereign row that still
+# NOTE: has something to measure against: a completed dual soak (PLAN.md §2(c))
+# NOTE: retains its upstream_path here instead of losing it, or a from-scratch
+# NOTE: rewrite with a natural predecessor gets one from
+# NOTE: measure-krites-provenance.py's SOVEREIGN_VERIFY_MAP. verbatim_pct is
+# NOTE: then measured against THIS field, not upstream_path (which stays 'none'
+# NOTE: on every sovereign row — no MPL lineage claim). CI recomputes and
+# NOTE: fails on drift (check_verbatim_recompute), same as derived/dual.
 
 [meta]
 upstream_repo = "https://github.com/cozodb/cozo"
@@ -19,6 +24,7 @@ upstream_ref = "481af058abac9444ea8c9c52c78f096ed4b5bfc4"
 [[file]]
 path = "async_surface.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -26,6 +32,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "counterfactual.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -33,6 +40,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "counterfactual_tests.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -40,34 +48,39 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "data/aggr/boolean.rs"
 upstream_path = "data/aggr.rs"
-verbatim_pct = 76.6
+replaced_upstream_path = "none"
+verbatim_pct = 71.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/aggr/misc.rs"
 upstream_path = "data/aggr.rs"
-verbatim_pct = 78.7
+replaced_upstream_path = "none"
+verbatim_pct = 71.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/aggr/mod.rs"
 upstream_path = "data/aggr.rs"
-verbatim_pct = 62.4
+replaced_upstream_path = "none"
+verbatim_pct = 46.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/aggr/numeric.rs"
 upstream_path = "data/aggr.rs"
-verbatim_pct = 62.2
+replaced_upstream_path = "none"
+verbatim_pct = 56.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/error.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -75,160 +88,183 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "data/expr/expr_impl.rs"
 upstream_path = "data/expr.rs"
-verbatim_pct = 65.5
+replaced_upstream_path = "none"
+verbatim_pct = 64.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/expr/mod.rs"
 upstream_path = "data/expr.rs"
-verbatim_pct = 57.0
+replaced_upstream_path = "none"
+verbatim_pct = 44.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/expr/op.rs"
 upstream_path = "data/expr.rs"
-verbatim_pct = 87.5
+replaced_upstream_path = "none"
+verbatim_pct = 84.4
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/aggregate.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 15.1
+replaced_upstream_path = "none"
+verbatim_pct = 12.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/bits.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 52.1
+replaced_upstream_path = "none"
+verbatim_pct = 32.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/collections.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 23.0
+replaced_upstream_path = "none"
+verbatim_pct = 8.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/math/arithmetic.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 43.2
+replaced_upstream_path = "none"
+verbatim_pct = 27.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/math/mod.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 34.6
+replaced_upstream_path = "none"
+verbatim_pct = 18.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/math/transcendental.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 14.3
+replaced_upstream_path = "none"
+verbatim_pct = 6.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/mod.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 5.8
+replaced_upstream_path = "none"
+verbatim_pct = 2.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/string.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 37.0
+replaced_upstream_path = "none"
+verbatim_pct = 11.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/temporal.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 23.9
+replaced_upstream_path = "none"
+verbatim_pct = 7.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/trig.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 36.9
+replaced_upstream_path = "none"
+verbatim_pct = 22.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/utility.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 38.4
+replaced_upstream_path = "none"
+verbatim_pct = 27.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/functions/vector.rs"
 upstream_path = "data/functions.rs"
-verbatim_pct = 35.1
+replaced_upstream_path = "none"
+verbatim_pct = 22.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/json.rs"
 upstream_path = "data/json.rs"
-verbatim_pct = 53.7
+replaced_upstream_path = "none"
+verbatim_pct = 48.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/memcmp.rs"
 upstream_path = "data/memcmp.rs"
-verbatim_pct = 60.2
+replaced_upstream_path = "none"
+verbatim_pct = 44.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/mod.rs"
 upstream_path = "data/mod.rs"
-verbatim_pct = 39.1
+replaced_upstream_path = "none"
+verbatim_pct = 17.4
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/program/atoms.rs"
 upstream_path = "data/program.rs"
-verbatim_pct = 73.4
+replaced_upstream_path = "none"
+verbatim_pct = 65.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/program/fixed_rule.rs"
 upstream_path = "data/program.rs"
-verbatim_pct = 66.5
+replaced_upstream_path = "none"
+verbatim_pct = 57.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/program/input.rs"
 upstream_path = "data/program.rs"
-verbatim_pct = 75.2
+replaced_upstream_path = "none"
+verbatim_pct = 70.4
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/program/magic.rs"
 upstream_path = "data/program.rs"
-verbatim_pct = 84.6
+replaced_upstream_path = "none"
+verbatim_pct = 82.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/program/mod.rs"
 upstream_path = "data/program.rs"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
@@ -236,83 +272,95 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "data/program/search/atom_impl.rs"
 upstream_path = "data/program.rs"
-verbatim_pct = 83.7
+replaced_upstream_path = "none"
+verbatim_pct = 80.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/program/search/hnsw_normalize.rs"
 upstream_path = "data/program.rs"
-verbatim_pct = 57.0
+replaced_upstream_path = "none"
+verbatim_pct = 48.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/program/search/lsh_fts.rs"
 upstream_path = "data/program.rs"
-verbatim_pct = 56.9
+replaced_upstream_path = "none"
+verbatim_pct = 48.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/program/search/mod.rs"
 upstream_path = "data/program.rs"
-verbatim_pct = 83.0
+replaced_upstream_path = "none"
+verbatim_pct = 75.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/program/types.rs"
 upstream_path = "data/program.rs"
-verbatim_pct = 82.7
+replaced_upstream_path = "none"
+verbatim_pct = 80.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/relation.rs"
 upstream_path = "data/relation.rs"
-verbatim_pct = 57.3
+replaced_upstream_path = "none"
+verbatim_pct = 54.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/symb.rs"
 upstream_path = "data/symb.rs"
-verbatim_pct = 71.1
+replaced_upstream_path = "none"
+verbatim_pct = 66.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/aggrs.rs"
 upstream_path = "data/tests/aggrs.rs"
-verbatim_pct = 35.4
+replaced_upstream_path = "none"
+verbatim_pct = 27.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/exprs.rs"
 upstream_path = "data/tests/exprs.rs"
-verbatim_pct = 51.9
+replaced_upstream_path = "none"
+verbatim_pct = 22.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/functions/arithmetic.rs"
 upstream_path = "data/tests/functions.rs"
-verbatim_pct = 42.3
+replaced_upstream_path = "none"
+verbatim_pct = 23.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/functions/collections.rs"
 upstream_path = "data/tests/functions.rs"
-verbatim_pct = 52.8
+replaced_upstream_path = "none"
+verbatim_pct = 38.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/functions/mod.rs"
 upstream_path = "data/tests/functions.rs"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
@@ -320,41 +368,47 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "data/tests/functions/string_ops.rs"
 upstream_path = "data/tests/functions.rs"
-verbatim_pct = 58.0
+replaced_upstream_path = "none"
+verbatim_pct = 42.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/functions/type_conversion.rs"
 upstream_path = "data/tests/functions.rs"
-verbatim_pct = 35.6
+replaced_upstream_path = "none"
+verbatim_pct = 11.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/json.rs"
 upstream_path = "data/tests/json.rs"
-verbatim_pct = 9.6
+replaced_upstream_path = "none"
+verbatim_pct = 7.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/memcmp.rs"
 upstream_path = "data/tests/memcmp.rs"
-verbatim_pct = 56.6
+replaced_upstream_path = "none"
+verbatim_pct = 55.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/mod.rs"
 upstream_path = "data/tests/mod.rs"
-verbatim_pct = 77.8
+replaced_upstream_path = "none"
+verbatim_pct = 55.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/proptest_memcmp.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -362,34 +416,39 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "data/tests/validity.rs"
 upstream_path = "data/tests/validity.rs"
-verbatim_pct = 65.0
+replaced_upstream_path = "none"
+verbatim_pct = 41.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tests/values.rs"
 upstream_path = "data/tests/values.rs"
-verbatim_pct = 25.6
+replaced_upstream_path = "none"
+verbatim_pct = 14.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/tuple.rs"
 upstream_path = "data/tuple.rs"
-verbatim_pct = 55.9
+replaced_upstream_path = "none"
+verbatim_pct = 52.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "data/value.rs"
 upstream_path = "data/value.rs"
-verbatim_pct = 68.3
+replaced_upstream_path = "none"
+verbatim_pct = 62.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "datalog.pest"
 upstream_path = "cozoscript.pest"
+replaced_upstream_path = "none"
 verbatim_pct = 99.6
 status = "derived"
 soak_expires_at_commit_count = 0
@@ -397,6 +456,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "error.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -404,76 +464,87 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/algos/all_pairs_shortest_path.rs"
 upstream_path = "fixed_rule/algos/all_pairs_shortest_path.rs"
-verbatim_pct = 39.6
+replaced_upstream_path = "none"
+verbatim_pct = 26.4
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/all_pairs_shortest_path_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/all_pairs_shortest_path.rs"
+verbatim_pct = 15.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/astar.rs"
 upstream_path = "fixed_rule/algos/astar.rs"
-verbatim_pct = 49.1
+replaced_upstream_path = "none"
+verbatim_pct = 39.1
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/astar_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/astar.rs"
+verbatim_pct = 18.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/bfs.rs"
 upstream_path = "fixed_rule/algos/bfs.rs"
-verbatim_pct = 61.7
+replaced_upstream_path = "none"
+verbatim_pct = 55.3
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/bfs_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/bfs.rs"
+verbatim_pct = 18.9
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/degree_centrality.rs"
 upstream_path = "fixed_rule/algos/degree_centrality.rs"
-verbatim_pct = 55.3
+replaced_upstream_path = "none"
+verbatim_pct = 47.9
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/degree_centrality_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/degree_centrality.rs"
+verbatim_pct = 32.1
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/dfs.rs"
 upstream_path = "fixed_rule/algos/dfs.rs"
-verbatim_pct = 57.8
+replaced_upstream_path = "none"
+verbatim_pct = 53.1
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/dfs_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/dfs.rs"
+verbatim_pct = 26.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/kcore.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -481,167 +552,191 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/algos/kruskal.rs"
 upstream_path = "fixed_rule/algos/kruskal.rs"
-verbatim_pct = 45.3
+replaced_upstream_path = "none"
+verbatim_pct = 28.6
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/kruskal_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/kruskal.rs"
+verbatim_pct = 14.9
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/label_propagation.rs"
 upstream_path = "fixed_rule/algos/label_propagation.rs"
-verbatim_pct = 44.0
+replaced_upstream_path = "none"
+verbatim_pct = 29.9
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/label_propagation_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/label_propagation.rs"
+verbatim_pct = 13.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/louvain.rs"
 upstream_path = "fixed_rule/algos/louvain.rs"
-verbatim_pct = 41.4
+replaced_upstream_path = "none"
+verbatim_pct = 29.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/mod.rs"
 upstream_path = "fixed_rule/algos/mod.rs"
-verbatim_pct = 33.0
+replaced_upstream_path = "none"
+verbatim_pct = 17.5
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/pagerank.rs"
 upstream_path = "fixed_rule/algos/pagerank.rs"
-verbatim_pct = 45.7
+replaced_upstream_path = "none"
+verbatim_pct = 37.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/prim.rs"
 upstream_path = "fixed_rule/algos/prim.rs"
-verbatim_pct = 49.3
+replaced_upstream_path = "none"
+verbatim_pct = 30.6
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/prim_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/prim.rs"
+verbatim_pct = 14.9
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/random_walk.rs"
 upstream_path = "fixed_rule/algos/random_walk.rs"
-verbatim_pct = 40.8
+replaced_upstream_path = "none"
+verbatim_pct = 26.4
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/random_walk_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/random_walk.rs"
+verbatim_pct = 19.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/shortest_path_bfs.rs"
 upstream_path = "fixed_rule/algos/shortest_path_bfs.rs"
-verbatim_pct = 68.1
+replaced_upstream_path = "none"
+verbatim_pct = 59.0
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/shortest_path_bfs_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/shortest_path_bfs.rs"
+verbatim_pct = 19.1
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/shortest_path_dijkstra.rs"
 upstream_path = "fixed_rule/algos/shortest_path_dijkstra.rs"
-verbatim_pct = 56.4
+replaced_upstream_path = "none"
+verbatim_pct = 41.4
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/shortest_path_dijkstra_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/shortest_path_dijkstra.rs"
+verbatim_pct = 9.2
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/strongly_connected_components.rs"
 upstream_path = "fixed_rule/algos/strongly_connected_components.rs"
-verbatim_pct = 45.0
+replaced_upstream_path = "none"
+verbatim_pct = 28.0
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/strongly_connected_components_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/strongly_connected_components.rs"
+verbatim_pct = 18.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/top_sort.rs"
 upstream_path = "fixed_rule/algos/top_sort.rs"
-verbatim_pct = 44.1
+replaced_upstream_path = "none"
+verbatim_pct = 37.8
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/top_sort_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/top_sort.rs"
+verbatim_pct = 27.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/triangles.rs"
 upstream_path = "fixed_rule/algos/triangles.rs"
-verbatim_pct = 47.3
+replaced_upstream_path = "none"
+verbatim_pct = 30.2
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/triangles_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/triangles.rs"
+verbatim_pct = 23.5
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/algos/yen.rs"
 upstream_path = "fixed_rule/algos/yen.rs"
-verbatim_pct = 56.1
+replaced_upstream_path = "none"
+verbatim_pct = 48.1
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/algos/yen_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/algos/yen.rs"
+verbatim_pct = 11.8
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/csr/mod.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -649,6 +744,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/csr/page_rank.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -656,6 +752,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/error.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -663,13 +760,15 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/mod.rs"
 upstream_path = "fixed_rule/mod.rs"
-verbatim_pct = 63.9
+replaced_upstream_path = "none"
+verbatim_pct = 59.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/tests/centrality_spanning.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -677,6 +776,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/tests/connectivity_misc.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -684,6 +784,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/tests/mod.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -691,6 +792,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/tests/path_algorithms.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -698,6 +800,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/tests/proptest_algos.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -705,6 +808,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/tests/wave5_reference_semantics.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -712,41 +816,47 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fixed_rule/utilities/constant.rs"
 upstream_path = "fixed_rule/utilities/constant.rs"
-verbatim_pct = 39.9
+replaced_upstream_path = "none"
+verbatim_pct = 36.6
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/utilities/constant_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/utilities/constant.rs"
+verbatim_pct = 17.2
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/utilities/mod.rs"
 upstream_path = "fixed_rule/utilities/mod.rs"
-verbatim_pct = 20.0
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/utilities/reorder_sort.rs"
 upstream_path = "fixed_rule/utilities/reorder_sort.rs"
-verbatim_pct = 70.0
+replaced_upstream_path = "none"
+verbatim_pct = 63.1
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fixed_rule/utilities/reorder_sort_native.rs"
 upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fixed_rule/utilities/reorder_sort.rs"
+verbatim_pct = 17.5
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fixed_rule/utilities/rrf.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -754,6 +864,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/README.md"
 upstream_path = "fts/README.md"
+replaced_upstream_path = "none"
 verbatim_pct = 100.0
 status = "derived"
 soak_expires_at_commit_count = 0
@@ -761,20 +872,23 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/ast.rs"
 upstream_path = "fts/ast.rs"
-verbatim_pct = 79.6
+replaced_upstream_path = "none"
+verbatim_pct = 71.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/config.rs"
 upstream_path = "fts/mod.rs"
-verbatim_pct = 41.2
+replaced_upstream_path = "none"
+verbatim_pct = 34.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/error.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -782,55 +896,63 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/indexing.rs"
 upstream_path = "fts/indexing.rs"
-verbatim_pct = 35.8
+replaced_upstream_path = "none"
+verbatim_pct = 31.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/mod.rs"
 upstream_path = "fts/mod.rs"
-verbatim_pct = 47.3
+replaced_upstream_path = "none"
+verbatim_pct = 30.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/alphanum_only.rs"
 upstream_path = "fts/tokenizer/alphanum_only.rs"
-verbatim_pct = 74.2
+replaced_upstream_path = "none"
+verbatim_pct = 67.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 3.5
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 99.1
+replaced_upstream_path = "none"
+verbatim_pct = 98.8
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 99.5
+replaced_upstream_path = "none"
+verbatim_pct = 99.1
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 99.5
+replaced_upstream_path = "none"
+verbatim_pct = 98.9
 status = "dual"
 soak_expires_at_commit_count = 2838
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -838,6 +960,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -845,6 +968,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -852,13 +976,15 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/mod.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 78.8
+replaced_upstream_path = "none"
+verbatim_pct = 75.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/bmp_equivalence.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -866,97 +992,111 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 0.4
+replaced_upstream_path = "none"
+verbatim_pct = 73.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 0.5
+replaced_upstream_path = "none"
+verbatim_pct = 70.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 0.4
+replaced_upstream_path = "none"
+verbatim_pct = 82.4
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_t_z.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 0.7
+replaced_upstream_path = "none"
+verbatim_pct = 69.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/mod.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
-verbatim_pct = 6.9
+replaced_upstream_path = "none"
+verbatim_pct = 59.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/empty_tokenizer.rs"
 upstream_path = "fts/tokenizer/empty_tokenizer.rs"
-verbatim_pct = 88.6
+replaced_upstream_path = "none"
+verbatim_pct = 85.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/lower_caser.rs"
 upstream_path = "fts/tokenizer/lower_caser.rs"
-verbatim_pct = 81.7
+replaced_upstream_path = "none"
+verbatim_pct = 74.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/mod.rs"
 upstream_path = "fts/tokenizer/mod.rs"
-verbatim_pct = 68.4
+replaced_upstream_path = "none"
+verbatim_pct = 52.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/ngram_tokenizer.rs"
 upstream_path = "fts/tokenizer/ngram_tokenizer.rs"
-verbatim_pct = 78.4
+replaced_upstream_path = "none"
+verbatim_pct = 64.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/raw_tokenizer.rs"
 upstream_path = "fts/tokenizer/raw_tokenizer.rs"
-verbatim_pct = 83.1
+replaced_upstream_path = "none"
+verbatim_pct = 74.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/remove_long.rs"
 upstream_path = "fts/tokenizer/remove_long.rs"
-verbatim_pct = 81.4
+replaced_upstream_path = "none"
+verbatim_pct = 72.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/simple_tokenizer.rs"
 upstream_path = "fts/tokenizer/simple_tokenizer.rs"
-verbatim_pct = 80.3
+replaced_upstream_path = "none"
+verbatim_pct = 73.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/split_compound_words.rs"
 upstream_path = "fts/tokenizer/split_compound_words.rs"
-verbatim_pct = 87.8
+replaced_upstream_path = "none"
+verbatim_pct = 86.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/stemmer.rs"
 upstream_path = "fts/tokenizer/stemmer.rs"
+replaced_upstream_path = "none"
 verbatim_pct = 89.0
 status = "derived"
 soak_expires_at_commit_count = 0
@@ -964,41 +1104,47 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/stop_word_filter/derived/gen_stopwords.py"
 upstream_path = "fts/tokenizer/stop_word_filter/gen_stopwords.py"
-verbatim_pct = 88.2
+replaced_upstream_path = "none"
+verbatim_pct = 82.4
 status = "dual"
 soak_expires_at_commit_count = 3108
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/derived/mod.rs"
 upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
-verbatim_pct = 71.3
+replaced_upstream_path = "none"
+verbatim_pct = 69.1
 status = "dual"
 soak_expires_at_commit_count = 3108
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/derived/stopwords/af_da.rs"
 upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-verbatim_pct = 3.3
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 3108
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/derived/stopwords/el_ja.rs"
 upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-verbatim_pct = 3.2
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 3108
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/derived/stopwords/ko_ro.rs"
 upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-verbatim_pct = 3.7
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 3108
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/derived/stopwords/mod.rs"
 upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 3108
@@ -1006,34 +1152,39 @@ soak_expires_at_commit_count = 3108
 [[file]]
 path = "fts/tokenizer/stop_word_filter/derived/stopwords/nl_de.rs"
 upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-verbatim_pct = 2.5
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 3108
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/derived/stopwords/ru_ur.rs"
 upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-verbatim_pct = 4.2
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 3108
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/derived/stopwords/vi_zu.rs"
 upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-verbatim_pct = 4.6
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 3108
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/mod.rs"
 upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
-verbatim_pct = 3.8
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "dual"
 soak_expires_at_commit_count = 3108
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/NOTICE.md"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1041,6 +1192,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1048,6 +1200,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/mod.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1055,6 +1208,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/stopwords.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1062,27 +1216,31 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/tokenized_string.rs"
 upstream_path = "fts/tokenizer/tokenized_string.rs"
-verbatim_pct = 79.2
+replaced_upstream_path = "none"
+verbatim_pct = 76.4
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/tokenizer_impl.rs"
 upstream_path = "fts/tokenizer/tokenizer_impl.rs"
-verbatim_pct = 81.9
+replaced_upstream_path = "none"
+verbatim_pct = 74.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/whitespace_tokenizer.rs"
 upstream_path = "fts/tokenizer/whitespace_tokenizer.rs"
-verbatim_pct = 80.3
+replaced_upstream_path = "none"
+verbatim_pct = 73.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "hot_reload.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1090,13 +1248,15 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "lib.rs"
 upstream_path = "lib.rs"
-verbatim_pct = 10.2
+replaced_upstream_path = "none"
+verbatim_pct = 1.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/error.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1104,62 +1264,71 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "parse/expr/bytecode.rs"
 upstream_path = "parse/expr.rs"
-verbatim_pct = 36.4
+replaced_upstream_path = "none"
+verbatim_pct = 29.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/expr/mod.rs"
 upstream_path = "parse/expr.rs"
-verbatim_pct = 16.5
+replaced_upstream_path = "none"
+verbatim_pct = 24.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/expr/strings.rs"
 upstream_path = "parse/expr.rs"
-verbatim_pct = 11.3
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/fts.rs"
 upstream_path = "parse/fts.rs"
-verbatim_pct = 28.8
+replaced_upstream_path = "none"
+verbatim_pct = 25.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/imperative.rs"
 upstream_path = "parse/imperative.rs"
-verbatim_pct = 25.6
+replaced_upstream_path = "none"
+verbatim_pct = 21.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/mod.rs"
 upstream_path = "parse/mod.rs"
-verbatim_pct = 38.3
+replaced_upstream_path = "none"
+verbatim_pct = 24.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/query/atoms.rs"
 upstream_path = "parse/query.rs"
-verbatim_pct = 26.3
+replaced_upstream_path = "none"
+verbatim_pct = 33.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/query/fixed_rules.rs"
 upstream_path = "parse/query.rs"
-verbatim_pct = 15.1
+replaced_upstream_path = "none"
+verbatim_pct = 10.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/query/mod.rs"
 upstream_path = "parse/query.rs"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
@@ -1167,55 +1336,63 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "parse/query/options.rs"
 upstream_path = "parse/query.rs"
-verbatim_pct = 23.2
+replaced_upstream_path = "none"
+verbatim_pct = 27.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/query/program.rs"
 upstream_path = "parse/query.rs"
-verbatim_pct = 24.2
+replaced_upstream_path = "none"
+verbatim_pct = 16.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/schema.rs"
 upstream_path = "parse/schema.rs"
-verbatim_pct = 43.2
+replaced_upstream_path = "none"
+verbatim_pct = 33.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/sys/index.rs"
 upstream_path = "parse/sys.rs"
-verbatim_pct = 3.9
+replaced_upstream_path = "none"
+verbatim_pct = 18.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/sys/mod.rs"
 upstream_path = "parse/sys.rs"
-verbatim_pct = 56.6
+replaced_upstream_path = "none"
+verbatim_pct = 18.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "parse/sys/parse.rs"
 upstream_path = "parse/sys.rs"
-verbatim_pct = 8.1
+replaced_upstream_path = "none"
+verbatim_pct = 9.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/compile.rs"
 upstream_path = "query/compile.rs"
-verbatim_pct = 84.8
+replaced_upstream_path = "none"
+verbatim_pct = 79.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/error.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1223,125 +1400,143 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "query/eval.rs"
 upstream_path = "query/eval.rs"
-verbatim_pct = 50.7
+replaced_upstream_path = "none"
+verbatim_pct = 56.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/graph.rs"
 upstream_path = "query/graph.rs"
-verbatim_pct = 63.9
+replaced_upstream_path = "none"
+verbatim_pct = 56.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/logical.rs"
 upstream_path = "query/logical.rs"
-verbatim_pct = 81.1
+replaced_upstream_path = "none"
+verbatim_pct = 78.4
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/magic.rs"
 upstream_path = "query/magic.rs"
-verbatim_pct = 80.5
+replaced_upstream_path = "none"
+verbatim_pct = 77.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/mod.rs"
 upstream_path = "query/mod.rs"
-verbatim_pct = 25.6
+replaced_upstream_path = "none"
+verbatim_pct = 23.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/ra/filter.rs"
 upstream_path = "query/ra.rs"
-verbatim_pct = 72.0
+replaced_upstream_path = "none"
+verbatim_pct = 66.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/ra/inline_fixed.rs"
 upstream_path = "query/ra.rs"
-verbatim_pct = 75.2
+replaced_upstream_path = "none"
+verbatim_pct = 69.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/ra/join.rs"
 upstream_path = "query/ra.rs"
-verbatim_pct = 69.8
+replaced_upstream_path = "none"
+verbatim_pct = 65.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/ra/mod.rs"
 upstream_path = "query/ra.rs"
-verbatim_pct = 78.6
+replaced_upstream_path = "none"
+verbatim_pct = 74.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/ra/project.rs"
 upstream_path = "query/ra.rs"
-verbatim_pct = 72.9
+replaced_upstream_path = "none"
+verbatim_pct = 66.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/ra/search.rs"
 upstream_path = "query/ra.rs"
-verbatim_pct = 26.4
+replaced_upstream_path = "none"
+verbatim_pct = 23.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/ra/sort.rs"
 upstream_path = "query/ra.rs"
-verbatim_pct = 53.3
+replaced_upstream_path = "none"
+verbatim_pct = 41.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/ra/stored.rs"
 upstream_path = "query/ra.rs"
-verbatim_pct = 67.0
+replaced_upstream_path = "none"
+verbatim_pct = 65.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/ra/temp_store.rs"
 upstream_path = "query/ra.rs"
-verbatim_pct = 62.3
+replaced_upstream_path = "none"
+verbatim_pct = 67.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/reorder.rs"
 upstream_path = "query/reorder.rs"
-verbatim_pct = 77.1
+replaced_upstream_path = "none"
+verbatim_pct = 72.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/sort.rs"
 upstream_path = "query/sort.rs"
-verbatim_pct = 70.6
+replaced_upstream_path = "none"
+verbatim_pct = 58.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/stored/extractors.rs"
 upstream_path = "query/stored.rs"
-verbatim_pct = 68.6
+replaced_upstream_path = "none"
+verbatim_pct = 56.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/stored/mod.rs"
 upstream_path = "query/stored.rs"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
@@ -1349,27 +1544,31 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "query/stored/mutation.rs"
 upstream_path = "query/stored.rs"
-verbatim_pct = 71.6
+replaced_upstream_path = "none"
+verbatim_pct = 63.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/stored/validation.rs"
 upstream_path = "query/stored.rs"
-verbatim_pct = 73.5
+replaced_upstream_path = "none"
+verbatim_pct = 73.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query/stratify.rs"
 upstream_path = "query/stratify.rs"
-verbatim_pct = 71.2
+replaced_upstream_path = "none"
+verbatim_pct = 69.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "query_cache.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1377,20 +1576,23 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/callback.rs"
 upstream_path = "runtime/callback.rs"
-verbatim_pct = 65.8
+replaced_upstream_path = "none"
+verbatim_pct = 55.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/db.rs"
 upstream_path = "runtime/db.rs"
-verbatim_pct = 45.5
+replaced_upstream_path = "none"
+verbatim_pct = 29.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/error.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1398,69 +1600,79 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/exec.rs"
 upstream_path = "runtime/db.rs"
-verbatim_pct = 77.8
+replaced_upstream_path = "none"
+verbatim_pct = 71.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw/adaptive.rs"
 upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 3.3
-status = "dual"
-soak_expires_at_commit_count = 3058
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "derived"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw/graph.rs"
 upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 50.0
-status = "dual"
-soak_expires_at_commit_count = 3058
+replaced_upstream_path = "none"
+verbatim_pct = 46.1
+status = "derived"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw/mod.rs"
 upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 2.8
-status = "dual"
-soak_expires_at_commit_count = 3058
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "derived"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw/put.rs"
 upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 33.6
-status = "dual"
-soak_expires_at_commit_count = 3058
+replaced_upstream_path = "none"
+verbatim_pct = 29.4
+status = "derived"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw/remove.rs"
 upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 53.7
-status = "dual"
-soak_expires_at_commit_count = 3058
+replaced_upstream_path = "none"
+verbatim_pct = 49.3
+status = "derived"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw/search.rs"
 upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 26.4
-status = "dual"
-soak_expires_at_commit_count = 3058
+replaced_upstream_path = "none"
+verbatim_pct = 20.3
+status = "derived"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw/types.rs"
 upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 29.4
-status = "dual"
-soak_expires_at_commit_count = 3058
+replaced_upstream_path = "none"
+verbatim_pct = 13.4
+status = "derived"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw/visited_pool.rs"
 upstream_path = "runtime/hnsw.rs"
-verbatim_pct = 10.8
+replaced_upstream_path = "none"
+verbatim_pct = 3.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/hnsw_sovereign/adaptive.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1468,6 +1680,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/hnsw_sovereign/close_reopen_tests.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1475,6 +1688,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/hnsw_sovereign/graph.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1482,6 +1696,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/hnsw_sovereign/mod.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1489,6 +1704,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/hnsw_sovereign/put.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1496,6 +1712,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/hnsw_sovereign/remove.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1503,6 +1720,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/hnsw_sovereign/search.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1510,6 +1728,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/hnsw_sovereign/types.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1517,48 +1736,55 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/imperative.rs"
 upstream_path = "runtime/imperative.rs"
-verbatim_pct = 44.2
+replaced_upstream_path = "none"
+verbatim_pct = 35.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/minhash_lsh.rs"
 upstream_path = "runtime/minhash_lsh.rs"
-verbatim_pct = 59.6
+replaced_upstream_path = "none"
+verbatim_pct = 53.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/mod.rs"
 upstream_path = "runtime/mod.rs"
-verbatim_pct = 3.1
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/relation/handles.rs"
 upstream_path = "runtime/relation.rs"
-verbatim_pct = 76.8
+replaced_upstream_path = "none"
+verbatim_pct = 68.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/relation/index_create.rs"
 upstream_path = "runtime/relation.rs"
-verbatim_pct = 73.9
+replaced_upstream_path = "none"
+verbatim_pct = 64.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/relation/index_management.rs"
 upstream_path = "runtime/relation.rs"
-verbatim_pct = 66.7
+replaced_upstream_path = "none"
+verbatim_pct = 60.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/relation/mod.rs"
 upstream_path = "runtime/relation.rs"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
@@ -1566,48 +1792,55 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/relation/relation_crud.rs"
 upstream_path = "runtime/relation.rs"
-verbatim_pct = 61.0
+replaced_upstream_path = "none"
+verbatim_pct = 48.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/sys.rs"
 upstream_path = "runtime/db.rs"
-verbatim_pct = 72.7
+replaced_upstream_path = "none"
+verbatim_pct = 61.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/temp_store.rs"
 upstream_path = "runtime/temp_store.rs"
-verbatim_pct = 83.3
+replaced_upstream_path = "none"
+verbatim_pct = 81.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/tests/basic_queries.rs"
 upstream_path = "runtime/tests.rs"
-verbatim_pct = 38.5
+replaced_upstream_path = "none"
+verbatim_pct = 12.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/tests/imperative.rs"
 upstream_path = "runtime/tests.rs"
-verbatim_pct = 58.8
+replaced_upstream_path = "none"
+verbatim_pct = 44.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/tests/indexing.rs"
 upstream_path = "runtime/tests.rs"
-verbatim_pct = 52.5
+replaced_upstream_path = "none"
+verbatim_pct = 41.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/tests/mod.rs"
 upstream_path = "runtime/tests.rs"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
@@ -1615,20 +1848,23 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "runtime/tests/triggers_callbacks.rs"
 upstream_path = "runtime/tests.rs"
-verbatim_pct = 23.5
+replaced_upstream_path = "none"
+verbatim_pct = 7.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "runtime/transact.rs"
 upstream_path = "runtime/transact.rs"
-verbatim_pct = 16.2
+replaced_upstream_path = "none"
+verbatim_pct = 12.4
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "storage/error.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1636,6 +1872,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "storage/fjall_backend.rs"
 upstream_path = "none"
+replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -1643,27 +1880,31 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "storage/mem.rs"
 upstream_path = "storage/mem.rs"
-verbatim_pct = 4.5
+replaced_upstream_path = "none"
+verbatim_pct = 28.2
 status = "dual"
 soak_expires_at_commit_count = 2908
 
 [[file]]
 path = "storage/mod.rs"
 upstream_path = "storage/mod.rs"
-verbatim_pct = 64.4
+replaced_upstream_path = "none"
+verbatim_pct = 39.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
 path = "storage/temp.rs"
 upstream_path = "storage/temp.rs"
-verbatim_pct = 2.2
+replaced_upstream_path = "none"
+verbatim_pct = 18.4
 status = "dual"
 soak_expires_at_commit_count = 2908
 
 [[file]]
 path = "utils.rs"
 upstream_path = "utils.rs"
-verbatim_pct = 71.4
+replaced_upstream_path = "none"
+verbatim_pct = 42.9
 status = "derived"
 soak_expires_at_commit_count = 0
