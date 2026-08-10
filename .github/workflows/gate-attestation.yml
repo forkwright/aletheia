@@ -55,19 +55,6 @@
 # name stays the bare string `gate` — unchanged from before this migration,
 # no branch-protection rename needed.
 #
-# WHY no concurrency: block here — dropped as part of adopting hybrid-gate.yml
-# (which now declares `concurrency: group: ${{ github.workflow }}-${{
-# github.ref }}` itself; its own comment states callers must not duplicate
-# that key, or the shared group self-cancels). Prior to this migration this
-# file set its own key (`${{ github.workflow }}-${{
-# github.event.pull_request.number || github.ref }}`) covering all jobs
-# including the two coverage jobs; omitting it means a rapid re-push no
-# longer pre-empts an in-flight gate-coverage-scripts/compile-checks run for
-# the same PR. This is a CI-minutes cost only, not a correctness regression:
-# required-status-checks evaluates against the PR's current head SHA, so a
-# superseded push's now-stale run cannot block or falsely pass merge — it
-# just runs to completion against a SHA nothing checks anymore.
-#
 # WHY ai_attribution_check / docs_only_exemption ARE set below: the extended
 # hybrid-gate.yml (declaring both workflow_call inputs) is now live at
 # forkwright/.github. no-ai-attribution.yml stays alongside unchanged — it
