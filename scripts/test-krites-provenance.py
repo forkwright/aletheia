@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import krites_provenance_lib as LIB  # noqa: E402
+import krites_provenance_lib as LIB
 
 _CHECK_SCRIPT_PATH = Path(__file__).parent / "check-krites-provenance.py"
 _TRANSITION_SCRIPT_PATH = Path(__file__).parent / "krites-provenance-transition.py"
@@ -191,11 +191,19 @@ def test_verbatim_recompute_catches_unmeasured_sovereign_claim() -> None:
         root = Path(tmp)
         snapshot_dir = root / "snapshot"
         snapshot_dir.mkdir()
-        (snapshot_dir / "up.rs").write_text("fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n")
+        (snapshot_dir / "up.rs").write_text(
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn e() {}\nfn f() {}\nfn g() {}\nfn h() {}\n"
+        )
         src_dir = root / "src"
         src_dir.mkdir()
-        # shares 2 of 4 lines with up.rs -- a real, nonzero, measurable similarity.
-        (src_dir / "local.rs").write_text("fn a() {}\nfn b() {}\nfn zzz() {}\nfn www() {}\n")
+        # shares 4 of 8 lines with up.rs -- above MIN_MATCH_BLOCK_LINES, so measurably 50.0.
+        (src_dir / "local.rs").write_text(
+            # WHY 4 contiguous shared lines: MIN_MATCH_BLOCK_LINES floors shorter runs,
+            # so a 2-line overlap measures 0.0 and would not exercise this path at all.
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn zzz() {}\nfn www() {}\nfn yyy() {}\nfn xxx() {}\n"
+        )
 
         orig_snapshot = CHECKER.UPSTREAM_SNAPSHOT_DIR
         orig_src = CHECKER.KRITES_SRC
@@ -292,10 +300,18 @@ def test_apply_to_sovereign_retains_and_recomputes() -> None:
         root = Path(tmp)
         snapshot_dir = root / "snapshot"
         snapshot_dir.mkdir()
-        (snapshot_dir / "up.rs").write_text("fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n")
+        (snapshot_dir / "up.rs").write_text(
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn e() {}\nfn f() {}\nfn g() {}\nfn h() {}\n"
+        )
         src_dir = root / "src"
         src_dir.mkdir()
-        (src_dir / "local.rs").write_text("fn a() {}\nfn b() {}\nfn zzz() {}\nfn www() {}\n")
+        (src_dir / "local.rs").write_text(
+            # WHY 4 contiguous shared lines: MIN_MATCH_BLOCK_LINES floors shorter runs,
+            # so a 2-line overlap measures 0.0 and would not exercise this path at all.
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn zzz() {}\nfn www() {}\nfn yyy() {}\nfn xxx() {}\n"
+        )
 
         orig_snapshot = TRANSITION.UPSTREAM_SNAPSHOT_DIR
         orig_src = TRANSITION.KRITES_SRC
@@ -351,8 +367,115 @@ def test_apply_to_sovereign_falls_back_when_snapshot_missing() -> None:
         finally:
             TRANSITION.UPSTREAM_SNAPSHOT_DIR = orig_snapshot
             TRANSITION.KRITES_SRC = orig_src
+# --- aletheia#6656: verbatim_pct metric defects (leading whitespace, punctuation floor) ---
 
 
+def test_verbatim_pct_ignores_reindentation() -> None:
+    # WHY: the exact aletheia#6656 reproduction — wrapping an unmodified,
+    # preserved file in an extra `mod wrapper { }` nesting (a pure
+    # re-indentation, no content change) must not zero out its similarity
+    # score. Pre-fix, storage/mem.rs dropped from ~69% to 4.5% verbatim_pct
+    # from exactly this shape of edit; nonblank_lines() only stripped the
+    # trailing newline splitlines() already removes, never the leading
+    # whitespace the re-indent shifted every line by.
+    upstream = "fn a() {\n    let x = 1;\n    let y = 2;\n    x + y\n}\n"
+    reindented = (
+        "mod wrapper {\n"
+        "    fn a() {\n"
+        "        let x = 1;\n"
+        "        let y = 2;\n"
+        "        x + y\n"
+        "    }\n"
+        "}\n"
+    )
+    pct = LIB.verbatim_pct(reindented, upstream)
+    expect(
+        pct >= 70.0,
+        f"a pure re-indentation of an otherwise-identical file must still score high "
+        f"(nonblank_lines must strip leading whitespace, not just the trailing newline); got {pct}",
+    )
+
+
+def test_verbatim_pct_floors_out_scattered_punctuation_matches() -> None:
+    # WHY: the audit's reproduction — `runtime/hnsw_sovereign/types.rs`, with
+    # no authored relationship to `runtime/hnsw.rs`, still scored 12.4%
+    # against it from scattered single/double-line collisions on language
+    # boilerplate (`}`, `#[cfg(test)]`, `mod tests {`). Two files below share
+    # only such scattered fragments — no block reaches MIN_MATCH_BLOCK_LINES
+    # — and must floor to 0, even though an unfloored (block-size >= 1)
+    # comparison of the same pair is nonzero (41.2%), proving the floor is
+    # what suppresses the false signal, not an accident of the fixture.
+    local = (
+        "//! Vector cache eviction policy for the sovereign index.\n"
+        "use std::num::NonZeroUsize;\n"
+        "\n"
+        "pub(crate) struct EvictionCache {\n"
+        "    capacity: NonZeroUsize,\n"
+        "}\n"
+        "\n"
+        "impl EvictionCache {\n"
+        "    pub(crate) fn touch(&mut self, key: u64) {\n"
+        "        self.recent.push(key);\n"
+        "    }\n"
+        "}\n"
+        "\n"
+        "#[cfg(test)]\n"
+        "mod eviction_tests {\n"
+        "    #[test]\n"
+        "    fn touch_updates_recency() {\n"
+        "        assert!(true);\n"
+        "    }\n"
+        "}\n"
+    )
+    upstream = (
+        "//! HNSW graph traversal and neighbour search.\n"
+        "use std::collections::BinaryHeap;\n"
+        "\n"
+        "pub(crate) struct SearchState {\n"
+        "    frontier: BinaryHeap<Candidate>,\n"
+        "}\n"
+        "\n"
+        "impl SearchState {\n"
+        "    pub(crate) fn push(&mut self, candidate: Candidate) {\n"
+        "        self.frontier.push(candidate);\n"
+        "    }\n"
+        "}\n"
+        "\n"
+        "#[cfg(test)]\n"
+        "mod search_tests {\n"
+        "    #[test]\n"
+        "    fn push_orders_by_distance() {\n"
+        "        assert!(false);\n"
+        "    }\n"
+        "}\n"
+    )
+    pct = LIB.verbatim_pct(local, upstream)
+    expect(
+        pct == 0.0,
+        f"scattered sub-floor punctuation/boilerplate matches with no real shared block "
+        f"must not read as evidence; got {pct}",
+    )
+    unfloored = sum(
+        block.size
+        for block in __import__("difflib")
+        .SequenceMatcher(None, LIB.nonblank_lines(local), LIB.nonblank_lines(upstream), autojunk=False)
+        .get_matching_blocks()
+        if block.size > 0
+    )
+    expect(
+        unfloored > 0,
+        "fixture must contain real (if scattered) matches pre-floor, or the test proves nothing",
+    )
+
+
+def test_verbatim_pct_full_match_on_file_shorter_than_floor() -> None:
+    # WHY: MIN_MATCH_BLOCK_LINES must not floor a genuinely complete verbatim
+    # copy of a file shorter than the floor itself to 0 — the floor exists to
+    # suppress a small match INSIDE a larger, otherwise-unrelated file, not to
+    # blind the metric to short files entirely.
+    identical = "fn a() {}\nfn b() {}\n"
+    pct = LIB.verbatim_pct(identical, identical)
+    expect(pct == 100.0, f"a file identical to upstream must score 100% regardless of length; got {pct}")
 # --- P1: status-sequence enforcement (the sneakier variant: verbatim_pct zeroed too) ---
 
 
@@ -555,6 +678,9 @@ def main() -> int:
         test_status_sequence_accepts_dual_to_sovereign_with_correct_replaced_path,
         test_apply_to_sovereign_retains_and_recomputes,
         test_apply_to_sovereign_falls_back_when_snapshot_missing,
+        test_verbatim_pct_ignores_reindentation,
+        test_verbatim_pct_floors_out_scattered_punctuation_matches,
+        test_verbatim_pct_full_match_on_file_shorter_than_floor,
         test_status_sequence_rejects_direct_derived_to_sovereign,
         test_status_sequence_accepts_derived_to_dual_and_dual_to_sovereign,
         test_status_sequence_ignores_path_absent_from_base,
