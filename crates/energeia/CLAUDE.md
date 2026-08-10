@@ -32,6 +32,8 @@ Dispatch orchestration: actualization of plans into execution. Absorbs kanon's p
 | `SessionHandle` | `engine.rs` | Trait: event stream, wait, abort for a running session |
 | `QaGate` | `qa.rs` | Trait: evaluate PR quality, mechanical checks |
 | `CronTask` / `CronScheduler` | `cron.rs` | Recurring dispatch driven by `jiff-cron`; fjall-backed cross-restart lock and per-task overlap policy. Feature: `storage-fjall`. |
+| `SessionRecord` / `SessionUpdate` | `store/records.rs` | Prompt-level record and update shapes with optional terminal attribution; fjall persistence requires `storage-fjall`. |
+| `DispatchExport` | `store/records.rs` | A dispatch bundled with persisted prompt records; `EnergeiaStore` export helpers require `storage-fjall`. |
 
 ## Patterns
 
