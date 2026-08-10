@@ -9,7 +9,7 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 215 files under `src/`: 143 derived, 60 sovereign, 12 dual
+- 216 files under `src/`: 143 derived, 61 sovereign, 12 dual
 - Mean verbatim match across the 143 derived files: 44.8% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
@@ -24,7 +24,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/error.rs` | — | 0.0% | sovereign |
 | `src/data/expr/expr_impl.rs` | `data/expr.rs` | 64.5% | derived |
 | `src/data/expr/mod.rs` | `data/expr.rs` | 44.8% | derived |
-| `src/data/expr/op.rs` | `data/expr.rs` | 84.4% | derived |
+| `src/data/expr/op.rs` | `data/expr.rs` | 84.1% | derived |
 | `src/data/functions/aggregate.rs` | `data/functions.rs` | 12.7% | derived |
 | `src/data/functions/bits.rs` | `data/functions.rs` | 32.7% | derived |
 | `src/data/functions/collections.rs` | `data/functions.rs` | 8.1% | derived |
@@ -33,7 +33,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/functions/math/transcendental.rs` | `data/functions.rs` | 6.5% | derived |
 | `src/data/functions/mod.rs` | `data/functions.rs` | 2.1% | derived |
 | `src/data/functions/string.rs` | `data/functions.rs` | 11.9% | derived |
-| `src/data/functions/temporal.rs` | `data/functions.rs` | 7.7% | derived |
+| `src/data/functions/temporal.rs` | `data/functions.rs` | 6.9% | derived |
 | `src/data/functions/trig.rs` | `data/functions.rs` | 22.6% | derived |
 | `src/data/functions/utility.rs` | `data/functions.rs` | 27.5% | derived |
 | `src/data/functions/vector.rs` | `data/functions.rs` | 22.1% | derived |
@@ -50,7 +50,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/program/search/lsh_fts.rs` | `data/program.rs` | 48.0% | derived |
 | `src/data/program/search/mod.rs` | `data/program.rs` | 75.5% | derived |
 | `src/data/program/types.rs` | `data/program.rs` | 80.2% | derived |
-| `src/data/relation.rs` | `data/relation.rs` | 54.6% | derived |
+| `src/data/relation.rs` | `data/relation.rs` | 54.2% | derived |
 | `src/data/symb.rs` | `data/symb.rs` | 66.0% | derived |
 | `src/data/tests/aggrs.rs` | `data/tests/aggrs.rs` | 27.1% | derived |
 | `src/data/tests/exprs.rs` | `data/tests/exprs.rs` | 22.2% | derived |
@@ -59,6 +59,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/tests/functions/mod.rs` | `data/tests/functions.rs` | 0.0% | derived |
 | `src/data/tests/functions/string_ops.rs` | `data/tests/functions.rs` | 42.9% | derived |
 | `src/data/tests/functions/type_conversion.rs` | `data/tests/functions.rs` | 11.1% | derived |
+| `src/data/tests/functions/validity_units.rs` | — | 0.0% | sovereign |
 | `src/data/tests/json.rs` | `data/tests/json.rs` | 7.7% | derived |
 | `src/data/tests/memcmp.rs` | `data/tests/memcmp.rs` | 55.0% | derived |
 | `src/data/tests/mod.rs` | `data/tests/mod.rs` | 55.6% | derived |
@@ -66,7 +67,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/tests/validity.rs` | `data/tests/validity.rs` | 41.7% | derived |
 | `src/data/tests/values.rs` | `data/tests/values.rs` | 14.0% | derived |
 | `src/data/tuple.rs` | `data/tuple.rs` | 52.0% | derived |
-| `src/data/value.rs` | `data/value.rs` | 62.5% | derived |
+| `src/data/value.rs` | `data/value.rs` | 60.3% | derived |
 | `src/datalog.pest` | `cozoscript.pest` | 99.6% | derived |
 | `src/error.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/all_pairs_shortest_path_native.rs` | cf. `fixed_rule/algos/all_pairs_shortest_path.rs` | 15.4% | sovereign |
@@ -218,7 +219,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/sys.rs` | `runtime/db.rs` | 61.0% | derived |
 | `src/runtime/temp_store.rs` | `runtime/temp_store.rs` | 81.0% | derived |
 | `src/runtime/tests/basic_queries.rs` | `runtime/tests.rs` | 12.3% | derived |
-| `src/runtime/tests/imperative.rs` | `runtime/tests.rs` | 44.6% | derived |
+| `src/runtime/tests/imperative.rs` | `runtime/tests.rs` | 44.4% | derived |
 | `src/runtime/tests/indexing.rs` | `runtime/tests.rs` | 41.2% | derived |
 | `src/runtime/tests/mod.rs` | `runtime/tests.rs` | 0.0% | derived |
 | `src/runtime/tests/triggers_callbacks.rs` | `runtime/tests.rs` | 7.6% | derived |

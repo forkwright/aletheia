@@ -435,7 +435,9 @@ pub(crate) fn expr2vld_spec(expr: Expr, cur_vld: ValidityTs) -> Result<ValidityT
     let _vld_span = expr.span();
     match expr.eval_to_const()? {
         DataValue::Num(n) => {
-            let microseconds = n.get_int().ok_or_else(|| {
+            // WHY strict: this binds the `@` selector's microsecond timestamp; a whole float
+            // here is seconds and would select the wrong epoch silently. Upstream cozo#312.
+            let microseconds = n.get_int_strict().ok_or_else(|| {
                 InvalidQuerySnafu {
                     message: "bad specification of validity".to_string(),
                 }

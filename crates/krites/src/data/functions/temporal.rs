@@ -83,6 +83,42 @@ pub(crate) fn op_now(_args: &[DataValue]) -> Result<DataValue> {
     ))
 }
 
+/// Microseconds since the Unix epoch, as an integer.
+///
+/// WHY this exists beside [`op_now`]: `now()` returns float **seconds**, and `Validity` is
+/// denominated in **microseconds**. Writing `Validity default [floor(now()), true]` therefore
+/// stores a seconds count in a microseconds field and lands the row at 1970-01-01 — silently,
+/// because the value is well-formed and only wrong by six orders of magnitude. Since the strict
+/// coercion rejects a float in a unit-carrying position, this is the function that makes "now, as
+/// a validity" expressible at all: `Validity default [now_micros(), true]`.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn op_now_micros(_args: &[DataValue]) -> Result<DataValue> {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "Date::now() is milliseconds since the epoch; the product is far inside i64"
+    )]
+    Ok(DataValue::from((Date::now() * 1000.0) as i64))
+}
+
+/// See the wasm32 sibling for why this exists beside [`op_now`].
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn op_now_micros(_args: &[DataValue]) -> Result<DataValue> {
+    let micros = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_micros();
+    // WHY try_from and not `as`: microseconds since the epoch exceeds i64 only past year 294247,
+    // but a silent wrap here would reintroduce exactly the class of corruption this function is
+    // meant to remove.
+    let micros = i64::try_from(micros).map_err(|e| {
+        BadTimeSnafu {
+            message: format!("system clock is beyond the representable microsecond range: {e}"),
+        }
+        .build()
+    })?;
+    Ok(DataValue::from(micros))
+}
+
 pub(crate) fn op_format_timestamp(args: &[DataValue]) -> Result<DataValue> {
     let millis = match arg(args, 0)? {
         DataValue::Validity(vld) => vld.timestamp.0.0 / 1000,
@@ -294,7 +330,10 @@ pub(crate) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_validity(args: &[DataValue]) -> Result<DataValue> {
-    let ts = arg(args, 0)?.get_int().ok_or_else(|| {
+    // WHY strict: the argument is microseconds. The error message below already says "an integer";
+    // `get_int` accepted a whole-valued float, so `validity(parse_timestamp(...))` — float seconds —
+    // was silently reinterpreted a million-fold smaller. Upstream cozo#312.
+    let ts = arg(args, 0)?.get_int_strict().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "validity",
             expected: "an integer",
