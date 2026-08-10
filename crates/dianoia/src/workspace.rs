@@ -115,9 +115,8 @@ impl ProjectWorkspace {
         // symlink swapped in between the component check above and this
         // write (`reject_traversal_component` only proves the *string*
         // shape is safe; the filesystem can still diverge from it).
-        let phase_blockers =
-            koina::fs::validate_within_root(&candidate, &layout.blockers_dir)
-                .context(error::WorkspaceIoSnafu { path: &candidate })?;
+        let phase_blockers = koina::fs::validate_within_root(&candidate, &layout.blockers_dir)
+            .context(error::WorkspaceIoSnafu { path: &candidate })?;
 
         let filename = format!("{}.json", blocker.plan_id);
         let path = phase_blockers.join(&filename);

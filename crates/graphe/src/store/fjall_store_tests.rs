@@ -811,7 +811,11 @@ fn critical_session_mutations_each_flush_exactly_once() {
     test_persist_counter::reset();
     let deleted_session = store.delete_session("ses-durable").expect("delete");
     assert!(deleted_session);
-    assert_eq!(test_persist_counter::count(), 1, "delete_session must flush");
+    assert_eq!(
+        test_persist_counter::count(),
+        1,
+        "delete_session must flush"
+    );
 }
 
 // WHY(#5270): the counterexample to the test above — bounded-retention

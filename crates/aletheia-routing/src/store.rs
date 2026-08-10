@@ -1156,8 +1156,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let interactive_dir = tmp.path().join("interactive");
         std::fs::create_dir_all(&interactive_dir).unwrap();
-        let mut file =
-            std::fs::File::create(interactive_dir.join("2026-04-17.jsonl")).unwrap();
+        let mut file = std::fs::File::create(interactive_dir.join("2026-04-17.jsonl")).unwrap();
         writeln!(
             file,
             "{}",
@@ -1205,8 +1204,7 @@ mod tests {
         let store = AfterActionStore::new(tmp.path().to_owned());
         let provider = ProviderId::new("shared-provider");
         for i in 0..2u32 {
-            let outcome =
-                TurnOutcome::new(provider.clone(), TaskCategory::Feature, i == 0, true);
+            let outcome = TurnOutcome::new(provider.clone(), TaskCategory::Feature, i == 0, true);
             store.record_outcome(&outcome).await;
         }
 

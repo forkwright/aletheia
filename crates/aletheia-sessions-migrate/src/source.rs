@@ -286,7 +286,9 @@ fn map_usage(row: &Row<'_>) -> rusqlite::Result<UsageRecord> {
         // predating the column, or a synthetic fixture) degrades to the
         // empty string, which downstream readers already treat as
         // "unknown — fall back to session `created_at`".
-        created_at: row.get::<_, Option<String>>("created_at")?.unwrap_or_default(),
+        created_at: row
+            .get::<_, Option<String>>("created_at")?
+            .unwrap_or_default(),
     })
 }
 

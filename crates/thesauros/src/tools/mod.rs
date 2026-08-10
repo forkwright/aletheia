@@ -419,9 +419,12 @@ fn validate_command_path(
     // just an early-exit optimization over the canonicalize-based check below.
     let declared = Path::new(command);
     let is_relative_in_pack = !declared.is_absolute()
-        && declared
-            .components()
-            .all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir));
+        && declared.components().all(|c| {
+            matches!(
+                c,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        });
     if !is_relative_in_pack {
         return Err(error::Error::ToolCommandEscape {
             path: declared.to_path_buf(),
@@ -454,13 +457,12 @@ fn validate_command_path(
         });
     }
 
-    let identity = FileIdentity::of(&canonical).map_err(|reason| {
-        error::Error::ToolCommandNotExecutable {
+    let identity =
+        FileIdentity::of(&canonical).map_err(|reason| error::Error::ToolCommandNotExecutable {
             path: canonical.clone(),
             reason,
             location: snafu::location!(),
-        }
-    })?;
+        })?;
 
     Ok((canonical, identity))
 }

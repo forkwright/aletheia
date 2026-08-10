@@ -483,7 +483,10 @@ async fn shell_executor_refuses_a_swapped_command_file() {
         "a swapped command file must be refused, not executed"
     );
     assert!(
-        result.content.text_summary().contains("changed since registration"),
+        result
+            .content
+            .text_summary()
+            .contains("changed since registration"),
         "error must explain why: {}",
         result.content.text_summary()
     );
