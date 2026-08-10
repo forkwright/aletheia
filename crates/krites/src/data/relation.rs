@@ -402,8 +402,12 @@ impl NullableColType {
                 },
                 DataValue::List(l) => {
                     if l.len() == 2 {
+                        // WHY strict: this timestamp is microseconds. `get_int` would accept a
+                        // whole-valued float — which is what `parse_timestamp()`/`now()` produce, in
+                        // seconds — and reinterpret it a million-fold smaller, writing the row at
+                        // 1970-01-01 permanently and silently. Upstream cozo#312.
                         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
-                        let o_ts = l[0].get_int();
+                        let o_ts = l[0].get_int_strict();
                         #[expect(clippy::indexing_slicing, reason = "index bounds validated")]
                         let o_is_assert = l[1].get_bool();
                         if let (Some(ts), Some(is_assert)) = (o_ts, o_is_assert) {

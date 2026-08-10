@@ -313,7 +313,7 @@ soak_expires_at_commit_count = 0
 path = "data/relation.rs"
 upstream_path = "data/relation.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 54.6
+verbatim_pct = 54.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -382,6 +382,14 @@ status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
+path = "data/tests/functions/validity_units.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
 path = "data/tests/json.rs"
 upstream_path = "data/tests/json.rs"
 replaced_upstream_path = "none"
@@ -441,7 +449,7 @@ soak_expires_at_commit_count = 0
 path = "data/value.rs"
 upstream_path = "data/value.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 62.5
+verbatim_pct = 60.3
 status = "derived"
 soak_expires_at_commit_count = 0
 

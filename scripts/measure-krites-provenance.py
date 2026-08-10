@@ -84,6 +84,7 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "data/tests/functions/mod.rs": "data/tests/functions.rs",
     "data/tests/functions/string_ops.rs": "data/tests/functions.rs",
     "data/tests/functions/type_conversion.rs": "data/tests/functions.rs",
+    "data/tests/functions/validity_units.rs": None,
     "data/tests/json.rs": "data/tests/json.rs",
     "data/tests/memcmp.rs": "data/tests/memcmp.rs",
     "data/tests/mod.rs": "data/tests/mod.rs",

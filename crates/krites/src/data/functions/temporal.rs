@@ -294,7 +294,10 @@ pub(crate) fn op_rand_choose(args: &[DataValue]) -> Result<DataValue> {
 }
 
 pub(crate) fn op_validity(args: &[DataValue]) -> Result<DataValue> {
-    let ts = arg(args, 0)?.get_int().ok_or_else(|| {
+    // WHY strict: the argument is microseconds. The error message below already says "an integer";
+    // `get_int` accepted a whole-valued float, so `validity(parse_timestamp(...))` — float seconds —
+    // was silently reinterpreted a million-fold smaller. Upstream cozo#312.
+    let ts = arg(args, 0)?.get_int_strict().ok_or_else(|| {
         TypeMismatchSnafu {
             op: "validity",
             expected: "an integer",

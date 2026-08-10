@@ -612,6 +612,24 @@ impl Num {
             }
         }
     }
+    /// Extract the integer value, rejecting floats outright.
+    ///
+    /// WHY this exists alongside [`Num::get_int`]: `get_int` accepts any whole-valued float and
+    /// casts it, which is correct for genuinely unit-less integer contexts and silently wrong for a
+    /// value that carries a unit. `Validity` is denominated in **microseconds**, while `now()` and
+    /// `parse_timestamp()` produce float **seconds** — so a timestamp piped from one into the other
+    /// is reinterpreted by a factor of a million and the row lands at 1970-01-01. It corrupts on
+    /// write, permanently, and reads back as zero rows with no error.
+    ///
+    /// INVARIANT: use this at every site where the integer carries a unit. A magnitude check would
+    /// be the wrong guard — `Validity` is an abstract logical clock, so small values like `@ 250`
+    /// are legitimate and a "reject below 1e12" heuristic would corrupt valid data.
+    pub fn get_int_strict(&self) -> Option<i64> {
+        match self {
+            Num::Int(i) => Some(*i),
+            Num::Float(_) => None,
+        }
+    }
     /// Convert to f64, promoting integers via `as` cast (precision loss above 2^53).
     pub(crate) fn get_float(&self) -> f64 {
         match self {
@@ -779,6 +797,16 @@ impl DataValue {
     pub fn get_int(&self) -> Option<i64> {
         match self {
             DataValue::Num(n) => n.get_int(),
+            _ => None,
+        }
+    }
+    /// Returns the integer value, rejecting floats outright.
+    ///
+    /// WHY: see [`Num::get_int_strict`]. Use this wherever the integer carries a unit, so a
+    /// float-seconds value cannot be silently reinterpreted as microseconds.
+    pub fn get_int_strict(&self) -> Option<i64> {
+        match self {
+            DataValue::Num(n) => n.get_int_strict(),
             _ => None,
         }
     }
