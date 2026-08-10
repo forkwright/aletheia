@@ -24,23 +24,29 @@ Sources, strongest first:
       LETTER" glyphs whose case is not encoded in the Name field, and two
       confirmed upstream table quirks -- see QUIRKS below).
 
-krites' own ascii_folding_filter table (frozen at an older Unicode edition,
-predating several Unicode 14-16 Latin Extended-D additions) is the
-conformance oracle this table is proved equivalent to -- see
-`tests/bmp_equivalence.rs`, which sweeps the full Basic Multilingual Plane.
+The conformance oracle was krites' derived ascii_folding_filter table, frozen
+at an older Unicode edition predating several Unicode 14-16 Latin Extended-D
+additions. Equivalence over the full Basic Multilingual Plane was proved
+against it before it was retired.
+
 EXCLUDE_SET below lists the codepoints where this generator's UCD/CLDR/Name
-derivation would produce a fold that the oracle does not: real coverage this
-primary-source method offers beyond what the frozen table happens to carry,
-excluded here only to hold exact behavioral equivalence for the cfg-gated
-land-dark swap (PLAN.md Sec.2). Each group is commented with why.
+derivation produces a fold the oracle did not: real coverage this
+primary-source method offers beyond what the frozen table carried, held back
+to keep folding behaviour unchanged across the swap. Each group is commented
+with why.
+
+NOTE: the oracle no longer exists, so nothing now forces these exclusions.
+Lifting them widens fold coverage and CHANGES tokenizer output, so it is a
+deliberate behavioural change with its own tests -- not a cleanup to fold
+into an unrelated edit.
 
 Usage: python3 generate.py   (writes table.rs beside this script)
 
 INVARIANT: pinned to the interpreter's UCD version below. All ranges in
 ALLOWED_BLOCKS and all entries in EXCLUDE_SET were derived against this
 exact version; a version bump can shift which codepoints are assigned in
-Latin Extended-D and change what needs excluding. Re-run against
-tests/bmp_equivalence.rs after bumping and update this constant deliberately.
+Latin Extended-D and change what needs excluding. Re-derive EXCLUDE_SET and
+diff the emitted table after bumping, and update this constant deliberately.
 """
 
 from __future__ import annotations
@@ -308,13 +314,13 @@ def phase_e(c: str) -> str | None:
 
 
 # --- Scope exclusions --------------------------------------------------
-# Codepoints where phases A-E above produce a fold that the conformance
-# oracle (krites' derived table) does not carry -- confirmed by the full
-# BMP sweep in tests/bmp_equivalence.rs. Not excluded because the
-# derivation is wrong: this generator's primary sources are more complete
-# than a table frozen at an older Unicode edition. Excluded here because
-# this wave's job is exact behavioral equivalence for the cfg-gated swap;
-# expanding fold coverage is a scope decision for a follow-up, not this PR.
+# Codepoints where phases A-E above produce a fold the conformance oracle
+# (krites' now-retired derived table) did not carry, confirmed by a full BMP
+# sweep while both tables existed. Not excluded because the derivation is
+# wrong: this generator's primary sources are more complete than a table
+# frozen at an older Unicode edition. Excluded to keep folding behaviour
+# unchanged across the swap. Lifting them is a behavioural change with its
+# own tests, not a cleanup.
 EXCLUDE_SET = {
     # CLDR "Latin letters and IPA" entries the derived table's curation
     # never picked up (OI digraph, HENG WITH HOOK)
@@ -383,7 +389,7 @@ def main() -> None:
     if actual_version != EXPECTED_UNICODE_VERSION:
         raise SystemExit(
             f"interpreter UCD version {actual_version} != pinned {EXPECTED_UNICODE_VERSION} -- "
-            "re-validate ALLOWED_BLOCKS/EXCLUDE_SET against tests/bmp_equivalence.rs before "
+            "re-validate ALLOWED_BLOCKS/EXCLUDE_SET and diff the emitted table before "
             "bumping EXPECTED_UNICODE_VERSION"
         )
 
@@ -401,8 +407,9 @@ def main() -> None:
         "//!",
         "//! Regenerate: `python3 fold_table_sovereign/generate.py` from the module's",
         "//! own directory (see that script for the full source/methodology citation).",
-        "//! Proved equivalent to the derived table over the full BMP by",
-        "//! `tests/bmp_equivalence.rs`.",
+        "//! Frozen to the fold set of the retired derived table: proved equivalent to it",
+        "//! over the full BMP before that table was deleted. See `generate.py`'s",
+        "//! EXCLUDE_SET for the codepoints this holds back.",
         "",
         "/// `(codepoint, ascii fold)` pairs, sorted ascending by codepoint for binary search.",
         f"pub(super) static FOLD_TABLE: [(u32, &str); {len(entries)}] = [",
