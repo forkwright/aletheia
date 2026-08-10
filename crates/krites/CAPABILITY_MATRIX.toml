@@ -7,9 +7,9 @@
 # by scripts/check-krites-capability-matrix.py in CI. A row with no matching
 # source item (stale) fails the same way, so drift is caught both directions.
 #
-# WHY(appendix_a rows): the plan (canon:
-# metis-ops/deliverables/krites-replacement/PLAN.md, Appendix A) lives in a
-# sibling repo the checker cannot read from CI. These rows are a committed
+# WHY(appendix_a rows): the plan (canon: kanon
+# projects/aletheia/phases/05g-krites-overhaul/RETIREMENT-PLAN.md, Appendix A)
+# lives in a sibling repo the checker cannot read from CI. These rows are a committed
 # mirror, captured at PLAN.md's Appendix A as of 33 data rows. The checker
 # verifies internal completeness (row count floor, required fields, unique
 # ids) in CI; `--plan-md <path>` does an optional local live-diff when both
@@ -660,7 +660,7 @@ source = "crates/krites/src/lib.rs:163"
 dest_wave = "wave-1b"
 dest_module = "storage/mem.rs"
 gate = "Same gate as api-mem-storage."
-call_sites = 129
+call_sites = 130
 call_sites_method = "grep -rn 'open_mem(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
 
 [[capability]]
