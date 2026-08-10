@@ -384,12 +384,15 @@ mod tests {
         .expect("write rule file");
 
         let mut db = fresh_mem_db();
-        db.attach_rule_store(dir.path()).expect("attach rule store");
+        // Attaches the way Db::attach_rule_store does, at the layer the defect lives in.
+        let (_reloader, _rx, store) =
+            HotReloader::start(dir.path(), &db.fixed_rules).expect("start reloader");
+        db.rule_store = Some(store);
 
         db.run_default("::relations")
             .expect("a system op must parse with rules attached; prepending breaks SOI anchoring");
 
-        // The rules are still reaching ordinary query scripts — the guard must not disable them.
+        // The rules must still reach ordinary query scripts — the guard must not disable them.
         let rows = db
             .run_default("?[marker] := wiring_probe[marker]")
             .expect("hot-reloaded rule should be visible to a query script");
