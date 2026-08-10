@@ -537,7 +537,7 @@ soak_expires_at_commit_count = 2838
 path = "fixed_rule/algos/dfs_native.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/dfs.rs"
-verbatim_pct = 41.4
+verbatim_pct = 29.3
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
