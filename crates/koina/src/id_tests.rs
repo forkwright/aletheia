@@ -97,8 +97,19 @@ fn nous_id_max_length_accepted() {
 }
 
 #[test]
-fn nous_id_leading_hyphen() {
-    assert!(NousId::new("-syn").is_ok());
+fn nous_id_leading_or_trailing_hyphen_rejected() {
+    // WHY(#4638): a leading hyphen is a shell-argument-injection footgun
+    // (an unquoted `-agent` reads as a flag to `rm`/`ls`/etc.) and the CLI
+    // (`add-nous`, import `--nous-id`) and HTTP create path already reject
+    // it independently — this was the one divergent validator.
+    assert!(matches!(
+        NousId::new("-syn"),
+        Err(IdError::InvalidFormat { .. })
+    ));
+    assert!(matches!(
+        NousId::new("syn-"),
+        Err(IdError::InvalidFormat { .. })
+    ));
 }
 
 #[test]
@@ -118,6 +129,42 @@ fn nous_id_special_chars_rejected() {
     ));
     assert!(matches!(
         NousId::new("syn 1"),
+        Err(IdError::InvalidFormat { .. })
+    ));
+}
+
+#[test]
+fn nous_id_path_separators_rejected() {
+    // WHY(#4638): the id is joined directly into `nous/<id>` on disk and
+    // into route paths (`/api/v1/nous/{id}`) — any separator must be
+    // caught by the one shared validator, not left to callers to notice.
+    assert!(matches!(
+        NousId::new("syn/1"),
+        Err(IdError::InvalidFormat { .. })
+    ));
+    assert!(matches!(
+        NousId::new("../etc"),
+        Err(IdError::InvalidFormat { .. })
+    ));
+    assert!(matches!(
+        NousId::new("syn\\1"),
+        Err(IdError::InvalidFormat { .. })
+    ));
+}
+
+#[test]
+fn nous_id_reserved_template_prefix_rejected() {
+    // WHY(#4638): `nous/_default` and `nous/_template` are reserved
+    // scaffold directories (crates/aletheia/src/init/scaffold.rs). The
+    // shared charset (lowercase alphanumeric + hyphen only) already
+    // excludes underscore, so a reserved-shaped id is rejected as a
+    // side effect — documented here so the exclusion stays intentional.
+    assert!(matches!(
+        NousId::new("_default"),
+        Err(IdError::InvalidFormat { .. })
+    ));
+    assert!(matches!(
+        NousId::new("_template"),
         Err(IdError::InvalidFormat { .. })
     ));
 }
