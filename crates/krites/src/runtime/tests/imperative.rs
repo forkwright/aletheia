@@ -461,7 +461,7 @@ fn hnsw_index() {
             belief_id: Uuid,
             character_id: Uuid,
             belief: String,
-            last_accessed_at: Validity default [floor(now()), true],
+            last_accessed_at: Validity default [now_micros(), true],
             =>
             details: String default "",
             parent_belief_id: Uuid? default null,

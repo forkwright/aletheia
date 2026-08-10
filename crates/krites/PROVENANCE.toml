@@ -105,7 +105,7 @@ soak_expires_at_commit_count = 0
 path = "data/expr/op.rs"
 upstream_path = "data/expr.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 84.4
+verbatim_pct = 84.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -177,7 +177,7 @@ soak_expires_at_commit_count = 0
 path = "data/functions/temporal.rs"
 upstream_path = "data/functions.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 7.7
+verbatim_pct = 6.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1601,7 +1601,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/tests/imperative.rs"
 upstream_path = "runtime/tests.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 44.6
+verbatim_pct = 44.4
 status = "derived"
 soak_expires_at_commit_count = 0
 

@@ -24,7 +24,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/error.rs` | — | 0.0% | sovereign |
 | `src/data/expr/expr_impl.rs` | `data/expr.rs` | 64.5% | derived |
 | `src/data/expr/mod.rs` | `data/expr.rs` | 44.8% | derived |
-| `src/data/expr/op.rs` | `data/expr.rs` | 84.4% | derived |
+| `src/data/expr/op.rs` | `data/expr.rs` | 84.1% | derived |
 | `src/data/functions/aggregate.rs` | `data/functions.rs` | 12.7% | derived |
 | `src/data/functions/bits.rs` | `data/functions.rs` | 32.7% | derived |
 | `src/data/functions/collections.rs` | `data/functions.rs` | 8.1% | derived |
@@ -33,7 +33,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/functions/math/transcendental.rs` | `data/functions.rs` | 6.5% | derived |
 | `src/data/functions/mod.rs` | `data/functions.rs` | 2.1% | derived |
 | `src/data/functions/string.rs` | `data/functions.rs` | 11.9% | derived |
-| `src/data/functions/temporal.rs` | `data/functions.rs` | 7.7% | derived |
+| `src/data/functions/temporal.rs` | `data/functions.rs` | 6.9% | derived |
 | `src/data/functions/trig.rs` | `data/functions.rs` | 22.6% | derived |
 | `src/data/functions/utility.rs` | `data/functions.rs` | 27.5% | derived |
 | `src/data/functions/vector.rs` | `data/functions.rs` | 22.1% | derived |
@@ -211,7 +211,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/sys.rs` | `runtime/db.rs` | 61.0% | derived |
 | `src/runtime/temp_store.rs` | `runtime/temp_store.rs` | 81.0% | derived |
 | `src/runtime/tests/basic_queries.rs` | `runtime/tests.rs` | 12.3% | derived |
-| `src/runtime/tests/imperative.rs` | `runtime/tests.rs` | 44.6% | derived |
+| `src/runtime/tests/imperative.rs` | `runtime/tests.rs` | 44.4% | derived |
 | `src/runtime/tests/indexing.rs` | `runtime/tests.rs` | 41.2% | derived |
 | `src/runtime/tests/mod.rs` | `runtime/tests.rs` | 0.0% | derived |
 | `src/runtime/tests/triggers_callbacks.rs` | `runtime/tests.rs` | 7.6% | derived |

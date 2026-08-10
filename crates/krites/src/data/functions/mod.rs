@@ -136,6 +136,7 @@ define_op!(OP_SLICE_STRING, op_slice_string, 3, false);
 define_op!(OP_FROM_SUBSTRINGS, op_from_substrings, 1, false);
 
 define_op!(OP_NOW, op_now, 0, false);
+define_op!(OP_NOW_MICROS, op_now_micros, 0, false);
 define_op!(OP_FORMAT_TIMESTAMP, op_format_timestamp, 1, true);
 define_op!(OP_PARSE_TIMESTAMP, op_parse_timestamp, 1, false);
 define_op!(OP_RAND_UUID_V1, op_rand_uuid_v1, 0, false);

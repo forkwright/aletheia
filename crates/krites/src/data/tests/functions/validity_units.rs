@@ -95,3 +95,43 @@ fn get_int_strict_rejects_whole_floats_that_get_int_accepts() {
     );
     assert_eq!(Num::Int(42).get_int_strict(), Some(42));
 }
+
+/// The corrupting idiom and its replacement, side by side.
+///
+/// `floor(now())` is the pattern the upstream test schema uses for a `Validity` default. It is
+/// seconds where microseconds are required, so it must be rejected; `now_micros()` is the same
+/// intent expressed in the right unit and must be accepted. Without the second half of this test
+/// the strict coercion would leave no way to write "now" into a validity column at all.
+#[test]
+fn now_micros_is_accepted_where_now_is_rejected() {
+    let secs = op_now(&[]).expect("now");
+    assert!(
+        matches!(secs, DataValue::Num(Num::Float(_))),
+        "now() returns float seconds; the whole hazard depends on that"
+    );
+    assert!(
+        op_validity(&[secs]).is_err(),
+        "float seconds must not be reinterpreted as microseconds"
+    );
+
+    let micros = op_now_micros(&[]).expect("now_micros");
+    let DataValue::Num(Num::Int(raw)) = micros else {
+        panic!("now_micros must return an integer, got {micros:?}")
+    };
+    assert!(
+        raw > 1_600_000_000_000_000,
+        "now_micros must be microseconds since the epoch, not seconds — got {raw}, which would \
+         place the row near 1970 once stored"
+    );
+
+    let v = op_validity(&[DataValue::Num(Num::Int(raw))]).expect("validity from now_micros");
+    match v {
+        DataValue::Validity(Validity { timestamp, .. }) => {
+            assert_eq!(
+                timestamp.0.0, raw,
+                "the microsecond value survives unchanged"
+            );
+        }
+        other => panic!("expected Validity, got {other:?}"),
+    }
+}
