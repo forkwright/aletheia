@@ -1,18 +1,12 @@
 //! Utility fixed rules.
 //!
-//! `constant` and `reorder_sort` are landed **dual** (PLAN.md §2): the
-//! derived implementation stays default, with a fresh sovereign rewrite
-//! behind the `krites_sovereign_utilities` feature. `rrf` has a live
-//! episteme consumer and is out of scope for this wave.
-#[cfg(not(feature = "krites_sovereign_utilities"))]
-pub(crate) mod constant;
-#[cfg(feature = "krites_sovereign_utilities")]
+//! `constant` and `reorder_sort` are sovereign; the `#[path]` attributes point
+//! at the `_native.rs` filenames they were authored under while their derived
+//! counterparts still held the plain names. `rrf` has a live episteme consumer
+//! and was never part of the land-dark scheme.
 #[path = "constant_native.rs"]
 pub(crate) mod constant;
 
-#[cfg(not(feature = "krites_sovereign_utilities"))]
-pub(crate) mod reorder_sort;
-#[cfg(feature = "krites_sovereign_utilities")]
 #[path = "reorder_sort_native.rs"]
 pub(crate) mod reorder_sort;
 
