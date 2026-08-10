@@ -4,7 +4,7 @@
 //! own directory (see that script for the full source/methodology citation).
 //! Frozen to the fold set of the retired derived table: proved equivalent to it
 //! over the full BMP before that table was deleted. See `generate.py`'s
-//! EXCLUDE_SET for the codepoints this holds back.
+//! `EXCLUDE_SET` for the codepoints this holds back.
 
 /// `(codepoint, ascii fold)` pairs, sorted ascending by codepoint for binary search.
 pub(super) static FOLD_TABLE: [(u32, &str); 1242] = [
