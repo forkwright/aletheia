@@ -44,6 +44,13 @@ mod storage_tests {
             error: None,
             created_at: jiff::Timestamp::now(),
             updated_at: jiff::Timestamp::now(),
+            model: None,
+            failure_class: None,
+            resume_count: 0,
+            corrective_attempts: 0,
+            cache_hit_tokens: 0,
+            cache_miss_tokens: 0,
+            structured_output: None,
         }
     }
 

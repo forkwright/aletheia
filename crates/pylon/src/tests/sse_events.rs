@@ -43,6 +43,7 @@ fn sse_event_type_message_complete() {
         },
         provider: None,
         request_id: None,
+        error: None,
     };
     assert_eq!(event.event_type(), "message_complete");
 }
@@ -79,6 +80,7 @@ fn sse_event_message_complete_serialization() {
         },
         provider: Some("local-proxy".to_owned()),
         request_id: Some("req-789".to_owned()),
+        error: None,
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "message_complete");
@@ -87,6 +89,10 @@ fn sse_event_message_complete_serialization() {
     assert_eq!(json["usage"]["output_tokens"], 50);
     assert_eq!(json["provider"], "local-proxy");
     assert_eq!(json["request_id"], "req-789");
+    assert!(
+        json.get("error").is_none(),
+        "successful completion must omit error"
+    );
 }
 
 #[test]
@@ -307,6 +313,7 @@ fn message_complete_is_terminal_after_error_event() {
         },
         provider: None,
         request_id: Some("req-123".to_owned()),
+        error: Some("provider error".to_owned()),
     };
 
     assert_eq!(error.event_type(), "error");
@@ -317,6 +324,10 @@ fn message_complete_is_terminal_after_error_event() {
     assert_eq!(error_json["type"], "error");
     assert_eq!(complete_json["type"], "message_complete");
     assert_eq!(complete_json["stop_reason"], "error");
+    // WHY(#5375): the terminal event on a failed legacy turn now carries its
+    // own failure message instead of relying solely on the earlier, separate
+    // `error` event the client may or may not have retained.
+    assert_eq!(complete_json["error"], "provider error");
 }
 
 #[test]
@@ -331,6 +342,7 @@ fn sse_event_message_complete_includes_cache_tokens() {
         },
         provider: None,
         request_id: None,
+        error: None,
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["usage"]["input_tokens"], 100);

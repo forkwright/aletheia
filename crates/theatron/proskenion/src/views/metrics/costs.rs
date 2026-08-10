@@ -5,6 +5,7 @@ use dioxus::prelude::*;
 use crate::api::client::authenticated_client;
 use crate::components::badge::status_badge_style;
 use crate::components::chart::{TimeSeriesChart, TimeSeriesColumn};
+use crate::services::settings_config;
 use crate::state::connection::ConnectionConfig;
 use crate::state::fetch::FetchState;
 use crate::state::meta::MetricSource;
@@ -103,7 +104,11 @@ pub(crate) fn Costs() -> Element {
     let mut fetch_state = use_signal(|| FetchState::<CostMetricsResponse>::Loading);
     let mut granularity = use_signal(|| Granularity::Daily);
     let mut date_range = use_signal(|| DateRange::Last30Days);
-    let budget = use_signal(BudgetConfig::default);
+    // WHY: read from app-level context (loaded from settings.toml at
+    // startup) rather than a fresh per-mount signal — the previous
+    // per-mount signal reset to zero on every remount and was never
+    // persisted, discarding whatever the operator had entered (#5797).
+    let budget = use_context::<Signal<BudgetConfig>>();
     let budget_input = use_signal(String::new);
 
     use_effect(move || {
@@ -315,7 +320,15 @@ fn loaded_costs_view(
                         telemetry_unavailable: data.source == MetricSource::Unavailable,
                     },
                     move |v: String| budget_input.set(v),
-                    move |limit: f64| budget.set(BudgetConfig { monthly_limit_usd: limit }),
+                    move |limit: f64| {
+                        let updated = BudgetConfig {
+                            monthly_limit_usd: limit,
+                        };
+                        budget.set(updated.clone());
+                        if let Err(e) = settings_config::save_budget(&updated) {
+                            tracing::warn!("failed to save budget: {e}");
+                        }
+                    },
                 ) }
             }
 
