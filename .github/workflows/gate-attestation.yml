@@ -55,19 +55,6 @@
 # name stays the bare string `gate` — unchanged from before this migration,
 # no branch-protection rename needed.
 #
-# WHY no concurrency: block here — dropped as part of adopting hybrid-gate.yml
-# (which now declares `concurrency: group: ${{ github.workflow }}-${{
-# github.ref }}` itself; its own comment states callers must not duplicate
-# that key, or the shared group self-cancels). Prior to this migration this
-# file set its own key (`${{ github.workflow }}-${{
-# github.event.pull_request.number || github.ref }}`) covering all jobs
-# including the two coverage jobs; omitting it means a rapid re-push no
-# longer pre-empts an in-flight gate-coverage-scripts/compile-checks run for
-# the same PR. This is a CI-minutes cost only, not a correctness regression:
-# required-status-checks evaluates against the PR's current head SHA, so a
-# superseded push's now-stale run cannot block or falsely pass merge — it
-# just runs to completion against a SHA nothing checks anymore.
-#
 # WHY ai_attribution_check / docs_only_exemption ARE set below: the extended
 # hybrid-gate.yml (declaring both workflow_call inputs) is now live at
 # forkwright/.github. no-ai-attribution.yml stays alongside unchanged — it
@@ -102,12 +89,22 @@ env:
 # it cancels superseded runs of the caller-side jobs while the callee keeps
 # managing its own.
 concurrency:
-  group: ${{ github.workflow }}-caller-${{ github.ref }}
+  # WHY the SHA on a push and the ref on a PR: on `main` the ref is constant, so a ref-keyed group
+  # cancels the previous run every time a merge lands. Measured over one window, pushes to main were
+  # 3 success / 2 CANCELLED — a merge train left main with NO verdict rather than a red one, which
+  # reads identically to "not yet finished" and is never chased. Keying pushes by SHA gives every
+  # merged commit its own group, so each gets a verdict; PRs keep ref-keying so a force-push still
+  # supersedes its own in-flight run.
+  group: ${{ github.workflow }}-caller-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: true
 
 jobs:
   hybrid-gate:
-    uses: forkwright/.github/.github/workflows/hybrid-gate.yml@main
+    # WHY pinned: this reusable workflow IS the logic behind the required `gate` context. On
+    # `@main` an upstream commit in another repo reddens every open PR here with no change to
+    # this one — the same class as the gitignored fuzz lockfile (#6655), at a larger blast
+    # radius. Bump deliberately, so the change is reviewable.
+    uses: forkwright/.github/.github/workflows/hybrid-gate.yml@d3f5e699311c0b306444ae57c0260f508c0b0a16
     with:
       fmt_cmd: "cargo fmt --all -- --check"
       check_cmd: "cargo check --workspace --all-targets --features test-core"
@@ -154,7 +151,12 @@ jobs:
       # one of the three the required `gate` context aggregates, reported
       # success on every PR without scanning anything.
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        # WHY the explicit assertion: this job's own history records that ripgrep's ABSENCE once
+        # let it report success without scanning anything (#6523). An install that half-fails must
+        # stop the job, not quietly disarm the check it feeds.
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
+          command -v rg >/dev/null || { echo '::error::ripgrep missing after install'; exit 1; }
 
       - name: Check shared temp paths
         run: scripts/check-shared-temp-paths.sh
