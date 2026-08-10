@@ -164,10 +164,11 @@ jobs:
       # one of the three the required `gate` context aggregates, reported
       # success on every PR without scanning anything.
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
-          # WHY the explicit assertion: this job's own history records that ripgrep's
-          # ABSENCE once let it report success without scanning anything (#6523). An
-          # install that half-fails must stop the job, not quietly disarm the check.
+        # WHY the explicit assertion: this job's own history records that ripgrep's ABSENCE once
+        # let it report success without scanning anything (#6523). An install that half-fails must
+        # stop the job, not quietly disarm the check it feeds.
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
           command -v rg >/dev/null || { echo '::error::ripgrep missing after install'; exit 1; }
 
       - name: Check shared temp paths
