@@ -140,6 +140,13 @@ pub trait ConsolidationTarget: Send + Sync {
     ///
     /// Deduplicates against existing facts and returns a merge report.
     ///
+    /// `session_id` identifies the transcript this flush was distilled FROM.
+    /// WHY(#5401): consolidation processes one transcript per call, so the
+    /// real originating session is always known here — implementors must
+    /// record it as fact provenance rather than collapsing every
+    /// auto-dream-derived fact to a generic label, which would make
+    /// consolidated facts unauditable back to their source session.
+    ///
     /// # Errors
     ///
     /// Returns an I/O error if the knowledge store is unreachable.
@@ -147,6 +154,7 @@ pub trait ConsolidationTarget: Send + Sync {
         &self,
         flush: &MemoryFlush,
         nous_id: &str,
+        session_id: &str,
     ) -> std::result::Result<MergeReport, std::io::Error>;
 
     /// Mark facts identified as contradictions for stale decay.
@@ -497,12 +505,18 @@ impl DreamEngine {
                 return Err(e);
             }
 
-            // NOTE: merge extracted facts INTO the knowledge graph.
+            // NOTE: merge extracted facts INTO the knowledge graph. Threads
+            // this transcript's real session_id through so implementors can
+            // preserve source-session lineage (#5401).
             let merged = {
                 let target = Arc::clone(target);
                 let flush = result.memory_flush.clone();
                 let nous_id = transcript.nous_id.clone();
-                run_store_op("merge flush", move || target.merge_flush(&flush, &nous_id)).await?
+                let session_id = transcript.session_id.clone();
+                run_store_op("merge flush", move || {
+                    target.merge_flush(&flush, &nous_id, &session_id)
+                })
+                .await?
             };
             match merged.context(DreamConsolidationTargetSnafu {
                 context: "merge flush INTO knowledge graph",

@@ -45,10 +45,12 @@ impl TranscriptSource for MockTranscriptSource {
     }
 }
 
-/// Mock consolidation target that records merge calls.
+/// Mock consolidation target that records merge calls, including the
+/// `session_id` each call was made with (#5401 regression coverage).
 struct MockConsolidationTarget {
     merge_count: AtomicUsize,
     stale_count: AtomicUsize,
+    merged_session_ids: std::sync::Mutex<Vec<String>>,
 }
 
 impl MockConsolidationTarget {
@@ -56,6 +58,7 @@ impl MockConsolidationTarget {
         Self {
             merge_count: AtomicUsize::new(0),
             stale_count: AtomicUsize::new(0),
+            merged_session_ids: std::sync::Mutex::new(Vec::new()),
         }
     }
 }
@@ -65,8 +68,13 @@ impl ConsolidationTarget for MockConsolidationTarget {
         &self,
         _flush: &MemoryFlush,
         _nous_id: &str,
+        session_id: &str,
     ) -> std::result::Result<MergeReport, std::io::Error> {
         self.merge_count.fetch_add(1, Ordering::Relaxed);
+        self.merged_session_ids
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .push(session_id.to_owned());
         Ok(MergeReport {
             facts_added: 2,
             facts_deduped: 1,
@@ -93,6 +101,7 @@ impl ConsolidationTarget for PanickingTarget {
         &self,
         _flush: &MemoryFlush,
         _nous_id: &str,
+        _session_id: &str,
     ) -> std::result::Result<MergeReport, std::io::Error> {
         panic!("merge_flush exploded");
     }
@@ -421,6 +430,61 @@ async fn consolidation_pipeline_extracts_and_merges() {
     assert!(
         lock_path.exists(),
         "lock file should exist after completion"
+    );
+}
+
+/// Regression test for #5401.
+///
+/// WHY: consolidation previously gave implementors no way to know which
+/// transcript a flush was distilled FROM, so persisted facts collapsed every
+/// auto-dream session's provenance to one generic label. Two transcripts
+/// with distinct session IDs must produce two `merge_flush` calls carrying
+/// those exact, distinct session IDs — the observable consequence of
+/// preserved lineage, not merely that merge ran.
+#[tokio::test]
+async fn consolidation_pipeline_preserves_source_session_lineage() {
+    let dir = tempfile::tempdir().unwrap();
+    let lock_path = dir.path().join(".consolidate-lock");
+
+    let config = make_config(lock_path.clone());
+    let engine = Arc::new(DreamEngine::new(config));
+
+    let transcripts = vec![
+        sample_transcript("session-alpha", "nous-a"),
+        sample_transcript("session-beta", "nous-a"),
+    ];
+    let source: Arc<dyn TranscriptSource> =
+        Arc::new(MockTranscriptSource::with_transcripts(transcripts));
+    let counting = Arc::new(MockConsolidationTarget::new());
+    let target_concrete = Arc::clone(&counting);
+    let target: Arc<dyn ConsolidationTarget> = target_concrete;
+
+    let summary = "## Summary\nBorrow checker overview\n\
+                    ## Key Decisions\n- Use references\n\
+                    ## Task Context\nLearning Rust";
+    let provider: Arc<dyn LlmProvider> =
+        Arc::new(hermeneus::test_utils::MockProvider::new(summary));
+
+    let acquired = lock::try_acquire(&lock_path, super::DEFAULT_STALE_THRESHOLD_SECS)
+        .unwrap()
+        .unwrap();
+
+    engine
+        .run_consolidation(acquired, &source, &target, provider.as_ref())
+        .await
+        .unwrap_or_default();
+
+    let mut merged_session_ids = counting
+        .merged_session_ids
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    merged_session_ids.sort();
+    assert_eq!(
+        merged_session_ids,
+        vec!["session-alpha".to_owned(), "session-beta".to_owned()],
+        "merge_flush must receive each transcript's real session_id, not a \
+         generic placeholder shared across every consolidated session"
     );
 }
 

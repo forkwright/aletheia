@@ -479,9 +479,16 @@ impl NousActor {
             return;
         }
 
-        let mut dream_config = melete::dream::DreamConfig::new(
-            lock_dir.join(format!("{}.lock", self.id.replace('/', "_"))),
-        );
+        // WHY(#5401): scope the lock by BOTH nous_id and the instance root.
+        // user_runtime_dir is per-user but shared across every oikos
+        // instance that user runs — two instances that happen to reuse the
+        // same nous_id (dev vs prod configs, or independently-provisioned
+        // test instances under one account) would otherwise share one
+        // lock/throttle file and silently suppress each other's auto-dream
+        // runs.
+        let instance_tag = instance_lock_tag(self.services.oikos.root());
+        let lock_filename = format!("{instance_tag}-{}.lock", self.id.replace('/', "_"));
+        let mut dream_config = melete::dream::DreamConfig::new(lock_dir.join(lock_filename));
         dream_config.min_hours = self.config.behavior.dream_min_hours;
         dream_config.min_sessions = self.config.behavior.dream_min_sessions;
         dream_config.scan_interval_secs = self.config.behavior.dream_scan_throttle_secs;
@@ -507,6 +514,34 @@ impl NousActor {
             ));
         engine.on_turn_complete(&source, &target, &provider).await;
     }
+}
+
+/// Derive a short, stable, filesystem-safe tag scoping the auto-dream lock
+/// to one oikos instance root.
+///
+/// WHY(#5401): distinguishes two instance roots that happen to reuse the
+/// same `nous_id` so their auto-dream locks/throttle state never collide.
+/// SHA-256 (not `DefaultHasher`) because the tag must stay stable across
+/// process restarts for the SAME root — `DefaultHasher`'s algorithm is
+/// explicitly unspecified and may change between Rust releases, which would
+/// orphan the lock (and its throttle history) on every restart.
+#[cfg(feature = "knowledge-store")]
+fn instance_lock_tag(oikos_root: &std::path::Path) -> String {
+    use std::fmt::Write as _;
+
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(oikos_root.to_string_lossy().as_bytes());
+    let digest = hasher.finalize();
+    // WHY: 8 hex chars (32 bits) is enough entropy to avoid accidental
+    // collisions between the handful of oikos roots one user runs
+    // concurrently, while keeping the lock filename short.
+    let mut tag = String::with_capacity(8);
+    for byte in digest.iter().take(4) {
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
+        let _ = write!(tag, "{byte:02x}");
+    }
+    tag
 }
 
 #[cfg(feature = "knowledge-store")]
@@ -593,11 +628,17 @@ impl melete::dream::ConsolidationTarget for KnowledgeStoreConsolidationTarget {
         &self,
         flush: &melete::flush::MemoryFlush,
         nous_id: &str,
+        session_id: &str,
     ) -> std::result::Result<melete::dream::MergeReport, std::io::Error> {
+        // WHY(#5401): persist the transcript's real session_id as
+        // provenance instead of the generic "auto-dream" label the prior
+        // implementation used for every consolidated session — collapsing
+        // lineage to one shared value made auto-dream facts unauditable
+        // back to the conversation that produced them.
         let facts_added = crate::distillation::persist_memory_flush_items(
             &self.store,
             flush,
-            "auto-dream",
+            session_id,
             nous_id,
             self.project_id.as_ref(),
         )
@@ -1105,9 +1146,84 @@ mod tests {
 
     use hermeneus::provider::ProviderRegistry;
     use hermeneus::test_utils::MockProvider;
-    use melete::dream::TranscriptSource;
+    use melete::dream::{ConsolidationTarget, TranscriptSource};
 
-    use super::{SessionStoreTranscriptSource, run_skill_extraction};
+    use super::{
+        KnowledgeStoreConsolidationTarget, SessionStoreTranscriptSource, instance_lock_tag,
+        run_skill_extraction,
+    };
+
+    /// Regression test for #5401.
+    ///
+    /// WHY: the auto-dream lock filename must discriminate between two
+    /// instance roots that happen to share a `nous_id`, or one instance's
+    /// throttle state silently suppresses the other's auto-dream runs. It
+    /// must also be stable across calls, or a restarted actor loses its
+    /// consolidation history every time (a fresh lock path reads as
+    /// "never consolidated").
+    #[test]
+    fn instance_lock_tag_differs_across_roots_and_is_stable() {
+        let alpha = std::path::Path::new("/instance/alpha");
+        let beta = std::path::Path::new("/instance/beta");
+
+        let tag_alpha_first = instance_lock_tag(alpha);
+        let tag_alpha_second = instance_lock_tag(alpha);
+        let tag_beta = instance_lock_tag(beta);
+
+        assert_eq!(
+            tag_alpha_first, tag_alpha_second,
+            "the same oikos root must produce a stable tag across calls"
+        );
+        assert_ne!(
+            tag_alpha_first, tag_beta,
+            "distinct oikos roots must not collide on the same lock tag, or \
+             two instances sharing a nous_id would share one auto-dream lock"
+        );
+    }
+
+    /// Regression test for #5401.
+    ///
+    /// WHY: `KnowledgeStoreConsolidationTarget::merge_flush` previously
+    /// hardcoded the fact's source session to the literal `"auto-dream"`
+    /// for every consolidated transcript, collapsing real session lineage.
+    /// Persisted facts must instead carry the real, distinct `session_id`
+    /// each `merge_flush` call was made with.
+    #[test]
+    fn merge_flush_persists_real_session_id_not_a_generic_label() {
+        let store =
+            Arc::new(mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store"));
+        let target = KnowledgeStoreConsolidationTarget::new(Arc::clone(&store), None);
+
+        let flush = melete::flush::MemoryFlush {
+            decisions: vec![],
+            corrections: vec![],
+            facts: vec![melete::flush::FlushItem {
+                content: "the team standardized on jiff for time handling".to_owned(),
+                timestamp: jiff::Timestamp::now().to_string(),
+                source: melete::flush::FlushSource::Extracted,
+            }],
+            task_state: None,
+        };
+
+        target
+            .merge_flush(&flush, "nous-a", "session-real-77")
+            .expect("merge flush");
+
+        let facts = store.list_all_facts(10).expect("list facts");
+        assert_eq!(facts.len(), 1);
+        let fact = facts.first().expect("one fact persisted");
+        assert_eq!(
+            fact.provenance.source_session_id.as_deref(),
+            Some("session-real-77"),
+            "consolidated fact must carry the real originating session_id, \
+             not a shared \"auto-dream\" placeholder"
+        );
+        assert_ne!(
+            fact.provenance.source_session_id.as_deref(),
+            Some("auto-dream"),
+            "source_session_id must not collapse to the generic label"
+        );
+    }
 
     /// Drive real candidate/turn data through `run_skill_extraction` and assert
     /// the persisted pending skill carries derived source-session, redacted
