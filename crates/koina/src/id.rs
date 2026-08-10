@@ -413,6 +413,18 @@ fn validate_id(id: &str, kind: &'static str) -> Result<(), IdError> {
             reason: "must contain only lowercase alphanumeric and hyphens".to_owned(),
         });
     }
+    // WHY(#4638): a leading/trailing hyphen produces an ugly-but-legal
+    // directory/route segment (`-agent`, `agent-`) and collides more easily
+    // under truncation or concatenation than an interior hyphen. Reject at
+    // the one shared validator so every entrypoint (CLI, import, HTTP) gets
+    // this for free instead of re-deriving it ad hoc.
+    if id.starts_with('-') || id.ends_with('-') {
+        return Err(IdError::InvalidFormat {
+            kind,
+            value: id.to_owned(),
+            reason: "must not start or end with a hyphen".to_owned(),
+        });
+    }
     Ok(())
 }
 

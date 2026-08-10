@@ -67,17 +67,15 @@ pub(crate) async fn run(instance_root: Option<&PathBuf>, args: &AddNousArgs) -> 
     Ok(())
 }
 
+// WHY(#4638): delegate to the same `NousId` validator the HTTP create path,
+// `init` prompt, and import (`agent_io::validate_agent_id_for_paths`) now
+// share — a single canonical format instead of four hand-rolled copies that
+// drifted (this one used to accept uppercase; `init`'s prompt used to accept
+// underscores).
 fn validate_name(name: &str) -> Result<()> {
-    if name.is_empty() {
-        whatever!("agent name cannot be empty");
-    }
-    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        whatever!("agent name must contain only alphanumeric characters and hyphens");
-    }
-    if name.starts_with('-') || name.ends_with('-') {
-        whatever!("agent name cannot start or end with a hyphen");
-    }
-    Ok(())
+    koina::id::NousId::new(name)
+        .whatever_context("agent name")
+        .map(|_| ())
 }
 
 fn validate_provider(provider: &str) -> Result<()> {
