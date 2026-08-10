@@ -12,7 +12,10 @@ use crate::state::discussion::{
 
 /// Fetch state for discussions, with a 404 variant for unavailable endpoints.
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "discussion routes are pending B23 backend work")]
+#[expect(
+    dead_code,
+    reason = "discussion routes are pending B23 backend work (#4482)"
+)]
 enum DiscussionFetchState {
     Loading,
     Loaded(Vec<Discussion>),
@@ -33,19 +36,6 @@ const HEADER_ROW: &str = "\
     display: flex; \
     align-items: center; \
     justify-content: space-between;\
-";
-
-const REFRESH_BTN: &str = "\
-    background: var(--border); \
-    color: var(--text-primary); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-1) var(--space-3); \
-    font-size: var(--text-xs); \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
 ";
 
 const CARD_BASE: &str = "\
@@ -163,7 +153,7 @@ const ERROR_STYLE: &str =
 /// Discussion panel listing all discussions for a project.
 #[component]
 pub(crate) fn DiscussionView(project_id: String) -> Element {
-    let mut fetch_state = use_signal(|| DiscussionFetchState::NotAvailable);
+    let fetch_state = use_signal(|| DiscussionFetchState::NotAvailable);
     let mut fetch_trigger = use_signal(|| 0u32);
 
     rsx! {
@@ -172,11 +162,6 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
             div {
                 style: "{HEADER_ROW}",
                 h3 { style: "font-size: var(--text-md); margin: 0; color: var(--text-primary);", "Discussions" }
-                button {
-                    style: "{REFRESH_BTN}",
-                    onclick: move |_| fetch_state.set(DiscussionFetchState::NotAvailable),
-                    "Refresh"
-                }
             }
 
             match &*fetch_state.read() {

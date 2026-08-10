@@ -105,6 +105,49 @@ fn provider_stream_event_to_turn_event(event: LlmStreamEvent) -> PylonTurnStream
     }
 }
 
+/// Text/tool/usage state the SSE bridge observed live, for a turn that ends
+/// in failure.
+///
+/// WHY(#5375): the streaming bridge already sees every event as it crosses
+/// from nous into pylon. Before this, a failed turn's terminal
+/// `MessageComplete` discarded all of it — hardcoding empty text, zero tool
+/// calls, and zero usage even when real output had already reached the
+/// client. This struct carries what the bridge saw back to the failure
+/// branch so the terminal outcome can report it instead of pretending
+/// nothing happened.
+///
+/// `usage` sums each observed `ProviderMessageStop.usage`, matching how the
+/// pipeline itself aggregates `TurnUsage` across provider calls on success
+/// (`nous::execute::mod::total_usage`) — so a turn that completed N provider
+/// round-trips before failing on round-trip N+1 reports the same usage a
+/// successful turn would have accrued through round-trip N.
+#[derive(Debug, Default)]
+struct ObservedPartialTurnState {
+    text: String,
+    tool_calls: usize,
+    usage: UsageData,
+}
+
+impl ObservedPartialTurnState {
+    /// Fold one bridged event's contribution into the accumulated state.
+    fn observe(&mut self, event: &PylonTurnStreamEvent) {
+        match event {
+            PylonTurnStreamEvent::TextDelta { text } => self.text.push_str(text),
+            PylonTurnStreamEvent::ToolResult { .. } => self.tool_calls += 1,
+            PylonTurnStreamEvent::ProviderMessageStop { usage, .. } => {
+                self.usage.input_tokens += usage.input_tokens;
+                self.usage.output_tokens += usage.output_tokens;
+                self.usage.cache_read_tokens += usage.cache_read_tokens;
+                self.usage.cache_write_tokens += usage.cache_write_tokens;
+            }
+            // WHY: every other bridged event (thinking deltas, tool-use/approval
+            // lifecycle, provider block/message-start events, replay markers,
+            // ...) has no counterpart field on `TurnOutcome` to fold into.
+            _ => { /* no TurnOutcome field to update */ }
+        }
+    }
+}
+
 fn boxed_event_stream<S>(stream: S) -> AxumEventStream
 where
     S: tokio_stream::Stream<Item = Result<Event, Infallible>> + Send + 'static,
@@ -635,7 +678,7 @@ pub async fn send_message(
                     let (err_code, err_message) = turn_error_info(&err);
                     let event = SseEvent::Error {
                         code: err_code,
-                        message: err_message,
+                        message: err_message.clone(),
                         request_id: Some(request_id_str.clone()),
                     };
                     if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
@@ -644,6 +687,12 @@ pub async fn send_message(
                     // WHY(#5164): Even when an `error` event is emitted, the following
                     // `message_complete` is the authoritative terminal marker. Clients must
                     // use `message_complete` to detect the end of the stream.
+                    //
+                    // WHY(#5375): usage stays zeroed — `send_turn_with_cancel` (below) is a
+                    // single non-streaming actor call, so pylon has no partial usage/text/tool
+                    // state to report here even on failure. `error` at least makes the failure
+                    // explicit on the terminal event itself rather than only on the separate
+                    // diagnostic `Error` event above.
                     let event = SseEvent::MessageComplete {
                         stop_reason: "error".to_owned(),
                         usage: UsageData {
@@ -654,6 +703,7 @@ pub async fn send_message(
                         },
                         provider: None,
                         request_id: Some(request_id_str.clone()),
+                        error: Some(err_message),
                     };
                     if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
                         let _ = tx.send(recorded).await;
@@ -945,6 +995,11 @@ pub async fn stream_turn(
     let turn_cancel_for_bridge = turn_cancel.clone();
     let bridge_handle = tokio::spawn(
         async move {
+            // WHY(#5375): accumulated across the whole bridge lifetime and
+            // handed back to the caller (via this task's return value) so a
+            // turn that fails mid-stream can report what actually reached
+            // the client instead of an empty/zeroed outcome.
+            let mut observed = ObservedPartialTurnState::default();
             loop {
                 tokio::select! {
                     biased;
@@ -1012,6 +1067,7 @@ pub async fn stream_turn(
                                 event_type: "unknown_turn_stream_event".to_owned(),
                             },
                         };
+                        observed.observe(&turn_event);
                         let Some(recorded) = record_turn_event(&bridge_buf, &turn_event).await else {
                             continue;
                         };
@@ -1021,6 +1077,7 @@ pub async fn stream_turn(
                     }
                 }
             }
+            observed
         }
         .instrument(tracing::info_span!("sse_bridge")),
     );
@@ -1119,7 +1176,12 @@ pub async fn stream_turn(
                 Err(err) => {
                     // WHY: Log full error internally; span carries session/nous context (#844).
                     tracing::error!(error = %err, "streaming turn failed");
-                    let _ = bridge_handle.await;
+                    // WHY(#5375): the bridge has already forwarded every event this turn
+                    // produced before failing; take its accumulated partial state instead
+                    // of discarding it. `unwrap_or_default` only triggers if the bridge
+                    // task itself panicked, which yields the same empty/zeroed outcome
+                    // this branch used to hardcode unconditionally.
+                    let observed = bridge_handle.await.unwrap_or_default();
 
                     // WHY(#4794): Cancellations and timeouts are terminal aborts. Record the
                     // explicit reason so reconnect sees a terminal state instead of hanging.
@@ -1152,18 +1214,25 @@ pub async fn stream_turn(
                     // WHY(#5164): Even when an `error` event is emitted, the following
                     // `message_complete` is the authoritative terminal marker. TUI clients
                     // must use `message_complete` to detect the end of the stream.
+                    //
+                    // WHY(#5375): text/tool_calls/usage report what the bridge actually
+                    // observed before the failure (`ObservedPartialTurnState`), not a
+                    // hardcoded empty/zero outcome — a turn that streamed real output or
+                    // completed tool round-trips before failing says so here rather than
+                    // looking indistinguishable from a preflight failure that produced
+                    // nothing at all.
                     let event = PylonTurnStreamEvent::MessageComplete {
                         outcome: TurnOutcome {
-                            text: String::new(),
+                            text: observed.text,
                             nous_id: aid,
                             session_id: sid,
                             model: configured_model,
                             provider: None,
-                            tool_calls: 0,
-                            input_tokens: 0,
-                            output_tokens: 0,
-                            cache_read_tokens: 0,
-                            cache_write_tokens: 0,
+                            tool_calls: observed.tool_calls,
+                            input_tokens: observed.usage.input_tokens,
+                            output_tokens: observed.usage.output_tokens,
+                            cache_read_tokens: observed.usage.cache_read_tokens,
+                            cache_write_tokens: observed.usage.cache_write_tokens,
                             stop_reason: "error".to_owned(),
                             error: Some(err_message),
                         },
@@ -1745,6 +1814,7 @@ async fn emit_turn_result_events_buffered(
         },
         provider: result.provider_used.clone(),
         request_id: request_id.map(ToOwned::to_owned),
+        error: None,
     };
     if let Some(recorded) = record_sse_event(buf, &event).await {
         let _ = tx.send(recorded).await;

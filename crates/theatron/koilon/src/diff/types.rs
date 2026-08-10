@@ -1,8 +1,19 @@
-//! Diff computation and rendering for file changes.
+//! Diff view state and koilon-local text-to-diff computation.
+//!
+//! Structural diff parsing and types are gramma's (`gramma::diff`); this
+//! module keeps only what is genuinely koilon-specific: the 3-way view mode
+//! (gramma's `DiffViewMode` has 2 — `WordDiff` is TUI-only and unmodeled
+//! upstream), scroll state, and a `similar`-backed text-to-diff adapter
+//! gramma has no equivalent for (gramma parses an *existing* unified-diff
+//! string; it does not compute one from two raw text blobs).
 
+use gramma::diff::{ChangeType, DiffFile, DiffHunk, DiffLine};
 use similar::{ChangeTag, TextDiff};
 
 /// Display mode for the diff viewer.
+///
+/// `Unified` and `SideBySide` mirror `gramma::diff::DiffViewMode`;
+/// `WordDiff` is a koilon-only third mode gramma does not model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DiffMode {
     Unified,
@@ -29,46 +40,18 @@ impl DiffMode {
     }
 }
 
-/// A single change within a hunk.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DiffChange {
-    Equal(String),
-    Insert(String),
-    Delete(String),
-    /// For word-diff mode: a line that was changed, with old and new text.
-    Replace {
-        old: String,
-        new: String,
-    },
-}
-
-/// A contiguous group of changes with context.
-#[derive(Debug, Clone)]
-pub(crate) struct DiffHunk {
-    pub(crate) old_start: usize,
-    pub(crate) new_start: usize,
-    pub(crate) changes: Vec<DiffChange>,
-}
-
-/// Represents a complete diff for one file.
-#[derive(Debug, Clone)]
-pub(crate) struct FileDiff {
-    pub(crate) path: String,
-    pub(crate) hunks: Vec<DiffHunk>,
-}
-
 /// State for the diff viewer overlay/view.
 #[derive(Debug, Clone)]
 pub(crate) struct DiffViewState {
     pub(crate) mode: DiffMode,
-    pub(crate) files: Vec<FileDiff>,
+    pub(crate) files: Vec<DiffFile>,
     pub(crate) scroll_offset: usize,
     /// Total rendered line count (computed during render).
     pub(crate) total_lines: usize,
 }
 
 impl DiffViewState {
-    pub(crate) fn new(files: Vec<FileDiff>) -> Self {
+    pub(crate) fn new(files: Vec<DiffFile>) -> Self {
         Self {
             mode: DiffMode::Unified,
             files,
@@ -96,84 +79,96 @@ impl DiffViewState {
     }
 }
 
-/// Compute a diff between old and new text for a single file.
-pub(crate) fn compute_diff(path: &str, old: &str, new: &str) -> FileDiff {
+/// Compute a diff between old and new text for a single file, in gramma's
+/// `DiffFile` shape.
+///
+/// Koilon-local: gramma's parser only handles an *existing* unified-diff
+/// string (`parse_unified_diff` / `parse_git_diff`); this adapts the
+/// `similar` crate's text-to-text diff into gramma's model so the render
+/// layer has exactly one data shape to consume regardless of whether the
+/// diff came from `git diff` output or a before/after tool-result pair.
+pub(crate) fn compute_diff(path: &str, old: &str, new: &str) -> DiffFile {
     let text_diff = TextDiff::from_lines(old, new);
     let mut hunks = Vec::new();
+    let mut additions: u32 = 0;
+    let mut deletions: u32 = 0;
 
     for group in text_diff.grouped_ops(3) {
-        let mut changes = Vec::new();
-        let old_start = group.first().map(|op| op.old_range().start).unwrap_or(0);
-        let new_start = group.first().map(|op| op.new_range().start).unwrap_or(0);
+        let mut lines = Vec::new();
+        let old_start = saturating_u32(group.first().map_or(0, |op| op.old_range().start));
+        let new_start = saturating_u32(group.first().map_or(0, |op| op.new_range().start));
+        let mut old_line = old_start;
+        let mut new_line = new_start;
+        let mut old_count: u32 = 0;
+        let mut new_count: u32 = 0;
 
         for op in &group {
             for change in text_diff.iter_changes(op) {
-                let value = change.value().to_string();
+                let content = change.value().trim_end_matches('\n').to_string();
                 match change.tag() {
-                    ChangeTag::Equal => changes.push(DiffChange::Equal(value)),
-                    ChangeTag::Insert => changes.push(DiffChange::Insert(value)),
-                    ChangeTag::Delete => changes.push(DiffChange::Delete(value)),
+                    ChangeTag::Equal => {
+                        lines.push(DiffLine::new(
+                            ChangeType::Context,
+                            Some(old_line.saturating_add(1)),
+                            Some(new_line.saturating_add(1)),
+                            content,
+                            Vec::new(),
+                        ));
+                        old_line = old_line.saturating_add(1);
+                        new_line = new_line.saturating_add(1);
+                        old_count = old_count.saturating_add(1);
+                        new_count = new_count.saturating_add(1);
+                    }
+                    ChangeTag::Delete => {
+                        lines.push(DiffLine::new(
+                            ChangeType::Remove,
+                            Some(old_line.saturating_add(1)),
+                            None,
+                            content,
+                            Vec::new(),
+                        ));
+                        old_line = old_line.saturating_add(1);
+                        old_count = old_count.saturating_add(1);
+                        deletions = deletions.saturating_add(1);
+                    }
+                    ChangeTag::Insert => {
+                        lines.push(DiffLine::new(
+                            ChangeType::Add,
+                            None,
+                            Some(new_line.saturating_add(1)),
+                            content,
+                            Vec::new(),
+                        ));
+                        new_line = new_line.saturating_add(1);
+                        new_count = new_count.saturating_add(1);
+                        additions = additions.saturating_add(1);
+                    }
                 }
             }
         }
 
-        hunks.push(DiffHunk {
-            // NOTE: 1-indexed per unified diff spec
-            old_start: old_start + 1,
-            new_start: new_start + 1,
-            changes,
-        });
+        hunks.push(DiffHunk::new(
+            old_start.saturating_add(1),
+            old_count,
+            new_start.saturating_add(1),
+            new_count,
+            String::new(),
+            lines,
+        ));
     }
 
-    FileDiff {
+    DiffFile {
         path: path.to_string(),
         hunks,
+        additions,
+        deletions,
+        mode: gramma::diff::DiffViewMode::default(),
     }
 }
 
-/// Collapse adjacent Delete+Insert pairs into Replace for word-diff mode.
-#[expect(
-    clippy::indexing_slicing,
-    reason = "while loop maintains i < changes.len() invariant; look-ahead i+1 is guarded by the preceding i+1 < changes.len() check"
-)]
-pub(crate) fn collapse_to_replacements(hunks: &[DiffHunk]) -> Vec<DiffHunk> {
-    hunks
-        .iter()
-        .map(|hunk| {
-            let mut collapsed = Vec::new();
-            let mut i = 0;
-            let changes = &hunk.changes;
-
-            while i < changes.len() {
-                match &changes[i] {
-                    DiffChange::Delete(old_text) => {
-                        // WHY: look ahead for adjacent Insert to merge into a Replace
-                        if i + 1 < changes.len()
-                            && let DiffChange::Insert(new_text) = &changes[i + 1]
-                        {
-                            collapsed.push(DiffChange::Replace {
-                                old: old_text.clone(),
-                                new: new_text.clone(),
-                            });
-                            i += 2;
-                            continue;
-                        }
-                        // kanon:ignore RUST/indexing-slicing — i is bounded by the while loop condition i < changes.len()
-                        collapsed.push(changes[i].clone());
-                    }
-                    _ => {
-                        // kanon:ignore RUST/indexing-slicing — i is bounded by the while loop condition i < changes.len()
-                        collapsed.push(changes[i].clone())
-                    }
-                }
-                i += 1;
-            }
-
-            DiffHunk {
-                old_start: hunk.old_start,
-                new_start: hunk.new_start,
-                changes: collapsed,
-            }
-        })
-        .collect()
+/// Widen a `similar` range offset (`usize`) to `u32`, saturating rather
+/// than panicking or wrapping on the (practically unreachable) case of a
+/// diff exceeding 4 billion lines.
+fn saturating_u32(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
 }

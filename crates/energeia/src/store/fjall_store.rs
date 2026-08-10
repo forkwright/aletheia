@@ -11,9 +11,9 @@ use eidos::knowledge::{
 use crate::error::{self, Result};
 use crate::store::queries;
 use crate::store::records::{
-    CiValidationRecord, CiValidationStatus, DispatchId, DispatchRecord, DispatchStatus,
-    LessonRecord, NewLesson, NewObservation, ObservationRecord, QaVerdictRecord, SessionId,
-    SessionOutcomeData, SessionRecord, SessionUpdate,
+    CiValidationRecord, CiValidationStatus, DispatchExport, DispatchId, DispatchRecord,
+    DispatchStatus, LessonRecord, NewLesson, NewObservation, ObservationRecord, QaVerdictRecord,
+    SessionId, SessionOutcomeData, SessionRecord, SessionUpdate,
 };
 
 /// Maximum records returned by bulk-scan methods to prevent unbounded memory use.
@@ -230,6 +230,13 @@ impl EnergeiaStore {
             error: None,
             created_at: now,
             updated_at: now,
+            model: None,
+            failure_class: None,
+            resume_count: 0,
+            corrective_attempts: 0,
+            cache_hit_tokens: 0,
+            cache_miss_tokens: 0,
+            structured_output: None,
         };
 
         let key = schema::session_key(dispatch_id, prompt_number);
@@ -298,6 +305,27 @@ impl EnergeiaStore {
         }
         if let Some(err) = update.error {
             record.error = Some(err);
+        }
+        if let Some(model) = update.model {
+            record.model = Some(model);
+        }
+        if let Some(failure_class) = update.failure_class {
+            record.failure_class = Some(failure_class);
+        }
+        if let Some(resume_count) = update.resume_count {
+            record.resume_count = resume_count;
+        }
+        if let Some(corrective_attempts) = update.corrective_attempts {
+            record.corrective_attempts = corrective_attempts;
+        }
+        if let Some(cache_hit_tokens) = update.cache_hit_tokens {
+            record.cache_hit_tokens = cache_hit_tokens;
+        }
+        if let Some(cache_miss_tokens) = update.cache_miss_tokens {
+            record.cache_miss_tokens = cache_miss_tokens;
+        }
+        if let Some(structured_output) = update.structured_output {
+            record.structured_output = Some(structured_output);
         }
         record.updated_at = jiff::Timestamp::now();
 
@@ -719,6 +747,47 @@ impl EnergeiaStore {
         session_id: &SessionId,
     ) -> Result<Vec<CiValidationRecord>> {
         queries::list_ci_validations_for_session(&self.keyspace, session_id)
+    }
+
+    // ── Inspection / export ──
+
+    /// Export a dispatch bundled with all of its child session records.
+    ///
+    /// WHY(#4800): store consumers need one typed read that bundles a parent
+    /// dispatch with the prompt-level records currently persisted for it,
+    /// without depending on this crate's fjall key layout. This is a storage
+    /// helper; a user-facing inspection surface and complete attempt history
+    /// remain separate work.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::NotFound` if the dispatch does not exist. Returns
+    /// `Error::Store` on read failure.
+    pub fn export_dispatch(&self, id: &DispatchId) -> Result<DispatchExport> {
+        let dispatch = self.get_dispatch(id)?.ok_or_else(|| {
+            error::NotFoundSnafu {
+                what: format!("dispatch {id}"),
+            }
+            .build()
+        })?;
+        let sessions = self.list_sessions_for_dispatch(id)?;
+        Ok(DispatchExport { dispatch, sessions })
+    }
+
+    /// Export the most recent dispatches (newest first) bundled with their
+    /// persisted prompt-level session records, up to `limit`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Store` on read failure.
+    pub fn list_recent_dispatch_exports(&self, limit: usize) -> Result<Vec<DispatchExport>> {
+        self.list_latest_dispatches(limit)?
+            .into_iter()
+            .map(|dispatch| {
+                let sessions = self.list_sessions_for_dispatch(&dispatch.id)?;
+                Ok(DispatchExport { dispatch, sessions })
+            })
+            .collect()
     }
 
     // ── Internal helpers ──
