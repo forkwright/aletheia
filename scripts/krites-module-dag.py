@@ -2,7 +2,8 @@
 """
 Mechanically derives the crates/krites subsystem import DAG from every
 `use crate::…` statement under crates/krites/src/, for diffing against the
-hand-drawn parallelism map in deliverables/krites-replacement/PLAN.md §7.
+hand-drawn parallelism map in §7 of the krites retirement plan
+(kanon projects/aletheia/phases/05g-krites-overhaul/RETIREMENT-PLAN.md).
 
 A node is a top-level directory under src/ (data, fixed_rule, fts, parse,
 query, runtime, storage) or "root" for the eight files that sit directly in
