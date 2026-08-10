@@ -9,7 +9,7 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 208 files under `src/`: 143 derived, 53 sovereign, 12 dual
+- 216 files under `src/`: 143 derived, 61 sovereign, 12 dual
 - Mean verbatim match across the 143 derived files: 44.8% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
@@ -200,6 +200,14 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 20.3% | derived |
 | `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 13.4% | derived |
 | `src/runtime/hnsw/visited_pool.rs` | `runtime/hnsw.rs` | 3.3% | derived |
+| `src/runtime/hnsw_sovereign/adaptive.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/graph.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/mod.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/put.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/remove.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/search.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/types.rs` | — | 0.0% | sovereign |
 | `src/runtime/imperative.rs` | `runtime/imperative.rs` | 35.6% | derived |
 | `src/runtime/minhash_lsh.rs` | `runtime/minhash_lsh.rs` | 53.6% | derived |
 | `src/runtime/mod.rs` | `runtime/mod.rs` | 0.0% | derived |

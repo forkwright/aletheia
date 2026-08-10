@@ -1510,6 +1510,70 @@ status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
+path = "runtime/hnsw_sovereign/adaptive.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "runtime/hnsw_sovereign/close_reopen_tests.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "runtime/hnsw_sovereign/graph.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "runtime/hnsw_sovereign/mod.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "runtime/hnsw_sovereign/put.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "runtime/hnsw_sovereign/remove.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "runtime/hnsw_sovereign/search.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "runtime/hnsw_sovereign/types.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+
+[[file]]
 path = "runtime/imperative.rs"
 upstream_path = "runtime/imperative.rs"
 replaced_upstream_path = "none"

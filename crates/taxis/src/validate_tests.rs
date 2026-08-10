@@ -438,6 +438,130 @@ fn accepts_valid_auth_modes() {
     }
 }
 
+/// SECURITY(#5765): a misconfigured `noneRole` must fail startup instead of
+/// silently degrading to `Role::Readonly` at request time.
+#[test]
+fn rejects_invalid_none_role() {
+    let section = json!({ "auth": { "mode": "token", "noneRole": "Operator" } });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "a noneRole with the wrong casing should be rejected, not silently \
+         degrade to readonly at request time"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("noneRole")),
+        "error should mention noneRole: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_valid_none_roles() {
+    for role in &["readonly", "agent", "operator", "admin"] {
+        let section = json!({ "auth": { "mode": "token", "noneRole": role } });
+        assert!(
+            validate_section("gateway", &section).is_ok(),
+            "noneRole '{role}' should be valid"
+        );
+    }
+}
+
+/// SECURITY(#5169, #5342): `auth.mode = "none"` grants every request access
+/// without a bearer token. Wildcard/empty CORS on top lets any browser
+/// origin read responses via cross-origin GET — refuse the combination
+/// rather than boot into a browser-drive-by posture.
+#[test]
+fn rejects_auth_none_with_wildcard_cors() {
+    let section = json!({ "auth": { "mode": "none" } });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "mode=none with the default empty (wildcard) CORS origin list must be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("cors.allowedOrigins")),
+        "error should mention cors.allowedOrigins: {err:?}"
+    );
+}
+
+#[test]
+fn rejects_auth_none_with_explicit_wildcard_cors() {
+    let section = json!({
+        "auth": { "mode": "none" },
+        "cors": { "allowedOrigins": ["*"] }
+    });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "mode=none with an explicit wildcard origin must be rejected"
+    );
+}
+
+#[test]
+fn accepts_auth_none_with_explicit_cors_origins() {
+    let section = json!({
+        "auth": { "mode": "none" },
+        "cors": { "allowedOrigins": ["http://localhost:5173"] }
+    });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "mode=none with an explicit, non-wildcard origin list should be accepted"
+    );
+}
+
+/// SECURITY(#5169, #5342): disabling CSRF removes the last server-side check
+/// on cross-origin mutating requests; combined with `auth.mode = "none"`
+/// that is an unauthenticated cross-origin write. `disableAcknowledged`
+/// alone must not be enough to accept the combination.
+#[test]
+fn rejects_auth_none_with_csrf_disabled() {
+    let section = json!({
+        "auth": { "mode": "none" },
+        "cors": { "allowedOrigins": ["http://localhost:5173"] },
+        "csrf": { "enabled": false, "disableAcknowledged": true }
+    });
+    let result = validate_section("gateway", &section);
+    assert!(
+        result.is_err(),
+        "mode=none with csrf disabled (even acknowledged) must be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors
+            .iter()
+            .any(|e| e.contains("gateway.csrf.enabled")),
+        "error should mention gateway.csrf.enabled: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_auth_none_with_csrf_enabled_and_explicit_cors() {
+    let section = json!({
+        "auth": { "mode": "none", "noneRole": "readonly" },
+        "cors": { "allowedOrigins": ["http://localhost:5173"] },
+        "csrf": { "enabled": true }
+    });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "mode=none with csrf enabled and an explicit CORS origin should be accepted"
+    );
+}
+
+/// A non-`"none"` auth mode is unaffected by the dangerous-combination
+/// checks: default (wildcard) CORS and default (enabled) CSRF are the
+/// existing, accepted posture for `token`/`jwt` modes.
+#[test]
+fn token_mode_is_unaffected_by_none_mode_combination_checks() {
+    let section = json!({ "auth": { "mode": "token" } });
+    assert!(
+        validate_section("gateway", &section).is_ok(),
+        "token mode with default cors/csrf should remain accepted: {:?}",
+        validate_section("gateway", &section)
+    );
+}
+
 #[test]
 fn accepts_provider_type_and_deployment_aliases() {
     let section = json!([
@@ -611,7 +735,15 @@ fn auth_mode_none_policy_env_gate() {
         std::env::remove_var(crate::validate::ALLOW_AUTH_NONE_ENV);
     }
 
-    let section = json!({ "auth": { "mode": "none" } });
+    // WHY(#5169, #5342): `mode = "none"` alone now fails the STRUCTURAL
+    // dangerous-combination checks in `validate_gateway` (wildcard CORS with
+    // no auth). This test targets the separate policy-gate function, so the
+    // fixture carries an explicit, non-wildcard origin to isolate that
+    // concern from the one under test here.
+    let section = json!({
+        "auth": { "mode": "none" },
+        "cors": { "allowedOrigins": ["http://localhost:5173"] }
+    });
 
     // Without opt-in: policy gate rejects, error points the operator at the env var.
     let rejected = crate::validate::validate_auth_mode_policy(&section);
@@ -663,9 +795,16 @@ fn auth_mode_none_policy_env_gate() {
 }
 
 /// File-load path (server startup, `check-config`) accepts `auth.mode = "none"`
-/// regardless of the env opt-in; the gate is policy-level, not structural.
-/// Operators with filesystem control of aletheia.toml are trusted; visibility
-/// is preserved via the loud `warn_if_auth_disabled` emission. (#4240)
+/// regardless of the env opt-in; the `ALLOW_AUTH_NONE_ENV` gate is policy-level,
+/// not structural. Operators with filesystem control of aletheia.toml are
+/// trusted on that specific gate; visibility is preserved via the loud
+/// `warn_if_auth_disabled` emission. (#4240)
+///
+/// This is distinct from the dangerous-combination checks added for
+/// (#5169, #5342, #5765): those ARE structural and reject `mode = "none"`
+/// paired with wildcard CORS, disabled CSRF, or an invalid `noneRole` on
+/// every path including file-load — this fixture supplies safe values for
+/// all three so only the env-opt-in exemption is under test here.
 #[test]
 fn validate_section_gateway_accepts_mode_none_without_opt_in() {
     let _guard = AUTH_ENV_LOCK
@@ -681,7 +820,11 @@ fn validate_section_gateway_accepts_mode_none_without_opt_in() {
         std::env::remove_var(crate::validate::ALLOW_AUTH_NONE_ENV);
     }
 
-    let section = json!({ "auth": { "mode": "none" } });
+    let section = json!({
+        "auth": { "mode": "none", "noneRole": "readonly" },
+        "cors": { "allowedOrigins": ["http://localhost:5173"] },
+        "csrf": { "enabled": true }
+    });
     let outcome = validate_section("gateway", &section);
     assert!(
         outcome.is_ok(),
