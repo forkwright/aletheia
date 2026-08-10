@@ -81,7 +81,10 @@ jobs:
         with:
           key: cargo-audit
       - name: Install cargo-audit
-        uses: taiki-e/install-action@v2.85.5
+        # WHY SHA-pinned: this downloads a binary from the network inside the REQUIRED
+        # `cargo audit` job, and a mutable tag can be repointed. Every other action in this
+        # repo is SHA-pinned; this was the sole exception.
+        uses: taiki-e/install-action@6a1bd70eaac3c8bdf093356838d7ee09fda951cf # v2.85.5
         with:
           tool: cargo-audit
       - name: cargo audit
