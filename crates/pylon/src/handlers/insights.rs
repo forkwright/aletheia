@@ -8,7 +8,7 @@ use axum::extract::{Path, Query, State};
 use tracing::warn;
 
 use jiff::ToSpan;
-use mneme::types::{Message, Role, Session, UsageRecord};
+use mneme::types::{Message, Role, Session, ToolAuditRecord, UsageRecord};
 
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::extract::{Claims, require_nous_access, require_role};
@@ -18,7 +18,8 @@ use crate::types::insights::{
     AgentCostRow, AgentPerformance, AgentPerformanceListResponse, AgentTokenRow,
     CostMetricsResponse, CostSeriesPoint, JournalQuery, JournalResponse, MetricsQuery,
     ModelTokenRow, QualityMetricsResponse, QualitySeries, TimeSeriesPoint, TokenMetricsResponse,
-    TokenSeriesPoint, UnavailableMetric,
+    TokenSeriesPoint, ToolInvocationRecord, ToolStat, ToolStatsQuery, ToolStatsResponse,
+    ToolTimeSeriesBucket, ToolUsageSummary, UnavailableMetric,
 };
 
 /// Convert `i64` to `f64` losslessly for values that fit in `i32`.
@@ -379,6 +380,75 @@ pub async fn get_journal(
             reason: "no persistent event journal is available in pylon".to_owned(),
         }],
     }))
+}
+
+/// Hard cap of the underlying store's `recent_tool_audit_records` query
+/// (`MAX_RECENT_TOOL_AUDIT_RECORDS` in `graphe::store::fjall_store`).
+///
+/// WHY(#4484): the store has no date-ranged tool-audit query, only a
+/// bounded newest-first snapshot. Tool-stats aggregates are computed
+/// honestly over whatever this snapshot covers — a real answer, not a fake
+/// one — but a busy install's true weekly/monthly volume can exceed 200
+/// calls, in which case wide windows undercount. `ToolStatsResponse.
+/// data_unavailable` names this explicitly rather than hiding it; a
+/// genuine date-ranged store query is follow-on work outside pylon.
+const TOOL_AUDIT_FETCH_LIMIT: usize = 200;
+
+/// GET /api/tool-stats: aggregated tool-usage statistics for the desktop
+/// metrics dashboard.
+///
+/// Mounted unversioned (not under `/api/v1`) to match the URL proskenion's
+/// tool metrics views have called since they were built (#4484); pylon
+/// never implemented this route, so every request fell through the router
+/// fallback to a bare 404 with no typed error.
+#[utoipa::path(
+    get,
+    path = "/api/tool-stats",
+    params(ToolStatsQuery),
+    responses(
+        (status = 200, description = "Tool usage statistics", body = ToolStatsResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn get_tool_stats(
+    State(state): State<InsightsState>,
+    claims: Claims,
+    Query(query): Query<ToolStatsQuery>,
+) -> Result<Json<ToolStatsResponse>, ApiError> {
+    // SECURITY(#4484): tool-usage aggregates span every agent's tool calls
+    // and captured result text, matching the other aggregate metrics
+    // endpoints (#4618) — requires unscoped Operator.
+    require_role(&claims, symbolon::types::Role::Operator)?;
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot access aggregate tool statistics",
+        ));
+    }
+
+    let state_clone = state.clone();
+    let records = tokio::task::spawn_blocking(move || {
+        let store = state_clone.session_store.blocking_lock();
+        store
+            .recent_tool_audit_records(TOOL_AUDIT_FETCH_LIMIT)
+            .map_err(ApiError::from)
+    })
+    .await
+    .unwrap_or_else(|e| {
+        Err(InternalSnafu {
+            message: format!("task join failed: {e}"),
+        }
+        .build())
+    })
+    // WHY(#5760 precedent): propagate storage failures as a 500 instead of
+    // an empty stats response that reads as "no tool calls" when the real
+    // state is "could not read the audit log".
+    ?;
+
+    let today = jiff::Timestamp::now()
+        .to_zoned(jiff::tz::TimeZone::UTC)
+        .date();
+    Ok(Json(build_tool_stats(&records, &query, today)))
 }
 
 // ── Computation helpers ──
@@ -1052,6 +1122,401 @@ fn u64_to_f64(n: u64) -> f64 {
 
 fn session_count_f64(n: usize) -> f64 {
     usize_to_f64(n)
+}
+
+/// Per-tool call counts, successes, and total duration over some window.
+#[derive(Debug, Default, Clone, Copy)]
+struct ToolCountWindow {
+    count: u64,
+    succeeded: u64,
+    duration_total_ms: u64,
+}
+
+impl ToolCountWindow {
+    fn record(&mut self, record: &ToolAuditRecord) {
+        self.count += 1;
+        if !record.is_error {
+            self.succeeded += 1;
+        }
+        self.duration_total_ms = self.duration_total_ms.saturating_add(record.duration_ms);
+    }
+
+    fn success_rate(self) -> f64 {
+        if self.count == 0 {
+            return 0.0;
+        }
+        u64_to_f64(self.succeeded) / u64_to_f64(self.count)
+    }
+
+    fn avg_duration_ms(self) -> u64 {
+        if self.count == 0 {
+            return 0;
+        }
+        self.duration_total_ms / self.count
+    }
+}
+
+/// Fixed calendar windows (today/week/month + their prior equivalents) used
+/// for the `total_invocations_*` and `delta_*` summary fields, independent
+/// of the requested `days` query parameter. Mirrors `token_period_windows`.
+#[derive(Debug, Default)]
+struct ToolPeriodWindows {
+    today: ToolCountWindow,
+    prev_today: ToolCountWindow,
+    week: ToolCountWindow,
+    prev_week: ToolCountWindow,
+    month: ToolCountWindow,
+    prev_month: ToolCountWindow,
+}
+
+fn tool_period_windows(records: &[ToolAuditRecord], today: jiff::civil::Date) -> ToolPeriodWindows {
+    let week_start = today.checked_sub(6.days()).unwrap_or(today);
+    let prev_week_end = week_start.checked_sub(1.days()).unwrap_or(week_start);
+    let prev_week_start = week_start.checked_sub(7.days()).unwrap_or(week_start);
+    let month_start = jiff::civil::Date::new(today.year(), today.month(), 1).unwrap_or(today);
+    let (prev_month_year, prev_month) = if today.month() == 1 {
+        (today.year() - 1, 12)
+    } else {
+        (today.year(), today.month() - 1)
+    };
+    let prev_month_start =
+        jiff::civil::Date::new(prev_month_year, prev_month, 1).unwrap_or(month_start);
+    let prev_month_end = month_start
+        .checked_sub(1.days())
+        .unwrap_or(prev_month_start);
+    let yesterday = today.checked_sub(1.days()).unwrap_or(today);
+
+    let mut windows = ToolPeriodWindows::default();
+    for record in records {
+        let Some(date) = tool_record_date(record) else {
+            continue;
+        };
+        if date == today {
+            windows.today.record(record);
+        }
+        if date == yesterday {
+            windows.prev_today.record(record);
+        }
+        if date >= week_start && date <= today {
+            windows.week.record(record);
+        }
+        if date >= prev_week_start && date <= prev_week_end {
+            windows.prev_week.record(record);
+        }
+        if date >= month_start && date <= today {
+            windows.month.record(record);
+        }
+        if date >= prev_month_start && date <= prev_month_end {
+            windows.prev_month.record(record);
+        }
+    }
+    windows
+}
+
+/// Signed delta between two invocation counts (`current - previous`),
+/// positive meaning more calls. Counts are bounded by
+/// [`TOOL_AUDIT_FETCH_LIMIT`], so the `i64` conversion never truncates.
+fn count_delta(current: u64, previous: u64) -> i64 {
+    i64::try_from(current)
+        .unwrap_or(i64::MAX)
+        .saturating_sub(i64::try_from(previous).unwrap_or(i64::MAX))
+}
+
+fn tool_record_date(record: &ToolAuditRecord) -> Option<jiff::civil::Date> {
+    record.created_at.get(..10)?.parse().ok()
+}
+
+/// Count invocations within `[start, end]` inclusive, across all tools.
+fn count_window(
+    records: &[ToolAuditRecord],
+    start: jiff::civil::Date,
+    end: jiff::civil::Date,
+) -> ToolCountWindow {
+    let mut window = ToolCountWindow::default();
+    for record in records {
+        let Some(date) = tool_record_date(record) else {
+            continue;
+        };
+        if date >= start && date <= end {
+            window.record(record);
+        }
+    }
+    window
+}
+
+/// Per-tool duration samples, outcome counts, and captured failure text
+/// accumulated while scanning the requested window.
+#[derive(Debug, Default)]
+struct ToolAccumulator {
+    total: u64,
+    succeeded: u64,
+    failed: u64,
+    durations_ms: Vec<u64>,
+    error_counts: HashMap<String, u64>,
+    last_failure_at: Option<String>,
+}
+
+impl ToolAccumulator {
+    /// Record one call. Callers must feed records newest-first (the store's
+    /// native order) so the first failure seen per tool is the most recent.
+    fn record(&mut self, record: &ToolAuditRecord) {
+        self.total += 1;
+        self.durations_ms.push(record.duration_ms);
+        if record.is_error {
+            self.failed += 1;
+            if let Some(text) = &record.result {
+                *self.error_counts.entry(text.clone()).or_insert(0) += 1;
+            }
+            if self.last_failure_at.is_none() {
+                self.last_failure_at = Some(record.created_at.clone());
+            }
+        } else {
+            self.succeeded += 1;
+        }
+    }
+
+    fn into_stat(mut self, name: String) -> ToolStat {
+        self.durations_ms.sort_unstable();
+        let min_ms = self.durations_ms.first().copied().unwrap_or(0);
+        let max_ms = self.durations_ms.last().copied().unwrap_or(0);
+        let most_common_error = self
+            .error_counts
+            .into_iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(text, _)| text);
+        ToolStat {
+            name,
+            total: self.total,
+            succeeded: self.succeeded,
+            failed: self.failed,
+            min_ms,
+            p25_ms: percentile_nearest_rank(&self.durations_ms, 0.25),
+            p50_ms: percentile_nearest_rank(&self.durations_ms, 0.50),
+            p75_ms: percentile_nearest_rank(&self.durations_ms, 0.75),
+            p95_ms: percentile_nearest_rank(&self.durations_ms, 0.95),
+            max_ms,
+            most_common_error,
+            last_failure_at: self.last_failure_at,
+        }
+    }
+}
+
+/// Nearest-rank percentile over an ascending-sorted slice.
+///
+/// WHY: mirrors proskenion's client-side `percentile_nearest_rank` reserved
+/// helper (`crates/theatron/proskenion/src/state/tool_metrics.rs`) so
+/// server- and any future client-computed percentiles agree.
+fn percentile_nearest_rank(sorted_values: &[u64], p: f64) -> u64 {
+    if sorted_values.is_empty() {
+        return 0;
+    }
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::as_conversions,
+        reason = "p is always a fixed non-negative percentile constant (0.25/0.5/0.75/0.95) \
+                  from this file's own callers; ceil() of a rank bounded by \
+                  TOOL_AUDIT_FETCH_LIMIT fits usize"
+    )]
+    let rank = (p * usize_to_f64(sorted_values.len())).ceil() as usize; // kanon:ignore RUST/as-cast
+    let idx = rank.saturating_sub(1).min(sorted_values.len() - 1);
+    sorted_values.get(idx).copied().unwrap_or(0)
+}
+
+fn invocation_record(record: &ToolAuditRecord) -> ToolInvocationRecord {
+    ToolInvocationRecord {
+        tool_name: record.tool_name.clone(),
+        agent_id: record.nous_id.clone(),
+        timestamp: record.created_at.clone(),
+        duration_ms: record.duration_ms,
+        success: !record.is_error,
+        error: if record.is_error {
+            record.result.clone()
+        } else {
+            None
+        },
+    }
+}
+
+/// Accumulate per-tool stats and per-date/per-tool series counts for every
+/// record within `[window_start, today]`.
+fn accumulate_windowed_tool_data(
+    records: &[ToolAuditRecord],
+    window_start: jiff::civil::Date,
+    today: jiff::civil::Date,
+) -> (
+    HashMap<String, ToolAccumulator>,
+    HashMap<String, HashMap<String, u64>>,
+) {
+    let mut per_tool: HashMap<String, ToolAccumulator> = HashMap::new();
+    let mut series: HashMap<String, HashMap<String, u64>> = HashMap::new();
+    for record in records {
+        let Some(date) = tool_record_date(record) else {
+            continue;
+        };
+        if date < window_start || date > today {
+            continue;
+        }
+        per_tool
+            .entry(record.tool_name.clone())
+            .or_default()
+            .record(record);
+
+        if let Some(bucket) = bucket_date(&record.created_at, None) {
+            *series
+                .entry(bucket)
+                .or_default()
+                .entry(record.tool_name.clone())
+                .or_insert(0) += 1;
+        }
+    }
+    (per_tool, series)
+}
+
+/// Narrow `per_tool`/`series`/`records` to the optional `tool` filter and
+/// produce the three detail collections of the response, time-series sorted
+/// by date.
+fn select_tool_detail(
+    per_tool: HashMap<String, ToolAccumulator>,
+    series: HashMap<String, HashMap<String, u64>>,
+    records: &[ToolAuditRecord],
+    tool_filter: Option<&str>,
+    window_start: jiff::civil::Date,
+    today: jiff::civil::Date,
+) -> (
+    Vec<ToolStat>,
+    Vec<ToolTimeSeriesBucket>,
+    Vec<ToolInvocationRecord>,
+) {
+    let in_window =
+        |r: &&ToolAuditRecord| tool_record_date(r).is_some_and(|d| d >= window_start && d <= today);
+
+    let (tools, mut time_series, invocations): (
+        Vec<ToolStat>,
+        Vec<ToolTimeSeriesBucket>,
+        Vec<ToolInvocationRecord>,
+    ) = if let Some(name) = tool_filter {
+        let mut per_tool = per_tool;
+        let tools = per_tool
+            .remove(name)
+            .map(|acc| acc.into_stat(name.to_owned()))
+            .into_iter()
+            .collect();
+        let time_series = series
+            .into_iter()
+            .filter_map(|(date, mut counts)| {
+                let count = counts.remove(name)?;
+                Some(ToolTimeSeriesBucket {
+                    date,
+                    counts: HashMap::from([(name.to_owned(), count)]),
+                })
+            })
+            .collect();
+        let invocations = records
+            .iter()
+            .filter(|r| r.tool_name == name)
+            .filter(in_window)
+            .map(invocation_record)
+            .collect();
+        (tools, time_series, invocations)
+    } else {
+        let tools = per_tool
+            .into_iter()
+            .map(|(name, acc)| acc.into_stat(name))
+            .collect();
+        let time_series = series
+            .into_iter()
+            .map(|(date, counts)| ToolTimeSeriesBucket { date, counts })
+            .collect();
+        let invocations = records
+            .iter()
+            .filter(in_window)
+            .map(invocation_record)
+            .collect();
+        (tools, time_series, invocations)
+    };
+    time_series.sort_by(|a, b| a.date.cmp(&b.date));
+    (tools, time_series, invocations)
+}
+
+/// Disclose when the tool-audit snapshot itself is bounded (see
+/// [`TOOL_AUDIT_FETCH_LIMIT`]), so wide-window totals are never silently
+/// presented as complete.
+fn tool_stats_data_unavailable(record_count: usize, days: u32) -> Vec<UnavailableMetric> {
+    if record_count < TOOL_AUDIT_FETCH_LIMIT {
+        return Vec::new();
+    }
+    vec![UnavailableMetric {
+        metric: "long_window_completeness".to_owned(),
+        reason: format!(
+            "tool-audit snapshot bounded to the {TOOL_AUDIT_FETCH_LIMIT} most recent \
+             records; week/month/{days}-day totals may undercount on a busy install"
+        ),
+    }]
+}
+
+/// Build the full `/api/tool-stats` response from a bounded newest-first
+/// record snapshot (see [`TOOL_AUDIT_FETCH_LIMIT`]).
+fn build_tool_stats(
+    records: &[ToolAuditRecord],
+    query: &ToolStatsQuery,
+    today: jiff::civil::Date,
+) -> ToolStatsResponse {
+    let days = query.days.clamp(1, 90);
+    let window_len = i64::from(days.saturating_sub(1));
+    let window_start = today.checked_sub(window_len.days()).unwrap_or(today);
+    let prev_window_end = window_start.checked_sub(1.days()).unwrap_or(window_start);
+    let prev_window_start = prev_window_end
+        .checked_sub(window_len.days())
+        .unwrap_or(prev_window_end);
+
+    // WHY: success_rate/avg_duration/most_used reflect the requested `days`
+    // window (the same window used for `tools`/`time_series`/`invocations`
+    // below), not the fixed today/week/month totals — those are a separate,
+    // always-present reference point computed by `tool_period_windows`.
+    let windowed = count_window(records, window_start, today);
+    let prev_windowed = count_window(records, prev_window_start, prev_window_end);
+    let periods = tool_period_windows(records, today);
+
+    let (per_tool, series) = accumulate_windowed_tool_data(records, window_start, today);
+
+    // WHY: most-used is always computed across every tool, even when `tool`
+    // narrows the response below — `summary` is deliberately global (#4484).
+    let most_used = per_tool
+        .iter()
+        .max_by_key(|(_, acc)| acc.total)
+        .map(|(name, acc)| (name.clone(), acc.total))
+        .unwrap_or_default();
+
+    let (tools, time_series, invocations) = select_tool_detail(
+        per_tool,
+        series,
+        records,
+        query.tool.as_deref(),
+        window_start,
+        today,
+    );
+
+    ToolStatsResponse {
+        summary: ToolUsageSummary {
+            total_invocations_today: periods.today.count,
+            total_invocations_week: periods.week.count,
+            total_invocations_month: periods.month.count,
+            delta_today: count_delta(periods.today.count, periods.prev_today.count),
+            delta_week: count_delta(periods.week.count, periods.prev_week.count),
+            delta_month: count_delta(periods.month.count, periods.prev_month.count),
+            success_rate: windowed.success_rate(),
+            success_rate_prev: prev_windowed.success_rate(),
+            avg_duration_ms: windowed.avg_duration_ms(),
+            avg_duration_prev_ms: prev_windowed.avg_duration_ms(),
+            most_used_tool: most_used.0,
+            most_used_count: most_used.1,
+        },
+        tools,
+        time_series,
+        invocations,
+        data_unavailable: tool_stats_data_unavailable(records.len(), days),
+    }
 }
 
 #[cfg(test)]

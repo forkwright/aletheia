@@ -66,7 +66,9 @@ pub struct NousSummary {
     pub fallback_providers: Vec<Option<String>>,
     /// Per-model provider readiness for the agent's model chain.
     pub provider_readiness: Vec<crate::handlers::providers::ModelProviderReadiness>,
-    /// Lifecycle status (e.g. `"active"`).
+    /// Live lifecycle status: `"active"`, `"idle"`, `"dormant"`,
+    /// `"degraded"`, or `"unknown"` (actor never spawned, unreachable, or
+    /// the status query timed out — #4807).
     pub status: String,
     /// Tool toggle summaries for the agent.
     pub tools: Vec<ToolSummary>,

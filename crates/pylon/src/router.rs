@@ -162,6 +162,9 @@ pub fn build_router_with(
             get(credentials::list_credentials).post(credentials::add_credential),
         )
         .route("/system/health", get(health::detailed))
+        // WHY(#5313): authoritative subsystem-status API — the canonical
+        // backend source for desktop/TUI control-plane status views.
+        .route("/system/status", get(health::system_status))
         .route(
             "/system/credentials/rotate",
             post(credentials::rotate_credentials),
@@ -242,6 +245,10 @@ pub fn build_router_with(
         .nest(API_V1, v1)
         .route(API_HEALTH, get(health::check))
         .route("/health", get(health::deprecated_health_check))
+        // WHY(#4484): unversioned to match the URL proskenion's tool metrics
+        // views already call; auth is enforced by the handler's `Claims`
+        // extractor + `require_role`, same as every `/api/v1` route.
+        .route("/api/tool-stats", get(insights::get_tool_stats))
         .merge(metrics_router)
         .merge(docs_router);
 

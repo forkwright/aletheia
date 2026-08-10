@@ -2,6 +2,7 @@
 //! Nous (agent) information endpoints.
 
 use std::collections::HashSet;
+use std::time::Duration;
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -225,38 +226,63 @@ fn require_visible_nous(claims: &Claims, config: &NousConfig) -> Result<(), ApiE
 )]
 pub async fn list(State(state): State<NousState>, claims: Claims) -> Json<NousListResponse> {
     let config = state.config.read().await;
-    let nous: Vec<NousSummary> = state
+    let visible: Vec<&NousConfig> = state
         .nous_manager
         .configs()
         .into_iter()
         .filter(|c| nous_visible_to_claims(&claims, c))
-        .map(|c| {
-            let agent_id = c.id.as_ref();
-            let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
-            let tools = tool_summaries_for_agent(&state, c, allowlist_for_agent(&config, agent_id));
-            let routes = model_routes_for_config(c);
-            NousSummary {
-                id: c.id.to_string(),
-                name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
-                enabled,
-                model: c.generation.model.clone(),
-                provider: c.generation.provider.clone(),
-                fallback_models: c.generation.fallback_models.clone(),
-                fallback_providers: c.generation.fallback_providers.clone(),
-                provider_readiness: resolve_model_route_readiness(
-                    &state.provider_registry,
-                    &routes,
-                ),
-                status: "active".to_owned(),
-                tools,
-                config_applied: None,
-                live_applied: None,
-                reload_required: None,
-                restart_required: None,
-            }
-        })
         .collect();
+
+    let mut nous = Vec::with_capacity(visible.len());
+    for c in visible {
+        let agent_id = c.id.as_ref();
+        let enabled = agent_definition(&config, agent_id).is_none_or(|agent| agent.enabled);
+        let tools = tool_summaries_for_agent(&state, c, allowlist_for_agent(&config, agent_id));
+        let routes = model_routes_for_config(c);
+        let status = live_status_label(&state.nous_manager, agent_id).await;
+        nous.push(NousSummary {
+            id: c.id.to_string(),
+            name: c.name.clone().unwrap_or_else(|| c.id.to_string()),
+            enabled,
+            model: c.generation.model.clone(),
+            provider: c.generation.provider.clone(),
+            fallback_models: c.generation.fallback_models.clone(),
+            fallback_providers: c.generation.fallback_providers.clone(),
+            provider_readiness: resolve_model_route_readiness(&state.provider_registry, &routes),
+            status,
+            tools,
+            config_applied: None,
+            live_applied: None,
+            reload_required: None,
+            restart_required: None,
+        });
+    }
     Json(NousListResponse { nous })
+}
+
+/// Timeout for a single actor's status query when building the agent list.
+///
+/// WHY(#4807): the list endpoint aggregates status across every registered
+/// agent; a hung actor's status query must not stall the whole dashboard the
+/// way `check_health`'s ping timeout bounds actor liveness checks.
+const LIST_STATUS_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Resolve an agent's live lifecycle status for the summary list.
+///
+/// WHY(#4807): this endpoint previously hardcoded every entry's `status` to
+/// `"active"` regardless of whether the actor was ever spawned, reachable,
+/// or alive — the Ops dashboard could show a dead or never-started agent as
+/// healthy. A missing handle, an actor error, or a timeout all report
+/// `"unknown"` rather than a false-healthy default, matching `get_status`'s
+/// existing per-agent behavior for the same cases.
+async fn live_status_label(manager: &nous::manager::NousManager, agent_id: &str) -> String {
+    let Some(handle) = manager.get(agent_id) else {
+        return "unknown".to_owned();
+    };
+    match tokio::time::timeout(LIST_STATUS_TIMEOUT, handle.status()).await {
+        Ok(Ok(status)) => status.lifecycle.to_string(),
+        Ok(Err(_)) | Err(_) => "unknown".to_owned(),
+    }
 }
 
 /// GET /api/v1/nous/{id}: get nous status.

@@ -133,22 +133,6 @@ impl Drop for ReadOnlyGuard<'_> {
     }
 }
 
-async fn stop_actor_until_channel_closes(state: &AppState, id: &str) {
-    let handle = state.nous_manager.get(id).expect("actor handle");
-    handle.shutdown().await.expect("send shutdown");
-
-    tokio::time::timeout(std::time::Duration::from_secs(1), async {
-        loop {
-            if handle.status().await.is_err() {
-                break;
-            }
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("actor channel closes");
-}
-
 #[tokio::test]
 async fn list_nous_returns_agents() {
     let (app, _dir) = app().await;
@@ -433,8 +417,29 @@ async fn nous_list_from_manager() {
     assert_eq!(agents.len(), 1);
     assert_eq!(agents[0]["id"], "syn");
     assert_eq!(agents[0]["model"], "mock-model");
-    assert_eq!(agents[0]["status"], "active");
+    // WHY(#4807): a freshly spawned actor with no work is genuinely "idle"
+    // (`ActorChannel` initializes `status: NousLifecycle::Idle`) — this used
+    // to assert the old hardcoded "active" regardless of live actor state.
+    assert_eq!(agents[0]["status"], "idle");
     assert_eq!(agents[0]["enabled"], true);
+}
+
+#[tokio::test]
+async fn nous_list_reports_unknown_status_for_stopped_actor() {
+    // SECURITY(#4807): the list endpoint used to hardcode every entry's
+    // status to "active" regardless of whether the actor was alive. A dead
+    // actor must report "unknown", not a false-healthy default.
+    let (state, _dir) = test_state().await;
+    stop_actor_until_channel_closes(&state, "syn").await;
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = app.oneshot(authed_get("/api/v1/nous")).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let agents = body["nous"].as_array().unwrap();
+    assert_eq!(agents[0]["id"], "syn");
+    assert_eq!(agents[0]["status"], "unknown");
 }
 
 #[tokio::test]

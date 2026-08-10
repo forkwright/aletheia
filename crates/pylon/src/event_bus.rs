@@ -144,6 +144,22 @@ impl EventBus {
         self.tx.subscribe()
     }
 
+    /// Number of currently subscribed receivers.
+    ///
+    /// WHY(#5313): surfaced as a control-plane subsystem signal — zero
+    /// subscribers while SSE clients are expected to be connected is a
+    /// silent-degradation signal that was previously invisible outside logs.
+    #[must_use]
+    pub fn subscriber_count(&self) -> usize {
+        self.tx.receiver_count()
+    }
+
+    /// Number of events currently retained in the replay journal.
+    #[must_use]
+    pub async fn journal_len(&self) -> usize {
+        self.journal.lock().await.len()
+    }
+
     /// Subscribe and collect retained events with `id > last_id`.
     ///
     /// The returned snapshot contains replay events and a live receiver. If the

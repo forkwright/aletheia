@@ -51,3 +51,63 @@ pub struct HealthCheck {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
 }
+
+/// Authoritative, operator-grade subsystem status record (#5313).
+///
+/// Distinct from [`HealthCheck`]: each record names an explicit code owner,
+/// uses a smaller and more meaningful status vocabulary
+/// (`"healthy"`/`"degraded"`/`"failed"`/`"unknown"`), and — critically — is
+/// allowed to report `"unknown"` rather than defaulting an unreachable
+/// subsystem to `"healthy"`. A control plane that lies toward optimism when
+/// it cannot actually see a subsystem is worse than one that says so.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SubsystemStatus {
+    /// Stable machine identifier (e.g. `"session_store"`).
+    pub id: String,
+    /// Human-readable name for the control-plane UI.
+    pub name: String,
+    /// `"healthy"`, `"degraded"`, `"failed"`, or `"unknown"`.
+    pub status: String,
+    /// Crate/module that owns this subsystem's behavior — one code owner
+    /// per record, per #5313's acceptance criteria.
+    pub owner: String,
+    /// When this record was computed (ISO 8601, UTC).
+    pub last_checked: String,
+    /// Most recent known success timestamp, when tracked. Absent (not
+    /// fabricated) for subsystems that only report point-in-time status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_success: Option<String>,
+    /// Most recent known failure timestamp, when tracked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_failure: Option<String>,
+    /// Explanation when status is `"degraded"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
+    /// Explanation when status is `"failed"` or `"unknown"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    /// Redacted structured diagnostics: counts, backlog depth, per-item
+    /// detail. Never credentials, tokens, or absolute host paths.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Object, nullable = true)]
+    pub details: Option<serde_json::Value>,
+    /// A known remediation step, when Aletheia can suggest one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suggested_action: Option<String>,
+}
+
+/// Response for `GET /api/v1/system/status` (#5313).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SubsystemStatusResponse {
+    /// Aggregate status across every subsystem: `"healthy"` (all healthy or
+    /// unknown), `"degraded"` (any degraded, none failed), or `"failed"`
+    /// (any failed). `"unknown"` subsystems do not by themselves elevate
+    /// the aggregate — a subsystem this endpoint cannot yet see is a gap to
+    /// close, not evidence the system is down — but every subsystem is
+    /// always listed so the gap stays visible rather than silently absent.
+    pub status: String,
+    /// When this snapshot was computed (ISO 8601, UTC).
+    pub generated_at: String,
+    /// One record per tracked subsystem.
+    pub subsystems: Vec<SubsystemStatus>,
+}

@@ -1,6 +1,8 @@
 // WHY: wire DTO
 //! Request and response types for meta-insights endpoints.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -290,4 +292,125 @@ pub struct JournalQuery {
 
 fn default_journal_limit() -> u32 {
     100
+}
+
+/// Query parameters for `GET /api/tool-stats` (#4484).
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub struct ToolStatsQuery {
+    /// Aggregation window in days, clamped to `1..=90`. Defaults to 7.
+    #[serde(default = "default_tool_stats_days")]
+    pub days: u32,
+    /// Restrict `tools`, `time_series`, and `invocations` to one tool name.
+    /// `summary` always reflects every tool regardless of this filter.
+    #[serde(default)]
+    pub tool: Option<String>,
+}
+
+fn default_tool_stats_days() -> u32 {
+    7
+}
+
+/// Response for `GET /api/tool-stats` (#4484).
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ToolStatsResponse {
+    /// Global summary cards, unaffected by the `tool` query filter.
+    pub summary: ToolUsageSummary,
+    /// Per-tool aggregates within the requested `days` window (and `tool`
+    /// filter, when set).
+    pub tools: Vec<ToolStat>,
+    /// Daily invocation counts per tool within the requested window.
+    pub time_series: Vec<ToolTimeSeriesBucket>,
+    /// Raw invocation records within the requested window.
+    pub invocations: Vec<ToolInvocationRecord>,
+    /// Metrics that are currently not measured, or not measured completely,
+    /// by any backing data source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_unavailable: Vec<UnavailableMetric>,
+}
+
+/// Global tool-usage summary for dashboard cards.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ToolUsageSummary {
+    /// Invocations recorded today (UTC calendar date).
+    pub total_invocations_today: u64,
+    /// Invocations recorded in the trailing 7 days including today.
+    pub total_invocations_week: u64,
+    /// Invocations recorded in the current calendar month.
+    pub total_invocations_month: u64,
+    /// `total_invocations_today` minus the prior day's total.
+    pub delta_today: i64,
+    /// `total_invocations_week` minus the prior 7-day period's total.
+    pub delta_week: i64,
+    /// `total_invocations_month` minus the prior calendar month's total.
+    pub delta_month: i64,
+    /// Overall success rate across all tools in the requested `days` window.
+    pub success_rate: f64,
+    /// Success rate for the equivalent-length period immediately before the
+    /// requested window, for trend comparison.
+    pub success_rate_prev: f64,
+    /// Average execution duration across all tools in the requested window (ms).
+    pub avg_duration_ms: u64,
+    /// Average duration for the equivalent prior period (ms).
+    pub avg_duration_prev_ms: u64,
+    /// Tool with the most invocations in the requested window.
+    pub most_used_tool: String,
+    /// Invocation count for `most_used_tool`.
+    pub most_used_count: u64,
+}
+
+/// Per-tool aggregated statistics within the requested window.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ToolStat {
+    /// Registered tool name.
+    pub name: String,
+    /// Total invocations in the window.
+    pub total: u64,
+    /// Invocations that did not report an error.
+    pub succeeded: u64,
+    /// Invocations that reported an error.
+    pub failed: u64,
+    /// Fastest observed duration (ms).
+    pub min_ms: u64,
+    /// 25th-percentile duration (ms), nearest-rank.
+    pub p25_ms: u64,
+    /// Median duration (ms), nearest-rank.
+    pub p50_ms: u64,
+    /// 75th-percentile duration (ms), nearest-rank.
+    pub p75_ms: u64,
+    /// 95th-percentile duration (ms), nearest-rank.
+    pub p95_ms: u64,
+    /// Slowest observed duration (ms).
+    pub max_ms: u64,
+    /// Most frequently repeated captured result text among failed calls, if any.
+    pub most_common_error: Option<String>,
+    /// Timestamp of the most recent failure, if any.
+    pub last_failure_at: Option<String>,
+}
+
+/// A single time-series bucket: one UTC calendar date, invocation counts per tool.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ToolTimeSeriesBucket {
+    /// ISO 8601 date (`YYYY-MM-DD`).
+    pub date: String,
+    /// Map of tool name to invocation count on this date.
+    #[schema(value_type = Object)]
+    pub counts: HashMap<String, u64>,
+}
+
+/// A single raw tool invocation within the requested window.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ToolInvocationRecord {
+    /// Registered tool name.
+    pub tool_name: String,
+    /// Agent that requested the tool call.
+    // kanon:ignore RUST/primitive-for-domain-id — wire DTO field mirrors ToolAuditRecord.nous_id
+    pub agent_id: String,
+    /// ISO 8601 timestamp of the call.
+    pub timestamp: String,
+    /// Execution duration in milliseconds.
+    pub duration_ms: u64,
+    /// `true` when the call did not report an error.
+    pub success: bool,
+    /// Captured result text when the call reported an error.
+    pub error: Option<String>,
 }
