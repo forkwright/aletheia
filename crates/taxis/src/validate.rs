@@ -6,6 +6,7 @@ use std::collections::HashSet;
 use koina::id::ToolName;
 use serde_json::Value;
 use snafu::Snafu;
+use symbolon::types::Role;
 
 use crate::config::AletheiaConfig;
 use crate::oikos::Oikos;
@@ -388,21 +389,23 @@ pub fn auth_none_lan_opt_in_enabled() -> bool {
 fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
     check_port(value, "port", "port", errors);
 
-    // WHY: structural validity only — accept any of the three known auth modes.
-    // The `auth.mode = "none"` policy gate (env-var opt-in) lives in
-    // [`validate_auth_mode_policy`] so it fires only when a config PUT through
-    // the config API attempts to disable auth, not when a TOML file containing
-    // `mode = "none"` is loaded at startup or inspected by `check-config`.
-    // Operators have filesystem-level control of the file; the loud startup
-    // warning emitted by [`warn_if_auth_disabled`] handles operator visibility.
-    if let Some(auth) = value.get("auth")
-        && let Some(mode) = auth.get("mode").and_then(Value::as_str)
+    // WHY: structural validity only — accept any of the three known auth
+    // modes. The `auth.mode = "none"` policy gate (env-var opt-in) lives in
+    // [`validate_auth_mode_policy`], which is deliberately file-load-exempt;
+    // see [`validate_gateway_auth_none_posture`] for the checks that are not.
+    let auth = value.get("auth");
+    let auth_mode = auth
+        .and_then(|auth| auth.get("mode"))
+        .and_then(Value::as_str);
+    if let Some(mode) = auth_mode
         && !VALID_AUTH_MODES.contains(&mode)
     {
         errors.push(format!(
             "gateway.auth.mode '{mode}' is invalid; must be one of: none, token, jwt"
         ));
     }
+
+    validate_gateway_auth_none_posture(value, auth_mode, errors);
 
     if let Some(cors) = value.get("cors") {
         check_positive_u64(cors, "maxAgeSecs", errors);
@@ -481,6 +484,82 @@ fn validate_gateway(value: &Value, errors: &mut Vec<String>) {
                 check_positive_u32(per_user, "toolBurst", errors);
             }
         }
+    }
+}
+
+/// Reject the specific fail-open postures `gateway.auth.mode = "none"` can
+/// silently boot into: an invalid `noneRole`, a wildcard CORS origin list,
+/// or a disabled CSRF guard. Each removes or weakens the last check
+/// standing between an unauthenticated request and the API.
+///
+/// SECURITY(#5169, #5342, #5765): fires unconditionally — including on a
+/// TOML file loaded at startup — because a fail-open default is the defect
+/// being closed, not a policy an operator should be able to file-edit
+/// around silently (contrast [`validate_auth_mode_policy`], which is
+/// deliberately file-load-exempt).
+fn validate_gateway_auth_none_posture(
+    value: &Value,
+    auth_mode: Option<&str>,
+    errors: &mut Vec<String>,
+) {
+    // An invalid `noneRole` must fail startup, not silently degrade to
+    // `Role::Readonly` at request time
+    // (`pylon::extract::Claims::from_request_parts`).
+    if let Some(none_role) = value
+        .get("auth")
+        .and_then(|auth| auth.get("noneRole"))
+        .and_then(Value::as_str)
+        && none_role.parse::<Role>().is_err()
+    {
+        errors.push(format!(
+            "gateway.auth.noneRole '{none_role}' is invalid; must be one of: \
+             readonly, agent, operator, admin"
+        ));
+    }
+
+    if auth_mode != Some("none") {
+        return;
+    }
+
+    // A browser page open on any origin can issue a cross-origin GET;
+    // wildcard/empty CORS lets that page's script read the response, which
+    // combined with no-auth is an unauthenticated cross-origin data read
+    // from any page the operator happens to have open.
+    let cors_wildcard = value
+        .get("cors")
+        .and_then(|cors| cors.get("allowedOrigins"))
+        .and_then(Value::as_array)
+        .is_none_or(|origins| {
+            origins.is_empty() || origins.iter().any(|o| o.as_str() == Some("*"))
+        });
+    if cors_wildcard {
+        errors.push(
+            "gateway.auth.mode = \"none\" requires an explicit, non-wildcard \
+             gateway.cors.allowedOrigins list; wildcard CORS with no \
+             authentication lets any browser origin read responses via \
+             cross-origin GET"
+                .to_owned(),
+        );
+    }
+
+    // Disabling CSRF removes the last server-side check on cross-origin
+    // mutating requests (`pylon::middleware::require_csrf_header`'s
+    // same-origin fallback only runs because CSRF exists as a concept;
+    // turning the whole guard off has no fallback). Combined with no-auth
+    // that is an unauthenticated cross-origin write. Force CSRF rather than
+    // let `disableAcknowledged` paper over the combination.
+    let csrf_disabled = value
+        .get("csrf")
+        .and_then(|csrf| csrf.get("enabled"))
+        .and_then(Value::as_bool)
+        == Some(false);
+    if csrf_disabled {
+        errors.push(
+            "gateway.auth.mode = \"none\" requires gateway.csrf.enabled = true; \
+             disabling CSRF removes the last check on cross-origin mutating \
+             requests when authentication is off"
+                .to_owned(),
+        );
     }
 }
 

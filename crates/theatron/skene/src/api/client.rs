@@ -5,6 +5,7 @@ use std::time::Duration;
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
 
+use koina::http::{CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE};
 use koina::secret::SecretString;
 
 use super::error::{
@@ -29,9 +30,13 @@ fn default_headers(token: Option<&str>) -> Result<header::HeaderMap> {
         headers.insert(header::AUTHORIZATION, auth_value);
     }
 
+    // WHY(#4823, #5059): CSRF header name/value come from the shared
+    // `koina::http` constants so this client matches
+    // `taxis::config::CsrfConfig::default()` without independently
+    // restating the string.
     headers.insert(
-        "x-requested-with",
-        header::HeaderValue::from_static("aletheia"),
+        CSRF_HEADER_NAME,
+        header::HeaderValue::from_static(DEFAULT_CSRF_HEADER_VALUE),
     );
     headers.insert(
         header::CONTENT_TYPE,

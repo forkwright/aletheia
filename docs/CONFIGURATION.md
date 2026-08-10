@@ -183,7 +183,7 @@ HTTP gateway serving the API.
 | `port` | u16 | `18789` | Listen port |
 | `bind` | string | `"localhost"` | Bind mode: `"localhost"` (loopback only), `"lan"` (all interfaces), or a custom address |
 | `auth.mode` | string | `"token"` | Auth mode: `"token"` (bearer) or `"none"` |
-| `auth.none_role` | string | `"admin"` | Role assigned to anonymous requests when `auth.mode = "none"`; valid values are `"readonly"`, `"agent"`, `"operator"`, and `"admin"` |
+| `auth.none_role` | string | `"readonly"` | Role assigned to anonymous requests when `auth.mode = "none"`; valid values are `"readonly"`, `"agent"`, `"operator"`, and `"admin"`. `auth.mode = "none"` additionally requires an explicit, non-wildcard `cors.allowedOrigins` and `csrf.enabled = true` -- startup refuses the combination otherwise |
 
 ### gateway.tls
 
@@ -929,7 +929,7 @@ Filesystem sandbox applied to tool execution. When enabled, tools are restricted
 
 Defaults are defined in `crates/taxis/src/config/maintenance.rs` and mirrored by the execution policy in `crates/organon/src/sandbox/config.rs`; `gateway.auth.none_role` is defined in `crates/taxis/src/config/gateway.rs`.
 
-Combined default posture: a fresh config binds the gateway to localhost and uses bearer-token auth, but rate limiting is disabled, sandbox violations are logged, not blocked; exec child processes keep outbound network egress; and switching `gateway.auth.mode` to `"none"` without changing `gateway.auth.none_role` grants anonymous callers the `admin` role. For production deployments, set the restrictive values explicitly.
+Combined default posture: a fresh config binds the gateway to localhost and uses bearer-token auth, but rate limiting is disabled and sandbox violations are logged, not blocked; exec child processes keep outbound network egress. Switching `gateway.auth.mode` to `"none"` without changing `gateway.auth.none_role` grants anonymous callers the least-privilege `readonly` role, and startup refuses the switch entirely unless `cors.allowedOrigins` is an explicit non-wildcard list and `csrf.enabled` stays `true` -- a fail-open no-auth posture is rejected rather than warned about. For production deployments, set the restrictive values explicitly.
 
 ```toml
 [sandbox]

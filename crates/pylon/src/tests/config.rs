@@ -183,9 +183,11 @@ async fn update_section_unknown_section_returns_404() {
 #[tokio::test]
 async fn openapi_spec_contains_config_section_schemas() {
     let (app, _dir) = app().await;
+    let token = default_token();
     let resp = app
         .oneshot(
             Request::get("/api/docs/openapi.json")
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
