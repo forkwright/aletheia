@@ -504,11 +504,14 @@ mod tests {
     #[tokio::test]
     async fn dokimasia_persists_a_lesson_when_the_diff_is_mechanically_clean() {
         let service = Arc::new(FakeKnowledgeService::default());
-        // WHY the typed binding: Arc::clone preserves the concrete type, and
-        // ctx_with_knowledge wants a trait object. Annotating performs the unsizing
-        // coercion implicitly — `as` is disallowed in this crate — while `service` stays
-        // concrete for the persist_calls assertion below.
-        let knowledge: Arc<dyn KnowledgeSearchService> = Arc::clone(&service);
+        // WHY the method form and not `Arc::clone(&service)`: the annotation is what
+        // performs the unsizing coercion, and a coercion site needs a value to coerce.
+        // `Arc::clone` is an associated fn whose T is fixed by the return type, so under
+        // this annotation it demands `&Arc<dyn KnowledgeSearchService>` and rejects
+        // `&Arc<FakeKnowledgeService>` outright. `.clone()` resolves on the concrete Arc
+        // and the annotation then unsizes the result, which is what was meant. `service`
+        // stays concrete for the persist_calls assertion below.
+        let knowledge: Arc<dyn KnowledgeSearchService> = service.clone();
         let ctx = ctx_with_knowledge(knowledge);
 
         // No acceptance criteria are ever supplied by this tool (see the WHY
@@ -536,11 +539,14 @@ mod tests {
     #[tokio::test]
     async fn dokimasia_does_not_persist_a_lesson_when_mechanical_issues_are_found() {
         let service = Arc::new(FakeKnowledgeService::default());
-        // WHY the typed binding: Arc::clone preserves the concrete type, and
-        // ctx_with_knowledge wants a trait object. Annotating performs the unsizing
-        // coercion implicitly — `as` is disallowed in this crate — while `service` stays
-        // concrete for the persist_calls assertion below.
-        let knowledge: Arc<dyn KnowledgeSearchService> = Arc::clone(&service);
+        // WHY the method form and not `Arc::clone(&service)`: the annotation is what
+        // performs the unsizing coercion, and a coercion site needs a value to coerce.
+        // `Arc::clone` is an associated fn whose T is fixed by the return type, so under
+        // this annotation it demands `&Arc<dyn KnowledgeSearchService>` and rejects
+        // `&Arc<FakeKnowledgeService>` outright. `.clone()` resolves on the concrete Arc
+        // and the annotation then unsizes the result, which is what was meant. `service`
+        // stays concrete for the persist_calls assertion below.
+        let knowledge: Arc<dyn KnowledgeSearchService> = service.clone();
         let ctx = ctx_with_knowledge(knowledge);
 
         // Triggers the `#[allow()]` anti-pattern mechanical check, forcing a
