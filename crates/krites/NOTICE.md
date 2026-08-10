@@ -190,7 +190,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/callback.rs` | `runtime/callback.rs` | 55.3% | derived |
 | `src/runtime/db.rs` | `runtime/db.rs` | 29.8% | derived |
 | `src/runtime/error.rs` | — | 0.0% | sovereign |
-| `src/runtime/exec.rs` | `runtime/db.rs` | 69.6% | derived |
+| `src/runtime/exec.rs` | `runtime/db.rs` | 68.8% | derived |
 | `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | derived |
 | `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | derived |
 | `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | derived |

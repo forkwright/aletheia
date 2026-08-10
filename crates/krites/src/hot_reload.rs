@@ -389,8 +389,11 @@ mod tests {
             HotReloader::start(dir.path(), &db.fixed_rules).expect("start reloader");
         db.rule_store = Some(store);
 
+        // Both entry-less classes that broke while merely opening a store.
         db.run_default("::relations")
             .expect("a system op must parse with rules attached; prepending breaks SOI anchoring");
+        db.run_default(":create probe_relation { id: String => value: String }")
+            .expect("a bare DDL must run with rules attached; prepending leaves it with no entry");
 
         // The rules must still reach ordinary query scripts — the guard must not disable them.
         let rows = db
