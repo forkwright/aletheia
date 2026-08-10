@@ -660,7 +660,7 @@ source = "crates/krites/src/lib.rs:163"
 dest_wave = "wave-1b"
 dest_module = "storage/mem.rs"
 gate = "Same gate as api-mem-storage."
-call_sites = 130
+call_sites = 131
 call_sites_method = "grep -rn 'open_mem(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
 
 [[capability]]
