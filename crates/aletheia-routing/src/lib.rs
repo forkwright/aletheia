@@ -18,7 +18,9 @@
 //!    [`AfterActionStore`] so future dispatch-side routing benefits from
 //!    interactive-path data (and vice versa). The empirical layer does *not*
 //!    replace the complexity router; it feeds the dispatch path's
-//!    `energeia` empirical router with a richer signal set.
+//!    `energeia` empirical router with a richer signal set. Persistence is
+//!    durable, not merely in-memory-until-the-next-refresh (#4519): see
+//!    the module docs on [`store`] for the exact semantics.
 
 #![deny(missing_docs)]
 

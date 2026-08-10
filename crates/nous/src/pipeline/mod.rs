@@ -804,6 +804,107 @@ impl TurnResult {
 /// Re-export so callers can use `pipeline::DegradedMode` as the canonical path.
 pub use crate::degraded_mode::DegradedMode;
 
+/// Whether a turn's training-capture and DPO-extraction side effects
+/// should run at all for this turn's outcome.
+///
+/// WHY(#5367): a degraded-mode fallback (`is_degraded`) is synthesized
+/// locally when the LLM provider is unavailable — it carries no real
+/// model completion, zero usage, and an empty `model_used`. `finalize_outcome
+/// == Persisted` only reflects whether the turn was written to the session
+/// store (degraded turns ARE persisted, so the user sees them in
+/// conversation history), so it is not a proxy for "this is real model
+/// output." Both the training-capture and DPO-extraction call sites must
+/// gate on `is_degraded` explicitly rather than relying on finalize
+/// outcome alone.
+fn turn_admits_corpus_side_effects(finalize_outcome: FinalizeOutcome, is_degraded: bool) -> bool {
+    finalize_outcome == FinalizeOutcome::Persisted && !is_degraded
+}
+
+/// Whether a completed (non-degraded, persisted) turn should be fed into
+/// DPO pair extraction.
+///
+/// WHY(#5379): DPO extraction previously ran off `finalize_outcome ==
+/// Persisted` alone, so a turn that supervised training capture rejected
+/// via its own quality gate (empty response, max-token truncation,
+/// tool-use-only, decontamination drop — see `training::maybe_capture`)
+/// could still become a DPO `chosen` response or a future `rejected`
+/// candidate, even though the corpus this pipeline feeds is supposed to
+/// share one quality bar.
+///
+/// Correction turns are exempt: `maybe_capture` always rejects them by
+/// design (they are the DPO trigger, not an SFT candidate — see
+/// `training::mod::maybe_capture`'s early-exit), so gating DPO on that
+/// same `false` would silently break correction-sequence detection. For
+/// any other turn, DPO shares training capture's accepted/rejected
+/// verdict.
+///
+/// `training_capture_accepted` is `None` when `training_capture` was not
+/// configured for this actor, or when the capture task itself failed to
+/// run (join error) — in both cases the turn's quality could not be
+/// determined, so a non-correction turn fails closed (`false`) rather
+/// than entering the corpus on an unknown verdict.
+fn dpo_admits_turn(is_correction: bool, training_capture_accepted: Option<bool>) -> bool {
+    is_correction || training_capture_accepted.unwrap_or(false)
+}
+
+#[cfg(test)]
+mod corpus_admission_tests {
+    use super::*;
+
+    #[test]
+    fn degraded_turn_never_admits_corpus_side_effects() {
+        assert!(!turn_admits_corpus_side_effects(
+            FinalizeOutcome::Persisted,
+            true
+        ));
+    }
+
+    #[test]
+    fn persisted_non_degraded_turn_admits_corpus_side_effects() {
+        assert!(turn_admits_corpus_side_effects(
+            FinalizeOutcome::Persisted,
+            false
+        ));
+    }
+
+    #[test]
+    fn non_persisted_outcomes_never_admit_corpus_side_effects() {
+        assert!(!turn_admits_corpus_side_effects(
+            FinalizeOutcome::NoStore,
+            false
+        ));
+        assert!(!turn_admits_corpus_side_effects(
+            FinalizeOutcome::Failed,
+            false
+        ));
+        // WHY: even a hypothetical non-persisted-but-degraded combination
+        // must stay excluded — degraded alone is disqualifying, but a
+        // non-persisted outcome must never be treated as admitting either.
+        assert!(!turn_admits_corpus_side_effects(
+            FinalizeOutcome::NoStore,
+            true
+        ));
+    }
+
+    #[test]
+    fn correction_turn_always_admits_dpo_regardless_of_capture_verdict() {
+        assert!(dpo_admits_turn(true, None));
+        assert!(dpo_admits_turn(true, Some(false)));
+        assert!(dpo_admits_turn(true, Some(true)));
+    }
+
+    #[test]
+    fn non_correction_turn_requires_training_capture_accept() {
+        assert!(dpo_admits_turn(false, Some(true)));
+        assert!(!dpo_admits_turn(false, Some(false)));
+    }
+
+    #[test]
+    fn non_correction_turn_with_unknown_capture_verdict_fails_closed() {
+        assert!(!dpo_admits_turn(false, None));
+    }
+}
+
 /// A tool call made during a turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
@@ -1416,7 +1517,13 @@ pub(crate) async fn run_pipeline(
                 )
             };
 
-        if finalize_outcome == FinalizeOutcome::Persisted
+        // WHY(#5379): the DPO-extraction block below reuses this same
+        // accepted/rejected verdict so a turn is never routed into DPO by an
+        // implicitly looser gate than the supervised corpus — see
+        // `dpo_admits_turn`. `None` until (and unless) the block below runs.
+        let mut training_capture_accepted: Option<bool> = None;
+
+        if turn_admits_corpus_side_effects(finalize_outcome, result.is_degraded())
             && let Some(capture_arc) = training_capture
         {
             // NOTE: one entry per tool call with success/error
@@ -1491,7 +1598,7 @@ pub(crate) async fn run_pipeline(
             // write onto a blocking thread keeps the async worker from
             // stalling on filesystem I/O. (#5676)
             let capture_arc = Arc::clone(&capture_arc);
-            if let Err(e) = tokio::task::spawn_blocking(move || {
+            match tokio::task::spawn_blocking(move || {
                 let tool_surface_hashes_ref: &[String] = &tool_surface_hashes;
                 let mut guard = capture_arc
                     .lock()
@@ -1519,15 +1626,17 @@ pub(crate) async fn run_pipeline(
             })
             .await
             {
-                warn!(error = %e, "training capture write task failed");
+                Ok(accepted) => training_capture_accepted = Some(accepted),
+                Err(e) => warn!(error = %e, "training capture write task failed"),
             }
         }
 
         // WHY: DPO pair extraction runs after training capture so the same
-        // quality-filtered turn data feeds both pipelines. Uses a global
-        // extractor because the pipeline task has no persistent actor state.
-        // Session IDs are ULID-based and globally unique.
-        if finalize_outcome == FinalizeOutcome::Persisted
+        // quality-filtered turn data feeds both pipelines (see
+        // `dpo_admits_turn`). The durable extractor lives on `DpoWriter`
+        // (see `training::dpo` module docs) so no process-global state is
+        // needed here.
+        if turn_admits_corpus_side_effects(finalize_outcome, result.is_degraded())
             && let Some(writer_arc) = dpo_writer
         {
             // WHY(#3786): authorship gate skips agent-authored turns to prevent
@@ -1548,36 +1657,45 @@ pub(crate) async fn run_pipeline(
                 == crate::training::decontamination::Disposition::Admit;
 
             if dpo_passes_authorship
-                && let Some(pair) = crate::training::dpo::process_turn_global(
-                    &input.session.id,
-                    input.session.turn,
-                    &input.content,
-                    &result.content,
-                    correction_signal.is_correction,
-                    pipeline_config.training.pii_filter_enabled,
-                )
+                && dpo_admits_turn(correction_signal.is_correction, training_capture_accepted)
             {
-                // WHY: DpoWriter::write_pair opens and appends to a JSONL
-                // file with synchronous std::fs. Moving the write onto a
-                // blocking thread keeps the async worker from stalling on
-                // filesystem I/O. (#5676)
+                let session_id = input.session.id.clone();
+                let turn_number = input.session.turn;
+                let user_message = input.content.clone();
+                let assistant_response = result.content.clone();
+                let is_correction = correction_signal.is_correction;
+                let pii_filter_enabled = pipeline_config.training.pii_filter_enabled;
+
+                // WHY: DpoWriter::process_and_write reads/writes the durable
+                // extractor state and appends to a JSONL file with
+                // synchronous std::fs. Moving it onto a blocking thread
+                // keeps the async worker from stalling on filesystem I/O.
+                // (#5676)
                 let writer_arc = Arc::clone(&writer_arc);
                 match tokio::task::spawn_blocking(move || {
                     let guard = writer_arc
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    guard.write_pair(&pair)
+                    guard.process_and_write(
+                        &session_id,
+                        turn_number,
+                        &user_message,
+                        &assistant_response,
+                        is_correction,
+                        pii_filter_enabled,
+                    )
                 })
                 .await
                 {
-                    Ok(Ok(())) => {
+                    Ok(Ok(true)) => {
                         crate::training::dpo::record_dpo_pair_captured(&config.id);
                     }
+                    Ok(Ok(false)) => {}
                     Ok(Err(e)) => {
-                        tracing::warn!(error = %e, "DPO pair write failed");
+                        tracing::warn!(error = %e, "DPO pair extraction/write failed");
                     }
                     Err(e) => {
-                        tracing::warn!(error = %e, "DPO pair write task failed");
+                        tracing::warn!(error = %e, "DPO pair extraction task failed");
                     }
                 }
             }

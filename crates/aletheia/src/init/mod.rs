@@ -317,20 +317,13 @@ fn collect_interactive(mut answers: Answers) -> Result<Answers, InitError> {
     let model: &str = model_select.interact().context(PromptSnafu)?;
     model.clone_into(&mut answers.model);
 
+    // WHY(#4638): delegate to the same `NousId` validator used by `add-nous`,
+    // import, and the HTTP create path — this prompt used to be the one
+    // entrypoint that also accepted underscores, letting `init` scaffold an
+    // agent id that `add-nous`/import/API would then refuse to touch.
     let agent_id: String = cliclack::input("Agent ID")
         .default_input(&answers.agent_id)
-        .validate(|input: &String| {
-            if input.is_empty() {
-                Err("Agent ID cannot be empty")
-            } else if !input
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-            {
-                Err("Agent ID must be alphanumeric (hyphens and underscores allowed)")
-            } else {
-                Ok(())
-            }
-        })
+        .validate(|input: &String| koina::id::NousId::new(input.as_str()).map(|_| ()))
         .interact()
         .context(PromptSnafu)?;
     answers.agent_id = agent_id;
