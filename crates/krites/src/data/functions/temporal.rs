@@ -110,9 +110,9 @@ pub(crate) fn op_now_micros(_args: &[DataValue]) -> Result<DataValue> {
     // WHY try_from and not `as`: microseconds since the epoch exceeds i64 only past year 294247,
     // but a silent wrap here would reintroduce exactly the class of corruption this function is
     // meant to remove.
-    let micros = i64::try_from(micros).map_err(|_| {
+    let micros = i64::try_from(micros).map_err(|e| {
         BadTimeSnafu {
-            message: "system clock is beyond the representable microsecond range".to_string(),
+            message: format!("system clock is beyond the representable microsecond range: {e}"),
         }
         .build()
     })?;
