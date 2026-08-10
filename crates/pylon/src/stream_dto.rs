@@ -51,6 +51,17 @@ pub(crate) enum SseEvent {
     },
 
     /// Turn completed: final event in the stream.
+    ///
+    /// WHY(#5375): `error` mirrors `TurnOutcome::error` on the turn-stream
+    /// protocol's `MessageComplete` so a failed legacy turn's terminal event
+    /// is self-describing instead of relying on the client to have also
+    /// retained the earlier, separate `Error` event. `stop_reason == "error"`
+    /// already signals failure; this field carries *why* on the same event.
+    /// `usage` stays zeroed on failure: the legacy `send_message` path calls
+    /// the nous actor via a single non-streaming reply (`send_turn_with_cancel`),
+    /// so pylon never observes partial usage/text/tool state to report — unlike
+    /// `/api/v1/sessions/stream`, which streams events and can preserve them
+    /// (see `stream_turn`'s failure branch).
     #[serde(rename = "message_complete")]
     MessageComplete {
         stop_reason: String,
@@ -61,6 +72,9 @@ pub(crate) enum SseEvent {
         /// Per-request correlation ID for distributed tracing across the pipeline.
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
+        /// Failure message when this turn ended in error. `None` on success.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
     },
 
     /// An error occurred during the turn.
@@ -93,7 +107,7 @@ pub(crate) enum SseEvent {
 }
 
 /// Token usage summary sent with `message_complete`.
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, ToSchema)]
 #[expect(
     clippy::struct_field_names,
     reason = "the `_tokens` suffix names the unit on the wire; dropping it breaks the message_complete API/schema contract"

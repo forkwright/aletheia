@@ -27,7 +27,7 @@ mod tests;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use poiesis_core::Document;
+use poiesis_core::{Body, DeliverableSpec, Document};
 use tracing::instrument;
 
 use crate::pandoc_probe::{PROBE_COMMAND_TIMEOUT, REQUIRED_PANDOC_VERSION, parse_pandoc_version};
@@ -387,6 +387,35 @@ pub fn render_doc(doc: &Document, opts: &DocOpts) -> Result<Vec<u8>, PandocError
         ),
     ];
     runner.render(&ast_json, &render_opts, &extra_env)
+}
+
+/// Render a [`DeliverableSpec`]'s document body — the typed envelope that
+/// scaffolding produces and QA runs over — to bytes via [`render_doc`].
+///
+/// This is the spec-level entry point B-006/§ mod.rs history named as the
+/// eventual upgrade of [`render_doc`]: callers holding a `DeliverableSpec`
+/// (rather than a bare pre-envelope [`Document`]) render through it directly
+/// instead of first unwrapping the body themselves. `render_doc` remains the
+/// lower-level primitive both this function and every per-format
+/// `poiesis_doc::render_*_from_doc` convenience wrapper delegate to — those
+/// wrappers predate the envelope and take a bare `Document` from callers
+/// (`organon`) that do not carry a full spec, so their signatures are
+/// unchanged.
+///
+/// # Errors
+///
+/// Returns [`PandocError::UnsupportedBody`] if `spec.body` is not
+/// [`Body::Document`] (deck and workbook bodies render through their own
+/// family-specific entry points, not the Pandoc dispatch path). Otherwise
+/// returns whatever [`render_doc`] returns for the wrapped [`Document`].
+#[instrument(skip(spec), fields(fmt = ?opts.format))]
+pub fn render_deliverable(spec: &DeliverableSpec, opts: &DocOpts) -> Result<Vec<u8>, PandocError> {
+    let Body::Document(document_body) = &spec.body else {
+        return Err(PandocError::UnsupportedBody {
+            kind: spec.body_kind().as_str(),
+        });
+    };
+    render_doc(&document_body.document, opts)
 }
 
 fn select_pdf_engine(doc: &Document, opts: &DocOpts) -> Result<Option<PdfEngine>, PandocError> {

@@ -207,7 +207,13 @@ fn bool_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option
 /// All other failure modes are surfaced as typed variants:
 /// - [`SseEvent::DecodeError`] for JSON parse failures
 /// - [`SseEvent::UnknownEvent`] for unrecognized event types
-fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
+///
+/// `pub`: this is the canonical event parser for the domain-event stream.
+/// Consumers with their own connection-management loop (e.g. proskenion's
+/// `SseConnection`, which adds Dioxus-lifecycle cancellation and UI-facing
+/// loss-confirmation on top of the same byte stream) call this directly
+/// rather than re-deriving event parsing locally.
+pub fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
     let json: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
         Err(e) => {

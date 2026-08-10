@@ -21,14 +21,9 @@
 //! routes through [`crate::format::format_number`]. No `format!("{}", f64)`
 //! anywhere; no map iteration into output; no random IDs.
 //!
-//! # Scaffold scope
-//!
-//! This file emits a minimal but well-formed combo SVG: viewBox + a single
-//! `<rect>` per column + a `<polyline>` for the line, fills resolved from
-//! the theme, geometry computed via [`crate::scale::Scale`]. Gridlines,
-//! axis ticks, and label text are intentionally omitted from this scaffold
-//! — they are tracked as follow-up work in the PR body. The byte-by-byte
-//! golden snapshot for the full offsite chart lands with the follow-up.
+//! Fills resolve from the theme; geometry is computed via
+//! [`crate::scale::Scale`]. `output_is_deterministic_across_two_renders`
+//! (below) is the byte-stability gate for this arm.
 
 use std::fmt::Write as _;
 

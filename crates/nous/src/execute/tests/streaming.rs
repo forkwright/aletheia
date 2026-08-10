@@ -636,6 +636,10 @@ async fn streaming_fallback_uses_approval_gate_for_mandatory_tool() {
 
 #[tokio::test]
 async fn streaming_max_iterations_reports_stop_reason() {
+    // WHY(#5369): mirrors `max_iterations_reports_stop_reason` in core.rs —
+    // the streaming path must exhaust the cap with the same hard error, not
+    // a transport-specific success shape. The unification (#4755, #5224)
+    // means both paths share this behavior by construction now.
     let mut providers = ProviderRegistry::new();
     let responses: Vec<CompletionResponse> = (0..10)
         .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
@@ -649,7 +653,7 @@ async fn streaming_max_iterations_reports_stop_reason() {
 
     let (tx, _rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
 
-    let result = execute_streaming(
+    let err = execute_streaming(
         &test_pipeline_ctx(),
         &test_session(),
         &config,
@@ -661,15 +665,11 @@ async fn streaming_max_iterations_reports_stop_reason() {
         None,
     )
     .await
-    .expect("execute_streaming");
+    .expect_err("exhausting max_tool_iterations without a final response must error");
 
-    assert_eq!(
-        result.stop_reason, "max_tool_iterations",
-        "streaming stop reason should report max tool iterations cutoff"
-    );
-    assert_eq!(
-        result.usage.llm_calls, 3,
-        "streaming should stop after max_tool_iterations=3 LLM calls"
+    assert!(
+        err.to_string().contains("limit (3)"),
+        "error should report the configured max_tool_iterations value: {err}"
     );
 }
 
@@ -715,6 +715,60 @@ async fn streaming_client_disconnect_reports_stop_reason() {
     assert!(
         result.tool_calls.is_empty(),
         "disconnected stream should not dispatch tools"
+    );
+}
+
+#[tokio::test]
+async fn non_streaming_fallback_respects_client_disconnect() {
+    // WHY(#4755, #5224): before the streaming/non-streaming unification, only
+    // the streaming loop checked for a disconnected receiver — the
+    // non-streaming loop had no such check at all. `execute_streaming`
+    // delegates wholesale to the non-streaming loop when the provider
+    // doesn't support streaming (`MockProvider::supports_streaming()` is
+    // `false` by default), so that fallback previously kept calling the LLM
+    // after the caller had already gone away. Sharing one loop core closes
+    // that gap for both callers of the non-streaming path, not just direct
+    // `execute()` callers.
+    let mut providers = ProviderRegistry::new();
+    // WHY: the provider always returns tool_use, so exhausting these
+    // responses (or hitting max_tool_iterations) would prove the disconnect
+    // was NOT observed — the loop would have to keep calling the LLM.
+    let responses: Vec<CompletionResponse> = (0..10)
+        .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
+        .collect();
+    providers.register(Box::new(
+        MockProvider::with_responses(responses).models(&["test-model"]),
+    ));
+
+    let tools = make_registry_with("exec", Box::new(EchoExecutor));
+    let mut config = test_config();
+    config.limits.max_tool_iterations = 100;
+    config.limits.loop_detection_threshold = 1000;
+
+    let (tx, rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+    drop(rx);
+
+    let result = execute_streaming(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming");
+
+    assert_eq!(
+        result.stop_reason, "client_disconnect",
+        "non-streaming fallback should report client disconnect, not run to max_tool_iterations"
+    );
+    assert_eq!(
+        result.usage.llm_calls, 0,
+        "disconnected non-streaming fallback should not call the LLM at all"
     );
 }
 

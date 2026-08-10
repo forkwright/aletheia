@@ -22,6 +22,7 @@
 //! the same parse-don't-validate constructors as Rust callers; an
 //! invariant violated at deserialize time becomes a typed [`crate::Error`].
 
+use poiesis_core::RichText;
 use serde::{Deserialize, Serialize};
 
 /// Closed set of chart kinds. Each kind has either a pure-Rust emitter arm
@@ -183,11 +184,6 @@ pub enum CiteOrText {
     /// Literal text.
     Text(String),
 }
-
-/// Inline text fragments for captions, kept as an opaque vector.
-#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct Inlines(pub Vec<String>);
 
 /// Reference to a theme tone slot.
 ///
@@ -397,9 +393,12 @@ pub struct Chart {
     /// Show on-bar / on-point data labels (kind-default decides if omitted).
     #[serde(default)]
     pub data_labels: bool,
-    /// Optional caption.
+    /// Optional caption, sharing the doc stack's styled inline-span model
+    /// (bold / italic / code / cite spans) rather than a chart-local plain
+    /// string list — the model that produces a chart figure and the model
+    /// that produces the surrounding document prose are the same one.
     #[serde(default)]
-    pub caption: Option<Inlines>,
+    pub caption: Option<RichText>,
 }
 
 impl Chart {

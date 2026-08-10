@@ -376,7 +376,11 @@ async fn configured_fallback_models_are_used_for_retryable_primary_failure() {
         result.model_used, "fallback-model",
         "fallback success should report the model that served the turn"
     );
-    assert_eq!(result.usage.llm_calls, 1);
+    assert_eq!(
+        result.usage.llm_calls, 2,
+        "usage must count both the failed primary attempt and the successful \
+         fallback attempt (#5372), not just the final success"
+    );
     assert_eq!(primary.called_models(), ["test-model"]);
     assert_eq!(secondary.called_models(), ["fallback-model"]);
     assert!(
@@ -527,6 +531,79 @@ async fn single_provider_config_does_not_attempt_fallback() {
         provider.called_models(),
         ["test-model"],
         "single-provider config should attempt only the primary model"
+    );
+}
+
+#[tokio::test]
+async fn cache_turns_disabled_without_a_cache_breakpoint() {
+    // WHY(#3781, #5224): cache_turns must stay false when cache_enabled is
+    // true but no message in the turn carries a cache breakpoint — enabling
+    // it unconditionally would mark uncacheable turns for prompt-cache
+    // pricing that never benefits from a hit.
+    let mock = Arc::new(
+        MockProvider::with_responses(vec![make_text_response("hi")]).models(&["test-model"]),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&mock))));
+
+    let ctx = test_pipeline_ctx();
+    assert!(
+        !ctx.messages.iter().any(|m| m.cache_breakpoint),
+        "test fixture must not carry a cache breakpoint"
+    );
+
+    execute(
+        &ctx,
+        &test_session(),
+        &test_config(),
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    let requests = mock.captured_requests();
+    assert_eq!(requests.len(), 1);
+    assert!(
+        !requests.first().expect("one request").cache_turns,
+        "cache_turns must be false with no cache-breakpoint message, even though cache_enabled=true"
+    );
+}
+
+#[tokio::test]
+async fn cache_turns_enabled_with_a_cache_breakpoint() {
+    // WHY(#3781, #5224): the mirror of the test above — once a message
+    // carries a cache breakpoint, cache_turns must turn on so the cached
+    // prefix is actually read at cache pricing on the next turn.
+    let mock = Arc::new(
+        MockProvider::with_responses(vec![make_text_response("hi")]).models(&["test-model"]),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&mock))));
+
+    let mut ctx = test_pipeline_ctx();
+    ctx.messages
+        .push(PipelineMessage::text("user", "summary", 1).with_cache_breakpoint(true));
+
+    execute(
+        &ctx,
+        &test_session(),
+        &test_config(),
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    let requests = mock.captured_requests();
+    assert_eq!(requests.len(), 1);
+    assert!(
+        requests.first().expect("one request").cache_turns,
+        "cache_turns must be true once a message carries a cache breakpoint"
     );
 }
 
@@ -1018,6 +1095,10 @@ async fn loop_detection_triggers() {
 
 #[tokio::test]
 async fn max_iterations_respected() {
+    // WHY(#5369): exhausting the tool-iteration cap without the model ever
+    // reaching a final response is now a hard error (`ToolIterationsExhausted`),
+    // not a silently-successful `TurnResult` — see `max_iterations_reports_stop_reason`
+    // for the paired assertion on the error's contents.
     let mut providers = ProviderRegistry::new();
     let responses: Vec<CompletionResponse> = (0..10)
         .map(|i| make_tool_response("exec", &format!("toolu_{i}"), serde_json::json!({"i": i})))
@@ -1031,7 +1112,7 @@ async fn max_iterations_respected() {
     config.limits.max_tool_iterations = 3;
     config.limits.loop_detection_threshold = 100;
 
-    let result = execute(
+    let err = execute(
         &test_pipeline_ctx(),
         &test_session(),
         &config,
@@ -1041,11 +1122,11 @@ async fn max_iterations_respected() {
         None,
     )
     .await
-    .expect("should not error");
+    .expect_err("exhausting max_tool_iterations without a final response must error");
 
-    assert_eq!(
-        result.usage.llm_calls, 3,
-        "should stop after max_tool_iterations=3 LLM calls"
+    assert!(
+        err.to_string().contains("tool iteration limit"),
+        "error should identify the tool-iteration cap: {err}"
     );
 }
 
@@ -1064,7 +1145,7 @@ async fn max_iterations_reports_stop_reason() {
     config.limits.max_tool_iterations = 3;
     config.limits.loop_detection_threshold = 100;
 
-    let result = execute(
+    let err = execute(
         &test_pipeline_ctx(),
         &test_session(),
         &config,
@@ -1074,15 +1155,11 @@ async fn max_iterations_reports_stop_reason() {
         None,
     )
     .await
-    .expect("should not error");
+    .expect_err("exhausting max_tool_iterations without a final response must error");
 
-    assert_eq!(
-        result.stop_reason, "max_tool_iterations",
-        "stop reason should report max tool iterations cutoff"
-    );
-    assert_eq!(
-        result.usage.llm_calls, 3,
-        "should stop after max_tool_iterations=3 LLM calls"
+    assert!(
+        err.to_string().contains("limit (3)"),
+        "error should report the configured max_tool_iterations value: {err}"
     );
 }
 
@@ -1304,7 +1381,7 @@ async fn max_iterations_stops_loop() {
     let mut config = test_config();
     config.limits.max_tool_iterations = 2;
     config.limits.loop_detection_threshold = 100;
-    let result = execute(
+    let err = execute(
         &test_pipeline_ctx(),
         &test_session(),
         &config,
@@ -1314,12 +1391,11 @@ async fn max_iterations_stops_loop() {
         None,
     )
     .await
-    .expect("should complete after hitting max iterations");
+    .expect_err("a tool-only loop that never converges must stop with an error, not run forever");
 
     assert!(
-        result.usage.llm_calls <= 3,
-        "should have stopped after ~2 iterations, got {} llm_calls",
-        result.usage.llm_calls
+        err.to_string().contains("tool iteration limit"),
+        "should have stopped on the tool-iteration cap, got: {err}"
     );
 }
 

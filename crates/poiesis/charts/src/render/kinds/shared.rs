@@ -6,7 +6,7 @@
 use std::fmt::Write as _;
 
 use crate::Result;
-use crate::model::{AxisSpec, Chart, CiteOrText, Domain, Inlines, LegendSpec, Ticks};
+use crate::model::{AxisSpec, Chart, CiteOrText, Domain, LegendSpec, Ticks};
 use crate::render::canvas::{Canvas, PlotBox};
 use crate::theme::{ColorMode, ResolvedTheme};
 
@@ -164,14 +164,20 @@ pub(crate) fn emit_legend(
 }
 
 /// Emit an optional `<g class="caption">` below the plot box.
+///
+/// The caption carries the doc stack's [`poiesis_core::RichText`] span
+/// model. This arm flattens spans to plain text ([`RichText::plain_text`]) —
+/// per-span styling (bold/italic/code `<tspan>`s) is not yet wired into the
+/// SVG emitter, matching every other text group in this emitter (legend,
+/// axis, data labels), which are also flat `<text>` elements.
 pub(crate) fn emit_caption(out: &mut String, chart: &Chart, theme: &ResolvedTheme, plot: &PlotBox) {
-    let Some(Inlines(parts)) = chart.caption.as_ref() else {
+    let Some(rich) = chart.caption.as_ref() else {
         return;
     };
-    if parts.is_empty() {
+    if rich.spans.is_empty() {
         return;
     }
-    let text = escape_xml(&parts.join(" "));
+    let text = escape_xml(&rich.plain_text());
     let _ = write!(
         out,
         "<g class=\"caption\"><text x=\"{x}\" y=\"{y}\" font-family=\"{font}\" font-size=\"14\">{text}</text></g>",
