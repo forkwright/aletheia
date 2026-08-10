@@ -21,6 +21,26 @@ pub const API_V1: &str = "/api/v1";
 /// Health check endpoint path.
 pub const API_HEALTH: &str = "/api/health";
 
+/// CSRF/anti-drive-by request header name first-party clients send on every
+/// state-changing request.
+///
+/// WHY(#4823, #5059): the header name and its compiled default value were
+/// previously duplicated independently in `taxis::config::CsrfConfig` and
+/// each theatron client (skene, proskenion). A canonical constant here is
+/// the single source of truth; those sites reference it instead of
+/// restating the string literal. `pylon`'s own `client.rs` and `eval`'s
+/// client still carry an independent copy — same class, not yet migrated.
+pub const CSRF_HEADER_NAME: &str = "x-requested-with";
+
+/// Compiled default value for [`CSRF_HEADER_NAME`].
+///
+/// Servers may override `gateway.csrf.headerValue` per instance; first-party
+/// clients built against this constant match the server's own default
+/// (`taxis::config::CsrfConfig::default()`). An operator who customizes the
+/// header value must reconfigure first-party clients accordingly — there is
+/// currently no runtime discovery endpoint for the active value.
+pub const DEFAULT_CSRF_HEADER_VALUE: &str = "aletheia";
+
 /// Cloud-metadata and loopback hostnames rejected outright.
 pub const BLOCKED_HOSTNAMES: &[&str] = &[
     "localhost",

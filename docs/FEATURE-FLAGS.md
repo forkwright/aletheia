@@ -99,6 +99,7 @@ Cargo metadata cannot infer.
 | **krites** | `async` | no | Async engine entry points | - |
 | **krites** | `hot-reload` | no | Rule hot-reloading | `dep:notify`, `dep:arc-swap` |
 | **krites** | `storage-fjall` | no | fjall storage backend | `dep:fjall` |
+| **krites** | `krites_sovereign_hnsw` | no | Land-dark switch: selects the sovereign HNSW implementation over the CozoDB-derived one while both are present | - |
 | **krites** | `test-core` | no | - | `storage-fjall` |
 | **krites** | `test-full` | no | - | `test-core` |
 | **melete** | `test-core` | no | - | - |

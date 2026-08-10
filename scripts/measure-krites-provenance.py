@@ -258,6 +258,16 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "storage/fjall_backend.rs": None,
     "storage/mem.rs": "storage/mem.rs",
     "storage/mod.rs": "storage/mod.rs",
+    # The fresh HNSW reimplementation. None declares no CozoDB ancestor; the file each
+    # one replaces is retained in SOVEREIGN_VERIFY_MAP so the row is still measured.
+    "runtime/hnsw_sovereign/adaptive.rs": None,
+    "runtime/hnsw_sovereign/close_reopen_tests.rs": None,
+    "runtime/hnsw_sovereign/graph.rs": None,
+    "runtime/hnsw_sovereign/mod.rs": None,
+    "runtime/hnsw_sovereign/put.rs": None,
+    "runtime/hnsw_sovereign/remove.rs": None,
+    "runtime/hnsw_sovereign/search.rs": None,
+    "runtime/hnsw_sovereign/types.rs": None,
     "storage/temp.rs": "storage/temp.rs",
     "utils.rs": "utils.rs",
 }

@@ -6,6 +6,8 @@ use reqwest::Client;
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use snafu::{ResultExt, Snafu};
 
+use koina::http::{CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE};
+
 use crate::state::commands::ServerCommandDescriptor;
 use crate::state::connection::ConnectionConfig;
 
@@ -408,8 +410,14 @@ fn default_headers(token: Option<&str>) -> Result<HeaderMap, AuthenticatedClient
 
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
-    // CSRF mitigation: documented default bootstrap header for pylon.
-    headers.insert("x-requested-with", HeaderValue::from_static("aletheia"));
+    // WHY(#4823, #5059): CSRF header name/value come from the shared
+    // `koina::http` constants so this client matches
+    // `taxis::config::CsrfConfig::default()` without independently
+    // restating the string.
+    headers.insert(
+        CSRF_HEADER_NAME,
+        HeaderValue::from_static(DEFAULT_CSRF_HEADER_VALUE),
+    );
 
     Ok(headers)
 }

@@ -397,17 +397,19 @@ fuser -k 18789/tcp    # kill the process on that port
 # port = 18790
 ```
 
-### Auth mode `none` with readonly role blocks mutations
+### Auth mode `none` rejects mutations with the default role
 
-The default auth mode from the init wizard is `none` (no bearer token). When `gateway.auth.mode = "none"`, the role assigned to all requests is controlled by `gateway.auth.none_role`. The compiled default is `"admin"`, which permits all operations. If you explicitly set `none_role` to `"readonly"`, only dashboard reads will work -- sessions, messages, and config changes will be rejected.
+When `gateway.auth.mode = "none"`, the role assigned to all requests is controlled by `gateway.auth.none_role`. The compiled default is `"readonly"` -- only dashboard reads will work; sessions, messages, and config changes are rejected. This is deliberate: a browser-facing `auth.mode = "none"` instance must not default to full-privilege access (a page opened in the same browser as the operator could otherwise reach it). Set `none_role` explicitly if you want a no-auth instance to accept mutations.
 
-Fix: verify your config has:
+Fix: set the role you actually want in your config:
 
 ```toml
 [gateway.auth]
 mode = "none"
-# none_role defaults to "admin" -- do not set it to "readonly" unless intentional
+noneRole = "admin"  # or "operator" / "agent" -- readonly | agent | operator | admin
 ```
+
+Note: `auth.mode = "none"` also requires an explicit, non-wildcard `gateway.cors.allowedOrigins` list and `gateway.csrf.enabled = true` -- startup refuses the combination of no auth, wildcard CORS, or disabled CSRF rather than warning about it.
 
 ### API requests rejected with 403 / missing CSRF header
 
