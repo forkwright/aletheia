@@ -342,6 +342,16 @@ mod tests {
         persist_calls: AtomicU32,
     }
 
+    // WHY the suppression rather than implementations: every method below is one
+    // dokimasia must never reach, and the panic is the assertion — it converts a
+    // wrong call into a loud failure instead of a plausible return value that would
+    // let the test pass while exercising the wrong path (see the type's own doc
+    // above). Implementing them would add unused code whose only effect is to make
+    // that failure silent.
+    #[expect(
+        clippy::unimplemented,
+        reason = "unreachable trait methods on a test fake; the panic is the assertion"
+    )]
     impl KnowledgeSearchService for FakeKnowledgeService {
         fn search(
             &self,
