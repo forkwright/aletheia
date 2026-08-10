@@ -427,7 +427,10 @@ impl DpoExtractor {
     pub fn open(path: &Path) -> Result<Self> {
         let fdb = koina::fjall::FjallDb::open(path, PARTITIONS).map_err(|e| {
             PendingStateSnafu {
-                message: format!("failed to open DPO extractor state at {}: {e}", path.display()),
+                message: format!(
+                    "failed to open DPO extractor state at {}: {e}",
+                    path.display()
+                ),
             }
             .build()
         })?;
@@ -902,7 +905,14 @@ mod tests {
         assert!(p2.is_none(), "correction turn should not emit");
 
         let p3 = extractor
-            .process_turn("ses-1", 3, "What is the capital of France?", "Paris", false, false)
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
             .expect("process");
         let pair = p3.expect("should emit pair after correction sequence");
         assert_eq!(pair.prompt, "What is the capital of France?");
@@ -938,7 +948,14 @@ mod tests {
             )
             .expect("process");
         let pair = extractor
-            .process_turn("ses-1", 3, "What is the capital of France?", "Paris", false, true)
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                true,
+            )
             .expect("process")
             .expect("should emit pair after correction sequence");
 
@@ -981,7 +998,14 @@ mod tests {
             )
             .expect("process");
         let pair = extractor
-            .process_turn("ses-1", 3, "What is the capital of France?", "Paris", false, false)
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
             .expect("process")
             .expect("should emit pair after correction sequence");
 
@@ -1024,7 +1048,14 @@ mod tests {
             .expect("process");
 
         let p3 = extractor
-            .process_turn("ses-1", 3, "What is the weather today?", "Sunny", false, false)
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the weather today?",
+                "Sunny",
+                false,
+                false,
+            )
             .expect("process");
         assert!(p3.is_none(), "semantic mismatch should not emit pair");
     }
@@ -1188,7 +1219,14 @@ mod tests {
 
         let reopened = DpoExtractor::open(dir.path()).expect("reopen after restart");
         let pair = reopened
-            .process_turn("ses-1", 3, "What is the capital of France?", "Paris", false, false)
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
             .expect("process turn 3 after restart")
             .expect("pending correction must survive the restart");
 
@@ -1245,7 +1283,10 @@ mod tests {
 
     #[test]
     fn pending_correction_unparseable_timestamp_is_stale() {
-        assert!(is_pending_stale_at("not-a-timestamp", jiff::Timestamp::now()));
+        assert!(is_pending_stale_at(
+            "not-a-timestamp",
+            jiff::Timestamp::now()
+        ));
     }
 
     #[test]
@@ -1282,9 +1323,10 @@ mod tests {
         // window, bypassing the extractor's own clock.
         let pending_part = extractor.partition("pending").expect("partition");
         let mut tx = extractor.db.write_tx();
-        let stale_since =
-            (jiff::Timestamp::now() - pending_correction_max_age() - jiff::SignedDuration::from_secs(1))
-                .to_string();
+        let stale_since = (jiff::Timestamp::now()
+            - pending_correction_max_age()
+            - jiff::SignedDuration::from_secs(1))
+        .to_string();
         let aged = PendingCorrection {
             prompt: "What is the capital of France?".to_owned(),
             rejected: "London".to_owned(),
@@ -1295,7 +1337,14 @@ mod tests {
         DpoExtractor::commit(tx, "test aging").expect("commit");
 
         let pair = extractor
-            .process_turn("ses-1", 3, "What is the capital of France?", "Paris", false, false)
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
             .expect("process turn 3");
         assert!(
             pair.is_none(),
@@ -1558,14 +1607,21 @@ mod tests {
         assert!(!wrote2, "correction turn should not write a pair");
 
         let wrote3 = writer
-            .process_and_write("ses-1", 3, "What is the capital of France?", "Paris", false, false)
+            .process_and_write(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
             .expect("process turn 3");
         assert!(wrote3, "chosen turn should write a pair");
 
         let content = std::fs::read_to_string(writer.file_path()).expect("read");
         assert_eq!(content.lines().count(), 1);
-        let parsed: DpoPair = serde_json::from_str(content.lines().next().expect("one line"))
-            .expect("parse");
+        let parsed: DpoPair =
+            serde_json::from_str(content.lines().next().expect("one line")).expect("parse");
         assert_eq!(parsed.chosen, "Paris");
     }
 
@@ -1582,7 +1638,9 @@ mod tests {
         let writer = DpoWriter::new(dir.path()).expect("new");
 
         let existing = sample_pair("ses-1", 1, 3);
-        writer.write_pair(&existing).expect("pre-seed existing pair");
+        writer
+            .write_pair(&existing)
+            .expect("pre-seed existing pair");
 
         let _ = writer
             .process_and_write("ses-1", 1, "What is 2+2?", "5", false, false)
