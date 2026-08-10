@@ -209,6 +209,24 @@ pub(crate) fn register_domain_tools(
     sandbox: SandboxConfig,
     #[cfg(feature = "energeia")] energeia_services: Option<&energeia::EnergeiaServices>,
 ) -> Result<()> {
+    // SECURITY(#5081, #5064, #5232): surface misleading sandbox guarantees
+    // once at startup rather than leaving them discoverable only by reading
+    // source or scattered per-invocation log lines.
+    let enforcing = sandbox.enforcement == crate::sandbox::SandboxEnforcement::Enforcing;
+    for issue in sandbox.validate() {
+        if issue.broken_under_enforcing && enforcing {
+            tracing::error!(
+                message = %issue.message,
+                "sandbox configuration guarantee is not enforceable"
+            );
+        } else {
+            tracing::warn!(
+                message = %issue.message,
+                "sandbox configuration guarantee is weaker than it may appear"
+            );
+        }
+    }
+
     #[cfg(feature = "computer-use")]
     computer_use::register(registry, &sandbox)?;
 
@@ -217,18 +235,23 @@ pub(crate) fn register_domain_tools(
     communication::register(registry)?;
     filesystem::register_with_sandbox(registry, sandbox.clone())?;
     fs_ops::register(registry)?;
-    git_ops::register_with_sandbox(registry, sandbox)?;
-    http_client::register(registry)?;
+    http_client::register(registry, &sandbox)?;
     view_file::register(registry)?;
     agent::register(registry)?;
     enable_tool::register(registry)?;
     planning::register(registry)?;
-    research::register(registry)?;
+    research::register(registry, &sandbox)?;
     architecture_fact::register(registry)?;
     code_graph_query::register(registry)?;
     #[cfg(feature = "z3")]
     z3_solver::register(registry)?;
-    web_search::register(registry)?;
+    web_search::register(registry, &sandbox)?;
+    // WHY here, and moved rather than cloned: every registrar above either borrows or takes
+    // its own copy, so this is the final owner of `sandbox`. Consuming it is what makes the
+    // by-value parameter honest — clippy::needless_pass_by_value fires on a value the body
+    // never actually takes, and cloning into the last use is the shape that triggers it.
+    // Registration order is immaterial: each call inserts under its own distinct tool name.
+    git_ops::register_with_sandbox(registry, sandbox)?;
     triage::register(registry)?;
     parameters::register(registry)?;
     #[cfg(feature = "energeia")]

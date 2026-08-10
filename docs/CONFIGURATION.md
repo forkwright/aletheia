@@ -913,12 +913,13 @@ packs = [
 
 ## sandbox
 
-Filesystem sandbox applied to tool execution. When enabled, tools are restricted to the paths explicitly listed in `agents.defaults.allowedRoots` and per-agent `allowedRoots` plus any extra paths declared here.
+Filesystem sandbox applied to tool execution. When enabled, tools are restricted to the paths explicitly listed in `agents.defaults.allowedRoots` and per-agent `allowedRoots` plus any extra paths declared here. Read authority is derived from those roots by default; `allowedRoot` below is an explicit, off-by-default widening, not an implicit grant.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `enabled` | bool | `true` | Whether sandbox restrictions are applied |
 | `enforcement` | string | `"permissive"` | `"enforcing"` blocks violations; `"permissive"` logs them without blocking |
+| `allowedRoot` | string | `""` (unset) | Additional filesystem root granted read access to every sandboxed subprocess, beyond the workspace and each agent's own `allowedRoots`. Empty by default -- no implicit HOME grant. Set explicitly (e.g. `"~"`) to widen it; `~` expands to `$HOME` at policy-build time. A non-empty value is flagged at startup (see the sandbox guarantee log lines). |
 | `extra_read_paths` | string[] | `[]` | Additional filesystem paths granted read access to all tools |
 | `extra_write_paths` | string[] | `[]` | Additional filesystem paths granted read+write access to all tools |
 | `extra_exec_paths` | string[] | `[]` | Additional filesystem paths granted execute access. Values may begin with `~`, which expands to `$HOME` at policy-build time. |

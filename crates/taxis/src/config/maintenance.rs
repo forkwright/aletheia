@@ -282,12 +282,13 @@ pub struct SandboxSettings {
     pub enabled: bool,
     /// Enforcement level: `enforcing` blocks violations, `permissive` logs them.
     pub enforcement: SandboxEnforcementMode,
-    /// Default filesystem root granted read access.
+    /// Additional filesystem root granted read access, beyond the
+    /// workspace and each agent's own `allowed_roots`.
     ///
-    /// Defaults to `~` (HOME). Operators can set this to a stricter path.
-    /// The `~` prefix is expanded to the HOME environment variable at runtime.
-    ///
-    /// WHY: without a home-directory default, agents cannot read user files.
+    /// SECURITY(#5064): empty by default -- read authority derives from the
+    /// resolved agent workspace and `allowed_roots`, not a global HOME
+    /// grant. Set this explicitly (e.g. `~`) to widen it; the `~` prefix
+    /// expands to the HOME environment variable at runtime.
     pub allowed_root: PathBuf,
     /// Additional filesystem paths granted read access.
     pub extra_read_paths: Vec<PathBuf>,
@@ -314,7 +315,8 @@ impl Default for SandboxSettings {
         Self {
             enabled: true,
             enforcement: SandboxEnforcementMode::Permissive,
-            allowed_root: PathBuf::from("~"),
+            // SECURITY(#5064): no implicit HOME-wide read grant by default.
+            allowed_root: PathBuf::new(),
             extra_read_paths: Vec::new(),
             extra_write_paths: Vec::new(),
             extra_exec_paths: Vec::new(),
