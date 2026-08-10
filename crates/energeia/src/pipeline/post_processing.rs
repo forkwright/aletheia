@@ -54,6 +54,10 @@ impl PipelineStage for PostProcessingStage {
             for outcome in &ctx.outcomes {
                 match store.create_session(store_id, outcome.prompt_number) {
                     Ok(_) => {
+                        // WHY(#4800): enrich the prompt record with whatever
+                        // terminal attribution this outcome made available.
+                        // This post-processing write is best-effort groundwork,
+                        // not crash-safe in-flight checkpointing or an attempt log.
                         let update = crate::store::records::SessionUpdate {
                             status: Some(outcome.status),
                             session_id: outcome.session_id.clone(),
@@ -62,6 +66,13 @@ impl PipelineStage for PostProcessingStage {
                             duration_ms: Some(outcome.duration_ms),
                             pr_url: outcome.pr_url.clone(),
                             error: outcome.error.clone(),
+                            model: outcome.model.clone(),
+                            failure_class: outcome.failure_class,
+                            resume_count: Some(outcome.resume_count),
+                            corrective_attempts: Some(outcome.corrective_attempts),
+                            cache_hit_tokens: Some(outcome.cache_hit_tokens),
+                            cache_miss_tokens: Some(outcome.cache_miss_tokens),
+                            structured_output: outcome.structured_output.clone(),
                         };
                         if let Err(e) =
                             store.update_session(store_id, outcome.prompt_number, update)
