@@ -92,6 +92,15 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Tool command path is not a regular executable file.
+    #[snafu(display("tool command is not executable: {} ({reason})", path.display()))]
+    ToolCommandNotExecutable {
+        path: PathBuf,
+        reason: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Unknown property type in a tool's input schema.
     #[snafu(display("unknown property type '{type_name}' in tool '{tool_name}'"))]
     UnknownPropertyType {

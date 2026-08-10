@@ -237,6 +237,11 @@ fn usage_record(session: &SessionState, result: &TurnResult, turn_seq: i64) -> U
         cache_read_tokens: token_count_to_i64(result.usage.cache_read_tokens),
         cache_write_tokens: token_count_to_i64(result.usage.cache_write_tokens),
         model: Some(result.model_used.clone()),
+        // WHY(#5271): stamp the turn's actual completion time so insight
+        // metrics can bucket by when usage happened, not by when the
+        // owning session was created — a long-running session's usage
+        // used to be misattributed to its creation day.
+        created_at: koina::fjall::now_iso(),
     }
 }
 
