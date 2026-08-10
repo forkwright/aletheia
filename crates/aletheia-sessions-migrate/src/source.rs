@@ -278,6 +278,17 @@ fn map_usage(row: &Row<'_>) -> rusqlite::Result<UsageRecord> {
         cache_read_tokens: row.get("cache_read_tokens")?,
         cache_write_tokens: row.get("cache_write_tokens")?,
         model: row.get("model")?,
+        // WHY(#5271): the legacy schema carries `usage.created_at` as a
+        // nullable column (see `append_usage_legacy_sidecars` below, which
+        // has preserved it in a sidecar since before the modern
+        // `UsageRecord` had anywhere to put it). Map it directly now that
+        // the field exists natively; a NULL/absent value (older rows
+        // predating the column, or a synthetic fixture) degrades to the
+        // empty string, which downstream readers already treat as
+        // "unknown — fall back to session `created_at`".
+        created_at: row
+            .get::<_, Option<String>>("created_at")?
+            .unwrap_or_default(),
     })
 }
 

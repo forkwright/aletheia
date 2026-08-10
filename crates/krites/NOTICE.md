@@ -9,7 +9,7 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 229 files under `src/`: 143 derived, 51 sovereign, 35 dual
+- 208 files under `src/`: 143 derived, 53 sovereign, 12 dual
 - Mean verbatim match across the 143 derived files: 44.8% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
@@ -70,39 +70,24 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/value.rs` | `data/value.rs` | 60.3% | derived |
 | `src/datalog.pest` | `cozoscript.pest` | 99.6% | derived |
 | `src/error.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/algos/all_pairs_shortest_path.rs` | `fixed_rule/algos/all_pairs_shortest_path.rs` | 26.4% | dual |
 | `src/fixed_rule/algos/all_pairs_shortest_path_native.rs` | cf. `fixed_rule/algos/all_pairs_shortest_path.rs` | 15.4% | sovereign |
-| `src/fixed_rule/algos/astar.rs` | `fixed_rule/algos/astar.rs` | 39.1% | dual |
 | `src/fixed_rule/algos/astar_native.rs` | cf. `fixed_rule/algos/astar.rs` | 18.4% | sovereign |
-| `src/fixed_rule/algos/bfs.rs` | `fixed_rule/algos/bfs.rs` | 55.3% | dual |
 | `src/fixed_rule/algos/bfs_native.rs` | cf. `fixed_rule/algos/bfs.rs` | 18.9% | sovereign |
-| `src/fixed_rule/algos/degree_centrality.rs` | `fixed_rule/algos/degree_centrality.rs` | 47.9% | dual |
 | `src/fixed_rule/algos/degree_centrality_native.rs` | cf. `fixed_rule/algos/degree_centrality.rs` | 32.1% | sovereign |
-| `src/fixed_rule/algos/dfs.rs` | `fixed_rule/algos/dfs.rs` | 53.1% | dual |
 | `src/fixed_rule/algos/dfs_native.rs` | cf. `fixed_rule/algos/dfs.rs` | 26.6% | sovereign |
 | `src/fixed_rule/algos/kcore.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/algos/kruskal.rs` | `fixed_rule/algos/kruskal.rs` | 28.6% | dual |
 | `src/fixed_rule/algos/kruskal_native.rs` | cf. `fixed_rule/algos/kruskal.rs` | 14.9% | sovereign |
-| `src/fixed_rule/algos/label_propagation.rs` | `fixed_rule/algos/label_propagation.rs` | 29.9% | dual |
 | `src/fixed_rule/algos/label_propagation_native.rs` | cf. `fixed_rule/algos/label_propagation.rs` | 13.6% | sovereign |
 | `src/fixed_rule/algos/louvain.rs` | `fixed_rule/algos/louvain.rs` | 29.2% | derived |
-| `src/fixed_rule/algos/mod.rs` | `fixed_rule/algos/mod.rs` | 17.5% | dual |
+| `src/fixed_rule/algos/mod.rs` | cf. `fixed_rule/algos/mod.rs` | 31.6% | sovereign |
 | `src/fixed_rule/algos/pagerank.rs` | `fixed_rule/algos/pagerank.rs` | 37.0% | derived |
-| `src/fixed_rule/algos/prim.rs` | `fixed_rule/algos/prim.rs` | 30.6% | dual |
 | `src/fixed_rule/algos/prim_native.rs` | cf. `fixed_rule/algos/prim.rs` | 14.9% | sovereign |
-| `src/fixed_rule/algos/random_walk.rs` | `fixed_rule/algos/random_walk.rs` | 26.4% | dual |
 | `src/fixed_rule/algos/random_walk_native.rs` | cf. `fixed_rule/algos/random_walk.rs` | 19.6% | sovereign |
-| `src/fixed_rule/algos/shortest_path_bfs.rs` | `fixed_rule/algos/shortest_path_bfs.rs` | 59.0% | dual |
 | `src/fixed_rule/algos/shortest_path_bfs_native.rs` | cf. `fixed_rule/algos/shortest_path_bfs.rs` | 19.1% | sovereign |
-| `src/fixed_rule/algos/shortest_path_dijkstra.rs` | `fixed_rule/algos/shortest_path_dijkstra.rs` | 41.4% | dual |
 | `src/fixed_rule/algos/shortest_path_dijkstra_native.rs` | cf. `fixed_rule/algos/shortest_path_dijkstra.rs` | 9.2% | sovereign |
-| `src/fixed_rule/algos/strongly_connected_components.rs` | `fixed_rule/algos/strongly_connected_components.rs` | 28.0% | dual |
 | `src/fixed_rule/algos/strongly_connected_components_native.rs` | cf. `fixed_rule/algos/strongly_connected_components.rs` | 18.0% | sovereign |
-| `src/fixed_rule/algos/top_sort.rs` | `fixed_rule/algos/top_sort.rs` | 37.8% | dual |
 | `src/fixed_rule/algos/top_sort_native.rs` | cf. `fixed_rule/algos/top_sort.rs` | 27.4% | sovereign |
-| `src/fixed_rule/algos/triangles.rs` | `fixed_rule/algos/triangles.rs` | 30.2% | dual |
 | `src/fixed_rule/algos/triangles_native.rs` | cf. `fixed_rule/algos/triangles.rs` | 23.5% | sovereign |
-| `src/fixed_rule/algos/yen.rs` | `fixed_rule/algos/yen.rs` | 48.1% | dual |
 | `src/fixed_rule/algos/yen_native.rs` | cf. `fixed_rule/algos/yen.rs` | 11.8% | sovereign |
 | `src/fixed_rule/csr/mod.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/csr/page_rank.rs` | — | 0.0% | sovereign |
@@ -114,10 +99,8 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fixed_rule/tests/path_algorithms.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/proptest_algos.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/wave5_reference_semantics.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/utilities/constant.rs` | `fixed_rule/utilities/constant.rs` | 36.6% | dual |
 | `src/fixed_rule/utilities/constant_native.rs` | cf. `fixed_rule/utilities/constant.rs` | 17.2% | sovereign |
-| `src/fixed_rule/utilities/mod.rs` | `fixed_rule/utilities/mod.rs` | 0.0% | dual |
-| `src/fixed_rule/utilities/reorder_sort.rs` | `fixed_rule/utilities/reorder_sort.rs` | 63.1% | dual |
+| `src/fixed_rule/utilities/mod.rs` | cf. `fixed_rule/utilities/mod.rs` | 0.0% | sovereign |
 | `src/fixed_rule/utilities/reorder_sort_native.rs` | cf. `fixed_rule/utilities/reorder_sort.rs` | 17.5% | sovereign |
 | `src/fixed_rule/utilities/rrf.rs` | — | 0.0% | sovereign |
 | `src/fts/README.md` | `fts/README.md` | 100.0% | derived |
@@ -127,20 +110,16 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/indexing.rs` | `fts/indexing.rs` | 31.8% | derived |
 | `src/fts/mod.rs` | `fts/mod.rs` | 30.1% | derived |
 | `src/fts/tokenizer/alphanum_only.rs` | `fts/tokenizer/alphanum_only.rs` | 67.7% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 0.0% | dual |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 98.8% | dual |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 99.1% | dual |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 98.9% | dual |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table.rs` | cf. `fts/tokenizer/ascii_folding_filter.rs` | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 75.0% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/tests/bmp_equivalence.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 73.5% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 70.0% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 82.4% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_t_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 69.2% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/tests/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 59.8% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/tests/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 60.5% | derived |
 | `src/fts/tokenizer/empty_tokenizer.rs` | `fts/tokenizer/empty_tokenizer.rs` | 85.7% | derived |
 | `src/fts/tokenizer/lower_caser.rs` | `fts/tokenizer/lower_caser.rs` | 74.6% | derived |
 | `src/fts/tokenizer/mod.rs` | `fts/tokenizer/mod.rs` | 52.6% | derived |

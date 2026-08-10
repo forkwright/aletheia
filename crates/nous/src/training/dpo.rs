@@ -11,8 +11,29 @@
 //! | `chosen` | Turn N+2 assistant response |
 //!
 //! Pairs are written to `dpo-pairs-YYYYMMDD.jsonl` in the training
-//! directory. A semantic-similarity gate validates that the prompt
-//! and the chosen-turn user message address the same question.
+//! directory. A versioned semantic-similarity gate ([`DPO_VALIDATOR_VERSION`])
+//! validates that the prompt and the chosen-turn user message address the
+//! same question, and rejects a pending correction that has aged past
+//! [`PENDING_CORRECTION_MAX_AGE`].
+//!
+//! # Durability
+//!
+//! Correction-sequence state (`last_turn`, `pending`) is persisted in a
+//! fjall keyspace under the writer's directory, not held in process
+//! memory. A [`DpoExtractor`] opened at the same path after a restart
+//! resumes exactly where the prior process left off, so a crash between
+//! the correction turn and the chosen response does not silently drop the
+//! pending pair. [`DpoWriter::process_and_write`] is the single entry
+//! point combining extraction and the idempotent JSONL write.
+//!
+//! # Key schema
+//!
+//! All keys are UTF-8 `session_id` strings. Values are JSON-encoded.
+//!
+//! | Partition   | Key         | Value                    |
+//! |-------------|-------------|--------------------------|
+//! | `last_turn` | `session_id`| JSON [`TurnSnapshot`]    |
+//! | `pending`   | `session_id`| JSON [`PendingCorrection`]|
 //!
 //! # Observability
 //!
@@ -20,7 +41,7 @@
 //! | Event | Level | Fields | Condition |
 //! |-------|-------|--------|-----------|
 //! | `dpo.pair_captured` | info | `session_id`, `rejected_turn`, `chosen_turn` | Pair passed validation and was written |
-//! | `dpo.pair_rejected` | debug | `session_id`, `reason` | Pair failed semantic validation |
+//! | `dpo.pair_rejected` | debug | `session_id`, `reason` | Pair failed semantic validation or staleness |
 //! | `dpo.pending_correction` | debug | `session_id`, `turn` | Correction detected, waiting for chosen response |
 //!
 //! ## Metrics
@@ -28,14 +49,13 @@
 //! |--------|------|--------|-----------|
 //! | `aletheia_dpo_pairs_captured_total` | counter | `nous_id` | Per validated pair written |
 
-use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-// kanon:ignore RUST/std-mutex-in-async — DpoExtractor is sync-only O(1) state; std::sync::Mutex is correct for LazyLock global
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
+use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase, SingleWriterTxKeyspace};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use snafu::{ResultExt, Snafu};
@@ -82,6 +102,15 @@ pub enum DpoError {
         path: PathBuf,
         source: std::io::Error,
     },
+
+    /// Failed to deserialize durable correction-sequence state.
+    #[snafu(display("failed to deserialize DPO extractor state: {source}"))]
+    DeserializeState { source: serde_json::Error },
+
+    /// Failed to open, read, or write the durable correction-sequence state
+    /// store (a fjall keyspace).
+    #[snafu(display("DPO pending-state store error: {message}"))]
+    PendingState { message: String },
 }
 
 /// Result alias for DPO operations.
@@ -104,9 +133,9 @@ pub struct DpoPair {
     /// Deterministic: the same correction sequence always yields the same
     /// `pair_id`, so a replayed write of the same pair can be detected and
     /// deduplicated by [`DpoWriter::write_pair`]. Defaults to the empty
-    /// string when deserializing legacy rows written before the field
-    /// existed; an empty `pair_id` never matches an existing row, so
-    /// legacy rows are never treated as duplicates of anything.
+    /// string when deserializing rows written before the field existed; an
+    /// empty `pair_id` never matches an existing row, so those rows are
+    /// never treated as duplicates of anything.
     #[serde(default)]
     pub pair_id: String,
     /// The user prompt that both the rejected and chosen responses answer.
@@ -125,7 +154,7 @@ pub struct DpoPair {
     /// Version tag for the semantic-similarity validator
     /// ([`DpoExtractor::validate_semantic_match`]) that admitted this pair.
     ///
-    /// `None` for legacy rows written before the field existed.
+    /// `None` for rows written before the field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub validator_version: Option<String>,
     /// Stable PII/secret redaction policy reference applied to this pair's
@@ -133,8 +162,7 @@ pub struct DpoPair {
     ///
     /// `Some(pii::POLICY_REF)` when the full nous training PII suite ran
     /// (`pii_filter_enabled = true`); `None` when only the always-on
-    /// secret redactor ran, and for legacy rows written before the field
-    /// existed.
+    /// secret redactor ran, and for rows written before the field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pii_policy_ref: Option<String>,
 }
@@ -145,10 +173,10 @@ pub const DPO_PAIR_SCHEMA_VERSION: u32 = 1;
 /// Version tag for [`DpoExtractor::validate_semantic_match`], recorded on
 /// every captured pair via [`DpoPair::validator_version`].
 ///
-/// Bump when the matching algorithm, threshold, or continuation-bypass
-/// rule changes, so downstream corpus consumers can tell which validation
-/// semantics admitted a given pair.
-pub const DPO_VALIDATOR_VERSION: &str = "dpo-jaccard-v1";
+/// Bump when the matching algorithm, threshold, continuation-bypass rule,
+/// or staleness window changes, so downstream corpus consumers can tell
+/// which validation semantics admitted a given pair.
+pub const DPO_VALIDATOR_VERSION: &str = "dpo-jaccard-v2";
 
 /// Compute the stable idempotency key for a DPO pair from its identity:
 /// `session_id`, `rejected_turn`, and `chosen_turn`.
@@ -185,7 +213,7 @@ fn hash_field(hasher: &mut Sha256, value: &str) {
 }
 
 /// Snapshot of a single turn's data needed for DPO extraction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct TurnSnapshot {
     turn_number: u64,
     user_message: String,
@@ -197,7 +225,7 @@ struct TurnSnapshot {
 /// When Turn N+1 is detected as a correction, we store Turn N's
 /// prompt and rejected response, then wait for Turn N+2 to supply
 /// the chosen response.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct PendingCorrection {
     /// User message from Turn N (the prompt).
     prompt: String,
@@ -205,33 +233,104 @@ struct PendingCorrection {
     rejected: String,
     /// Turn number of the rejected response.
     rejected_turn: u64,
+    /// RFC 3339 timestamp when this pending correction was recorded.
+    ///
+    /// Used by [`is_pending_stale_at`] to reject a pairing against a chosen
+    /// response that arrives long after the correction — see
+    /// [`PENDING_CORRECTION_MAX_AGE`].
+    pending_since: String,
 }
 
 /// Minimum Jaccard similarity for the semantic validation gate.
 ///
-/// WHY: 0.35 catches rephrased questions and keyword overlap while
-/// filtering out topic switches and pure acknowledgements.
+/// WHY 0.5: roughly half of the tokenized words in the shorter message
+/// must reappear in the longer one, which passes rephrasings ("What is
+/// the capital of France?" / "Tell me the capital of France.") while
+/// rejecting topic switches ("What is the capital of France?" / "How many
+/// planets are in the solar system?").
 const SEMANTIC_SIMILARITY_THRESHOLD: f64 = 0.5;
 
-/// Maximum length in characters for a continuation message that
-/// bypasses the semantic gate.
+/// Maximum length in characters for a continuation message that is
+/// eligible for the [`CONTINUATION_PHRASES`] bypass.
 ///
 /// WHY: short messages like "ok", "thanks", "go on" are valid
 /// continuations of the prior turn and should not block pair capture.
 const CONTINUATION_MAX_CHARS: usize = 20;
 
-/// Extractor that detects correction→response sequences and produces
-/// [`DpoPair`]s.
+/// Known acknowledgement/continuation phrases that bypass semantic
+/// validation when the chosen-turn message is short (see
+/// [`CONTINUATION_MAX_CHARS`]).
 ///
-/// Maintains a small per-session buffer of the most recent turn and
-/// at most one pending correction. State is bounded: old pending
-/// state is silently overwritten if a new correction arrives before
-/// the chosen response.
-pub struct DpoExtractor {
-    /// Most recent non-correction turn per session.
-    last_turn: HashMap<String, TurnSnapshot>,
-    /// Pending correction waiting for the chosen response.
-    pending: HashMap<String, PendingCorrection>,
+/// WHY a phrase allowlist rather than "any short message passes": a short
+/// message under the character cap is not necessarily a continuation of
+/// the prior turn — "weather?" and "new topic" are both short but
+/// semantically unrelated to a prior prompt. Requiring an exact match
+/// (after lowercasing and stripping punctuation) against a known
+/// acknowledgement phrase closes that gap while still passing genuine
+/// continuations like "ok", "thanks", or "go on". Matched against the
+/// whole trimmed message, not per-token, to avoid combinatorial
+/// false-positives from common words appearing individually in the list.
+const CONTINUATION_PHRASES: &[&str] = &[
+    "ok",
+    "okay",
+    "k",
+    "kk",
+    "yes",
+    "yeah",
+    "yep",
+    "sure",
+    "sure thing",
+    "thanks",
+    "thank you",
+    "thx",
+    "ty",
+    "got it",
+    "understood",
+    "noted",
+    "continue",
+    "go on",
+    "go ahead",
+    "please continue",
+    "proceed",
+    "roger",
+    "ack",
+    "acknowledged",
+    "sounds good",
+    "cool",
+    "great",
+    "perfect",
+    "alright",
+    "right",
+    "makes sense",
+];
+
+/// Maximum age of a pending correction before it is treated as stale and
+/// dropped rather than paired with a later, possibly-unrelated turn.
+///
+/// WHY 1 hour: pending state survives a process restart (see the
+/// module-level durability note), so it can otherwise persist
+/// indefinitely rather than being discarded on crash as it was before
+/// durable storage. A correction and its corrected response are normally
+/// exchanged within one active conversation; an hour is generous enough
+/// to cover a user stepping away mid-conversation while still rejecting a
+/// pairing against a conversation resumed hours or days later.
+fn pending_correction_max_age() -> jiff::SignedDuration {
+    jiff::SignedDuration::from_secs(3600)
+}
+
+/// Whether a pending correction recorded at `pending_since` (RFC 3339) has
+/// aged past [`pending_correction_max_age`] as of `now`.
+///
+/// An unparseable timestamp and a `pending_since` in the future relative
+/// to `now` (clock anomaly) are both treated as stale — fail closed
+/// rather than pair against timing evidence that cannot be trusted.
+fn is_pending_stale_at(pending_since: &str, now: jiff::Timestamp) -> bool {
+    let Ok(recorded) = pending_since.parse::<jiff::Timestamp>() else {
+        return true;
+    };
+    let age = now.duration_since(recorded);
+    let zero = jiff::SignedDuration::from_secs(0);
+    age > pending_correction_max_age() || age < zero
 }
 
 /// Redact sensitive values from turn text before it is stored or emitted.
@@ -257,14 +356,122 @@ fn redact_turn_text(
     }
 }
 
-impl DpoExtractor {
-    /// Create a new extractor with empty state.
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            last_turn: HashMap::new(),
-            pending: HashMap::new(),
+/// Partitions used by the extractor's durable state store.
+const PARTITIONS: &[&str] = &["last_turn", "pending"];
+
+/// Read and JSON-decode `session_id`'s row from `part` within `tx`.
+///
+/// Returns `Ok(None)` when no row exists for `session_id`.
+fn read_state<T: serde::de::DeserializeOwned>(
+    tx: &mut fjall::SingleWriterWriteTx<'_>,
+    part: &SingleWriterTxKeyspace,
+    session_id: &str,
+) -> Result<Option<T>> {
+    use fjall::Readable;
+    let Some(bytes) = tx.get(part, session_id.as_bytes()).map_err(|e| {
+        PendingStateSnafu {
+            message: format!("fjall get: {e}"),
         }
+        .build()
+    })?
+    else {
+        return Ok(None);
+    };
+    let value = serde_json::from_slice(&bytes).context(DeserializeStateSnafu)?;
+    Ok(Some(value))
+}
+
+/// JSON-encode `value` and insert it under `session_id` in `part` within `tx`.
+fn write_state<T: Serialize>(
+    tx: &mut fjall::SingleWriterWriteTx<'_>,
+    part: &SingleWriterTxKeyspace,
+    session_id: &str,
+    value: &T,
+) -> Result<()> {
+    let bytes = serde_json::to_vec(value).context(SerializeSnafu)?;
+    tx.insert(part, session_id.as_bytes(), bytes.as_slice());
+    Ok(())
+}
+
+/// Extractor that detects correction→response sequences and produces
+/// [`DpoPair`]s.
+///
+/// Correction-sequence state is persisted in a fjall keyspace keyed by
+/// `session_id` — see the module-level durability note. State is bounded
+/// per session: old pending state is overwritten if a new correction
+/// arrives before the chosen response.
+pub struct DpoExtractor {
+    db: Arc<SingleWriterTxDatabase>,
+    /// Serializes the read-decide-write sequence in [`Self::process_turn`]
+    /// across concurrent callers in this process.
+    ///
+    /// WHY needed in addition to `SingleWriterTxDatabase`'s own writer
+    /// serialization: `process_turn` reads `last_turn`/`pending` to decide
+    /// what to write, and that decision must not be interleaved with
+    /// another thread's read-decide-write for the same session — a lost
+    /// update here would silently drop a pending correction rather than
+    /// just reorder two independent writes.
+    write_lock: Mutex<()>,
+    /// Kept alive to auto-delete the temp directory when the store is dropped.
+    _temp_dir: Option<tempfile::TempDir>,
+}
+
+impl DpoExtractor {
+    /// Open (or create) a durable extractor state store at `path`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DpoError::PendingState`] if the store cannot be opened or
+    /// its partitions initialized (including when another process already
+    /// holds the store open).
+    pub fn open(path: &Path) -> Result<Self> {
+        let fdb = koina::fjall::FjallDb::open(path, PARTITIONS).map_err(|e| {
+            PendingStateSnafu {
+                message: format!(
+                    "failed to open DPO extractor state at {}: {e}",
+                    path.display()
+                ),
+            }
+            .build()
+        })?;
+        Ok(Self::from_fjall_db(fdb))
+    }
+
+    /// Open an ephemeral extractor state store (for testing).
+    ///
+    /// The directory and all data are deleted when the returned extractor
+    /// is dropped.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DpoError::PendingState`] if the store cannot be opened.
+    pub fn open_in_memory() -> Result<Self> {
+        let fdb = koina::fjall::FjallDb::open_temp(PARTITIONS).map_err(|e| {
+            PendingStateSnafu {
+                message: format!("failed to open in-memory DPO extractor state: {e}"),
+            }
+            .build()
+        })?;
+        Ok(Self::from_fjall_db(fdb))
+    }
+
+    fn from_fjall_db(fdb: koina::fjall::FjallDb) -> Self {
+        Self {
+            db: Arc::new(fdb.db),
+            write_lock: fdb.write_lock,
+            _temp_dir: fdb._temp_dir,
+        }
+    }
+
+    fn partition(&self, name: &str) -> Result<SingleWriterTxKeyspace> {
+        self.db
+            .keyspace(name, KeyspaceCreateOptions::default)
+            .map_err(|e| {
+                PendingStateSnafu {
+                    message: format!("fjall partition {name}: {e}"),
+                }
+                .build()
+            })
     }
 
     /// Process a completed turn and emit a [`DpoPair`] if a full
@@ -272,12 +479,13 @@ impl DpoExtractor {
     ///
     /// # Sequence detection
     ///
-    /// 1. **Turn N** (normal): stored in `last_turn`.
+    /// 1. **Turn N** (normal): stored as `last_turn`.
     /// 2. **Turn N+1** (`is_correction = true`): the previous turn
     ///    (Turn N) is promoted from `last_turn` to `pending`. The
     ///    current turn is not cached as `last_turn` because a
     ///    correction user message is not a valid prompt.
-    /// 3. **Turn N+2** (normal): if `pending` exists, the current
+    /// 3. **Turn N+2** (normal): if `pending` exists and has not gone
+    ///    stale (see [`pending_correction_max_age`]), the current
     ///    assistant response becomes the chosen response. A pair is
     ///    emitted after semantic validation. The current turn is then
     ///    cached as `last_turn` for potential future corrections.
@@ -289,47 +497,73 @@ impl DpoExtractor {
     /// redacted before storage: `koina::redact::redact_sensitive` always
     /// runs, and the full nous training PII suite runs only when
     /// `pii_filter_enabled` is `true`.
-    #[must_use]
+    ///
+    /// # Errors
+    ///
+    /// Returns [`DpoError::PendingState`] or [`DpoError::DeserializeState`]
+    /// if the durable state store cannot be read or written.
     pub fn process_turn(
-        &mut self,
+        &self,
         session_id: &str,
         turn_number: u64,
         user_message: &str,
         assistant_response: &str,
         is_correction: bool,
         pii_filter_enabled: bool,
-    ) -> Option<DpoPair> {
+    ) -> Result<Option<DpoPair>> {
         let (user_message, assistant_response) =
             redact_turn_text(user_message, assistant_response, pii_filter_enabled);
 
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let last_turn_part = self.partition("last_turn")?;
+        let pending_part = self.partition("pending")?;
+        let mut tx = self.db.write_tx();
+
         if is_correction {
-            if let Some(last) = self.last_turn.remove(session_id) {
+            let existing_last: Option<TurnSnapshot> =
+                read_state(&mut tx, &last_turn_part, session_id)?;
+            if let Some(last) = existing_last {
                 debug!(
                     session_id,
                     rejected_turn = last.turn_number,
                     "dpo.pending_correction: waiting for chosen response"
                 );
-                self.pending.insert(
-                    session_id.to_owned(),
-                    PendingCorrection {
-                        prompt: last.user_message,
-                        rejected: last.assistant_response,
-                        rejected_turn: last.turn_number,
-                    },
-                );
+                let pending = PendingCorrection {
+                    prompt: last.user_message,
+                    rejected: last.assistant_response,
+                    rejected_turn: last.turn_number,
+                    pending_since: jiff::Timestamp::now().to_string(),
+                };
+                write_state(&mut tx, &pending_part, session_id, &pending)?;
+                tx.remove(&last_turn_part, session_id.as_bytes());
             } else {
                 // WHY: a chained correction (correction turn with no intervening
                 // non-correction turn) invalidates any stale pending. Without this,
                 // pending from an earlier correction could spuriously pair with a
                 // much later non-correction turn.
-                self.pending.remove(session_id);
+                tx.remove(&pending_part, session_id.as_bytes());
             }
+            Self::commit(tx, "process_turn(correction)")?;
             // WHY: correction turns are never cached as last_turn.
-            return None;
+            return Ok(None);
         }
 
-        let pair = if let Some(pending) = self.pending.remove(session_id) {
-            if Self::validate_semantic_match(&pending.prompt, &user_message) {
+        let pending: Option<PendingCorrection> = read_state(&mut tx, &pending_part, session_id)?;
+        let pair = if let Some(pending) = pending {
+            tx.remove(&pending_part, session_id.as_bytes());
+            if is_pending_stale_at(&pending.pending_since, jiff::Timestamp::now()) {
+                debug!(
+                    session_id,
+                    rejected_turn = pending.rejected_turn,
+                    pending_since = pending.pending_since.as_str(),
+                    "dpo.pair_rejected: stale pending correction"
+                );
+                None
+            } else if Self::validate_semantic_match(&pending.prompt, &user_message) {
                 info!(
                     session_id,
                     rejected_turn = pending.rejected_turn,
@@ -364,30 +598,64 @@ impl DpoExtractor {
             None
         };
 
-        self.last_turn.insert(
-            session_id.to_owned(),
-            TurnSnapshot {
-                turn_number,
-                user_message,
-                assistant_response,
-            },
-        );
+        let snapshot = TurnSnapshot {
+            turn_number,
+            user_message,
+            assistant_response,
+        };
+        write_state(&mut tx, &last_turn_part, session_id, &snapshot)?;
+        Self::commit(tx, "process_turn")?;
 
-        pair
+        Ok(pair)
+    }
+
+    fn commit(tx: fjall::SingleWriterWriteTx<'_>, op: &str) -> Result<()> {
+        tx.commit().map_err(|e| {
+            PendingStateSnafu {
+                message: format!("fjall commit {op}: {e}"),
+            }
+            .build()
+        })
+    }
+
+    /// Whether `chosen_trimmed` (already trimmed) bypasses semantic
+    /// validation as a continuation/acknowledgement.
+    ///
+    /// Two independent bypasses, both bounded by
+    /// [`CONTINUATION_MAX_CHARS`]: an exact match (after lowercasing and
+    /// stripping punctuation) against [`CONTINUATION_PHRASES`], or a
+    /// message with no alphanumeric content at all (a pure emoji/punctuation
+    /// reaction, which carries no text to validate against).
+    fn is_continuation_bypass(chosen_trimmed: &str) -> bool {
+        if chosen_trimmed.chars().count() > CONTINUATION_MAX_CHARS {
+            return false;
+        }
+
+        let normalized: String = chosen_trimmed
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+            .collect();
+        let normalized = normalized.split_whitespace().collect::<Vec<_>>().join(" ");
+
+        if normalized.is_empty() {
+            // WHY: nothing alphanumeric survived normalization — a pure
+            // reaction (emoji/punctuation only, e.g. "👍👍👍👍👍") carries no
+            // content to validate and is treated as a continuation.
+            return true;
+        }
+        CONTINUATION_PHRASES.contains(&normalized.as_str())
     }
 
     /// Check whether two user messages address the same semantic question.
     ///
-    /// Uses Jaccard similarity over lowercased word sets. Very short
-    /// messages (≤ [`CONTINUATION_MAX_CHARS`]) are treated as
-    /// continuations and pass automatically.
+    /// Short continuations/acknowledgements bypass validation (see
+    /// [`Self::is_continuation_bypass`]); everything else is validated by
+    /// Jaccard similarity over lowercased word sets against
+    /// [`SEMANTIC_SIMILARITY_THRESHOLD`].
     fn validate_semantic_match(original_prompt: &str, chosen_prompt: &str) -> bool {
         let chosen_trimmed = chosen_prompt.trim();
-        // WHY: CONTINUATION_MAX_CHARS is a *character* budget for short
-        // continuations like "ok" or "thanks". Using `str::len()` would
-        // count bytes, so multi-byte characters (emoji, CJK) would either
-        // fail the bypass incorrectly or pass with far fewer visual chars.
-        if chosen_trimmed.chars().count() <= CONTINUATION_MAX_CHARS {
+        if Self::is_continuation_bypass(chosen_trimmed) {
             return true;
         }
 
@@ -422,20 +690,20 @@ impl DpoExtractor {
     }
 }
 
-impl Default for DpoExtractor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 /// Writer for DPO preference pairs to a dated JSONL file.
 ///
 /// File naming: `dpo-pairs-YYYYMMDD.jsonl` in the training directory.
 /// The file is opened in append mode for each write; no handle is
-/// held between calls.
+/// held between calls. Also owns the durable [`DpoExtractor`] for this
+/// directory — see [`Self::process_and_write`].
 pub struct DpoWriter {
     path: PathBuf,
+    extractor: DpoExtractor,
 }
+
+/// Subdirectory (under a [`DpoWriter`]'s directory) holding the durable
+/// extractor state store.
+const EXTRACTOR_STATE_DIRNAME: &str = "dpo-pending-state";
 
 impl DpoWriter {
     /// Create a new DPO writer.
@@ -443,15 +711,19 @@ impl DpoWriter {
     /// `dir` is the training data directory (same as
     /// [`TrainingCapture`](super::TrainingCapture) uses).
     ///
-    /// Creates the directory if it does not exist.
+    /// Creates the directory if it does not exist, and opens (or creates)
+    /// the durable correction-sequence state store under it.
     ///
     /// # Errors
     ///
-    /// Returns [`DpoError::CreateDir`] if the directory cannot be created.
+    /// Returns [`DpoError::CreateDir`] if the directory cannot be created,
+    /// or [`DpoError::PendingState`] if the durable extractor state store
+    /// cannot be opened.
     pub fn new(dir: &Path) -> Result<Self> {
         std::fs::create_dir_all(dir).context(CreateDirSnafu { path: dir })?;
         let path = dir.join(Self::file_name());
-        Ok(Self { path })
+        let extractor = DpoExtractor::open(&dir.join(EXTRACTOR_STATE_DIRNAME))?;
+        Ok(Self { path, extractor })
     }
 
     /// Generate the DPO file name for today: `dpo-pairs-YYYYMMDD.jsonl`.
@@ -466,26 +738,77 @@ impl DpoWriter {
         )
     }
 
+    /// Directory holding this writer's dated JSONL output and durable
+    /// extractor state.
+    ///
+    /// INVARIANT: `path` is always `dir.join(Self::file_name())` (see
+    /// [`Self::new`]), so `parent()` always recovers `dir` exactly.
+    #[must_use]
+    pub fn dir(&self) -> &Path {
+        self.path.parent().unwrap_or(&self.path)
+    }
+
+    /// Process one completed turn through the durable correction-sequence
+    /// extractor and, if a preference pair resulted, write it.
+    ///
+    /// Combines [`DpoExtractor::process_turn`] and [`Self::write_pair`]
+    /// under this writer's directory so callers do not need to manage a
+    /// separate extractor handle.
+    ///
+    /// Returns `true` if a pair was captured and appended, `false` if no
+    /// pair resulted (correction turn, stale pending, or semantic
+    /// mismatch) — including when the resulting pair's `pair_id` already
+    /// exists in this writer's output file (idempotent replay).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the durable extractor state cannot be read or
+    /// written, or if a resulting pair cannot be serialized or appended.
+    pub fn process_and_write(
+        &self,
+        session_id: &str,
+        turn_number: u64,
+        user_message: &str,
+        assistant_response: &str,
+        is_correction: bool,
+        pii_filter_enabled: bool,
+    ) -> Result<bool> {
+        let Some(pair) = self.extractor.process_turn(
+            session_id,
+            turn_number,
+            user_message,
+            assistant_response,
+            is_correction,
+            pii_filter_enabled,
+        )?
+        else {
+            return Ok(false);
+        };
+        self.write_pair(&pair)
+    }
+
     /// Write a single [`DpoPair`] as a JSON line to the output file.
     ///
     /// Idempotent on `pair.pair_id`: if a row with the same `pair_id`
     /// already exists in this writer's output file, the write is skipped
-    /// and this returns `Ok(())` without appending a duplicate line. A pair
-    /// with an empty `pair_id` (legacy callers, pre-#5386) is never treated
-    /// as a duplicate and is always appended.
+    /// and this returns `Ok(false)` without appending a duplicate line. A
+    /// pair with an empty `pair_id` (rows written before pair identity
+    /// existed) is never treated as a duplicate and is always appended.
+    ///
+    /// Returns `Ok(true)` when a new line was appended.
     ///
     /// # Errors
     ///
     /// Returns an error if the existing file cannot be read for the
     /// duplicate check, the file cannot be opened for appending, the pair
     /// cannot be serialized, or the write fails.
-    pub fn write_pair(&self, pair: &DpoPair) -> Result<()> {
+    pub fn write_pair(&self, pair: &DpoPair) -> Result<bool> {
         if self.contains_pair_id(&pair.pair_id)? {
             debug!(
                 pair_id = pair.pair_id.as_str(),
                 "dpo.pair_duplicate: skipping idempotent replay"
             );
-            return Ok(());
+            return Ok(false);
         }
 
         let mut line = serde_json::to_string(pair).context(SerializeSnafu)?;
@@ -500,14 +823,14 @@ impl DpoWriter {
         file.write_all(line.as_bytes())
             .context(WritePairSnafu { path: &self.path })?;
 
-        Ok(())
+        Ok(true)
     }
 
     /// Whether a row with the given `pair_id` has already been written to
     /// this writer's output file.
     ///
-    /// An empty `pair_id` never matches (legacy rows carry no durable
-    /// identity to dedupe against).
+    /// An empty `pair_id` never matches (rows written before pair identity
+    /// existed carry no durable identity to dedupe against).
     ///
     /// WHY re-read the file on every call rather than cache an in-memory
     /// set: `DpoWriter` holds no handle between writes (see struct docs),
@@ -539,44 +862,6 @@ impl DpoWriter {
     }
 }
 
-/// Global extractor shared across pipeline tasks.
-///
-/// WHY: The pipeline is spawned as a new task per turn with no
-/// persistent actor state. Session IDs are ULID-based and globally
-/// unique, so cross-session collisions are impossible. A standard
-/// `Mutex` is sufficient because extractor operations are O(1) and
-/// complete in microseconds.
-static EXTRACTOR: std::sync::LazyLock<Mutex<DpoExtractor>> =
-    std::sync::LazyLock::new(|| Mutex::new(DpoExtractor::new()));
-
-/// Process a completed turn through the global extractor and return
-/// a [`DpoPair`] if a correction sequence has finalized.
-///
-/// See [`DpoExtractor::process_turn`] for sequence semantics and
-/// redaction behavior; `pii_filter_enabled` is forwarded unchanged.
-#[must_use]
-pub fn process_turn_global(
-    session_id: &str,
-    turn_number: u64,
-    user_message: &str,
-    assistant_response: &str,
-    is_correction: bool,
-    pii_filter_enabled: bool,
-) -> Option<DpoPair> {
-    let Ok(mut guard) = EXTRACTOR.lock() else {
-        tracing::warn!("DPO extractor mutex poisoned; skipping pair extraction");
-        return None;
-    };
-    guard.process_turn(
-        session_id,
-        turn_number,
-        user_message,
-        assistant_response,
-        is_correction,
-        pii_filter_enabled,
-    )
-}
-
 /// Record a captured DPO pair in the metrics registry.
 pub fn record_dpo_pair_captured(nous_id: &str) {
     crate::metrics::record_dpo_pair(nous_id);
@@ -587,38 +872,48 @@ pub fn record_dpo_pair_captured(nous_id: &str) {
 mod tests {
     use super::*;
 
+    fn extractor() -> DpoExtractor {
+        DpoExtractor::open_in_memory().expect("open in-memory extractor")
+    }
+
     #[test]
     fn extractor_emits_pair_on_correction_sequence() {
-        let mut extractor = DpoExtractor::new();
+        let extractor = extractor();
 
-        let p1 = extractor.process_turn(
-            "ses-1",
-            1,
-            "What is the capital of France?",
-            "London",
-            false,
-            false,
-        );
+        let p1 = extractor
+            .process_turn(
+                "ses-1",
+                1,
+                "What is the capital of France?",
+                "London",
+                false,
+                false,
+            )
+            .expect("process");
         assert!(p1.is_none(), "single normal turn should not emit");
 
-        let p2 = extractor.process_turn(
-            "ses-1",
-            2,
-            "Actually, the capital of France is Paris.",
-            "You are right.",
-            true,
-            false,
-        );
+        let p2 = extractor
+            .process_turn(
+                "ses-1",
+                2,
+                "Actually, the capital of France is Paris.",
+                "You are right.",
+                true,
+                false,
+            )
+            .expect("process");
         assert!(p2.is_none(), "correction turn should not emit");
 
-        let p3 = extractor.process_turn(
-            "ses-1",
-            3,
-            "What is the capital of France?",
-            "Paris",
-            false,
-            false,
-        );
+        let p3 = extractor
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
+            .expect("process");
         let pair = p3.expect("should emit pair after correction sequence");
         assert_eq!(pair.prompt, "What is the capital of France?");
         assert_eq!(pair.rejected, "London");
@@ -630,24 +925,28 @@ mod tests {
 
     #[test]
     fn extractor_emitted_pair_carries_schema_and_provenance_fields() {
-        let mut extractor = DpoExtractor::new();
+        let extractor = extractor();
 
-        let _ = extractor.process_turn(
-            "ses-1",
-            1,
-            "What is the capital of France?",
-            "London",
-            false,
-            true,
-        );
-        let _ = extractor.process_turn(
-            "ses-1",
-            2,
-            "Actually, the capital of France is Paris.",
-            "You are right.",
-            true,
-            true,
-        );
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                1,
+                "What is the capital of France?",
+                "London",
+                false,
+                true,
+            )
+            .expect("process");
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                2,
+                "Actually, the capital of France is Paris.",
+                "You are right.",
+                true,
+                true,
+            )
+            .expect("process");
         let pair = extractor
             .process_turn(
                 "ses-1",
@@ -657,6 +956,7 @@ mod tests {
                 false,
                 true,
             )
+            .expect("process")
             .expect("should emit pair after correction sequence");
 
         assert_eq!(pair.schema_version, DPO_PAIR_SCHEMA_VERSION);
@@ -675,24 +975,28 @@ mod tests {
 
     #[test]
     fn extractor_emitted_pair_omits_pii_policy_ref_when_filter_disabled() {
-        let mut extractor = DpoExtractor::new();
+        let extractor = extractor();
 
-        let _ = extractor.process_turn(
-            "ses-1",
-            1,
-            "What is the capital of France?",
-            "London",
-            false,
-            false,
-        );
-        let _ = extractor.process_turn(
-            "ses-1",
-            2,
-            "Actually, the capital of France is Paris.",
-            "You are right.",
-            true,
-            false,
-        );
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                1,
+                "What is the capital of France?",
+                "London",
+                false,
+                false,
+            )
+            .expect("process");
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                2,
+                "Actually, the capital of France is Paris.",
+                "You are right.",
+                true,
+                false,
+            )
+            .expect("process");
         let pair = extractor
             .process_turn(
                 "ses-1",
@@ -702,6 +1006,7 @@ mod tests {
                 false,
                 false,
             )
+            .expect("process")
             .expect("should emit pair after correction sequence");
 
         assert_eq!(
@@ -719,94 +1024,331 @@ mod tests {
 
     #[test]
     fn extractor_rejects_semantic_mismatch() {
-        let mut extractor = DpoExtractor::new();
+        let extractor = extractor();
 
-        let _ = extractor.process_turn(
-            "ses-1",
-            1,
-            "What is the capital of France?",
-            "London",
-            false,
-            false,
-        );
-        let _ = extractor.process_turn(
-            "ses-1",
-            2,
-            "Actually, the capital of France is Paris.",
-            "You are right.",
-            true,
-            false,
-        );
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                1,
+                "What is the capital of France?",
+                "London",
+                false,
+                false,
+            )
+            .expect("process");
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                2,
+                "Actually, the capital of France is Paris.",
+                "You are right.",
+                true,
+                false,
+            )
+            .expect("process");
 
-        let p3 = extractor.process_turn(
-            "ses-1",
-            3,
-            "What is the weather today?",
-            "Sunny",
-            false,
-            false,
-        );
+        let p3 = extractor
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the weather today?",
+                "Sunny",
+                false,
+                false,
+            )
+            .expect("process");
         assert!(p3.is_none(), "semantic mismatch should not emit pair");
     }
 
     #[test]
     fn extractor_accepts_continuation_prompt() {
-        let mut extractor = DpoExtractor::new();
+        let extractor = extractor();
 
-        let _ = extractor.process_turn(
-            "ses-1",
-            1,
-            "What is the capital of France?",
-            "London",
-            false,
-            false,
-        );
-        let _ = extractor.process_turn(
-            "ses-1",
-            2,
-            "Actually, the capital of France is Paris.",
-            "You are right.",
-            true,
-            false,
-        );
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                1,
+                "What is the capital of France?",
+                "London",
+                false,
+                false,
+            )
+            .expect("process");
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                2,
+                "Actually, the capital of France is Paris.",
+                "You are right.",
+                true,
+                false,
+            )
+            .expect("process");
 
-        let p3 = extractor.process_turn("ses-1", 3, "ok", "Paris", false, false);
+        let p3 = extractor
+            .process_turn("ses-1", 3, "ok", "Paris", false, false)
+            .expect("process");
         let pair = p3.expect("short continuation should pass validation");
         assert_eq!(pair.chosen, "Paris");
     }
 
     #[test]
     fn extractor_handles_multiple_sessions() {
-        let mut extractor = DpoExtractor::new();
+        let extractor = extractor();
 
-        let _ = extractor.process_turn("ses-a", 1, "Question A?", "Wrong A", false, false);
-        let _ = extractor.process_turn("ses-a", 2, "Actually...", "Sorry.", true, false);
+        let _ = extractor
+            .process_turn("ses-a", 1, "Question A?", "Wrong A", false, false)
+            .expect("process");
+        let _ = extractor
+            .process_turn("ses-a", 2, "Actually...", "Sorry.", true, false)
+            .expect("process");
 
-        let _ = extractor.process_turn("ses-b", 1, "Question B?", "Wrong B", false, false);
-        let _ = extractor.process_turn("ses-b", 2, "No, it's...", "My mistake.", true, false);
+        let _ = extractor
+            .process_turn("ses-b", 1, "Question B?", "Wrong B", false, false)
+            .expect("process");
+        let _ = extractor
+            .process_turn("ses-b", 2, "No, it's...", "My mistake.", true, false)
+            .expect("process");
 
-        let pa = extractor.process_turn("ses-a", 3, "Question A?", "Right A", false, false);
+        let pa = extractor
+            .process_turn("ses-a", 3, "Question A?", "Right A", false, false)
+            .expect("process");
         assert!(pa.is_some(), "session A should emit");
 
-        let pb = extractor.process_turn("ses-b", 3, "Question B?", "Right B", false, false);
+        let pb = extractor
+            .process_turn("ses-b", 3, "Question B?", "Right B", false, false)
+            .expect("process");
         assert!(pb.is_some(), "session B should emit");
     }
 
     #[test]
-    fn extractor_overwrites_pending_on_chained_corrections() {
-        let mut extractor = DpoExtractor::new();
+    fn extractor_handles_concurrent_sessions_across_threads() {
+        // WHY(#5380): the durable store is shared (Arc<SingleWriterTxDatabase>
+        // + one write_lock) across all sessions in a process. This proves
+        // concurrent turn processing for DIFFERENT sessions on DIFFERENT
+        // threads never loses or cross-contaminates another session's state.
+        let extractor = Arc::new(extractor());
+        let mut handles = Vec::new();
 
-        let _ = extractor.process_turn("ses-1", 1, "Question?", "Wrong 1", false, false);
-        let _ = extractor.process_turn("ses-1", 2, "Actually...", "Sorry.", true, false);
-        let _ = extractor.process_turn("ses-1", 3, "No wait...", "I see.", true, false);
+        for i in 0..8u64 {
+            let extractor = Arc::clone(&extractor);
+            handles.push(std::thread::spawn(move || {
+                let session_id = format!("ses-thread-{i}");
+                let prompt = format!("Question {i}?");
+                let _ = extractor
+                    .process_turn(&session_id, 1, &prompt, "Wrong", false, false)
+                    .expect("process turn 1");
+                let _ = extractor
+                    .process_turn(&session_id, 2, "Actually...", "Sorry.", true, false)
+                    .expect("process turn 2");
+                let pair = extractor
+                    .process_turn(&session_id, 3, &prompt, "Right", false, false)
+                    .expect("process turn 3")
+                    .expect("each thread's own session must emit its own pair");
+                assert_eq!(pair.session_id, session_id);
+                assert_eq!(pair.prompt, prompt);
+            }));
+        }
+
+        for handle in handles {
+            handle.join().expect("thread should not panic");
+        }
+    }
+
+    #[test]
+    fn extractor_repeated_processing_of_same_chosen_turn_is_idempotent() {
+        // WHY(#5380): replaying the same "chosen turn" call twice (e.g. a
+        // retried task) must not emit a second pair — pending is consumed
+        // on the first successful match, so the extractor itself is
+        // idempotent independent of the writer's pair_id dedup.
+        let extractor = extractor();
+
+        let _ = extractor
+            .process_turn("ses-1", 1, "Question?", "Wrong", false, false)
+            .expect("process");
+        let _ = extractor
+            .process_turn("ses-1", 2, "Actually...", "Sorry.", true, false)
+            .expect("process");
+
+        let first = extractor
+            .process_turn("ses-1", 3, "Question?", "Right", false, false)
+            .expect("process");
+        assert!(first.is_some(), "first processing of turn 3 should emit");
+
+        let replay = extractor
+            .process_turn("ses-1", 3, "Question?", "Right", false, false)
+            .expect("process");
+        assert!(
+            replay.is_none(),
+            "replaying the same chosen turn must not re-emit — pending was already consumed"
+        );
+    }
+
+    #[test]
+    fn extractor_survives_restart_between_correction_and_chosen_response() {
+        // WHY(#5380): the literal risk this durability fix closes — a
+        // process restart between the correction turn and the chosen
+        // response must not lose the pending pair.
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        {
+            let extractor = DpoExtractor::open(dir.path()).expect("open");
+            let _ = extractor
+                .process_turn(
+                    "ses-1",
+                    1,
+                    "What is the capital of France?",
+                    "London",
+                    false,
+                    false,
+                )
+                .expect("process turn 1");
+            let _ = extractor
+                .process_turn(
+                    "ses-1",
+                    2,
+                    "Actually, the capital of France is Paris.",
+                    "You are right.",
+                    true,
+                    false,
+                )
+                .expect("process turn 2 (correction)");
+            // WHY: extractor is dropped here, simulating a process exit
+            // before the chosen response arrives.
+        }
+
+        let reopened = DpoExtractor::open(dir.path()).expect("reopen after restart");
+        let pair = reopened
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
+            .expect("process turn 3 after restart")
+            .expect("pending correction must survive the restart");
+
+        assert_eq!(pair.rejected, "London");
+        assert_eq!(pair.chosen, "Paris");
+        assert_eq!(pair.rejected_turn, 1);
+        assert_eq!(pair.chosen_turn, 3);
+    }
+
+    #[test]
+    fn extractor_overwrites_pending_on_chained_corrections() {
+        let extractor = extractor();
+
+        let _ = extractor
+            .process_turn("ses-1", 1, "Question?", "Wrong 1", false, false)
+            .expect("process");
+        let _ = extractor
+            .process_turn("ses-1", 2, "Actually...", "Sorry.", true, false)
+            .expect("process");
+        let _ = extractor
+            .process_turn("ses-1", 3, "No wait...", "I see.", true, false)
+            .expect("process");
 
         // WHY: turn 2 was itself a correction, so no last_turn was cached and
         // the chained correction at turn 3 clears pending — turn 4 finds no
         // pending and must emit nothing.
-        let p4 = extractor.process_turn("ses-1", 4, "Question?", "Right", false, false);
+        let p4 = extractor
+            .process_turn("ses-1", 4, "Question?", "Right", false, false)
+            .expect("process");
         assert!(
             p4.is_none(),
             "chained correction without intermediate answer should not emit"
+        );
+    }
+
+    #[test]
+    fn pending_correction_becomes_stale_past_max_age() {
+        let now = jiff::Timestamp::now();
+        let long_ago = now - pending_correction_max_age() - jiff::SignedDuration::from_secs(1);
+        assert!(is_pending_stale_at(&long_ago.to_string(), now));
+
+        let recent = now - jiff::SignedDuration::from_secs(60);
+        assert!(!is_pending_stale_at(&recent.to_string(), now));
+    }
+
+    #[test]
+    fn pending_correction_future_timestamp_is_stale() {
+        // WHY: a pending_since after `now` is a clock anomaly, not a
+        // legitimate recent correction — fail closed.
+        let now = jiff::Timestamp::now();
+        let future = now + jiff::SignedDuration::from_secs(60);
+        assert!(is_pending_stale_at(&future.to_string(), now));
+    }
+
+    #[test]
+    fn pending_correction_unparseable_timestamp_is_stale() {
+        assert!(is_pending_stale_at(
+            "not-a-timestamp",
+            jiff::Timestamp::now()
+        ));
+    }
+
+    #[test]
+    fn extractor_rejects_pair_when_pending_correction_is_stale() {
+        // WHY(#5381): durable pending state can now outlive a single
+        // process, so an old pending correction must not silently pair
+        // with an unrelated later turn just because the prompts happen to
+        // overlap.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let extractor = DpoExtractor::open(dir.path()).expect("open");
+
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                1,
+                "What is the capital of France?",
+                "London",
+                false,
+                false,
+            )
+            .expect("process turn 1");
+        let _ = extractor
+            .process_turn(
+                "ses-1",
+                2,
+                "Actually, the capital of France is Paris.",
+                "You are right.",
+                true,
+                false,
+            )
+            .expect("process turn 2 (correction)");
+
+        // Directly age the just-written pending row past the staleness
+        // window, bypassing the extractor's own clock.
+        let pending_part = extractor.partition("pending").expect("partition");
+        let mut tx = extractor.db.write_tx();
+        let stale_since = (jiff::Timestamp::now()
+            - pending_correction_max_age()
+            - jiff::SignedDuration::from_secs(1))
+        .to_string();
+        let aged = PendingCorrection {
+            prompt: "What is the capital of France?".to_owned(),
+            rejected: "London".to_owned(),
+            rejected_turn: 1,
+            pending_since: stale_since,
+        };
+        write_state(&mut tx, &pending_part, "ses-1", &aged).expect("write aged pending");
+        DpoExtractor::commit(tx, "test aging").expect("commit");
+
+        let pair = extractor
+            .process_turn(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
+            .expect("process turn 3");
+        assert!(
+            pair.is_none(),
+            "a stale pending correction must not be paired, even with a matching prompt"
         );
     }
 
@@ -839,6 +1381,20 @@ mod tests {
     }
 
     #[test]
+    fn semantic_mismatch_unrelated_short_prompt_does_not_bypass() {
+        // WHY(#5381): a short message is not automatically a continuation —
+        // only a known acknowledgement phrase or a pure reaction bypasses.
+        assert!(!DpoExtractor::validate_semantic_match(
+            "What is the capital of France?",
+            "weather?"
+        ));
+        assert!(!DpoExtractor::validate_semantic_match(
+            "What is the capital of France?",
+            "new topic"
+        ));
+    }
+
+    #[test]
     fn semantic_match_continuation_uses_char_count_not_bytes() {
         // WHY: 5 emoji are 5 Unicode scalars but 20 bytes. A byte-count
         // check would treat them as exactly the threshold and bypass
@@ -855,6 +1411,16 @@ mod tests {
             "What is the capital of France?",
             "abcdefghijklmnopqrstu"
         ));
+    }
+
+    #[test]
+    fn semantic_match_threshold_boundary_is_pinned_at_one_half() {
+        // WHY(#5381): pins SEMANTIC_SIMILARITY_THRESHOLD's documented value
+        // (0.5) against silent drift between the constant and its comment.
+        // "a b" vs "a c": intersection={a}, union={a,b,c} -> 1/3 < 0.5 -> reject.
+        assert!(!DpoExtractor::validate_semantic_match("a b", "a c"));
+        // "a b" vs "a b c": intersection={a,b}, union={a,b,c} -> 2/3 >= 0.5 -> accept.
+        assert!(DpoExtractor::validate_semantic_match("a b", "a b c"));
     }
 
     /// Builds a fully-populated pair for tests, mirroring what
@@ -885,9 +1451,9 @@ mod tests {
 
     #[test]
     fn dpo_pair_legacy_row_deserializes_with_defaults() {
-        // WHY: rows written before #5386 have neither the new provenance
-        // fields nor `pair_id`/`schema_version`. A reader must accept them
-        // rather than fail closed on the whole corpus.
+        // WHY: rows written before pair identity existed have neither the
+        // provenance fields nor `pair_id`/`schema_version`. A reader must
+        // accept them rather than fail closed on the whole corpus.
         let legacy = r#"{
             "prompt": "What is 2+2?",
             "chosen": "4",
@@ -945,6 +1511,13 @@ mod tests {
     }
 
     #[test]
+    fn dpo_writer_dir_recovers_the_constructor_argument() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let writer = DpoWriter::new(dir.path()).expect("new");
+        assert_eq!(writer.dir(), dir.path());
+    }
+
+    #[test]
     fn dpo_writer_appends_jsonl() {
         let dir = tempfile::tempdir().expect("tempdir");
         let writer = DpoWriter::new(dir.path()).expect("new");
@@ -988,9 +1561,10 @@ mod tests {
 
     #[test]
     fn dpo_writer_legacy_empty_pair_id_is_never_deduped() {
-        // WHY: an empty pair_id (pre-#5386 callers, or a legacy row read
-        // back) carries no durable identity, so it must never suppress a
-        // write — otherwise the second real pair silently vanishes.
+        // WHY: an empty pair_id (rows written before pair identity existed,
+        // or a legacy row read back) carries no durable identity, so it
+        // must never suppress a write — otherwise the second real pair
+        // silently vanishes.
         let dir = tempfile::tempdir().expect("tempdir");
         let writer = DpoWriter::new(dir.path()).expect("new");
         let mut pair = sample_pair("ses-1", 1, 3);
@@ -1004,8 +1578,103 @@ mod tests {
     }
 
     #[test]
+    fn dpo_writer_process_and_write_emits_and_appends_on_correction_sequence() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let writer = DpoWriter::new(dir.path()).expect("new");
+
+        let wrote1 = writer
+            .process_and_write(
+                "ses-1",
+                1,
+                "What is the capital of France?",
+                "London",
+                false,
+                false,
+            )
+            .expect("process turn 1");
+        assert!(!wrote1, "single normal turn should not write a pair");
+
+        let wrote2 = writer
+            .process_and_write(
+                "ses-1",
+                2,
+                "Actually, the capital of France is Paris.",
+                "You are right.",
+                true,
+                false,
+            )
+            .expect("process turn 2");
+        assert!(!wrote2, "correction turn should not write a pair");
+
+        let wrote3 = writer
+            .process_and_write(
+                "ses-1",
+                3,
+                "What is the capital of France?",
+                "Paris",
+                false,
+                false,
+            )
+            .expect("process turn 3");
+        assert!(wrote3, "chosen turn should write a pair");
+
+        let content = std::fs::read_to_string(writer.file_path()).expect("read");
+        assert_eq!(content.lines().count(), 1);
+        let parsed: DpoPair =
+            serde_json::from_str(content.lines().next().expect("one line")).expect("parse");
+        assert_eq!(parsed.chosen, "Paris");
+    }
+
+    #[test]
+    fn dpo_writer_process_and_write_reports_false_on_idempotent_replay() {
+        // WHY: pair_id is derived only from session_id/rejected_turn/
+        // chosen_turn (see compute_pair_id), so a pair already durably
+        // written by a prior process instance can collide with a fresh
+        // extraction that independently derives the same identity. This
+        // pre-seeds that collision directly (bypassing the extractor) and
+        // proves process_and_write's `was_new` check catches it rather
+        // than duplicating the row.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let writer = DpoWriter::new(dir.path()).expect("new");
+
+        let existing = sample_pair("ses-1", 1, 3);
+        writer
+            .write_pair(&existing)
+            .expect("pre-seed existing pair");
+
+        let _ = writer
+            .process_and_write("ses-1", 1, "What is 2+2?", "5", false, false)
+            .expect("process turn 1");
+        let _ = writer
+            .process_and_write(
+                "ses-1",
+                2,
+                "Actually, 2+2 is 4.",
+                "You are right.",
+                true,
+                false,
+            )
+            .expect("process turn 2 (correction)");
+        let wrote = writer
+            .process_and_write("ses-1", 3, "What is 2+2?", "4", false, false)
+            .expect("process turn 3");
+
+        assert!(
+            !wrote,
+            "extractor emits a fresh pair, but its pair_id already exists on disk — must report false, not duplicate"
+        );
+
+        let content = std::fs::read_to_string(writer.file_path()).expect("read");
+        assert_eq!(
+            content.lines().count(),
+            1,
+            "the pre-seeded row must remain the only line"
+        );
+    }
+
+    #[test]
     fn extractor_redacts_secret_when_full_pii_suite_disabled() {
-        let mut extractor = DpoExtractor::new();
+        let extractor = extractor();
 
         // WHY: split/concat so the full synthetic key string never appears as a
         // raw literal that credential scanners could flag.
@@ -1015,13 +1684,19 @@ mod tests {
         let correction = "Actually the key format is wrong".to_owned();
         let chosen = format!("Use {secret} with the v3 header");
 
-        let p1 = extractor.process_turn("ses-1", 1, &prompt, &rejected, false, false);
+        let p1 = extractor
+            .process_turn("ses-1", 1, &prompt, &rejected, false, false)
+            .expect("process");
         assert!(p1.is_none(), "single normal turn should not emit");
 
-        let p2 = extractor.process_turn("ses-1", 2, &correction, "You are right.", true, false);
+        let p2 = extractor
+            .process_turn("ses-1", 2, &correction, "You are right.", true, false)
+            .expect("process");
         assert!(p2.is_none(), "correction turn should not emit");
 
-        let p3 = extractor.process_turn("ses-1", 3, &prompt, &chosen, false, false);
+        let p3 = extractor
+            .process_turn("ses-1", 3, &prompt, &chosen, false, false)
+            .expect("process");
         let pair = p3.expect("should emit pair after correction sequence");
 
         assert!(
