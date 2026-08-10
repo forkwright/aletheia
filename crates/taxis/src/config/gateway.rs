@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use koina::http::{CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE};
 use koina::secret::SecretString;
 
 /// HTTP gateway configuration.
@@ -103,7 +104,13 @@ pub struct GatewayAuthConfig {
     /// Auth mode: `"token"` (bearer token), `"none"` (disabled), `"jwt"` (explicit JWT).
     pub mode: String,
     /// Role assigned to anonymous requests when auth mode is `"none"`.
-    /// Valid values: `"readonly"`, `"agent"`, `"operator"`, `"admin"`. Defaults to `"admin"`.
+    /// Valid values: `"readonly"`, `"agent"`, `"operator"`, `"admin"`. Defaults to `"readonly"`.
+    ///
+    /// SECURITY(#5169, #5342): previously defaulted to `"admin"`, so any
+    /// browser-facing page could reach a full-privilege, unauthenticated API
+    /// the moment an operator ran with `auth.mode = "none"` for local
+    /// convenience. `"readonly"` is the least-privilege default; escalating
+    /// to `"agent"`, `"operator"`, or `"admin"` is now an explicit opt-in.
     pub none_role: String,
     /// JWT signing key. If `None`, falls back to `ALETHEIA_JWT_SECRET` env var.
     /// Startup fails when auth mode requires JWT and this is still the default placeholder.
@@ -123,7 +130,7 @@ impl Default for GatewayAuthConfig {
     fn default() -> Self {
         Self {
             mode: "token".to_owned(),
-            none_role: "admin".to_owned(),
+            none_role: "readonly".to_owned(),
             signing_key: None,
             allow_unauthenticated_network_mcp: false,
         }
@@ -204,8 +211,14 @@ impl Default for CsrfConfig {
         Self {
             enabled: true,
             disable_acknowledged: false,
-            header_name: "x-requested-with".to_owned(),
-            header_value: SecretString::from("aletheia"),
+            // WHY(#4823, #5059): first-party clients (skene, koilon, proskenion)
+            // build their default request headers from the same
+            // `koina::http` constants, so a stock server and a stock client
+            // agree without either side hardcoding an independent copy of
+            // the string. An operator who overrides `headerValue` must
+            // update first-party client config to match.
+            header_name: CSRF_HEADER_NAME.to_owned(),
+            header_value: SecretString::from(DEFAULT_CSRF_HEADER_VALUE),
         }
     }
 }

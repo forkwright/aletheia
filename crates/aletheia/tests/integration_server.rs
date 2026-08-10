@@ -58,9 +58,8 @@ bind = "127.0.0.1"
 [gateway.auth]
 mode = "none"
 
-[gateway.csrf]
-enabled = false
-disableAcknowledged = true
+[gateway.cors]
+allowedOrigins = ["http://127.0.0.1:{port}"]
 
 [sandbox]
 enabled = false
