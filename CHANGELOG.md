@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.35.0](https://github.com/forkwright/aletheia/compare/v0.34.0...v0.35.0) (2026-08-10)
+
+
+### Features
+
+* **energeia:** persist terminal child-session attribution ([#6664](https://github.com/forkwright/aletheia/issues/6664)) ([ee3bfd1](https://github.com/forkwright/aletheia/commit/ee3bfd19e1179d62cddb1d3435cbab491c152f8a))
+* **episteme:** recall golden-set harness with structural psyche exclusion ([#6632](https://github.com/forkwright/aletheia/issues/6632)) ([86d4e6f](https://github.com/forkwright/aletheia/commit/86d4e6f9126a1e829aafdfa8eebec01f93d2e6f7))
+* **koilon:** wire the SSE API event bridge for toasts and error banners ([#6613](https://github.com/forkwright/aletheia/issues/6613)) ([b3d04a6](https://github.com/forkwright/aletheia/commit/b3d04a6d474c902e2994ca9f7d5e6cd8755c6314)), closes [#6357](https://github.com/forkwright/aletheia/issues/6357)
+* **krites:** add the capability-coverage matrix ([#6629](https://github.com/forkwright/aletheia/issues/6629)) ([f7275db](https://github.com/forkwright/aletheia/commit/f7275dbba820d463e47fb1660c4612eaeba1069a))
+* **krites:** add the provenance ledger and anti-backsliding CI gate ([#6626](https://github.com/forkwright/aletheia/issues/6626)) ([72dc1fa](https://github.com/forkwright/aletheia/commit/72dc1fad5a49e6ad35d324ae651a332d42b2658b))
+* **krites:** calibrated verbatim-drift metric ([#6628](https://github.com/forkwright/aletheia/issues/6628)) ([d358c97](https://github.com/forkwright/aletheia/commit/d358c979e2a916b7800aee10e678c315da1d8930))
+* **krites:** mechanically derive the module import DAG ([#6627](https://github.com/forkwright/aletheia/issues/6627)) ([cb39247](https://github.com/forkwright/aletheia/commit/cb39247deef2be4f5be9b3b6d3b5ab1695b1a978))
+* **krites:** regenerate the ASCII-folding table from Unicode UCD ([#6636](https://github.com/forkwright/aletheia/issues/6636)) ([e6f6f48](https://github.com/forkwright/aletheia/commit/e6f6f48d057bb014c2ed54b0b5c7be1661fc542a))
+* **krites:** reimplement HNSW, byte-compatible with the existing encoding ([#6640](https://github.com/forkwright/aletheia/issues/6640)) ([3d0c035](https://github.com/forkwright/aletheia/commit/3d0c035eedda8c476bb6d9b71dbdd1f5c336377c))
+* **krites:** reimplement storage/{temp,mem} against the Storage trait ([#6639](https://github.com/forkwright/aletheia/issues/6639)) ([fd9e143](https://github.com/forkwright/aletheia/commit/fd9e1433f4c870afb77e0ba1cac8d449e7f60ad1))
+* **krites:** reimplement the 19 zero-call-site graph algorithms ([#6638](https://github.com/forkwright/aletheia/issues/6638)) ([f307e9f](https://github.com/forkwright/aletheia/commit/f307e9f31bd57aef19017603b15810a074e29376))
+* **krites:** vendor the 58-language stopword lists with attribution ([#6637](https://github.com/forkwright/aletheia/issues/6637)) ([4054dc2](https://github.com/forkwright/aletheia/commit/4054dc2d115d236faf6f6f4f2ad739e47f1a961d))
+* **krites:** wire hot_reload into production knowledge store startup ([#6614](https://github.com/forkwright/aletheia/issues/6614)) ([71ae3ac](https://github.com/forkwright/aletheia/commit/71ae3acbeeee71c46c5eaf495b25052dbdf90681))
+* **nous:** wire the contract registry into spawn, and close [#5823](https://github.com/forkwright/aletheia/issues/5823) as already-fixed ([#6667](https://github.com/forkwright/aletheia/issues/6667)) ([f531382](https://github.com/forkwright/aletheia/commit/f5313824380a1ac2f513f579a12d5c98faefc448))
+* **proskenion:** chrome class migration and responsive system ([#6641](https://github.com/forkwright/aletheia/issues/6641)) ([e570eb7](https://github.com/forkwright/aletheia/commit/e570eb73f8e7631989694485d3b297c46d2f39a1))
+
+
+### Bug Fixes
+
+* **aletheia:** retire ambiguous legacy backup flags for subcommands ([#6615](https://github.com/forkwright/aletheia/issues/6615)) ([39d0244](https://github.com/forkwright/aletheia/commit/39d0244dc0c0ba718a741058d5ff53501ec69ec0)), closes [#5107](https://github.com/forkwright/aletheia/issues/5107)
+* **aletheia:** twelve small fixes, three already-fixed issues closed with citations ([#6661](https://github.com/forkwright/aletheia/issues/6661)) ([151a215](https://github.com/forkwright/aletheia/commit/151a215ad41cbb532ea1066aa13e31c3b258c50d))
+* **aletheia:** wire ConnectInfo into the production HTTP server ([#6597](https://github.com/forkwright/aletheia/issues/6597)) ([b19ae52](https://github.com/forkwright/aletheia/commit/b19ae521750de57a152de486b6212442d8229009)), closes [#6454](https://github.com/forkwright/aletheia/issues/6454)
+* **ci:** track the fuzz lockfile so a required check stops re-resolving ([#6643](https://github.com/forkwright/aletheia/issues/6643)) ([e67c3f4](https://github.com/forkwright/aletheia/commit/e67c3f4390b6e340a3b9eafd1aa08e0281c6e545))
+* **daemon:** stop the backup manifest claiming a simultaneity it never had ([#6665](https://github.com/forkwright/aletheia/issues/6665)) ([3ea7d34](https://github.com/forkwright/aletheia/commit/3ea7d3414c04164ce600ec34d13d2065d56521fb))
+* **daemon:** wire episteme lesson pipelines to real production triggers ([#6654](https://github.com/forkwright/aletheia/issues/6654)) ([1b97f82](https://github.com/forkwright/aletheia/commit/1b97f82c1879e9fd3dfcfc28bcb20c696cb4fc6b))
+* **deps:** ignore RUSTSEC-2026-0235 with justification — rkyv unreachable here ([#6607](https://github.com/forkwright/aletheia/issues/6607)) ([005d0f1](https://github.com/forkwright/aletheia/commit/005d0f1039da40ad8eb481778af44610dc7f27c9)), closes [#6606](https://github.com/forkwright/aletheia/issues/6606)
+* **diaporeia:** share the rate limiter across sessions and scope claims ([#6646](https://github.com/forkwright/aletheia/issues/6646)) ([a77f4a7](https://github.com/forkwright/aletheia/commit/a77f4a774b660449e5685b298f958497f01860fa))
+* **episteme:** make destructive schema migrations crash-safe ([#6630](https://github.com/forkwright/aletheia/issues/6630)) ([9080890](https://github.com/forkwright/aletheia/commit/90808909d70ea2fb6b09037b959ac1621198c4b1))
+* **episteme:** match graph_scores score_type between write and read paths ([#6599](https://github.com/forkwright/aletheia/issues/6599)) ([fbeaaf0](https://github.com/forkwright/aletheia/commit/fbeaaf0202661f9d23f093b225a7d2840df47006)), closes [#4678](https://github.com/forkwright/aletheia/issues/4678)
+* **episteme:** one slugify, so a name maps to one slug ([#6678](https://github.com/forkwright/aletheia/issues/6678)) ([cbbd206](https://github.com/forkwright/aletheia/commit/cbbd206ff2326048421c253bdbb4b121ea11fc4b))
+* **hermeneus:** redact provider secrets and unify health tracking ([#6650](https://github.com/forkwright/aletheia/issues/6650)) ([4b3cbe0](https://github.com/forkwright/aletheia/commit/4b3cbe09121ec86629284a663219dd4c40aede71))
+* **hermeneus:** retry CcProvider subprocess calls on transient failure ([#6605](https://github.com/forkwright/aletheia/issues/6605)) ([372e7c8](https://github.com/forkwright/aletheia/commit/372e7c8bdff6cc1b4adc6f2e01a1ae9eea454608)), closes [#5763](https://github.com/forkwright/aletheia/issues/5763)
+* **krites:** correct the verbatim metric, and document that it cannot discriminate ([#6659](https://github.com/forkwright/aletheia/issues/6659)) ([56688fa](https://github.com/forkwright/aletheia/commit/56688fa0d7f78f24a97dc8709d4bace8e4d6a2f9))
+* **krites:** measure sovereign rows instead of asserting they are zero ([#6658](https://github.com/forkwright/aletheia/issues/6658)) ([5eaf094](https://github.com/forkwright/aletheia/commit/5eaf09473ad2fffded33e9d9002347e5e5809c14))
+* **krites:** reject float seconds where microseconds are expected ([#6674](https://github.com/forkwright/aletheia/issues/6674)) ([78cdef5](https://github.com/forkwright/aletheia/commit/78cdef5be8f2533f409fe760f6522193443674fa))
+* **nous:** abort stuck old actor task on restart drain timeout ([#6598](https://github.com/forkwright/aletheia/issues/6598)) ([f4ec682](https://github.com/forkwright/aletheia/commit/f4ec682df585e6b3a512b1d2678b0c4493d50e89))
+* **nous:** add schema version and stable pair IDs to DPO JSONL ([#6616](https://github.com/forkwright/aletheia/issues/6616)) ([8fed321](https://github.com/forkwright/aletheia/commit/8fed321e2442ac7aa51b38d3f10ba09b2454d7be)), closes [#5386](https://github.com/forkwright/aletheia/issues/5386)
+* **nous:** fold full ULID entropy into the usage dedup key ([#6603](https://github.com/forkwright/aletheia/issues/6603)) ([74aeaa1](https://github.com/forkwright/aletheia/commit/74aeaa129d76ae91fbcd3edd447385a354bf3f5a))
+* **nous:** make background task lifecycle observable and correct ([#6670](https://github.com/forkwright/aletheia/issues/6670)) ([9937413](https://github.com/forkwright/aletheia/commit/993741307027016e063f49e96cd58c41f0b079b8))
+* **nous:** quality-gate the DPO corpus and make pending state durable ([#6651](https://github.com/forkwright/aletheia/issues/6651)) ([8c6fbd9](https://github.com/forkwright/aletheia/commit/8c6fbd9d44d12b7f4906365c33ede3dcde9666ff))
+* **nous:** thread spawn nesting depth into complexity routing ([#6622](https://github.com/forkwright/aletheia/issues/6622)) ([4bfef80](https://github.com/forkwright/aletheia/commit/4bfef8073c5b2e4f74d87f3dceaf28bbb3abff82)), closes [#5823](https://github.com/forkwright/aletheia/issues/5823)
+* **organon:** correct working_checkpoint tool description injection target ([#6601](https://github.com/forkwright/aletheia/issues/6601)) ([46087fd](https://github.com/forkwright/aletheia/commit/46087fd703a504679bb780a94eee86d159d9229b)), closes [#4757](https://github.com/forkwright/aletheia/issues/4757)
+* **poiesis-verify:** fail verification on empty or insufficient claims manifest ([#6623](https://github.com/forkwright/aletheia/issues/6623)) ([b595db0](https://github.com/forkwright/aletheia/commit/b595db0370ad9c2c19808c2c630f445768d5758f)), closes [#6610](https://github.com/forkwright/aletheia/issues/6610)
+* **poiesis:** validate theme token keys before resolution ([#6663](https://github.com/forkwright/aletheia/issues/6663)) ([16b2ff1](https://github.com/forkwright/aletheia/commit/16b2ff1e6bea39c0979f76f3ba769834352c130c))
+* **pylon:** close the fail-open gateway auth defaults ([#6649](https://github.com/forkwright/aletheia/issues/6649)) ([89b3354](https://github.com/forkwright/aletheia/commit/89b33547c03758f7e4fc980f6b40f0cfac90d6ea))
+* **pylon:** make the control plane report what is actually true ([#6652](https://github.com/forkwright/aletheia/issues/6652)) ([64d01b6](https://github.com/forkwright/aletheia/commit/64d01b69ff8160ae0105fad3755da726ad2deb0b))
+* **pylon:** preserve observed partial state when a streamed turn fails ([#6669](https://github.com/forkwright/aletheia/issues/6669)) ([23fa426](https://github.com/forkwright/aletheia/commit/23fa426003db32ec8157d52c516b787f634923ac))
+* **pylon:** rate-limit, audit, and redact credential operations ([#6662](https://github.com/forkwright/aletheia/issues/6662)) ([6b7d726](https://github.com/forkwright/aletheia/commit/6b7d726b91a42ed0b12069f03f0daf1aa848ef53))
+* **pylon:** strip maintainer-personal deployment detail from workspace write doc ([#6602](https://github.com/forkwright/aletheia/issues/6602)) ([f83f68a](https://github.com/forkwright/aletheia/commit/f83f68a2a4930c8cb00ae201b093b49650107fcd)), closes [#5160](https://github.com/forkwright/aletheia/issues/5160)
+* **scripts:** elide private struct fields from the L3 public API index ([#6596](https://github.com/forkwright/aletheia/issues/6596)) ([4f94ddd](https://github.com/forkwright/aletheia/commit/4f94dddf1eedaa8204d479d414f85173d89c790a)), closes [#5405](https://github.com/forkwright/aletheia/issues/5405)
+* **shared:** replace unsupported shell-style agent commands with real tool contracts ([#6617](https://github.com/forkwright/aletheia/issues/6617)) ([9281fc1](https://github.com/forkwright/aletheia/commit/9281fc16c3fde096770f7e75f4a7f5670078f13a))
+* **taxis:** fail closed on config decrypt, interpolation, and path escapes ([#6648](https://github.com/forkwright/aletheia/issues/6648)) ([d4b085b](https://github.com/forkwright/aletheia/commit/d4b085b969aedc0a4666f0fd6df3e7680a45470e))
+* **taxis:** validate per-user gateway rate-limit RPM and burst ([#6595](https://github.com/forkwright/aletheia/issues/6595)) ([a3457c4](https://github.com/forkwright/aletheia/commit/a3457c4a799690481cc30a78ab3311499ac87999))
+
+
+### Documentation
+
+* **krites:** cite the retirement plan where it actually lives ([#6682](https://github.com/forkwright/aletheia/issues/6682)) ([4d27bbd](https://github.com/forkwright/aletheia/commit/4d27bbd5a88d974e6224c93f37253307728a520e))
+* **krites:** restore the CozoDB attribution the migration removed ([#6624](https://github.com/forkwright/aletheia/issues/6624)) ([d6448ce](https://github.com/forkwright/aletheia/commit/d6448ceeca64914717b33675dd9f44b6c4128499))
+* **krites:** surface the MPL obligation where agents actually look ([#6625](https://github.com/forkwright/aletheia/issues/6625)) ([f8c8c37](https://github.com/forkwright/aletheia/commit/f8c8c3700794535eb3d8acf38171eacc5464846b))
+
 ## [0.34.0](https://github.com/forkwright/aletheia/compare/v0.33.9...v0.34.0) (2026-08-04)
 
 
