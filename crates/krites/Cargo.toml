@@ -17,18 +17,6 @@ graph-algo = []
 async = []
 hot-reload = ["dep:notify", "dep:arc-swap"]
 storage-fjall = ["dep:fjall"]
-# WHY: retirement PLAN.md Sec.2 land-dark/soak/delete -- selects the sovereign
-# UCD/CLDR-generated ascii-folding table (fold_table_sovereign/) over the
-# CozoDB-derived match-table (fold_table/), off by default during the soak
-# window. See fts/tokenizer/ascii_folding_filter/fold_table.rs.
-krites_sovereign_ascii_folding_table = []
-# WHY: wave-5 land-dark selectors (PLAN.md Sec.2) -- each derived
-# fixed_rule::algos/utilities module stays default; the feature swaps in its fresh
-# sovereign_native.rs counterpart instead (see algos/mod.rs and utilities/mod.rs's
-# #[path] swaps). Off by default so the soak window starts from an explicit opt-in,
-# never a silent flip.
-krites_sovereign_algos = []
-krites_sovereign_utilities = []
 # WHY: retirement PLAN.md Sec.2 land-dark/soak/delete -- selects the sovereign HNSW
 # implementation (runtime/hnsw_sovereign/) over the CozoDB-derived one (runtime/hnsw/)
 # via a #[path] swap on runtime/mod.rs, off by default during the soak window. The

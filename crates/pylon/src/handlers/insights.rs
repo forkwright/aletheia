@@ -602,14 +602,22 @@ fn build_token_metrics_at(
 
     for row in session_rows {
         let session = &row.session;
-        if !date_in_range(&session.created_at, query) {
-            continue;
-        }
-        if row.usage_records.is_empty() {
+        // WHY(#5271): filter and bucket per usage record, not per session.
+        // A long-running session's usage happens across many days; lumping
+        // it all under `session.created_at` misattributed every turn after
+        // the first to the session's start date. `usage_timestamp` falls
+        // back to `session.created_at` only for records written before
+        // usage carried its own timestamp.
+        let in_range: Vec<&UsageRecord> = row
+            .usage_records
+            .iter()
+            .filter(|usage| date_in_range(usage_timestamp(session, usage), query))
+            .collect();
+        if in_range.is_empty() {
             continue;
         }
 
-        let (input_tokens, output_tokens) = usage_token_split(&row.usage_records);
+        let (input_tokens, output_tokens) = usage_token_split(in_range.iter().copied());
         total.add_tokens(input_tokens, output_tokens);
         total.add_session();
 
@@ -620,7 +628,7 @@ fn build_token_metrics_at(
         agent_entry.1.add_session();
 
         let mut models_for_session = HashSet::new();
-        for usage in &row.usage_records {
+        for usage in &in_range {
             let model = usage
                 .model
                 .clone()
@@ -633,26 +641,29 @@ fn build_token_metrics_at(
                 token_i64_to_u64(usage.output_tokens),
             );
             models_for_session.insert(model);
+
+            let ts = usage_timestamp(session, usage);
+            if let Some(bucket) = bucket_date(ts, query.granularity.as_deref()) {
+                series.entry(bucket).or_default().add_tokens(
+                    token_i64_to_u64(usage.input_tokens),
+                    token_i64_to_u64(usage.output_tokens),
+                );
+            } else {
+                // WHY: an unparseable timestamp used to bucket under
+                // `1970-01-01`, inventing a data point decades away from the
+                // requested range. The record still counts toward the
+                // agent/model totals above; only its series point is
+                // dropped.
+                warn!(
+                    session_id = %session.id,
+                    turn_seq = usage.turn_seq,
+                    timestamp = %ts,
+                    "skipping token-series point: usage timestamp is not a parseable date"
+                );
+            }
         }
         for model in models_for_session {
             models.entry(model).or_default().add_session();
-        }
-
-        if let Some(bucket) = bucket_date(&session.created_at, query.granularity.as_deref()) {
-            series
-                .entry(bucket)
-                .or_default()
-                .add_tokens(input_tokens, output_tokens);
-        } else {
-            // WHY: an unparseable `created_at` used to bucket under
-            // `1970-01-01`, inventing a data point decades away from the
-            // requested range. The session still counts toward the agent and
-            // model totals above; only its series point is dropped.
-            warn!(
-                session_id = %session.id,
-                created_at = %session.created_at,
-                "skipping token-series point: session created_at is not a parseable date"
-            );
         }
     }
 
@@ -708,48 +719,62 @@ fn token_period_windows(
 
     let mut windows = TokenPeriodWindows::default();
     for row in session_rows {
-        let Some(date) = session_date(&row.session) else {
-            continue;
-        };
-        if row.usage_records.is_empty() {
-            continue;
-        }
-        let (input_tokens, output_tokens) = usage_token_split(&row.usage_records);
-        if date == today {
-            windows.today.add_tokens(input_tokens, output_tokens);
-        }
-        if date == yesterday {
-            windows.prev_today.add_tokens(input_tokens, output_tokens);
-        }
-        if date >= week_start && date <= today {
-            windows.week.add_tokens(input_tokens, output_tokens);
-        }
-        if date >= prev_week_start && date <= prev_week_end {
-            windows.prev_week.add_tokens(input_tokens, output_tokens);
-        }
-        if date >= month_start && date <= today {
-            windows.month.add_tokens(input_tokens, output_tokens);
-        }
-        if date >= prev_month_start && date <= prev_month_end {
-            windows.prev_month.add_tokens(input_tokens, output_tokens);
+        let session = &row.session;
+        // WHY(#5271): per usage record, not per session — see the same
+        // note in `build_token_metrics_at`. A session active across
+        // several of these windows must contribute each turn's tokens to
+        // the window that turn actually happened in.
+        for usage in &row.usage_records {
+            let Some(date) = record_date(session, usage) else {
+                continue;
+            };
+            let input_tokens = token_i64_to_u64(usage.input_tokens);
+            let output_tokens = token_i64_to_u64(usage.output_tokens);
+            if date == today {
+                windows.today.add_tokens(input_tokens, output_tokens);
+            }
+            if date == yesterday {
+                windows.prev_today.add_tokens(input_tokens, output_tokens);
+            }
+            if date >= week_start && date <= today {
+                windows.week.add_tokens(input_tokens, output_tokens);
+            }
+            if date >= prev_week_start && date <= prev_week_end {
+                windows.prev_week.add_tokens(input_tokens, output_tokens);
+            }
+            if date >= month_start && date <= today {
+                windows.month.add_tokens(input_tokens, output_tokens);
+            }
+            if date >= prev_month_start && date <= prev_month_end {
+                windows.prev_month.add_tokens(input_tokens, output_tokens);
+            }
         }
     }
     windows
 }
 
-fn session_date(session: &Session) -> Option<jiff::civil::Date> {
-    session.created_at.get(..10)?.parse().ok()
+/// Timestamp to attribute a usage record to: its own `created_at` when
+/// present, falling back to the owning session's `created_at` for records
+/// written before usage carried its own timestamp (#5271).
+fn usage_timestamp<'a>(session: &'a Session, usage: &'a UsageRecord) -> &'a str {
+    if usage.created_at.is_empty() {
+        &session.created_at
+    } else {
+        &usage.created_at
+    }
 }
 
-fn usage_token_split(records: &[UsageRecord]) -> (u64, u64) {
-    let input_tokens = records
-        .iter()
-        .map(|record| token_i64_to_u64(record.input_tokens))
-        .sum();
-    let output_tokens = records
-        .iter()
-        .map(|record| token_i64_to_u64(record.output_tokens))
-        .sum();
+fn record_date(session: &Session, usage: &UsageRecord) -> Option<jiff::civil::Date> {
+    usage_timestamp(session, usage).get(..10)?.parse().ok()
+}
+
+fn usage_token_split<'a>(records: impl IntoIterator<Item = &'a UsageRecord>) -> (u64, u64) {
+    let mut input_tokens = 0u64;
+    let mut output_tokens = 0u64;
+    for record in records {
+        input_tokens += token_i64_to_u64(record.input_tokens);
+        output_tokens += token_i64_to_u64(record.output_tokens);
+    }
     (input_tokens, output_tokens)
 }
 
@@ -1242,6 +1267,22 @@ mod tests {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             model: Some("model-a".to_owned()),
+            // WHY: empty `created_at` exercises the fallback-to-session
+            // path (#5271) — these fixtures already encode their intended
+            // date in the owning session's `created_at`.
+            created_at: String::new(),
+        }
+    }
+
+    fn usage_at(
+        session_id: &str,
+        input_tokens: i64,
+        output_tokens: i64,
+        created_at: &str,
+    ) -> UsageRecord {
+        UsageRecord {
+            created_at: format!("{created_at}T00:00:00Z"),
+            ..usage(session_id, input_tokens, output_tokens)
         }
     }
 
@@ -1300,6 +1341,46 @@ mod tests {
         assert_eq!(response.prev_week_input, 30);
         assert_eq!(response.month_input, 60);
         assert_eq!(response.prev_month_input, 40);
+    }
+
+    // WHY(#5271): regression for bucketing by usage completion time, not
+    // session creation time. A session created weeks ago that is still
+    // active today must attribute today's usage to today, not to its
+    // creation date.
+    #[test]
+    fn token_metrics_bucket_by_usage_timestamp_not_session_creation() {
+        let rows = vec![SessionUsage {
+            session: session("long-running", "2026-05-01"),
+            usage_records: vec![usage_at("long-running", 10, 5, "2026-06-12")],
+        }];
+        let agent_configs = vec![("alice".to_owned(), "Alice".to_owned(), "model-a".to_owned())];
+        let model_by_agent = HashMap::from([("alice".to_owned(), "model-a".to_owned())]);
+        let response = build_token_metrics_at(
+            &agent_configs,
+            &model_by_agent,
+            &rows,
+            &query(Some("daily"), Some("2026-06-12"), Some("2026-06-12")),
+            fixed_date("2026-06-12"),
+        );
+
+        assert_eq!(
+            response.series.len(),
+            1,
+            "usage dated today must produce today's series point even though \
+             the session was created over a month earlier"
+        );
+        assert_eq!(first_item(&response.series, "series").date, "2026-06-12");
+        assert_eq!(first_item(&response.series, "series").input_tokens, 10);
+        assert_eq!(
+            response.today_input, 10,
+            "the today window must reflect the usage timestamp, not session creation"
+        );
+        assert_eq!(response.month_input, 10);
+        assert_eq!(
+            response.prev_month_input, 0,
+            "a session created in a prior month must not leak its current usage \
+             into the prev-month window just because it was created there"
+        );
     }
 
     #[test]

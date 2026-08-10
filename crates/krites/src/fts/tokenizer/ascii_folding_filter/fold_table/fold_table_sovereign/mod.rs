@@ -3,8 +3,8 @@
 //! match-table. See `generate.py` for the full source/methodology citation and `table.rs`
 //! for the generated data (both committed; `table.rs` is not hand-edited).
 //!
-//! Proved equivalent to the derived table (`fold_table/`) over the full Basic Multilingual
-//! Plane by `tests/bmp_equivalence.rs`.
+//! Its fold set is frozen to that of the derived table it replaced, which was proved
+//! equivalent over the full Basic Multilingual Plane before being retired.
 
 mod table;
 
