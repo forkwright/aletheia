@@ -374,8 +374,10 @@ mod tests {
     /// the guard in `run_script` this fails with `syntax error ... 3:1 | ::relations`, and
     /// because `init_schema` issues a bare `::relations` while opening a store, every open
     /// against a populated rule directory failed before the caller ran a query.
-    #[test]
-    fn sys_ops_still_parse_with_a_populated_rule_store() {
+    // WHY tokio::test: HotReloader::start spawns the debounce task (hot_reload.rs:221), so it
+    // needs a reactor even though everything this test asserts is synchronous.
+    #[tokio::test]
+    async fn sys_ops_still_parse_with_a_populated_rule_store() {
         let dir = tempfile::tempdir().expect("tempdir");
         std::fs::write(
             dir.path().join("probe.mnm"),
