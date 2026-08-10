@@ -942,10 +942,16 @@ async fn proskenion_contract_nous_surfaces_match_desktop() {
         "mock-model",
         "proskenion contract mismatch: list item should expose model; item={agent}"
     );
+    // WHY "idle" and not "active": this nous was spawned by the harness and has not
+    // taken a turn, and NousLifecycle::Idle is documented as "waiting for messages, no
+    // active work" (nous/src/message.rs:77) — which is what the actor is constructed
+    // with (nous/src/actor/mod.rs:318). The old expectation was written when the list
+    // reported a hardcoded status rather than the actor's own, so it asserted the very
+    // thing this surface was changed to stop claiming.
     assert_eq!(
         string_field(agent, "status", "nous list item"),
-        "active",
-        "proskenion contract mismatch: list item should expose active status; item={agent}"
+        "idle",
+        "proskenion contract mismatch: list item should expose the actor's real status; item={agent}"
     );
 
     let status = authed_get_json(addr, &token, &format!("/api/v1/nous/{TEST_NOUS_ID}")).await;
