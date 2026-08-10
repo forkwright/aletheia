@@ -300,9 +300,11 @@ async fn metrics_counters_increment_after_request() {
 #[tokio::test]
 async fn openapi_spec_returns_valid_json() {
     let (app, _dir) = app().await;
+    let token = default_token();
     let resp = app
         .oneshot(
             Request::get("/api/docs/openapi.json")
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -321,9 +323,11 @@ async fn openapi_spec_returns_valid_json() {
 #[tokio::test]
 async fn openapi_spec_has_all_paths() {
     let (app, _dir) = app().await;
+    let token = default_token();
     let resp = app
         .oneshot(
             Request::get("/api/docs/openapi.json")
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -351,9 +355,11 @@ async fn openapi_spec_has_all_paths() {
 #[tokio::test]
 async fn openapi_spec_advertises_bearer_auth_in_token_mode() {
     let (app, _dir) = app().await;
+    let token = default_token();
     let resp = app
         .oneshot(
             Request::get("/api/docs/openapi.json")
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -388,9 +394,31 @@ async fn openapi_spec_omits_bearer_auth_in_none_mode() {
     );
 }
 
+/// SECURITY(#5174): the `OpenAPI` spec exposes full route shape and schema
+/// detail (the same class of operational-topology leak `/metrics` guards
+/// against). Unlike `/api/health` (minimal liveness, deliberately public),
+/// this surface now requires the same bearer auth as the API it describes.
 #[tokio::test]
-async fn openapi_docs_no_auth_required() {
+async fn openapi_docs_requires_auth_in_token_mode() {
     let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(
+            Request::get("/api/docs/openapi.json")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
+/// SECURITY(#5174): `auth.mode = "none"` grants every request a synthetic
+/// role without a token, so the docs route stays reachable there — matching
+/// the rest of the API's behavior in no-auth mode, not a separate carve-out.
+#[tokio::test]
+async fn openapi_docs_reachable_without_token_in_none_mode() {
+    let (app, _dir) = app_with_auth_mode("none").await;
     let resp = app
         .oneshot(
             Request::get("/api/docs/openapi.json")
@@ -406,9 +434,11 @@ async fn openapi_docs_no_auth_required() {
 #[tokio::test]
 async fn openapi_spec_has_schemas() {
     let (app, _dir) = app().await;
+    let token = default_token();
     let resp = app
         .oneshot(
             Request::get("/api/docs/openapi.json")
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
         )
