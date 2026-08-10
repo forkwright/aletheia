@@ -45,7 +45,10 @@ fn small_integer_validity_is_legitimate() {
     let v = op_validity(&[DataValue::Num(Num::Int(250))]).expect("validity");
     match v {
         DataValue::Validity(Validity { timestamp, .. }) => {
-            assert_eq!(timestamp.0.0, 250, "small logical-clock values must survive");
+            assert_eq!(
+                timestamp.0.0, 250,
+                "small logical-clock values must survive"
+            );
         }
         other => panic!("expected Validity, got {other:?}"),
     }
