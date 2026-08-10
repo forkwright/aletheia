@@ -124,6 +124,14 @@ pub enum ServerError {
 #[deprecated(
     note = "pylon::server::run is a gateway-only test harness; use `aletheia serve` for production startup"
 )]
+// WHY: sequential startup assembly (oikos -> config -> session store ->
+// registries -> nous manager -> auth state -> app state), mirroring
+// `router::build_router_with`'s ordering-sensitive shape. Extraction would
+// fragment initialization order across functions without reducing risk.
+#[expect(
+    clippy::too_many_lines,
+    reason = "sequential startup assembly where step order is load-bearing; extraction would obscure that ordering"
+)]
 pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     let oikos = Oikos::from_root(&config.instance_path);
     oikos.validate().context(ValidationSnafu)?;
@@ -170,6 +178,10 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     // see the consequence in every log aggregator, not just buried in the
     // gateway config. (#3383)
     taxis::validate::warn_if_auth_disabled(&aletheia_config);
+
+    // SECURITY(#5170): mirrors the CLI's LAN-refusal so every
+    // `pylon::server::run` caller gets it, not only `aletheia serve`.
+    refuse_auth_none_lan_without_opt_in(&aletheia_config, &config.bind_addr)?;
 
     let (jwt_manager, auth_facade) = build_auth_state(&aletheia_config, &oikos)?;
 
@@ -262,6 +274,56 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
     state.nous_manager.shutdown_readonly().await;
     info!("pylon shutdown complete");
     Ok(())
+}
+
+/// Extract the host portion of a `host:port` bind address.
+///
+/// Handles bracketed IPv6 literals (`"[::1]:3000"` -> `"::1"`) so the result
+/// matches the literal forms `taxis::validate::is_loopback_bind` accepts.
+fn bind_host(addr: &str) -> &str {
+    if let Some(rest) = addr.strip_prefix('[') {
+        return rest.split(']').next().unwrap_or(addr);
+    }
+    addr.rsplit_once(':').map_or(addr, |(host, _port)| host)
+}
+
+/// Refuse to proceed with `gateway.auth.mode = "none"` on a non-loopback
+/// bind unless the operator has explicitly opted in.
+///
+/// # Errors
+///
+/// Returns [`ServerError::Auth`] when auth is disabled, the bind address is
+/// not loopback, and `ALETHEIA_ALLOW_AUTH_NONE_LAN` is not set to `"1"`.
+fn refuse_auth_none_lan_without_opt_in(
+    config: &AletheiaConfig,
+    bind_addr: &str,
+) -> Result<(), ServerError> {
+    if config.gateway.auth.mode != "none" {
+        return Ok(());
+    }
+    let host = bind_host(bind_addr);
+    if taxis::validate::is_loopback_bind(host) {
+        return Ok(());
+    }
+    if taxis::validate::auth_none_lan_opt_in_enabled() {
+        warn!(
+            bind = %bind_addr,
+            "authentication is disabled (auth.mode = \"none\") on a non-localhost address -- \
+             the API is accessible without credentials (ALETHEIA_ALLOW_AUTH_NONE_LAN=1 set)"
+        );
+        return Ok(());
+    }
+    Err(ServerError::Auth {
+        message: format!(
+            "refusing to bind {bind_addr}: gateway.auth.mode = \"none\" on a non-localhost \
+             address would serve unauthenticated traffic with role '{}'. \
+             Either (a) set gateway.auth.mode = \"token\" or \"jwt\", \
+             (b) bind to a loopback address, or \
+             (c) set {}=1 to opt in explicitly.",
+            config.gateway.auth.none_role,
+            taxis::validate::ALLOW_AUTH_NONE_LAN_ENV,
+        ),
+    })
 }
 
 fn build_auth_state(
@@ -606,6 +668,121 @@ mod tests {
             std::path::PathBuf::from("/tmp/instance")
         );
     }
+
+    #[test]
+    fn bind_host_strips_port() {
+        assert_eq!(bind_host("127.0.0.1:3000"), "127.0.0.1");
+        assert_eq!(bind_host("0.0.0.0:3000"), "0.0.0.0");
+        assert_eq!(bind_host("localhost:3000"), "localhost");
+    }
+
+    #[test]
+    fn bind_host_strips_bracketed_ipv6_port() {
+        assert_eq!(bind_host("[::1]:3000"), "::1");
+        assert_eq!(bind_host("[2001:db8::1]:3000"), "2001:db8::1");
+    }
+
+    #[test]
+    fn bind_host_passes_through_bare_host() {
+        // WHY: defensive fallback if a caller ever passes a host with no port.
+        assert_eq!(bind_host("127.0.0.1"), "127.0.0.1");
+    }
+
+    fn config_with_auth_mode(mode: &str) -> AletheiaConfig {
+        let mut config = AletheiaConfig::default();
+        mode.clone_into(&mut config.gateway.auth.mode);
+        config
+    }
+
+    /// SECURITY(#5170): non-`"none"` auth modes are never refused, regardless
+    /// of bind address.
+    #[test]
+    fn allows_non_none_auth_mode_on_any_bind() {
+        let config = config_with_auth_mode("token");
+        assert!(refuse_auth_none_lan_without_opt_in(&config, "0.0.0.0:3000").is_ok());
+    }
+
+    /// SECURITY(#5170): `auth.mode = "none"` on a loopback bind is the
+    /// supported local-dev shape and must not be refused.
+    #[test]
+    fn allows_auth_none_on_loopback_bind() {
+        let config = config_with_auth_mode("none");
+        assert!(refuse_auth_none_lan_without_opt_in(&config, "127.0.0.1:3000").is_ok());
+        assert!(refuse_auth_none_lan_without_opt_in(&config, "[::1]:3000").is_ok());
+        assert!(refuse_auth_none_lan_without_opt_in(&config, "localhost:3000").is_ok());
+    }
+
+    /// SECURITY(#5170): this is the defect the issue names — the exported
+    /// `pylon::server::run` harness must refuse `auth.mode = "none"` on a
+    /// non-loopback bind exactly like the `aletheia serve` CLI path does,
+    /// not just warn and proceed.
+    #[test]
+    fn refuses_auth_none_on_non_loopback_bind_without_opt_in() {
+        let _guard = AUTH_LAN_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        #[expect(
+            unsafe_code,
+            reason = "std::env::remove_var requires unsafe in edition 2024; serialised via AUTH_LAN_ENV_LOCK"
+        )]
+        // SAFETY: `AUTH_LAN_ENV_LOCK` serialises ALLOW_AUTH_NONE_LAN mutations across tests.
+        unsafe {
+            std::env::remove_var(taxis::validate::ALLOW_AUTH_NONE_LAN_ENV);
+        }
+
+        let config = config_with_auth_mode("none");
+        let err = match refuse_auth_none_lan_without_opt_in(&config, "0.0.0.0:3000") {
+            Ok(()) => panic!(
+                "auth.mode=none on a non-loopback bind must be refused without the LAN opt-in"
+            ),
+            Err(err) => err,
+        };
+        let ServerError::Auth { message } = err else {
+            panic!("expected ServerError::Auth");
+        };
+        assert!(
+            message.contains(taxis::validate::ALLOW_AUTH_NONE_LAN_ENV),
+            "error should point the operator at the opt-in env var: {message}"
+        );
+    }
+
+    #[test]
+    fn allows_auth_none_on_non_loopback_bind_with_opt_in() {
+        let _guard = AUTH_LAN_ENV_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        #[expect(
+            unsafe_code,
+            reason = "std::env::set_var requires unsafe in edition 2024; serialised via AUTH_LAN_ENV_LOCK"
+        )]
+        // SAFETY: `AUTH_LAN_ENV_LOCK` held for the duration of this test.
+        unsafe {
+            std::env::set_var(taxis::validate::ALLOW_AUTH_NONE_LAN_ENV, "1");
+        }
+
+        let config = config_with_auth_mode("none");
+        let result = refuse_auth_none_lan_without_opt_in(&config, "0.0.0.0:3000");
+
+        #[expect(
+            unsafe_code,
+            reason = "std::env::remove_var requires unsafe in edition 2024; serialised via AUTH_LAN_ENV_LOCK"
+        )]
+        // SAFETY: Cleanup so later tests see an unset var.
+        unsafe {
+            std::env::remove_var(taxis::validate::ALLOW_AUTH_NONE_LAN_ENV);
+        }
+
+        assert!(
+            result.is_ok(),
+            "the explicit LAN opt-in env var must allow the bind: {result:?}"
+        );
+    }
+
+    /// WHY: `ALLOW_AUTH_NONE_LAN_ENV` is process-wide `std::env` state; tests
+    /// in this module that mutate it run in parallel threads within one test
+    /// binary, so a mutex serialises them (same pattern as taxis's
+    /// `AUTH_ENV_LOCK` in `validate_tests.rs`).
+    static AUTH_LAN_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
     fn server_error_bind_display_includes_addr() {

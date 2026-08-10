@@ -220,12 +220,17 @@ mode = "{auth_mode}"
 # tls:
 # [gateway.tls]
 # enabled = true
-# cert_path = "config/tls/cert.pem"
-# key_path = "config/tls/key.pem"
+# certPath = "config/tls/cert.pem"
+# keyPath = "config/tls/key.pem"
 
-# cors:
-# [gateway.cors]
-# allowed_origins = ["https://my-dashboard.local"]
+# WHY this section is written out rather than commented like its neighbours:
+# gateway.cors.allowedOrigins defaults to an EMPTY list, and empty means
+# permissive, not closed. With auth.mode = "none" that combination lets any
+# page the operator has open read gateway responses cross-origin, so validation
+# refuses it. Scoping the list to this instance's own loopback origins keeps a
+# same-origin dashboard working and blocks every third-party page.
+[gateway.cors]
+allowedOrigins = ["http://127.0.0.1:18789", "http://localhost:18789"]
 
 # csrf:
 # [gateway.csrf]
@@ -263,19 +268,19 @@ workspace = "{workspace}"
 # --- Channels ---
 # [[channels.signal.accounts]]
 # account = "+1XXXXXXXXXX"
-# http_host = "localhost"
-# http_port = 8080
+# httpHost = "localhost"
+# httpPort = 8080
 #
 # [channels.matrix.accounts.primary]
 # homeserver = "https://matrix.example.org"
-# access_token_env = "MATRIX_ACCESS_TOKEN"
-# user_id = "@bot:example.org"
+# accessTokenEnv = "MATRIX_ACCESS_TOKEN"
+# userId = "@bot:example.org"
 
 # --- Bindings (route messages to agents) ---
 # [[bindings]]
 # channel = "signal"
 # source = "*"
-# nous_id = "{agent_id}"
+# nousId = "{agent_id}"
 
 # --- Embedding (for recall/knowledge search) ---
 # [embedding]

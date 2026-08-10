@@ -255,9 +255,13 @@ labelled by method and path.
 
 ### `GET /api/docs/openapi.json`
 
-OpenAPI 3 specification. No auth required.
+OpenAPI 3 specification. Requires bearer auth (same as the versioned API);
+reachable without a token only when `gateway.auth.mode = "none"`, matching
+the rest of the API in that mode. The spec itself enumerates every route and
+schema, so it is gated the same way `/metrics` is (#5174).
 
 **Response `200 OK`** - JSON OpenAPI document.
+**Response `401 Unauthorized`** - missing or invalid bearer token (`token`/`jwt` auth modes).
 
 ---
 

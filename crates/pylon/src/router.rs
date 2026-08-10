@@ -227,6 +227,20 @@ pub fn build_router_with(
     }
     let metrics_router = metrics_router.with_state(Arc::clone(&state));
 
+    // WHY(#5174): the OpenAPI spec enumerates every route, request/response
+    // schema, and infrastructure surface — the same class of operational-
+    // topology leak `/metrics` guards against. Require the same bearer auth
+    // as the API surface it describes rather than leaving it open to any
+    // unauthenticated caller. `/api/health` remains the only unauthenticated
+    // route: minimal liveness only (see `handlers::health::check`).
+    let docs_router = Router::new()
+        .route("/api/docs/openapi.json", get(openapi::openapi_json))
+        .route_layer(axum::middleware::from_fn_with_state(
+            Arc::clone(&state),
+            require_bearer_auth,
+        ))
+        .with_state(Arc::clone(&state));
+
     let mut router = Router::new()
         .nest(API_V1, v1)
         .route(API_HEALTH, get(health::check))
@@ -235,8 +249,8 @@ pub fn build_router_with(
         // views already call; auth is enforced by the handler's `Claims`
         // extractor + `require_role`, same as every `/api/v1` route.
         .route("/api/tool-stats", get(insights::get_tool_stats))
-        .route("/api/docs/openapi.json", get(openapi::openapi_json))
-        .merge(metrics_router);
+        .merge(metrics_router)
+        .merge(docs_router);
 
     router = router.fallback(fallback_handler);
 

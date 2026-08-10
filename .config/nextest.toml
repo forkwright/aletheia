@@ -21,8 +21,15 @@ filter = 'package(integration-tests) and test(=baseline_uninterrupted_migration_
 retries = 0
 
 [profile.ci]
-# Same retry policy in CI
-retries = { backoff = "fixed", count = 2, delay = "1s" }
+# WHY no retries in the profile the REQUIRED gate runs: a retry makes the check non-deterministic in
+# the PASS direction. A flaky test that fails once and passes on retry reports green, so the
+# Gate-Passed trailer attests a result the same commit may not reproduce — and the flake is never
+# seen, because the only signal it would produce was consumed by the retry.
+#
+# Flakes are defects to fix. `profile.default` keeps retries for local runs where a transient failure
+# is noise rather than evidence, and per-test overrides remain available for a genuine external
+# dependency.
+retries = 0
 # Terminate slow tests after a second slow-timeout expiry
 slow-timeout = { period = "60s", terminate-after = 2 }
 
