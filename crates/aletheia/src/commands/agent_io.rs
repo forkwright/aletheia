@@ -24,8 +24,10 @@ fn validate_nous_id(nous_id: &str) -> Result<()> {
 ///
 /// The ID is consumed as a directory name (`nous/<id>`) and embedded in
 /// config — any traversal segment, separator, or NUL byte makes the
-/// import able to write outside the instance root. Matches the rules
-/// `add-nous` enforces on freshly created agents.
+/// import able to write outside the instance root. Delegates charset,
+/// length, and hyphen-boundary rules to `koina::id::NousId` — the same
+/// validator `add-nous`, the `init` prompt, and the HTTP create path use
+/// (#4638: these four entrypoints used to drift independently).
 fn validate_agent_id_for_paths(id: &str, source: &str) -> Result<()> {
     if id.is_empty() {
         whatever!("{source} must not be empty");
@@ -33,13 +35,9 @@ fn validate_agent_id_for_paths(id: &str, source: &str) -> Result<()> {
     if id.contains('\0') {
         whatever!("{source} must not contain NUL bytes");
     }
-    if !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
-        whatever!("{source} must contain only alphanumeric characters and hyphens (got {id:?})");
-    }
-    if id.starts_with('-') || id.ends_with('-') {
-        whatever!("{source} must not start or end with a hyphen (got {id:?})");
-    }
-    Ok(())
+    koina::id::NousId::new(id)
+        .map(|_| ())
+        .map_err(|e| crate::error::Error::msg(format!("{source}: {e}")))
 }
 
 fn validate_target_id(target_id: Option<&str>) -> Result<()> {
@@ -700,6 +698,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
                 cache_read_tokens: record.cache_read_tokens,
                 cache_write_tokens: record.cache_write_tokens,
                 model: record.model,
+                created_at: record.created_at,
             })
             .collect::<Vec<_>>();
 
@@ -1695,6 +1694,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                             cache_read_tokens: record.cache_read_tokens,
                             cache_write_tokens: record.cache_write_tokens,
                             model: record.model.clone(),
+                            created_at: record.created_at.clone(),
                         })
                         .with_whatever_context(|_| {
                             format!(
@@ -2658,6 +2658,7 @@ mod tests {
                     cache_read_tokens: 3,
                     cache_write_tokens: 4,
                     model: Some("claude-sonnet-4-6".to_owned()),
+                    created_at: "2026-03-05T10:00:00Z".to_owned(),
                 }]),
                 parent_session_id: None,
                 thread_id: None,
@@ -2741,6 +2742,7 @@ workspace = "nous/{agent_id}"
                 cache_read_tokens: 2,
                 cache_write_tokens: 3,
                 model: Some("mock-model".to_owned()),
+                created_at: "2026-03-05T10:00:00Z".to_owned(),
             })
             .unwrap();
         store
@@ -3060,6 +3062,7 @@ workspace = "nous/{agent_id}"
                 cache_read_tokens: 1,
                 cache_write_tokens: 2,
                 model: Some("mock-model".to_owned()),
+                created_at: "2026-03-05T10:00:00Z".to_owned(),
             })
             .unwrap();
         // Distill seqs 1 and 2 so the export includes both distilled and

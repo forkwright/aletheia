@@ -245,6 +245,15 @@ impl SessionCounters {
     }
 
     /// Account for an import that may overwrite one row and displace another.
+    ///
+    /// WHY(#6633): gated to match its sole caller, `SessionStore::import_session`
+    /// (the `#[cfg(feature = "portability")]` block below). Without this,
+    /// building `-p graphe`/`-p episteme` without the `portability` feature
+    /// compiles this method with zero live callers — reported as dead code
+    /// by a scoped `clippy -p <crate>` even though `--workspace` (where some
+    /// other member enables `portability`) sees it used. Matching the cfg
+    /// makes the two builds agree instead of just documenting the trap.
+    #[cfg(feature = "portability")]
     fn record_import(
         &self,
         overwritten: Option<SessionStatus>,
@@ -1530,6 +1539,9 @@ impl SessionStore {
             }
             .build()
         })?;
+        // SECURITY(#5270): display-name is session metadata, covered by the
+        // critical-write durability policy documented on `ensure_durable`.
+        self.ensure_durable()?;
         Ok(())
     }
 
@@ -1645,6 +1657,10 @@ impl SessionStore {
             }
             .build()
         })?;
+        // SECURITY(#5270): a hard delete is the highest-stakes write this
+        // store performs — a caller told "deleted" must not observe the
+        // rows again after a crash before the OS flushed the commit.
+        self.ensure_durable()?;
         self.session_counts.record_removed(session.status);
 
         Ok(true)
@@ -2007,6 +2023,11 @@ impl SessionStore {
             }
             .build()
         })?;
+        // WHY(#5270): distillation state gates whether a message's content
+        // is later dropped by `insert_distillation_summary` — losing this
+        // flag to a crash would make an undistilled message look already
+        // summarized.
+        self.ensure_durable()?;
 
         info!(session_id, distilled = seqs.len(), "distilled messages");
         Ok(())
@@ -2119,6 +2140,10 @@ impl SessionStore {
             }
             .build()
         })?;
+        // SECURITY(#5270): this permanently deletes the original distilled
+        // messages, replacing them with a summary — the single most
+        // destructive mutation in this file after `delete_session`.
+        self.ensure_durable()?;
 
         info!(
             session_id,
@@ -2207,6 +2232,9 @@ impl SessionStore {
             }
             .build()
         })?;
+        // SECURITY(#5270): distillation records feed audit/recall history;
+        // flush before releasing the lock below.
+        self.ensure_durable()?;
 
         // WARNING: release the write lock before pruning — prune_distillation_records
         // re-acquires it and the Mutex is non-reentrant (would self-deadlock).
@@ -2261,6 +2289,11 @@ impl SessionStore {
         }
         tx.commit()
             .map_err(|e| storage_error(format!("fjall prune_distillation_records: {e}")))?;
+        // WHY(#5270): deliberately not `ensure_durable()` — this only trims
+        // rows already past the retention cap. A crash before the OS
+        // flushes this commit just leaves the excess in place until the
+        // next `record_distillation` call re-triggers pruning; no data the
+        // application reads as current is lost.
         Ok(())
     }
 
@@ -2305,6 +2338,10 @@ impl SessionStore {
         }
         tx.commit()
             .map_err(|e| storage_error(format!("fjall cleanup_usage_records: {e}")))?;
+        // WHY(#5270): deliberately not `ensure_durable()` — same reasoning
+        // as `prune_distillation_records`: this only trims rows already
+        // past `keep_last_n`, and a missed flush just delays the trim to
+        // the next call.
         Ok(to_delete as u64) // kanon:ignore RUST/as-cast — count of deleted rows, bounded by partition size
     }
 
@@ -2701,6 +2738,9 @@ impl SessionStore {
             }
             .build()
         })?;
+        // SECURITY(#5270): agent notes are operator/agent-authored session
+        // content, covered by the critical-write durability policy.
+        self.ensure_durable()?;
 
         Ok(note_id)
     }
@@ -2774,11 +2814,22 @@ impl SessionStore {
             }
             .build()
         })?;
+        // SECURITY(#5270): a delete the caller is told succeeded must not
+        // reappear after a crash — same reasoning as `delete_session`.
+        self.ensure_durable()?;
 
         Ok(true)
     }
 
     // ── Blackboard ────────────────────────────────────────────────────────
+    //
+    // WHY(#5270): blackboard writes/deletes intentionally skip
+    // `ensure_durable()` — entries are agent-coordination scratch space
+    // with a TTL (`ttl_seconds`/`expires_at` above), explicitly not part
+    // of the durable session record. A crash losing the last few
+    // milliseconds of blackboard churn re-derives on the next write; this
+    // is the "intentionally ephemeral" class the critical-write policy on
+    // `ensure_durable` carves out.
 
     /// Write or update a blackboard entry. Upserts on key.
     #[instrument(skip(self, value), level = "debug")]

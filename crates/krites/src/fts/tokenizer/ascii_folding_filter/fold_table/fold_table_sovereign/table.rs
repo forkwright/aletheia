@@ -2,8 +2,9 @@
 //!
 //! Regenerate: `python3 fold_table_sovereign/generate.py` from the module's
 //! own directory (see that script for the full source/methodology citation).
-//! Proved equivalent to the derived table over the full BMP by
-//! `tests/bmp_equivalence.rs`.
+//! Frozen to the fold set of the retired derived table: proved equivalent to it
+//! over the full BMP before that table was deleted. See `generate.py`'s
+//! `EXCLUDE_SET` for the codepoints this holds back.
 
 /// `(codepoint, ascii fold)` pairs, sorted ascending by codepoint for binary search.
 pub(super) static FOLD_TABLE: [(u32, &str); 1242] = [
