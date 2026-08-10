@@ -463,8 +463,13 @@ fn check_egress_remote_addr_none_is_ok() {
 
 #[test]
 fn check_egress_remote_addr_enforces_allowlist_on_reconnect() {
-    let gate = EgressGate::new(EgressPolicy::Allowlist, &["10.0.0.5".to_owned()]);
-    let unlisted = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 6)), 443);
+    // WHY documentation-range addresses (RFC 5737) and not 10.0.0.x: check_egress_remote_addr
+    // applies the private/internal guard FIRST and returns before consulting the allowlist at
+    // all, so a private pair asserts on the rebinding message rather than on the allowlist and
+    // never exercises this test's subject. These are public as far as is_private_ip is
+    // concerned, and reserved so they can never resolve to a real host.
+    let gate = EgressGate::new(EgressPolicy::Allowlist, &["203.0.113.5".to_owned()]);
+    let unlisted = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 6)), 443);
     let err = check_egress_remote_addr(&gate, Some(unlisted))
         .expect_err("post-connect address must also satisfy the allowlist");
     assert!(err.contains("allowlist"));
