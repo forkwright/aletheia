@@ -72,7 +72,13 @@
   --accent: #9A7B4F;
   --accent-hover: #B08E5C;
   --accent-dim: #7A6340;
+  /* WHY: derived from --accent rather than a second hardcoded rgb triple —
+     color-mix(accent 40%, transparent) == rgba(154, 123, 79, 0.4). The
+     rgba fallback is kept as the first declaration for engines predating
+     CSS Color 4 color-mix() (WebKitGTK < 2.38); the second declaration
+     wins wherever color-mix() parses. */
   --accent-muted: rgba(154, 123, 79, 0.4);
+  --accent-muted: color-mix(in srgb, var(--accent) 40%, transparent);
 
   /* ------------------------------------------------------------------ */
   /* Surface elevation — semantic aliases for bg tokens                  */
@@ -90,6 +96,10 @@
   --shadow-modal: 0 8px 32px rgb(18 17 15 / 0.24), 0 4px 8px rgb(18 17 15 / 0.12);
   --shadow-glow: 0 0 0 3px rgb(154 123 79 / 0.2);
   --shadow-inner-highlight: inset 0 1px 0 rgb(255 255 255 / 0.04);
+  /* WHY: upward-cast edge shadow (input bar sits at the bottom of the
+     content column). Same warm-black tint as --shadow-card/-float/-modal,
+     redefined per theme in themes.css exactly like those three. */
+  --shadow-edge: 0 -1px 3px rgb(18 17 15 / 0.08);
 
   /* ------------------------------------------------------------------ */
   /* Animation — timing and easing                                      */
@@ -122,4 +132,15 @@
   /* ------------------------------------------------------------------ */
   --sidebar-width: 220px;
   --sidebar-width-collapsed: 48px;
+  --topbar-height: 52px;
+  --connect-width: 400px;
+
+  /* ------------------------------------------------------------------ */
+  /* Typikon grammar — structural rule lines (dividers, editorial       */
+  /* underlines). Aliases --border-separator under its own semantic     */
+  /* name: a "rule" is a drawn line that structures content, distinct   */
+  /* from --border-separator's role as a generic panel divider, even    */
+  /* though both resolve to the same hairline weight today.             */
+  /* ------------------------------------------------------------------ */
+  --rule: var(--border-separator);
 }

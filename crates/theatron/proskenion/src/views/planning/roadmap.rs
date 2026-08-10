@@ -8,7 +8,10 @@ use crate::components::timeline::{
 use crate::state::planning::{Phase, RoadmapStore, phase_border_color, phase_status_color};
 
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "roadmap route is pending B23 backend work")]
+#[expect(
+    dead_code,
+    reason = "roadmap route is pending B23 backend work (#4482)"
+)]
 enum FetchState {
     Loading,
     Loaded(RoadmapStore),
@@ -38,19 +41,6 @@ const DETAIL_PANEL: &str = "\
     margin-top: var(--space-4);\
 ";
 
-const REFRESH_BTN: &str = "\
-    background: var(--border); \
-    color: var(--text-primary); \
-    border: 1px solid var(--border); \
-    border-radius: var(--radius-md); \
-    padding: var(--space-1) var(--space-3); \
-    font-size: var(--text-xs); \
-    cursor: pointer; \
-    transition: background-color var(--transition-quick), \
-                color var(--transition-quick), \
-                border-color var(--transition-quick);\
-";
-
 const PLACEHOLDER_STYLE: &str = "\
     display: flex; \
     flex-direction: column; \
@@ -70,7 +60,7 @@ const PIXELS_PER_DAY: f64 = 4.0;
 #[component]
 pub(crate) fn RoadmapView(project_id: String) -> Element {
     let _ = &project_id;
-    let mut fetch_state = use_signal(|| FetchState::NotAvailable);
+    let fetch_state = use_signal(|| FetchState::NotAvailable);
     let mut zoom = use_signal(|| 1.0f64);
     let mut selected_phase = use_signal(|| None::<usize>);
 
@@ -81,13 +71,6 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
             div {
                 style: "{HEADER_ROW}",
                 h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Roadmap" }
-                button {
-                    style: "{REFRESH_BTN}",
-                    onclick: move |_| {
-                        fetch_state.set(FetchState::NotAvailable);
-                    },
-                    "Refresh"
-                }
             }
 
             match &*fetch_state.read() {

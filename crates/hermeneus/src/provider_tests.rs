@@ -329,6 +329,72 @@ fn explicit_provider_route_selects_named_provider() {
     assert_eq!(selected.name(), "named-provider");
 }
 
+/// Mock provider that exposes its own health tracker, for exercising
+/// [`LlmProvider::health_tracker`] sharing between a provider and the
+/// registry that holds it.
+struct HealthSharingProvider {
+    tracker: Arc<ProviderHealthTracker>,
+}
+
+impl LlmProvider for HealthSharingProvider {
+    fn complete<'a>(
+        &'a self,
+        _request: &'a CompletionRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
+        Box::pin(async { Ok(crate::test_utils::make_response("ok")) })
+    }
+
+    fn supported_models(&self) -> &[&str] {
+        &["health-sharing-model"]
+    }
+
+    fn name(&self) -> &'static str {
+        "health-sharing"
+    }
+
+    fn health_tracker(&self) -> Option<Arc<ProviderHealthTracker>> {
+        Some(Arc::clone(&self.tracker))
+    }
+}
+
+#[test]
+fn register_shares_a_providers_own_health_tracker() {
+    // WHY(#5255): a provider that exposes its own tracker via
+    // `health_tracker` must have the registry SHARE that exact instance
+    // rather than build an independent one — otherwise routing decisions
+    // and the provider's own internal circuit breaker can disagree about
+    // whether the provider is healthy.
+    let tracker = Arc::new(ProviderHealthTracker::new(
+        "health-sharing",
+        HealthConfig::default(),
+    ));
+    let provider = HealthSharingProvider {
+        tracker: Arc::clone(&tracker),
+    };
+
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(provider));
+
+    // Mutate the tracker directly, exactly as a provider's own internal
+    // circuit breaker would from inside its `execute()` — NOT through the
+    // registry's `record_error`.
+    tracker.record_error(
+        &crate::error::AuthFailedSnafu {
+            message: "invalid key".to_owned(),
+        }
+        .build(),
+    );
+
+    // The registry must observe the SAME state through its own query path,
+    // proving the two are one tracker, not two independently-updated ones.
+    match registry.provider_health("health-sharing") {
+        Some(ProviderHealth::Down { .. }) => {}
+        other => {
+            panic!("expected registry to observe the shared tracker's Down state, got {other:?}")
+        }
+    }
+}
+
 #[test]
 fn explicit_provider_route_requires_named_provider_to_claim_model() {
     let mut registry = ProviderRegistry::new();

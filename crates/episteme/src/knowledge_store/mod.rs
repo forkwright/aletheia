@@ -67,9 +67,16 @@ pub(crate) mod marshal;
 #[cfg(feature = "mneme-engine")]
 mod migration;
 #[cfg(feature = "mneme-engine")]
+mod migration_atomic;
+#[cfg(feature = "mneme-engine")]
 mod search;
 #[cfg(feature = "mneme-engine")]
 mod skills;
+/// Pre-migration verified snapshot (aletheia#5779 §8.5). Independent of
+/// `mneme-engine` — pure filesystem + fjall, no Datalog engine involved —
+/// so callers can snapshot before ever touching `KnowledgeStore`.
+#[cfg(feature = "storage-fjall")]
+pub mod snapshot;
 
 #[cfg(feature = "mneme-engine")]
 pub use derived_rules::DerivedFreshness;
@@ -619,6 +626,11 @@ impl crate::query_rewrite::HasRrfScore for HybridResult {
 #[cfg(feature = "mneme-engine")]
 pub struct KnowledgeStore {
     db: std::sync::Arc<crate::engine::Db>,
+    /// Filesystem root for a fjall-backed store; `None` for an in-memory
+    /// store. WHY: the migration free-space precheck (aletheia#5779, §8.3)
+    /// needs the on-disk path to query filesystem headroom, and `Db` does
+    /// not expose it (storage backend is dispatched behind an internal enum).
+    path: Option<std::path::PathBuf>,
     dim: usize,
     embedding_model: String,
     allow_assumed_embedding_meta: bool,
@@ -679,6 +691,7 @@ impl KnowledgeStore {
         }
         let store = Self {
             db: std::sync::Arc::new(db),
+            path: None,
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
@@ -707,6 +720,15 @@ impl KnowledgeStore {
     ) -> crate::error::Result<std::sync::Arc<Self>> {
         let path = path.as_ref();
         Self::migrate_to_cohort_layout(path)?;
+        // WHY (aletheia#5779 F4): every production entry point that can run
+        // a destructive schema migration goes through this function — this
+        // is its first statement specifically so no caller can bypass it.
+        // The alternative (a funnel-wrapper callers opt into) was rejected:
+        // an opt-in can be forgotten at any of the ~12 call sites, and this
+        // review's own F4 finding is exactly that mistake (11 of 12 already
+        // were).
+        Self::protect_pre_migration(path)?;
+        // `mut` because the hot-reload wiring below installs a rule watcher on it.
         let mut db = crate::engine::Db::open_fjall(path).map_err(|e| {
             crate::error::EngineInitSnafu {
                 message: e.to_string(),
@@ -723,6 +745,7 @@ impl KnowledgeStore {
         }
         let store = Self {
             db: std::sync::Arc::new(db),
+            path: Some(path.to_path_buf()),
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
@@ -840,6 +863,95 @@ impl KnowledgeStore {
             })?;
         }
         Ok(())
+    }
+
+    /// Take a verified pre-migration snapshot of `path` if — and only if —
+    /// a schema migration might actually run against it this boot
+    /// (aletheia#5779 F3: the prior shape paid a full store copy plus full
+    /// scan on every single boot, migration pending or not).
+    ///
+    /// Must run strictly before `crate::engine::Db::open_fjall(path)`
+    /// establishes the long-lived handle — see `snapshot` module docs for
+    /// why the raw filesystem copy needs a quiescent source.
+    #[cfg(feature = "storage-fjall")]
+    fn protect_pre_migration(path: &std::path::Path) -> crate::error::Result<()> {
+        if !path.exists() {
+            // Fresh cohort: nothing on disk yet, so no migration can run
+            // against it (`init_schema`'s fresh-store branch stamps
+            // `SCHEMA_VERSION` directly, it never calls
+            // `apply_pending_migrations`) — nothing to protect.
+            return Ok(());
+        }
+        if !Self::schema_migration_might_run(path) {
+            return Ok(());
+        }
+        let snapshot_dir = path.with_extension("pre-migration-snapshot");
+        crate::knowledge_store::snapshot::pre_migration_snapshot(path, &snapshot_dir)
+            .map(|_path| ())
+    }
+
+    /// Cheap, fail-OPEN probe: is it possible a schema migration runs
+    /// against `path` this boot? Used only to decide whether the
+    /// (expensive) pre-migration snapshot is worth taking — never to decide
+    /// whether migrations actually run; that decision stays entirely with
+    /// `init_schema`/`apply_pending_migrations` below.
+    ///
+    /// Any uncertainty (probe-open failure, missing schema relation, a
+    /// version that doesn't positively match [`Self::SCHEMA_VERSION`]) is
+    /// treated as "a migration might run" — the snapshot is the safety net
+    /// for exactly the cases this probe cannot rule out.
+    ///
+    /// Opens `path` with a throwaway `Db` handle that is dropped at the end
+    /// of this function — strictly before the real `Db::open_fjall` call in
+    /// [`Self::open_fjall`], and before `protect_pre_migration`'s raw
+    /// filesystem copy (if any) runs. Sequential open-then-drop-then-reopen
+    /// of the same fjall keyspace by one process, with no concurrent
+    /// handle, is already an established pattern in this codebase
+    /// (`agent_io.rs` reopen-durability tests) and releases the fjall lock
+    /// file cleanly before either of those runs.
+    #[cfg(feature = "storage-fjall")]
+    fn schema_migration_might_run(path: &std::path::Path) -> bool {
+        use std::collections::BTreeMap;
+
+        use crate::engine::{DataValue, ScriptMutability};
+
+        let probe = match crate::engine::Db::open_fjall(path) {
+            Ok(db) => db,
+            Err(e) => {
+                tracing::debug!(
+                    error = %e,
+                    path = %path.display(),
+                    "pre-migration snapshot gate: probe open failed, protecting"
+                );
+                return true;
+            }
+        };
+
+        let mut params = BTreeMap::new();
+        params.insert("key".to_owned(), DataValue::Str("schema".into()));
+        let rows = match probe.run(
+            r"?[version] := *schema_version{key: $key, version}",
+            params,
+            ScriptMutability::Immutable,
+        ) {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::debug!(
+                    error = %e,
+                    path = %path.display(),
+                    "pre-migration snapshot gate: schema version read failed, protecting"
+                );
+                return true;
+            }
+        };
+
+        let Some(row) = rows.rows.into_iter().next() else {
+            return true; // no stamped version yet -- protect
+        };
+        let Some(version) = row.first().and_then(|v| marshal::extract_int(v).ok()) else {
+            return true;
+        };
+        version != Self::SCHEMA_VERSION
     }
 
     #[expect(

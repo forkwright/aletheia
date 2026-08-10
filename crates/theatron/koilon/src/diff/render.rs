@@ -1,17 +1,18 @@
 //! Diff rendering: unified, side-by-side, word-level, and view rendering.
 
+use gramma::diff::{ChangeType, DiffFile, DiffLine};
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use similar::{ChangeTag, TextDiff};
+use unicode_width::UnicodeWidthStr;
 
 use crate::text::truncate_cols_ellipsis;
 use crate::theme::Theme;
 
-use super::parse::pad_to;
-use super::types::{DiffChange, DiffMode, DiffViewState, FileDiff, collapse_to_replacements};
+use super::types::{DiffMode, DiffViewState};
 
-pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static>> {
+pub(crate) fn render_unified(file: &DiffFile, theme: &Theme) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     lines.push(Line::from(vec![Span::styled(
@@ -25,95 +26,67 @@ pub(crate) fn render_unified(file: &FileDiff, theme: &Theme) -> Vec<Line<'static
             .add_modifier(Modifier::BOLD),
     )]));
 
-    let mut old_line: usize;
-    let mut new_line: usize;
-
     for hunk in &file.hunks {
-        old_line = hunk.old_start;
-        new_line = hunk.new_start;
-
-        let old_count = hunk
-            .changes
-            .iter()
-            .filter(|c| matches!(c, DiffChange::Equal(_) | DiffChange::Delete(_)))
-            .count();
-        let new_count = hunk
-            .changes
-            .iter()
-            .filter(|c| matches!(c, DiffChange::Equal(_) | DiffChange::Insert(_)))
-            .count();
-
         lines.push(Line::from(vec![Span::styled(
             format!(
                 "@@ -{},{} +{},{} @@",
-                hunk.old_start, old_count, hunk.new_start, new_count
+                hunk.old_start, hunk.old_count, hunk.new_start, hunk.new_count
             ),
             Style::default().fg(theme.status.info),
         )]));
 
-        for change in &hunk.changes {
-            match change {
-                DiffChange::Equal(text) => {
-                    let display = text.trim_end_matches('\n');
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("{old_line:>4} {new_line:>4} "), theme.style_dim()),
-                        Span::styled(format!(" {display}"), theme.style_dim()),
-                    ]));
-                    old_line += 1;
-                    new_line += 1;
-                }
-                DiffChange::Delete(text) => {
-                    let display = text.trim_end_matches('\n');
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("{old_line:>4}      "), theme.style_dim()),
-                        Span::styled(
-                            format!("-{display}"),
-                            Style::default().fg(theme.status.error),
-                        ),
-                    ]));
-                    old_line += 1;
-                }
-                DiffChange::Insert(text) => {
-                    let display = text.trim_end_matches('\n');
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("     {new_line:>4} "), theme.style_dim()),
-                        Span::styled(
-                            format!("+{display}"),
-                            Style::default().fg(theme.status.success),
-                        ),
-                    ]));
-                    new_line += 1;
-                }
-                DiffChange::Replace { old, new } => {
-                    let old_disp = old.trim_end_matches('\n');
-                    let new_disp = new.trim_end_matches('\n');
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("{old_line:>4}      "), theme.style_dim()),
-                        Span::styled(
-                            format!("-{old_disp}"),
-                            Style::default().fg(theme.status.error),
-                        ),
-                    ]));
-                    old_line += 1;
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("     {new_line:>4} "), theme.style_dim()),
-                        Span::styled(
-                            format!("+{new_disp}"),
-                            Style::default().fg(theme.status.success),
-                        ),
-                    ]));
-                    new_line += 1;
-                }
-            }
+        for line in &hunk.lines {
+            lines.push(render_unified_line(line, theme));
         }
     }
 
     lines
 }
 
+fn render_unified_line(line: &DiffLine, theme: &Theme) -> Line<'static> {
+    let gutter = format!(
+        "{:>4} {:>4} ",
+        display_no(line.old_line_no),
+        display_no(line.new_line_no)
+    );
+    match line.change_type {
+        ChangeType::Context => Line::from(vec![
+            Span::styled(gutter, theme.style_dim()),
+            Span::styled(format!(" {}", line.content), theme.style_dim()),
+        ]),
+        ChangeType::Remove => Line::from(vec![
+            Span::styled(
+                format!("{:>4}      ", display_no(line.old_line_no)),
+                theme.style_dim(),
+            ),
+            Span::styled(
+                format!("-{}", line.content),
+                Style::default().fg(theme.status.error),
+            ),
+        ]),
+        ChangeType::Add => Line::from(vec![
+            Span::styled(
+                format!("     {:>4} ", display_no(line.new_line_no)),
+                theme.style_dim(),
+            ),
+            Span::styled(
+                format!("+{}", line.content),
+                Style::default().fg(theme.status.success),
+            ),
+        ]),
+        // WHY: ChangeType is #[non_exhaustive] upstream; a future gramma
+        // release could add a variant. Degrade to a dim, unprefixed line
+        // rather than fail to build against a semver-compatible bump.
+        _ => Line::from(vec![
+            Span::styled(gutter, theme.style_dim()),
+            Span::styled(line.content.clone(), theme.style_dim()),
+        ]),
+    }
+}
+
 /// Render hunks in a side-by-side layout.
 pub(crate) fn render_side_by_side(
-    file: &FileDiff,
+    file: &DiffFile,
     width: u16,
     theme: &Theme,
 ) -> Vec<Line<'static>> {
@@ -140,102 +113,144 @@ pub(crate) fn render_side_by_side(
     )]);
     lines.push(separator_line);
 
-    let mut old_line: usize;
-    let mut new_line: usize;
-
     for hunk in &file.hunks {
-        old_line = hunk.old_start;
-        new_line = hunk.new_start;
-
         lines.push(Line::from(vec![Span::styled(
             format!(
                 "@@ -{},{} +{},{} @@",
-                hunk.old_start,
-                hunk.changes
-                    .iter()
-                    .filter(|c| matches!(c, DiffChange::Equal(_) | DiffChange::Delete(_)))
-                    .count(),
-                hunk.new_start,
-                hunk.changes
-                    .iter()
-                    .filter(|c| matches!(c, DiffChange::Equal(_) | DiffChange::Insert(_)))
-                    .count(),
+                hunk.old_start, hunk.old_count, hunk.new_start, hunk.new_count
             ),
             Style::default().fg(theme.status.info),
         )]));
 
-        for change in &hunk.changes {
+        for line in &hunk.lines {
+            lines.push(render_side_by_side_line(
+                line,
+                half_width,
+                content_width,
+                theme,
+            ));
+        }
+    }
+
+    lines
+}
+
+fn render_side_by_side_line(
+    line: &DiffLine,
+    half_width: usize,
+    content_width: usize,
+    theme: &Theme,
+) -> Line<'static> {
+    let truncated = pad_to(
+        truncate_cols_ellipsis(&line.content, content_width),
+        content_width,
+    );
+    match line.change_type {
+        ChangeType::Context => {
+            let left = format!("{:>4} {truncated} ", display_no(line.old_line_no));
+            let right = format!("{:>4} {truncated}", display_no(line.new_line_no));
+            Line::from(vec![
+                Span::styled(pad_to(left, half_width), theme.style_dim()),
+                Span::styled("│", theme.style_dim()),
+                Span::styled(right, theme.style_dim()),
+            ])
+        }
+        ChangeType::Remove => {
+            let left = format!("{:>4} {truncated} ", display_no(line.old_line_no));
+            let right = format!("{:>4} {:<content_width$}", "", "");
+            Line::from(vec![
+                Span::styled(
+                    pad_to(left, half_width),
+                    Style::default().fg(theme.status.error),
+                ),
+                Span::styled("│", theme.style_dim()),
+                Span::styled(right, theme.style_dim()),
+            ])
+        }
+        ChangeType::Add => {
+            let left = format!("{:>4} {:<content_width$} ", "", "");
+            let right = format!("{:>4} {truncated}", display_no(line.new_line_no));
+            Line::from(vec![
+                Span::styled(pad_to(left, half_width), theme.style_dim()),
+                Span::styled("│", theme.style_dim()),
+                Span::styled(right, Style::default().fg(theme.status.success)),
+            ])
+        }
+        // WHY: ChangeType is #[non_exhaustive] upstream; a future gramma
+        // release could add a variant. Degrade to a dim, unpaired line
+        // rather than fail to build against a semver-compatible bump.
+        _ => {
+            let left = format!("{:>4} {truncated} ", display_no(line.old_line_no));
+            let right = format!("{:>4} {truncated}", display_no(line.new_line_no));
+            Line::from(vec![
+                Span::styled(pad_to(left, half_width), theme.style_dim()),
+                Span::styled("│", theme.style_dim()),
+                Span::styled(right, theme.style_dim()),
+            ])
+        }
+    }
+}
+
+/// A hunk line prepared for word-diff rendering. gramma's `DiffLine` /
+/// `ChangeType` has no `Replace` concept — each line is independently
+/// Context/Add/Remove — but word-diff mode needs old+new text on hand
+/// together to compute inline highlighting, so a run of `Remove` lines
+/// immediately followed by a run of `Add` lines is paired 1:1, same as the
+/// old koilon-local `DiffChange::Replace` collapsing did.
+#[derive(Debug)]
+pub(crate) enum RenderLine {
+    Single(DiffLine),
+    Replace { old: DiffLine, new: DiffLine },
+}
+
+/// Pair adjacent remove+add runs within a hunk's lines for word-diff mode.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "while loop maintains i < lines.len() invariant; look-ahead i+1 is guarded by the preceding i+1 < lines.len() check"
+)]
+pub(crate) fn collapse_to_replacements(lines: &[DiffLine]) -> Vec<RenderLine> {
+    let mut collapsed = Vec::new();
+    let mut i = 0;
+
+    while i < lines.len() {
+        if lines[i].change_type == ChangeType::Remove
+            && i + 1 < lines.len()
+            && lines[i + 1].change_type == ChangeType::Add
+        {
+            collapsed.push(RenderLine::Replace {
+                old: lines[i].clone(), // kanon:ignore RUST/indexing-slicing -- i bounded by the while loop condition i < lines.len()
+                new: lines[i + 1].clone(), // kanon:ignore RUST/indexing-slicing -- i+1 bounded by the preceding i+1 < lines.len() check
+            });
+            i += 2;
+            continue;
+        }
+        collapsed.push(RenderLine::Single(lines[i].clone())); // kanon:ignore RUST/indexing-slicing -- i bounded by the while loop condition i < lines.len()
+        i += 1;
+    }
+
+    collapsed
+}
+
+/// Render hunks with inline word-level highlighting.
+pub(crate) fn render_word_diff(file: &DiffFile, theme: &Theme) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+
+    lines.push(Line::from(vec![Span::styled(
+        format!("  {} ", file.path),
+        theme.style_accent().add_modifier(Modifier::BOLD),
+    )]));
+
+    for hunk in &file.hunks {
+        lines.push(Line::from(vec![Span::styled(
+            format!("@@ -{} +{} @@", hunk.old_start, hunk.new_start),
+            Style::default().fg(theme.status.info),
+        )]));
+
+        for change in collapse_to_replacements(&hunk.lines) {
             match change {
-                DiffChange::Equal(text) => {
-                    let display = text.trim_end_matches('\n');
-                    let truncated = pad_to(
-                        truncate_cols_ellipsis(display, content_width),
-                        content_width,
-                    );
-                    let left = format!("{old_line:>4} {truncated} ");
-                    let right = format!("{new_line:>4} {truncated}");
-                    lines.push(Line::from(vec![
-                        Span::styled(pad_to(left, half_width), theme.style_dim()),
-                        Span::styled("│", theme.style_dim()),
-                        Span::styled(right, theme.style_dim()),
-                    ]));
-                    old_line += 1;
-                    new_line += 1;
-                }
-                DiffChange::Delete(text) => {
-                    let display = text.trim_end_matches('\n');
-                    let truncated = pad_to(
-                        truncate_cols_ellipsis(display, content_width),
-                        content_width,
-                    );
-                    let left = format!("{old_line:>4} {truncated} ");
-                    let right = format!("{:>4} {:<content_width$}", "", "");
-                    lines.push(Line::from(vec![
-                        Span::styled(
-                            pad_to(left, half_width),
-                            Style::default().fg(theme.status.error),
-                        ),
-                        Span::styled("│", theme.style_dim()),
-                        Span::styled(right, theme.style_dim()),
-                    ]));
-                    old_line += 1;
-                }
-                DiffChange::Insert(text) => {
-                    let display = text.trim_end_matches('\n');
-                    let truncated = pad_to(
-                        truncate_cols_ellipsis(display, content_width),
-                        content_width,
-                    );
-                    let left = format!("{:>4} {:<content_width$} ", "", "");
-                    let right = format!("{new_line:>4} {truncated}");
-                    lines.push(Line::from(vec![
-                        Span::styled(pad_to(left, half_width), theme.style_dim()),
-                        Span::styled("│", theme.style_dim()),
-                        Span::styled(right, Style::default().fg(theme.status.success)),
-                    ]));
-                    new_line += 1;
-                }
-                DiffChange::Replace { old, new } => {
-                    let old_disp = pad_to(
-                        truncate_cols_ellipsis(old.trim_end_matches('\n'), content_width),
-                        content_width,
-                    );
-                    let new_disp = pad_to(
-                        truncate_cols_ellipsis(new.trim_end_matches('\n'), content_width),
-                        content_width,
-                    );
-                    let left = format!("{old_line:>4} {old_disp} ");
-                    let right = format!("{new_line:>4} {new_disp}");
-                    lines.push(Line::from(vec![
-                        Span::styled(
-                            pad_to(left, half_width),
-                            Style::default().fg(theme.status.error),
-                        ),
-                        Span::styled("│", theme.style_dim()),
-                        Span::styled(right, Style::default().fg(theme.status.success)),
-                    ]));
-                    old_line += 1;
-                    new_line += 1;
+                RenderLine::Single(line) => lines.push(render_unified_line(&line, theme)),
+                RenderLine::Replace { old, new } => {
+                    lines.push(render_word_diff_replace_line(&old, &new, theme));
                 }
             }
         }
@@ -244,104 +259,46 @@ pub(crate) fn render_side_by_side(
     lines
 }
 
-/// Render hunks with inline word-level highlighting.
-pub(crate) fn render_word_diff(file: &FileDiff, theme: &Theme) -> Vec<Line<'static>> {
-    let mut lines = Vec::new();
+fn render_word_diff_replace_line(old: &DiffLine, new: &DiffLine, theme: &Theme) -> Line<'static> {
+    let word_diff = TextDiff::from_words(old.content.as_str(), new.content.as_str());
 
-    lines.push(Line::from(vec![Span::styled(
-        format!("  {} ", file.path),
-        theme.style_accent().add_modifier(Modifier::BOLD),
-    )]));
+    let mut spans = vec![
+        Span::styled(
+            format!(
+                "{:>4} {:>4} ",
+                display_no(old.old_line_no),
+                display_no(new.new_line_no)
+            ),
+            theme.style_dim(),
+        ),
+        Span::styled("~", Style::default().fg(theme.status.warning)),
+    ];
 
-    let collapsed = collapse_to_replacements(&file.hunks);
-    let mut old_line: usize;
-    let mut new_line: usize;
-
-    for hunk in &collapsed {
-        old_line = hunk.old_start;
-        new_line = hunk.new_start;
-
-        lines.push(Line::from(vec![Span::styled(
-            format!("@@ -{} +{} @@", hunk.old_start, hunk.new_start),
-            Style::default().fg(theme.status.info),
-        )]));
-
-        for change in &hunk.changes {
-            match change {
-                DiffChange::Equal(text) => {
-                    let display = text.trim_end_matches('\n');
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("{old_line:>4} {new_line:>4} "), theme.style_dim()),
-                        Span::styled(format!(" {display}"), theme.style_dim()),
-                    ]));
-                    old_line += 1;
-                    new_line += 1;
-                }
-                DiffChange::Delete(text) => {
-                    let display = text.trim_end_matches('\n');
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("{old_line:>4}      "), theme.style_dim()),
-                        Span::styled(
-                            format!("-{display}"),
-                            Style::default().fg(theme.status.error),
-                        ),
-                    ]));
-                    old_line += 1;
-                }
-                DiffChange::Insert(text) => {
-                    let display = text.trim_end_matches('\n');
-                    lines.push(Line::from(vec![
-                        Span::styled(format!("     {new_line:>4} "), theme.style_dim()),
-                        Span::styled(
-                            format!("+{display}"),
-                            Style::default().fg(theme.status.success),
-                        ),
-                    ]));
-                    new_line += 1;
-                }
-                DiffChange::Replace { old, new } => {
-                    let old_trimmed = old.trim_end_matches('\n');
-                    let new_trimmed = new.trim_end_matches('\n');
-                    let word_diff = TextDiff::from_words(old_trimmed, new_trimmed);
-
-                    let mut spans = vec![
-                        Span::styled(format!("{old_line:>4} {new_line:>4} "), theme.style_dim()),
-                        Span::styled("~", Style::default().fg(theme.status.warning)),
-                    ];
-
-                    for change_op in word_diff.iter_all_changes() {
-                        let val = change_op.value().to_string();
-                        match change_op.tag() {
-                            ChangeTag::Equal => {
-                                spans.push(Span::styled(val, theme.style_fg()));
-                            }
-                            ChangeTag::Delete => {
-                                spans.push(Span::styled(
-                                    val,
-                                    Style::default()
-                                        .fg(Color::White)
-                                        .bg(theme.status.error)
-                                        .add_modifier(Modifier::CROSSED_OUT),
-                                ));
-                            }
-                            ChangeTag::Insert => {
-                                spans.push(Span::styled(
-                                    val,
-                                    Style::default().fg(Color::White).bg(theme.status.success),
-                                ));
-                            }
-                        }
-                    }
-
-                    lines.push(Line::from(spans));
-                    old_line += 1;
-                    new_line += 1;
-                }
+    for change_op in word_diff.iter_all_changes() {
+        let val = change_op.value().to_string();
+        match change_op.tag() {
+            ChangeTag::Equal => {
+                spans.push(Span::styled(val, theme.style_fg()));
+            }
+            ChangeTag::Delete => {
+                spans.push(Span::styled(
+                    val,
+                    Style::default()
+                        .fg(Color::White)
+                        .bg(theme.status.error)
+                        .add_modifier(Modifier::CROSSED_OUT),
+                ));
+            }
+            ChangeTag::Insert => {
+                spans.push(Span::styled(
+                    val,
+                    Style::default().fg(Color::White).bg(theme.status.success),
+                ));
             }
         }
     }
 
-    lines
+    Line::from(spans)
 }
 
 /// Render a complete diff view state into ratatui Lines (mutable: updates total_lines).
@@ -453,4 +410,24 @@ pub(crate) fn render_diff_view_immutable(
     }
 
     all_lines
+}
+
+/// `NNNN` gutter text for an optional line number, blank when absent
+/// (the line was only added or only removed).
+fn display_no(n: Option<u32>) -> String {
+    n.map_or_else(String::new, |n| n.to_string())
+}
+
+// WHY(#6542): `width` is a terminal column budget, so every measurement here is in
+// display columns. Bytes, chars and columns all disagree on non-ASCII — a CJK char
+// is three bytes, one char and two columns — and the pane is composed against the
+// column grid, so measuring in any other unit lands the `│` separator off its
+// column. `format!("{s:<width$}")` pads by chars and so cannot be used for this.
+pub(super) fn pad_to(s: String, width: usize) -> String {
+    let cols = UnicodeWidthStr::width(s.as_str());
+    if cols >= width {
+        truncate_cols_ellipsis(&s, width)
+    } else {
+        format!("{s}{}", " ".repeat(width - cols))
+    }
 }

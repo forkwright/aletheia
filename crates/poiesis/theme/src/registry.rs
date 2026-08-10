@@ -326,4 +326,31 @@ title = 64
         let err = parse_theme_id("Bad").expect_err("Bad must reject");
         assert!(matches!(err, ThemeError::InvalidId { .. }));
     }
+
+    #[test]
+    fn resolve_rejects_theme_toml_with_css_injection_key() {
+        // SECURITY(#5633): a theme TOML arriving from a CI artifact or
+        // external registry with a crafted `[color.role]` key must fail at
+        // resolve time, before `sinks::css::emit_css` (or typst/latex) ever
+        // sees it — not silently emit broken/injected CSS.
+        let tmp = tempdir().expect("tempdir");
+        let hostile = r##"
+[meta]
+id = "summus"
+title = "Summus"
+
+[color.role]
+"x}: body { color: red; --y" = "#232E54"
+
+[type.family]
+sans = ["Geist"]
+"##;
+        write_theme(tmp.path(), "summus", hostile);
+        let registry = Registry::load_dir(tmp.path()).expect("load_dir");
+        let id = parse_theme_id("summus").expect("parse summus");
+        let err = registry
+            .resolve(&id)
+            .expect_err("crafted CSS-breaking key must reject at resolve time");
+        assert!(matches!(err, ThemeError::InvalidTokenKey { .. }));
+    }
 }

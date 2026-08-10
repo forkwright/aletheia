@@ -44,6 +44,33 @@ fn resolve_role(role_str: &str) -> Option<Role> {
     Role::parse(role_str)
 }
 
+/// Compose an ephemeral sub-agent's system-prompt content from its role
+/// template and (if present) role contract.
+///
+/// WHY(#4775): a contract's `to_prompt_section()` (behaviors/constraints/
+/// tool-group summary) is appended to the template prompt, never replaces
+/// it — an operator-configured `roles.toml` can only add guidance on top of
+/// the base role prompt, not silently rewrite it. A pure function so the
+/// composition is testable without the full async spawn lifecycle.
+fn compose_soul_content(
+    role_str: &str,
+    template: Option<&crate::roles::RoleTemplate>,
+    contract: Option<&crate::roles::contract::RoleContract>,
+) -> String {
+    let base = template.map_or_else(
+        || {
+            format!(
+                "You are an ephemeral {role_str} sub-agent. Complete the assigned task precisely and concisely."
+            )
+        },
+        |t| t.system_prompt.to_owned(),
+    );
+    contract.map_or_else(
+        || base.clone(),
+        |c| format!("{base}\n\n{}", c.to_prompt_section()),
+    )
+}
+
 /// Concrete [`SpawnService`] that bridges to `actor::spawn`.
 pub struct SpawnServiceImpl {
     providers: Arc<ProviderRegistry>,
@@ -133,6 +160,49 @@ impl SpawnServiceImpl {
         let _ = self.tool_services.set(services);
     }
 
+    /// Resolve the operator-configurable behavior contract for a known role.
+    ///
+    /// WHY(#4775): `roles::contract::ContractRegistry` (versioned,
+    /// TOML-configurable role contracts, cascaded `nous/{parent}/roles.toml`
+    /// -> `shared/roles.toml` -> `theke/roles.toml`) existed with zero
+    /// production callers — spawned role behavior came only from the
+    /// hardcoded `Role::template()` match. This is the wiring point.
+    ///
+    /// Scoped to roles with a Rust `Role` variant (a resolved `template`) so
+    /// the ADR-005 (#3958) conservative-allowlist safety net for
+    /// *unrecognized* role strings is untouched: a role name with no Rust
+    /// template still falls through to the read-only fallback exactly as
+    /// before, contract or no contract.
+    ///
+    /// `ContractRegistry::defaults()` always populates every built-in role
+    /// (`default_registry_has_all_roles`), and `load_from_file` merges file
+    /// contracts on top of that same default set — so a known `Role` always
+    /// resolves here. A `roles.toml` that fails to parse degrades to those
+    /// defaults with a visible warning rather than silently losing the
+    /// override (#4775's "missing or invalid role contracts fail visibly").
+    fn resolve_contract(
+        &self,
+        parent_nous_id: &str,
+        role: Role,
+    ) -> Option<crate::roles::contract::RoleContract> {
+        use crate::roles::contract::ContractRegistry;
+
+        let registry = taxis::cascade::resolve(&self.oikos, parent_nous_id, "roles.toml", None)
+            .map_or_else(ContractRegistry::defaults, |path| {
+                ContractRegistry::load_from_file(&path).unwrap_or_else(|e| {
+                    warn!(
+                        role = %role,
+                        path = %path.display(),
+                        error = %e,
+                        "failed to parse roles.toml; falling back to hardcoded role contract defaults"
+                    );
+                    ContractRegistry::defaults()
+                })
+            });
+
+        registry.get(role.as_str()).cloned()
+    }
+
     /// Build a [`NousConfig`] for an ephemeral sub-agent.
     ///
     /// WHY(#5555): keep config construction deterministic and testable so the
@@ -150,6 +220,7 @@ impl SpawnServiceImpl {
         );
         let role = resolve_role(&request.role);
         let template = role.map(Role::template);
+        let contract = role.and_then(|r| self.resolve_contract(parent_nous_id, r));
 
         let model = request.model.clone().unwrap_or_else(|| {
             template
@@ -187,12 +258,43 @@ impl SpawnServiceImpl {
             // with zero accessible tools.
             organon::types::ToolGroupPolicy::Groups(vec![organon::types::ToolGroupId::Read])
         } else {
-            template
-                .as_ref()
-                .map_or_else(organon::types::ToolGroupPolicy::default, |t| {
-                    t.tool_groups.clone()
-                })
+            // WHY(#4775): an operator-configured `roles.toml` contract's
+            // `tool_groups` overrides the hardcoded template default when
+            // present. This only narrows or reshapes the *coarse* group
+            // gate; the fine-grained `tool_allowlist` above is unchanged and
+            // still gates first at the group level (`resolve_availability`
+            // checks group policy before the allowlist), so a contract can
+            // never grant a tool name the template didn't already list.
+            contract.as_ref().map_or_else(
+                || {
+                    template
+                        .as_ref()
+                        .map_or_else(organon::types::ToolGroupPolicy::default, |t| {
+                            t.tool_groups.clone()
+                        })
+                },
+                |c| c.tool_groups.clone(),
+            )
         };
+
+        // WHY(#5087): cohort/privacy/domains previously came from scattered
+        // constants (`"shared"`, `false`, `Vec::new()`) with no way to
+        // derive them from anything. A role contract is the
+        // operator-approved spawn policy this issue offers as the
+        // alternative to threading the parent's live `NousConfig` through
+        // `SpawnContext` (that would need a signature change to
+        // `organon::types::SpawnContext`, outside this file's ownership).
+        // Absent an override, behavior is unchanged: every default contract
+        // asserts no cohort, `private: false`, and no domains
+        // (`default_contracts_have_no_spawn_policy_overrides`).
+        let episteme_cohort: std::sync::Arc<str> = contract
+            .as_ref()
+            .and_then(|c| c.episteme_cohort.as_deref())
+            .map_or_else(|| std::sync::Arc::from("shared"), std::sync::Arc::from);
+        let private = contract.as_ref().is_some_and(|c| c.private);
+        let domains = contract
+            .as_ref()
+            .map_or_else(Vec::new, |c| c.domains.clone());
 
         let session_key = format!(
             "spawn:{}",
@@ -237,9 +339,16 @@ impl SpawnServiceImpl {
                 loop_detection_window: 50,
                 cycle_detection_max_len: 10,
             },
-            domains: Vec::new(),
-            private: false,
-            episteme_cohort: std::sync::Arc::from("shared"),
+            domains,
+            private,
+            // WHY(#5823): every ephemeral sub-agent is a cross-agent call by
+            // construction, regardless of true nesting level — `ToolContext`
+            // does not thread the parent's own depth through `SpawnContext`,
+            // and `score_complexity`'s cross-agent branch treats any
+            // `depth > 0` identically, so a constant `1` is exact for
+            // present routing semantics.
+            spawn_depth: 1,
+            episteme_cohort,
             workspace,
             allowed_roots,
             server_tools: Vec::new(),
@@ -273,6 +382,7 @@ impl SpawnService for SpawnServiceImpl {
         let workspace = config.workspace.clone();
         let role = resolve_role(&request.role);
         let template = role.map(Role::template);
+        let contract = role.and_then(|r| self.resolve_contract(&parent_nous_id, r));
 
         // WHY: ephemeral sub-agents do not capture training data — their turns
         // are internal delegation, not user-facing conversation.
@@ -306,13 +416,8 @@ impl SpawnService for SpawnServiceImpl {
             spawn.role = %request.role,
         );
 
-        let soul_content = template.as_ref().map_or_else(
-            || {
-                let role_str = request.role.clone();
-                format!("You are an ephemeral {role_str} sub-agent. Complete the assigned task precisely and concisely.")
-            },
-            |t| t.system_prompt.to_owned(),
-        );
+        let soul_content =
+            compose_soul_content(&request.role, template.as_ref(), contract.as_ref());
 
         Box::pin(
             async move {
@@ -447,6 +552,10 @@ impl SpawnService for SpawnServiceImpl {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixtures use std::fs to write tempdir files synchronously"
+)]
 mod tests {
     use std::time::Duration;
 
@@ -564,6 +673,230 @@ mod tests {
         assert!(
             !config.allowed_roots.contains(&oikos.root().to_path_buf()),
             "spawned agent must not inherit the entire oikos root"
+        );
+    }
+
+    // WHY(#5823): a hand-set `ComplexityInput.depth` only proves the scorer
+    // works in isolation — it does not prove any production caller ever
+    // reaches that branch. This drives the real path: `build_spawn_config`
+    // (what every ephemeral sub-agent gets) into `routed_model_for_turn`
+    // (what `execute` actually calls to pick a turn's model), with a
+    // deliberately boring message that would score well under the Opus
+    // threshold on content alone. A pass can only be explained by the
+    // `spawn_depth` signal reaching `score_complexity`'s cross-agent branch.
+    #[test]
+    fn spawn_config_routes_cross_agent_turns_to_opus() {
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, mut config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+        );
+        assert!(
+            config.spawn_depth > 0,
+            "an ephemeral sub-agent config must carry a non-zero cross-agent depth"
+        );
+
+        config.generation.complexity = hermeneus::complexity::ComplexityConfig {
+            enabled: true,
+            ..hermeneus::complexity::ComplexityConfig::default()
+        };
+
+        let mut ctx = crate::pipeline::PipelineContext::default();
+        ctx.messages
+            .push(crate::pipeline::PipelineMessage::text("user", "hi", 1));
+
+        let providers = make_providers();
+        let tools = ToolRegistry::new();
+
+        let opus_model = koina::models::tier_default(koina::models::ModelTier::Opus);
+        assert_ne!(
+            config.generation.model, opus_model,
+            "spawn's base model must differ from the opus tier for this test to be meaningful"
+        );
+
+        let routed = crate::execute::routed_model_for_turn(&ctx, &config, &providers, &tools);
+        assert_eq!(
+            routed, opus_model,
+            "a spawned sub-agent turn must route to the Opus tier via the cross-agent branch"
+        );
+    }
+
+    // WHY(#4775): `ContractRegistry` existed with zero production callers —
+    // this proves the wiring point. A changed `roles.toml` must change
+    // spawned role behavior (the issue's own acceptance bar), not just
+    // parse successfully in isolation.
+    #[test]
+    fn spawn_config_tool_groups_follow_roles_toml_override() {
+        use organon::types::{ToolGroupId, ToolGroupPolicy};
+
+        let (_dir, oikos) = make_oikos();
+        std::fs::write(
+            oikos.shared().join("roles.toml"),
+            r#"
+[coder]
+version = 2
+tool_groups = ["read"]
+"#,
+        )
+        .expect("write roles.toml");
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+        );
+
+        assert_eq!(
+            config.tool_groups,
+            ToolGroupPolicy::Groups(vec![ToolGroupId::Read]),
+            "roles.toml override must narrow coder's tool_groups from the hardcoded 4-group default"
+        );
+    }
+
+    // WHY(#5087): cohort/privacy/domains previously came from scattered
+    // constants with nothing to derive them from. A role contract is the
+    // operator-approved spawn policy alternative; this proves the override
+    // path actually reaches `NousConfig`.
+    #[test]
+    fn spawn_config_cohort_privacy_domains_follow_roles_toml_override() {
+        let (_dir, oikos) = make_oikos();
+        std::fs::write(
+            oikos.shared().join("roles.toml"),
+            r#"
+[reviewer]
+version = 2
+episteme_cohort = "isolated"
+private = true
+domains = ["medical"]
+"#,
+        )
+        .expect("write roles.toml");
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "reviewer".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+        );
+
+        assert_eq!(&*config.episteme_cohort, "isolated");
+        assert!(config.private);
+        assert_eq!(config.domains, vec!["medical".to_owned()]);
+    }
+
+    // WHY: wiring `ContractRegistry` into production must not change
+    // default spawned-agent behavior when the operator has not touched
+    // `roles.toml` — the exact tempdir fixture every other test in this
+    // file uses has no roles.toml, so this also guards against a future
+    // change accidentally asserting a cohort/privacy/domain by default.
+    #[test]
+    fn spawn_config_defaults_unchanged_without_roles_toml() {
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+        );
+
+        assert_eq!(
+            config.tool_groups,
+            Role::Coder.template().tool_groups,
+            "with no roles.toml, tool_groups must match the hardcoded template exactly"
+        );
+        assert_eq!(&*config.episteme_cohort, "shared");
+        assert!(!config.private);
+        assert!(config.domains.is_empty());
+    }
+
+    // WHY(#4775 "missing or invalid role contracts fail visibly"): a
+    // malformed roles.toml must degrade to hardcoded defaults rather than
+    // taking spawning down, but the degrade must be a fallback, not a
+    // silent swallow — `resolve_contract` logs a `warn!` on this path.
+    #[test]
+    fn spawn_config_malformed_roles_toml_falls_back_to_defaults() {
+        let (_dir, oikos) = make_oikos();
+        std::fs::write(
+            oikos.shared().join("roles.toml"),
+            "this is not { valid toml",
+        )
+        .expect("write malformed roles.toml");
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+        );
+
+        assert_eq!(
+            config.tool_groups,
+            Role::Coder.template().tool_groups,
+            "malformed roles.toml must fall back to hardcoded defaults, not fail the spawn"
+        );
+    }
+
+    // WHY(#4775): prompt composition is a pure function specifically so it
+    // is testable without the full async spawn lifecycle (the assembled
+    // soul_content is written to a workspace file that gets cleaned up
+    // after the ephemeral turn completes, so it can't be asserted through
+    // `spawn_and_run` without a timing-dependent mid-flight read).
+    #[test]
+    fn compose_soul_content_appends_contract_section_to_template_prompt() {
+        let template = Role::Coder.template();
+        let contract = crate::roles::contract::ContractRegistry::defaults()
+            .get("coder")
+            .cloned()
+            .expect("default coder contract");
+
+        let without_contract = compose_soul_content("coder", Some(&template), None);
+        assert_eq!(without_contract, template.system_prompt);
+
+        let with_contract = compose_soul_content("coder", Some(&template), Some(&contract));
+        assert!(
+            with_contract.starts_with(template.system_prompt),
+            "contract section must be appended, not replace the template prompt"
+        );
+        assert!(with_contract.contains("Role Contract: coder"));
+        assert!(with_contract.len() > template.system_prompt.len());
+    }
+
+    #[test]
+    fn compose_soul_content_unknown_role_has_no_contract_section() {
+        let content = compose_soul_content("analyst", None, None);
+        assert_eq!(
+            content,
+            "You are an ephemeral analyst sub-agent. Complete the assigned task precisely and concisely."
         );
     }
 

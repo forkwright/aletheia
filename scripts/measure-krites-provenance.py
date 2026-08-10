@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import pathlib
 import sys
+import tomllib
 import urllib.error
 import urllib.request
 
@@ -94,24 +95,39 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "datalog.pest": "cozoscript.pest",
     "error.rs": None,
     "fixed_rule/algos/all_pairs_shortest_path.rs": "fixed_rule/algos/all_pairs_shortest_path.rs",
+    "fixed_rule/algos/all_pairs_shortest_path_native.rs": None,
     "fixed_rule/algos/astar.rs": "fixed_rule/algos/astar.rs",
+    "fixed_rule/algos/astar_native.rs": None,
     "fixed_rule/algos/bfs.rs": "fixed_rule/algos/bfs.rs",
+    "fixed_rule/algos/bfs_native.rs": None,
     "fixed_rule/algos/degree_centrality.rs": "fixed_rule/algos/degree_centrality.rs",
+    "fixed_rule/algos/degree_centrality_native.rs": None,
     "fixed_rule/algos/dfs.rs": "fixed_rule/algos/dfs.rs",
+    "fixed_rule/algos/dfs_native.rs": None,
     "fixed_rule/algos/kcore.rs": None,
     "fixed_rule/algos/kruskal.rs": "fixed_rule/algos/kruskal.rs",
+    "fixed_rule/algos/kruskal_native.rs": None,
     "fixed_rule/algos/label_propagation.rs": "fixed_rule/algos/label_propagation.rs",
+    "fixed_rule/algos/label_propagation_native.rs": None,
     "fixed_rule/algos/louvain.rs": "fixed_rule/algos/louvain.rs",
     "fixed_rule/algos/mod.rs": "fixed_rule/algos/mod.rs",
     "fixed_rule/algos/pagerank.rs": "fixed_rule/algos/pagerank.rs",
     "fixed_rule/algos/prim.rs": "fixed_rule/algos/prim.rs",
+    "fixed_rule/algos/prim_native.rs": None,
     "fixed_rule/algos/random_walk.rs": "fixed_rule/algos/random_walk.rs",
+    "fixed_rule/algos/random_walk_native.rs": None,
     "fixed_rule/algos/shortest_path_bfs.rs": "fixed_rule/algos/shortest_path_bfs.rs",
+    "fixed_rule/algos/shortest_path_bfs_native.rs": None,
     "fixed_rule/algos/shortest_path_dijkstra.rs": "fixed_rule/algos/shortest_path_dijkstra.rs",
+    "fixed_rule/algos/shortest_path_dijkstra_native.rs": None,
     "fixed_rule/algos/strongly_connected_components.rs": "fixed_rule/algos/strongly_connected_components.rs",
+    "fixed_rule/algos/strongly_connected_components_native.rs": None,
     "fixed_rule/algos/top_sort.rs": "fixed_rule/algos/top_sort.rs",
+    "fixed_rule/algos/top_sort_native.rs": None,
     "fixed_rule/algos/triangles.rs": "fixed_rule/algos/triangles.rs",
+    "fixed_rule/algos/triangles_native.rs": None,
     "fixed_rule/algos/yen.rs": "fixed_rule/algos/yen.rs",
+    "fixed_rule/algos/yen_native.rs": None,
     "fixed_rule/csr/mod.rs": None,
     "fixed_rule/csr/page_rank.rs": None,
     "fixed_rule/error.rs": None,
@@ -121,9 +137,12 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fixed_rule/tests/mod.rs": None,
     "fixed_rule/tests/path_algorithms.rs": None,
     "fixed_rule/tests/proptest_algos.rs": None,
+    "fixed_rule/tests/wave5_reference_semantics.rs": None,
     "fixed_rule/utilities/constant.rs": "fixed_rule/utilities/constant.rs",
+    "fixed_rule/utilities/constant_native.rs": None,
     "fixed_rule/utilities/mod.rs": "fixed_rule/utilities/mod.rs",
     "fixed_rule/utilities/reorder_sort.rs": "fixed_rule/utilities/reorder_sort.rs",
+    "fixed_rule/utilities/reorder_sort_native.rs": None,
     "fixed_rule/utilities/rrf.rs": None,
     "fts/README.md": "fts/README.md",
     "fts/ast.rs": "fts/ast.rs",
@@ -136,7 +155,15 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs": "fts/tokenizer/ascii_folding_filter.rs",
     "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs": "fts/tokenizer/ascii_folding_filter.rs",
     "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs": "fts/tokenizer/ascii_folding_filter.rs",
+    # wave2a/ascii-folding-table: regenerated from UCD + CLDR Latin-ASCII, not
+    # transcribed from cozo-core -- no upstream lineage.
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py": None,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs": None,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs": None,
     "fts/tokenizer/ascii_folding_filter/mod.rs": "fts/tokenizer/ascii_folding_filter.rs",
+    # wave2a/ascii-folding-table: the full-BMP-sweep conformance test proving
+    # fold_table_sovereign/ equivalent to fold_table/ -- no upstream lineage.
+    "fts/tokenizer/ascii_folding_filter/tests/bmp_equivalence.rs": None,
     "fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs": "fts/tokenizer/ascii_folding_filter.rs",
     "fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs": "fts/tokenizer/ascii_folding_filter.rs",
     "fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs": "fts/tokenizer/ascii_folding_filter.rs",
@@ -151,15 +178,30 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fts/tokenizer/simple_tokenizer.rs": "fts/tokenizer/simple_tokenizer.rs",
     "fts/tokenizer/split_compound_words.rs": "fts/tokenizer/split_compound_words.rs",
     "fts/tokenizer/stemmer.rs": "fts/tokenizer/stemmer.rs",
-    "fts/tokenizer/stop_word_filter/gen_stopwords.py": "fts/tokenizer/stop_word_filter/gen_stopwords.py",
+    # wave2b/stopword-lists land-dark: the CozoDB-lineage copy moved to
+    # derived/ unchanged (still tracks the same upstream cozo paths, now
+    # status=dual — see krites_provenance_lib.py's status-preservation logic
+    # below); sovereign/ is the freshly authored replacement (sovereign, no
+    # upstream). mod.rs ITSELF kept its path (Rust module resolution
+    # requires `stop_word_filter/mod.rs` to exist) but its content became a
+    # cfg dispatcher — freshly authored, yet the PATH carries derived
+    # lineage on origin/main, so check_status_sequence correctly refuses a
+    # direct derived -> sovereign jump here too: this row rides the same
+    # dual soak as its derived/ siblings and graduates with them.
     "fts/tokenizer/stop_word_filter/mod.rs": "fts/tokenizer/stop_word_filter/mod.rs",
-    "fts/tokenizer/stop_word_filter/stopwords/af_da.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/stopwords/el_ja.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/stopwords/ko_ro.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/stopwords/mod.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/stopwords/nl_de.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/stopwords/ru_ur.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/stopwords/vi_zu.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
+    "fts/tokenizer/stop_word_filter/derived/gen_stopwords.py": "fts/tokenizer/stop_word_filter/gen_stopwords.py",
+    "fts/tokenizer/stop_word_filter/derived/mod.rs": "fts/tokenizer/stop_word_filter/mod.rs",
+    "fts/tokenizer/stop_word_filter/derived/stopwords/af_da.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
+    "fts/tokenizer/stop_word_filter/derived/stopwords/el_ja.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
+    "fts/tokenizer/stop_word_filter/derived/stopwords/ko_ro.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
+    "fts/tokenizer/stop_word_filter/derived/stopwords/mod.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
+    "fts/tokenizer/stop_word_filter/derived/stopwords/nl_de.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
+    "fts/tokenizer/stop_word_filter/derived/stopwords/ru_ur.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
+    "fts/tokenizer/stop_word_filter/derived/stopwords/vi_zu.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
+    "fts/tokenizer/stop_word_filter/sovereign/NOTICE.md": None,
+    "fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py": None,
+    "fts/tokenizer/stop_word_filter/sovereign/mod.rs": None,
+    "fts/tokenizer/stop_word_filter/sovereign/stopwords.rs": None,
     "fts/tokenizer/tokenized_string.rs": "fts/tokenizer/tokenized_string.rs",
     "fts/tokenizer/tokenizer_impl.rs": "fts/tokenizer/tokenizer_impl.rs",
     "fts/tokenizer/whitespace_tokenizer.rs": "fts/tokenizer/whitespace_tokenizer.rs",
@@ -241,6 +283,84 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "utils.rs": "utils.rs",
 }
 
+# PLAN.md Sec.2 land-dark/soak/delete: paths still in UPSTREAM_MAP with a real
+# upstream_path (so they measure as "derived" by the branch below) but that
+# now have a sovereign replacement compiled in beside them, selected by a
+# compile-time cfg. Maps path -> soak_expires_at_commit_count (an ABSOLUTE
+# `git rev-list --count origin/main` target, per the ledger header note).
+# check-krites-provenance.py's check_soak_expiry fails the build once main
+# reaches that count without the pair having flipped to sovereign (dropping
+# the derived file) or the window being extended by an explicit ledger edit.
+# Explicit, individually-verified map (same discipline as UPSTREAM_MAP above,
+# for the same reason): a local path whose UPSTREAM_MAP entry is None (no MPL
+# lineage, ever) but that is nonetheless a from-scratch REPLACEMENT for a
+# specific derived/dual file — a `_native.rs` rewrite, a `*_sovereign/`
+# directory swapped in via cfg beside its dual sibling (PLAN.md §2's
+# land-dark pattern) — rather than a wholly independent addition. The value
+# is the SAME upstream path the replaced file already carries in
+# UPSTREAM_MAP; it becomes the generated row's replaced_upstream_path (never
+# upstream_path — no lineage claim), and the row is measured against it for
+# real instead of being hardcoded to verbatim_pct=0.0.
+#
+# A path with no natural predecessor at all (kcore.rs, hot_reload.rs,
+# query_cache.rs, storage/fjall_backend.rs, async_surface.rs, ...) is
+# correctly absent from this map — there is nothing to measure it against,
+# and verbatim_pct stays genuinely 0.0.
+#
+# WHY this map exists: before it did, every UPSTREAM_MAP=None row — this
+# includes every one of the 17 `_native.rs` rewrites below — was hardcoded to
+# verbatim_pct=0.0/upstream_path='none' unconditionally, regardless of how
+# similar the file actually was to what it replaced. That is how a
+# statement-for-statement transliteration entered the ledger measuring
+# 18.0%-41.4% against the upstream file its non-native sibling is measured
+# against, certified at 0.0% because nothing ever ran the comparison
+# (aletheia#6656).
+#
+# WARNING: when a new land-dark wave adds a `*_sovereign/` directory or
+# `*_native.rs` file (e.g. `runtime/hnsw_sovereign/*.rs`, land-dark beside
+# `runtime/hnsw/*.rs` against the same upstream `runtime/hnsw.rs`), add its
+# entries here explicitly — do not derive them by directory-name pattern
+# matching, for the same reason UPSTREAM_MAP's own warning above gives (a
+# `*_sovereign`/`*_native` name does not by itself prove which upstream file,
+# if any, is the right comparison). A row that instead lands directly as
+# `dual` first (real upstream_path in UPSTREAM_MAP, measured and soaking
+# under CI the whole time) does not need an entry here at all: its
+# replaced_upstream_path is set automatically when it later transitions to
+# `sovereign` via krites-provenance-transition.py, which carries its
+# dual-era upstream_path forward unchanged.
+SOVEREIGN_VERIFY_MAP: dict[str, str] = {
+    "fixed_rule/algos/all_pairs_shortest_path_native.rs": "fixed_rule/algos/all_pairs_shortest_path.rs",
+    "fixed_rule/algos/astar_native.rs": "fixed_rule/algos/astar.rs",
+    "fixed_rule/algos/bfs_native.rs": "fixed_rule/algos/bfs.rs",
+    "fixed_rule/algos/degree_centrality_native.rs": "fixed_rule/algos/degree_centrality.rs",
+    "fixed_rule/algos/dfs_native.rs": "fixed_rule/algos/dfs.rs",
+    "fixed_rule/algos/kruskal_native.rs": "fixed_rule/algos/kruskal.rs",
+    "fixed_rule/algos/label_propagation_native.rs": "fixed_rule/algos/label_propagation.rs",
+    "fixed_rule/algos/prim_native.rs": "fixed_rule/algos/prim.rs",
+    "fixed_rule/algos/random_walk_native.rs": "fixed_rule/algos/random_walk.rs",
+    "fixed_rule/algos/shortest_path_bfs_native.rs": "fixed_rule/algos/shortest_path_bfs.rs",
+    "fixed_rule/algos/shortest_path_dijkstra_native.rs": "fixed_rule/algos/shortest_path_dijkstra.rs",
+    "fixed_rule/algos/strongly_connected_components_native.rs": "fixed_rule/algos/strongly_connected_components.rs",
+    "fixed_rule/algos/top_sort_native.rs": "fixed_rule/algos/top_sort.rs",
+    "fixed_rule/algos/triangles_native.rs": "fixed_rule/algos/triangles.rs",
+    "fixed_rule/algos/yen_native.rs": "fixed_rule/algos/yen.rs",
+    "fixed_rule/utilities/constant_native.rs": "fixed_rule/utilities/constant.rs",
+    "fixed_rule/utilities/reorder_sort_native.rs": "fixed_rule/utilities/reorder_sort.rs",
+}
+
+DUAL_SOAK_WINDOW: dict[str, int] = {
+    # wave2a/ascii-folding-table: land-dark PR lands at commit count 2808.
+    # +30 commits is PLAN.md's own Q3 recommended window for low-blast-radius
+    # waves (2a, 2b, 5, 7) -- this is a LOW-risk, pure-data wave with a
+    # full-BMP-sweep conformance gate already proving equivalence
+    # (tests/bmp_equivalence.rs), so there is no soak-observation need beyond
+    # CI turning green on the sovereign feature.
+    "fts/tokenizer/ascii_folding_filter/fold_table.rs": 2838,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_digits_symbols.rs": 2838,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_a_m.rs": 2838,
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_letters_n_z.rs": 2838,
+}
+
 _upstream_cache: dict[str, str] = {}
 
 
@@ -266,6 +386,50 @@ def fetch_upstream(path: str) -> str:
     return _upstream_cache[path]
 
 
+def load_graduated_status(path: pathlib.Path) -> dict[str, tuple[str, int]]:
+    """WHY: this script is the ledger's sole regenerator, and it used to
+    hardcode every UPSTREAM_MAP-mapped row to 'derived' unconditionally —
+    which silently reverts a PLAN.md §2 land-dark transition (derived ->
+    dual) on the very next run, since nothing else ever re-asserts 'dual'.
+    A row that has already graduated past 'derived' (dual or sovereign, per
+    a prior hand-driven transition — see
+    scripts/krites-provenance-transition.py) keeps that status and its
+    soak_expires_at_commit_count across regeneration; only a row still
+    sitting at 'derived' (or genuinely new) gets recomputed from scratch.
+    Best-effort: a missing or genuinely-unparsable prior ledger yields no
+    preservation, which is correct for the ledger's first-ever run.
+
+    SAFETY(#6656): reads with bare tomllib, NOT parse_ledger/validate_rows.
+    This function only ever consumes two fields (status,
+    soak_expires_at_commit_count) — it has no business demanding the FULL
+    current row schema validate before it can read them. The prior version
+    routed through parse_ledger and swallowed every exception, status
+    schema mismatch included, as "nothing to preserve" — which meant a
+    ledger written before this field's own introduction (replaced_upstream_path)
+    would fail validate_rows on its first post-migration read and silently
+    drop EVERY dual/sovereign row's preservation, walking 31 real `dual`
+    rows back to `derived` and erasing their soak windows on this script's
+    very next run. Caught only by re-running immediately after the schema
+    change and noticing the dual count collapse from 35 to 4 — a schema
+    addition must not depend on every historical ledger already having it."""
+    if not path.exists():
+        return {}
+    try:
+        data = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError:
+        return {}
+    graduated = {}
+    for r in data.get("file", []):
+        if not isinstance(r, dict):
+            continue
+        status = r.get("status")
+        path_key = r.get("path")
+        soak = r.get("soak_expires_at_commit_count")
+        if status in ("dual", "sovereign") and isinstance(path_key, str) and isinstance(soak, int):
+            graduated[path_key] = (status, soak)
+    return graduated
+
+
 def main() -> None:
     local_files = iter_src_files()
     mapped = set(UPSTREAM_MAP)
@@ -279,39 +443,115 @@ def main() -> None:
         raise SystemExit(
             "UPSTREAM_MAP has rows for files that no longer exist: " + ", ".join(stale_in_map)
         )
+    # SAFETY(#6656): a SOVEREIGN_VERIFY_MAP entry only makes sense for a path
+    # UPSTREAM_MAP maps to None -- a path with a real UPSTREAM_MAP entry
+    # already carries a live lineage claim and is measured against IT, not a
+    # second retained-replacement target. A key present in both maps is a
+    # contradiction, not a preference to resolve silently.
+    contradictory = sorted(k for k in SOVEREIGN_VERIFY_MAP if UPSTREAM_MAP.get(k) is not None)
+    if contradictory:
+        raise SystemExit(
+            "SOVEREIGN_VERIFY_MAP has entries for paths UPSTREAM_MAP already maps to a real "
+            "upstream_path (a row cannot carry both a live lineage claim and a retained "
+            "replacement target): " + ", ".join(contradictory)
+        )
+    stale_verify = sorted(set(SOVEREIGN_VERIFY_MAP) - set(local_files))
+    if stale_verify:
+        raise SystemExit(
+            "SOVEREIGN_VERIFY_MAP has rows for files that no longer exist: " + ", ".join(stale_verify)
+        )
+
+    graduated = load_graduated_status(LEDGER_PATH)
 
     rows: list[dict] = []
     for rel in local_files:
         upstream_rel = UPSTREAM_MAP[rel]
         local_text = (KRITES_SRC / rel).read_text(errors="replace")
+
         if upstream_rel is None:
+            # No lineage claim, ever. SOVEREIGN_VERIFY_MAP optionally still
+            # names a predecessor to measure against for real, rather than
+            # hardcoding verbatim_pct=0.0 for every such row regardless of
+            # how similar it actually is (aletheia#6656) -- a path absent
+            # from SOVEREIGN_VERIFY_MAP has no predecessor at all, so 0.0
+            # here is a genuine measurement, not a placeholder.
+            verify_rel = SOVEREIGN_VERIFY_MAP.get(rel)
+            if verify_rel is not None:
+                measured_pct = verbatim_pct(local_text, fetch_upstream(verify_rel))
+            else:
+                measured_pct = 0.0
             rows.append(
                 {
                     "path": rel,
                     "upstream_path": "none",
-                    "verbatim_pct": 0.0,
+                    "replaced_upstream_path": verify_rel or "none",
+                    "verbatim_pct": measured_pct,
                     "status": "sovereign",
                     "soak_expires_at_commit_count": 0,
                 }
             )
             continue
+
+        # A real lineage path. derived/dual/an-already-graduated-sovereign
+        # row (PLAN.md §2(c): a prior in-place dual -> sovereign transition
+        # via krites-provenance-transition.py) are all measured against it
+        # here -- only which FIELD the number lands in differs by status.
         upstream_text = fetch_upstream(upstream_rel)
-        rows.append(
-            {
-                "path": rel,
-                "upstream_path": upstream_rel,
-                "verbatim_pct": verbatim_pct(local_text, upstream_text),
-                "status": "derived",
-                "soak_expires_at_commit_count": 0,
-            }
-        )
+        measured_pct = verbatim_pct(local_text, upstream_text)
+        # WHY both sources, in this order: they solve different halves and either alone loses data.
+        # The ledger is authoritative for a transition that has ALREADY happened -- regenerating must
+        # not silently walk a `dual` row back to `derived`, which is what the original unconditional
+        # "derived" did and what would have quietly undone every land-dark wave on the next regen.
+        # DUAL_SOAK_WINDOW seeds a transition the ledger has not recorded yet, which is the only case
+        # preservation cannot cover: the first regen after a wave flips a file.
+        preserved = graduated.get(rel)
+        if preserved:
+            status, soak = preserved
+        else:
+            soak = DUAL_SOAK_WINDOW.get(rel, 0)
+            status = "dual" if soak else "derived"
+
+        if status == "sovereign":
+            # SAFETY(#6656): a graduated-sovereign row must NOT carry
+            # upstream_path=upstream_rel forward -- validate_rows requires
+            # upstream_path='none' on every sovereign row (no live lineage
+            # claim survives the transition). Regenerating used to do
+            # exactly that (this branch didn't exist), producing an invalid
+            # ledger the moment anyone re-ran this script after a real
+            # in-place dual -> sovereign transition. The measurement itself
+            # is still real -- it lands in replaced_upstream_path instead.
+            rows.append(
+                {
+                    "path": rel,
+                    "upstream_path": "none",
+                    "replaced_upstream_path": upstream_rel,
+                    "verbatim_pct": measured_pct,
+                    "status": "sovereign",
+                    "soak_expires_at_commit_count": 0,
+                }
+            )
+        else:
+            rows.append(
+                {
+                    "path": rel,
+                    "upstream_path": upstream_rel,
+                    "replaced_upstream_path": "none",
+                    "verbatim_pct": measured_pct,
+                    "status": status,
+                    "soak_expires_at_commit_count": soak,
+                }
+            )
 
     meta = {"upstream_repo": UPSTREAM_REPO, "upstream_ref": UPSTREAM_REF}
     LEDGER_PATH.write_text(dump_ledger(meta, rows))
     NOTICE_PATH.write_text(render_notice(meta, rows))
     derived_ct = sum(1 for r in rows if r["status"] == "derived")
     sovereign_ct = sum(1 for r in rows if r["status"] == "sovereign")
-    print(f"wrote {LEDGER_PATH} ({len(rows)} rows: {derived_ct} derived, {sovereign_ct} sovereign)")
+    dual_ct = sum(1 for r in rows if r["status"] == "dual")
+    print(
+        f"wrote {LEDGER_PATH} ({len(rows)} rows: {derived_ct} derived, "
+        f"{dual_ct} dual, {sovereign_ct} sovereign)"
+    )
     print(f"wrote {NOTICE_PATH}")
 
 

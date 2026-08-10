@@ -974,6 +974,12 @@ pub(super) fn open_knowledge_stores(
             std::fs::create_dir_all(parent)
                 .whatever_context("failed to CREATE knowledge store directory")?;
         }
+
+        // WHY (aletheia#5779 F4): the verified pre-migration snapshot now
+        // runs as the first statement of `KnowledgeStore::open_fjall` itself
+        // (gated on whether a schema migration might actually run) — every
+        // production caller is protected without needing its own explicit
+        // call. See `episteme::knowledge_store::snapshot` module docs.
         let rules_dir = oikos.knowledge_cohort_rules_dir(&cohort);
         std::fs::create_dir_all(&rules_dir)
             .whatever_context("failed to CREATE knowledge rule directory")?;

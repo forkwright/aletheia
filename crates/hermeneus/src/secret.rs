@@ -204,6 +204,20 @@ pub fn redact_in_json(value: &mut serde_json::Value) {
     }
 }
 
+/// Redact known secret patterns, then bound the result to `max_bytes`.
+///
+/// WHY(#5261): the single required path for provider diagnostics — raw
+/// provider bodies, SSE lines, and subprocess stderr all carry prompt
+/// fragments, tool payloads, or credential-shaped strings that must not
+/// reach a log line or a [`crate::error::Error`] returned to a caller
+/// unsanitized. Redaction runs before truncation: truncating first can
+/// split a token across the boundary and leave a partial secret
+/// unredacted on either side of the cut.
+pub(crate) fn sanitize_provider_text(text: &str, max_bytes: usize) -> String {
+    let redacted = koina::redact::redact_sensitive(text);
+    truncate_error_body(&redacted, max_bytes)
+}
+
 /// Truncate a provider error body to at most `max_bytes` bytes for safe logging.
 ///
 /// Appends `[truncated N bytes]` when the body is truncated so operators know the log
@@ -362,6 +376,31 @@ mod tests {
             value["text"],
             "this is a long sentence with spaces in it ok"
         );
+    }
+
+    #[test]
+    fn sanitize_provider_text_redacts_secret_before_truncating() {
+        // WHY(#5261): a token straddling the truncation boundary must be
+        // fully redacted, not half-truncated into a leaking fragment.
+        let body = format!("prefix sk-{} suffix", "a".repeat(40));
+        let sanitized = sanitize_provider_text(&body, 20);
+        assert!(
+            !sanitized.contains("aaaaaaaaaaaaaaaaaaaa"),
+            "secret body must not survive sanitization: {sanitized}"
+        );
+    }
+
+    #[test]
+    fn sanitize_provider_text_truncates_long_safe_text() {
+        let body = "x".repeat(600);
+        let sanitized = sanitize_provider_text(&body, 500);
+        assert!(sanitized.contains("[truncated "));
+    }
+
+    #[test]
+    fn sanitize_provider_text_leaves_short_safe_text_unchanged() {
+        let body = "HTTP 429: rate limited, retry later";
+        assert_eq!(sanitize_provider_text(body, 512), body);
     }
 
     #[test]

@@ -8,7 +8,8 @@ use skene::api::routes::system::{
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::credentials::{
-    CredentialEntry, CredentialRole, CredentialStore, ValidationStatus, canonicalize_masked_key,
+    CredentialEntry, CredentialRole, CredentialStore, ValidationStatus, can_manage_credentials,
+    canonicalize_masked_key, decode_role_claim,
 };
 use crate::state::fetch::FetchState;
 
@@ -33,12 +34,49 @@ struct CredentialApiEntry {
     masked_key: String, // kanon:ignore RUST/plain-string-secret -- transient API field is canonicalized before entering reactive CredentialEntry state (#4876); this type does not derive Debug
     #[serde(default)]
     status: String,
+    /// `true` when `status` reflects an actual provider round trip (#4875).
+    #[serde(default)]
+    provider_verified: bool,
     #[serde(default)]
     last_validated: Option<String>,
     #[serde(default)]
     requests_today: u64,
     #[serde(default)]
     tokens_today: u64,
+}
+
+/// Structured error envelope pylon returns for non-2xx responses.
+///
+/// WHY(#4877): the backend already returns `{"error": {"code", "message"}}`
+/// on every failure; surfacing only the HTTP status code discarded that.
+#[derive(Clone, serde::Deserialize)]
+struct ApiErrorEnvelope {
+    error: ApiErrorBody,
+}
+
+#[derive(Clone, serde::Deserialize)]
+struct ApiErrorBody {
+    #[serde(default)]
+    code: String,
+    #[serde(default)]
+    message: String,
+}
+
+/// Build a user-facing error message for `action` from a non-2xx response,
+/// preferring the structured `{"error": {code, message}}` envelope pylon
+/// returns and falling back to the bare HTTP status when the body doesn't
+/// parse as that shape (e.g. a proxy-generated error page).
+async fn describe_error_response(action: &str, resp: reqwest::Response) -> String {
+    let status = resp.status();
+    match resp.json::<ApiErrorEnvelope>().await {
+        Ok(envelope) if !envelope.error.message.is_empty() => {
+            format!(
+                "{action} failed: {} ({})",
+                envelope.error.message, envelope.error.code
+            )
+        }
+        _ => format!("{action} failed: {status}"),
+    }
 }
 
 impl CredentialApiEntry {
@@ -48,11 +86,7 @@ impl CredentialApiEntry {
         } else {
             CredentialRole::Backup
         };
-        let status = match self.status.as_str() {
-            "valid" => ValidationStatus::Valid,
-            "expired" => ValidationStatus::Expired,
-            _ => ValidationStatus::Untested,
-        };
+        let status = ValidationStatus::from_wire(&self.status);
         let masked = canonicalize_masked_key(&self.masked_key);
         CredentialEntry {
             id: self.id,
@@ -60,6 +94,7 @@ impl CredentialApiEntry {
             role,
             masked_key: masked,
             status,
+            provider_verified: self.provider_verified,
             last_validated: self.last_validated,
             requests_today: self.requests_today,
             tokens_today: self.tokens_today,
@@ -295,10 +330,30 @@ pub(crate) fn CredentialsView() -> Element {
     let mut add_key_epoch = use_signal(|| 0u64);
     let mut add_role: Signal<CredentialRole> = use_signal(|| CredentialRole::Primary);
     let mut add_error: Signal<Option<String>> = use_signal(|| None);
+    let mut is_adding = use_signal(|| false);
+
+    // WHY(#4877): decoded from the locally-held access token so the panel
+    // knows the caller's capability before rendering controls it cannot use.
+    // A UI-affordance check only -- see `decode_role_claim` -- the server
+    // remains the sole enforcement authority on every request either way.
+    let can_manage = {
+        let cfg = config.read();
+        let role = cfg.auth_token.as_deref().and_then(decode_role_claim);
+        can_manage_credentials(role.as_deref())
+    };
 
     use_effect(move || {
         let _trigger = *fetch_trigger.read();
         let cfg = config.read().clone();
+        let allowed = {
+            let role = cfg.auth_token.as_deref().and_then(decode_role_claim);
+            can_manage_credentials(role.as_deref())
+        };
+        if !allowed {
+            // WHY: never issue a request the server is guaranteed to 403 --
+            // matches the permission gate this component renders below.
+            return;
+        }
         fetch_state.set(FetchState::Loading);
 
         spawn(async move {
@@ -338,6 +393,12 @@ pub(crate) fn CredentialsView() -> Element {
     });
 
     let mut do_add = move || {
+        // WHY(#4877): guard against a double-click submitting the same add
+        // twice while the first request is still in flight.
+        if *is_adding.read() {
+            return;
+        }
+
         let provider = add_provider.read().trim().to_string();
         let role = *add_role.read();
 
@@ -377,12 +438,14 @@ pub(crate) fn CredentialsView() -> Element {
         // linger in reactive state after the async task begins.
         add_key.set(koina::secret::SecretString::from(String::new()));
         add_key_epoch.set(add_key_epoch() + 1);
+        is_adding.set(true);
 
         spawn(async move {
             let client = match authenticated_client(&cfg) {
                 Ok(client) => client,
                 Err(err) => {
                     add_error.set(Some(err.to_string()));
+                    is_adding.set(false);
                     return;
                 }
             };
@@ -390,15 +453,19 @@ pub(crate) fn CredentialsView() -> Element {
             match client.post(&url).json(&payload).send().await {
                 Ok(resp) if resp.status().is_success() => {
                     add_provider.set(String::new());
+                    add_role.set(CredentialRole::Primary);
                     show_add.set(false);
+                    is_adding.set(false);
                     fetch_trigger.set(fetch_trigger() + 1);
                 }
                 Ok(resp) => {
-                    let status = resp.status();
-                    add_error.set(Some(format!("Add failed: {status}")));
+                    let msg = describe_error_response("Add", resp).await;
+                    add_error.set(Some(msg));
+                    is_adding.set(false);
                 }
                 Err(e) => {
                     add_error.set(Some(format!("Connection error: {e}")));
+                    is_adding.set(false);
                 }
             }
         });
@@ -427,6 +494,23 @@ pub(crate) fn CredentialsView() -> Element {
         }
     };
 
+    if !can_manage {
+        // WHY(#4877): non-operators/admins never even issue the list
+        // request (see the `use_effect` guard above) -- this is the paired
+        // rendering half: a clear permission state instead of a raw 403, and
+        // no mutation controls of any kind, since every credentials endpoint
+        // (including list) requires the same ManageCredentials action.
+        return rsx! {
+            div {
+                style: "{PANEL_STYLE}",
+                div {
+                    style: "color: var(--text-secondary); font-size: var(--text-sm); padding: var(--space-3) 0;",
+                    "You do not have permission to manage credentials. This requires the Operator or Admin role."
+                }
+            }
+        };
+    }
+
     rsx! {
         div {
             style: "{PANEL_STYLE}",
@@ -453,87 +537,123 @@ pub(crate) fn CredentialsView() -> Element {
                 }
             }
 
-            if *show_add.read() {
-                div {
-                    style: "{ADD_CARD_STYLE}",
-                    div { style: "{FORM_TITLE}", "Add Credential" }
+            // WHY(#4877): after a fetch error, controls the caller cannot
+            // meaningfully use (the list they'd mutate is unknown) must not
+            // still render as though nothing is wrong.
+            if fetch_error_msg.is_none() {
+                if *show_add.read() {
                     div {
-                        style: "{FORM_ROW}",
+                        style: "{ADD_CARD_STYLE}",
+                        div { style: "{FORM_TITLE}", "Add Credential" }
                         div {
-                            style: "{FORM_GROUP}",
-                            span { style: "{FORM_LABEL}", "Provider" }
-                            input {
-                                style: "{FORM_INPUT}",
-                                r#type: "text",
-                                placeholder: "anthropic",
-                                value: "{add_provider}",
-                                oninput: move |evt: Event<FormData>| {
-                                    add_provider.set(evt.value().clone());
+                            style: "{FORM_ROW}",
+                            div {
+                                style: "{FORM_GROUP}",
+                                span { style: "{FORM_LABEL}", "Provider" }
+                                input {
+                                    style: "{FORM_INPUT}",
+                                    r#type: "text",
+                                    placeholder: "anthropic",
+                                    value: "{add_provider}",
+                                    oninput: move |evt: Event<FormData>| {
+                                        add_provider.set(evt.value().clone());
+                                        add_error.set(None);
+                                    },
+                                }
+                            }
+                            div {
+                                style: "{FORM_GROUP}",
+                                span { style: "{FORM_LABEL}", "API Key" }
+                                input {
+                                    key: "credential-key-{add_key_epoch}",
+                                    style: "{FORM_INPUT}",
+                                    r#type: "password",
+                                    placeholder: "sk-...",
+                                    oninput: move |evt: Event<FormData>| {
+                                        add_key.set(koina::secret::SecretString::from(evt.value().clone()));
+                                        add_error.set(None);
+                                    },
+                                }
+                            }
+                            div {
+                                style: "{FORM_GROUP}",
+                                span { style: "{FORM_LABEL}", "Role" }
+                                select {
+                                    style: "{FORM_SELECT}",
+                                    onchange: move |evt: Event<FormData>| {
+                                        let role = if evt.value() == "primary" {
+                                            CredentialRole::Primary
+                                        } else {
+                                            CredentialRole::Backup
+                                        };
+                                        add_role.set(role);
+                                    },
+                                    // WHY(#4877): bind `selected` to the actual
+                                    // signal value -- it was previously
+                                    // hardcoded to Primary regardless of what
+                                    // the caller had chosen.
+                                    option {
+                                        value: "primary",
+                                        selected: *add_role.read() == CredentialRole::Primary,
+                                        "Primary"
+                                    }
+                                    option {
+                                        value: "backup",
+                                        selected: *add_role.read() == CredentialRole::Backup,
+                                        "Backup"
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(err) = &*add_error.read() {
+                            div { style: "{ERROR_TEXT}", "{err}" }
+                        }
+                        div {
+                            style: "display: flex; gap: var(--space-2); margin-top: var(--space-1);",
+                            if *is_adding.read() {
+                                button { style: "{BTN_DISABLED}", disabled: true, "Adding..." }
+                            } else {
+                                button {
+                                    style: "{BTN_STD}",
+                                    onclick: move |_| do_add(),
+                                    "Add"
+                                }
+                            }
+                            button {
+                                style: "{BTN_CANCEL}",
+                                disabled: *is_adding.read(),
+                                onclick: move |_| {
+                                    show_add.set(false);
                                     add_error.set(None);
+                                    // WHY(#4877): reset provider/role too, not
+                                    // just the key -- otherwise a stale
+                                    // provider/role from a cancelled add
+                                    // reappears the next time the form opens.
+                                    add_provider.set(String::new());
+                                    add_role.set(CredentialRole::Primary);
+                                    add_key.set(koina::secret::SecretString::from(String::new()));
+                                    add_key_epoch.set(add_key_epoch() + 1);
                                 },
-                            }
-                        }
-                        div {
-                            style: "{FORM_GROUP}",
-                            span { style: "{FORM_LABEL}", "API Key" }
-                            input {
-                                key: "credential-key-{add_key_epoch}",
-                                style: "{FORM_INPUT}",
-                                r#type: "password",
-                                placeholder: "sk-...",
-                                oninput: move |evt: Event<FormData>| {
-                                    add_key.set(koina::secret::SecretString::from(evt.value().clone()));
-                                    add_error.set(None);
-                                },
-                            }
-                        }
-                        div {
-                            style: "{FORM_GROUP}",
-                            span { style: "{FORM_LABEL}", "Role" }
-                            select {
-                                style: "{FORM_SELECT}",
-                                onchange: move |evt: Event<FormData>| {
-                                    let role = if evt.value() == "primary" {
-                                        CredentialRole::Primary
-                                    } else {
-                                        CredentialRole::Backup
-                                    };
-                                    add_role.set(role);
-                                },
-                                option { value: "primary", selected: true, "Primary" }
-                                option { value: "backup", "Backup" }
+                                "Cancel"
                             }
                         }
                     }
-                    if let Some(err) = &*add_error.read() {
-                        div { style: "{ERROR_TEXT}", "{err}" }
+                } else {
+                    button {
+                        style: "{BTN_STD}",
+                        onclick: move |_| {
+                            // WHY(#4877): reset all add-form state on open, so
+                            // a value left over from a prior cancelled/failed
+                            // attempt never reappears as though still current.
+                            add_provider.set(String::new());
+                            add_role.set(CredentialRole::Primary);
+                            add_error.set(None);
+                            add_key.set(koina::secret::SecretString::from(String::new()));
+                            add_key_epoch.set(add_key_epoch() + 1);
+                            show_add.set(true);
+                        },
+                        "+ Add Credential"
                     }
-                    div {
-                        style: "display: flex; gap: var(--space-2); margin-top: var(--space-1);",
-                        button {
-                            style: "{BTN_STD}",
-                            onclick: move |_| do_add(),
-                            "Add"
-                        }
-                        button {
-                            style: "{BTN_CANCEL}",
-                            onclick: move |_| {
-                                show_add.set(false);
-                                add_error.set(None);
-                                // WHY: Clear key field on cancel to avoid stale
-                                // credential values persisting in state.
-                                add_key.set(koina::secret::SecretString::from(String::new()));
-                                add_key_epoch.set(add_key_epoch() + 1);
-                            },
-                            "Cancel"
-                        }
-                    }
-                }
-            } else {
-                button {
-                    style: "{BTN_STD}",
-                    onclick: move |_| show_add.set(true),
-                    "+ Add Credential"
                 }
             }
         }
@@ -550,6 +670,8 @@ fn CredentialCard(
 ) -> Element {
     let config: Signal<ConnectionConfig> = use_context();
     let mut is_validating = use_signal(|| false);
+    let mut is_rotating = use_signal(|| false);
+    let mut is_removing = use_signal(|| false);
     let mut confirm_rotate = use_signal(|| false);
     let mut confirm_remove = use_signal(|| false);
     let mut card_error: Signal<Option<String>> = use_signal(|| None);
@@ -560,6 +682,11 @@ fn CredentialCard(
     let mut do_validate = {
         let id = entry_id.clone();
         move || {
+            // WHY(#4877): guard against a double-click submitting a second
+            // validate request while the first is still in flight.
+            if *is_validating.read() {
+                return;
+            }
             let cfg = config.read().clone();
             let id_v = id.clone();
             is_validating.set(true);
@@ -581,9 +708,9 @@ fn CredentialCard(
                         on_change.call(());
                     }
                     Ok(resp) => {
-                        let status = resp.status();
+                        let msg = describe_error_response("Validate", resp).await;
                         is_validating.set(false);
-                        card_error.set(Some(format!("Validate failed: {status}")));
+                        card_error.set(Some(msg));
                     }
                     Err(e) => {
                         is_validating.set(false);
@@ -597,29 +724,42 @@ fn CredentialCard(
     let mut do_rotate = {
         let provider = entry_provider.clone();
         move || {
+            // WHY(#4877): the confirm banner already hides once a rotate is
+            // triggered, but the underlying request could still be
+            // in-flight when the (now-hidden) Confirm is clicked again via a
+            // queued event -- guard on the pending flag itself, not just the
+            // banner's visibility.
+            if *is_rotating.read() {
+                return;
+            }
             let cfg = config.read().clone();
             let prov = provider.clone();
             confirm_rotate.set(false);
             card_error.set(None);
+            is_rotating.set(true);
 
             spawn(async move {
                 let client = match authenticated_client(&cfg) {
                     Ok(client) => client,
                     Err(err) => {
                         card_error.set(Some(err.to_string()));
+                        is_rotating.set(false);
                         return;
                     }
                 };
                 let url = credential_rotate_url(&cfg.server_url, &prov);
                 match client.post(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
+                        is_rotating.set(false);
                         on_change.call(());
                     }
                     Ok(resp) => {
-                        let status = resp.status();
-                        card_error.set(Some(format!("Rotate failed: {status}")));
+                        let msg = describe_error_response("Rotate", resp).await;
+                        is_rotating.set(false);
+                        card_error.set(Some(msg));
                     }
                     Err(e) => {
+                        is_rotating.set(false);
                         card_error.set(Some(format!("Connection error: {e}")));
                     }
                 }
@@ -630,29 +770,37 @@ fn CredentialCard(
     let mut do_remove = {
         let id = entry_id.clone();
         move || {
+            if *is_removing.read() {
+                return;
+            }
             let cfg = config.read().clone();
             let id_r = id.clone();
             confirm_remove.set(false);
             card_error.set(None);
+            is_removing.set(true);
 
             spawn(async move {
                 let client = match authenticated_client(&cfg) {
                     Ok(client) => client,
                     Err(err) => {
                         card_error.set(Some(err.to_string()));
+                        is_removing.set(false);
                         return;
                     }
                 };
                 let url = credential_url(&cfg.server_url, &id_r);
                 match client.delete(&url).send().await {
                     Ok(resp) if resp.status().is_success() => {
+                        is_removing.set(false);
                         on_change.call(());
                     }
                     Ok(resp) => {
-                        let status = resp.status();
-                        card_error.set(Some(format!("Remove failed: {status}")));
+                        let msg = describe_error_response("Remove", resp).await;
+                        is_removing.set(false);
+                        card_error.set(Some(msg));
                     }
                     Err(e) => {
+                        is_removing.set(false);
                         card_error.set(Some(format!("Connection error: {e}")));
                     }
                 }
@@ -661,6 +809,8 @@ fn CredentialCard(
     };
 
     let validating = *is_validating.read();
+    let rotating = *is_rotating.read();
+    let removing = *is_removing.read();
     let show_rotate = *confirm_rotate.read();
     let show_remove = *confirm_remove.read();
 
@@ -699,6 +849,17 @@ fn CredentialCard(
                                 background: {entry.status.color()}; display: inline-block;",
                     }
                     "{entry.status.label()}"
+                    // WHY(#4875): "Valid" alone is ambiguous -- it is the one
+                    // status value local inspection and a real provider
+                    // acceptance can both produce. Every other status is
+                    // unambiguous evidence either way (a rejection, a known
+                    // expiry, malformed content) and needs no qualifier.
+                    if entry.status == ValidationStatus::Valid && !entry.provider_verified {
+                        span {
+                            style: "color: var(--text-muted); font-size: var(--text-xs);",
+                            "(local only, not provider-verified)"
+                        }
+                    }
                 }
             }
 
@@ -727,7 +888,8 @@ fn CredentialCard(
 
                 if can_rotate {
                     button {
-                        style: "{BTN_STD}",
+                        style: if rotating { "{BTN_DISABLED}" } else { "{BTN_STD}" },
+                        disabled: rotating,
                         onclick: move |_| {
                             confirm_rotate.set(true);
                             confirm_remove.set(false);
@@ -745,7 +907,8 @@ fn CredentialCard(
                     }
                 } else {
                     button {
-                        style: "{BTN_DANGER}",
+                        style: if removing { "{BTN_DISABLED}" } else { "{BTN_DANGER}" },
+                        disabled: removing,
                         onclick: move |_| {
                             confirm_remove.set(true);
                             confirm_rotate.set(false);
@@ -763,13 +926,22 @@ fn CredentialCard(
                         "Swap primary and backup for {entry_provider}? \
                         If backup is untested or expired, API calls may fail."
                     }
-                    button {
-                        style: "{BTN_CONFIRM}",
-                        onclick: move |_| do_rotate(),
-                        "Confirm"
+                    // WHY(#4877): rotate now has real in-flight state -- the
+                    // banner used to hide immediately on click, so a fast
+                    // second click on the (already-vanished) Confirm could
+                    // still queue a duplicate request.
+                    if rotating {
+                        button { style: "{BTN_DISABLED}", disabled: true, "Rotating..." }
+                    } else {
+                        button {
+                            style: "{BTN_CONFIRM}",
+                            onclick: move |_| do_rotate(),
+                            "Confirm"
+                        }
                     }
                     button {
                         style: "{BTN_CANCEL}",
+                        disabled: rotating,
                         onclick: move |_| confirm_rotate.set(false),
                         "Cancel"
                     }
@@ -780,13 +952,18 @@ fn CredentialCard(
                 div {
                     style: "{CONFIRM_BANNER}",
                     span { style: "{WARN_TEXT}", "Permanently remove this credential?" }
-                    button {
-                        style: "{BTN_CONFIRM}",
-                        onclick: move |_| do_remove(),
-                        "Remove"
+                    if removing {
+                        button { style: "{BTN_DISABLED}", disabled: true, "Removing..." }
+                    } else {
+                        button {
+                            style: "{BTN_CONFIRM}",
+                            onclick: move |_| do_remove(),
+                            "Remove"
+                        }
                     }
                     button {
                         style: "{BTN_CANCEL}",
+                        disabled: removing,
                         onclick: move |_| confirm_remove.set(false),
                         "Cancel"
                     }
@@ -811,6 +988,7 @@ mod tests {
             role: "primary".to_string(),
             masked_key: masked_key.to_string(),
             status: "valid".to_string(),
+            provider_verified: false,
             last_validated: None,
             requests_today: 0,
             tokens_today: 0,

@@ -183,6 +183,12 @@ jobs:
       - name: Check proskenion theatron pins
         run: scripts/check-proskenion-pins.py
 
+      - name: Check workspace lockfiles are tracked
+        run: scripts/check-workspace-locks.py
+
+      - name: Check for unresolved conflict markers
+        run: scripts/check-conflict-markers.py
+
       # WHY(PLAN.md §0.2/wave-0.2): the mechanically-derived module DAG is
       # the SSOT the plan's §7 parallelism map must match — pure-python, no
       # compile, so it runs here like the other coverage checks. Drift means

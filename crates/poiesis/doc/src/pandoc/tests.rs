@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
-use poiesis_core::{Block, Document, Metadata, RichText};
+use poiesis_core::{
+    AspectRatio, Block, Deck, DeliverableSpec, Document, DocumentBody, Factbase, Meta, Metadata,
+    RichText, ThemeId,
+};
 
 use super::typst::typst_source_from_doc;
 use super::*;
@@ -479,4 +482,48 @@ fn chart_figure_renders_svg_in_html() {
         !html.contains(".png"),
         "html output must not reference raster PNG assets, got: {html}"
     );
+}
+
+// ── render_deliverable: the DeliverableSpec-level entry point ──
+
+fn document_spec(doc: Document) -> DeliverableSpec {
+    DeliverableSpec {
+        meta: Meta::new(doc.metadata.title.clone()).expect("title"),
+        theme: ThemeId::new("summus").expect("theme id"),
+        facts: Factbase::new(),
+        body: poiesis_core::Body::Document(DocumentBody::new(doc)),
+    }
+}
+
+#[test]
+fn render_deliverable_routes_document_body_through_render_doc() {
+    let spec = document_spec(simple_doc());
+    let result = render_deliverable(&spec, &DocOpts::default_pdf());
+    match result {
+        Ok(bytes) => assert!(bytes.starts_with(b"%PDF"), "must be PDF"),
+        Err(PandocError::WriterFailed { fmt, .. }) if fmt == "pdf" => {
+            // Typst may fail if no font available in CI — acceptable skip,
+            // matching default_pdf_routes_to_typst above.
+        }
+        Err(e) => panic!("unexpected error: {e}"),
+    }
+}
+
+#[test]
+fn render_deliverable_rejects_non_document_body() {
+    let spec = DeliverableSpec {
+        meta: Meta::new("Pitch").expect("title"),
+        theme: ThemeId::new("summus").expect("theme id"),
+        facts: Factbase::new(),
+        body: poiesis_core::Body::Deck(Deck {
+            aspect: AspectRatio::WIDESCREEN_16_9,
+            slides: Vec::new(),
+        }),
+    };
+    let err = render_deliverable(&spec, &DocOpts::default_pdf())
+        .expect_err("a deck body must reject, not silently render nothing");
+    match err {
+        PandocError::UnsupportedBody { kind } => assert_eq!(kind, "deck"),
+        other => panic!("unexpected error variant: {other:?}"),
+    }
 }

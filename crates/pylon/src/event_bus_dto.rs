@@ -7,8 +7,18 @@ use serde::{Deserialize, Serialize};
 /// WHY: Discovery and subscription tests share a single source of truth so the
 /// advertised topic list cannot drift from the topics actually emitted by pylon
 /// handlers.
-pub(crate) const DISCOVERABLE_TOPICS: &[&str] =
-    &["fact.created", "turn.complete", "nous.lifecycle"];
+pub(crate) const DISCOVERABLE_TOPICS: &[&str] = &[
+    "fact.created",
+    "turn.complete",
+    "nous.lifecycle",
+    // WHY(#4878): credential add/rotate/remove (state-changing) and validate
+    // (read-only provider probe) are kept as separate topics so a security
+    // dashboard can subscribe to mutations without also receiving routine
+    // validation-click traffic, or vice versa. Payload contract documented
+    // on `crate::handlers::credentials::CredentialAuditEvent`.
+    "credential.mutation",
+    "credential.validation",
+];
 
 /// A domain event with a stable topic name, monotonic id, JSON payload, and
 /// emission timestamp.

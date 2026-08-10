@@ -109,12 +109,16 @@ fn write_typography(out: &mut String, theme: &ResolvedTheme) -> std::fmt::Result
             writeln!(out, "  --type-{name}-leading: {leading};")?;
         }
         if let Some(color) = &role.color {
-            // The reference may name a role, tone, or surface; we emit a
-            // var() of the corresponding prefix. The lint rule enforces that
-            // the name resolves to one of them at the spec boundary, so the
-            // fallthrough prefix here would only emit on a system bug.
-            let prefix = pick_color_prefix(theme, color);
-            writeln!(out, "  --type-{name}-color: var(--{prefix}-{color});")?;
+            // The reference may name a role, tone, or surface; emit a var()
+            // of the corresponding prefix. SECURITY(#5633): an unresolved
+            // reference is skipped rather than falling through to a guessed
+            // prefix — `color` is a raw TOML-authored string that has not
+            // itself passed key-charset validation, so interpolating it
+            // unconditionally would reopen the CSS-injection class the
+            // resolved-key validation closes.
+            if let Some(prefix) = pick_color_prefix(theme, color) {
+                writeln!(out, "  --type-{name}-color: var(--{prefix}-{color});")?;
+            }
         }
     }
     Ok(())
@@ -147,39 +151,54 @@ fn write_chrome(out: &mut String, theme: &ResolvedTheme) -> std::fmt::Result {
         ("zebra", &theme.table.zebra),
         ("border", &theme.table.border),
     ] {
-        if let Some(v) = value {
-            let prefix = pick_color_prefix(theme, v);
+        if let Some(v) = value
+            && let Some(prefix) = pick_color_prefix(theme, v)
+        {
             writeln!(out, "  --table-{slot}: var(--{prefix}-{v});")?;
         }
     }
     for (i, series) in theme.chart.series.iter().enumerate() {
-        let prefix = pick_color_prefix(theme, series);
-        let index = i + 1;
-        writeln!(out, "  --chart-series-{index}: var(--{prefix}-{series});")?;
+        if let Some(prefix) = pick_color_prefix(theme, series) {
+            let index = i + 1;
+            writeln!(out, "  --chart-series-{index}: var(--{prefix}-{series});")?;
+        }
     }
-    if let Some(gridline) = &theme.chart.gridline {
-        let prefix = pick_color_prefix(theme, gridline);
+    if let Some(gridline) = &theme.chart.gridline
+        && let Some(prefix) = pick_color_prefix(theme, gridline)
+    {
         writeln!(out, "  --chart-gridline: var(--{prefix}-{gridline});")?;
     }
-    if let Some(label) = &theme.chart.label {
-        let prefix = pick_color_prefix(theme, label);
+    if let Some(label) = &theme.chart.label
+        && let Some(prefix) = pick_color_prefix(theme, label)
+    {
         writeln!(out, "  --chart-label: var(--{prefix}-{label});")?;
     }
     Ok(())
 }
 
-fn pick_color_prefix(theme: &ResolvedTheme, name: &str) -> &'static str {
+/// Resolve a raw theme-authored color reference (a `[table]`/`[chart]`/
+/// `[type.role]` value naming a role/tone/surface key) to its CSS
+/// custom-property namespace prefix.
+///
+/// SECURITY(#5633): returns `None` for an unresolved reference rather than
+/// guessing `"color"`. Role/tone/surface *keys* are charset-validated at
+/// [`crate::resolved::ResolvedTheme::from_theme`], but a reference *value*
+/// like this one is an independent, unvalidated TOML-authored string; if it
+/// doesn't match a known key, interpolating it unconditionally (the old
+/// `"color"`-fallback behavior) would re-open the same CSS-injection class
+/// the key-charset validation closes, just one hop further down the theme
+/// TOML shape. Every call site skips emission on `None`, matching how the
+/// typst/latex sinks already skip an unresolved chart-series reference via
+/// `ResolvedTheme::lookup_color`.
+fn pick_color_prefix(theme: &ResolvedTheme, name: &str) -> Option<&'static str> {
     if theme.role.contains_key(name) {
-        "color"
+        Some("color")
     } else if theme.tone.contains_key(name) {
-        "tone"
+        Some("tone")
     } else if theme.surface.contains_key(name) {
-        "surface"
+        Some("surface")
     } else {
-        // WHY: unknown references should be caught by THEME/unknown-token at
-        // the spec boundary. If one survives, emit `color-` so the browser
-        // surfaces a CSS error rather than silently rendering nothing.
-        "color"
+        None
     }
 }
 
@@ -269,5 +288,36 @@ mod tests {
             css.contains("--chart-series-1: var(--tone-accent);"),
             "first series should resolve through tone prefix: {css}"
         );
+    }
+
+    #[test]
+    fn css_skips_unresolved_chart_gridline_reference() {
+        // SECURITY(#5633): a `[chart].gridline` value that names no known
+        // role/tone/surface must not be interpolated raw into CSS — it must
+        // simply not appear, exactly like an unresolved chart-series entry
+        // already doesn't (see the typst/latex sinks' matching behavior).
+        let mut theme = summus();
+        theme.chart.gridline = Some("x}: body { color: red; --y".to_owned());
+        let css = emit_css(&theme).expect("emit must still succeed");
+        assert!(
+            !css.contains("--chart-gridline"),
+            "unresolved gridline reference must be skipped entirely, not emitted raw: {css}"
+        );
+        assert!(
+            !css.contains("color: red"),
+            "the crafted reference string must never reach the output: {css}"
+        );
+    }
+
+    #[test]
+    fn css_skips_unresolved_table_header_fill_reference() {
+        let mut theme = summus();
+        theme.table.header_fill = Some("}; * { display: none".to_owned());
+        let css = emit_css(&theme).expect("emit must still succeed");
+        assert!(
+            !css.contains("--table-header-fill"),
+            "unresolved table reference must be skipped entirely: {css}"
+        );
+        assert!(!css.contains("display: none"));
     }
 }

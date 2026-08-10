@@ -95,6 +95,9 @@ static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<Family<StreamEventDroppedLabels, Co
 static NOUS_INBOX_SATURATION_TOTAL: LazyLock<Family<NousReasonLabels, Counter>> =
     LazyLock::new(Family::default);
 
+static LLM_FALLBACK_ATTEMPTS_TOTAL: LazyLock<Family<NousReasonLabels, Counter>> =
+    LazyLock::new(Family::default);
+
 static CACHE_CREATION_TOKENS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
     LazyLock::new(Family::default);
 
@@ -152,6 +155,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_nous_inbox_saturation",
         "Total nous actor inbox saturation events by reason",
         NOUS_INBOX_SATURATION_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_llm_fallback_attempts",
+        "Total retry/fallback attempts beyond a turn's first LLM call, by reason",
+        LLM_FALLBACK_ATTEMPTS_TOTAL.clone(),
     );
     registry.register(
         "aletheia_dpo_pairs_captured",
@@ -283,6 +291,23 @@ pub(crate) fn record_stream_event_dropped(nous_id: &str, event_type: &str, reaso
 pub(crate) fn record_inbox_saturation(nous_id: &str, reason: &str) {
     tracing::warn!(nous_id, reason, "nous actor inbox saturated");
     NOUS_INBOX_SATURATION_TOTAL
+        .get_or_create(&NousReasonLabels {
+            nous_id: nous_id.to_owned(),
+            reason: reason.to_owned(),
+        })
+        .inc();
+}
+
+/// Record a retry or fallback attempt beyond a turn's first LLM call.
+///
+/// WHY(#5372): fallback/retry attempts were previously invisible to
+/// telemetry — a turn that burned through a rate-limited primary and a
+/// fallback model looked identical to a clean single-call turn everywhere
+/// except a debug-level log line. `reason` distinguishes primary retries
+/// from fallback-route hops so operators can tell "the primary is flaky" apart
+/// from "we're routinely falling back to a secondary model."
+pub(crate) fn record_llm_fallback_attempt(nous_id: &str, reason: &str) {
+    LLM_FALLBACK_ATTEMPTS_TOTAL
         .get_or_create(&NousReasonLabels {
             nous_id: nous_id.to_owned(),
             reason: reason.to_owned(),
