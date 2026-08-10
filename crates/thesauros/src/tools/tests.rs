@@ -46,6 +46,27 @@ fn test_runner() -> SubprocessRunner {
     })
 }
 
+/// Build a `ShellToolExecutor` for a script already written+chmod'd under
+/// `dir`, capturing its `FileIdentity` the same way registration does
+/// (#5213) so the swap-detection check in `execute()` doesn't fire on
+/// freshly-built test fixtures.
+fn test_executor(dir: &TempDir, script_relpath: &str, timeout_ms: u64) -> ShellToolExecutor {
+    let command_path = dir
+        .path()
+        .join(script_relpath)
+        .canonicalize()
+        .expect("canonicalize test script path");
+    let expected_identity =
+        FileIdentity::of(&command_path).expect("captured identity for test executor");
+    ShellToolExecutor {
+        command_path,
+        pack_root: dir.path().to_path_buf(),
+        runner: test_runner(),
+        timeout_ms,
+        expected_identity,
+    }
+}
+
 fn test_ctx(dir: &TempDir) -> ToolContext {
     ToolContext {
         nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
@@ -90,8 +111,63 @@ impl Drop for EnvCleanup {
 #[test]
 fn validate_command_path_success() {
     let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh\necho ok")]);
+    make_executable(&dir, "tools/test.sh");
     let result = validate_command_path(dir.path(), "tools/test.sh");
     assert!(result.is_ok());
+}
+
+// SECURITY(#5213): registration must reject a non-executable file, a
+// directory, and an absolute/`..`-shaped command string syntactically
+// before any filesystem access.
+#[test]
+fn validate_command_path_rejects_non_executable_file() {
+    let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh\necho ok")]);
+    // WHY: setup_pack_dir does not chmod +x — this is the not-executable case.
+    let result = validate_command_path(dir.path(), "tools/test.sh");
+    assert!(
+        matches!(
+            result.expect_err("non-executable file must be rejected"),
+            error::Error::ToolCommandNotExecutable { .. }
+        ),
+        "a file lacking the executable bit must fail registration, not first invocation"
+    );
+}
+
+#[test]
+fn validate_command_path_rejects_directory() {
+    let dir = setup_pack_dir(&[("tools/subdir/placeholder", "")]);
+    let result = validate_command_path(dir.path(), "tools/subdir");
+    assert!(
+        matches!(
+            result.expect_err("a directory must be rejected as a command path"),
+            error::Error::ToolCommandNotExecutable { .. }
+        ),
+        "a directory is not a regular executable file"
+    );
+}
+
+#[test]
+fn validate_command_path_rejects_absolute_command_string_syntactically() {
+    let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
+    make_executable(&dir, "tools/test.sh");
+    // WHY: `/etc/passwd` need not even exist — the syntactic pre-check must
+    // reject it before any canonicalize/stat call touches the filesystem.
+    let result = validate_command_path(dir.path(), "/definitely/does/not/exist");
+    assert!(matches!(
+        result.expect_err("absolute command string must be rejected"),
+        error::Error::ToolCommandEscape { .. }
+    ));
+}
+
+#[test]
+fn validate_command_path_rejects_dotdot_command_string_syntactically() {
+    let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
+    make_executable(&dir, "tools/test.sh");
+    let result = validate_command_path(dir.path(), "tools/../../definitely-does-not-exist");
+    assert!(matches!(
+        result.expect_err(".. in the command string must be rejected"),
+        error::Error::ToolCommandEscape { .. }
+    ));
 }
 
 #[test]
@@ -336,16 +412,7 @@ async fn shell_executor_runs_script() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\ncat")]);
     make_executable(&dir, "tools/echo.sh");
 
-    let executor = ShellToolExecutor {
-        command_path: dir
-            .path()
-            .join("tools/echo.sh")
-            .canonicalize()
-            .expect("canonicalize echo.sh path"),
-        pack_root: dir.path().to_path_buf(),
-        runner: test_runner(),
-        timeout_ms: 5000,
-    };
+    let executor = test_executor(&dir, "tools/echo.sh", 5000);
 
     let input = ToolInput {
         name: ToolName::new("echo_tool").expect("echo_tool is a valid tool name"),
@@ -375,21 +442,62 @@ async fn shell_executor_runs_script() {
     assert!(result.content.text_summary().contains("hello"));
 }
 
+// SECURITY(#5213): a file swapped in at the registered path after
+// registration must be refused at execution, not silently run under the
+// tool's original, reviewed name.
+#[tokio::test]
+async fn shell_executor_refuses_a_swapped_command_file() {
+    let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\ncat")]);
+    make_executable(&dir, "tools/echo.sh");
+
+    // WHY: identity is captured here, before the swap below — mirrors what
+    // `register_pack_tools` does at pack-load time.
+    let executor = test_executor(&dir, "tools/echo.sh", 5000);
+
+    // Swap the file at the same path: different content (different size).
+    // WHY: File + write_all (not `std::fs::write`, disallowed in this crate
+    // per `clippy.toml` — use tokio::fs or abstract behind a trait) mirrors
+    // `setup_pack_dir`'s own approach above.
+    let swapped_path = dir.path().join("tools/echo.sh");
+    let swapped_content = "#!/bin/sh\necho swapped-in-after-registration";
+    let swap_file = std::fs::File::create(&swapped_path).expect("open script for swap");
+    std::io::Write::write_all(&mut &swap_file, swapped_content.as_bytes())
+        .expect("overwrite script content to simulate a post-registration swap");
+    swap_file.sync_all().expect("sync swapped script");
+    drop(swap_file);
+    make_executable(&dir, "tools/echo.sh");
+
+    let input = ToolInput {
+        name: ToolName::new("echo_tool").expect("echo_tool is a valid tool name"),
+        tool_use_id: "toolu_1".to_owned(),
+        arguments: serde_json::json!({"message": "hello"}),
+    };
+    let ctx = test_ctx(&dir);
+
+    let result = executor
+        .execute(&input, &ctx)
+        .await
+        .expect("execute must not itself error — it reports the mismatch as a tool error");
+    assert!(
+        result.is_error,
+        "a swapped command file must be refused, not executed"
+    );
+    assert!(
+        result
+            .content
+            .text_summary()
+            .contains("changed since registration"),
+        "error must explain why: {}",
+        result.content.text_summary()
+    );
+}
+
 #[tokio::test]
 async fn shell_executor_nonzero_exit_is_error() {
     let dir = setup_pack_dir(&[("tools/fail.sh", "#!/bin/sh\nexit 1")]);
     make_executable(&dir, "tools/fail.sh");
 
-    let executor = ShellToolExecutor {
-        command_path: dir
-            .path()
-            .join("tools/fail.sh")
-            .canonicalize()
-            .expect("canonicalize fail.sh path"),
-        pack_root: dir.path().to_path_buf(),
-        runner: test_runner(),
-        timeout_ms: 5000,
-    };
+    let executor = test_executor(&dir, "tools/fail.sh", 5000);
 
     let input = ToolInput {
         name: ToolName::new("fail_tool").expect("fail_tool is a valid tool name"),
@@ -422,16 +530,7 @@ async fn shell_executor_keeps_stderr_out_of_llm_visible_result() {
     )]);
     make_executable(&dir, "tools/fail.sh");
 
-    let executor = ShellToolExecutor {
-        command_path: dir
-            .path()
-            .join("tools/fail.sh")
-            .canonicalize()
-            .expect("canonicalize fail.sh path"),
-        pack_root: dir.path().to_path_buf(),
-        runner: test_runner(),
-        timeout_ms: 5000,
-    };
+    let executor = test_executor(&dir, "tools/fail.sh", 5000);
     let input = ToolInput {
         name: ToolName::new("fail_tool").expect("fail_tool is a valid tool name"),
         tool_use_id: "toolu_stderr".to_owned(),
@@ -466,16 +565,7 @@ fn shell_executor_clears_sensitive_parent_environment() {
     )]);
     make_executable(&dir, "tools/env.sh");
 
-    let executor = ShellToolExecutor {
-        command_path: dir
-            .path()
-            .join("tools/env.sh")
-            .canonicalize()
-            .expect("canonicalize env.sh path"),
-        pack_root: dir.path().to_path_buf(),
-        runner: test_runner(),
-        timeout_ms: 5000,
-    };
+    let executor = test_executor(&dir, "tools/env.sh", 5000);
     let input = ToolInput {
         name: ToolName::new("env_tool").expect("env_tool is a valid tool name"),
         tool_use_id: "toolu_env_strip".to_owned(),
@@ -556,16 +646,7 @@ async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
     let dir = setup_pack_dir(&[("tools/cat.sh", "#!/bin/sh\ncat")]);
     make_executable(&dir, "tools/cat.sh");
 
-    let executor = ShellToolExecutor {
-        command_path: dir
-            .path()
-            .join("tools/cat.sh")
-            .canonicalize()
-            .expect("canonicalize cat.sh path"),
-        pack_root: dir.path().to_path_buf(),
-        runner: test_runner(),
-        timeout_ms: 5000,
-    };
+    let executor = test_executor(&dir, "tools/cat.sh", 5000);
 
     let input = ToolInput {
         name: ToolName::new("cat_tool").expect("cat_tool is a valid tool name"),
@@ -651,16 +732,7 @@ async fn shell_executor_does_not_expand_env_vars_in_arguments() {
     let dir = setup_pack_dir(&[("tools/cat.sh", "#!/bin/sh\ncat")]);
     make_executable(&dir, "tools/cat.sh");
 
-    let executor = ShellToolExecutor {
-        command_path: dir
-            .path()
-            .join("tools/cat.sh")
-            .canonicalize()
-            .expect("canonicalize cat.sh path"),
-        pack_root: dir.path().to_path_buf(),
-        runner: test_runner(),
-        timeout_ms: 5000,
-    };
+    let executor = test_executor(&dir, "tools/cat.sh", 5000);
 
     let input = ToolInput {
         name: ToolName::new("cat_tool").expect("cat_tool is a valid tool name"),
@@ -696,16 +768,7 @@ async fn shell_executor_timeout_returns_error() {
     let dir = setup_pack_dir(&[("tools/slow.sh", "#!/bin/sh\nsleep 60")]);
     make_executable(&dir, "tools/slow.sh");
 
-    let executor = ShellToolExecutor {
-        command_path: dir
-            .path()
-            .join("tools/slow.sh")
-            .canonicalize()
-            .expect("canonicalize slow.sh path"),
-        pack_root: dir.path().to_path_buf(),
-        runner: test_runner(),
-        timeout_ms: 100,
-    };
+    let executor = test_executor(&dir, "tools/slow.sh", 100);
 
     let input = ToolInput {
         name: ToolName::new("slow_tool").expect("slow_tool is a valid tool name"),
@@ -739,16 +802,7 @@ async fn shell_executor_records_nonzero_duration() {
     let dir = setup_pack_dir(&[("tools/sleep.sh", "#!/bin/sh\nsleep 0.05")]);
     make_executable(&dir, "tools/sleep.sh");
 
-    let executor = ShellToolExecutor {
-        command_path: dir
-            .path()
-            .join("tools/sleep.sh")
-            .canonicalize()
-            .expect("canonicalize sleep.sh path"),
-        pack_root: dir.path().to_path_buf(),
-        runner: test_runner(),
-        timeout_ms: 5000,
-    };
+    let executor = test_executor(&dir, "tools/sleep.sh", 5000);
 
     let input = ToolInput {
         name: ToolName::new("sleep_tool").expect("sleep_tool is a valid tool name"),
@@ -791,16 +845,7 @@ async fn shell_executor_truncates_at_char_boundary() {
     let dir = setup_pack_dir(&[("tools/multibyte.sh", &script_content)]);
     make_executable(&dir, "tools/multibyte.sh");
 
-    let executor = ShellToolExecutor {
-        command_path: dir
-            .path()
-            .join("tools/multibyte.sh")
-            .canonicalize()
-            .expect("canonicalize multibyte.sh path"),
-        pack_root: dir.path().to_path_buf(),
-        runner: test_runner(),
-        timeout_ms: 5000,
-    };
+    let executor = test_executor(&dir, "tools/multibyte.sh", 5000);
 
     let input = ToolInput {
         name: ToolName::new("mb_tool").expect("mb_tool is a valid tool name"),

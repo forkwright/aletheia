@@ -713,28 +713,27 @@ pub async fn create(
 ) -> Result<(StatusCode, Json<CreateAgentResponse>), ApiError> {
     require_role(&claims, Role::Operator)?;
 
+    // WHY(#4638): delegate to the same `NousId` validator that `init`,
+    // `add-nous`, and import use — one canonical charset/length/hyphen-
+    // boundary rule instead of a fifth hand-rolled copy (this one used to
+    // accept uppercase and had no length cap).
     let mut field_errors = Vec::new();
-    if body.id.is_empty() {
+    if let Err(e) = koina::id::NousId::new(body.id.as_str()) {
+        // `IdError` is `#[non_exhaustive]`: the wildcard covers any variant
+        // added later in koina without breaking this match.
+        let (code, message) = match &e {
+            koina::id::IdError::Empty { .. } => ("required", "must not be empty".to_owned()),
+            koina::id::IdError::TooLong { max, actual, .. } => (
+                "too_long",
+                format!("must be at most {max} characters (got {actual})"),
+            ),
+            koina::id::IdError::InvalidFormat { reason, .. } => ("format", reason.clone()),
+            _ => ("invalid", e.to_string()),
+        };
         field_errors.push(FieldError {
             field: "id".to_owned(),
-            code: "required".to_owned(),
-            message: "must not be empty".to_owned(),
-        });
-    } else if !body
-        .id
-        .chars()
-        .all(|c| c.is_ascii_alphanumeric() || c == '-')
-    {
-        field_errors.push(FieldError {
-            field: "id".to_owned(),
-            code: "format".to_owned(),
-            message: "must contain only alphanumeric characters and hyphens".to_owned(),
-        });
-    } else if body.id.starts_with('-') || body.id.ends_with('-') {
-        field_errors.push(FieldError {
-            field: "id".to_owned(),
-            code: "format".to_owned(),
-            message: "cannot start or end with a hyphen".to_owned(),
+            code: code.to_owned(),
+            message,
         });
     }
     if !field_errors.is_empty() {

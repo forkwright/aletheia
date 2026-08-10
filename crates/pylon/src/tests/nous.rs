@@ -668,3 +668,66 @@ async fn patch_nous_tools_rolls_back_on_persist_failure() {
         .expect("probe_tool still present");
     assert_eq!(probe["enabled"], true);
 }
+
+// WHY(#4638): the HTTP create path used to run its own ad hoc id validator
+// (accepted uppercase, no length cap, rejected underscore only implicitly).
+// It now delegates to `koina::id::NousId`, the same validator `init`,
+// `add-nous`, and import share — these tests pin the unified behavior at
+// the HTTP boundary.
+#[tokio::test]
+async fn create_nous_rejects_underscore_in_id() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/nous",
+        Some(serde_json::json!({ "id": "my_agent" })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(resp).await;
+    let errors = body["error"]["details"]["errors"]
+        .as_array()
+        .expect("structured field errors");
+    assert_eq!(errors[0]["field"], "id");
+    assert_eq!(errors[0]["code"], "format");
+}
+
+#[tokio::test]
+async fn create_nous_rejects_uppercase_in_id() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/nous",
+        Some(serde_json::json!({ "id": "MyAgent" })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(resp).await;
+    let errors = body["error"]["details"]["errors"]
+        .as_array()
+        .expect("structured field errors");
+    assert_eq!(errors[0]["field"], "id");
+    assert_eq!(errors[0]["code"], "format");
+}
+
+#[tokio::test]
+async fn create_nous_rejects_id_over_length_cap() {
+    let (app, _dir) = app().await;
+    let long_id = "a".repeat(65);
+    let req = authed_request(
+        "POST",
+        "/api/v1/nous",
+        Some(serde_json::json!({ "id": long_id })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+
+    assert_eq!(resp.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body = body_json(resp).await;
+    let errors = body["error"]["details"]["errors"]
+        .as_array()
+        .expect("structured field errors");
+    assert_eq!(errors[0]["field"], "id");
+    assert_eq!(errors[0]["code"], "too_long");
+}
