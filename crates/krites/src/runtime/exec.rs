@@ -60,7 +60,21 @@ impl<'s, S: Storage<'s>> Db<S> {
             #[cfg(feature = "hot-reload")]
             if let Some(store) = &self.rule_store {
                 let rules = store.load();
-                if rules.rules_text.is_empty() {
+                // WHY the `::` guard: datalog.pest defines `sys_script = {SOI ~ "::" ~ ... ~ EOI}`,
+                // so a system op must be the very first thing in the input. Prepending anything
+                // ahead of one makes the script match no production at all and fail with a syntax
+                // error at the `::`. That is not a corner case — `init_schema` issues a bare
+                // `::relations` while opening the store, so with a populated rule directory every
+                // open would fail before the caller ran a single query, and `::columns`/`::remove`
+                // in the migration and consolidation paths would fail for the store's whole life.
+                //
+                // NOTE: `imperative_script` is anchored at SOI too and shares the constraint, but
+                // it has no consumers in this workspace and its statements have no single leading
+                // token to test for, so it is deliberately not covered here. Prepending is only
+                // ever meaningful for a query script, which is the one class that can host the
+                // extra rules.
+                let is_sys_script = payload.trim_start().starts_with("::");
+                if rules.rules_text.is_empty() || is_sys_script {
                     Cow::Borrowed(payload)
                 } else {
                     Cow::Owned(format!("{}\n{payload}", rules.rules_text))

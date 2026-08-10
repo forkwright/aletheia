@@ -367,6 +367,35 @@ mod tests {
         crate::storage::mem::new_mem_db().unwrap()
     }
 
+    /// A system op must still parse once a non-empty rule store is attached.
+    ///
+    /// `sys_script` is anchored at start-of-input in datalog.pest, so prepending the loaded
+    /// rule text ahead of `::relations` makes the script match no production at all. Without
+    /// the guard in `run_script` this fails with `syntax error ... 3:1 | ::relations`, and
+    /// because `init_schema` issues a bare `::relations` while opening a store, every open
+    /// against a populated rule directory failed before the caller ran a query.
+    #[test]
+    fn sys_ops_still_parse_with_a_populated_rule_store() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        std::fs::write(
+            dir.path().join("probe.mnm"),
+            "wiring_probe[marker] := marker = \"attached\"\n",
+        )
+        .expect("write rule file");
+
+        let mut db = fresh_mem_db();
+        db.attach_rule_store(dir.path()).expect("attach rule store");
+
+        db.run_default("::relations")
+            .expect("a system op must parse with rules attached; prepending breaks SOI anchoring");
+
+        // The rules are still reaching ordinary query scripts — the guard must not disable them.
+        let rows = db
+            .run_default("?[marker] := wiring_probe[marker]")
+            .expect("hot-reloaded rule should be visible to a query script");
+        assert_eq!(rows.rows.len(), 1, "the attached rule should yield its row");
+    }
+
     async fn wait_for_event(rx: &mut tokio::sync::mpsc::Receiver<ReloadEvent>) -> ReloadEvent {
         timeout(Duration::from_secs(1), rx.recv())
             .await
