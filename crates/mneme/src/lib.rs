@@ -230,7 +230,7 @@ pub mod ingest {
 pub mod extract {
     pub use episteme::extract::{
         BookkeepingProviderKind, ConversationMessage, ExtractedToolCall, ExtractionConfig,
-        ExtractionEngine, ExtractionError, ExtractionProvider, LlmCallSnafu, refinement,
+        ExtractionEngine, ExtractionError, ExtractionProvider, LlmCallSnafu, lesson, refinement,
     };
 }
 
