@@ -123,7 +123,10 @@ impl CorrectionRecord {
 
     /// Transition the record to a new status, bumping the revision when the
     /// status actually changes.
-    #[cfg(test)]
+    ///
+    /// WHY(#5403): idempotent — dismissing an already-dismissed record (or
+    /// reactivating an already-active one) leaves the revision untouched, so
+    /// retrying [`dismiss_correction`] is always safe.
     pub(crate) fn transition_to(&mut self, status: CorrectionStatus) {
         if self.status != status {
             self.status = status;
@@ -430,6 +433,72 @@ async fn load_all_records(workspace: &Path) -> Result<Vec<CorrectionRecord>, std
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(e) => Err(e),
     }
+}
+
+/// List every correction recorded for a `nous_id`, regardless of status or
+/// session — for operator review/audit tooling.
+///
+/// WHY(#5403): unlike [`load_corrections`] (injection-facing: active-only,
+/// one session), review needs to see dismissed records too and across every
+/// session, or an operator auditing "what has this agent learned" cannot
+/// see what was already rejected.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "reserved: review-tooling API surface for #5403, awaiting a \
+                   CLI/agent-tool call site outside this file's ownership"
+    )
+)]
+pub(crate) async fn review_corrections(
+    workspace: &Path,
+    nous_id: &str,
+) -> Result<Vec<CorrectionRecord>, std::io::Error> {
+    let records = load_all_records(workspace).await?;
+    Ok(records
+        .into_iter()
+        .filter(|record| record.nous_id == nous_id)
+        .collect())
+}
+
+/// Dismiss a correction by ID, excluding it from future injection.
+///
+/// Returns `Ok(true)` if a record with the given ID was found (and
+/// dismissed, or already dismissed), `Ok(false)` if no such record exists.
+/// Idempotent and safe to retry: dismissing an already-dismissed record is a
+/// no-op write.
+///
+/// WHY(#5403): the prior implementation had no way to dismiss a learned
+/// correction outside of test code (`transition_to` was `#[cfg(test)]`) —
+/// once persisted, a bad correction could never be turned off short of
+/// hand-editing `corrections.json`.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "reserved: review-tooling API surface for #5403, awaiting a \
+                   CLI/agent-tool call site outside this file's ownership"
+    )
+)]
+pub(crate) async fn dismiss_correction(
+    workspace: &Path,
+    id: &CorrectionId,
+) -> Result<bool, std::io::Error> {
+    let path = corrections_path(workspace);
+    let _guard = write_lock().lock().await;
+
+    // NOTE: load_all_records already maps a missing file to an empty vec, so
+    // a nonexistent corrections file falls through to the "not found" arm
+    // below rather than erroring here.
+    let mut records = load_all_records(workspace).await?;
+
+    let Some(record) = records.iter_mut().find(|record| &record.id == id) else {
+        return Ok(false);
+    };
+    record.transition_to(CorrectionStatus::Dismissed);
+
+    write_corrections_atomic(&path, &records).await?;
+    Ok(true)
 }
 
 /// Persist a correction, preventing replay duplicates by source hash/scope.
