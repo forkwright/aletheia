@@ -65,7 +65,18 @@ The naming rule in `docs/HUBS.md` â€” prefer Krites/Datalog/Fjall over CozoDB â€
 | Feature | Default | Purpose |
 |---------|---------|---------|
 | `graph-algo` | yes | Graph algorithms (PageRank, community detection, shortest path) |
+| `async` | yes | Async query surface |
+| `hot-reload` | yes | Config hot-reload via `notify` + `arc-swap` |
 | `storage-fjall` | no | Persistent fjall LSM-tree storage backend |
+| `test-core` | no | Storage/engine test tier; implies `storage-fjall` |
+| `test-full` | no | ML/embedding test tier; implies `test-core` |
+
+`default = ["graph-algo", "async", "hot-reload"]`.
+
+Land-dark selectors (`krites_sovereign_*`) appear here only while a sovereign rewrite soaks beside
+the derived module it replaces. They are off by default, they are removed when the derived copy is
+retired, and every one that exists must carry a row in `docs/FEATURE-FLAGS.md` â€” `release-feature-policy`
+fails the gate otherwise.
 
 ## Patterns
 
@@ -75,9 +86,20 @@ The naming rule in `docs/HUBS.md` â€” prefer Krites/Datalog/Fjall over CozoDB â€
 - **Internal engine modules carry per-site lint suppressions with documented reasons.
 - **Transaction model**: `multi_transaction()` spawns on rayon, communicates via crossbeam channels.
 
-## Recent substrate notes
+## Traps specific to this crate
 
-- Eval-facing recall scenarios are decoupled from engine internals; keep benchmark and trigger config types at the boundary.
+- **Scope clippy to the workspace, not to `-p krites`** (#6633). A scoped `cargo clippy -p krites`
+  reports dead-code failures that do not exist under `--workspace`, because the scoped build compiles
+  a different set of features and names an innocent file. The in-tree `pre-push` hook defaults to the
+  scoped form and calls itself a 95% pre-filter; the missing 5% is a false failure that reads as a
+  real one.
+- **`cargo fmt` alone moves `verbatim_pct`.** The provenance metric counts non-blank source lines
+  shared with the upstream snapshot, so a pure reformat changes a published figure in
+  `PROVENANCE.toml` and `NOTICE.md`. Regenerate with `scripts/measure-krites-provenance.py` after any
+  formatting change rather than hand-editing the ledger, whose header forbids hand-edits for exactly
+  this reason.
+- Eval-facing recall scenarios are decoupled from engine internals; keep benchmark and trigger config
+  types at the boundary.
 - `question_timeout`, ISO-8601 helpers, and `TriggerConfig` support scenario truth without embedding test policy in the engine.
 
 ## Common tasks
