@@ -618,6 +618,7 @@ async fn replay_export_includes_tool_usage_turn_and_failure_fields() {
             cache_read_tokens: 2,
             cache_write_tokens: 1,
             model: Some("mock-model".to_owned()),
+            created_at: "2026-03-05T10:00:00Z".to_owned(),
         };
         let messages = vec![FinalizeMessage {
             role: MnemeRole::ToolResult,

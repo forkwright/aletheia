@@ -293,6 +293,18 @@ pub struct UsageRecord {
     pub cache_write_tokens: i64,
     /// Model used for this turn, if known.
     pub model: Option<String>,
+    /// ISO 8601 timestamp when this usage was recorded (turn completion
+    /// time, not session creation time).
+    ///
+    /// WHY(#5271): usage previously carried no timestamp of its own, so
+    /// insight metrics bucketed all of a session's usage under the
+    /// session's *creation* date — a long-running session's usage was
+    /// misattributed to the day it started, not the day it happened.
+    /// `#[serde(default)]` keeps records written before this field
+    /// existed deserializable; callers fall back to the owning session's
+    /// `created_at` when this is empty.
+    #[serde(default)]
+    pub created_at: String,
 }
 
 /// Structured audit record for one tool invocation within a finalized turn.

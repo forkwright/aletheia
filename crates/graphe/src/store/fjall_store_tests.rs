@@ -740,6 +740,118 @@ fn delete_session_removes_all_child_rows() {
     );
 }
 
+// SECURITY(#5270): every critical session mutation must flush before
+// returning success, so a caller told "done" never observes the change
+// vanish after an unclean shutdown. Each assertion below fails without the
+// corresponding `ensure_durable()` call this issue added.
+#[test]
+fn critical_session_mutations_each_flush_exactly_once() {
+    let store = test_store();
+    store
+        .create_session("ses-durable", "alice", "main", None, None)
+        .expect("create");
+    store
+        .append_message("ses-durable", Role::User, "hello", None, None, 10)
+        .expect("append");
+    store
+        .append_message("ses-durable", Role::User, "again", None, None, 5)
+        .expect("append");
+
+    test_persist_counter::reset();
+    store
+        .update_display_name("ses-durable", "Renamed")
+        .expect("rename");
+    assert_eq!(
+        test_persist_counter::count(),
+        1,
+        "update_display_name must flush"
+    );
+
+    test_persist_counter::reset();
+    store
+        .mark_messages_distilled("ses-durable", &[1])
+        .expect("mark distilled");
+    assert_eq!(
+        test_persist_counter::count(),
+        1,
+        "mark_messages_distilled must flush"
+    );
+
+    test_persist_counter::reset();
+    store
+        .insert_distillation_summary("ses-durable", "[Distillation]\n\nSummary")
+        .expect("summary");
+    assert_eq!(
+        test_persist_counter::count(),
+        1,
+        "insert_distillation_summary must flush"
+    );
+
+    test_persist_counter::reset();
+    store
+        .record_distillation("ses-durable", 2, 1, 15, 5, None)
+        .expect("record distillation");
+    assert_eq!(
+        test_persist_counter::count(),
+        1,
+        "record_distillation must flush"
+    );
+
+    test_persist_counter::reset();
+    let note_id = store
+        .add_note("ses-durable", "alice", "task", "remember this")
+        .expect("add note");
+    assert_eq!(test_persist_counter::count(), 1, "add_note must flush");
+
+    test_persist_counter::reset();
+    let deleted_note = store.delete_note(note_id).expect("delete note");
+    assert!(deleted_note);
+    assert_eq!(test_persist_counter::count(), 1, "delete_note must flush");
+
+    test_persist_counter::reset();
+    let deleted_session = store.delete_session("ses-durable").expect("delete");
+    assert!(deleted_session);
+    assert_eq!(
+        test_persist_counter::count(),
+        1,
+        "delete_session must flush"
+    );
+}
+
+// WHY(#5270): the counterexample to the test above — bounded-retention
+// pruning and blackboard scratch space are documented exemptions from the
+// critical-write policy (see the `ensure_durable` doc comment and the
+// per-function WHY notes), so this pins that they stay non-flushing rather
+// than silently regressing to "flush everything" (which would defeat the
+// point of the exemption: extra fsyncs on hot pruning/scratch paths).
+#[test]
+fn intentionally_ephemeral_writes_do_not_flush() {
+    let store = test_store();
+    store
+        .create_session("ses-ephemeral", "alice", "main", None, None)
+        .expect("create");
+
+    test_persist_counter::reset();
+    store
+        .blackboard_write("scratch-key", "scratch-value", "alice", 60)
+        .expect("blackboard write");
+    assert_eq!(
+        test_persist_counter::count(),
+        0,
+        "blackboard_write is documented ephemeral scratch space"
+    );
+
+    test_persist_counter::reset();
+    store
+        .blackboard_delete("scratch-key", "alice")
+        .expect("blackboard delete");
+    assert_eq!(
+        test_persist_counter::count(),
+        0,
+        "blackboard_delete is documented ephemeral scratch space"
+    );
+}
+
 #[test]
 fn delete_session_aborts_on_corrupt_session_row() {
     // WHY(#4984): delete_session decodes the session row up front; a corrupt
@@ -793,6 +905,7 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             model: None,
+            created_at: "2026-03-05T10:00:00Z".to_owned(),
         })
         .expect("record usage");
     store
@@ -1085,6 +1198,7 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
         cache_read_tokens: 0,
         cache_write_tokens: 0,
         model: Some("test-model".to_owned()),
+        created_at: "2026-03-05T10:00:00Z".to_owned(),
     };
     let messages = vec![
         FinalizeMessage {
@@ -1157,6 +1271,7 @@ fn finalize_turn_persists_structured_tool_audit_records() {
         cache_read_tokens: 0,
         cache_write_tokens: 0,
         model: Some("test-model".to_owned()),
+        created_at: "2026-03-05T10:00:00Z".to_owned(),
     };
     let messages = vec![FinalizeMessage {
         role: Role::Assistant,
@@ -1234,6 +1349,7 @@ fn finalize_turn_failure_inside_message_batch_rolls_back_and_retry_is_clean() {
         cache_read_tokens: 0,
         cache_write_tokens: 0,
         model: Some("test-model".to_owned()),
+        created_at: "2026-03-05T10:00:00Z".to_owned(),
     };
     let messages = vec![
         FinalizeMessage {
