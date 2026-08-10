@@ -422,6 +422,48 @@ fn slugify_empty_string() {
     assert_eq!(slugify(""), "", "empty string should produce empty slug");
 }
 
+/// WHY these live here and not only beside the shared implementation: this slug
+/// becomes a DIRECTORY NAME (`export` joins it onto `output_dir` and calls
+/// `create_dir_all`). The behaviour below is what the skill-local implementation
+/// got wrong, so it is pinned at the consumer that depends on it.
+#[test]
+fn slugify_non_ascii_letters_do_not_reach_the_filesystem() {
+    assert_eq!(
+        slugify("Привет мир"),
+        "",
+        "Cyrillic is not ASCII-alphanumeric, so it must not pass through into a directory name"
+    );
+    assert_eq!(
+        slugify("Kubernetes Уроки 101"),
+        "kubernetes-101",
+        "non-ASCII runs collapse to separators, leaving the ASCII content"
+    );
+}
+
+/// `to_ascii_lowercase` is a no-op on non-ASCII, so an implementation using it
+/// emits case-VARIANT slugs. On a case-insensitive filesystem two skills whose
+/// names differ only in a non-ASCII letter's case then land in the same
+/// directory and one silently overwrites the other's SKILL.md.
+#[test]
+fn slugify_is_case_stable_across_non_ascii() {
+    assert_eq!(slugify("Über Cache"), slugify("über cache"));
+    assert_eq!(slugify("ÄÖÜ Notes"), slugify("äöü notes"));
+}
+
+/// Composed and decomposed forms render identically and must not produce two
+/// different directories -- macOS normalizes filenames to NFD while Linux does
+/// not, so an unnormalized slug is also a cross-platform mismatch.
+#[test]
+fn slugify_normalizes_composed_and_decomposed_alike() {
+    let composed = "Cafe\u{301} Notes";
+    let precomposed = "Caf\u{e9} Notes";
+    assert_eq!(
+        slugify(composed),
+        slugify(precomposed),
+        "NFC normalization must run before the ASCII filter"
+    );
+}
+
 #[test]
 fn slugify_all_special() {
     assert_eq!(
