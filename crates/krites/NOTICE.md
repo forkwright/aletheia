@@ -73,7 +73,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fixed_rule/algos/astar_native.rs` | cf. `fixed_rule/algos/astar.rs` | 18.4% | sovereign |
 | `src/fixed_rule/algos/bfs_native.rs` | cf. `fixed_rule/algos/bfs.rs` | 18.9% | sovereign |
 | `src/fixed_rule/algos/degree_centrality_native.rs` | cf. `fixed_rule/algos/degree_centrality.rs` | 32.1% | sovereign |
-| `src/fixed_rule/algos/dfs_native.rs` | cf. `fixed_rule/algos/dfs.rs` | 26.6% | sovereign |
+| `src/fixed_rule/algos/dfs_native.rs` | cf. `fixed_rule/algos/dfs.rs` | 18.0% | sovereign |
 | `src/fixed_rule/algos/kcore.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/kruskal_native.rs` | cf. `fixed_rule/algos/kruskal.rs` | 14.9% | sovereign |
 | `src/fixed_rule/algos/label_propagation_native.rs` | cf. `fixed_rule/algos/label_propagation.rs` | 13.6% | sovereign |

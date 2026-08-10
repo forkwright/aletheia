@@ -182,6 +182,7 @@ mod dream {
             &self,
             _flush: &MemoryFlush,
             _nous_id: &str,
+            _session_id: &str,
         ) -> std::result::Result<MergeReport, std::io::Error> {
             self.merges.fetch_add(1, Ordering::Relaxed);
             Ok(MergeReport {
