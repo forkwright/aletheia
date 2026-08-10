@@ -104,6 +104,25 @@ def validate_rows(rows: list[dict]) -> None:
         seen.add(path)
         if row.get("status") not in STATUSES:
             raise LedgerError(f"{path}: status must be one of {STATUSES}, got {row.get('status')!r}")
+
+        # INVARIANT: every wave that has landed a fresh, CozoDB-independent replacement under this
+        # scheme puts the substring 'sovereign' in its path (hnsw_sovereign/, fold_table_sovereign/,
+        # stop_word_filter/sovereign/). A path carrying that substring is never legitimately the
+        # RETIRING copy, so it must never carry 'derived' or 'dual'.
+        #
+        # This is the structural fix for aletheia#6656: nine runtime/hnsw_sovereign/*.rs rows — the
+        # fresh rewrite — carried 'dual' (the label for the file about to be deleted) while the
+        # actual retiring runtime/hnsw/*.rs copies carried 'derived' with no expiry at all. The
+        # consequence was that the soak fuse was scheduled to delete the REPLACEMENT while the
+        # derived original would never be forced out. A naming-convention violation now fails here,
+        # before any transition or soak logic runs on it.
+        if "sovereign" in path and row.get("status") != "sovereign":
+            raise LedgerError(
+                f"{path}: path names this a sovereign (CozoDB-independent) replacement, but "
+                f"status={row.get('status')!r} — a 'sovereign'-named path must carry "
+                "status=sovereign. A 'dual' or 'derived' status here means the retiring-copy and "
+                "fresh-replacement labels have been swapped (aletheia#6656)."
+            )
         if row.get("upstream_path") in (None, ""):
             raise LedgerError(f"{path}: upstream_path must be a string ('none' when absent)")
         if row["status"] == "sovereign" and row["upstream_path"] != "none":
