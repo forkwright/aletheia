@@ -23,10 +23,10 @@ Source: 202 `.rs` files, 1003 `use crate::` statements under `crates/krites/src/
 | `data` | `query` | 3 | 3 | no | data/program/magic.rs:19 |
 | `data` | `root` | 15 | 15 | no | data/expr/expr_impl.rs:40 |
 | `data` | `runtime` | 18 | 15 | no | data/program/atoms.rs:9 |
-| `fixed_rule` | `data` | 88 | 83 | no | fixed_rule/algos/all_pairs_shortest_path_native.rs:30 |
-| `fixed_rule` | `parse` | 22 | 22 | no | fixed_rule/algos/all_pairs_shortest_path_native.rs:36 |
-| `fixed_rule` | `root` | 22 | 22 | no | fixed_rule/algos/all_pairs_shortest_path_native.rs:33 |
-| `fixed_rule` | `runtime` | 52 | 47 | no | fixed_rule/algos/all_pairs_shortest_path_native.rs:37 |
+| `fixed_rule` | `data` | 88 | 83 | no | fixed_rule/algos/all_pairs_shortest_path.rs:30 |
+| `fixed_rule` | `parse` | 22 | 22 | no | fixed_rule/algos/all_pairs_shortest_path.rs:36 |
+| `fixed_rule` | `root` | 22 | 22 | no | fixed_rule/algos/all_pairs_shortest_path.rs:33 |
+| `fixed_rule` | `runtime` | 52 | 47 | no | fixed_rule/algos/all_pairs_shortest_path.rs:37 |
 | `fts` | `data` | 14 | 14 | no | fts/config.rs:6 |
 | `fts` | `parse` | 2 | 2 | no | fts/indexing.rs:20 |
 | `fts` | `root` | 5 | 5 | no | fts/config.rs:8 |

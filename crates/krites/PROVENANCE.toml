@@ -470,7 +470,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/all_pairs_shortest_path_native.rs"
+path = "fixed_rule/algos/all_pairs_shortest_path.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/all_pairs_shortest_path.rs"
 verbatim_pct = 15.4
@@ -478,7 +478,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/astar_native.rs"
+path = "fixed_rule/algos/astar.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/astar.rs"
 verbatim_pct = 18.4
@@ -486,7 +486,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/bfs_native.rs"
+path = "fixed_rule/algos/bfs.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/bfs.rs"
 verbatim_pct = 18.9
@@ -494,7 +494,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/degree_centrality_native.rs"
+path = "fixed_rule/algos/degree_centrality.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/degree_centrality.rs"
 verbatim_pct = 32.1
@@ -502,7 +502,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/dfs_native.rs"
+path = "fixed_rule/algos/dfs.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/dfs.rs"
 verbatim_pct = 18.0
@@ -518,7 +518,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/kruskal_native.rs"
+path = "fixed_rule/algos/kruskal.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/kruskal.rs"
 verbatim_pct = 14.9
@@ -526,7 +526,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/label_propagation_native.rs"
+path = "fixed_rule/algos/label_propagation.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/label_propagation.rs"
 verbatim_pct = 13.6
@@ -545,7 +545,7 @@ soak_expires_at_commit_count = 0
 path = "fixed_rule/algos/mod.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/mod.rs"
-verbatim_pct = 31.6
+verbatim_pct = 82.9
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
@@ -558,7 +558,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/prim_native.rs"
+path = "fixed_rule/algos/prim.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/prim.rs"
 verbatim_pct = 14.9
@@ -566,7 +566,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/random_walk_native.rs"
+path = "fixed_rule/algos/random_walk.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/random_walk.rs"
 verbatim_pct = 19.6
@@ -574,7 +574,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/shortest_path_bfs_native.rs"
+path = "fixed_rule/algos/shortest_path_bfs.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/shortest_path_bfs.rs"
 verbatim_pct = 19.1
@@ -582,7 +582,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/shortest_path_dijkstra_native.rs"
+path = "fixed_rule/algos/shortest_path_dijkstra.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/shortest_path_dijkstra.rs"
 verbatim_pct = 9.2
@@ -590,7 +590,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/strongly_connected_components_native.rs"
+path = "fixed_rule/algos/strongly_connected_components.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/strongly_connected_components.rs"
 verbatim_pct = 18.0
@@ -598,7 +598,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/top_sort_native.rs"
+path = "fixed_rule/algos/top_sort.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/top_sort.rs"
 verbatim_pct = 27.4
@@ -606,7 +606,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/triangles_native.rs"
+path = "fixed_rule/algos/triangles.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/triangles.rs"
 verbatim_pct = 23.5
@@ -614,7 +614,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/algos/yen_native.rs"
+path = "fixed_rule/algos/yen.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/yen.rs"
 verbatim_pct = 11.8
@@ -702,7 +702,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/utilities/constant_native.rs"
+path = "fixed_rule/utilities/constant.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/utilities/constant.rs"
 verbatim_pct = 17.2
@@ -718,7 +718,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fixed_rule/utilities/reorder_sort_native.rs"
+path = "fixed_rule/utilities/reorder_sort.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/utilities/reorder_sort.rs"
 verbatim_pct = 17.5

@@ -1,57 +1,26 @@
 //! Graph algorithm implementations as fixed rules.
 //!
-//! Every module here is sovereign. The `#[path]` attributes point at the
-//! `_native.rs` filenames the sovereign rewrites were authored under while a
-//! derived counterpart still occupied the plain name; the counterparts are
-//! retired, so the suffix is now only a filename.
+//! Every module here is sovereign. The `_native.rs` filenames these were
+//! authored under, and the `#[path]` attributes that reached them, are retired
+//! along with the derived siblings that made the distinction mean something.
 pub(crate) mod kcore;
 
-#[path = "all_pairs_shortest_path_native.rs"]
 pub(crate) mod all_pairs_shortest_path;
-
-#[path = "astar_native.rs"]
 pub(crate) mod astar;
-
-#[path = "bfs_native.rs"]
 pub(crate) mod bfs;
-
-#[path = "degree_centrality_native.rs"]
 pub(crate) mod degree_centrality;
-
-#[path = "dfs_native.rs"]
 pub(crate) mod dfs;
-
-#[path = "kruskal_native.rs"]
 pub(crate) mod kruskal;
-
-#[path = "label_propagation_native.rs"]
 pub(crate) mod label_propagation;
-
 pub(crate) mod louvain;
 pub(crate) mod pagerank;
-
-#[path = "prim_native.rs"]
 pub(crate) mod prim;
-
-#[path = "random_walk_native.rs"]
 pub(crate) mod random_walk;
-
-#[path = "shortest_path_bfs_native.rs"]
 pub(crate) mod shortest_path_bfs;
-
-#[path = "shortest_path_dijkstra_native.rs"]
 pub(crate) mod shortest_path_dijkstra;
-
-#[path = "strongly_connected_components_native.rs"]
 pub(crate) mod strongly_connected_components;
-
-#[path = "top_sort_native.rs"]
 pub(crate) mod top_sort;
-
-#[path = "triangles_native.rs"]
 pub(crate) mod triangles;
-
-#[path = "yen_native.rs"]
 pub(crate) mod yen;
 
 pub(crate) use all_pairs_shortest_path::{BetweennessCentrality, ClosenessCentrality};
