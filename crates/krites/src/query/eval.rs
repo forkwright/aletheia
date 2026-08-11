@@ -36,10 +36,10 @@ use crate::parse::SourceSpan;
 use crate::query::compile::{
     AggrKind, CompiledProgram, CompiledRule, CompiledRuleSet, ContainedRuleMultiplicity,
 };
+use crate::query::context::QueryContext;
 use crate::query::error::*;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::{EpochStore, MeetAggrStore, RegularTempStore, TempStore};
-use crate::runtime::transact::SessionTx;
 
 pub(crate) struct QueryLimiter {
     total: Option<usize>,
@@ -71,681 +71,713 @@ impl QueryLimiter {
     }
 }
 
-impl<'a> SessionTx<'a> {
-    /// Evaluate a stratified Datalog program with magic sets optimization.
-    ///
-    /// # Complexity
-    ///
-    /// O(S * R * T) where S is the number of strata, R is the maximum rule count
-    /// per stratum, and T is the average tuple count processed. Semi-naive evaluation
-    /// converges in O(d) epochs where d is the data depth (typically small).
-    pub(crate) fn stratified_magic_evaluate(
-        &self,
-        strata: &[CompiledProgram],
-        store_lifetimes: BTreeMap<MagicSymbol, usize>,
-        total_num_to_take: Option<usize>,
-        num_to_skip: Option<usize>,
-        max_epochs: u32,
-        poison: Poison,
-    ) -> Result<(EpochStore, bool)> {
-        let mut stores: BTreeMap<MagicSymbol, EpochStore> = BTreeMap::new();
-        let mut early_return = false;
-        for (stratum, cur_prog) in strata.iter().enumerate() {
-            if stratum > 0 {
-                stores.retain(|name, _| match store_lifetimes.get(name) {
-                    None => false,
-                    Some(n) => *n >= stratum,
-                });
-                trace!("{:?}", stores);
-            }
-            for (rule_name, rule_set) in cur_prog {
-                let store = match rule_set.aggr_kind() {
+/// Evaluate a stratified Datalog program with magic sets optimization.
+///
+/// # Complexity
+///
+/// O(S * R * T) where S is the number of strata, R is the maximum rule count
+/// per stratum, and T is the average tuple count processed. Semi-naive evaluation
+/// converges in O(d) epochs where d is the data depth (typically small).
+pub(crate) fn stratified_magic_evaluate(
+    tx: &dyn QueryContext,
+    strata: &[CompiledProgram],
+    store_lifetimes: BTreeMap<MagicSymbol, usize>,
+    total_num_to_take: Option<usize>,
+    num_to_skip: Option<usize>,
+    max_epochs: u32,
+    poison: Poison,
+) -> Result<(EpochStore, bool)> {
+    let mut stores: BTreeMap<MagicSymbol, EpochStore> = BTreeMap::new();
+    let mut early_return = false;
+    for (stratum, cur_prog) in strata.iter().enumerate() {
+        if stratum > 0 {
+            stores.retain(|name, _| match store_lifetimes.get(name) {
+                None => false,
+                Some(n) => *n >= stratum,
+            });
+            trace!("{:?}", stores);
+        }
+        for (rule_name, rule_set) in cur_prog {
+            let store =
+                match rule_set.aggr_kind() {
                     AggrKind::None | AggrKind::Normal => EpochStore::new_normal(rule_set.arity()),
                     AggrKind::Meet => {
                         let rs = match rule_set {
-                            CompiledRuleSet::Rules(rs) => rs,
-                            _ => return Err(EvalFailedSnafu {
-                                message: "meet aggregation requires compiled rules, not fixed rules",
-                            }.build().into()),
-                        };
+                        CompiledRuleSet::Rules(rs) => rs,
+                        _ => return Err(EvalFailedSnafu {
+                            message: "meet aggregation requires compiled rules, not fixed rules",
+                        }.build().into()),
+                    };
                         EpochStore::new_meet(&rs[0].aggr)?
                     }
                 };
-                stores.insert(rule_name.clone(), store);
-            }
-            debug!("stratum {}", stratum);
-            early_return = self.semi_naive_magic_evaluate(
-                cur_prog,
-                &mut stores,
-                total_num_to_take,
-                num_to_skip,
-                max_epochs,
-                stratum,
-                poison.clone(),
-            )?;
+            stores.insert(rule_name.clone(), store);
         }
-        let entry_symbol = MagicSymbol::Muggle {
-            inner: Symbol::new(PROG_ENTRY, SourceSpan(0, 0)),
-        };
-        let ret_area = stores.remove(&entry_symbol).ok_or(NoEntryError)?;
-        Ok((ret_area, early_return))
+        debug!("stratum {}", stratum);
+        early_return = semi_naive_magic_evaluate(
+            tx,
+            cur_prog,
+            &mut stores,
+            total_num_to_take,
+            num_to_skip,
+            max_epochs,
+            stratum,
+            poison.clone(),
+        )?;
     }
+    let entry_symbol = MagicSymbol::Muggle {
+        inner: Symbol::new(PROG_ENTRY, SourceSpan(0, 0)),
+    };
+    let ret_area = stores.remove(&entry_symbol).ok_or(NoEntryError)?;
+    Ok((ret_area, early_return))
+}
 
-    #[expect(
-        clippy::needless_borrow,
-        reason = "closure borrows &ruleset from pattern match binding"
-    )]
-    fn eval_compiled_ruleset_epoch_zero<'b>(
-        &self,
-        k: &'b MagicSymbol,
-        compiled_ruleset: &CompiledRuleSet,
-        stores: &BTreeMap<MagicSymbol, EpochStore>,
-        limiter: &QueryLimiter,
-        used_limiter: &AtomicBool,
-        poison: Poison,
-    ) -> Result<(&'b MagicSymbol, TempStore)> {
-        let new_store = match compiled_ruleset {
-            CompiledRuleSet::Rules(ruleset) => match compiled_ruleset.aggr_kind() {
-                AggrKind::None => {
-                    let res = self.initial_rule_non_aggr_eval(
-                        k,
-                        &ruleset,
-                        stores,
-                        limiter,
-                        poison.clone(),
-                    )?;
-                    used_limiter.fetch_or(res.0, Ordering::Relaxed);
-                    res.1.wrap()
-                }
-                AggrKind::Normal => {
-                    let res =
-                        self.initial_rule_aggr_eval(k, &ruleset, stores, limiter, poison.clone())?;
-                    used_limiter.fetch_or(res.0, Ordering::Relaxed);
-                    res.1.wrap()
-                }
-                AggrKind::Meet => {
-                    let new = self.initial_rule_meet_eval(k, &ruleset, stores, poison.clone())?;
-                    new.wrap()
-                }
-            },
-            CompiledRuleSet::Fixed(fixed) => {
-                let fixed_impl = fixed.fixed_impl.as_ref();
-                let mut out = RegularTempStore::default();
-                let payload = FixedRulePayload {
-                    manifest: &fixed,
-                    stores,
-                    tx: self,
-                };
-                fixed_impl.run(payload, &mut out, poison.clone())?;
-                out.wrap()
+#[expect(
+    clippy::needless_borrow,
+    reason = "closure borrows &ruleset from pattern match binding"
+)]
+fn eval_compiled_ruleset_epoch_zero<'b>(
+    tx: &dyn QueryContext,
+    k: &'b MagicSymbol,
+    compiled_ruleset: &CompiledRuleSet,
+    stores: &BTreeMap<MagicSymbol, EpochStore>,
+    limiter: &QueryLimiter,
+    used_limiter: &AtomicBool,
+    poison: Poison,
+) -> Result<(&'b MagicSymbol, TempStore)> {
+    let new_store = match compiled_ruleset {
+        CompiledRuleSet::Rules(ruleset) => match compiled_ruleset.aggr_kind() {
+            AggrKind::None => {
+                let res =
+                    initial_rule_non_aggr_eval(tx, k, &ruleset, stores, limiter, poison.clone())?;
+                used_limiter.fetch_or(res.0, Ordering::Relaxed);
+                res.1.wrap()
             }
-        };
-        Ok((k, new_store))
-    }
-
-    fn run_epoch_zero_rules<'b>(
-        &self,
-        prog: &'b CompiledProgram,
-        stores: &BTreeMap<MagicSymbol, EpochStore>,
-        limiter: &QueryLimiter,
-        used_limiter: &AtomicBool,
-        poison: Poison,
-    ) -> Result<BTreeMap<&'b MagicSymbol, TempStore>> {
-        let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| {
-            self.eval_compiled_ruleset_epoch_zero(
-                k,
-                compiled_ruleset,
+            AggrKind::Normal => {
+                let res = initial_rule_aggr_eval(tx, k, &ruleset, stores, limiter, poison.clone())?;
+                used_limiter.fetch_or(res.0, Ordering::Relaxed);
+                res.1.wrap()
+            }
+            AggrKind::Meet => {
+                let new = initial_rule_meet_eval(tx, k, &ruleset, stores, poison.clone())?;
+                new.wrap()
+            }
+        },
+        CompiledRuleSet::Fixed(fixed) => {
+            let fixed_impl = fixed.fixed_impl.as_ref();
+            let mut out = RegularTempStore::default();
+            let payload = FixedRulePayload {
+                manifest: &fixed,
                 stores,
-                limiter,
-                used_limiter,
-                poison.clone(),
-            )
-        };
+                tx,
+            };
+            fixed_impl.run(payload, &mut out, poison.clone())?;
+            out.wrap()
+        }
+    };
+    Ok((k, new_store))
+}
 
-        let mut to_merge = BTreeMap::new();
-        #[cfg(not(target_arch = "wasm32"))]
+fn run_epoch_zero_rules<'b>(
+    tx: &dyn QueryContext,
+    prog: &'b CompiledProgram,
+    stores: &BTreeMap<MagicSymbol, EpochStore>,
+    limiter: &QueryLimiter,
+    used_limiter: &AtomicBool,
+    poison: Poison,
+) -> Result<BTreeMap<&'b MagicSymbol, TempStore>> {
+    let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| {
+        eval_compiled_ruleset_epoch_zero(
+            tx,
+            k,
+            compiled_ruleset,
+            stores,
+            limiter,
+            used_limiter,
+            poison.clone(),
+        )
+    };
+
+    let mut to_merge = BTreeMap::new();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let limiter_enabled = limiter.total.is_some();
+        for res in prog
+            .iter()
+            .filter(|(symb, _)| limiter_enabled && symb.is_prog_entry())
+            .map(execution)
         {
-            let limiter_enabled = limiter.total.is_some();
-            for res in prog
-                .iter()
-                .filter(|(symb, _)| limiter_enabled && symb.is_prog_entry())
-                .map(execution)
-            {
-                let (k, new_store) = res?;
-                to_merge.insert(k, new_store);
-                if limiter.is_stopped() {
-                    break;
-                }
-            }
-            let execs = prog
-                .par_iter()
-                .filter(|(symb, _)| !(limiter_enabled && symb.is_prog_entry()))
-                .map(execution);
-            for res in execs.collect::<Vec<_>>() {
-                let (k, new_store) = res?;
-                to_merge.insert(k, new_store);
+            let (k, new_store) = res?;
+            to_merge.insert(k, new_store);
+            if limiter.is_stopped() {
+                break;
             }
         }
-        #[cfg(target_arch = "wasm32")]
-        {
-            for res in prog.iter().map(execution) {
-                let (k, new_store) = res?;
-                to_merge.insert(k, new_store);
-            }
+        let execs = prog
+            .par_iter()
+            .filter(|(symb, _)| !(limiter_enabled && symb.is_prog_entry()))
+            .map(execution);
+        for res in execs.collect::<Vec<_>>() {
+            let (k, new_store) = res?;
+            to_merge.insert(k, new_store);
         }
-        Ok(to_merge)
     }
-
-    #[expect(
-        clippy::needless_borrow,
-        reason = "closure borrows &ruleset from pattern match binding"
-    )]
-    fn eval_compiled_ruleset_subsequent_epoch<'b>(
-        &self,
-        k: &'b MagicSymbol,
-        compiled_ruleset: &CompiledRuleSet,
-        epoch: u32,
-        stores: &BTreeMap<MagicSymbol, EpochStore>,
-        limiter: &QueryLimiter,
-        used_limiter: &AtomicBool,
-        poison: Poison,
-    ) -> Result<(&'b MagicSymbol, TempStore)> {
-        let new_store = match compiled_ruleset {
-            CompiledRuleSet::Rules(ruleset) => match compiled_ruleset.aggr_kind() {
-                AggrKind::None => {
-                    let res = self.incremental_rule_non_aggr_eval(
-                        k,
-                        &ruleset,
-                        epoch,
-                        stores,
-                        limiter,
-                        poison.clone(),
-                    )?;
-                    used_limiter.fetch_or(res.0, Ordering::Relaxed);
-                    res.1.wrap()
-                }
-                AggrKind::Meet => {
-                    let new =
-                        self.incremental_rule_meet_eval(k, &ruleset, stores, poison.clone())?;
-                    new.wrap()
-                }
-                AggrKind::Normal => RegularTempStore::default().wrap(),
-            },
-            CompiledRuleSet::Fixed(_) => RegularTempStore::default().wrap(),
-        };
-        Ok((k, new_store))
-    }
-
-    fn run_subsequent_epoch_rules<'b>(
-        &self,
-        prog: &'b CompiledProgram,
-        stores: &BTreeMap<MagicSymbol, EpochStore>,
-        epoch: u32,
-        limiter: &QueryLimiter,
-        used_limiter: &AtomicBool,
-        poison: Poison,
-    ) -> Result<BTreeMap<&'b MagicSymbol, TempStore>> {
-        let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| {
-            self.eval_compiled_ruleset_subsequent_epoch(
-                k,
-                compiled_ruleset,
-                epoch,
-                stores,
-                limiter,
-                used_limiter,
-                poison.clone(),
-            )
-        };
-
-        let mut to_merge = BTreeMap::new();
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let limiter_enabled = limiter.total.is_some();
-            for res in prog
-                .iter()
-                .filter(|(symb, _)| limiter_enabled && symb.is_prog_entry())
-                .map(execution)
-            {
-                let (k, new_store) = res?;
-                to_merge.insert(k, new_store);
-                if limiter.is_stopped() {
-                    break;
-                }
-            }
-            let execs = prog
-                .par_iter()
-                .filter(|(symb, _)| !(limiter_enabled && symb.is_prog_entry()))
-                .map(execution);
-            for res in execs.collect::<Vec<_>>() {
-                let (k, new_store) = res?;
-                to_merge.insert(k, new_store);
-            }
+    #[cfg(target_arch = "wasm32")]
+    {
+        for res in prog.iter().map(execution) {
+            let (k, new_store) = res?;
+            to_merge.insert(k, new_store);
         }
-        #[cfg(target_arch = "wasm32")]
-        {
-            for res in prog.iter().map(execution) {
-                let (k, new_store) = res?;
-                to_merge.insert(k, new_store);
-            }
-        }
-        Ok(to_merge)
     }
+    Ok(to_merge)
+}
 
-    /// Returns `true` if early return is activated.
-    ///
-    /// # Complexity
-    ///
-    /// O(E * R * T) where E is epochs until fixpoint, R is rules, T is tuples.
-    /// Converges when no new facts are derived (monotonic).
-    fn semi_naive_magic_evaluate(
-        &self,
-        prog: &CompiledProgram,
-        stores: &mut BTreeMap<MagicSymbol, EpochStore>,
-        total_num_to_take: Option<usize>,
-        num_to_skip: Option<usize>,
-        max_epochs: u32,
-        stratum: usize,
-        poison: Poison,
-    ) -> Result<bool> {
-        let limiter = QueryLimiter {
-            total: total_num_to_take,
-            skip: num_to_skip,
-            counter: 0.into(),
-        };
-        let used_limiter: AtomicBool = false.into();
-
-        for epoch in 0..max_epochs {
-            debug!("epoch {}", epoch);
-            let borrowed_stores = stores as &BTreeMap<_, _>;
-            let to_merge = if epoch == 0 {
-                self.run_epoch_zero_rules(
-                    prog,
-                    borrowed_stores,
-                    &limiter,
-                    &used_limiter,
-                    poison.clone(),
-                )?
-            } else {
-                self.run_subsequent_epoch_rules(
-                    prog,
-                    borrowed_stores,
+#[expect(
+    clippy::needless_borrow,
+    reason = "closure borrows &ruleset from pattern match binding"
+)]
+fn eval_compiled_ruleset_subsequent_epoch<'b>(
+    tx: &dyn QueryContext,
+    k: &'b MagicSymbol,
+    compiled_ruleset: &CompiledRuleSet,
+    epoch: u32,
+    stores: &BTreeMap<MagicSymbol, EpochStore>,
+    limiter: &QueryLimiter,
+    used_limiter: &AtomicBool,
+    poison: Poison,
+) -> Result<(&'b MagicSymbol, TempStore)> {
+    let new_store = match compiled_ruleset {
+        CompiledRuleSet::Rules(ruleset) => match compiled_ruleset.aggr_kind() {
+            AggrKind::None => {
+                let res = incremental_rule_non_aggr_eval(
+                    tx,
+                    k,
+                    &ruleset,
                     epoch,
-                    &limiter,
-                    &used_limiter,
+                    stores,
+                    limiter,
                     poison.clone(),
-                )?
-            };
+                )?;
+                used_limiter.fetch_or(res.0, Ordering::Relaxed);
+                res.1.wrap()
+            }
+            AggrKind::Meet => {
+                let new = incremental_rule_meet_eval(tx, k, &ruleset, stores, poison.clone())?;
+                new.wrap()
+            }
+            AggrKind::Normal => RegularTempStore::default().wrap(),
+        },
+        CompiledRuleSet::Fixed(_) => RegularTempStore::default().wrap(),
+    };
+    Ok((k, new_store))
+}
 
-            let mut changed = false;
-            for (k, new_store) in to_merge {
-                let old_store = stores.get_mut(k).ok_or_else(|| {
-                    crate::error::InternalError::from(
-                        EvalFailedSnafu {
-                            message: format!("epoch store not found for rule '{k}'"),
-                        }
-                        .build(),
-                    )
-                })?;
-                old_store.merge_in(new_store)?;
-                trace!("delta for {}: {}", k, old_store.has_delta());
-                changed |= old_store.has_delta();
-            }
-            if !changed {
-                return Ok(used_limiter.load(Ordering::Acquire));
+fn run_subsequent_epoch_rules<'b>(
+    tx: &dyn QueryContext,
+    prog: &'b CompiledProgram,
+    stores: &BTreeMap<MagicSymbol, EpochStore>,
+    epoch: u32,
+    limiter: &QueryLimiter,
+    used_limiter: &AtomicBool,
+    poison: Poison,
+) -> Result<BTreeMap<&'b MagicSymbol, TempStore>> {
+    let execution = |(k, compiled_ruleset): (_, &CompiledRuleSet)| {
+        eval_compiled_ruleset_subsequent_epoch(
+            tx,
+            k,
+            compiled_ruleset,
+            epoch,
+            stores,
+            limiter,
+            used_limiter,
+            poison.clone(),
+        )
+    };
+
+    let mut to_merge = BTreeMap::new();
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let limiter_enabled = limiter.total.is_some();
+        for res in prog
+            .iter()
+            .filter(|(symb, _)| limiter_enabled && symb.is_prog_entry())
+            .map(execution)
+        {
+            let (k, new_store) = res?;
+            to_merge.insert(k, new_store);
+            if limiter.is_stopped() {
+                break;
             }
         }
-        let rule_context = prog.keys().map(ToString::to_string).join(", ");
-        warn!(
-            epoch_count = max_epochs,
-            max_epochs,
-            stratum,
-            rule_context = %rule_context,
-            "semi-naive evaluation exceeded epoch limit"
-        );
-        EpochLimitExceededSnafu {
-            epoch_count: max_epochs,
-            max_epochs,
-            stratum,
-            rule_context,
+        let execs = prog
+            .par_iter()
+            .filter(|(symb, _)| !(limiter_enabled && symb.is_prog_entry()))
+            .map(execution);
+        for res in execs.collect::<Vec<_>>() {
+            let (k, new_store) = res?;
+            to_merge.insert(k, new_store);
         }
-        .fail()?
     }
-    /// Returns `true` if early return is activated.
-    ///
-    /// # Complexity
-    ///
-    /// O(R * T) where R is rules and T is tuples scanned. Aggregation-free rules
-    /// stream tuples directly without grouping overhead.
-    fn initial_rule_non_aggr_eval(
-        &self,
-        rule_symb: &MagicSymbol,
-        ruleset: &[CompiledRule],
-        stores: &BTreeMap<MagicSymbol, EpochStore>,
-        limiter: &QueryLimiter,
-        poison: Poison,
-    ) -> Result<(bool, RegularTempStore)> {
-        let mut out_store = RegularTempStore::default();
-        let should_check_limit = limiter.total.is_some() && rule_symb.is_prog_entry();
-
-        for (rule_n, rule) in ruleset.iter().enumerate() {
-            debug!("initial calculation for rule {:?}.{}", rule_symb, rule_n);
-            for item_res in rule.relation.iter(self, None, stores)? {
-                let item = item_res?;
-                trace!("item for {:?}.{}: {:?} at {}", rule_symb, rule_n, item, 0);
-                if should_check_limit {
-                    if !out_store.exists(&item) {
-                        if limiter.should_skip_next() {
-                            out_store.put_with_skip(item);
-                        } else {
-                            out_store.put(item);
-                        }
-                        if limiter.incr_and_should_stop() {
-                            trace!("early stopping due to result count limit exceeded");
-                            return Ok((true, out_store));
-                        }
-                    }
-                } else {
-                    out_store.put(item);
-                }
-            }
-            poison.check()?;
+    #[cfg(target_arch = "wasm32")]
+    {
+        for res in prog.iter().map(execution) {
+            let (k, new_store) = res?;
+            to_merge.insert(k, new_store);
         }
-
-        Ok((should_check_limit, out_store))
     }
-    /// Evaluate meet aggregation rules (initial epoch).
-    ///
-    /// # Complexity
-    ///
-    /// O(R * T * A) where R is rules, T is tuples, A is aggregation arity.
-    /// Meet aggregation combines partial results incrementally.
-    fn initial_rule_meet_eval(
-        &self,
-        rule_symb: &MagicSymbol,
-        ruleset: &[CompiledRule],
-        stores: &BTreeMap<MagicSymbol, EpochStore>,
-        poison: Poison,
-    ) -> Result<MeetAggrStore> {
-        // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
-        let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
+    Ok(to_merge)
+}
 
-        for (rule_n, rule) in ruleset.iter().enumerate() {
-            debug!("initial calculation for rule {:?}.{}", rule_symb, rule_n);
-            let mut aggr = rule.aggr.clone();
-            for (aggr, args) in aggr.iter_mut().flatten() {
-                aggr.meet_init(args)?;
-            }
-            for item_res in rule.relation.iter(self, None, stores)? {
-                let item = item_res?;
-                trace!("item for {:?}.{}: {:?} at {}", rule_symb, rule_n, item, 0);
-                out_store.meet_put(item)?;
-            }
-            poison.check()?;
+/// Returns `true` if early return is activated.
+///
+/// # Complexity
+///
+/// O(E * R * T) where E is epochs until fixpoint, R is rules, T is tuples.
+/// Converges when no new facts are derived (monotonic).
+fn semi_naive_magic_evaluate(
+    tx: &dyn QueryContext,
+    prog: &CompiledProgram,
+    stores: &mut BTreeMap<MagicSymbol, EpochStore>,
+    total_num_to_take: Option<usize>,
+    num_to_skip: Option<usize>,
+    max_epochs: u32,
+    stratum: usize,
+    poison: Poison,
+) -> Result<bool> {
+    let limiter = QueryLimiter {
+        total: total_num_to_take,
+        skip: num_to_skip,
+        counter: 0.into(),
+    };
+    let used_limiter: AtomicBool = false.into();
+
+    for epoch in 0..max_epochs {
+        debug!("epoch {}", epoch);
+        let borrowed_stores = stores as &BTreeMap<_, _>;
+        let to_merge = if epoch == 0 {
+            run_epoch_zero_rules(
+                tx,
+                prog,
+                borrowed_stores,
+                &limiter,
+                &used_limiter,
+                poison.clone(),
+            )?
+        } else {
+            run_subsequent_epoch_rules(
+                tx,
+                prog,
+                borrowed_stores,
+                epoch,
+                &limiter,
+                &used_limiter,
+                poison.clone(),
+            )?
+        };
+
+        let mut changed = false;
+        for (k, new_store) in to_merge {
+            let old_store = stores.get_mut(k).ok_or_else(|| {
+                crate::error::InternalError::from(
+                    EvalFailedSnafu {
+                        message: format!("epoch store not found for rule '{k}'"),
+                    }
+                    .build(),
+                )
+            })?;
+            old_store.merge_in(new_store)?;
+            trace!("delta for {}: {}", k, old_store.has_delta());
+            changed |= old_store.has_delta();
         }
-        if out_store.is_empty() && ruleset[0].aggr.iter().all(|a| a.is_some()) {
-            // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
-            let mut aggr = ruleset[0].aggr.clone();
-            for (aggr, args) in aggr.iter_mut().flatten() {
-                aggr.meet_init(args)?;
-            }
-            let value: Vec<_> = aggr
-                .iter()
-                .map(|a| -> Result<DataValue> {
-                    let (aggr, _) = a.as_ref().ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            EvalFailedSnafu {
-                                message: "aggregation entry missing in meet evaluation",
-                            }
-                            .build(),
-                        )
-                    })?;
-                    let op = aggr.meet_op.as_ref().ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            EvalFailedSnafu {
-                                message: "meet_op missing on aggregation",
-                            }
-                            .build(),
-                        )
-                    })?;
-                    Ok(op.init_val())
-                })
-                .try_collect()?;
-            out_store.meet_put(value)?;
+        if !changed {
+            return Ok(used_limiter.load(Ordering::Acquire));
         }
-        Ok(out_store)
     }
-    /// Evaluate normal aggregation rules (initial epoch).
-    ///
-    /// # Complexity
-    ///
-    /// O(R * T * log G) where R is rules, T is tuples, G is group count.
-    /// Groups tuples by key and applies aggregation functions.
-    fn initial_rule_aggr_eval(
-        &self,
-        rule_symb: &MagicSymbol,
-        ruleset: &[CompiledRule],
-        stores: &BTreeMap<MagicSymbol, EpochStore>,
-        limiter: &QueryLimiter,
-        poison: Poison,
-    ) -> Result<(bool, RegularTempStore)> {
-        let mut out_store = RegularTempStore::default();
-        let should_check_limit = limiter.total.is_some() && rule_symb.is_prog_entry();
-        let mut aggr_work: BTreeMap<Vec<DataValue>, Vec<Aggregation>> = BTreeMap::new();
+    let rule_context = prog.keys().map(ToString::to_string).join(", ");
+    warn!(
+        epoch_count = max_epochs,
+        max_epochs,
+        stratum,
+        rule_context = %rule_context,
+        "semi-naive evaluation exceeded epoch limit"
+    );
+    EpochLimitExceededSnafu {
+        epoch_count: max_epochs,
+        max_epochs,
+        stratum,
+        rule_context,
+    }
+    .fail()?
+}
+/// Returns `true` if early return is activated.
+///
+/// # Complexity
+///
+/// O(R * T) where R is rules and T is tuples scanned. Aggregation-free rules
+/// stream tuples directly without grouping overhead.
+fn initial_rule_non_aggr_eval(
+    tx: &dyn QueryContext,
+    rule_symb: &MagicSymbol,
+    ruleset: &[CompiledRule],
+    stores: &BTreeMap<MagicSymbol, EpochStore>,
+    limiter: &QueryLimiter,
+    poison: Poison,
+) -> Result<(bool, RegularTempStore)> {
+    let mut out_store = RegularTempStore::default();
+    let should_check_limit = limiter.total.is_some() && rule_symb.is_prog_entry();
 
-        for (rule_n, rule) in ruleset.iter().enumerate() {
-            debug!(
-                "Calculation for normal aggr rule {:?}.{}",
-                rule_symb, rule_n
-            );
-            trace!("{:?}", rule);
-
-            let keys_indices = rule
-                .aggr
-                .iter()
-                .enumerate()
-                .filter_map(|(i, a)| if a.is_none() { Some(i) } else { None })
-                .collect_vec();
-            let extract_keys = |t: &Tuple| -> Vec<DataValue> {
-                keys_indices.iter().map(|i| t[*i].clone()).collect_vec()
-            };
-
-            let val_indices_and_aggrs = rule
-                .aggr
-                .iter()
-                .enumerate()
-                .filter_map(|(i, a)| a.as_ref().map(|aggr| (i, aggr.clone())))
-                .collect_vec();
-
-            for item_res in rule.relation.iter(self, None, stores)? {
-                let item = item_res?;
-                trace!("item for {:?}.{}: {:?} at {}", rule_symb, rule_n, item, 0);
-
-                let keys = extract_keys(&item);
-
-                match aggr_work.entry(keys) {
-                    Entry::Occupied(mut ent) => {
-                        let aggr_ops = ent.get_mut();
-                        for (aggr_idx, (tuple_idx, _)) in val_indices_and_aggrs.iter().enumerate() {
-                            // SAFETY: `aggr_ops` and `val_indices_and_aggrs` have the same length,
-                            // so `aggr_idx` is always valid.
-                            aggr_ops[aggr_idx]
-                                .normal_op
-                                .as_mut()
-                                .ok_or_else(|| {
-                                    crate::error::InternalError::from(
-                                        EvalFailedSnafu {
-                                            message: "normal_op missing on aggregation",
-                                        }
-                                        .build(),
-                                    )
-                                })?
-                                .set(&item[*tuple_idx])?;
-                        }
-                    }
-                    Entry::Vacant(ent) => {
-                        let mut aggr_ops = Vec::with_capacity(val_indices_and_aggrs.len());
-                        for (i, (aggr, params)) in &val_indices_and_aggrs {
-                            let mut cur_aggr = aggr.clone();
-                            cur_aggr.normal_init(params)?;
-                            cur_aggr
-                                .normal_op
-                                .as_mut()
-                                .ok_or_else(|| {
-                                    crate::error::InternalError::from(
-                                        EvalFailedSnafu {
-                                            message: "normal_op missing on aggregation after init",
-                                        }
-                                        .build(),
-                                    )
-                                })?
-                                .set(&item[*i])?;
-                            aggr_ops.push(cur_aggr)
-                        }
-                        ent.insert(aggr_ops);
-                    }
-                }
-            }
-            poison.check()?;
-        }
-
-        // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
-        let mut inv_indices = Vec::with_capacity(ruleset[0].aggr.len());
-        let mut seen_keys = 0usize;
-        let mut seen_aggrs = 0usize;
-        for aggr in ruleset[0].aggr.iter() {
-            if aggr.is_some() {
-                inv_indices.push((true, seen_aggrs));
-                seen_aggrs += 1;
-            } else {
-                inv_indices.push((false, seen_keys));
-                seen_keys += 1;
-            }
-        }
-
-        if aggr_work.is_empty() && ruleset[0].aggr.iter().all(|v| v.is_some()) {
-            // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
-            let empty_result: Vec<_> = ruleset[0]
-                .aggr
-                .iter()
-                .map(|a| -> Result<DataValue> {
-                    let (aggr, args) = a.as_ref().ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            EvalFailedSnafu {
-                                message: "aggregation entry missing in empty-result path",
-                            }
-                            .build(),
-                        )
-                    })?;
-                    let mut aggr = aggr.clone();
-                    aggr.normal_init(args)?;
-                    let op = aggr.normal_op.ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            EvalFailedSnafu {
-                                message: "normal_op missing on aggregation after init",
-                            }
-                            .build(),
-                        )
-                    })?;
-                    Ok(op.get()?)
-                })
-                .try_collect()?;
-            out_store.put(empty_result);
-        }
-
-        for (keys, aggrs) in aggr_work {
-            let tuple_data: Vec<_> = inv_indices
-                .iter()
-                .map(|(is_aggr, idx)| -> Result<DataValue> {
-                    if *is_aggr {
-                        Ok(aggrs[*idx]
-                            .normal_op
-                            .as_ref()
-                            .ok_or_else(|| {
-                                crate::error::InternalError::from(EvalFailedSnafu {
-                                    message: "normal_op missing on aggregation during result collection",
-                                }.build())
-                            })?
-                            .get()?)
-                    } else {
-                        Ok(keys[*idx].clone())
-                    }
-                })
-                .try_collect()?;
-            let tuple = tuple_data;
+    for (rule_n, rule) in ruleset.iter().enumerate() {
+        debug!("initial calculation for rule {:?}.{}", rule_symb, rule_n);
+        for item_res in rule.relation.iter(tx, None, stores)? {
+            let item = item_res?;
+            trace!("item for {:?}.{}: {:?} at {}", rule_symb, rule_n, item, 0);
             if should_check_limit {
-                if !out_store.exists(&tuple) {
+                if !out_store.exists(&item) {
                     if limiter.should_skip_next() {
-                        out_store.put_with_skip(tuple);
+                        out_store.put_with_skip(item);
                     } else {
-                        out_store.put(tuple);
+                        out_store.put(item);
                     }
                     if limiter.incr_and_should_stop() {
+                        trace!("early stopping due to result count limit exceeded");
                         return Ok((true, out_store));
                     }
                 }
             } else {
-                out_store.put(tuple);
+                out_store.put(item);
             }
         }
-        Ok((should_check_limit, out_store))
+        poison.check()?;
     }
-    /// Evaluate non-aggregation rules incrementally (subsequent epochs).
-    ///
-    /// # Complexity
-    ///
-    /// O(R * D * T) where R is rules, D is delta tuples, T is derivation cost.
-    /// Only processes changed dependencies (semi-naive).
-    fn incremental_rule_non_aggr_eval(
-        &self,
-        rule_symb: &MagicSymbol,
-        ruleset: &[CompiledRule],
-        epoch: u32,
-        stores: &BTreeMap<MagicSymbol, EpochStore>,
-        limiter: &QueryLimiter,
-        poison: Poison,
-    ) -> Result<(bool, RegularTempStore)> {
-        let prev_store = stores.get(rule_symb).ok_or_else(|| {
-            crate::error::InternalError::from(
-                EvalFailedSnafu {
-                    message: format!("epoch store not found for rule '{rule_symb}'"),
-                }
-                .build(),
-            )
-        })?;
-        let mut out_store = RegularTempStore::default();
-        let should_check_limit = limiter.total.is_some() && rule_symb.is_prog_entry();
-        for (rule_n, rule) in ruleset.iter().enumerate() {
-            let mut need_complete_run = false;
-            let mut dependencies_changed = false;
 
-            for (symb, multiplicity) in rule.contained_rules.iter() {
-                if stores
-                    .get(symb)
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            EvalFailedSnafu {
-                                message: format!("epoch store not found for dependency '{symb}'"),
-                            }
-                            .build(),
-                        )
-                    })?
-                    .has_delta()
-                {
-                    dependencies_changed = true;
-                    if *multiplicity == ContainedRuleMultiplicity::Many {
-                        need_complete_run = true;
-                        break;
+    Ok((should_check_limit, out_store))
+}
+/// Evaluate meet aggregation rules (initial epoch).
+///
+/// # Complexity
+///
+/// O(R * T * A) where R is rules, T is tuples, A is aggregation arity.
+/// Meet aggregation combines partial results incrementally.
+fn initial_rule_meet_eval(
+    tx: &dyn QueryContext,
+    rule_symb: &MagicSymbol,
+    ruleset: &[CompiledRule],
+    stores: &BTreeMap<MagicSymbol, EpochStore>,
+    poison: Poison,
+) -> Result<MeetAggrStore> {
+    // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
+    let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
+
+    for (rule_n, rule) in ruleset.iter().enumerate() {
+        debug!("initial calculation for rule {:?}.{}", rule_symb, rule_n);
+        let mut aggr = rule.aggr.clone();
+        for (aggr, args) in aggr.iter_mut().flatten() {
+            aggr.meet_init(args)?;
+        }
+        for item_res in rule.relation.iter(tx, None, stores)? {
+            let item = item_res?;
+            trace!("item for {:?}.{}: {:?} at {}", rule_symb, rule_n, item, 0);
+            out_store.meet_put(item)?;
+        }
+        poison.check()?;
+    }
+    if out_store.is_empty() && ruleset[0].aggr.iter().all(|a| a.is_some()) {
+        // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
+        let mut aggr = ruleset[0].aggr.clone();
+        for (aggr, args) in aggr.iter_mut().flatten() {
+            aggr.meet_init(args)?;
+        }
+        let value: Vec<_> = aggr
+            .iter()
+            .map(|a| -> Result<DataValue> {
+                let (aggr, _) = a.as_ref().ok_or_else(|| {
+                    crate::error::InternalError::from(
+                        EvalFailedSnafu {
+                            message: "aggregation entry missing in meet evaluation",
+                        }
+                        .build(),
+                    )
+                })?;
+                let op = aggr.meet_op.as_ref().ok_or_else(|| {
+                    crate::error::InternalError::from(
+                        EvalFailedSnafu {
+                            message: "meet_op missing on aggregation",
+                        }
+                        .build(),
+                    )
+                })?;
+                Ok(op.init_val())
+            })
+            .try_collect()?;
+        out_store.meet_put(value)?;
+    }
+    Ok(out_store)
+}
+/// Evaluate normal aggregation rules (initial epoch).
+///
+/// # Complexity
+///
+/// O(R * T * log G) where R is rules, T is tuples, G is group count.
+/// Groups tuples by key and applies aggregation functions.
+fn initial_rule_aggr_eval(
+    tx: &dyn QueryContext,
+    rule_symb: &MagicSymbol,
+    ruleset: &[CompiledRule],
+    stores: &BTreeMap<MagicSymbol, EpochStore>,
+    limiter: &QueryLimiter,
+    poison: Poison,
+) -> Result<(bool, RegularTempStore)> {
+    let mut out_store = RegularTempStore::default();
+    let should_check_limit = limiter.total.is_some() && rule_symb.is_prog_entry();
+    let mut aggr_work: BTreeMap<Vec<DataValue>, Vec<Aggregation>> = BTreeMap::new();
+
+    for (rule_n, rule) in ruleset.iter().enumerate() {
+        debug!(
+            "Calculation for normal aggr rule {:?}.{}",
+            rule_symb, rule_n
+        );
+        trace!("{:?}", rule);
+
+        let keys_indices = rule
+            .aggr
+            .iter()
+            .enumerate()
+            .filter_map(|(i, a)| if a.is_none() { Some(i) } else { None })
+            .collect_vec();
+        let extract_keys = |t: &Tuple| -> Vec<DataValue> {
+            keys_indices.iter().map(|i| t[*i].clone()).collect_vec()
+        };
+
+        let val_indices_and_aggrs = rule
+            .aggr
+            .iter()
+            .enumerate()
+            .filter_map(|(i, a)| a.as_ref().map(|aggr| (i, aggr.clone())))
+            .collect_vec();
+
+        for item_res in rule.relation.iter(tx, None, stores)? {
+            let item = item_res?;
+            trace!("item for {:?}.{}: {:?} at {}", rule_symb, rule_n, item, 0);
+
+            let keys = extract_keys(&item);
+
+            match aggr_work.entry(keys) {
+                Entry::Occupied(mut ent) => {
+                    let aggr_ops = ent.get_mut();
+                    for (aggr_idx, (tuple_idx, _)) in val_indices_and_aggrs.iter().enumerate() {
+                        // SAFETY: `aggr_ops` and `val_indices_and_aggrs` have the same length,
+                        // so `aggr_idx` is always valid.
+                        aggr_ops[aggr_idx]
+                            .normal_op
+                            .as_mut()
+                            .ok_or_else(|| {
+                                crate::error::InternalError::from(
+                                    EvalFailedSnafu {
+                                        message: "normal_op missing on aggregation",
+                                    }
+                                    .build(),
+                                )
+                            })?
+                            .set(&item[*tuple_idx])?;
+                    }
+                }
+                Entry::Vacant(ent) => {
+                    let mut aggr_ops = Vec::with_capacity(val_indices_and_aggrs.len());
+                    for (i, (aggr, params)) in &val_indices_and_aggrs {
+                        let mut cur_aggr = aggr.clone();
+                        cur_aggr.normal_init(params)?;
+                        cur_aggr
+                            .normal_op
+                            .as_mut()
+                            .ok_or_else(|| {
+                                crate::error::InternalError::from(
+                                    EvalFailedSnafu {
+                                        message: "normal_op missing on aggregation after init",
+                                    }
+                                    .build(),
+                                )
+                            })?
+                            .set(&item[*i])?;
+                        aggr_ops.push(cur_aggr)
+                    }
+                    ent.insert(aggr_ops);
+                }
+            }
+        }
+        poison.check()?;
+    }
+
+    // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
+    let mut inv_indices = Vec::with_capacity(ruleset[0].aggr.len());
+    let mut seen_keys = 0usize;
+    let mut seen_aggrs = 0usize;
+    for aggr in ruleset[0].aggr.iter() {
+        if aggr.is_some() {
+            inv_indices.push((true, seen_aggrs));
+            seen_aggrs += 1;
+        } else {
+            inv_indices.push((false, seen_keys));
+            seen_keys += 1;
+        }
+    }
+
+    if aggr_work.is_empty() && ruleset[0].aggr.iter().all(|v| v.is_some()) {
+        // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
+        let empty_result: Vec<_> = ruleset[0]
+            .aggr
+            .iter()
+            .map(|a| -> Result<DataValue> {
+                let (aggr, args) = a.as_ref().ok_or_else(|| {
+                    crate::error::InternalError::from(
+                        EvalFailedSnafu {
+                            message: "aggregation entry missing in empty-result path",
+                        }
+                        .build(),
+                    )
+                })?;
+                let mut aggr = aggr.clone();
+                aggr.normal_init(args)?;
+                let op = aggr.normal_op.ok_or_else(|| {
+                    crate::error::InternalError::from(
+                        EvalFailedSnafu {
+                            message: "normal_op missing on aggregation after init",
+                        }
+                        .build(),
+                    )
+                })?;
+                Ok(op.get()?)
+            })
+            .try_collect()?;
+        out_store.put(empty_result);
+    }
+
+    for (keys, aggrs) in aggr_work {
+        let tuple_data: Vec<_> = inv_indices
+            .iter()
+            .map(|(is_aggr, idx)| -> Result<DataValue> {
+                if *is_aggr {
+                    Ok(aggrs[*idx]
+                        .normal_op
+                        .as_ref()
+                        .ok_or_else(|| {
+                            crate::error::InternalError::from(EvalFailedSnafu {
+                                message: "normal_op missing on aggregation during result collection",
+                            }.build())
+                        })?
+                        .get()?)
+                } else {
+                    Ok(keys[*idx].clone())
+                }
+            })
+            .try_collect()?;
+        let tuple = tuple_data;
+        if should_check_limit {
+            if !out_store.exists(&tuple) {
+                if limiter.should_skip_next() {
+                    out_store.put_with_skip(tuple);
+                } else {
+                    out_store.put(tuple);
+                }
+                if limiter.incr_and_should_stop() {
+                    return Ok((true, out_store));
+                }
+            }
+        } else {
+            out_store.put(tuple);
+        }
+    }
+    Ok((should_check_limit, out_store))
+}
+/// Evaluate non-aggregation rules incrementally (subsequent epochs).
+///
+/// # Complexity
+///
+/// O(R * D * T) where R is rules, D is delta tuples, T is derivation cost.
+/// Only processes changed dependencies (semi-naive).
+fn incremental_rule_non_aggr_eval(
+    tx: &dyn QueryContext,
+    rule_symb: &MagicSymbol,
+    ruleset: &[CompiledRule],
+    epoch: u32,
+    stores: &BTreeMap<MagicSymbol, EpochStore>,
+    limiter: &QueryLimiter,
+    poison: Poison,
+) -> Result<(bool, RegularTempStore)> {
+    let prev_store = stores.get(rule_symb).ok_or_else(|| {
+        crate::error::InternalError::from(
+            EvalFailedSnafu {
+                message: format!("epoch store not found for rule '{rule_symb}'"),
+            }
+            .build(),
+        )
+    })?;
+    let mut out_store = RegularTempStore::default();
+    let should_check_limit = limiter.total.is_some() && rule_symb.is_prog_entry();
+    for (rule_n, rule) in ruleset.iter().enumerate() {
+        let mut need_complete_run = false;
+        let mut dependencies_changed = false;
+
+        for (symb, multiplicity) in rule.contained_rules.iter() {
+            if stores
+                .get(symb)
+                .ok_or_else(|| {
+                    crate::error::InternalError::from(
+                        EvalFailedSnafu {
+                            message: format!("epoch store not found for dependency '{symb}'"),
+                        }
+                        .build(),
+                    )
+                })?
+                .has_delta()
+            {
+                dependencies_changed = true;
+                if *multiplicity == ContainedRuleMultiplicity::Many {
+                    need_complete_run = true;
+                    break;
+                }
+            }
+        }
+
+        if !dependencies_changed {
+            continue;
+        }
+
+        if need_complete_run {
+            debug!("complete rule for rule {:?}.{}", rule_symb, rule_n);
+            for item_res in rule.relation.iter(tx, None, stores)? {
+                let item = item_res?;
+                if prev_store.exists(&item) {
+                    trace!(
+                        "item for {:?}.{}: {:?} at {}, rederived",
+                        rule_symb, rule_n, item, epoch
+                    );
+                } else {
+                    trace!(
+                        "item for {:?}.{}: {:?} at {}",
+                        rule_symb, rule_n, item, epoch
+                    );
+                    if limiter.should_skip_next() {
+                        out_store.put_with_skip(item);
+                    } else {
+                        out_store.put(item);
+                    }
+                    if should_check_limit && limiter.incr_and_should_stop() {
+                        trace!("early stopping due to result count limit exceeded");
+                        return Ok((true, out_store));
                     }
                 }
             }
-
-            if !dependencies_changed {
-                continue;
-            }
-
-            if need_complete_run {
-                debug!("complete rule for rule {:?}.{}", rule_symb, rule_n);
-                for item_res in rule.relation.iter(self, None, stores)? {
+            poison.check()?;
+        } else {
+            for delta_key in stores.keys() {
+                if !rule.contained_rules.contains_key(delta_key) {
+                    continue;
+                }
+                debug!(
+                    "with delta {:?} for rule {:?}.{}",
+                    delta_key, rule_symb, rule_n
+                );
+                for item_res in rule.relation.iter(tx, Some(delta_key), stores)? {
                     let item = item_res?;
                     if prev_store.exists(&item) {
                         trace!(
@@ -769,114 +801,80 @@ impl<'a> SessionTx<'a> {
                     }
                 }
                 poison.check()?;
-            } else {
-                for delta_key in stores.keys() {
-                    if !rule.contained_rules.contains_key(delta_key) {
-                        continue;
-                    }
-                    debug!(
-                        "with delta {:?} for rule {:?}.{}",
-                        delta_key, rule_symb, rule_n
-                    );
-                    for item_res in rule.relation.iter(self, Some(delta_key), stores)? {
-                        let item = item_res?;
-                        if prev_store.exists(&item) {
-                            trace!(
-                                "item for {:?}.{}: {:?} at {}, rederived",
-                                rule_symb, rule_n, item, epoch
-                            );
-                        } else {
-                            trace!(
-                                "item for {:?}.{}: {:?} at {}",
-                                rule_symb, rule_n, item, epoch
-                            );
-                            if limiter.should_skip_next() {
-                                out_store.put_with_skip(item);
-                            } else {
-                                out_store.put(item);
-                            }
-                            if should_check_limit && limiter.incr_and_should_stop() {
-                                trace!("early stopping due to result count limit exceeded");
-                                return Ok((true, out_store));
-                            }
+            }
+        }
+    }
+    Ok((should_check_limit, out_store))
+}
+/// Evaluate meet aggregation rules incrementally.
+///
+/// # Complexity
+///
+/// O(R * D * A) where R is rules, D is delta tuples, A is aggregation arity.
+fn incremental_rule_meet_eval(
+    tx: &dyn QueryContext,
+    rule_symb: &MagicSymbol,
+    ruleset: &[CompiledRule],
+    stores: &BTreeMap<MagicSymbol, EpochStore>,
+    poison: Poison,
+) -> Result<MeetAggrStore> {
+    // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
+    let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
+    for (rule_n, rule) in ruleset.iter().enumerate() {
+        let mut need_complete_run = false;
+        let mut dependencies_changed = false;
+
+        for (symb, multiplicity) in rule.contained_rules.iter() {
+            if stores
+                .get(symb)
+                .ok_or_else(|| {
+                    crate::error::InternalError::from(
+                        EvalFailedSnafu {
+                            message: format!("epoch store not found for dependency '{symb}'"),
                         }
-                    }
-                    poison.check()?;
+                        .build(),
+                    )
+                })?
+                .has_delta()
+            {
+                dependencies_changed = true;
+                if *multiplicity == ContainedRuleMultiplicity::Many {
+                    need_complete_run = true;
+                    break;
                 }
             }
         }
-        Ok((should_check_limit, out_store))
-    }
-    /// Evaluate meet aggregation rules incrementally.
-    ///
-    /// # Complexity
-    ///
-    /// O(R * D * A) where R is rules, D is delta tuples, A is aggregation arity.
-    fn incremental_rule_meet_eval(
-        &self,
-        rule_symb: &MagicSymbol,
-        ruleset: &[CompiledRule],
-        stores: &BTreeMap<MagicSymbol, EpochStore>,
-        poison: Poison,
-    ) -> Result<MeetAggrStore> {
-        // SAFETY: `ruleset` is guaranteed to have at least one element in this code path.
-        let mut out_store = MeetAggrStore::new(ruleset[0].aggr.clone())?;
-        for (rule_n, rule) in ruleset.iter().enumerate() {
-            let mut need_complete_run = false;
-            let mut dependencies_changed = false;
 
-            for (symb, multiplicity) in rule.contained_rules.iter() {
-                if stores
-                    .get(symb)
-                    .ok_or_else(|| {
-                        crate::error::InternalError::from(
-                            EvalFailedSnafu {
-                                message: format!("epoch store not found for dependency '{symb}'"),
-                            }
-                            .build(),
-                        )
-                    })?
-                    .has_delta()
-                {
-                    dependencies_changed = true;
-                    if *multiplicity == ContainedRuleMultiplicity::Many {
-                        need_complete_run = true;
-                        break;
-                    }
+        if !dependencies_changed {
+            continue;
+        }
+
+        let mut aggr = rule.aggr.clone();
+        for (aggr, args) in aggr.iter_mut().flatten() {
+            aggr.meet_init(args)?;
+        }
+
+        if need_complete_run {
+            debug!("complete run for rule {:?}.{}", rule_symb, rule_n);
+            for item_res in rule.relation.iter(tx, None, stores)? {
+                out_store.meet_put(item_res?)?;
+            }
+            poison.check()?;
+        } else {
+            for delta_key in stores.keys() {
+                if !rule.contained_rules.contains_key(delta_key) {
+                    continue;
                 }
-            }
-
-            if !dependencies_changed {
-                continue;
-            }
-
-            let mut aggr = rule.aggr.clone();
-            for (aggr, args) in aggr.iter_mut().flatten() {
-                aggr.meet_init(args)?;
-            }
-
-            if need_complete_run {
-                debug!("complete run for rule {:?}.{}", rule_symb, rule_n);
-                for item_res in rule.relation.iter(self, None, stores)? {
+                debug!(
+                    "with delta {:?} for rule {:?}.{}",
+                    delta_key, rule_symb, rule_n
+                );
+                for item_res in rule.relation.iter(tx, Some(delta_key), stores)? {
                     out_store.meet_put(item_res?)?;
                 }
                 poison.check()?;
-            } else {
-                for delta_key in stores.keys() {
-                    if !rule.contained_rules.contains_key(delta_key) {
-                        continue;
-                    }
-                    debug!(
-                        "with delta {:?} for rule {:?}.{}",
-                        delta_key, rule_symb, rule_n
-                    );
-                    for item_res in rule.relation.iter(self, Some(delta_key), stores)? {
-                        out_store.meet_put(item_res?)?;
-                    }
-                    poison.check()?;
-                }
             }
         }
-        Ok(out_store)
     }
+    Ok(out_store)
 }

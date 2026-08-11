@@ -68,7 +68,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 let (normalized_program, _) = prog.clone().into_normalized_program(tx)?;
                 let (stratified_program, _) = normalized_program.into_stratified_program()?;
                 let program = stratified_program.magic_sets_rewrite(tx)?;
-                let compiled = tx.stratified_magic_compile(program)?;
+                let compiled = crate::query::compile::stratified_magic_compile(tx, program)?;
                 self.explain_compiled(&compiled)
             }
             SysOp::Compact => {

@@ -184,8 +184,8 @@
     {
       "from": "query",
       "to": "data",
-      "count": 122,
-      "production_count": 119,
+      "count": 130,
+      "production_count": 127,
       "test_only": false,
       "first_evidence": "query/compile.rs:19",
       "first_production_evidence": "query/compile.rs:19"
@@ -201,18 +201,27 @@
     },
     {
       "from": "query",
-      "to": "parse",
-      "count": 11,
-      "production_count": 11,
+      "to": "fts",
+      "count": 2,
+      "production_count": 2,
       "test_only": false,
-      "first_evidence": "query/eval.rs:35",
-      "first_production_evidence": "query/eval.rs:35"
+      "first_evidence": "query/context.rs:42",
+      "first_production_evidence": "query/context.rs:42"
+    },
+    {
+      "from": "query",
+      "to": "parse",
+      "count": 12,
+      "production_count": 12,
+      "test_only": false,
+      "first_evidence": "query/context.rs:44",
+      "first_production_evidence": "query/context.rs:44"
     },
     {
       "from": "query",
       "to": "root",
-      "count": 20,
-      "production_count": 20,
+      "count": 21,
+      "production_count": 21,
       "test_only": false,
       "first_evidence": "query/compile.rs:27",
       "first_production_evidence": "query/compile.rs:27"
@@ -220,11 +229,11 @@
     {
       "from": "query",
       "to": "runtime",
-      "count": 35,
-      "production_count": 32,
+      "count": 27,
+      "production_count": 24,
       "test_only": false,
-      "first_evidence": "query/compile.rs:30",
-      "first_production_evidence": "query/compile.rs:30"
+      "first_evidence": "query/compile.rs:31",
+      "first_production_evidence": "query/compile.rs:31"
     },
     {
       "from": "root",
@@ -274,8 +283,8 @@
     {
       "from": "runtime",
       "to": "data",
-      "count": 146,
-      "production_count": 139,
+      "count": 154,
+      "production_count": 147,
       "test_only": false,
       "first_evidence": "runtime/db.rs:29",
       "first_production_evidence": "runtime/db.rs:29"
@@ -292,8 +301,8 @@
     {
       "from": "runtime",
       "to": "fts",
-      "count": 11,
-      "production_count": 9,
+      "count": 13,
+      "production_count": 11,
       "test_only": false,
       "first_evidence": "runtime/db.rs:34",
       "first_production_evidence": "runtime/db.rs:34"
@@ -301,8 +310,8 @@
     {
       "from": "runtime",
       "to": "parse",
-      "count": 32,
-      "production_count": 31,
+      "count": 33,
+      "production_count": 32,
       "test_only": false,
       "first_evidence": "runtime/exec.rs:28",
       "first_production_evidence": "runtime/exec.rs:28"
@@ -310,8 +319,8 @@
     {
       "from": "runtime",
       "to": "query",
-      "count": 24,
-      "production_count": 24,
+      "count": 25,
+      "production_count": 25,
       "test_only": false,
       "first_evidence": "runtime/exec.rs:29",
       "first_production_evidence": "runtime/exec.rs:29"
@@ -319,8 +328,8 @@
     {
       "from": "runtime",
       "to": "root",
-      "count": 31,
-      "production_count": 28,
+      "count": 32,
+      "production_count": 29,
       "test_only": false,
       "first_evidence": "runtime/db.rs:32",
       "first_production_evidence": "runtime/db.rs:32"
@@ -362,8 +371,8 @@
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
-  "file_count": 203,
-  "statement_count": 1007,
+  "file_count": 205,
+  "statement_count": 1029,
   "required_edges_present": [
     [
       "runtime",
@@ -554,6 +563,15 @@
       "parse",
       "root",
       "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "parse",
+      "root",
+      "runtime",
       "storage"
     ],
     [
@@ -593,6 +611,16 @@
       "data",
       "fixed_rule",
       "parse",
+      "root",
+      "storage",
+      "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "parse",
       "runtime"
     ],
     [
@@ -632,6 +660,33 @@
       "parse",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "parse",
+      "runtime",
+      "query",
+      "fts",
+      "root"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "parse",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "parse",
+      "runtime",
+      "query",
       "root"
     ],
     [
@@ -746,6 +801,15 @@
       "root",
       "parse",
       "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "root",
+      "parse",
+      "runtime",
       "storage"
     ],
     [
@@ -797,6 +861,23 @@
       "root",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "root",
+      "runtime",
+      "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "root",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -877,6 +958,25 @@
       "storage",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "root",
+      "storage",
+      "runtime",
+      "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "root",
+      "storage",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -1003,6 +1103,66 @@
       "fixed_rule",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "root"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "root"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "parse"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "fixed_rule",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -2301,6 +2461,15 @@
       "fixed_rule",
       "root",
       "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "parse",
+      "fixed_rule",
+      "root",
+      "runtime",
       "storage"
     ],
     [
@@ -2340,6 +2509,16 @@
       "data",
       "parse",
       "fixed_rule",
+      "root",
+      "storage",
+      "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "parse",
+      "fixed_rule",
       "runtime"
     ],
     [
@@ -2379,6 +2558,33 @@
       "fixed_rule",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "parse",
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "root"
+    ],
+    [
+      "data",
+      "parse",
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "parse",
+      "fixed_rule",
+      "runtime",
+      "query",
       "root"
     ],
     [
@@ -2724,6 +2930,15 @@
       "root",
       "fixed_rule",
       "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "parse",
+      "root",
+      "fixed_rule",
+      "runtime",
       "storage"
     ],
     [
@@ -2766,6 +2981,14 @@
       "parse",
       "root",
       "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "parse",
+      "root",
+      "runtime",
       "storage"
     ],
     [
@@ -2817,6 +3040,15 @@
     [
       "data",
       "parse",
+      "root",
+      "storage",
+      "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "parse",
       "runtime"
     ],
     [
@@ -2904,6 +3136,39 @@
       "parse",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "parse",
+      "runtime",
+      "query",
+      "fts",
+      "root"
+    ],
+    [
+      "data",
+      "parse",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "parse",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "parse",
+      "runtime",
+      "query",
       "root"
     ],
     [
@@ -3559,6 +3824,746 @@
     [
       "data",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "root",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "root",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "root",
+      "storage",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "runtime",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "runtime",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "runtime",
+      "storage",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "fixed_rule",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "fixed_rule",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "runtime",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "storage",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "storage",
+      "runtime",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime",
+      "fixed_rule",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime",
+      "fixed_rule",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime",
+      "storage",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "parse",
+      "runtime",
+      "storage",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule",
+      "parse",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule",
+      "parse",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule",
+      "runtime",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "parse",
+      "fixed_rule",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "parse",
+      "fixed_rule",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "parse",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "parse",
+      "runtime",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "parse",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "runtime",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "runtime",
+      "fixed_rule",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "runtime",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "runtime",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "storage",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "storage",
+      "runtime",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "storage",
+      "runtime",
+      "fixed_rule",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "storage",
+      "runtime",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "root",
+      "storage",
+      "runtime",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "fixed_rule",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "fixed_rule",
+      "parse",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "fixed_rule",
+      "parse",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "fixed_rule",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "fixed_rule",
+      "root",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "fixed_rule",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "parse",
+      "fixed_rule",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "parse",
+      "fixed_rule",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "parse",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "parse",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "parse",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "root",
+      "fixed_rule",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "root",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "root",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "storage"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "storage",
+      "root"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "storage",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "storage",
+      "root",
+      "fixed_rule",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "storage",
+      "root",
+      "parse"
+    ],
+    [
+      "data",
+      "query",
+      "fts",
+      "runtime",
+      "storage",
+      "root",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "query",
       "parse"
     ],
     [
@@ -4986,6 +5991,15 @@
       "fixed_rule",
       "parse",
       "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "root",
+      "fixed_rule",
+      "parse",
+      "runtime",
       "storage"
     ],
     [
@@ -5037,6 +6051,23 @@
       "fixed_rule",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "root",
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "data",
+      "root",
+      "fixed_rule",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -5095,6 +6126,15 @@
       "parse",
       "fixed_rule",
       "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "root",
+      "parse",
+      "fixed_rule",
+      "runtime",
       "storage"
     ],
     [
@@ -5183,6 +6223,14 @@
       "root",
       "parse",
       "runtime",
+      "query",
+      "fts"
+    ],
+    [
+      "data",
+      "root",
+      "parse",
+      "runtime",
       "storage"
     ],
     [
@@ -5287,6 +6335,30 @@
       "root",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "root",
+      "runtime",
+      "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "data",
+      "root",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "root",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -5433,6 +6505,33 @@
       "storage",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "root",
+      "storage",
+      "runtime",
+      "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "data",
+      "root",
+      "storage",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "root",
+      "storage",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -5809,6 +6908,121 @@
       "data",
       "runtime",
       "query",
+      "fts"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "root"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "fixed_rule",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "root"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "root"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "fixed_rule",
+      "parse"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "parse"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "parse",
+      "fixed_rule"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "storage"
+    ],
+    [
+      "data",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -6195,6 +7409,14 @@
       "parse",
       "runtime",
       "query",
+      "fts",
+      "root"
+    ],
+    [
+      "fixed_rule",
+      "parse",
+      "runtime",
+      "query",
       "root"
     ],
     [
@@ -6276,6 +7498,14 @@
       "root",
       "runtime",
       "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "fixed_rule",
+      "root",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -6312,6 +7542,15 @@
       "storage",
       "runtime",
       "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "fixed_rule",
+      "root",
+      "storage",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -6371,6 +7610,36 @@
       "fixed_rule",
       "runtime",
       "query",
+      "fts",
+      "parse"
+    ],
+    [
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "parse",
+      "root"
+    ],
+    [
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "root"
+    ],
+    [
+      "fixed_rule",
+      "runtime",
+      "query",
+      "fts",
+      "root",
+      "parse"
+    ],
+    [
+      "fixed_rule",
+      "runtime",
+      "query",
       "parse"
     ],
     [
@@ -6439,13 +7708,34 @@
       "fts",
       "parse",
       "root",
+      "runtime",
+      "query"
+    ],
+    [
+      "fts",
+      "parse",
+      "root",
       "storage",
       "runtime"
     ],
     [
       "fts",
       "parse",
+      "root",
+      "storage",
+      "runtime",
+      "query"
+    ],
+    [
+      "fts",
+      "parse",
       "runtime"
+    ],
+    [
+      "fts",
+      "parse",
+      "runtime",
+      "query"
     ],
     [
       "fts",
@@ -6457,6 +7747,13 @@
       "root",
       "parse",
       "runtime"
+    ],
+    [
+      "fts",
+      "root",
+      "parse",
+      "runtime",
+      "query"
     ],
     [
       "fts",
@@ -6468,6 +7765,12 @@
       "root",
       "runtime",
       "parse"
+    ],
+    [
+      "fts",
+      "root",
+      "runtime",
+      "query"
     ],
     [
       "fts",
@@ -6494,6 +7797,13 @@
       "root",
       "storage",
       "runtime",
+      "query"
+    ],
+    [
+      "fts",
+      "root",
+      "storage",
+      "runtime",
       "query",
       "parse"
     ],
@@ -6505,6 +7815,11 @@
       "fts",
       "runtime",
       "parse"
+    ],
+    [
+      "fts",
+      "runtime",
+      "query"
     ],
     [
       "fts",

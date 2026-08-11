@@ -36,9 +36,9 @@ use crate::data::symb::Symbol;
 use crate::data::tuple::{Tuple, TupleIter};
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
+use crate::query::context::QueryContext;
 use crate::query::error::*;
 use crate::runtime::temp_store::EpochStore;
-use crate::runtime::transact::SessionTx;
 use crate::utils::swap_option_result;
 
 /// Maps left join keys to right join keys for equi-join.
@@ -161,7 +161,7 @@ impl NegJoin {
 
     pub(crate) fn iter<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
@@ -295,7 +295,7 @@ impl InnerJoin {
     }
     pub(crate) fn iter<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
@@ -390,7 +390,7 @@ impl InnerJoin {
     /// Space: O(R) for the materialized right relation.
     fn materialized_join<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         eliminate_indices: BTreeSet<usize>,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
