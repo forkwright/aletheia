@@ -19,7 +19,7 @@ use crate::runtime::temp_store::EpochStore;
 /// Sort a result store by the query's `:sort` keys.
 ///
 /// WHY a free function: this never read `self`. It was an inherent method on
-/// SessionTx, which made `query/` extend a runtime type for a computation that
+/// `SessionTx`, which made `query/` extend a runtime type for a computation that
 /// touches no transaction state -- and the file suppressed `clippy::unused_self`
 /// to keep it that way. Sorting collected tuples needs a comparator and nothing
 /// else.
