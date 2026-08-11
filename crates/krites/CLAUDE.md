@@ -21,6 +21,31 @@ The naming rule in `docs/HUBS.md` — prefer Krites/Datalog/Fjall over CozoDB �
 
 **Verbatim-drift measurement** (retirement program wave 0.3): `scripts/check-krites-verbatim-drift.py` scores any file here against the pinned upstream snapshot at `upstream-snapshot/` (its own `NOTICE.md`). Report-only — see PROMOTION CRITERIA in the script's module docstring before it gates anything.
 
+## Derived artifacts — never hand-merge, always recompute
+
+`PROVENANCE.toml`, `NOTICE.md`, and the three `module-dag` variants are whole-file
+functions of the source tree. Two branches that touch this crate conflict in all of
+them whether or not their code overlaps.
+
+`.gitattributes` marks them `-merge`, so a merge leaves them at our side wholesale and
+declares the conflict rather than interleaving markers. Resolve with:
+
+```
+scripts/regen-krites-artifacts.sh   # then stage
+```
+
+Two things that ordering protects, both learned the hard way:
+
+- **`cargo fmt` moves `verbatim_pct`**, which is computed from file bytes. Regenerating
+  before formatting records figures for a tree about to change, and the provenance
+  checker then fails on a mismatch that reads like a provenance problem and is not.
+- **A ledger carrying conflict markers cannot be parsed**, and regenerating against one
+  used to rewrite every `dual`/`sovereign` row as `derived` with its soak window zeroed.
+  Producing no markers removes that trap rather than guarding it twice.
+
+`CAPABILITY_MATRIX.toml` is NOT in this set. It is hand-maintained and only checked, so a
+conflict there needs a human deciding which rows are right.
+
 ## Read first
 
 1. `src/lib.rs`: Public Db facade, DbInner dispatch, storage backend selection

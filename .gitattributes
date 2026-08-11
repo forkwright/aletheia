@@ -1,1 +1,27 @@
 *.md whitespace=-trailing-space,-blank-at-eol
+
+# WHY `-merge` on these five: each is a whole-file artifact derived from the
+# krites source tree, so any two branches that touch the crate conflict in all
+# of them regardless of whether their code overlaps (aletheia#6653 -- merging
+# one wave immediately turned the other four dirty). `-merge` tells git to take
+# our side wholesale and declare the conflict, rather than interleaving conflict
+# markers into a file whose only correct resolution is to recompute it.
+#
+# That matters beyond convenience: regenerating against a ledger that still
+# carries conflict markers cannot parse it, and the regenerator used to treat an
+# unparsable prior ledger as "nothing to preserve" -- silently rewriting every
+# dual/sovereign row as `derived` with its soak window zeroed (aletheia#6703).
+# Never producing markers removes the trap rather than guarding it twice.
+#
+# Resolution is therefore: merge, run scripts/regen-krites-artifacts.sh, stage.
+# The gate is the backstop -- check-krites-provenance.py and the three
+# module-dag --check invocations all fail on a stale artifact, so forgetting the
+# regenerate step is loud rather than silent.
+#
+# CAPABILITY_MATRIX.toml is deliberately absent: it is hand-maintained and only
+# checked, never generated, so a conflict there needs a human, not a recompute.
+crates/krites/PROVENANCE.toml            -merge
+crates/krites/NOTICE.md                  -merge
+crates/krites/module-dag.json            -merge
+crates/krites/module-dag.md              -merge
+crates/krites/module-dag.wave-scope.json -merge
