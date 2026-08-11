@@ -7,7 +7,8 @@ be rejected, both directly (verbatim_pct left as evidence) and the sneakier
 variant (verbatim_pct zeroed too, only the status-sequence check catches
 it); an unresolvable --base-ref must fail closed, not silently pass as a
 bootstrap commit; soak expiry must fire; offline recompute must fire when a
-snapshot is present and skip cleanly when it is not.
+snapshot is present and FAIL when it is not, since the snapshot is tracked and
+its absence disables the crate's only self-verification.
 
 Also covers aletheia#6656: a 'sovereign' row must carry a real measurement
 against what it replaced, not an unmeasured 0.0/none. replaced_upstream_path
@@ -627,14 +628,21 @@ def test_soak_expiry_fails_closed_when_commit_count_unavailable() -> None:
 # --- P6: offline verbatim recompute ---
 
 
-def test_verbatim_recompute_skips_without_snapshot() -> None:
+def test_verbatim_recompute_fails_closed_without_snapshot() -> None:
+    # WHY inverted: the old assertion pinned a SKIP, which was correct only
+    # while the snapshot had not yet been vendored. It is now 108 tracked files,
+    # so the skip had become an unconditional fail-open — measured, deleting the
+    # whole snapshot made the checker report "clean (207 rows)" and exit 0.
     with tempfile.TemporaryDirectory() as tmp:
         fake_snapshot = Path(tmp) / "no-such-snapshot"
         orig = CHECKER.UPSTREAM_SNAPSHOT_DIR
         CHECKER.UPSTREAM_SNAPSHOT_DIR = fake_snapshot
         try:
             errors = CHECKER.check_verbatim_recompute([row("q.rs", "q.rs", 50.0, "derived")])
-            expect(errors == [], f"absent snapshot dir must skip, not fail; got {errors}")
+            expect(
+                len(errors) == 1 and "upstream-snapshot/ is absent" in errors[0],
+                f"absent snapshot dir must FAIL, not skip; got {errors}",
+            )
         finally:
             CHECKER.UPSTREAM_SNAPSHOT_DIR = orig
 
@@ -758,7 +766,7 @@ def main() -> int:
         test_soak_expiry_rejects_nonpositive_expiry_on_dual_row,
         test_soak_expiry_skips_when_no_dual_rows,
         test_soak_expiry_fails_closed_when_commit_count_unavailable,
-        test_verbatim_recompute_skips_without_snapshot,
+        test_verbatim_recompute_fails_closed_without_snapshot,
         test_verbatim_recompute_detects_drift,
         test_dual_move_blocked,
         test_dual_retirement_allowed,

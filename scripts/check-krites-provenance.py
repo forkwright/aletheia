@@ -236,9 +236,10 @@ def check_verbatim_recompute(rows: list[dict]) -> list[str]:
     cozo-core-src/, vendored by wave0/drift-metric) is present, recompute
     every derived/dual row's verbatim_pct from it and fail if the stored
     ledger value has drifted — the check that makes the published numbers
-    self-verifying instead of trusted-forever. Skips (does not fail) when
-    the snapshot is absent so this branch has no landing-order dependency
-    on wave0/drift-metric.
+    self-verifying instead of trusted-forever. FAILS when the snapshot is
+    absent: it is tracked in the repo, so its absence disables the crate's
+    only self-verification, and skipping would report the ledger clean on
+    evidence it never read.
 
     WHY dual is included: a 'dual' row's file is still, physically, the
     unmodified CozoDB-lineage copy soaking before deletion (PLAN.md §2) — it
@@ -260,8 +261,21 @@ def check_verbatim_recompute(rows: list[dict]) -> list[str]:
     genuinely fresh addition with nothing to compare against — is still
     exempt, because there is nothing to recompute."""
     if not UPSTREAM_SNAPSHOT_DIR.is_dir():
-        print("krites-provenance: no upstream-snapshot/ present — skipping offline verbatim_pct recompute")
-        return []
+        # WHY this fails rather than skips: the skip existed so this check could
+        # land before wave0/drift-metric vendored the snapshot, and that ordering
+        # is long since discharged — the snapshot is 108 tracked files in the
+        # repo. What remained was an unconditional fail-open: deleting the only
+        # reference every published figure is measured against made this checker
+        # print one line and report the ledger CLEAN, exit 0. Measured, not
+        # inferred. A checker that certifies a ledger it could not read is worse
+        # than no checker, because the green is the thing people act on.
+        return [
+            "upstream-snapshot/ is absent, so not one verbatim_pct could be "
+            "recomputed. It is tracked at crates/krites/upstream-snapshot/"
+            "cozo-core-src/ and is the sole reference behind every figure in "
+            "PROVENANCE.toml and NOTICE.md. Restore it (git checkout -- "
+            "crates/krites/upstream-snapshot) rather than running without it."
+        ]
     errors = []
     for row in rows:
         status = row["status"]
