@@ -408,6 +408,71 @@ def load_graduated_status(path: pathlib.Path) -> dict[str, tuple[str, int]]:
     return graduated
 
 
+def load_prior_paths(path: pathlib.Path) -> set[str]:
+    """Every path the prior ledger recorded, for move detection.
+
+    Read with bare tomllib for the same reason load_graduated_status is: this
+    consumes a single field and has no business demanding the full current row
+    schema validate before it can read it.
+    """
+    if not path.exists():
+        return set()
+    try:
+        data = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError:
+        return set()
+    return {
+        r["path"]
+        for r in data.get("file", [])
+        if isinstance(r, dict) and isinstance(r.get("path"), str)
+    }
+
+
+def check_dual_survives_move(
+    graduated: dict[str, tuple[str, int]],
+    prior_paths: set[str],
+    rows: list[dict[str, object]],
+) -> None:
+    """Refuse to write a ledger in which a moved file dropped its soak fuse.
+
+    WHY: a `dual` row carries the only live fuse in the scheme -- the absolute
+    commit count at which its derived copy gets deleted. Status preservation
+    keys `graduated` on the ledger's recorded path and looks it up by the
+    file's CURRENT path, so a moved dual file matches nothing, falls through to
+    DUAL_SOAK_WINDOW (path-keyed too), and is rewritten as `derived` with soak
+    0. Measured: a dual row at soak 3108 came back `derived`/0 after a plain
+    `git mv` plus the UPSTREAM_MAP rekey that any move already requires -- and
+    every downstream check stayed green, because the resulting ledger is
+    perfectly self-consistent. The retirement that row was scheduled for simply
+    never happens, and nothing reports it.
+
+    WHY this shape rather than failing on any vanished dual row: retirement
+    legitimately deletes a dual file -- that IS `land-dark -> soak -> delete`
+    completing, and it must stay possible. A deletion removes a row and adds
+    none; a move removes one and adds another. Requiring both lets retirement
+    through and stops the move. A wave that retires and adds files in one pass
+    trips this too; that is a deliberate false positive, since it is exactly
+    the case where a human should confirm which fuse belongs where.
+    """
+    new_paths = {r["path"] for r in rows}
+    vanished_dual = sorted(
+        p for p, (status, _) in graduated.items() if status == "dual" and p not in new_paths
+    )
+    appeared = sorted(new_paths - prior_paths)
+    if not (vanished_dual and appeared):
+        return
+    raise SystemExit(
+        "dual rows vanished while new rows appeared -- a moved `dual` file "
+        "loses its soak fuse silently.\n"
+        f"  gone (was dual): {', '.join(vanished_dual)}\n"
+        f"  new:             {', '.join(appeared)}\n"
+        "If these are the same file moved, re-record its status at the new "
+        "path with scripts/krites-provenance-transition.py before regenerating, "
+        "so the soak_expires_at_commit_count carries across. If the file was "
+        "retired, retire it on its own -- do not add files in the same pass."
+    )
+
+
 def main() -> None:
     local_files = iter_src_files()
     mapped = set(UPSTREAM_MAP)
@@ -440,6 +505,7 @@ def main() -> None:
         )
 
     graduated = load_graduated_status(LEDGER_PATH)
+    prior_paths = load_prior_paths(LEDGER_PATH)
 
     rows: list[dict] = []
     for rel in local_files:
@@ -519,6 +585,8 @@ def main() -> None:
                     "soak_expires_at_commit_count": soak,
                 }
             )
+
+    check_dual_survives_move(graduated, prior_paths, rows)
 
     meta = {"upstream_repo": UPSTREAM_REPO, "upstream_ref": UPSTREAM_REF}
     LEDGER_PATH.write_text(dump_ledger(meta, rows))
