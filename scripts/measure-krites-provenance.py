@@ -263,6 +263,14 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "runtime/hnsw_sovereign/remove.rs": None,
     "runtime/hnsw_sovereign/search.rs": None,
     "runtime/hnsw_sovereign/types.rs": None,
+    # WHY this row carries a real predecessor and a high figure: the file is
+    # vendored stopwords-iso data (MIT), and its own header records that the
+    # word content is unchanged from the copy it replaced -- token-multiset
+    # identical, 21,707 literals across 58 languages. A stop-word list cannot
+    # be rewritten to be more original without being wrong. Recording the
+    # predecessor makes the row state that; asserting none, as it did, claimed
+    # there was nothing to measure against a file it is 94% identical to.
+    "fts/tokenizer/stop_word_filter/sovereign/stopwords.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
     "storage/temp.rs": "storage/temp.rs",
     "utils.rs": "utils.rs",
 }

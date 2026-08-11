@@ -457,7 +457,7 @@ soak_expires_at_commit_count = 0
 path = "datalog.pest"
 upstream_path = "cozoscript.pest"
 replaced_upstream_path = "none"
-verbatim_pct = 99.6
+verbatim_pct = 94.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -976,8 +976,8 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/stopwords.rs"
 upstream_path = "none"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
+verbatim_pct = 76.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
 

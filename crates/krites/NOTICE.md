@@ -10,7 +10,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
 - 210 files under `src/`: 142 derived, 68 sovereign, 0 dual
-- Mean verbatim match across the 142 derived files: 44.8% (unweighted average of the per-file `verbatim_pct` column below)
+- Mean verbatim match across the 142 derived files: 44.7% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -68,7 +68,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/tests/values.rs` | `data/tests/values.rs` | 14.0% | derived |
 | `src/data/tuple.rs` | `data/tuple.rs` | 52.0% | derived |
 | `src/data/value.rs` | `data/value.rs` | 60.3% | derived |
-| `src/datalog.pest` | `cozoscript.pest` | 99.6% | derived |
+| `src/datalog.pest` | `cozoscript.pest` | 94.2% | derived |
 | `src/error.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/all_pairs_shortest_path.rs` | cf. `fixed_rule/algos/all_pairs_shortest_path.rs` | 15.4% | sovereign |
 | `src/fixed_rule/algos/astar.rs` | cf. `fixed_rule/algos/astar.rs` | 18.4% | sovereign |
@@ -133,7 +133,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | — | 0.0% | sovereign |
-| `src/fts/tokenizer/stop_word_filter/sovereign/stopwords.rs` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/stop_word_filter/sovereign/stopwords.rs` | cf. `fts/tokenizer/stop_word_filter/stopwords.rs` | 76.6% | sovereign |
 | `src/fts/tokenizer/tokenized_string.rs` | `fts/tokenizer/tokenized_string.rs` | 76.4% | derived |
 | `src/fts/tokenizer/tokenizer_impl.rs` | `fts/tokenizer/tokenizer_impl.rs` | 74.1% | derived |
 | `src/fts/tokenizer/whitespace_tokenizer.rs` | `fts/tokenizer/whitespace_tokenizer.rs` | 73.7% | derived |
