@@ -5,10 +5,11 @@
 # Install: `git config core.hooksPath scripts/githooks` (auto-set by .envrc, or
 # run `scripts/install-hooks.sh`). Deliberate bypass: `git push --no-verify`.
 #
-# Speed: fmt (~4s) + _llm (~3s) always run (cheap, and fmt is the check that
-# first-failed CI on formatting alone). Clippy runs on AFFECTED crates by
-# default; set PREPUSH_FULL=1 for the bit-exact workspace clippy CI runs, or
-# PREPUSH_NO_CLIPPY=1 to skip it (CI gate-attestation is the backstop).
+# Speed: fmt (~4s) + _llm (~3s) + gate-coverage (~5s) always run (cheap, and fmt
+# is the check that first-failed CI on formatting alone). Clippy runs on
+# AFFECTED crates by default; set PREPUSH_FULL=1 for the bit-exact workspace
+# clippy CI runs, or PREPUSH_NO_CLIPPY=1 to skip it (CI gate-attestation is the
+# backstop).
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
@@ -28,6 +29,14 @@ run_workspace_clippy() {
 echo "pre-push: cargo fmt --check ..."
 cargo +1.94.0 fmt --all -- --check \
   || fail "formatting — run 'cargo +1.94.0 fmt --all' then re-push"
+
+# WHY before clippy: these 13 checks feed the required `gate` context, are pure
+# python/shell, and finish in seconds -- so a regenerated-artifact miss should
+# stop the push before the multi-minute compile, not after it. The step list is
+# derived from the workflow, so this cannot drift from what CI will run.
+echo "pre-push: gate-coverage-scripts (derived from the workflow) ..."
+scripts/run-gate-coverage.py \
+  || fail "gate-coverage-scripts — see the failures above"
 
 # WHY: range vs the upstream the push targets; fall back to origin/main.
 range="origin/main...HEAD"

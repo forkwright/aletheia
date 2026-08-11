@@ -162,3 +162,10 @@ target-local/
 # Hand-authored L1/L2/legacy tiers stay committed.
 _llm/L3-api-index/
 _llm/manifest.toml
+
+# WHY: gate-attestation.yml's "Check release feature policy" step writes
+# `cargo metadata` to this path at the repo root. On an ephemeral CI runner that
+# is invisible; running the same step locally via scripts/run-gate-coverage.py
+# leaves it in the working tree, where it reads as an untracked file worth
+# committing. It is a build artifact of a check, not a source file.
+/metadata.json
