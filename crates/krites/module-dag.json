@@ -184,7 +184,7 @@
     {
       "from": "query",
       "to": "data",
-      "count": 144,
+      "count": 145,
       "production_count": 142,
       "test_only": false,
       "first_evidence": "query/compile.rs:19",
@@ -229,7 +229,7 @@
     {
       "from": "query",
       "to": "runtime",
-      "count": 48,
+      "count": 49,
       "production_count": 46,
       "test_only": false,
       "first_evidence": "query/compile.rs:30",
@@ -380,8 +380,8 @@
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
-  "file_count": 202,
-  "statement_count": 1003,
+  "file_count": 204,
+  "statement_count": 1005,
   "required_edges_present": [
     [
       "runtime",

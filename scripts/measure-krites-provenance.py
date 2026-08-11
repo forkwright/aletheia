@@ -217,6 +217,8 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "query/stored/mutation.rs": "query/stored.rs",
     "query/stored/validation.rs": "query/stored.rs",
     "query/stratify.rs": "query/stratify.rs",
+    "query/tests/mod.rs": None,
+    "query/tests/reference_semantics.rs": None,
     "query_cache.rs": None,
     "runtime/callback.rs": "runtime/callback.rs",
     "runtime/db.rs": "runtime/db.rs",

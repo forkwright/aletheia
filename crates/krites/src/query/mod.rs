@@ -37,3 +37,5 @@ pub(crate) mod reorder;
 pub(crate) mod sort;
 pub(crate) mod stored;
 pub(crate) mod stratify;
+#[cfg(test)]
+mod tests;
