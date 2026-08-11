@@ -32,6 +32,7 @@ import krites_provenance_lib as LIB
 
 _CHECK_SCRIPT_PATH = Path(__file__).parent / "check-krites-provenance.py"
 _TRANSITION_SCRIPT_PATH = Path(__file__).parent / "krites-provenance-transition.py"
+_MEASURE_SCRIPT_PATH = Path(__file__).parent / "measure-krites-provenance.py"
 
 
 def _load_module(name: str, path: Path) -> object:
@@ -52,8 +53,13 @@ def _load_transition() -> object:
     return _load_module("krites_provenance_transition", _TRANSITION_SCRIPT_PATH)
 
 
+def _load_measure() -> object:
+    return _load_module("measure_krites_provenance", _MEASURE_SCRIPT_PATH)
+
+
 CHECKER = _load_checker()
 TRANSITION = _load_transition()
+MEASURE = _load_measure()
 _FAILURES: list[str] = []
 
 
@@ -671,6 +677,61 @@ def test_verbatim_recompute_detects_drift() -> None:
             CHECKER.KRITES_SRC = orig_src
 
 
+# --- a moved `dual` file must not lose its soak fuse ---
+
+
+def test_dual_move_blocked() -> None:
+    # WHY: status preservation keys on the ledger's recorded path and looks it
+    # up by the file's CURRENT path, so a moved dual file matches nothing and
+    # is rewritten as `derived` with soak 0 — the fuse erased, every check
+    # green. Measured on the real tree: a row at soak 3108 came back
+    # `derived`/0 after a `git mv` plus the UPSTREAM_MAP rekey a move requires.
+    graduated = {"data/aggr/boolean.rs": ("dual", 3108)}
+    prior = {"data/aggr/boolean.rs", "data/value.rs"}
+    rows = [row("data/aggr/moved.rs", "data/aggr.rs", 71.7, "derived"), row("data/value.rs", "data/value.rs", 40.0, "derived")]
+    expect_raises(
+        SystemExit,
+        lambda: MEASURE.check_dual_survives_move(graduated, prior, rows),
+        "a dual row vanishing while a new row appears must be refused (moved file loses its soak fuse)",
+    )
+
+
+def test_dual_retirement_allowed() -> None:
+    # WHY: retirement legitimately deletes a dual file — that IS
+    # land-dark -> soak -> delete completing, and it must stay possible. A
+    # deletion removes a row and adds none.
+    graduated = {"data/aggr/boolean.rs": ("dual", 3108)}
+    prior = {"data/aggr/boolean.rs", "data/value.rs"}
+    rows = [row("data/value.rs", "data/value.rs", 40.0, "derived")]
+    try:
+        MEASURE.check_dual_survives_move(graduated, prior, rows)
+    except SystemExit as exc:
+        expect(False, f"retiring a dual row must stay possible, got: {exc}")
+
+
+def test_dual_move_guard_ignores_sovereign() -> None:
+    # WHY: sovereign status is driven by SOVEREIGN_VERIFY_MAP, which a move
+    # rekeys too, so it survives a rename on its own. Only `dual` carries a
+    # fuse, so only `dual` is guarded — verified against the real tree.
+    graduated = {"data/error.rs": ("sovereign", 0)}
+    prior = {"data/error.rs", "data/value.rs"}
+    rows = [row("data/renamed.rs", "none", 0.0, "sovereign"), row("data/value.rs", "data/value.rs", 40.0, "derived")]
+    try:
+        MEASURE.check_dual_survives_move(graduated, prior, rows)
+    except SystemExit as exc:
+        expect(False, f"a moved sovereign row must not trip the dual-fuse guard, got: {exc}")
+
+
+def test_dual_move_guard_quiet_when_nothing_moved() -> None:
+    graduated = {"data/aggr/boolean.rs": ("dual", 3108)}
+    prior = {"data/aggr/boolean.rs", "data/value.rs"}
+    rows = [row("data/aggr/boolean.rs", "data/aggr.rs", 71.7, "dual", soak=3108), row("data/value.rs", "data/value.rs", 40.0, "derived")]
+    try:
+        MEASURE.check_dual_survives_move(graduated, prior, rows)
+    except SystemExit as exc:
+        expect(False, f"an ordinary regeneration must not trip the guard, got: {exc}")
+
+
 def main() -> int:
     for test_fn in (
         test_sovereign_high_verbatim_rejected,
@@ -707,6 +768,10 @@ def main() -> int:
         test_soak_expiry_fails_closed_when_commit_count_unavailable,
         test_verbatim_recompute_fails_closed_without_snapshot,
         test_verbatim_recompute_detects_drift,
+        test_dual_move_blocked,
+        test_dual_retirement_allowed,
+        test_dual_move_guard_ignores_sovereign,
+        test_dual_move_guard_quiet_when_nothing_moved,
     ):
         test_fn()
 

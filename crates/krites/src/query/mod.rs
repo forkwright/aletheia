@@ -35,5 +35,4 @@ pub(crate) mod magic;
 pub(crate) mod ra;
 pub(crate) mod reorder;
 pub(crate) mod sort;
-pub(crate) mod stored;
 pub(crate) mod stratify;

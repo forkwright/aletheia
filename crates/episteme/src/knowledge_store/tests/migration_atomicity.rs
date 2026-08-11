@@ -328,7 +328,7 @@ fn v13_to_v14_backfills_sensitivity_public() {
 // finding): the pre-rewrite `:put` never bound `id`, a non-nullable
 // no-default column on the current `CAUSAL_EDGES_DDL` shape it was already
 // recreating against. `make_extractor`
-// (`krites/src/query/stored/extractors.rs:84-101`) errors on a missing
+// (`krites/src/runtime/relation/extractors.rs:84-101`) errors on a missing
 // binding with no `default_gen`, so that path would have failed against any
 // real non-empty `causal_edges` relation — untested until now (no prior
 // coverage existed for either causal_edges migration with real data).
