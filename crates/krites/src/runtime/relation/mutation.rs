@@ -32,7 +32,9 @@ use crate::error::InternalResult as Result;
 use crate::fts::tokenizer::TextAnalyzer;
 use crate::parse::expr::build_expr;
 use crate::parse::{DatalogParser, Rule, parse_script};
-use crate::query::error::*;
+use crate::query::error::{
+    CompilationFailedSnafu, EvalFailedSnafu, InsufficientAccessSnafu, StoredRelationSnafu,
+};
 use crate::runtime::callback::CallbackCollector;
 use crate::runtime::minhash_lsh::HashPermutations;
 use crate::runtime::relation::{
@@ -42,8 +44,9 @@ use crate::storage::Storage;
 use crate::{DbCore as Db, SourceSpan, StoreTx};
 
 use super::extractors::{make_extractors, make_update_extractors};
+use crate::runtime::transact::SessionTx;
 
-impl<'a> crate::runtime::transact::SessionTx<'a> {
+impl SessionTx<'_> {
     pub(crate) fn execute_relation<'s, S: Storage<'s>>(
         &mut self,
         db: &Db<S>,

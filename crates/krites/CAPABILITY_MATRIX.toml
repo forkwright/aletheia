@@ -844,7 +844,7 @@ gate = "Named wave-11 gate: build an index over a seeded corpus, assert Jaccard-
 id = "appendix-a-validity"
 category = "appendix_a"
 item = "Time-travel / Validity"
-source = "PLAN.md Appendix A row 2 (datalog.pest:76,225; data/value.rs:145,155; data/tests/validity.rs; query/stored/validation.rs)"
+source = "PLAN.md Appendix A row 2 (datalog.pest:76,225; data/value.rs:145,155; data/tests/validity.rs; runtime/relation/validation.rs)"
 dest_wave = "wave-6"
 overlaps_with = "datavalue-validity"
 gate = "Wave 6: ValidityTs encoding is byte-identical and memcmp(encode(a), encode(b)) == a.cmp(b) holds with the reversed ordering. Wave 9: @ clause parses at all four attachment sites. Wave 10: an as-of query at t returns the row set current at t, and a supersession at t+1 does not change it."

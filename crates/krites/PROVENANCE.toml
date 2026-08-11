@@ -1201,7 +1201,7 @@ soak_expires_at_commit_count = 0
 path = "query/mod.rs"
 upstream_path = "query/mod.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 23.1
+verbatim_pct = 18.4
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1290,38 +1290,6 @@ path = "query/sort.rs"
 upstream_path = "query/sort.rs"
 replaced_upstream_path = "none"
 verbatim_pct = 58.8
-status = "derived"
-soak_expires_at_commit_count = 0
-
-[[file]]
-path = "query/stored/extractors.rs"
-upstream_path = "query/stored.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 56.9
-status = "derived"
-soak_expires_at_commit_count = 0
-
-[[file]]
-path = "query/stored/mod.rs"
-upstream_path = "query/stored.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
-status = "derived"
-soak_expires_at_commit_count = 0
-
-[[file]]
-path = "query/stored/mutation.rs"
-upstream_path = "query/stored.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 63.9
-status = "derived"
-soak_expires_at_commit_count = 0
-
-[[file]]
-path = "query/stored/validation.rs"
-upstream_path = "query/stored.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 73.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1526,6 +1494,14 @@ status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
+path = "runtime/relation/extractors.rs"
+upstream_path = "query/stored.rs"
+replaced_upstream_path = "none"
+verbatim_pct = 56.9
+status = "derived"
+soak_expires_at_commit_count = 0
+
+[[file]]
 path = "runtime/relation/handles.rs"
 upstream_path = "runtime/relation.rs"
 replaced_upstream_path = "none"
@@ -1558,10 +1534,26 @@ status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
+path = "runtime/relation/mutation.rs"
+upstream_path = "query/stored.rs"
+replaced_upstream_path = "none"
+verbatim_pct = 63.6
+status = "derived"
+soak_expires_at_commit_count = 0
+
+[[file]]
 path = "runtime/relation/relation_crud.rs"
 upstream_path = "runtime/relation.rs"
 replaced_upstream_path = "none"
 verbatim_pct = 48.0
+status = "derived"
+soak_expires_at_commit_count = 0
+
+[[file]]
+path = "runtime/relation/validation.rs"
+upstream_path = "query/stored.rs"
+replaced_upstream_path = "none"
+verbatim_pct = 73.2
 status = "derived"
 soak_expires_at_commit_count = 0
 

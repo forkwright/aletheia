@@ -26,13 +26,14 @@ use crate::data::tuple::Tuple;
 use crate::data::value::{DataValue, ValidityTs};
 use crate::error::InternalResult as Result;
 use crate::parse::parse_script;
-use crate::query::error::*;
+use crate::query::error::{InsufficientAccessSnafu, StoredRelationSnafu};
 use crate::runtime::callback::{CallbackCollector, CallbackOp};
 use crate::runtime::relation::{AccessLevel, RelationHandle, extend_tuple_from_v};
+use crate::runtime::transact::SessionTx;
 use crate::storage::Storage;
 use crate::{DbCore as Db, NamedRows, SourceSpan, StoreTx};
 
-impl<'a> crate::runtime::transact::SessionTx<'a> {
+impl SessionTx<'_> {
     pub(crate) fn collect_mutations<'s, S: Storage<'s>>(
         &mut self,
         db: &Db<S>,

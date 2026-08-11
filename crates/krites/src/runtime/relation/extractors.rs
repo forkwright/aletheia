@@ -22,7 +22,7 @@ use crate::data::value::{DataValue, ValidityTs};
 use crate::error::InternalResult as Result;
 use crate::fixed_rule::FixedRuleHandle;
 use crate::fixed_rule::utilities::constant::Constant;
-use crate::query::error::*;
+use crate::query::error::{EvalFailedSnafu, StoredRelationSnafu};
 
 pub(crate) enum DataExtractor {
     DefaultExtractor(Expr, NullableColType),
