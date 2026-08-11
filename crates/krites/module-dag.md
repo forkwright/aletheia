@@ -39,8 +39,8 @@ Source: 205 `.rs` files, 1027 `use crate::` statements under `crates/krites/src/
 | `parse` | `runtime` | 3 | 3 | no | parse/query/options.rs:28 |
 | `query` | `data` | 130 | 127 | no | query/compile.rs:18 |
 | `query` | `fixed_rule` | 1 | 1 | no | query/eval.rs:33 |
-| `query` | `fts` | 2 | 2 | no | query/context.rs:47 |
-| `query` | `parse` | 12 | 12 | no | query/context.rs:49 |
+| `query` | `fts` | 2 | 2 | no | query/context.rs:48 |
+| `query` | `parse` | 12 | 12 | no | query/context.rs:50 |
 | `query` | `root` | 20 | 20 | no | query/compile.rs:26 |
 | `query` | `runtime` | 26 | 23 | no | query/compile.rs:30 |
 | `root` | `data` | 8 | 8 | no | async_surface.rs:33 |

@@ -5,11 +5,6 @@
 //! file is the only place that knows a `SessionTx` can serve it. Nothing under
 //! `query/` mentions `SessionTx` any more.
 
-#![expect(
-    clippy::result_large_err,
-    reason = "InternalError is large by design and every fallible krites surface returns it; boxing it here alone would make this one interface differ from the engine it fronts"
-)]
-
 use std::sync::Arc;
 
 use crate::data::expr::Bytecode;
