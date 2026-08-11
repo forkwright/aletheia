@@ -20,39 +20,51 @@ MIN_IDENTIFIER_TOKENS_PER_LINE identifier-shaped tokens. Computed against
 the pinned vendored snapshot at upstream-snapshot/cozo-core-src (see its
 NOTICE.md) — never a network fetch.
 
-Report-only. Do not add `--strict` to any CI invocation until every one of
-the following holds (PLAN.md wave 0.3 / kill criterion #1):
+`--strict` GATES, on one narrow condition: a row that is `sovereign` AND
+records `replaced_upstream_path = "none"` AND scores above CALIBRATED_THRESHOLD.
+Nothing else fails, ever.
 
-  1. crates/krites/PROVENANCE.toml (wave 0.1) exists, has one row per
-     src/ file, and CI already fails on ledger creep independently of this
-     script — a --strict drift failure must never be the FIRST signal that
-     the ledger is stale.
-  2. This script has been run in --calibrate mode against the CURRENT
-     upstream snapshot (re-run after any snapshot update) and
-     CALIBRATED_THRESHOLD sits above the freshly measured known-original
-     max, with the margin re-stated in the constant's comment.
-  3. The OVERLAP CHECK in --calibrate output is read and accepted, not
-     just present — see the NOTE it prints. A low score is not proof of
-     originality (see docstring on `run_calibration`'s overlap section);
-     --strict only ever fires on HIGH scores (kill-criterion direction),
-     never used to auto-clear a file as sovereign.
-  4. The full-report mode (default, no flags) has been run at least once
-     across the entire crate and every file scoring above threshold has
-     been individually reviewed — not bulk-waived — because at promotion
-     time the threshold starts gating NEW files, and a pre-existing
-     over-threshold file would otherwise block unrelated PRs.
-  5. Wave 0.3's kill-criterion framing is honored: tightest on the
-     datalog.pest replacement, but not zero-tolerance — a grammar file's
-     rule-definition lines are largely dictated by the language being
-     described, so --strict promotion should carry a documented per-file-
-     type allowance for grammar files rather than one global cutoff.
+That predicate is what made promotion possible. The original criteria (wave 0.3)
+required every over-threshold file to be individually reviewed first, because a
+global cutoff "starts gating NEW files, and a pre-existing over-threshold file
+would otherwise block unrelated PRs". Under a global cutoff that was 62 files.
+Cross-referenced against the ledger it is none, because:
+
+  - A `derived` or `dual` row scoring high is the metric WORKING. The row
+    declares upstream lineage; a high figure is the expected reading.
+  - A `sovereign` row recording what it replaced already publishes a measured
+    figure that check-krites-provenance.py recomputes independently. The number
+    is evidence (storage/temp.rs states 33.2%), not a defect.
+  - A `sovereign` row recording no predecessor asserts there is nothing to
+    compare against. A high score refutes that assertion, which is the one thing
+    this metric can prove. That is the SOVEREIGN_VERIFY_MAP-by-omission hole.
+
+The remaining criteria are still live and still binding:
+
+  1. PROVENANCE.toml gates independently -- a drift failure must never be the
+     FIRST signal the ledger is stale. `_load_ledger_rows` fails closed on a
+     missing or unparsable ledger for this reason.
+  2. Re-run --calibrate after ANY snapshot update or filter change, and restate
+     the margin in CALIBRATED_THRESHOLD's comment. Last measured: known-original
+     max 0.0881 against a 0.1700 threshold, margin 0.0819.
+  3. The OVERLAP CHECK is read, not just present: a LOW score never promotes a
+     row derived -> sovereign. This gate only ever fires on HIGH scores.
+
+Criterion 5's per-file-type allowance for grammars is superseded rather than
+implemented: it existed so a file whose content is dictated by an external
+referent would not fail on a high score. Under this predicate such a file does
+not need an exemption -- it needs its predecessor recorded, after which its
+figure is published rather than waived. stopwords.rs was the live example: MIT
+stopwords-iso data, word-for-word unchanged from what it replaced, sitting in
+the ledger at 0.0/none while measuring 0.94. It now records 76.6% against its
+predecessor, which is the honest statement and needs no allowance.
 
 Run standalone:
     uv run scripts/check-krites-verbatim-drift.py                 # full report
     uv run scripts/check-krites-verbatim-drift.py --calibrate      # calibration run
     uv run scripts/check-krites-verbatim-drift.py --file <path>    # single file
 
-Exits 0 always, except with --strict (see PROMOTION CRITERIA — not yet met).
+Exits 0 except with --strict, which fails only on the condition above.
 """
 
 from __future__ import annotations
@@ -61,6 +73,7 @@ import argparse
 import logging
 import re
 import sys
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -122,6 +135,27 @@ _TOKEN_RE = re.compile(
 )
 
 
+# WHY a regex rather than startswith("use "): a re-export is written
+# `pub use ..` or `pub(crate) use ..`, and the plain prefix check missed every
+# one of them. That contradicted this module's own stated filter -- imports are
+# excluded because "two independent Rust implementations of the same problem
+# domain clear 20% on braces and imports alone", and a re-export is an import
+# by another name. Measured, it mattered: fixed_rule/algos/mod.rs is 40 eligible
+# lines of which 18 are `mod x;` and most of the rest were `pub(crate) use
+# X::Y;`, scoring 0.6505 against upstream on a file that declares a module list
+# and re-exports it.
+# WHY module declarations are excluded on the same grounds: `pub(crate) mod bfs;`
+# names a file that exists. There is no authored token sequence in it that could
+# survive from upstream -- two implementations of the same algorithm set have
+# identical module lists whoever wrote them. Measured, fixed_rule/algos/mod.rs is
+# 18 such lines out of 22 eligible after the re-export fix, and scored 0.6505 on
+# them; a manifest cannot be rewritten to be more original without renaming the
+# things it lists.
+_MOD_DECL_RE = re.compile(r"^(?:pub(?:\([^)]*\))?\s+)?mod\s+[A-Za-z_][A-Za-z0-9_]*\s*;$")
+
+_USE_START_RE = re.compile(r"^(?:pub(?:\([^)]*\))?\s+)?use\s")
+
+
 class _UseTracker:
     """WHY: a `use` statement can span multiple lines (`use foo::{\\n  bar,\\n};`).
     Tracks brace balance from the opening `use` line through to the closing `;`
@@ -133,7 +167,7 @@ class _UseTracker:
 
     def consume(self, stripped: str) -> bool:
         if not self._active:
-            if not stripped.startswith("use "):
+            if not _USE_START_RE.match(stripped):
                 return False
             self._active = True
             self._depth = 0
@@ -152,6 +186,8 @@ def eligible_lines(text: str) -> list[str]:
         if not stripped:
             continue
         if use_tracker.consume(stripped):
+            continue
+        if _MOD_DECL_RE.match(stripped):
             continue
         if _ATTRIBUTE_RE.match(stripped):
             continue
@@ -370,6 +406,53 @@ def run_calibration() -> int:
     return 0
 
 
+def _load_ledger_rows() -> dict[str, dict]:
+    """Read PROVENANCE.toml once, for the strict gate's status lookup.
+
+    Fails closed: strict mode compares against ledger rows, so an unreadable or
+    absent ledger must stop the run rather than silently find nothing to gate.
+    Criterion 1 of the promotion contract is that the ledger already gates
+    independently -- a drift failure must never be the FIRST signal it is stale,
+    and an empty lookup here would invert that.
+    """
+    path = KRITES_SRC.parent / "PROVENANCE.toml"
+    if not path.exists():
+        raise SystemExit(f"{path} is absent; --strict compares against it and cannot proceed.")
+    try:
+        data = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(f"{path} could not be parsed, so --strict has nothing to gate: {exc}") from exc
+    return {r["path"]: r for r in data.get("file", []) if isinstance(r, dict) and "path" in r}
+
+
+def _asserts_no_predecessor(relpath: str) -> bool:
+    """Whether the ledger row for `relpath` is sovereign AND records no predecessor.
+
+    WHY strict fires only on this shape, rather than on any high-scoring row:
+
+    - A `derived` or `dual` row scoring high is the metric WORKING. That row
+      declares upstream lineage; a high figure is the expected reading and must
+      never fail a build. 62 files are in this position today, which is what made
+      a global cutoff look like 62 files to review rather than a usable gate.
+    - A `sovereign` row that records `replaced_upstream_path` already publishes a
+      measured figure in PROVENANCE.toml and NOTICE.md, and
+      check-krites-provenance.py recomputes it independently. The number is
+      evidence, not a defect -- storage/temp.rs states 33.2% and is honest.
+    - A `sovereign` row recording `replaced_upstream_path = "none"` is asserting
+      there is nothing to compare it against. A high drift score REFUTES that
+      assertion directly, which is the one thing this metric can prove.
+
+    That is precisely the SOVEREIGN_VERIFY_MAP-by-omission hole: a path absent
+    from the map is assigned 0.0, and nothing checked that a file claiming
+    sovereignty had an entry. This closes it without an exemption list, because
+    the fix for a real hit is to record the predecessor rather than to waive it.
+    """
+    row = _load_ledger_rows().get(relpath)
+    if row is None:
+        return False
+    return row.get("status") == "sovereign" and row.get("replaced_upstream_path", "none") == "none"
+
+
 def run_report(strict: bool) -> int:
     krites = load_krites_corpus()
     upstream = load_upstream_corpus()
@@ -396,9 +479,30 @@ def run_report(strict: bool) -> int:
     print("PROMOTION CRITERIA in this script's module docstring / PLAN.md wave 0.3 before")
     print("ever passing --strict in CI.")
 
-    if strict and over_threshold:
-        return 1
-    return 0
+    if not strict:
+        return 0
+
+    unmeasured = [r for r in over_threshold if _asserts_no_predecessor(r.relpath)]
+    if not unmeasured:
+        print()
+        print(
+            f"STRICT: no `sovereign` row asserting no predecessor scores above "
+            f"{CALIBRATED_THRESHOLD:.4f}. ({len(over_threshold)} file(s) are above it and all "
+            "either declare upstream lineage or already record a measurement against what they "
+            "replaced.)"
+        )
+        return 0
+
+    print()
+    print("STRICT FAILURE: these rows claim to be sovereign with nothing to measure against,")
+    print("while scoring above the calibrated threshold against a real upstream file:")
+    for r in unmeasured:
+        print(f"  {r.jaccard:.4f}  {r.relpath}  (vs upstream {r.best_match})")
+    print()
+    print("Record what the file replaced in SOVEREIGN_VERIFY_MAP and regenerate, so the row")
+    print("carries a measured figure instead of an asserted 0.0 -- or, if it genuinely has no")
+    print("predecessor, this score is evidence that it does.")
+    return 1
 
 
 def run_single(relpath: str) -> int:
