@@ -1,7 +1,6 @@
 //! Query plan evaluation.
 #![expect(
     clippy::as_conversions,
-    clippy::elidable_lifetime_names,
     clippy::explicit_iter_loop,
     clippy::indexing_slicing,
     clippy::manual_let_else,

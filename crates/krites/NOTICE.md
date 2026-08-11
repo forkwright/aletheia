@@ -155,10 +155,10 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/parse/sys/index.rs` | `parse/sys.rs` | 18.0% | derived |
 | `src/parse/sys/mod.rs` | `parse/sys.rs` | 18.9% | derived |
 | `src/parse/sys/parse.rs` | `parse/sys.rs` | 9.9% | derived |
-| `src/query/compile.rs` | `query/compile.rs` | 74.5% | derived |
+| `src/query/compile.rs` | `query/compile.rs` | 74.6% | derived |
 | `src/query/context.rs` | — | 0.0% | sovereign |
 | `src/query/error.rs` | — | 0.0% | sovereign |
-| `src/query/eval.rs` | `query/eval.rs` | 52.2% | derived |
+| `src/query/eval.rs` | `query/eval.rs` | 52.3% | derived |
 | `src/query/graph.rs` | `query/graph.rs` | 56.7% | derived |
 | `src/query/logical.rs` | `query/logical.rs` | 77.3% | derived |
 | `src/query/magic.rs` | `query/magic.rs` | 76.2% | derived |

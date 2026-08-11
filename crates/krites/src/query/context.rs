@@ -32,6 +32,11 @@
 //! therefore costs no allocation that was not already happening, and it keeps
 //! the trait usable as `&dyn` rather than making every RA type generic.
 
+#![expect(
+    clippy::result_large_err,
+    reason = "InternalError is large by design and every fallible krites surface returns it; boxing it here alone would make this one interface differ from the engine it fronts"
+)]
+
 use std::sync::Arc;
 
 use crate::data::expr::Bytecode;

@@ -1153,7 +1153,7 @@ soak_expires_at_commit_count = 0
 path = "query/compile.rs"
 upstream_path = "query/compile.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 74.5
+verbatim_pct = 74.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1177,7 +1177,7 @@ soak_expires_at_commit_count = 0
 path = "query/eval.rs"
 upstream_path = "query/eval.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 52.2
+verbatim_pct = 52.3
 status = "derived"
 soak_expires_at_commit_count = 0
 

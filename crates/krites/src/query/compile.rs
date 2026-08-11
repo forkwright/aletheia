@@ -2,7 +2,6 @@
 #![expect(
     clippy::as_conversions,
     clippy::default_trait_access,
-    clippy::elidable_lifetime_names,
     clippy::explicit_iter_loop,
     clippy::indexing_slicing,
     clippy::result_large_err,
