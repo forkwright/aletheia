@@ -9,7 +9,7 @@ Read `docs/GOLDEN-PATH.md` first to understand the public desktop-first app work
 ## Build / Test / Lint
 
 ```bash
-scripts/install-hooks.sh               # one-time: install fmt/clippy/_llm pre-push hook (auto via .envrc)
+scripts/install-hooks.sh               # one-time: install fmt/clippy/_llm/gate-coverage pre-push hook (auto via .envrc)
 cargo +1.94.0 fmt --all -- --check     # REQUIRED CI check, runs first in gate-attestation
 cargo check -p <crate>                 # fast compile check
 cargo test -p <crate>                  # single crate tests
