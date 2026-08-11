@@ -10,7 +10,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
 - 208 files under `src/`: 142 derived, 66 sovereign, 0 dual
-- Mean verbatim match across the 142 derived files: 45.0% (unweighted average of the per-file `verbatim_pct` column below)
+- Mean verbatim match across the 142 derived files: 44.9% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -68,7 +68,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/tests/values.rs` | `data/tests/values.rs` | 14.0% | derived |
 | `src/data/tuple.rs` | `data/tuple.rs` | 52.0% | derived |
 | `src/data/value.rs` | `data/value.rs` | 60.3% | derived |
-| `src/datalog.pest` | `cozoscript.pest` | 99.6% | derived |
+| `src/datalog.pest` | `cozoscript.pest` | 94.2% | derived |
 | `src/error.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/algos/all_pairs_shortest_path.rs` | cf. `fixed_rule/algos/all_pairs_shortest_path.rs` | 15.4% | sovereign |
 | `src/fixed_rule/algos/astar.rs` | cf. `fixed_rule/algos/astar.rs` | 18.4% | sovereign |

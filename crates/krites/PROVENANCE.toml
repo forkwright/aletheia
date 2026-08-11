@@ -457,7 +457,7 @@ soak_expires_at_commit_count = 0
 path = "datalog.pest"
 upstream_path = "cozoscript.pest"
 replaced_upstream_path = "none"
-verbatim_pct = 99.6
+verbatim_pct = 94.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
