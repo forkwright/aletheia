@@ -14,12 +14,12 @@ This crate is substantially derived from **CozoDB** (`cozo-core`), licensed **MP
 
 Two consequences bind day-to-day work in this crate:
 
-- **The MPL notices stay.** Upstream identifiers were renamed during the migration and the notices were dropped, which is the one thing MPL §3.1 does not permit. That has been repaired. Anything that reads like tidy-up but removes attribution re-creates the defect.
+- **The MPL notices stay, per file.** Upstream identifiers were renamed during the migration and the notices were dropped, which is the one thing MPL §3.1 does not permit. That has been repaired. Note what "per file" rules out: this crate's `NOTICE.md` recording a file as derived, however accurately, does not substitute for the notice that file is itself required to carry — §3.1 binds the Source Code Form, not the distribution around it. `datalog.pest` was the live example, byte-identical to upstream below a header that had been replaced with a one-line description while the ledger honestly reported it at 99.6%. Anything that reads like tidy-up but removes attribution re-creates the defect.
 - **`Cargo.toml` deliberately overrides the workspace license** with `AGPL-3.0-or-later AND MPL-2.0`. It is not drift. The derived files, and our modifications to them, stay MPL under file-level copyleft; the AGPL Larger Work is permitted by §3.3.
 
 The naming rule in `docs/HUBS.md` — prefer Krites/Datalog/Fjall over CozoDB — is about **architecture** and explicitly stops short of provenance. Attribution and licensing statements name CozoDB, because they are claims about authorship rather than about how the system is built.
 
-**Verbatim-drift measurement** (retirement program wave 0.3): `scripts/check-krites-verbatim-drift.py` scores any file here against the pinned upstream snapshot at `upstream-snapshot/` (its own `NOTICE.md`). Report-only — see PROMOTION CRITERIA in the script's module docstring before it gates anything.
+**Verbatim-drift measurement**: `scripts/check-krites-verbatim-drift.py` scores any file here against the pinned upstream snapshot at `upstream-snapshot/` (its own `NOTICE.md`). The full report is informational, but `--strict` **gates**, on one condition: a row that is `sovereign` AND records `replaced_upstream_path = "none"` AND scores above the calibrated threshold. A `derived` row scoring high is the metric working, and never fails. If it fires on your file, record what the file replaced in `SOVEREIGN_VERIFY_MAP` and regenerate — the row then carries a measured figure instead of an asserted `0.0`. Do not waive it.
 
 ## Derived artifacts — never hand-merge, always recompute
 
