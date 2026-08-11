@@ -299,19 +299,55 @@ jobs:
           # internal `gate` job already applies the trusted-automation waiver
           # to the trailer/build path, so HYBRID_GATE_RESULT alone reflects
           # that waiver correctly — no separate waiver check needed here.
-          if [ "$HYBRID_GATE_RESULT" != "success" ]; then
-            echo "ERROR: hybrid gate (trailer/full-gate-build via the fleet reusable) did not succeed (result: ${HYBRID_GATE_RESULT})." >&2
-            exit 1
-          fi
+          # WHY cancelled is called out rather than folded into the failure
+          # branch: a cancelled upstream job is not a verdict, and reporting it as
+          # one is actively misleading. On a push to main the callee keys its
+          # concurrency group by github.ref -- constant there -- so the next merge
+          # cancels the previous commit's hybrid gate while this caller's own
+          # SHA-keyed jobs survive. Measured over one window, two consecutive
+          # merges each came out RED with nothing wrong: 53ba8110b and 8dd94b02c,
+          # caller-side jobs green, every callee-side job cancelled. A red that
+          # nobody caused trains people to discount red.
+          # The exit status stays 1 either way -- an unverified commit must not
+          # report success -- but the message now says which of the two happened,
+          # so a cancellation is chased as a re-run and a failure as a bug. Root
+          # cause is aletheia#6701; this only stops the two being
+          # indistinguishable at a glance.
+          case "$HYBRID_GATE_RESULT" in
+            success) ;;
+            cancelled|skipped)
+              echo "::warning::hybrid gate was ${HYBRID_GATE_RESULT}, not failed -- no verdict was produced for this commit."
+              echo "CANCELLED: hybrid gate (trailer/full-gate-build via the fleet reusable) did not run to a verdict (result: ${HYBRID_GATE_RESULT}). This is NOT a test failure: re-run the job. See aletheia#6701." >&2
+              exit 1
+              ;;
+            *)
+              echo "ERROR: hybrid gate (trailer/full-gate-build via the fleet reusable) did not succeed (result: ${HYBRID_GATE_RESULT})." >&2
+              exit 1
+              ;;
+          esac
 
-          if [ "$COVERAGE_SCRIPTS_RESULT" != "success" ]; then
-            echo "ERROR: gate-coverage-scripts did not succeed (result: ${COVERAGE_SCRIPTS_RESULT})." >&2
-            exit 1
-          fi
+          case "$COVERAGE_SCRIPTS_RESULT" in
+            success) ;;
+            cancelled|skipped)
+              echo "CANCELLED: gate-coverage-scripts did not run to a verdict (result: ${COVERAGE_SCRIPTS_RESULT}). This is NOT a check failure: re-run the job. See aletheia#6701." >&2
+              exit 1
+              ;;
+            *)
+              echo "ERROR: gate-coverage-scripts did not succeed (result: ${COVERAGE_SCRIPTS_RESULT})." >&2
+              exit 1
+              ;;
+          esac
 
-          if [ "$COVERAGE_COMPILE_RESULT" != "success" ]; then
-            echo "ERROR: gate-coverage-compile-checks did not succeed (result: ${COVERAGE_COMPILE_RESULT})." >&2
-            exit 1
-          fi
+          case "$COVERAGE_COMPILE_RESULT" in
+            success) ;;
+            cancelled|skipped)
+              echo "CANCELLED: gate-coverage-compile-checks did not run to a verdict (result: ${COVERAGE_COMPILE_RESULT}). This is NOT a check failure: re-run the job. See aletheia#6701." >&2
+              exit 1
+              ;;
+            *)
+              echo "ERROR: gate-coverage-compile-checks did not succeed (result: ${COVERAGE_COMPILE_RESULT})." >&2
+              exit 1
+              ;;
+          esac
 
           echo "All gate stages passed (hybrid gate + coverage scripts + coverage compile checks)."
