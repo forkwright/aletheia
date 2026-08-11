@@ -70,25 +70,25 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/value.rs` | `data/value.rs` | 60.3% | derived |
 | `src/datalog.pest` | `cozoscript.pest` | 99.6% | derived |
 | `src/error.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/algos/all_pairs_shortest_path_native.rs` | cf. `fixed_rule/algos/all_pairs_shortest_path.rs` | 15.4% | sovereign |
-| `src/fixed_rule/algos/astar_native.rs` | cf. `fixed_rule/algos/astar.rs` | 18.4% | sovereign |
-| `src/fixed_rule/algos/bfs_native.rs` | cf. `fixed_rule/algos/bfs.rs` | 18.9% | sovereign |
-| `src/fixed_rule/algos/degree_centrality_native.rs` | cf. `fixed_rule/algos/degree_centrality.rs` | 32.1% | sovereign |
-| `src/fixed_rule/algos/dfs_native.rs` | cf. `fixed_rule/algos/dfs.rs` | 18.0% | sovereign |
+| `src/fixed_rule/algos/all_pairs_shortest_path.rs` | cf. `fixed_rule/algos/all_pairs_shortest_path.rs` | 15.4% | sovereign |
+| `src/fixed_rule/algos/astar.rs` | cf. `fixed_rule/algos/astar.rs` | 18.4% | sovereign |
+| `src/fixed_rule/algos/bfs.rs` | cf. `fixed_rule/algos/bfs.rs` | 18.9% | sovereign |
+| `src/fixed_rule/algos/degree_centrality.rs` | cf. `fixed_rule/algos/degree_centrality.rs` | 32.1% | sovereign |
+| `src/fixed_rule/algos/dfs.rs` | cf. `fixed_rule/algos/dfs.rs` | 18.0% | sovereign |
 | `src/fixed_rule/algos/kcore.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/algos/kruskal_native.rs` | cf. `fixed_rule/algos/kruskal.rs` | 14.9% | sovereign |
-| `src/fixed_rule/algos/label_propagation_native.rs` | cf. `fixed_rule/algos/label_propagation.rs` | 13.6% | sovereign |
+| `src/fixed_rule/algos/kruskal.rs` | cf. `fixed_rule/algos/kruskal.rs` | 14.9% | sovereign |
+| `src/fixed_rule/algos/label_propagation.rs` | cf. `fixed_rule/algos/label_propagation.rs` | 13.6% | sovereign |
 | `src/fixed_rule/algos/louvain.rs` | `fixed_rule/algos/louvain.rs` | 29.2% | derived |
-| `src/fixed_rule/algos/mod.rs` | cf. `fixed_rule/algos/mod.rs` | 31.6% | sovereign |
+| `src/fixed_rule/algos/mod.rs` | cf. `fixed_rule/algos/mod.rs` | 82.9% | sovereign |
 | `src/fixed_rule/algos/pagerank.rs` | `fixed_rule/algos/pagerank.rs` | 37.0% | derived |
-| `src/fixed_rule/algos/prim_native.rs` | cf. `fixed_rule/algos/prim.rs` | 14.9% | sovereign |
-| `src/fixed_rule/algos/random_walk_native.rs` | cf. `fixed_rule/algos/random_walk.rs` | 19.6% | sovereign |
-| `src/fixed_rule/algos/shortest_path_bfs_native.rs` | cf. `fixed_rule/algos/shortest_path_bfs.rs` | 19.1% | sovereign |
-| `src/fixed_rule/algos/shortest_path_dijkstra_native.rs` | cf. `fixed_rule/algos/shortest_path_dijkstra.rs` | 9.2% | sovereign |
-| `src/fixed_rule/algos/strongly_connected_components_native.rs` | cf. `fixed_rule/algos/strongly_connected_components.rs` | 18.0% | sovereign |
-| `src/fixed_rule/algos/top_sort_native.rs` | cf. `fixed_rule/algos/top_sort.rs` | 27.4% | sovereign |
-| `src/fixed_rule/algos/triangles_native.rs` | cf. `fixed_rule/algos/triangles.rs` | 23.5% | sovereign |
-| `src/fixed_rule/algos/yen_native.rs` | cf. `fixed_rule/algos/yen.rs` | 11.8% | sovereign |
+| `src/fixed_rule/algos/prim.rs` | cf. `fixed_rule/algos/prim.rs` | 14.9% | sovereign |
+| `src/fixed_rule/algos/random_walk.rs` | cf. `fixed_rule/algos/random_walk.rs` | 19.6% | sovereign |
+| `src/fixed_rule/algos/shortest_path_bfs.rs` | cf. `fixed_rule/algos/shortest_path_bfs.rs` | 19.1% | sovereign |
+| `src/fixed_rule/algos/shortest_path_dijkstra.rs` | cf. `fixed_rule/algos/shortest_path_dijkstra.rs` | 9.2% | sovereign |
+| `src/fixed_rule/algos/strongly_connected_components.rs` | cf. `fixed_rule/algos/strongly_connected_components.rs` | 18.0% | sovereign |
+| `src/fixed_rule/algos/top_sort.rs` | cf. `fixed_rule/algos/top_sort.rs` | 27.4% | sovereign |
+| `src/fixed_rule/algos/triangles.rs` | cf. `fixed_rule/algos/triangles.rs` | 23.5% | sovereign |
+| `src/fixed_rule/algos/yen.rs` | cf. `fixed_rule/algos/yen.rs` | 11.8% | sovereign |
 | `src/fixed_rule/csr/mod.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/csr/page_rank.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/error.rs` | — | 0.0% | sovereign |
@@ -99,9 +99,9 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fixed_rule/tests/path_algorithms.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/proptest_algos.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/wave5_reference_semantics.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/utilities/constant_native.rs` | cf. `fixed_rule/utilities/constant.rs` | 17.2% | sovereign |
+| `src/fixed_rule/utilities/constant.rs` | cf. `fixed_rule/utilities/constant.rs` | 17.2% | sovereign |
 | `src/fixed_rule/utilities/mod.rs` | cf. `fixed_rule/utilities/mod.rs` | 0.0% | sovereign |
-| `src/fixed_rule/utilities/reorder_sort_native.rs` | cf. `fixed_rule/utilities/reorder_sort.rs` | 17.5% | sovereign |
+| `src/fixed_rule/utilities/reorder_sort.rs` | cf. `fixed_rule/utilities/reorder_sort.rs` | 17.5% | sovereign |
 | `src/fixed_rule/utilities/rrf.rs` | — | 0.0% | sovereign |
 | `src/fts/README.md` | `fts/README.md` | 100.0% | derived |
 | `src/fts/ast.rs` | `fts/ast.rs` | 71.3% | derived |
