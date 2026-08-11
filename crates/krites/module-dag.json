@@ -229,8 +229,8 @@
     {
       "from": "query",
       "to": "root",
-      "count": 21,
-      "production_count": 21,
+      "count": 20,
+      "production_count": 20,
       "test_only": false,
       "first_evidence": "query/compile.rs:26",
       "first_production_evidence": "query/compile.rs:26"
@@ -238,8 +238,8 @@
     {
       "from": "query",
       "to": "runtime",
-      "count": 27,
-      "production_count": 24,
+      "count": 26,
+      "production_count": 23,
       "test_only": false,
       "first_evidence": "query/compile.rs:30",
       "first_production_evidence": "query/compile.rs:30"
@@ -381,7 +381,7 @@
     }
   ],
   "file_count": 205,
-  "statement_count": 1029,
+  "statement_count": 1027,
   "required_edges_present": [
     [
       "runtime",
