@@ -46,7 +46,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/program/magic.rs` | `data/program.rs` | 82.2% | derived |
 | `src/data/program/mod.rs` | `data/program.rs` | 0.0% | derived |
 | `src/data/program/search/atom_impl.rs` | `data/program.rs` | 80.0% | derived |
-| `src/data/program/search/hnsw_normalize.rs` | `data/program.rs` | 48.0% | derived |
+| `src/data/program/search/hnsw_normalize.rs` | `data/program.rs` | 46.7% | derived |
 | `src/data/program/search/lsh_fts.rs` | `data/program.rs` | 48.0% | derived |
 | `src/data/program/search/mod.rs` | `data/program.rs` | 75.5% | derived |
 | `src/data/program/types.rs` | `data/program.rs` | 80.2% | derived |
@@ -92,7 +92,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fixed_rule/csr/mod.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/csr/page_rank.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/error.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/mod.rs` | `fixed_rule/mod.rs` | 59.3% | derived |
+| `src/fixed_rule/mod.rs` | `fixed_rule/mod.rs` | 57.5% | derived |
 | `src/fixed_rule/tests/centrality_spanning.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/connectivity_misc.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/mod.rs` | — | 0.0% | sovereign |

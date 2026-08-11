@@ -20,13 +20,14 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 | `data` | `fixed_rule` | 2 | 2 | no | data/program/fixed_rule.rs:20 |
 | `data` | `fts` | 2 | 2 | no | data/program/search/lsh_fts.rs:27 |
 | `data` | `parse` | 10 | 10 | no | data/expr/expr_impl.rs:41 |
-| `data` | `query` | 3 | 3 | no | data/program/magic.rs:19 |
+| `data` | `query` | 4 | 4 | no | data/program/magic.rs:19 |
 | `data` | `root` | 15 | 15 | no | data/expr/expr_impl.rs:40 |
-| `data` | `runtime` | 18 | 15 | no | data/program/atoms.rs:9 |
+| `data` | `runtime` | 17 | 14 | no | data/program/atoms.rs:9 |
 | `fixed_rule` | `data` | 88 | 83 | no | fixed_rule/algos/all_pairs_shortest_path.rs:30 |
 | `fixed_rule` | `parse` | 22 | 22 | no | fixed_rule/algos/all_pairs_shortest_path.rs:36 |
+| `fixed_rule` | `query` | 1 | 1 | no | fixed_rule/mod.rs:35 |
 | `fixed_rule` | `root` | 22 | 22 | no | fixed_rule/algos/all_pairs_shortest_path.rs:33 |
-| `fixed_rule` | `runtime` | 52 | 47 | no | fixed_rule/algos/all_pairs_shortest_path.rs:37 |
+| `fixed_rule` | `runtime` | 51 | 46 | no | fixed_rule/algos/all_pairs_shortest_path.rs:37 |
 | `fts` | `data` | 14 | 14 | no | fts/config.rs:6 |
 | `fts` | `parse` | 2 | 2 | no | fts/indexing.rs:20 |
 | `fts` | `root` | 5 | 5 | no | fts/config.rs:8 |
@@ -103,6 +104,108 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> fixed_rule -> parse -> runtime -> root -> storage
 - data -> fixed_rule -> parse -> runtime -> storage
 - data -> fixed_rule -> parse -> runtime -> storage -> root
+- data -> fixed_rule -> query
+- data -> fixed_rule -> query -> fts
+- data -> fixed_rule -> query -> fts -> parse
+- data -> fixed_rule -> query -> fts -> parse -> root
+- data -> fixed_rule -> query -> fts -> parse -> root -> runtime
+- data -> fixed_rule -> query -> fts -> parse -> root -> runtime -> storage
+- data -> fixed_rule -> query -> fts -> parse -> root -> storage
+- data -> fixed_rule -> query -> fts -> parse -> root -> storage -> runtime
+- data -> fixed_rule -> query -> fts -> parse -> runtime
+- data -> fixed_rule -> query -> fts -> parse -> runtime -> root
+- data -> fixed_rule -> query -> fts -> parse -> runtime -> root -> storage
+- data -> fixed_rule -> query -> fts -> parse -> runtime -> storage
+- data -> fixed_rule -> query -> fts -> parse -> runtime -> storage -> root
+- data -> fixed_rule -> query -> fts -> root
+- data -> fixed_rule -> query -> fts -> root -> parse
+- data -> fixed_rule -> query -> fts -> root -> parse -> runtime
+- data -> fixed_rule -> query -> fts -> root -> parse -> runtime -> storage
+- data -> fixed_rule -> query -> fts -> root -> runtime
+- data -> fixed_rule -> query -> fts -> root -> runtime -> parse
+- data -> fixed_rule -> query -> fts -> root -> runtime -> storage
+- data -> fixed_rule -> query -> fts -> root -> storage
+- data -> fixed_rule -> query -> fts -> root -> storage -> runtime
+- data -> fixed_rule -> query -> fts -> root -> storage -> runtime -> parse
+- data -> fixed_rule -> query -> fts -> runtime
+- data -> fixed_rule -> query -> fts -> runtime -> parse
+- data -> fixed_rule -> query -> fts -> runtime -> parse -> root
+- data -> fixed_rule -> query -> fts -> runtime -> parse -> root -> storage
+- data -> fixed_rule -> query -> fts -> runtime -> root
+- data -> fixed_rule -> query -> fts -> runtime -> root -> parse
+- data -> fixed_rule -> query -> fts -> runtime -> root -> storage
+- data -> fixed_rule -> query -> fts -> runtime -> storage
+- data -> fixed_rule -> query -> fts -> runtime -> storage -> root
+- data -> fixed_rule -> query -> fts -> runtime -> storage -> root -> parse
+- data -> fixed_rule -> query -> parse
+- data -> fixed_rule -> query -> parse -> fts
+- data -> fixed_rule -> query -> parse -> fts -> root
+- data -> fixed_rule -> query -> parse -> fts -> root -> runtime
+- data -> fixed_rule -> query -> parse -> fts -> root -> runtime -> storage
+- data -> fixed_rule -> query -> parse -> fts -> root -> storage
+- data -> fixed_rule -> query -> parse -> fts -> root -> storage -> runtime
+- data -> fixed_rule -> query -> parse -> fts -> runtime
+- data -> fixed_rule -> query -> parse -> fts -> runtime -> root
+- data -> fixed_rule -> query -> parse -> fts -> runtime -> root -> storage
+- data -> fixed_rule -> query -> parse -> fts -> runtime -> storage
+- data -> fixed_rule -> query -> parse -> fts -> runtime -> storage -> root
+- data -> fixed_rule -> query -> parse -> root
+- data -> fixed_rule -> query -> parse -> root -> runtime
+- data -> fixed_rule -> query -> parse -> root -> runtime -> fts
+- data -> fixed_rule -> query -> parse -> root -> runtime -> storage
+- data -> fixed_rule -> query -> parse -> root -> storage
+- data -> fixed_rule -> query -> parse -> root -> storage -> runtime
+- data -> fixed_rule -> query -> parse -> root -> storage -> runtime -> fts
+- data -> fixed_rule -> query -> parse -> runtime
+- data -> fixed_rule -> query -> parse -> runtime -> fts
+- data -> fixed_rule -> query -> parse -> runtime -> fts -> root
+- data -> fixed_rule -> query -> parse -> runtime -> fts -> root -> storage
+- data -> fixed_rule -> query -> parse -> runtime -> root
+- data -> fixed_rule -> query -> parse -> runtime -> root -> storage
+- data -> fixed_rule -> query -> parse -> runtime -> storage
+- data -> fixed_rule -> query -> parse -> runtime -> storage -> root
+- data -> fixed_rule -> query -> root
+- data -> fixed_rule -> query -> root -> parse
+- data -> fixed_rule -> query -> root -> parse -> fts
+- data -> fixed_rule -> query -> root -> parse -> fts -> runtime
+- data -> fixed_rule -> query -> root -> parse -> fts -> runtime -> storage
+- data -> fixed_rule -> query -> root -> parse -> runtime
+- data -> fixed_rule -> query -> root -> parse -> runtime -> fts
+- data -> fixed_rule -> query -> root -> parse -> runtime -> storage
+- data -> fixed_rule -> query -> root -> runtime
+- data -> fixed_rule -> query -> root -> runtime -> fts
+- data -> fixed_rule -> query -> root -> runtime -> fts -> parse
+- data -> fixed_rule -> query -> root -> runtime -> parse
+- data -> fixed_rule -> query -> root -> runtime -> parse -> fts
+- data -> fixed_rule -> query -> root -> runtime -> storage
+- data -> fixed_rule -> query -> root -> storage
+- data -> fixed_rule -> query -> root -> storage -> runtime
+- data -> fixed_rule -> query -> root -> storage -> runtime -> fts
+- data -> fixed_rule -> query -> root -> storage -> runtime -> fts -> parse
+- data -> fixed_rule -> query -> root -> storage -> runtime -> parse
+- data -> fixed_rule -> query -> root -> storage -> runtime -> parse -> fts
+- data -> fixed_rule -> query -> runtime
+- data -> fixed_rule -> query -> runtime -> fts
+- data -> fixed_rule -> query -> runtime -> fts -> parse
+- data -> fixed_rule -> query -> runtime -> fts -> parse -> root
+- data -> fixed_rule -> query -> runtime -> fts -> parse -> root -> storage
+- data -> fixed_rule -> query -> runtime -> fts -> root
+- data -> fixed_rule -> query -> runtime -> fts -> root -> parse
+- data -> fixed_rule -> query -> runtime -> fts -> root -> storage
+- data -> fixed_rule -> query -> runtime -> parse
+- data -> fixed_rule -> query -> runtime -> parse -> fts
+- data -> fixed_rule -> query -> runtime -> parse -> fts -> root
+- data -> fixed_rule -> query -> runtime -> parse -> fts -> root -> storage
+- data -> fixed_rule -> query -> runtime -> parse -> root
+- data -> fixed_rule -> query -> runtime -> parse -> root -> storage
+- data -> fixed_rule -> query -> runtime -> root
+- data -> fixed_rule -> query -> runtime -> root -> parse
+- data -> fixed_rule -> query -> runtime -> root -> parse -> fts
+- data -> fixed_rule -> query -> runtime -> root -> storage
+- data -> fixed_rule -> query -> runtime -> storage
+- data -> fixed_rule -> query -> runtime -> storage -> root
+- data -> fixed_rule -> query -> runtime -> storage -> root -> parse
+- data -> fixed_rule -> query -> runtime -> storage -> root -> parse -> fts
 - data -> fixed_rule -> root
 - data -> fixed_rule -> root -> parse
 - data -> fixed_rule -> root -> parse -> fts
@@ -179,6 +282,17 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> fts
 - data -> fts -> parse
 - data -> fts -> parse -> fixed_rule
+- data -> fts -> parse -> fixed_rule -> query
+- data -> fts -> parse -> fixed_rule -> query -> root
+- data -> fts -> parse -> fixed_rule -> query -> root -> runtime
+- data -> fts -> parse -> fixed_rule -> query -> root -> runtime -> storage
+- data -> fts -> parse -> fixed_rule -> query -> root -> storage
+- data -> fts -> parse -> fixed_rule -> query -> root -> storage -> runtime
+- data -> fts -> parse -> fixed_rule -> query -> runtime
+- data -> fts -> parse -> fixed_rule -> query -> runtime -> root
+- data -> fts -> parse -> fixed_rule -> query -> runtime -> root -> storage
+- data -> fts -> parse -> fixed_rule -> query -> runtime -> storage
+- data -> fts -> parse -> fixed_rule -> query -> runtime -> storage -> root
 - data -> fts -> parse -> fixed_rule -> root
 - data -> fts -> parse -> fixed_rule -> root -> runtime
 - data -> fts -> parse -> fixed_rule -> root -> runtime -> query
@@ -196,21 +310,29 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> fts -> parse -> fixed_rule -> runtime -> storage -> root
 - data -> fts -> parse -> root
 - data -> fts -> parse -> root -> fixed_rule
+- data -> fts -> parse -> root -> fixed_rule -> query
+- data -> fts -> parse -> root -> fixed_rule -> query -> runtime
+- data -> fts -> parse -> root -> fixed_rule -> query -> runtime -> storage
 - data -> fts -> parse -> root -> fixed_rule -> runtime
 - data -> fts -> parse -> root -> fixed_rule -> runtime -> query
 - data -> fts -> parse -> root -> fixed_rule -> runtime -> storage
 - data -> fts -> parse -> root -> runtime
 - data -> fts -> parse -> root -> runtime -> fixed_rule
+- data -> fts -> parse -> root -> runtime -> fixed_rule -> query
 - data -> fts -> parse -> root -> runtime -> query
 - data -> fts -> parse -> root -> runtime -> query -> fixed_rule
 - data -> fts -> parse -> root -> runtime -> storage
 - data -> fts -> parse -> root -> storage
 - data -> fts -> parse -> root -> storage -> runtime
 - data -> fts -> parse -> root -> storage -> runtime -> fixed_rule
+- data -> fts -> parse -> root -> storage -> runtime -> fixed_rule -> query
 - data -> fts -> parse -> root -> storage -> runtime -> query
 - data -> fts -> parse -> root -> storage -> runtime -> query -> fixed_rule
 - data -> fts -> parse -> runtime
 - data -> fts -> parse -> runtime -> fixed_rule
+- data -> fts -> parse -> runtime -> fixed_rule -> query
+- data -> fts -> parse -> runtime -> fixed_rule -> query -> root
+- data -> fts -> parse -> runtime -> fixed_rule -> query -> root -> storage
 - data -> fts -> parse -> runtime -> fixed_rule -> root
 - data -> fts -> parse -> runtime -> fixed_rule -> root -> storage
 - data -> fts -> parse -> runtime -> query
@@ -222,16 +344,25 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> fts -> parse -> runtime -> query -> root -> storage
 - data -> fts -> parse -> runtime -> root
 - data -> fts -> parse -> runtime -> root -> fixed_rule
+- data -> fts -> parse -> runtime -> root -> fixed_rule -> query
 - data -> fts -> parse -> runtime -> root -> storage
 - data -> fts -> parse -> runtime -> storage
 - data -> fts -> parse -> runtime -> storage -> root
 - data -> fts -> parse -> runtime -> storage -> root -> fixed_rule
+- data -> fts -> parse -> runtime -> storage -> root -> fixed_rule -> query
 - data -> fts -> root
 - data -> fts -> root -> fixed_rule
 - data -> fts -> root -> fixed_rule -> parse
 - data -> fts -> root -> fixed_rule -> parse -> runtime
 - data -> fts -> root -> fixed_rule -> parse -> runtime -> query
 - data -> fts -> root -> fixed_rule -> parse -> runtime -> storage
+- data -> fts -> root -> fixed_rule -> query
+- data -> fts -> root -> fixed_rule -> query -> parse
+- data -> fts -> root -> fixed_rule -> query -> parse -> runtime
+- data -> fts -> root -> fixed_rule -> query -> parse -> runtime -> storage
+- data -> fts -> root -> fixed_rule -> query -> runtime
+- data -> fts -> root -> fixed_rule -> query -> runtime -> parse
+- data -> fts -> root -> fixed_rule -> query -> runtime -> storage
 - data -> fts -> root -> fixed_rule -> runtime
 - data -> fts -> root -> fixed_rule -> runtime -> parse
 - data -> fts -> root -> fixed_rule -> runtime -> query
@@ -239,19 +370,26 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> fts -> root -> fixed_rule -> runtime -> storage
 - data -> fts -> root -> parse
 - data -> fts -> root -> parse -> fixed_rule
+- data -> fts -> root -> parse -> fixed_rule -> query
+- data -> fts -> root -> parse -> fixed_rule -> query -> runtime
+- data -> fts -> root -> parse -> fixed_rule -> query -> runtime -> storage
 - data -> fts -> root -> parse -> fixed_rule -> runtime
 - data -> fts -> root -> parse -> fixed_rule -> runtime -> query
 - data -> fts -> root -> parse -> fixed_rule -> runtime -> storage
 - data -> fts -> root -> parse -> runtime
 - data -> fts -> root -> parse -> runtime -> fixed_rule
+- data -> fts -> root -> parse -> runtime -> fixed_rule -> query
 - data -> fts -> root -> parse -> runtime -> query
 - data -> fts -> root -> parse -> runtime -> query -> fixed_rule
 - data -> fts -> root -> parse -> runtime -> storage
 - data -> fts -> root -> runtime
 - data -> fts -> root -> runtime -> fixed_rule
 - data -> fts -> root -> runtime -> fixed_rule -> parse
+- data -> fts -> root -> runtime -> fixed_rule -> query
+- data -> fts -> root -> runtime -> fixed_rule -> query -> parse
 - data -> fts -> root -> runtime -> parse
 - data -> fts -> root -> runtime -> parse -> fixed_rule
+- data -> fts -> root -> runtime -> parse -> fixed_rule -> query
 - data -> fts -> root -> runtime -> query
 - data -> fts -> root -> runtime -> query -> fixed_rule
 - data -> fts -> root -> runtime -> query -> fixed_rule -> parse
@@ -262,8 +400,11 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> fts -> root -> storage -> runtime
 - data -> fts -> root -> storage -> runtime -> fixed_rule
 - data -> fts -> root -> storage -> runtime -> fixed_rule -> parse
+- data -> fts -> root -> storage -> runtime -> fixed_rule -> query
+- data -> fts -> root -> storage -> runtime -> fixed_rule -> query -> parse
 - data -> fts -> root -> storage -> runtime -> parse
 - data -> fts -> root -> storage -> runtime -> parse -> fixed_rule
+- data -> fts -> root -> storage -> runtime -> parse -> fixed_rule -> query
 - data -> fts -> root -> storage -> runtime -> query
 - data -> fts -> root -> storage -> runtime -> query -> fixed_rule
 - data -> fts -> root -> storage -> runtime -> query -> fixed_rule -> parse
@@ -274,15 +415,26 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> fts -> runtime -> fixed_rule -> parse
 - data -> fts -> runtime -> fixed_rule -> parse -> root
 - data -> fts -> runtime -> fixed_rule -> parse -> root -> storage
+- data -> fts -> runtime -> fixed_rule -> query
+- data -> fts -> runtime -> fixed_rule -> query -> parse
+- data -> fts -> runtime -> fixed_rule -> query -> parse -> root
+- data -> fts -> runtime -> fixed_rule -> query -> parse -> root -> storage
+- data -> fts -> runtime -> fixed_rule -> query -> root
+- data -> fts -> runtime -> fixed_rule -> query -> root -> parse
+- data -> fts -> runtime -> fixed_rule -> query -> root -> storage
 - data -> fts -> runtime -> fixed_rule -> root
 - data -> fts -> runtime -> fixed_rule -> root -> parse
 - data -> fts -> runtime -> fixed_rule -> root -> storage
 - data -> fts -> runtime -> parse
 - data -> fts -> runtime -> parse -> fixed_rule
+- data -> fts -> runtime -> parse -> fixed_rule -> query
+- data -> fts -> runtime -> parse -> fixed_rule -> query -> root
+- data -> fts -> runtime -> parse -> fixed_rule -> query -> root -> storage
 - data -> fts -> runtime -> parse -> fixed_rule -> root
 - data -> fts -> runtime -> parse -> fixed_rule -> root -> storage
 - data -> fts -> runtime -> parse -> root
 - data -> fts -> runtime -> parse -> root -> fixed_rule
+- data -> fts -> runtime -> parse -> root -> fixed_rule -> query
 - data -> fts -> runtime -> parse -> root -> storage
 - data -> fts -> runtime -> query
 - data -> fts -> runtime -> query -> fixed_rule
@@ -308,17 +460,50 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> fts -> runtime -> root
 - data -> fts -> runtime -> root -> fixed_rule
 - data -> fts -> runtime -> root -> fixed_rule -> parse
+- data -> fts -> runtime -> root -> fixed_rule -> query
+- data -> fts -> runtime -> root -> fixed_rule -> query -> parse
 - data -> fts -> runtime -> root -> parse
 - data -> fts -> runtime -> root -> parse -> fixed_rule
+- data -> fts -> runtime -> root -> parse -> fixed_rule -> query
 - data -> fts -> runtime -> root -> storage
 - data -> fts -> runtime -> storage
 - data -> fts -> runtime -> storage -> root
 - data -> fts -> runtime -> storage -> root -> fixed_rule
 - data -> fts -> runtime -> storage -> root -> fixed_rule -> parse
+- data -> fts -> runtime -> storage -> root -> fixed_rule -> query
+- data -> fts -> runtime -> storage -> root -> fixed_rule -> query -> parse
 - data -> fts -> runtime -> storage -> root -> parse
 - data -> fts -> runtime -> storage -> root -> parse -> fixed_rule
+- data -> fts -> runtime -> storage -> root -> parse -> fixed_rule -> query
 - data -> parse
 - data -> parse -> fixed_rule
+- data -> parse -> fixed_rule -> query
+- data -> parse -> fixed_rule -> query -> fts
+- data -> parse -> fixed_rule -> query -> fts -> root
+- data -> parse -> fixed_rule -> query -> fts -> root -> runtime
+- data -> parse -> fixed_rule -> query -> fts -> root -> runtime -> storage
+- data -> parse -> fixed_rule -> query -> fts -> root -> storage
+- data -> parse -> fixed_rule -> query -> fts -> root -> storage -> runtime
+- data -> parse -> fixed_rule -> query -> fts -> runtime
+- data -> parse -> fixed_rule -> query -> fts -> runtime -> root
+- data -> parse -> fixed_rule -> query -> fts -> runtime -> root -> storage
+- data -> parse -> fixed_rule -> query -> fts -> runtime -> storage
+- data -> parse -> fixed_rule -> query -> fts -> runtime -> storage -> root
+- data -> parse -> fixed_rule -> query -> root
+- data -> parse -> fixed_rule -> query -> root -> runtime
+- data -> parse -> fixed_rule -> query -> root -> runtime -> fts
+- data -> parse -> fixed_rule -> query -> root -> runtime -> storage
+- data -> parse -> fixed_rule -> query -> root -> storage
+- data -> parse -> fixed_rule -> query -> root -> storage -> runtime
+- data -> parse -> fixed_rule -> query -> root -> storage -> runtime -> fts
+- data -> parse -> fixed_rule -> query -> runtime
+- data -> parse -> fixed_rule -> query -> runtime -> fts
+- data -> parse -> fixed_rule -> query -> runtime -> fts -> root
+- data -> parse -> fixed_rule -> query -> runtime -> fts -> root -> storage
+- data -> parse -> fixed_rule -> query -> runtime -> root
+- data -> parse -> fixed_rule -> query -> runtime -> root -> storage
+- data -> parse -> fixed_rule -> query -> runtime -> storage
+- data -> parse -> fixed_rule -> query -> runtime -> storage -> root
 - data -> parse -> fixed_rule -> root
 - data -> parse -> fixed_rule -> root -> runtime
 - data -> parse -> fixed_rule -> root -> runtime -> fts
@@ -347,21 +532,29 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> parse -> fts
 - data -> parse -> fts -> root
 - data -> parse -> fts -> root -> fixed_rule
+- data -> parse -> fts -> root -> fixed_rule -> query
+- data -> parse -> fts -> root -> fixed_rule -> query -> runtime
+- data -> parse -> fts -> root -> fixed_rule -> query -> runtime -> storage
 - data -> parse -> fts -> root -> fixed_rule -> runtime
 - data -> parse -> fts -> root -> fixed_rule -> runtime -> query
 - data -> parse -> fts -> root -> fixed_rule -> runtime -> storage
 - data -> parse -> fts -> root -> runtime
 - data -> parse -> fts -> root -> runtime -> fixed_rule
+- data -> parse -> fts -> root -> runtime -> fixed_rule -> query
 - data -> parse -> fts -> root -> runtime -> query
 - data -> parse -> fts -> root -> runtime -> query -> fixed_rule
 - data -> parse -> fts -> root -> runtime -> storage
 - data -> parse -> fts -> root -> storage
 - data -> parse -> fts -> root -> storage -> runtime
 - data -> parse -> fts -> root -> storage -> runtime -> fixed_rule
+- data -> parse -> fts -> root -> storage -> runtime -> fixed_rule -> query
 - data -> parse -> fts -> root -> storage -> runtime -> query
 - data -> parse -> fts -> root -> storage -> runtime -> query -> fixed_rule
 - data -> parse -> fts -> runtime
 - data -> parse -> fts -> runtime -> fixed_rule
+- data -> parse -> fts -> runtime -> fixed_rule -> query
+- data -> parse -> fts -> runtime -> fixed_rule -> query -> root
+- data -> parse -> fts -> runtime -> fixed_rule -> query -> root -> storage
 - data -> parse -> fts -> runtime -> fixed_rule -> root
 - data -> parse -> fts -> runtime -> fixed_rule -> root -> storage
 - data -> parse -> fts -> runtime -> query
@@ -373,12 +566,21 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> parse -> fts -> runtime -> query -> root -> storage
 - data -> parse -> fts -> runtime -> root
 - data -> parse -> fts -> runtime -> root -> fixed_rule
+- data -> parse -> fts -> runtime -> root -> fixed_rule -> query
 - data -> parse -> fts -> runtime -> root -> storage
 - data -> parse -> fts -> runtime -> storage
 - data -> parse -> fts -> runtime -> storage -> root
 - data -> parse -> fts -> runtime -> storage -> root -> fixed_rule
+- data -> parse -> fts -> runtime -> storage -> root -> fixed_rule -> query
 - data -> parse -> root
 - data -> parse -> root -> fixed_rule
+- data -> parse -> root -> fixed_rule -> query
+- data -> parse -> root -> fixed_rule -> query -> fts
+- data -> parse -> root -> fixed_rule -> query -> fts -> runtime
+- data -> parse -> root -> fixed_rule -> query -> fts -> runtime -> storage
+- data -> parse -> root -> fixed_rule -> query -> runtime
+- data -> parse -> root -> fixed_rule -> query -> runtime -> fts
+- data -> parse -> root -> fixed_rule -> query -> runtime -> storage
 - data -> parse -> root -> fixed_rule -> runtime
 - data -> parse -> root -> fixed_rule -> runtime -> fts
 - data -> parse -> root -> fixed_rule -> runtime -> query
@@ -386,6 +588,8 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> parse -> root -> fixed_rule -> runtime -> storage
 - data -> parse -> root -> runtime
 - data -> parse -> root -> runtime -> fixed_rule
+- data -> parse -> root -> runtime -> fixed_rule -> query
+- data -> parse -> root -> runtime -> fixed_rule -> query -> fts
 - data -> parse -> root -> runtime -> fts
 - data -> parse -> root -> runtime -> query
 - data -> parse -> root -> runtime -> query -> fixed_rule
@@ -394,17 +598,26 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> parse -> root -> storage
 - data -> parse -> root -> storage -> runtime
 - data -> parse -> root -> storage -> runtime -> fixed_rule
+- data -> parse -> root -> storage -> runtime -> fixed_rule -> query
+- data -> parse -> root -> storage -> runtime -> fixed_rule -> query -> fts
 - data -> parse -> root -> storage -> runtime -> fts
 - data -> parse -> root -> storage -> runtime -> query
 - data -> parse -> root -> storage -> runtime -> query -> fixed_rule
 - data -> parse -> root -> storage -> runtime -> query -> fts
 - data -> parse -> runtime
 - data -> parse -> runtime -> fixed_rule
+- data -> parse -> runtime -> fixed_rule -> query
+- data -> parse -> runtime -> fixed_rule -> query -> fts
+- data -> parse -> runtime -> fixed_rule -> query -> fts -> root
+- data -> parse -> runtime -> fixed_rule -> query -> fts -> root -> storage
+- data -> parse -> runtime -> fixed_rule -> query -> root
+- data -> parse -> runtime -> fixed_rule -> query -> root -> storage
 - data -> parse -> runtime -> fixed_rule -> root
 - data -> parse -> runtime -> fixed_rule -> root -> storage
 - data -> parse -> runtime -> fts
 - data -> parse -> runtime -> fts -> root
 - data -> parse -> runtime -> fts -> root -> fixed_rule
+- data -> parse -> runtime -> fts -> root -> fixed_rule -> query
 - data -> parse -> runtime -> fts -> root -> storage
 - data -> parse -> runtime -> query
 - data -> parse -> runtime -> query -> fixed_rule
@@ -419,10 +632,14 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> parse -> runtime -> query -> root -> storage
 - data -> parse -> runtime -> root
 - data -> parse -> runtime -> root -> fixed_rule
+- data -> parse -> runtime -> root -> fixed_rule -> query
+- data -> parse -> runtime -> root -> fixed_rule -> query -> fts
 - data -> parse -> runtime -> root -> storage
 - data -> parse -> runtime -> storage
 - data -> parse -> runtime -> storage -> root
 - data -> parse -> runtime -> storage -> root -> fixed_rule
+- data -> parse -> runtime -> storage -> root -> fixed_rule -> query
+- data -> parse -> runtime -> storage -> root -> fixed_rule -> query -> fts
 - data -> query
 - data -> query -> fixed_rule
 - data -> query -> fixed_rule -> parse
@@ -761,6 +978,27 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> root -> fixed_rule -> parse -> runtime -> query
 - data -> root -> fixed_rule -> parse -> runtime -> query -> fts
 - data -> root -> fixed_rule -> parse -> runtime -> storage
+- data -> root -> fixed_rule -> query
+- data -> root -> fixed_rule -> query -> fts
+- data -> root -> fixed_rule -> query -> fts -> parse
+- data -> root -> fixed_rule -> query -> fts -> parse -> runtime
+- data -> root -> fixed_rule -> query -> fts -> parse -> runtime -> storage
+- data -> root -> fixed_rule -> query -> fts -> runtime
+- data -> root -> fixed_rule -> query -> fts -> runtime -> parse
+- data -> root -> fixed_rule -> query -> fts -> runtime -> storage
+- data -> root -> fixed_rule -> query -> parse
+- data -> root -> fixed_rule -> query -> parse -> fts
+- data -> root -> fixed_rule -> query -> parse -> fts -> runtime
+- data -> root -> fixed_rule -> query -> parse -> fts -> runtime -> storage
+- data -> root -> fixed_rule -> query -> parse -> runtime
+- data -> root -> fixed_rule -> query -> parse -> runtime -> fts
+- data -> root -> fixed_rule -> query -> parse -> runtime -> storage
+- data -> root -> fixed_rule -> query -> runtime
+- data -> root -> fixed_rule -> query -> runtime -> fts
+- data -> root -> fixed_rule -> query -> runtime -> fts -> parse
+- data -> root -> fixed_rule -> query -> runtime -> parse
+- data -> root -> fixed_rule -> query -> runtime -> parse -> fts
+- data -> root -> fixed_rule -> query -> runtime -> storage
 - data -> root -> fixed_rule -> runtime
 - data -> root -> fixed_rule -> runtime -> fts
 - data -> root -> fixed_rule -> runtime -> fts -> parse
@@ -774,6 +1012,13 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> root -> fixed_rule -> runtime -> storage
 - data -> root -> parse
 - data -> root -> parse -> fixed_rule
+- data -> root -> parse -> fixed_rule -> query
+- data -> root -> parse -> fixed_rule -> query -> fts
+- data -> root -> parse -> fixed_rule -> query -> fts -> runtime
+- data -> root -> parse -> fixed_rule -> query -> fts -> runtime -> storage
+- data -> root -> parse -> fixed_rule -> query -> runtime
+- data -> root -> parse -> fixed_rule -> query -> runtime -> fts
+- data -> root -> parse -> fixed_rule -> query -> runtime -> storage
 - data -> root -> parse -> fixed_rule -> runtime
 - data -> root -> parse -> fixed_rule -> runtime -> fts
 - data -> root -> parse -> fixed_rule -> runtime -> query
@@ -782,11 +1027,14 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> root -> parse -> fts
 - data -> root -> parse -> fts -> runtime
 - data -> root -> parse -> fts -> runtime -> fixed_rule
+- data -> root -> parse -> fts -> runtime -> fixed_rule -> query
 - data -> root -> parse -> fts -> runtime -> query
 - data -> root -> parse -> fts -> runtime -> query -> fixed_rule
 - data -> root -> parse -> fts -> runtime -> storage
 - data -> root -> parse -> runtime
 - data -> root -> parse -> runtime -> fixed_rule
+- data -> root -> parse -> runtime -> fixed_rule -> query
+- data -> root -> parse -> runtime -> fixed_rule -> query -> fts
 - data -> root -> parse -> runtime -> fts
 - data -> root -> parse -> runtime -> query
 - data -> root -> parse -> runtime -> query -> fixed_rule
@@ -796,11 +1044,19 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> root -> runtime -> fixed_rule
 - data -> root -> runtime -> fixed_rule -> parse
 - data -> root -> runtime -> fixed_rule -> parse -> fts
+- data -> root -> runtime -> fixed_rule -> query
+- data -> root -> runtime -> fixed_rule -> query -> fts
+- data -> root -> runtime -> fixed_rule -> query -> fts -> parse
+- data -> root -> runtime -> fixed_rule -> query -> parse
+- data -> root -> runtime -> fixed_rule -> query -> parse -> fts
 - data -> root -> runtime -> fts
 - data -> root -> runtime -> fts -> parse
 - data -> root -> runtime -> fts -> parse -> fixed_rule
+- data -> root -> runtime -> fts -> parse -> fixed_rule -> query
 - data -> root -> runtime -> parse
 - data -> root -> runtime -> parse -> fixed_rule
+- data -> root -> runtime -> parse -> fixed_rule -> query
+- data -> root -> runtime -> parse -> fixed_rule -> query -> fts
 - data -> root -> runtime -> parse -> fts
 - data -> root -> runtime -> query
 - data -> root -> runtime -> query -> fixed_rule
@@ -818,11 +1074,19 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> root -> storage -> runtime -> fixed_rule
 - data -> root -> storage -> runtime -> fixed_rule -> parse
 - data -> root -> storage -> runtime -> fixed_rule -> parse -> fts
+- data -> root -> storage -> runtime -> fixed_rule -> query
+- data -> root -> storage -> runtime -> fixed_rule -> query -> fts
+- data -> root -> storage -> runtime -> fixed_rule -> query -> fts -> parse
+- data -> root -> storage -> runtime -> fixed_rule -> query -> parse
+- data -> root -> storage -> runtime -> fixed_rule -> query -> parse -> fts
 - data -> root -> storage -> runtime -> fts
 - data -> root -> storage -> runtime -> fts -> parse
 - data -> root -> storage -> runtime -> fts -> parse -> fixed_rule
+- data -> root -> storage -> runtime -> fts -> parse -> fixed_rule -> query
 - data -> root -> storage -> runtime -> parse
 - data -> root -> storage -> runtime -> parse -> fixed_rule
+- data -> root -> storage -> runtime -> parse -> fixed_rule -> query
+- data -> root -> storage -> runtime -> parse -> fixed_rule -> query -> fts
 - data -> root -> storage -> runtime -> parse -> fts
 - data -> root -> storage -> runtime -> query
 - data -> root -> storage -> runtime -> query -> fixed_rule
@@ -842,6 +1106,24 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> runtime -> fixed_rule -> parse -> fts -> root -> storage
 - data -> runtime -> fixed_rule -> parse -> root
 - data -> runtime -> fixed_rule -> parse -> root -> storage
+- data -> runtime -> fixed_rule -> query
+- data -> runtime -> fixed_rule -> query -> fts
+- data -> runtime -> fixed_rule -> query -> fts -> parse
+- data -> runtime -> fixed_rule -> query -> fts -> parse -> root
+- data -> runtime -> fixed_rule -> query -> fts -> parse -> root -> storage
+- data -> runtime -> fixed_rule -> query -> fts -> root
+- data -> runtime -> fixed_rule -> query -> fts -> root -> parse
+- data -> runtime -> fixed_rule -> query -> fts -> root -> storage
+- data -> runtime -> fixed_rule -> query -> parse
+- data -> runtime -> fixed_rule -> query -> parse -> fts
+- data -> runtime -> fixed_rule -> query -> parse -> fts -> root
+- data -> runtime -> fixed_rule -> query -> parse -> fts -> root -> storage
+- data -> runtime -> fixed_rule -> query -> parse -> root
+- data -> runtime -> fixed_rule -> query -> parse -> root -> storage
+- data -> runtime -> fixed_rule -> query -> root
+- data -> runtime -> fixed_rule -> query -> root -> parse
+- data -> runtime -> fixed_rule -> query -> root -> parse -> fts
+- data -> runtime -> fixed_rule -> query -> root -> storage
 - data -> runtime -> fixed_rule -> root
 - data -> runtime -> fixed_rule -> root -> parse
 - data -> runtime -> fixed_rule -> root -> parse -> fts
@@ -849,27 +1131,43 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> runtime -> fts
 - data -> runtime -> fts -> parse
 - data -> runtime -> fts -> parse -> fixed_rule
+- data -> runtime -> fts -> parse -> fixed_rule -> query
+- data -> runtime -> fts -> parse -> fixed_rule -> query -> root
+- data -> runtime -> fts -> parse -> fixed_rule -> query -> root -> storage
 - data -> runtime -> fts -> parse -> fixed_rule -> root
 - data -> runtime -> fts -> parse -> fixed_rule -> root -> storage
 - data -> runtime -> fts -> parse -> root
 - data -> runtime -> fts -> parse -> root -> fixed_rule
+- data -> runtime -> fts -> parse -> root -> fixed_rule -> query
 - data -> runtime -> fts -> parse -> root -> storage
 - data -> runtime -> fts -> root
 - data -> runtime -> fts -> root -> fixed_rule
 - data -> runtime -> fts -> root -> fixed_rule -> parse
+- data -> runtime -> fts -> root -> fixed_rule -> query
+- data -> runtime -> fts -> root -> fixed_rule -> query -> parse
 - data -> runtime -> fts -> root -> parse
 - data -> runtime -> fts -> root -> parse -> fixed_rule
+- data -> runtime -> fts -> root -> parse -> fixed_rule -> query
 - data -> runtime -> fts -> root -> storage
 - data -> runtime -> parse
 - data -> runtime -> parse -> fixed_rule
+- data -> runtime -> parse -> fixed_rule -> query
+- data -> runtime -> parse -> fixed_rule -> query -> fts
+- data -> runtime -> parse -> fixed_rule -> query -> fts -> root
+- data -> runtime -> parse -> fixed_rule -> query -> fts -> root -> storage
+- data -> runtime -> parse -> fixed_rule -> query -> root
+- data -> runtime -> parse -> fixed_rule -> query -> root -> storage
 - data -> runtime -> parse -> fixed_rule -> root
 - data -> runtime -> parse -> fixed_rule -> root -> storage
 - data -> runtime -> parse -> fts
 - data -> runtime -> parse -> fts -> root
 - data -> runtime -> parse -> fts -> root -> fixed_rule
+- data -> runtime -> parse -> fts -> root -> fixed_rule -> query
 - data -> runtime -> parse -> fts -> root -> storage
 - data -> runtime -> parse -> root
 - data -> runtime -> parse -> root -> fixed_rule
+- data -> runtime -> parse -> root -> fixed_rule -> query
+- data -> runtime -> parse -> root -> fixed_rule -> query -> fts
 - data -> runtime -> parse -> root -> storage
 - data -> runtime -> query
 - data -> runtime -> query -> fixed_rule
@@ -920,8 +1218,15 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> runtime -> root -> fixed_rule
 - data -> runtime -> root -> fixed_rule -> parse
 - data -> runtime -> root -> fixed_rule -> parse -> fts
+- data -> runtime -> root -> fixed_rule -> query
+- data -> runtime -> root -> fixed_rule -> query -> fts
+- data -> runtime -> root -> fixed_rule -> query -> fts -> parse
+- data -> runtime -> root -> fixed_rule -> query -> parse
+- data -> runtime -> root -> fixed_rule -> query -> parse -> fts
 - data -> runtime -> root -> parse
 - data -> runtime -> root -> parse -> fixed_rule
+- data -> runtime -> root -> parse -> fixed_rule -> query
+- data -> runtime -> root -> parse -> fixed_rule -> query -> fts
 - data -> runtime -> root -> parse -> fts
 - data -> runtime -> root -> storage
 - data -> runtime -> storage
@@ -929,8 +1234,15 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - data -> runtime -> storage -> root -> fixed_rule
 - data -> runtime -> storage -> root -> fixed_rule -> parse
 - data -> runtime -> storage -> root -> fixed_rule -> parse -> fts
+- data -> runtime -> storage -> root -> fixed_rule -> query
+- data -> runtime -> storage -> root -> fixed_rule -> query -> fts
+- data -> runtime -> storage -> root -> fixed_rule -> query -> fts -> parse
+- data -> runtime -> storage -> root -> fixed_rule -> query -> parse
+- data -> runtime -> storage -> root -> fixed_rule -> query -> parse -> fts
 - data -> runtime -> storage -> root -> parse
 - data -> runtime -> storage -> root -> parse -> fixed_rule
+- data -> runtime -> storage -> root -> parse -> fixed_rule -> query
+- data -> runtime -> storage -> root -> parse -> fixed_rule -> query -> fts
 - data -> runtime -> storage -> root -> parse -> fts
 - fixed_rule -> parse
 - fixed_rule -> parse -> fts -> root
@@ -955,6 +1267,64 @@ Source: 205 `.rs` files, 1029 `use crate::` statements under `crates/krites/src/
 - fixed_rule -> parse -> runtime -> query -> root
 - fixed_rule -> parse -> runtime -> root
 - fixed_rule -> parse -> runtime -> storage -> root
+- fixed_rule -> query
+- fixed_rule -> query -> fts -> parse
+- fixed_rule -> query -> fts -> parse -> root
+- fixed_rule -> query -> fts -> parse -> root -> runtime
+- fixed_rule -> query -> fts -> parse -> root -> storage -> runtime
+- fixed_rule -> query -> fts -> parse -> runtime
+- fixed_rule -> query -> fts -> parse -> runtime -> root
+- fixed_rule -> query -> fts -> parse -> runtime -> storage -> root
+- fixed_rule -> query -> fts -> root
+- fixed_rule -> query -> fts -> root -> parse
+- fixed_rule -> query -> fts -> root -> parse -> runtime
+- fixed_rule -> query -> fts -> root -> runtime
+- fixed_rule -> query -> fts -> root -> runtime -> parse
+- fixed_rule -> query -> fts -> root -> storage -> runtime
+- fixed_rule -> query -> fts -> root -> storage -> runtime -> parse
+- fixed_rule -> query -> fts -> runtime
+- fixed_rule -> query -> fts -> runtime -> parse
+- fixed_rule -> query -> fts -> runtime -> parse -> root
+- fixed_rule -> query -> fts -> runtime -> root
+- fixed_rule -> query -> fts -> runtime -> root -> parse
+- fixed_rule -> query -> fts -> runtime -> storage -> root
+- fixed_rule -> query -> fts -> runtime -> storage -> root -> parse
+- fixed_rule -> query -> parse
+- fixed_rule -> query -> parse -> fts -> root
+- fixed_rule -> query -> parse -> fts -> root -> runtime
+- fixed_rule -> query -> parse -> fts -> root -> storage -> runtime
+- fixed_rule -> query -> parse -> fts -> runtime
+- fixed_rule -> query -> parse -> fts -> runtime -> root
+- fixed_rule -> query -> parse -> fts -> runtime -> storage -> root
+- fixed_rule -> query -> parse -> root
+- fixed_rule -> query -> parse -> root -> runtime
+- fixed_rule -> query -> parse -> root -> storage -> runtime
+- fixed_rule -> query -> parse -> runtime
+- fixed_rule -> query -> parse -> runtime -> fts -> root
+- fixed_rule -> query -> parse -> runtime -> root
+- fixed_rule -> query -> parse -> runtime -> storage -> root
+- fixed_rule -> query -> root
+- fixed_rule -> query -> root -> parse
+- fixed_rule -> query -> root -> parse -> fts -> runtime
+- fixed_rule -> query -> root -> parse -> runtime
+- fixed_rule -> query -> root -> runtime
+- fixed_rule -> query -> root -> runtime -> fts -> parse
+- fixed_rule -> query -> root -> runtime -> parse
+- fixed_rule -> query -> root -> storage -> runtime
+- fixed_rule -> query -> root -> storage -> runtime -> fts -> parse
+- fixed_rule -> query -> root -> storage -> runtime -> parse
+- fixed_rule -> query -> runtime
+- fixed_rule -> query -> runtime -> fts -> parse
+- fixed_rule -> query -> runtime -> fts -> parse -> root
+- fixed_rule -> query -> runtime -> fts -> root
+- fixed_rule -> query -> runtime -> fts -> root -> parse
+- fixed_rule -> query -> runtime -> parse
+- fixed_rule -> query -> runtime -> parse -> fts -> root
+- fixed_rule -> query -> runtime -> parse -> root
+- fixed_rule -> query -> runtime -> root
+- fixed_rule -> query -> runtime -> root -> parse
+- fixed_rule -> query -> runtime -> storage -> root
+- fixed_rule -> query -> runtime -> storage -> root -> parse
 - fixed_rule -> root
 - fixed_rule -> root -> parse
 - fixed_rule -> root -> parse -> fts -> runtime

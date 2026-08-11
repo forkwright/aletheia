@@ -49,7 +49,14 @@ use crate::runtime::relation::RelationHandle;
 ///
 /// Implemented for `SessionTx` in `runtime/`: `query/` declares the
 /// requirement, `runtime/` satisfies it.
-pub(crate) trait QueryContext {
+// WHY `: Sync`: semi-naive evaluation hands the context into rayon closures
+// (eval.rs's epoch-zero and subsequent-epoch rule runners), which require it to
+// be shared across threads. `SessionTx` is already Sync -- `StoreTx` declares
+// `: Sync` as a supertrait, so `Box<dyn StoreTx>` carries it and the rest of
+// SessionTx's fields are Sync by construction. Without this bound the trait
+// object erases a property the concrete type has, and the parallel evaluators
+// stop compiling.
+pub(crate) trait QueryContext: Sync {
     /// Resolve a stored relation by name.
     fn get_relation(&self, name: &str, lock: bool) -> Result<RelationHandle>;
 
@@ -83,33 +90,35 @@ pub(crate) trait QueryContext {
         tokenizer: &TextAnalyzer,
     ) -> Result<Vec<Tuple>>;
 
+    // WHY the handle borrow is NOT tied to 'a: RelationHandle::scan_* declare
+    // `use<'a>` capturing only the transaction, and compute owned key bounds, so
+    // the returned iterator never borrows the handle. Tying it to 'a would forbid
+    // scanning a handle obtained locally -- which fixed_rule/ does on every input
+    // relation, resolving the handle by name immediately before scanning it.
     /// Point lookup by key.
     fn relation_get(&self, handle: &RelationHandle, key: &[DataValue]) -> Result<Option<Tuple>>;
 
-    fn relation_scan_all<'a>(&'a self, handle: &'a RelationHandle) -> TupleIter<'a>;
+    fn relation_scan_all<'a>(&'a self, handle: &RelationHandle) -> TupleIter<'a>;
 
     fn relation_skip_scan_all<'a>(
         &'a self,
-        handle: &'a RelationHandle,
+        handle: &RelationHandle,
         valid_at: ValidityTs,
     ) -> TupleIter<'a>;
 
-    fn relation_scan_prefix<'a>(
-        &'a self,
-        handle: &'a RelationHandle,
-        prefix: &Tuple,
-    ) -> TupleIter<'a>;
+    fn relation_scan_prefix<'a>(&'a self, handle: &RelationHandle, prefix: &Tuple)
+    -> TupleIter<'a>;
 
     fn relation_skip_scan_prefix<'a>(
         &'a self,
-        handle: &'a RelationHandle,
+        handle: &RelationHandle,
         prefix: &Tuple,
         valid_at: ValidityTs,
     ) -> TupleIter<'a>;
 
     fn relation_scan_bounded_prefix<'a>(
         &'a self,
-        handle: &'a RelationHandle,
+        handle: &RelationHandle,
         prefix: &[DataValue],
         lower: &[DataValue],
         upper: &[DataValue],
@@ -117,7 +126,7 @@ pub(crate) trait QueryContext {
 
     fn relation_skip_scan_bounded_prefix<'a>(
         &'a self,
-        handle: &'a RelationHandle,
+        handle: &RelationHandle,
         prefix: &Tuple,
         lower: &[DataValue],
         upper: &[DataValue],

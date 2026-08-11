@@ -70,13 +70,13 @@ impl QueryContext for SessionTx<'_> {
     // `impl Iterator`, which cannot cross an object-safe trait boundary. The
     // box costs nothing new -- `ra/stored.rs` boxed every one of these on the
     // following line already, because TupleIter *is* Box<dyn Iterator<..>>.
-    fn relation_scan_all<'a>(&'a self, handle: &'a RelationHandle) -> TupleIter<'a> {
+    fn relation_scan_all<'a>(&'a self, handle: &RelationHandle) -> TupleIter<'a> {
         Box::new(handle.scan_all(self))
     }
 
     fn relation_skip_scan_all<'a>(
         &'a self,
-        handle: &'a RelationHandle,
+        handle: &RelationHandle,
         valid_at: ValidityTs,
     ) -> TupleIter<'a> {
         Box::new(handle.skip_scan_all(self, valid_at))
@@ -84,7 +84,7 @@ impl QueryContext for SessionTx<'_> {
 
     fn relation_scan_prefix<'a>(
         &'a self,
-        handle: &'a RelationHandle,
+        handle: &RelationHandle,
         prefix: &Tuple,
     ) -> TupleIter<'a> {
         Box::new(handle.scan_prefix(self, prefix))
@@ -92,7 +92,7 @@ impl QueryContext for SessionTx<'_> {
 
     fn relation_skip_scan_prefix<'a>(
         &'a self,
-        handle: &'a RelationHandle,
+        handle: &RelationHandle,
         prefix: &Tuple,
         valid_at: ValidityTs,
     ) -> TupleIter<'a> {
@@ -101,7 +101,7 @@ impl QueryContext for SessionTx<'_> {
 
     fn relation_scan_bounded_prefix<'a>(
         &'a self,
-        handle: &'a RelationHandle,
+        handle: &RelationHandle,
         prefix: &[DataValue],
         lower: &[DataValue],
         upper: &[DataValue],
@@ -111,7 +111,7 @@ impl QueryContext for SessionTx<'_> {
 
     fn relation_skip_scan_bounded_prefix<'a>(
         &'a self,
-        handle: &'a RelationHandle,
+        handle: &RelationHandle,
         prefix: &Tuple,
         lower: &[DataValue],
         upper: &[DataValue],

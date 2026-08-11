@@ -281,7 +281,7 @@ soak_expires_at_commit_count = 0
 path = "data/program/search/hnsw_normalize.rs"
 upstream_path = "data/program.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 48.0
+verbatim_pct = 46.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -649,7 +649,7 @@ soak_expires_at_commit_count = 0
 path = "fixed_rule/mod.rs"
 upstream_path = "fixed_rule/mod.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 59.3
+verbatim_pct = 57.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
