@@ -942,84 +942,12 @@ status = "derived"
 soak_expires_at_commit_count = 0
 
 [[file]]
-path = "fts/tokenizer/stop_word_filter/derived/gen_stopwords.py"
-upstream_path = "fts/tokenizer/stop_word_filter/gen_stopwords.py"
-replaced_upstream_path = "none"
-verbatim_pct = 82.4
-status = "dual"
-soak_expires_at_commit_count = 3108
-
-[[file]]
-path = "fts/tokenizer/stop_word_filter/derived/mod.rs"
-upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 69.1
-status = "dual"
-soak_expires_at_commit_count = 3108
-
-[[file]]
-path = "fts/tokenizer/stop_word_filter/derived/stopwords/af_da.rs"
-upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
-status = "dual"
-soak_expires_at_commit_count = 3108
-
-[[file]]
-path = "fts/tokenizer/stop_word_filter/derived/stopwords/el_ja.rs"
-upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
-status = "dual"
-soak_expires_at_commit_count = 3108
-
-[[file]]
-path = "fts/tokenizer/stop_word_filter/derived/stopwords/ko_ro.rs"
-upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
-status = "dual"
-soak_expires_at_commit_count = 3108
-
-[[file]]
-path = "fts/tokenizer/stop_word_filter/derived/stopwords/mod.rs"
-upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
-status = "dual"
-soak_expires_at_commit_count = 3108
-
-[[file]]
-path = "fts/tokenizer/stop_word_filter/derived/stopwords/nl_de.rs"
-upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
-status = "dual"
-soak_expires_at_commit_count = 3108
-
-[[file]]
-path = "fts/tokenizer/stop_word_filter/derived/stopwords/ru_ur.rs"
-upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
-status = "dual"
-soak_expires_at_commit_count = 3108
-
-[[file]]
-path = "fts/tokenizer/stop_word_filter/derived/stopwords/vi_zu.rs"
-upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
-status = "dual"
-soak_expires_at_commit_count = 3108
-
-[[file]]
 path = "fts/tokenizer/stop_word_filter/mod.rs"
-upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
-replaced_upstream_path = "none"
+upstream_path = "none"
+replaced_upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
 verbatim_pct = 0.0
-status = "dual"
-soak_expires_at_commit_count = 3108
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/NOTICE.md"

@@ -9,7 +9,7 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 216 files under `src/`: 143 derived, 63 sovereign, 10 dual
+- 207 files under `src/`: 143 derived, 64 sovereign, 0 dual
 - Mean verbatim match across the 143 derived files: 44.8% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
@@ -129,16 +129,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/tokenizer/simple_tokenizer.rs` | `fts/tokenizer/simple_tokenizer.rs` | 73.7% | derived |
 | `src/fts/tokenizer/split_compound_words.rs` | `fts/tokenizer/split_compound_words.rs` | 86.8% | derived |
 | `src/fts/tokenizer/stemmer.rs` | `fts/tokenizer/stemmer.rs` | 89.0% | derived |
-| `src/fts/tokenizer/stop_word_filter/derived/gen_stopwords.py` | `fts/tokenizer/stop_word_filter/gen_stopwords.py` | 82.4% | dual |
-| `src/fts/tokenizer/stop_word_filter/derived/mod.rs` | `fts/tokenizer/stop_word_filter/mod.rs` | 69.1% | dual |
-| `src/fts/tokenizer/stop_word_filter/derived/stopwords/af_da.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | dual |
-| `src/fts/tokenizer/stop_word_filter/derived/stopwords/el_ja.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | dual |
-| `src/fts/tokenizer/stop_word_filter/derived/stopwords/ko_ro.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | dual |
-| `src/fts/tokenizer/stop_word_filter/derived/stopwords/mod.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | dual |
-| `src/fts/tokenizer/stop_word_filter/derived/stopwords/nl_de.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | dual |
-| `src/fts/tokenizer/stop_word_filter/derived/stopwords/ru_ur.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | dual |
-| `src/fts/tokenizer/stop_word_filter/derived/stopwords/vi_zu.rs` | `fts/tokenizer/stop_word_filter/stopwords.rs` | 0.0% | dual |
-| `src/fts/tokenizer/stop_word_filter/mod.rs` | `fts/tokenizer/stop_word_filter/mod.rs` | 0.0% | dual |
+| `src/fts/tokenizer/stop_word_filter/mod.rs` | cf. `fts/tokenizer/stop_word_filter/mod.rs` | 0.0% | sovereign |
 | `src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | — | 0.0% | sovereign |
