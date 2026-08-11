@@ -1537,7 +1537,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/relation/mutation.rs"
 upstream_path = "query/stored.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 63.6
+verbatim_pct = 63.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1553,7 +1553,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/relation/validation.rs"
 upstream_path = "query/stored.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 73.2
+verbatim_pct = 73.3
 status = "derived"
 soak_expires_at_commit_count = 0
 

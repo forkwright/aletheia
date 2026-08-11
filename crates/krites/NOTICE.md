@@ -203,9 +203,9 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/relation/index_create.rs` | `runtime/relation.rs` | 64.7% | derived |
 | `src/runtime/relation/index_management.rs` | `runtime/relation.rs` | 60.8% | derived |
 | `src/runtime/relation/mod.rs` | `runtime/relation.rs` | 0.0% | derived |
-| `src/runtime/relation/mutation.rs` | `query/stored.rs` | 63.6% | derived |
+| `src/runtime/relation/mutation.rs` | `query/stored.rs` | 63.7% | derived |
 | `src/runtime/relation/relation_crud.rs` | `runtime/relation.rs` | 48.0% | derived |
-| `src/runtime/relation/validation.rs` | `query/stored.rs` | 73.2% | derived |
+| `src/runtime/relation/validation.rs` | `query/stored.rs` | 73.3% | derived |
 | `src/runtime/sys.rs` | `runtime/db.rs` | 61.0% | derived |
 | `src/runtime/temp_store.rs` | `runtime/temp_store.rs` | 81.0% | derived |
 | `src/runtime/tests/basic_queries.rs` | `runtime/tests.rs` | 12.3% | derived |
