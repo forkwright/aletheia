@@ -1647,11 +1647,11 @@ soak_expires_at_commit_count = 0
 
 [[file]]
 path = "storage/mem.rs"
-upstream_path = "storage/mem.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 28.2
-status = "dual"
-soak_expires_at_commit_count = 2908
+upstream_path = "none"
+replaced_upstream_path = "storage/mem.rs"
+verbatim_pct = 22.6
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "storage/mod.rs"
@@ -1663,11 +1663,11 @@ soak_expires_at_commit_count = 0
 
 [[file]]
 path = "storage/temp.rs"
-upstream_path = "storage/temp.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 18.4
-status = "dual"
-soak_expires_at_commit_count = 2908
+upstream_path = "none"
+replaced_upstream_path = "storage/temp.rs"
+verbatim_pct = 33.2
+status = "sovereign"
+soak_expires_at_commit_count = 0
 
 [[file]]
 path = "utils.rs"

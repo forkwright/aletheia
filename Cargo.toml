@@ -74,16 +74,16 @@ rust_2018_idioms = { level = "warn", priority = -1 }
 unsafe_code = "deny"
 # WHY: krites loom model-check tests use `#[cfg(loom)]` gates. Register the
 # cfg name so rustc doesn't warn under normal builds.
-# WHY: krites land-dark retirement (PLAN.md §2) selects a sovereign storage
-# implementation over the CozoDB-derived one per file via a dedicated cfg;
-# both always compile so the in-crate conformance suite can run against
-# both regardless of which is selected. Register each `krites_sovereign_*`
-# name as it lands — do not widen to a glob, the registration IS the
-# inventory of dual-state modules.
+#
+# WHY nothing else is listed: this list is the inventory of land-dark dual-state
+# modules, so a name stays only while two implementations of something actually
+# coexist. `krites_sovereign_storage_{mem,temp}` were removed with the derived
+# storage backends they selected between — leaving them would make the inventory
+# assert a dual state that no longer exists. Register each `krites_sovereign_*`
+# name as it lands and remove it as its derived counterpart is retired; do not
+# widen to a glob.
 unexpected_cfgs = { level = "warn", priority = -1, check-cfg = [
     "cfg(loom)",
-    "cfg(krites_sovereign_storage_mem)",
-    "cfg(krites_sovereign_storage_temp)",
 ] }
 
 [workspace.lints.clippy]

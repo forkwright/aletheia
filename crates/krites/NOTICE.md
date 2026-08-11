@@ -9,7 +9,7 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 207 files under `src/`: 143 derived, 62 sovereign, 2 dual
+- 207 files under `src/`: 143 derived, 64 sovereign, 0 dual
 - Mean verbatim match across the 143 derived files: 44.8% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
@@ -217,9 +217,9 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/transact.rs` | `runtime/transact.rs` | 12.4% | derived |
 | `src/storage/error.rs` | — | 0.0% | sovereign |
 | `src/storage/fjall_backend.rs` | — | 0.0% | sovereign |
-| `src/storage/mem.rs` | `storage/mem.rs` | 28.2% | dual |
+| `src/storage/mem.rs` | cf. `storage/mem.rs` | 22.6% | sovereign |
 | `src/storage/mod.rs` | `storage/mod.rs` | 39.3% | derived |
-| `src/storage/temp.rs` | `storage/temp.rs` | 18.4% | dual |
+| `src/storage/temp.rs` | cf. `storage/temp.rs` | 33.2% | sovereign |
 | `src/utils.rs` | `utils.rs` | 42.9% | derived |
 
 Aletheia's own additions are real and sit alongside the derived files — `async_surface`, `counterfactual`, `hot_reload`, `query_cache`, `storage/fjall_backend`, the CSR PageRank path, `kcore`, RRF, the fixed-rule test suite, and `data/tests/proptest_memcmp` — all `sovereign` in the table above. They do not change the provenance of the derived files they extend.
