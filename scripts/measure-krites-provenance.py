@@ -95,25 +95,25 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "data/value.rs": "data/value.rs",
     "datalog.pest": "cozoscript.pest",
     "error.rs": None,
-    "fixed_rule/algos/all_pairs_shortest_path_native.rs": None,
-    "fixed_rule/algos/astar_native.rs": None,
-    "fixed_rule/algos/bfs_native.rs": None,
-    "fixed_rule/algos/degree_centrality_native.rs": None,
-    "fixed_rule/algos/dfs_native.rs": None,
+    "fixed_rule/algos/all_pairs_shortest_path.rs": None,
+    "fixed_rule/algos/astar.rs": None,
+    "fixed_rule/algos/bfs.rs": None,
+    "fixed_rule/algos/degree_centrality.rs": None,
+    "fixed_rule/algos/dfs.rs": None,
     "fixed_rule/algos/kcore.rs": None,
-    "fixed_rule/algos/kruskal_native.rs": None,
-    "fixed_rule/algos/label_propagation_native.rs": None,
+    "fixed_rule/algos/kruskal.rs": None,
+    "fixed_rule/algos/label_propagation.rs": None,
     "fixed_rule/algos/louvain.rs": "fixed_rule/algos/louvain.rs",
     "fixed_rule/algos/mod.rs": "fixed_rule/algos/mod.rs",
     "fixed_rule/algos/pagerank.rs": "fixed_rule/algos/pagerank.rs",
-    "fixed_rule/algos/prim_native.rs": None,
-    "fixed_rule/algos/random_walk_native.rs": None,
-    "fixed_rule/algos/shortest_path_bfs_native.rs": None,
-    "fixed_rule/algos/shortest_path_dijkstra_native.rs": None,
-    "fixed_rule/algos/strongly_connected_components_native.rs": None,
-    "fixed_rule/algos/top_sort_native.rs": None,
-    "fixed_rule/algos/triangles_native.rs": None,
-    "fixed_rule/algos/yen_native.rs": None,
+    "fixed_rule/algos/prim.rs": None,
+    "fixed_rule/algos/random_walk.rs": None,
+    "fixed_rule/algos/shortest_path_bfs.rs": None,
+    "fixed_rule/algos/shortest_path_dijkstra.rs": None,
+    "fixed_rule/algos/strongly_connected_components.rs": None,
+    "fixed_rule/algos/top_sort.rs": None,
+    "fixed_rule/algos/triangles.rs": None,
+    "fixed_rule/algos/yen.rs": None,
     "fixed_rule/csr/mod.rs": None,
     "fixed_rule/csr/page_rank.rs": None,
     "fixed_rule/error.rs": None,
@@ -124,9 +124,9 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fixed_rule/tests/path_algorithms.rs": None,
     "fixed_rule/tests/proptest_algos.rs": None,
     "fixed_rule/tests/wave5_reference_semantics.rs": None,
-    "fixed_rule/utilities/constant_native.rs": None,
+    "fixed_rule/utilities/constant.rs": None,
     "fixed_rule/utilities/mod.rs": "fixed_rule/utilities/mod.rs",
-    "fixed_rule/utilities/reorder_sort_native.rs": None,
+    "fixed_rule/utilities/reorder_sort.rs": None,
     "fixed_rule/utilities/rrf.rs": None,
     "fts/README.md": "fts/README.md",
     "fts/ast.rs": "fts/ast.rs",
@@ -274,9 +274,10 @@ UPSTREAM_MAP: dict[str, str | None] = {
 # Explicit, individually-verified map (same discipline as UPSTREAM_MAP above,
 # for the same reason): a local path whose UPSTREAM_MAP entry is None (no MPL
 # lineage, ever) but that is nonetheless a from-scratch REPLACEMENT for a
-# specific derived/dual file — a `_native.rs` rewrite, a `*_sovereign/`
-# directory swapped in via cfg beside its dual sibling (PLAN.md §2's
-# land-dark pattern) — rather than a wholly independent addition. The value
+# specific derived/dual file — a from-scratch rewrite that took over the
+# replaced file's name, or a `*_sovereign/` directory swapped in via cfg
+# beside its dual sibling (PLAN.md §2's land-dark pattern) — rather than a
+# wholly independent addition. The value
 # is the SAME upstream path the replaced file already carries in
 # UPSTREAM_MAP; it becomes the generated row's replaced_upstream_path (never
 # upstream_path — no lineage claim), and the row is measured against it for
@@ -288,44 +289,46 @@ UPSTREAM_MAP: dict[str, str | None] = {
 # and verbatim_pct stays genuinely 0.0.
 #
 # WHY this map exists: before it did, every UPSTREAM_MAP=None row — this
-# includes every one of the 17 `_native.rs` rewrites below — was hardcoded to
+# includes every one of the 17 fixed-rule rewrites below — was hardcoded to
 # verbatim_pct=0.0/upstream_path='none' unconditionally, regardless of how
 # similar the file actually was to what it replaced. That is how a
 # statement-for-statement transliteration entered the ledger measuring
-# 18.0%-41.4% against the upstream file its non-native sibling is measured
-# against, certified at 0.0% because nothing ever ran the comparison
-# (aletheia#6656).
+# 18.0%-41.4% against the upstream file it replaced, certified at 0.0%
+# because nothing ever ran the comparison (aletheia#6656).
 #
-# WARNING: when a new land-dark wave adds a `*_sovereign/` directory or
-# `*_native.rs` file (e.g. `runtime/hnsw_sovereign/*.rs`, land-dark beside
-# `runtime/hnsw/*.rs` against the same upstream `runtime/hnsw.rs`), add its
-# entries here explicitly — do not derive them by directory-name pattern
-# matching, for the same reason UPSTREAM_MAP's own warning above gives (a
-# `*_sovereign`/`*_native` name does not by itself prove which upstream file,
-# if any, is the right comparison). A row that instead lands directly as
+# WARNING: when a new land-dark wave adds a `*_sovereign/` directory (e.g.
+# `runtime/hnsw_sovereign/*.rs`, land-dark beside `runtime/hnsw/*.rs` against
+# the same upstream `runtime/hnsw.rs`), add its entries here explicitly — do
+# not derive them by directory-name pattern matching, for the same reason
+# UPSTREAM_MAP's own warning above gives (a `*_sovereign` name does not by
+# itself prove which upstream file, if any, is the right comparison). The
+# `_native.rs` filename convention this map was written against is retired:
+# once a derived file is deleted, its replacement takes the plain name, so
+# nothing distinguishes a replacement from an original by filename alone —
+# which is exactly why the mapping is explicit rather than inferred. A row that instead lands directly as
 # `dual` first (real upstream_path in UPSTREAM_MAP, measured and soaking
 # under CI the whole time) does not need an entry here at all: its
 # replaced_upstream_path is set automatically when it later transitions to
 # `sovereign` via krites-provenance-transition.py, which carries its
 # dual-era upstream_path forward unchanged.
 SOVEREIGN_VERIFY_MAP: dict[str, str] = {
-    "fixed_rule/algos/all_pairs_shortest_path_native.rs": "fixed_rule/algos/all_pairs_shortest_path.rs",
-    "fixed_rule/algos/astar_native.rs": "fixed_rule/algos/astar.rs",
-    "fixed_rule/algos/bfs_native.rs": "fixed_rule/algos/bfs.rs",
-    "fixed_rule/algos/degree_centrality_native.rs": "fixed_rule/algos/degree_centrality.rs",
-    "fixed_rule/algos/dfs_native.rs": "fixed_rule/algos/dfs.rs",
-    "fixed_rule/algos/kruskal_native.rs": "fixed_rule/algos/kruskal.rs",
-    "fixed_rule/algos/label_propagation_native.rs": "fixed_rule/algos/label_propagation.rs",
-    "fixed_rule/algos/prim_native.rs": "fixed_rule/algos/prim.rs",
-    "fixed_rule/algos/random_walk_native.rs": "fixed_rule/algos/random_walk.rs",
-    "fixed_rule/algos/shortest_path_bfs_native.rs": "fixed_rule/algos/shortest_path_bfs.rs",
-    "fixed_rule/algos/shortest_path_dijkstra_native.rs": "fixed_rule/algos/shortest_path_dijkstra.rs",
-    "fixed_rule/algos/strongly_connected_components_native.rs": "fixed_rule/algos/strongly_connected_components.rs",
-    "fixed_rule/algos/top_sort_native.rs": "fixed_rule/algos/top_sort.rs",
-    "fixed_rule/algos/triangles_native.rs": "fixed_rule/algos/triangles.rs",
-    "fixed_rule/algos/yen_native.rs": "fixed_rule/algos/yen.rs",
-    "fixed_rule/utilities/constant_native.rs": "fixed_rule/utilities/constant.rs",
-    "fixed_rule/utilities/reorder_sort_native.rs": "fixed_rule/utilities/reorder_sort.rs",
+    "fixed_rule/algos/all_pairs_shortest_path.rs": "fixed_rule/algos/all_pairs_shortest_path.rs",
+    "fixed_rule/algos/astar.rs": "fixed_rule/algos/astar.rs",
+    "fixed_rule/algos/bfs.rs": "fixed_rule/algos/bfs.rs",
+    "fixed_rule/algos/degree_centrality.rs": "fixed_rule/algos/degree_centrality.rs",
+    "fixed_rule/algos/dfs.rs": "fixed_rule/algos/dfs.rs",
+    "fixed_rule/algos/kruskal.rs": "fixed_rule/algos/kruskal.rs",
+    "fixed_rule/algos/label_propagation.rs": "fixed_rule/algos/label_propagation.rs",
+    "fixed_rule/algos/prim.rs": "fixed_rule/algos/prim.rs",
+    "fixed_rule/algos/random_walk.rs": "fixed_rule/algos/random_walk.rs",
+    "fixed_rule/algos/shortest_path_bfs.rs": "fixed_rule/algos/shortest_path_bfs.rs",
+    "fixed_rule/algos/shortest_path_dijkstra.rs": "fixed_rule/algos/shortest_path_dijkstra.rs",
+    "fixed_rule/algos/strongly_connected_components.rs": "fixed_rule/algos/strongly_connected_components.rs",
+    "fixed_rule/algos/top_sort.rs": "fixed_rule/algos/top_sort.rs",
+    "fixed_rule/algos/triangles.rs": "fixed_rule/algos/triangles.rs",
+    "fixed_rule/algos/yen.rs": "fixed_rule/algos/yen.rs",
+    "fixed_rule/utilities/constant.rs": "fixed_rule/utilities/constant.rs",
+    "fixed_rule/utilities/reorder_sort.rs": "fixed_rule/utilities/reorder_sort.rs",
 }
 
 DUAL_SOAK_WINDOW: dict[str, int] = {

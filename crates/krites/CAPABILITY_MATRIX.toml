@@ -15,12 +15,16 @@
 # ids) in CI; `--plan-md <path>` does an optional local live-diff when both
 # repos are checked out side by side (never CI-gating -- see script header).
 #
-# `call_sites` is a measured integer with the exact command recorded in
+# `call_sites` is a measured FLOOR with the exact command recorded in
 # `call_sites_method`, never a guess. Zero call sites is never grounds to
 # drop a row -- see the plan's B7 finding and kill criterion 10.
 # check_call_sites_measured (scripts/check-krites-capability-matrix.py)
-# re-executes every call_sites_method in CI and fails the build if it
-# doesn't reproduce the declared count -- this is not just a convention.
+# re-executes every call_sites_method in CI and fails the build when the
+# measurement has fallen BELOW the recorded figure -- this is not just a
+# convention. A consumer being added is not a defect and does not fail;
+# a consumer disappearing is exactly what the row exists to catch. Raise a
+# figure only after re-running its own call_sites_method, never by
+# incrementing -- an incremented number agrees with itself while being wrong.
 #
 # `call_sites = -1` is the ONE documented exception: "not measured", legal
 # only when `call_sites_method` states why -- prefixed `not measured:` /

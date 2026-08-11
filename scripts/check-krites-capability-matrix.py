@@ -31,8 +31,13 @@ non-gating local live-diff when both repos are checked out side by side
 
 `call_sites` on a sysop/datavalue/public_api row is a measured integer,
 never a guess: `check_call_sites_measured` re-executes each row's
-`call_sites_method` and fails the build if it doesn't reproduce the
-declared count. `call_sites = -1` is the one documented exception -- it
+`call_sites_method` and fails the build if the measurement has fallen BELOW
+the declared count. The figure is a floor, not an equality: it exists so a
+capability cannot lose its last consumer unnoticed, and a consumer being
+ADDED is not a defect. Requiring equality made every unrelated PR that
+gained a caller fail a krites check -- `api-db-open-mem` moved 129 -> 130 ->
+131 in one session, each a hand edit invalidated by the next merge -- and it
+made a real disappearance indistinguishable from ordinary growth. `call_sites = -1` is the one documented exception -- it
 means "not measured", and is only legal when `call_sites_method` states why
 (a generic-token/type-level rationale, or `covered under <other-row-id>;
 not separately re-measured`). Zero call sites is never grounds to drop a
@@ -394,6 +399,28 @@ def _quote_anchored_grep(pattern: str) -> str:
     )
 
 
+def _below_floor(measured: int, recorded: int) -> bool:
+    """Whether a measured call-site count has fallen below what the row records.
+
+    WHY a floor and not equality: the recorded figure is a DISAPPEARANCE guard —
+    the matrix exists so a capability cannot lose its last consumer unnoticed on
+    the way to a sovereign rewrite. Exact equality also fails when a consumer is
+    ADDED, which no unrelated PR can avoid causing: `api-db-open-mem` moved
+    129 -> 130 -> 131 in a single session, every time because a different crate
+    gained a caller, and each correction was a hand edit invalidated by the next
+    merge. That made a krites check fail for PRs that never touched krites, and
+    made a real disappearance indistinguishable from ordinary growth.
+
+    WHY a row already recording zero is correctly unfailable: the guard fires on
+    the TRANSITION to zero — a row recording 5 that measures 0 is caught, because
+    0 < 5. A row that already records 0 has no consumer left to lose, and that
+    state is recorded rather than hidden. 30 rows sit at zero today; failing them
+    would report a disappearance that already happened and was accepted, every
+    run, forever.
+    """
+    return measured < recorded
+
+
 def _run_grep_pipeline(cmd: str) -> int:
     """Execute a recorded grep pipeline from the repo root; return the
     matched line count. A pipeline with zero matches exits non-zero (the
@@ -471,10 +498,12 @@ def check_call_sites_measured(rows: list[dict]) -> list[str]:
                     f"does not reproduce -- measured {measured} for {patterns}"
                 )
                 continue
-            if sum(measured) != call_sites:
+            if _below_floor(sum(measured), call_sites):
                 errors.append(
-                    f"row '{row_id}': call_sites = {call_sites} but the "
-                    f"aggregate call_sites_method measures {sum(measured)}"
+                    f"row '{row_id}': call_sites = {call_sites} is a FLOOR but the "
+                    f"aggregate call_sites_method measures only {sum(measured)} -- a "
+                    "consumer disappeared; re-verify the capability is still reachable "
+                    "before lowering the figure"
                 )
             continue
 
@@ -489,10 +518,12 @@ def check_call_sites_measured(rows: list[dict]) -> list[str]:
 
         runnable = method.split(_TRAILING_ANNOTATION_SEP, 1)[0].rstrip()
         measured_count = _run_grep_pipeline(runnable)
-        if measured_count != call_sites:
+        if _below_floor(measured_count, call_sites):
             errors.append(
-                f"row '{row_id}': call_sites = {call_sites} but "
-                f"call_sites_method measures {measured_count} -- `{runnable}`"
+                f"row '{row_id}': call_sites = {call_sites} is a FLOOR but "
+                f"call_sites_method measures only {measured_count} -- a consumer "
+                f"disappeared; re-verify the capability is still reachable before "
+                f"lowering the figure -- `{runnable}`"
             )
 
     return errors
