@@ -99,7 +99,7 @@ for the release-time substance-audit gate that calls this tool via
 
 ## Before submitting
 
-Install the in-tree hooks once per clone: `scripts/install-hooks.sh` (auto-run by `.envrc`/direnv). The `pre-push` hook runs CI-exact fmt + `_llm` regen (generated, not committed) + clippy so they never first-fail in CI; deliberate bypass is `git push --no-verify`.
+Install the in-tree hooks once per clone: `scripts/install-hooks.sh` (auto-run by `.envrc`/direnv). The `pre-push` hook runs CI-exact fmt + `_llm` regen (generated, not committed) + the `gate-coverage-scripts` checks + clippy so they never first-fail in CI; deliberate bypass is `git push --no-verify`. Run the coverage checks on their own at any time with `scripts/run-gate-coverage.py`; its step list is derived from the workflow, so it cannot drift from what CI runs.
 
 1. `cargo +1.94.0 fmt --all -- --check` clean — **fmt is a required CI check** and runs *first* in gate-attestation, so a fmt-only miss aborts the whole gate
 2. `cargo test -p <affected-crate>` passes
