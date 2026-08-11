@@ -555,8 +555,11 @@ impl<'s, S: Storage<'s>> Db<S> {
         }
 
         if !out_opts.sorters.is_empty() {
-            let sorted_result =
-                tx.sort_and_collect(result_store, &out_opts.sorters, &entry_head_or_default)?;
+            let sorted_result = crate::query::sort::sort_and_collect(
+                result_store,
+                &out_opts.sorters,
+                &entry_head_or_default,
+            );
             let sorted_iter = if let Some(offset) = out_opts.offset {
                 Left(sorted_result.into_iter().skip(offset))
             } else {
