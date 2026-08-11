@@ -79,15 +79,8 @@
     {
       "from": "W2b_stopwords",
       "to": "W3_storage_trait_fts_index",
-      "count": 15,
+      "count": 8,
       "evidence": [
-        "fts/tokenizer/stop_word_filter/derived/mod.rs:11 -> crate::fts::error::TokenizationFailedSnafu",
-        "fts/tokenizer/stop_word_filter/derived/mod.rs:154 -> crate::fts::tokenizer::tests::assert_token",
-        "fts/tokenizer/stop_word_filter/derived/mod.rs:155 -> crate::fts::tokenizer::SimpleTokenizer",
-        "fts/tokenizer/stop_word_filter/derived/mod.rs:155 -> crate::fts::tokenizer::StopWordFilter",
-        "fts/tokenizer/stop_word_filter/derived/mod.rs:155 -> crate::fts::tokenizer::TextAnalyzer",
-        "fts/tokenizer/stop_word_filter/derived/mod.rs:155 -> crate::fts::tokenizer::Token",
-        "fts/tokenizer/stop_word_filter/derived/mod.rs:196 -> crate::fts::tokenizer::tests::collect_tokens",
         "fts/tokenizer/stop_word_filter/sovereign/mod.rs:174 -> crate::fts::tokenizer::tests::assert_token",
         "fts/tokenizer/stop_word_filter/sovereign/mod.rs:175 -> crate::fts::tokenizer::SimpleTokenizer",
         "fts/tokenizer/stop_word_filter/sovereign/mod.rs:175 -> crate::fts::tokenizer::StopWordFilter",

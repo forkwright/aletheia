@@ -121,8 +121,8 @@
     {
       "from": "fts",
       "to": "root",
-      "count": 6,
-      "production_count": 6,
+      "count": 5,
+      "production_count": 5,
       "test_only": false,
       "first_evidence": "fts/config.rs:8",
       "first_production_evidence": "fts/config.rs:8"
@@ -380,8 +380,8 @@
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
-  "file_count": 210,
-  "statement_count": 1030,
+  "file_count": 202,
+  "statement_count": 1025,
   "required_edges_present": [
     [
       "runtime",

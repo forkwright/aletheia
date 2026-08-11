@@ -169,15 +169,6 @@ UPSTREAM_MAP: dict[str, str | None] = {
     # direct derived -> sovereign jump here too: this row rides the same
     # dual soak as its derived/ siblings and graduates with them.
     "fts/tokenizer/stop_word_filter/mod.rs": "fts/tokenizer/stop_word_filter/mod.rs",
-    "fts/tokenizer/stop_word_filter/derived/gen_stopwords.py": "fts/tokenizer/stop_word_filter/gen_stopwords.py",
-    "fts/tokenizer/stop_word_filter/derived/mod.rs": "fts/tokenizer/stop_word_filter/mod.rs",
-    "fts/tokenizer/stop_word_filter/derived/stopwords/af_da.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/derived/stopwords/el_ja.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/derived/stopwords/ko_ro.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/derived/stopwords/mod.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/derived/stopwords/nl_de.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/derived/stopwords/ru_ur.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
-    "fts/tokenizer/stop_word_filter/derived/stopwords/vi_zu.rs": "fts/tokenizer/stop_word_filter/stopwords.rs",
     "fts/tokenizer/stop_word_filter/sovereign/NOTICE.md": None,
     "fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py": None,
     "fts/tokenizer/stop_word_filter/sovereign/mod.rs": None,
