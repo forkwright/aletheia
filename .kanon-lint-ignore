@@ -143,3 +143,11 @@ RUST/file-too-long:crates/episteme/src/graph_intelligence.rs
 
 # WHY: ModelPricing uses camelCase for JSON wire format while PromptCacheMode/DeploymentTarget use lowercase/snake_case for TOML config; each convention matches its serialization context.
 API/mixed-casing:crates/hermeneus/src/provider.rs
+
+# WHY(#6680): crates/krites/upstream-snapshot/cozo-core-src/ is a byte-exact copy of CozoDB at the
+# fork point, vendored solely so check-krites-verbatim-drift.py and measure-krites-provenance.py can
+# compute every verbatim_pct against a fixed reference. Editing it to satisfy a lint would silently
+# change every figure in PROVENANCE.toml and NOTICE.md, and would mean shipping modified MPL-2.0
+# source while labelling it a snapshot of the original. It has to stay wrong by our standards to stay
+# right as evidence. It is also not a workspace member, so nothing under it is ever compiled.
+**:crates/krites/upstream-snapshot/**
