@@ -1,4 +1,27 @@
+/*
+ * Copyright 2022, The Cozo Project Authors.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+ * If a copy of the MPL was not distributed with this file,
+ * You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
 // Datalog grammar for the query parser.
+//
+// WHY the notice above is present and must stay: every non-blank line of this
+// file below it is byte-identical to the upstream grammar it is named after.
+// MPL-2.0 section 3.1 forbids removing a license notice from Covered Software,
+// and that prohibition is independent of any disclosure made elsewhere -- the
+// crate's NOTICE.md recording this file at 99.6% verbatim does not substitute
+// for the notice the file itself is required to carry. It had been replaced by
+// the single description line above, which is precisely the defect this
+// program exists to repair.
+//
+// The grammar cannot be rewritten independently of the parser: pest generates
+// the `Rule` enum from these names, and that enum escapes `parse/` into
+// `runtime/relation/{mutation,index_create}.rs`, which parse index extractor
+// and filter expressions with `Rule::expr`. So the correct action here is
+// retention, not replacement.
 script = _{sys_script | imperative_script | query_script}
 query_script = {SOI ~ (option | rule | const_rule | fixed_rule)+ ~ EOI}
 query_script_inner = {"{" ~ (option | rule | const_rule | fixed_rule)+ ~ "}"}
