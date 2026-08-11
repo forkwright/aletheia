@@ -64,9 +64,22 @@ jobs:
       - name: Full crate drift report
         run: |
           {
-            echo "### krites verbatim-drift report (informational — does not gate)"
+            echo "### krites verbatim-drift report"
             echo
             echo '```'
             uv run scripts/check-krites-verbatim-drift.py
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # WHY this gates now, and why it cannot block an unrelated PR: --strict
+      # fails only on a row that is `sovereign` AND records
+      # replaced_upstream_path = "none" AND scores above the calibrated
+      # threshold. A derived/dual row scoring high is the metric working -- 62
+      # files sit there today and none of them can fail this. A sovereign row
+      # that records what it replaced already publishes a measured figure the
+      # provenance checker recomputes independently. Only a row asserting there
+      # is nothing to compare against, while measurably resembling a real
+      # upstream file, fails -- and the fix is to record the predecessor, not to
+      # waive the file.
+      - name: Gate on unmeasured sovereign claims
+        run: uv run scripts/check-krites-verbatim-drift.py --strict
