@@ -19,7 +19,6 @@
 //!   engine paths share, and it validates whichever implementation is compiled
 //!   in rather than a particular one.
 #![cfg(test)]
-#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "test data of known shape, and reference algorithms over dense small graphs"
@@ -88,7 +87,7 @@ fn run_singles(script: &str) -> BTreeSet<i64> {
         .collect()
 }
 
-/// WHY get_int_strict: the permissive `get_int` accepts a whole-numbered float,
+/// WHY `get_int_strict`: the permissive `get_int` accepts a whole-numbered float,
 /// so a regression that returned 3.0 where 3 is required would be absorbed by
 /// the oracle instead of caught by it. An oracle that launders a type change is
 /// not an oracle.
