@@ -10,10 +10,13 @@
 //! - `index_create`: FTS, HNSW, and MinHash-LSH index creation
 //! - `index_management`: Column index creation, removal, relation renaming
 
+mod extractors;
 mod handles;
 mod index_create;
 mod index_management;
+mod mutation;
 mod relation_crud;
+mod validation;
 
 pub(crate) use handles::{
     AccessLevel, InputRelationHandle, RelationHandle, RelationId, StoredRelArityMismatch,
