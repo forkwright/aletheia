@@ -724,6 +724,42 @@ def test_dual_move_guard_quiet_when_nothing_moved() -> None:
         expect(False, f"an ordinary regeneration must not trip the guard, got: {exc}")
 
 
+# --- an unparsable prior ledger must not silently un-graduate every row ---
+
+
+def test_unparsable_ledger_fails_closed() -> None:
+    # WHY: a merge conflict in PROVENANCE.toml leaves markers in the file. Both
+    # readers used to treat a parse error as "nothing to preserve" -- the shape
+    # that is correct for a MISSING file -- and regenerating in that state
+    # demoted 5 sovereign rows and 1 dual row in one measured run, reporting a
+    # normal write. Only check_status_sequence caught it, afterwards.
+    with tempfile.TemporaryDirectory() as tmp:
+        bad = Path(tmp) / "PROVENANCE.toml"
+        bad.write_text("<<<<<<< HEAD\n[[file]]\npath = \"a.rs\"\n=======\n>>>>>>> origin/main\n")
+        expect_raises(
+            SystemExit,
+            lambda: MEASURE.load_graduated_status(bad),
+            "an unparsable prior ledger must fail, not silently preserve nothing",
+        )
+        expect_raises(
+            SystemExit,
+            lambda: MEASURE.load_prior_paths(bad),
+            "load_prior_paths must fail on an unparsable ledger too",
+        )
+
+
+def test_missing_ledger_still_bootstraps() -> None:
+    # WHY kept distinct: absence is the ledger's first-ever run and must stay
+    # non-fatal. Only unreadable-but-present is the fault.
+    with tempfile.TemporaryDirectory() as tmp:
+        absent = Path(tmp) / "nope.toml"
+        try:
+            expect(MEASURE.load_graduated_status(absent) == {}, "missing ledger must yield {}")
+            expect(MEASURE.load_prior_paths(absent) == set(), "missing ledger must yield an empty path set")
+        except SystemExit as exc:
+            expect(False, f"a MISSING ledger must remain the bootstrap case, not a failure: {exc}")
+
+
 def main() -> int:
     for test_fn in (
         test_sovereign_high_verbatim_rejected,
@@ -764,6 +800,8 @@ def main() -> int:
         test_dual_retirement_allowed,
         test_dual_move_guard_ignores_sovereign,
         test_dual_move_guard_quiet_when_nothing_moved,
+        test_unparsable_ledger_fails_closed,
+        test_missing_ledger_still_bootstraps,
     ):
         test_fn()
 

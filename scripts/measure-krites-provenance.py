@@ -366,6 +366,34 @@ def fetch_upstream(path: str) -> str:
     return _upstream_cache[path]
 
 
+def unparsable_ledger_message(path: pathlib.Path, exc: Exception) -> str:
+    """WHY an unparsable prior ledger is fatal rather than 'no preservation'.
+
+    Both readers below take two fields off the previous ledger, and both used to
+    treat a TOML parse error as "nothing to preserve" -- the same best-effort
+    shape that is correct for a MISSING file on the ledger's first-ever run. The
+    two cases are not the same. A missing file means there is no prior state; an
+    unparsable one means there IS prior state and we cannot read it, and every
+    dual/sovereign row then gets recomputed from scratch as `derived` with its
+    soak window zeroed.
+
+    That is reachable by ordinary work, not by tampering: a merge conflict in
+    PROVENANCE.toml leaves conflict markers in the file, and regenerating in that
+    state silently demoted 5 sovereign rows and 1 dual row in one run. Only
+    check_status_sequence caught it afterwards, by rejecting sovereign ->
+    derived; the regenerator itself reported a normal write. Conflicts in this
+    file are routine in a program whose whole shape is moving and rewriting
+    files, so this fires often rather than never.
+    """
+    return (
+        f"{path} could not be parsed, so no prior status could be preserved: {exc}\n"
+        "Regenerating now would recompute every dual/sovereign row as 'derived' "
+        "and zero its soak window. If this is a merge conflict, resolve the "
+        "ledger first (take one side wholesale -- it is regenerated immediately "
+        "after) and re-run; the derived artifacts are recomputed, never merged."
+    )
+
+
 def load_graduated_status(path: pathlib.Path) -> dict[str, tuple[str, int]]:
     """WHY: this script is the ledger's sole regenerator, and it used to
     hardcode every UPSTREAM_MAP-mapped row to 'derived' unconditionally —
@@ -396,8 +424,8 @@ def load_graduated_status(path: pathlib.Path) -> dict[str, tuple[str, int]]:
         return {}
     try:
         data = tomllib.loads(path.read_text())
-    except tomllib.TOMLDecodeError:
-        return {}
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(unparsable_ledger_message(path, exc)) from exc
     graduated = {}
     for r in data.get("file", []):
         if not isinstance(r, dict):
@@ -421,8 +449,8 @@ def load_prior_paths(path: pathlib.Path) -> set[str]:
         return set()
     try:
         data = tomllib.loads(path.read_text())
-    except tomllib.TOMLDecodeError:
-        return set()
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(unparsable_ledger_message(path, exc)) from exc
     return {
         r["path"]
         for r in data.get("file", [])
