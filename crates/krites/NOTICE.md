@@ -9,7 +9,7 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 206 files under `src/`: 142 derived, 64 sovereign, 0 dual
+- 208 files under `src/`: 142 derived, 66 sovereign, 0 dual
 - Mean verbatim match across the 142 derived files: 45.1% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
@@ -161,7 +161,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/query/graph.rs` | `query/graph.rs` | 56.7% | derived |
 | `src/query/logical.rs` | `query/logical.rs` | 78.4% | derived |
 | `src/query/magic.rs` | `query/magic.rs` | 77.5% | derived |
-| `src/query/mod.rs` | `query/mod.rs` | 18.4% | derived |
+| `src/query/mod.rs` | `query/mod.rs` | 17.5% | derived |
 | `src/query/ra/filter.rs` | `query/ra.rs` | 66.7% | derived |
 | `src/query/ra/inline_fixed.rs` | `query/ra.rs` | 69.8% | derived |
 | `src/query/ra/join.rs` | `query/ra.rs` | 65.8% | derived |
@@ -174,6 +174,8 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/query/reorder.rs` | `query/reorder.rs` | 72.3% | derived |
 | `src/query/sort.rs` | `query/sort.rs` | 58.8% | derived |
 | `src/query/stratify.rs` | `query/stratify.rs` | 69.7% | derived |
+| `src/query/tests/mod.rs` | — | 0.0% | sovereign |
+| `src/query/tests/reference_semantics.rs` | — | 0.0% | sovereign |
 | `src/query_cache.rs` | — | 0.0% | sovereign |
 | `src/runtime/callback.rs` | `runtime/callback.rs` | 55.3% | derived |
 | `src/runtime/db.rs` | `runtime/db.rs` | 29.8% | derived |

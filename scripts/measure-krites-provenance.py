@@ -213,6 +213,8 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "query/reorder.rs": "query/reorder.rs",
     "query/sort.rs": "query/sort.rs",
     "query/stratify.rs": "query/stratify.rs",
+    "query/tests/mod.rs": None,
+    "query/tests/reference_semantics.rs": None,
     "query_cache.rs": None,
     "runtime/callback.rs": "runtime/callback.rs",
     "runtime/db.rs": "runtime/db.rs",

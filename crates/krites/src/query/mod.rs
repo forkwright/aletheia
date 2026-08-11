@@ -36,3 +36,5 @@ pub(crate) mod ra;
 pub(crate) mod reorder;
 pub(crate) mod sort;
 pub(crate) mod stratify;
+#[cfg(test)]
+mod tests;
