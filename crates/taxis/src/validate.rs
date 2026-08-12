@@ -647,6 +647,35 @@ fn validate_maintenance(value: &Value, errors: &mut Vec<String>) {
         }
     }
 
+    // WHY(#5128): only enforced when monitoring is actually active — a
+    // disabled monitor's stale/absurd thresholds cannot misclassify writes.
+    if let Some(disk_space) = value.get("diskSpace")
+        && disk_space.get("enabled").and_then(Value::as_bool) != Some(false)
+    {
+        // WHY(#5128): `check_interval_secs` feeds `tokio::time::interval`; a
+        // zero interval ticks as fast as possible and spins CPU (same class
+        // of bug as #6080's sseHeartbeatIntervalSecs).
+        check_positive_u64(disk_space, "checkIntervalSecs", errors);
+
+        let warning = disk_space.get("warningThresholdMb").and_then(Value::as_u64);
+        let critical = disk_space
+            .get("criticalThresholdMb")
+            .and_then(Value::as_u64);
+        // WHY(#5128): `classify()` checks `available < critical` before
+        // `available < warning`; a warning threshold below the critical one
+        // makes the Warning band unreachable — everything below the
+        // (higher) critical threshold reports Critical outright, silently
+        // inverting the intended severity progression.
+        if let (Some(w), Some(c)) = (warning, critical)
+            && w < c
+        {
+            errors.push(
+                "diskSpace.warningThresholdMb must not be less than diskSpace.criticalThresholdMb"
+                    .to_owned(),
+            );
+        }
+    }
+
     // WHY(#5141): zero has no defined product meaning here — it feeds
     // `Duration::from_hours(0)` at the scheduler and `skip(0)` at prune time,
     // which deletes every backup set including one just created.

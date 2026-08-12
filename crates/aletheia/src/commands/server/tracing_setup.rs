@@ -11,7 +11,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, fmt};
 
-use koina::disk_space::{DEFAULT_CRITICAL_BYTES, DEFAULT_WARNING_BYTES, DiskSpaceMonitor};
+use koina::disk_space::DiskSpaceMonitor;
 use koina::redacting_layer::RedactingLayer;
 use taxis::oikos::Oikos;
 
@@ -89,39 +89,6 @@ pub(super) fn spawn_log_retention(
         }
         .instrument(span),
     );
-}
-
-/// Spawn a cached disk-space monitor for runtime maintenance tasks.
-pub(super) fn spawn_disk_space_monitor(
-    path: PathBuf,
-    token: CancellationToken,
-) -> DiskSpaceMonitor {
-    let monitor = DiskSpaceMonitor::new(DEFAULT_WARNING_BYTES, DEFAULT_CRITICAL_BYTES);
-    let task_monitor = monitor.clone();
-    let span = tracing::info_span!("disk_space_monitor", path = %path.display());
-    tokio::spawn(
-        async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_mins(1));
-            loop {
-                tokio::select! {
-                    biased;
-                    () = token.cancelled() => break,
-                    _ = interval.tick() => {
-                        match task_monitor.refresh(&path) {
-                            Ok(status) => {
-                                tracing::debug!(%status, "disk space monitor refreshed");
-                            }
-                            Err(e) => {
-                                tracing::warn!(error = %e, path = %path.display(), "disk space monitor refresh failed");
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .instrument(span),
-    );
-    monitor
 }
 
 /// Flush trace-ingest operational events into the knowledge store until shutdown.

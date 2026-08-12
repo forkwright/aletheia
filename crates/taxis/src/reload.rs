@@ -441,6 +441,26 @@ mod tests {
     }
 
     #[test]
+    fn maintenance_disk_space_classified_hot_matching_registry() {
+        // WHY(#5128): classification is derived from the registry's
+        // `hot_reloadable` flag, not hand-picked here -- this proves the new
+        // `maintenance.diskSpace.*` specs actually landed with the flag the
+        // registry declares (whether the scheduler *reconciles* a live
+        // change is the separate, tracked gap in #5144).
+        for key in [
+            "maintenance.diskSpace.enabled",
+            "maintenance.diskSpace.warningThresholdMb",
+            "maintenance.diskSpace.criticalThresholdMb",
+            "maintenance.diskSpace.checkIntervalSecs",
+        ] {
+            assert!(
+                !requires_restart(key),
+                "{key} should be classified hot-reloadable"
+            );
+        }
+    }
+
+    #[test]
     fn embedding_hot_reloadable() {
         assert!(
             !requires_restart("embedding.provider"),

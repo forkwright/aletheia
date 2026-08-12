@@ -1427,7 +1427,7 @@ impl SessionStore {
         let snap = self.db.read_tx();
 
         let prefix = format!("idx:nous:{nous_id}:upd:");
-        let lower = format!("{prefix}{}", since.strftime("%Y-%m-%dT%H:%M:%S%.3fZ"));
+        let lower = format!("{prefix}{}", koina::fjall::iso(since));
         let upper = {
             let mut s = prefix.clone();
             let last = s.pop().unwrap_or('\0');
@@ -1461,7 +1461,7 @@ impl SessionStore {
         let snap = self.db.read_tx();
 
         let prefix = format!("idx:nous:{nous_id}:upd:");
-        let lower = format!("{prefix}{}", since.strftime("%Y-%m-%dT%H:%M:%S%.3fZ"));
+        let lower = format!("{prefix}{}", koina::fjall::iso(since));
         let upper = {
             let mut s = prefix.clone();
             let last = s.pop().unwrap_or('\0');
@@ -2846,19 +2846,21 @@ impl SessionStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let bb_part = self.partition("blackboard")?;
 
-        let now = now_iso();
+        // WHY: `created_at` and `expires_at` derive from ONE clock reading, so
+        // the expiry is exactly `ttl_secs` after creation. Reading the clock
+        // once per field lets the TTL drift by the interval between readings.
+        let now_ts = jiff::Timestamp::now();
+        let now = koina::fjall::iso(now_ts);
         let expires_at = if ttl_secs > 0 {
-            Some(
-                jiff::Timestamp::now()
+            Some(koina::fjall::iso(
+                now_ts
                     .checked_add(
                         jiff::Span::new()
                             .try_seconds(ttl_secs)
                             .context(error::TtlOverflowSnafu { ttl_secs })?,
                     )
-                    .context(error::TtlOverflowSnafu { ttl_secs })?
-                    .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
-                    .to_string(),
-            )
+                    .context(error::TtlOverflowSnafu { ttl_secs })?,
+            ))
         } else {
             None
         };

@@ -47,6 +47,23 @@ const SENSITIVE_LEAVES: &[SensitiveLeaf] = &[
     },
 ];
 
+/// Structural leaf paths whose values must be encrypted at rest, not merely
+/// redacted on display.
+///
+/// WHY(#5349): `encrypt.rs`'s at-rest encryption pass matches sensitive *key
+/// names* (`sensitive::key_is_sensitive`); a leaf like `gateway.csrf.headerValue`
+/// is sensitive by structural position rather than by name and would
+/// otherwise be silently excluded from encryption while still being redacted
+/// on display -- exactly the divergence `sensitive.rs`'s module doc warns
+/// against. `RedactOnly` leaves (e.g. TLS key/cert *paths*, not key material)
+/// are excluded: they name a file on disk, not a secret value to encrypt.
+pub(crate) fn encryptable_leaf_paths() -> impl Iterator<Item = &'static [&'static str]> {
+    SENSITIVE_LEAVES
+        .iter()
+        .filter(|leaf| !matches!(leaf.value, SensitiveLeafValue::RedactOnly))
+        .map(|leaf| leaf.path)
+}
+
 /// Serialize config to JSON, then redact sensitive fields.
 #[must_use]
 pub fn redact(config: &AletheiaConfig) -> Value {
@@ -153,7 +170,14 @@ fn json_path_mut<'a>(root: &'a mut Value, path: &[&str]) -> Option<&'a mut Value
     Some(cursor)
 }
 
-fn toml_path_mut<'a>(root: &'a mut toml::Value, path: &[&str]) -> Option<&'a mut toml::Value> {
+/// Mutable lookup by dotted path segments into a TOML value tree.
+///
+/// Shared with `encrypt.rs`'s structural at-rest encryption pass (#5349) so
+/// path-walking logic has one implementation.
+pub(crate) fn toml_path_mut<'a>(
+    root: &'a mut toml::Value,
+    path: &[&str],
+) -> Option<&'a mut toml::Value> {
     let mut cursor = root;
     for segment in path {
         cursor = cursor.as_table_mut()?.get_mut(*segment)?;
@@ -255,6 +279,30 @@ mod tests {
         assert_eq!(
             redacted["gateway"]["tls"]["certPath"], REDACTED,
             "tls cert path should be redacted"
+        );
+    }
+
+    #[test]
+    fn encryptable_leaf_paths_excludes_redact_only_leaves() {
+        // WHY(#5349): TLS key/cert paths name a file on disk, not secret
+        // material -- encrypting the path string would be meaningless, so the
+        // at-rest encryption pass must not see them.
+        let paths: Vec<&[&str]> = encryptable_leaf_paths().collect();
+        assert!(
+            paths.contains(&["gateway", "auth", "signingKey"].as_slice()),
+            "signingKey must be an encryptable structural leaf"
+        );
+        assert!(
+            paths.contains(&["gateway", "csrf", "headerValue"].as_slice()),
+            "headerValue must be an encryptable structural leaf"
+        );
+        assert!(
+            !paths.contains(&["gateway", "tls", "keyPath"].as_slice()),
+            "tls keyPath is RedactOnly and must not be encrypted"
+        );
+        assert!(
+            !paths.contains(&["gateway", "tls", "certPath"].as_slice()),
+            "tls certPath is RedactOnly and must not be encrypted"
         );
     }
 

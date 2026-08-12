@@ -27,11 +27,18 @@ jobs:
       # WHY(#6713): release-please does not fail, or even exit non-zero, when an
       # `extra-files` jsonpath matches nothing. It logs "No entries modified" and
       # reports success, so a release PR that silently left a declared file
-      # unbumped looks identical to a correct one. Measured: the two proskenion
-      # entries have emitted that warning on EVERY observed run, including the one
-      # that produced 0.35.0 -- they have never applied. The divergence surfaces
+      # unbumped looks identical to a correct one. The divergence surfaces
       # downstream at check-proskenion-pins, which reads as a broken branch rather
       # than a broken release tool, and blocks the release.
+      #
+      # The trap that produced this guard, since it will recur with any new
+      # entry: release-please parses TOML with a tagger that wraps every scalar
+      # leaf as `{start, end, value}` so it can splice byte ranges later. A
+      # predicate comparing a leaf directly (`?(@.name == 'koina')`) therefore
+      # compares an object to a string and is always false, while an existence
+      # predicate (`?(!@.source)`) is indifferent to the wrapper and works. The
+      # comparison form must dereference `.value`; the terminal segment must not,
+      # because the splice needs the tagged object. Upstream: release-please#2455.
       #
       # WARNING: this step deliberately only DETECTS. It must never push a fix. A
       # lockfile amend from CI authenticates with GITHUB_TOKEN, which raises no

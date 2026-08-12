@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use hermeneus::provider::ProviderRegistry;
+use koina::disk_space::DiskSpaceMonitor;
 use koina::metrics::MetricsRegistry;
 use mneme::embedding::EmbeddingProvider;
 #[cfg(feature = "knowledge-store")]
@@ -75,6 +76,13 @@ pub struct AppState {
     /// `None` only when the deprecated pylon-only gateway harness builds state
     /// without a configured embedding pipeline.
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Cached disk-space monitor backing `maintenance.diskSpace`-driven write
+    /// guards and health/diagnostics reporting.
+    ///
+    /// `None` means monitoring is disabled (`maintenance.diskSpace.enabled =
+    /// false`) -- callers must treat that as "intentionally not monitored",
+    /// never as "space is available" (#5128).
+    pub disk_monitor: Option<DiskSpaceMonitor>,
     /// Per-turn event buffer registry for SSE client recovery (#3276).
     ///
     /// Shared between streaming handlers (which record events) and the
@@ -200,6 +208,9 @@ pub struct HealthState {
     pub config: Arc<tokio::sync::RwLock<AletheiaConfig>>,
     /// Active embedding provider (for degraded-mode reporting, #3380).
     pub embedding_provider: Option<Arc<dyn EmbeddingProvider>>,
+    /// Cached disk-space monitor for status/threshold/refresh reporting
+    /// (#5128). `None` when `maintenance.diskSpace.enabled = false`.
+    pub disk_monitor: Option<DiskSpaceMonitor>,
     /// Runtime credential manager for health/capability output (#4872).
     pub credential_runtime: Arc<CredentialRuntimeManager>,
     /// `/metrics` exposition mode for security posture reporting (#5322).
@@ -231,6 +242,7 @@ impl FromRef<Arc<AppState>> for HealthState {
             oikos: Arc::clone(&state.oikos),
             config: Arc::clone(&state.config),
             embedding_provider: state.embedding_provider.clone(),
+            disk_monitor: state.disk_monitor.clone(),
             credential_runtime: Arc::clone(&state.credential_runtime),
             metrics_mode: state.metrics_mode,
             metrics_detailed: state.metrics_detailed,
