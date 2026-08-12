@@ -73,4 +73,6 @@ pub mod types;
 ///
 /// Shared contract for providers that delegate LLM calls to a local CLI binary
 /// (e.g. `claude`, `codex`) which owns the OAuth credential handshake.
-pub mod seat_bridged;
+// WHY(#5576): consumed only by the in-crate `cc`/`codex`/`kimi` provider
+// modules (each individually feature-gated); zero cross-crate consumers.
+pub(crate) mod seat_bridged;

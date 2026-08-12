@@ -240,14 +240,9 @@ pub trait LlmProvider: Send + Sync {
 }
 
 /// Per-model pricing rates for cost estimation.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelPricing {
-    /// Cost per million input tokens (USD).
-    pub input_cost_per_mtok: f64,
-    /// Cost per million output tokens (USD).
-    pub output_cost_per_mtok: f64,
-}
+// WHY(#5583): single owner is `koina::models::ModelPrice`; alias keeps the
+// existing call sites and camelCase wire format unchanged.
+pub type ModelPricing = koina::models::ModelPrice;
 
 /// Controls whether Anthropic prompt-cache markers (`cache_control`) are
 /// emitted on outgoing requests.

@@ -13,7 +13,7 @@ pub(crate) mod error;
 /// Phase boundary gates: conditions that must be met before advancing between phases.
 pub mod gate;
 /// Context handoff protocol: continuity across distillation, shutdown, and crash recovery.
-pub mod handoff;
+pub(crate) mod handoff;
 /// Intent persistence with conviction tiers for sustained autonomous governance.
 pub mod intent;
 /// Prometheus metric definitions for planning and project orchestration.
@@ -25,11 +25,11 @@ pub mod plan;
 /// Project types and lifecycle management: creation, phase tracking, and state transitions.
 pub mod project;
 /// State reconciler: keeps planning state consistent between database and filesystem.
-pub mod reconciler;
+pub(crate) mod reconciler;
 /// Pattern-based stuck detection: repeated errors, same-args loops, alternating failures, escalating retries.
 pub mod research;
 /// Runtime surface for project planning orchestration.
-pub mod runtime;
+pub(crate) mod runtime;
 /// Project lifecycle state machine: valid transitions, pause/resume, and terminal states.
 pub mod state;
 /// Stuck detection: prevent blind retry loops via error-pattern hashing.

@@ -24,11 +24,14 @@
 pub(crate) const CLI_BINARY: &str = "claude";
 
 /// Agent SDK engine: OAuth-enabled, permission-aware dispatch backend.
-pub mod agent_sdk;
+pub(crate) mod agent_sdk;
 /// High-level dispatch backend trait for control plane integration.
-pub mod backend;
+pub(crate) mod backend;
 /// Atomic budget tracking for dispatch runs.
-pub mod budget;
+// WHY(#5576): `Budget`/`BudgetStatus` are re-exported at `types` (the
+// consumed cross-crate surface); the module path itself has zero external
+// consumers.
+pub(crate) mod budget;
 /// Per-blast-radius cost attribution ledger.
 pub mod cost_ledger;
 /// Cron scheduler for recurring dispatch tasks with fjall-backed locking.
@@ -43,11 +46,13 @@ pub mod engine;
 /// Error types for energeia operations.
 pub mod error;
 /// Friction capture: parse structured observations from PR bodies.
-pub mod friction;
+pub(crate) mod friction;
 /// Parallel-execution frontier derivation from a [`dag::PromptDag`].
-pub mod frontier;
+// WHY(#5576): `compute_frontier` is re-exported at `dag` (the consumed
+// cross-crate surface); the module path itself has zero external consumers.
+pub(crate) mod frontier;
 /// Hermeneus-based dispatch engine with prompt caching.
-pub mod hermeneus_engine;
+pub(crate) mod hermeneus_engine;
 /// HTTP/SSE dispatch engine: subprocess-based `DispatchEngine` and mock.
 pub mod http;
 /// Metrics and reporting: health signals, cost reports, status dashboard, Prometheus.
@@ -57,19 +62,22 @@ pub mod orchestrator;
 /// 4-stage dispatch pipeline: preparation → execution → post-processing.
 pub(crate) mod pipeline;
 /// Predictive budget allocation from prompt characteristics.
-pub mod predictive_budget;
+pub(crate) mod predictive_budget;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
 /// Prompt cache optimization: static prefix / dynamic suffix split.
-pub mod prompt_cache;
+pub(crate) mod prompt_cache;
 /// Quality assurance gate trait.
 pub mod qa;
 /// Multi-stage resume escalation policy.
-pub mod resume;
+// WHY(#5576): `ResumePolicy`/`ResumeStage` are re-exported at `types` (the
+// consumed cross-crate surface); the module path itself has zero external
+// consumers.
+pub(crate) mod resume;
 /// Provider routing: static config-driven and empirical success-rate-based selection.
 pub(crate) mod routing;
 /// Per-prompt session management: spawn, monitor, resume, budget enforce.
-pub mod session;
+pub(crate) mod session;
 /// Steward CI management pipeline: classify, merge, fix, and manage pull requests.
 pub mod steward;
 /// State persistence layer (fjall key-value store).

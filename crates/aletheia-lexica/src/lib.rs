@@ -5,7 +5,9 @@
 
 #![deny(missing_docs)]
 
-pub mod adjectives;
+// WHY(#5576): zero cross-crate consumers (`stopwords`/`keywords`/`prefixes` are
+// the modules `nous`/`melete`/`poiesis` actually consume).
+pub(crate) mod adjectives;
 pub mod keywords;
 pub mod prefixes;
 pub mod stopwords;

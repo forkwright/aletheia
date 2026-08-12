@@ -16,17 +16,20 @@ pub mod budget;
 /// Context compaction: microcompaction (per-turn clearing) and full compaction (summarization).
 pub(crate) mod compact;
 /// Per-agent per-domain competence tracking with rolling statistics and model escalation.
-pub mod competence;
+pub(crate) mod competence;
 /// Per-agent and per-pipeline configuration types.
 pub mod config;
 /// Inter-agent messaging: fire-and-forget, request-response, and delivery audit.
 pub mod cross;
 /// Graceful degradation contracts when the LLM provider is unavailable.
-pub mod degraded_mode;
+// WHY(#5576): `DegradedMode` is re-exported at the crate's public `pipeline`
+// contract (`pipeline::DegradedMode`); the module path itself has zero
+// cross-crate consumers.
+pub(crate) mod degraded_mode;
 /// Distillation trigger logic and orchestration.
-pub mod distillation;
+pub(crate) mod distillation;
 /// Quality drift detection: rolling-window metrics with z-score deviation alerts.
-pub mod drift;
+pub(crate) mod drift;
 /// Nous-specific error types.
 pub mod error;
 /// LLM execution stage: sends the assembled prompt to the provider.
@@ -45,7 +48,7 @@ pub(crate) mod instinct;
 /// Lifecycle manager for spawning and addressing nous actors.
 pub mod manager;
 /// Memory types for structured conversation representation.
-pub mod memory;
+pub(crate) mod memory;
 /// Actor inbox message types.
 pub(crate) mod message;
 /// Prometheus metrics for nous pipeline: turn counts, latency, and token usage.
@@ -55,11 +58,11 @@ pub mod pipeline;
 /// Semantic recall stage: vector search over knowledge memories.
 pub mod recall;
 /// Task-specific _llm/ loading recipes for multi-resolution context.
-pub mod recipes;
+pub(crate) mod recipes;
 /// Parallel research orchestrator: spawns domain researchers via the sub-agent system.
-pub mod research;
+pub(crate) mod research;
 /// Specialized role templates for ephemeral sub-agents.
-pub mod roles;
+pub(crate) mod roles;
 /// Self-auditing loop: prosoche checks, audit triggers, and knowledge graph storage.
 pub mod self_audit;
 /// Session state tracking within a nous actor.
@@ -71,7 +74,7 @@ pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.
 pub mod stream;
 /// Task registry with progress streaming, cooperative cancellation, and GC.
-pub mod tasks;
+pub(crate) mod tasks;
 /// Training data capture: append-only JSONL writer for conversation turns.
 ///
 /// Pipeline tap that observes the turn loop and writes qualifying turns
@@ -80,14 +83,14 @@ pub mod tasks;
 /// is a pipeline concern, not a memory operation.
 pub mod training;
 /// Self-tuning feedback loop: evidence-based parameter change proposals.
-pub mod tuning;
+pub(crate) mod tuning;
 /// Durable turn-attempt lifecycle records and finalize idempotency.
 pub(crate) mod turn_record;
 /// Uncertainty quantification: calibration tracking for agent confidence predictions.
-pub mod uncertainty;
+pub(crate) mod uncertainty;
 /// User-facing error formatting for display in chat responses.
 pub mod user_error;
 /// Working-memory checkpoint persistence.
-pub mod working_memory;
+pub(crate) mod working_memory;
 /// Working state management: task stack, focus context, wait state.
-pub mod working_state;
+pub(crate) mod working_state;
