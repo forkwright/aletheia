@@ -373,7 +373,10 @@ mod tests {
         };
 
         let result = fetch_system_status(&config).await;
-        assert_eq!(result, Err(SystemStatusFetchError::Unauthorized));
+        // WHY matches! rather than assert_eq!: SystemStatusResponse has no
+        // PartialEq, and deriving one solely to compare an error arm would put
+        // a trait on the wire type for a test's convenience.
+        assert!(matches!(result, Err(SystemStatusFetchError::Unauthorized)));
         server.await??;
         Ok(())
     }
@@ -388,7 +391,10 @@ mod tests {
         };
 
         let result = fetch_system_status(&config).await;
-        assert_eq!(result, Err(SystemStatusFetchError::Unauthorized));
+        // WHY matches! rather than assert_eq!: SystemStatusResponse has no
+        // PartialEq, and deriving one solely to compare an error arm would put
+        // a trait on the wire type for a test's convenience.
+        assert!(matches!(result, Err(SystemStatusFetchError::Unauthorized)));
         server.await??;
         Ok(())
     }
