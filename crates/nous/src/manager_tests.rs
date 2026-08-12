@@ -551,8 +551,21 @@ async fn check_health_detects_dead_actor() {
         .expect("spawn");
 
     handle.shutdown().await.expect("shutdown");
-    // kanon:ignore TESTING/sleep-in-test reason = "waiting for actor task to fully stop before health check; real async shutdown cannot use pause+advance"
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // WHY: poll for actor exit instead of a fixed sleep. check_health's
+    // liveness read is std::time::Instant-based (real wall clock), so
+    // pause+advance cannot simulate it here — a fixed sleep would still
+    // race a loaded CI runner the way the poller-restart tests did.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if handle.status().await.is_err() {
+                break;
+            }
+            // kanon:ignore TESTING/sleep-in-test reason = "polling loop waiting for real actor shutdown; pause+advance would freeze the actor's own timers"
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("actor should stop after shutdown");
 
     let health = mgr.check_health().await;
     let syn_health = health.get("syn").expect("syn health");
@@ -601,8 +614,26 @@ async fn check_health_busy_actor_reports_alive() {
 
     let handle = mgr.get("syn").expect("entry");
     handle.shutdown().await.expect("shutdown sent");
-    // kanon:ignore TESTING/sleep-in-test reason = "waiting for actor task to stop before checking busy state; real async shutdown cannot use pause+advance"
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // WHY: poll for actor exit instead of a fixed sleep. check_health's
+    // liveness read is std::time::Instant-based (real wall clock), so
+    // pause+advance cannot simulate it here — a fixed sleep would still
+    // race a loaded CI runner the way the poller-restart tests did.
+    // The loop exits as soon as the actor stops (milliseconds in practice);
+    // its 5s bound is a failure deadline, not an expected wait. That matters
+    // because manager_ping_timeout_secs also defaults to 5s — a run that
+    // actually consumed the bound could reclassify busy-vs-stuck, but such a
+    // run has already failed the shutdown this loop is waiting on.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if handle.status().await.is_err() {
+                break;
+            }
+            // kanon:ignore TESTING/sleep-in-test reason = "polling loop waiting for real actor shutdown; pause+advance would freeze the actor's own timers"
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("actor should stop after shutdown");
 
     let health = mgr.check_health().await;
     assert!(
@@ -679,11 +710,19 @@ async fn shutdown_all_timeout_aborts_stuck_actor() {
         "shutdown_all took {elapsed:?}, expected < {:?}",
         timeout + Duration::from_secs(2)
     );
-    // The stuck task must have been aborted.
-    assert!(
-        blocking_abort.is_finished(),
-        "stuck actor task should have been aborted by shutdown timeout"
-    );
+    // NOTE: AbortHandle::is_finished() can lag abort() by one scheduler
+    // tick — tokio processes cancellation on the task's next poll, not
+    // synchronously inside abort() — so poll briefly instead of asserting
+    // immediately; this is not a Duration/CI-load race, pause+advance
+    // would not help it.
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !blocking_abort.is_finished() {
+            // kanon:ignore TESTING/sleep-in-test reason = "polling loop waiting for AbortHandle::is_finished() to observe cancellation; not a timer-based wait, pause+advance does not apply"
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("stuck actor task should have been aborted by shutdown timeout");
     assert_eq!(
         mgr.count(),
         0,
@@ -821,7 +860,13 @@ fn backoff_calculation() {
 }
 
 /// Supervisor spawns the inner poller once and exits cleanly when cancelled.
-#[tokio::test]
+// WHY: start_paused trades the wall-clock wait for the poller to spawn for
+// tokio's virtual clock — the runtime auto-advances once every task is
+// idle on a timer, so the 100ms checkpoint below fires deterministically
+// instead of racing CI load. The inner poller's 1-hour "never returns"
+// sleep stays a real deadline later than every timer this test itself
+// registers, so auto-advance never crosses it and the task stays parked.
+#[tokio::test(start_paused = true)]
 async fn health_poller_supervisor_runs_until_cancelled() {
     let cancel = CancellationToken::new();
     let calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -863,7 +908,13 @@ async fn health_poller_supervisor_runs_until_cancelled() {
 /// When the inner poller panics, the supervisor catches the `JoinError`,
 /// logs, and respawns after backoff. Without supervision a panicking
 /// `health_cycle` would kill health checks permanently for all actors. (#3607)
-#[tokio::test]
+// WHY: start_paused makes the panic -> 50ms backoff -> respawn sequence
+// resolve on tokio's virtual clock instead of real wall time, so a loaded
+// CI runner can no longer observe the respawn as "not yet happened" at the
+// 300ms checkpoint (measured CI failure). The restarted poller's 1-hour
+// sleep is still a real deadline later than every timer this test
+// registers, so it stays parked rather than being auto-advanced through.
+#[tokio::test(start_paused = true)]
 async fn health_poller_supervisor_restarts_on_panic() {
     let cancel = CancellationToken::new();
     let calls = Arc::new(std::sync::atomic::AtomicU64::new(0));
@@ -1009,10 +1060,21 @@ async fn restart_actor_aborts_stuck_old_task_on_drain_timeout() {
 
     mgr.restart_actor("syn").await;
 
-    assert!(
-        blocking_abort.is_finished(),
+    // NOTE: AbortHandle::is_finished() can lag abort() by one scheduler
+    // tick — tokio processes cancellation on the task's next poll, not
+    // synchronously inside abort() — so poll briefly instead of asserting
+    // immediately; this is not a Duration/CI-load race, pause+advance
+    // would not help it. (measured CI failure)
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !blocking_abort.is_finished() {
+            // kanon:ignore TESTING/sleep-in-test reason = "polling loop waiting for AbortHandle::is_finished() to observe cancellation; not a timer-based wait, pause+advance does not apply"
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect(
         "stuck old actor task should have been aborted once the drain timeout elapsed, \
-         instead it was left running detached after the replacement was spawned"
+         instead it was left running detached after the replacement was spawned",
     );
     assert_eq!(
         mgr.count(),
