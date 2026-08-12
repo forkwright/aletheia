@@ -8,6 +8,7 @@ use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
 
 use crate::error::{ConfigDirSnafu, IoSnafu, Result, TomlSnafu};
+use crate::secret_store;
 use crate::theme::ThemeMode;
 
 const DEFAULT_URL: &str = "http://localhost:18789";
@@ -49,7 +50,14 @@ pub(crate) fn detect_credential_label(token: Option<&str>) -> CredentialLabel {
 #[derive(Clone, Default, Serialize, Deserialize)]
 pub(crate) struct ConfigFile {
     pub(crate) url: Option<String>,
+    /// Legacy plaintext token (#5321). Never written by this crate — a
+    /// value found here on load is migrated into OS-keyring/encrypted-file
+    /// storage and replaced with `token_ref` on the next save.
+    #[serde(default, skip_serializing)]
     pub(crate) token: Option<String>,
+    /// Stable, non-secret reference to a token held in `secret_store`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) token_ref: Option<String>,
     pub(crate) default_agent: Option<String>,
     pub(crate) default_session: Option<String>,
     pub(crate) workspace_root: Option<String>,
@@ -96,6 +104,7 @@ impl std::fmt::Debug for ConfigFile {
         f.debug_struct("ConfigFile")
             .field("url", &self.url)
             .field("token", &self.token.as_ref().map(|_| "[REDACTED]"))
+            .field("token_ref", &self.token_ref)
             .field("default_agent", &self.default_agent)
             .field("default_session", &self.default_session)
             .field(
@@ -164,6 +173,10 @@ impl Config {
             _ => None,
         });
 
+        // WHY(#5321): file_config.token is already the resolved plaintext value
+        // by the time load_file() returns it — legacy plaintext was migrated to
+        // secret storage, or a token_ref was resolved back through it. Neither
+        // path re-persists a raw token into cli_token/file precedence here.
         let resolved_token = cli_token.or(file_config.token);
         let credential_label = detect_credential_label(resolved_token.as_deref());
         let discovery_config = file_config
@@ -245,11 +258,16 @@ impl Config {
     )]
     #[tracing::instrument(skip(self))]
     pub(crate) fn clear_credentials(&self) -> Result<()> {
-        let path = Self::config_path()?;
+        let base = dirs::config_dir().context(ConfigDirSnafu)?;
+        let path = config_path_in(&base);
         if path.exists() {
             // kanon:ignore RUST/no-result-unwrap-or-default — missing config file is normal; empty default is correct
             let mut file_config = Self::load_file().unwrap_or_default();
             file_config.token = None;
+            file_config.token_ref = None;
+            if let Err(err) = secret_store::delete_token(&base) {
+                tracing::warn!(error = %err, "failed to delete TUI token from secret storage");
+            }
             let toml_str = toml::to_string(&file_config).context(TomlSnafu)?;
             write_config(&path, &toml_str)?;
             tracing::info!(path = %path.display(), "cleared credentials");
@@ -257,17 +275,71 @@ impl Config {
         Ok(())
     }
 
-    fn config_path() -> Result<PathBuf> {
-        dirs::config_dir()
-            .map(|d| d.join("aletheia").join("tui.toml"))
-            .context(ConfigDirSnafu)
+    fn load_file() -> Option<ConfigFile> {
+        let base = dirs::config_dir()?;
+        load_file_in(&base)
+    }
+}
+
+/// Path to `tui.toml` under a given config-dir base.
+fn config_path_in(base: &Path) -> PathBuf {
+    base.join("aletheia").join("tui.toml")
+}
+
+/// Load and parse `tui.toml` under `base`, resolving its token against
+/// secret storage (#5321): a legacy plaintext `token` is migrated into the
+/// keyring/encrypted fallback and the file rewritten with only `token_ref`;
+/// an existing `token_ref` is resolved back into `token` for in-memory use
+/// without ever writing the raw value back to disk.
+fn load_file_in(base: &Path) -> Option<ConfigFile> {
+    let path = config_path_in(base);
+    let contents = std::fs::read_to_string(&path).ok()?;
+    let mut file_config: ConfigFile = toml::from_str(&contents).ok()?;
+
+    if resolve_token(base, &mut file_config) {
+        match toml::to_string(&file_config) {
+            Ok(toml_str) => {
+                if let Err(err) = write_config(&path, &toml_str) {
+                    tracing::warn!(error = %err, "failed to persist migrated TUI token reference");
+                }
+            }
+            Err(err) => tracing::warn!(error = %err, "failed to serialize migrated TUI config"),
+        }
     }
 
-    fn load_file() -> Option<ConfigFile> {
-        let path = Self::config_path().ok()?;
-        let contents = std::fs::read_to_string(&path).ok()?;
-        toml::from_str(&contents).ok()
+    Some(file_config)
+}
+
+/// Resolve `file_config`'s token against secret storage in place.
+///
+/// Returns `true` when a legacy plaintext token was migrated and the caller
+/// should persist the rewritten (reference-only) config back to disk.
+fn resolve_token(base: &Path, file_config: &mut ConfigFile) -> bool {
+    if let Some(token) = file_config.token.clone() {
+        return match secret_store::store_token(base, &token) {
+            Ok(()) => {
+                file_config.token_ref = Some(secret_store::TOKEN_REF.to_owned());
+                // WHY: keep the plaintext value in memory for this run's
+                // resolved_token precedence — only the on-disk copy is cleared.
+                true
+            }
+            Err(err) => {
+                tracing::warn!(error = %err, "failed to migrate TUI token to secret storage, leaving plaintext on disk");
+                false
+            }
+        };
     }
+
+    if file_config.token_ref.is_some() {
+        match secret_store::load_token(base) {
+            Ok(loaded) => file_config.token = loaded,
+            Err(err) => {
+                tracing::warn!(error = %err, "failed to load TUI token from secret storage")
+            }
+        }
+    }
+
+    false
 }
 
 fn write_config(path: &Path, content: &str) -> Result<()> {
@@ -279,6 +351,10 @@ fn write_config(path: &Path, content: &str) -> Result<()> {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "tests seed config fixtures on disk directly"
+)]
 mod tests {
     use super::*;
 
@@ -325,7 +401,10 @@ mod tests {
         keybindings.insert("toggle_sidebar".to_string(), "Ctrl+G".to_string());
         let file = ConfigFile {
             url: Some("http://host:1234".into()),
+            // WHY(#5321): token is legacy plaintext and deliberately does not
+            // round-trip through serialization — see `token_field_never_serializes`.
             token: Some("secret".into()),
+            token_ref: None,
             default_agent: Some("syn".into()),
             default_session: None,
             workspace_root: Some("/workspace".into()),
@@ -342,7 +421,6 @@ mod tests {
         let toml_str = toml::to_string(&file).unwrap();
         let back: ConfigFile = toml::from_str(&toml_str).unwrap();
         assert_eq!(file.url, back.url);
-        assert_eq!(file.token, back.token);
         assert_eq!(file.default_agent, back.default_agent);
         assert_eq!(file.default_session, back.default_session);
         assert_eq!(file.workspace_root, back.workspace_root);
@@ -371,6 +449,79 @@ mod tests {
             discovery.tailscale_ips.as_deref(),
             Some(&["100.64.0.10".to_string()][..])
         );
+    }
+
+    #[test]
+    fn token_field_never_serializes() {
+        let file = ConfigFile {
+            token: Some("plaintext-secret".into()),
+            ..ConfigFile::default()
+        };
+        let toml_str = toml::to_string(&file).unwrap();
+        assert!(!toml_str.contains("plaintext-secret"));
+        assert!(!toml_str.contains("token ="));
+
+        let back: ConfigFile = toml::from_str(&toml_str).unwrap();
+        assert!(back.token.is_none());
+    }
+
+    #[test]
+    fn token_ref_round_trips() {
+        let file = ConfigFile {
+            token_ref: Some("tui-default".into()),
+            ..ConfigFile::default()
+        };
+        let toml_str = toml::to_string(&file).unwrap();
+        assert!(toml_str.contains("token_ref"));
+
+        let back: ConfigFile = toml::from_str(&toml_str).unwrap();
+        assert_eq!(back.token_ref, file.token_ref);
+    }
+
+    /// #5321: a `tui.toml` written before secret storage existed carried a
+    /// plaintext `token`. Loading it must move the token into secret storage,
+    /// rewrite the file with only `token_ref`, and still resolve the same
+    /// token value for this run.
+    #[test]
+    fn load_file_in_migrates_plaintext_token_to_secret_storage() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        let path = config_path_in(base);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "token = \"legacy-plaintext\"\n").unwrap();
+
+        let loaded = load_file_in(base).unwrap();
+        assert_eq!(loaded.token.as_deref(), Some("legacy-plaintext"));
+        assert_eq!(loaded.token_ref.as_deref(), Some(secret_store::TOKEN_REF));
+
+        let rewritten = std::fs::read_to_string(&path).unwrap();
+        assert!(!rewritten.contains("legacy-plaintext"));
+        assert!(rewritten.contains("token_ref"));
+
+        assert_eq!(
+            secret_store::load_token(base).unwrap().as_deref(),
+            Some("legacy-plaintext")
+        );
+    }
+
+    /// A `token_ref`-only file (post-migration, or a fresh keyring-backed
+    /// save) resolves its token from secret storage without ever touching
+    /// disk plaintext.
+    #[test]
+    fn load_file_in_resolves_token_ref_from_secret_storage() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+        secret_store::store_token(base, "kept-in-storage").unwrap();
+        let path = config_path_in(base);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            format!("token_ref = \"{}\"\n", secret_store::TOKEN_REF),
+        )
+        .unwrap();
+
+        let loaded = load_file_in(base).unwrap();
+        assert_eq!(loaded.token.as_deref(), Some("kept-in-storage"));
     }
 
     #[test]
