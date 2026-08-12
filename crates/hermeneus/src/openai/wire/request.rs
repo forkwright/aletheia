@@ -171,7 +171,16 @@ impl<'a> ChatCompletionRequest<'a> {
     /// Anthropic provider).
     pub(crate) fn from_request(req: &'a CompletionRequest, stream: Option<bool>) -> Result<Self> {
         if !req.server_tools.is_empty() {
-            return Err(error::ProviderInitSnafu {
+            // WHY ProviderContract and not ProviderInit: this is a STATIC property of
+            // the wire format, not a runtime condition -- an OpenAI-shaped request
+            // can never carry server tools, so retrying cannot help. ProviderInit is
+            // classified Transient/ErrorAction::Retry precisely because subprocess
+            // providers raise it when a binary crashes or disappears, and
+            // nous::degraded_mode::is_transient_llm_error keys on that action to serve
+            // a cached degraded response. Raising it here made a permanent routing
+            // mistake look like a provider outage: retried three times, then answered
+            // from cache instead of telling the caller to route to Anthropic.
+            return Err(error::ProviderContractSnafu {
                 message: "OpenAI-compatible providers do not support server-side tools \
                           (web_search, code_execution). Route these requests to an \
                           Anthropic provider, or remove the server_tools from the \
@@ -280,7 +289,16 @@ impl<'a> ResponsesRequest<'a> {
     /// [`ServerToolDefinition`](crate::types::ServerToolDefinition) yet.
     pub(crate) fn from_request(req: &'a CompletionRequest, stream: Option<bool>) -> Result<Self> {
         if !req.server_tools.is_empty() {
-            return Err(error::ProviderInitSnafu {
+            // WHY ProviderContract and not ProviderInit: this is a STATIC property of
+            // the wire format, not a runtime condition -- an OpenAI-shaped request
+            // can never carry server tools, so retrying cannot help. ProviderInit is
+            // classified Transient/ErrorAction::Retry precisely because subprocess
+            // providers raise it when a binary crashes or disappears, and
+            // nous::degraded_mode::is_transient_llm_error keys on that action to serve
+            // a cached degraded response. Raising it here made a permanent routing
+            // mistake look like a provider outage: retried three times, then answered
+            // from cache instead of telling the caller to route to Anthropic.
+            return Err(error::ProviderContractSnafu {
                 message: "OpenAI Responses providers do not yet support hermeneus \
                           server-side tool definitions. Route these requests to an \
                           Anthropic provider, or remove the server_tools from the \
