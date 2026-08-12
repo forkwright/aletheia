@@ -109,6 +109,113 @@ fn rejects_zero_backup_retention_count() {
 }
 
 #[test]
+fn rejects_zero_disk_space_check_interval_when_enabled() {
+    // WHY(#5128): a zero interval feeds `tokio::time::interval(Duration::ZERO)`,
+    // which ticks as fast as possible and spins CPU.
+    let section = json!({
+        "diskSpace": { "enabled": true, "checkIntervalSecs": 0 }
+    });
+    let result = validate_section("maintenance", &section);
+    assert!(
+        result.is_err(),
+        "zero checkIntervalSecs with monitoring enabled should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("checkIntervalSecs")),
+        "error should mention checkIntervalSecs: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_zero_disk_space_check_interval_when_disabled() {
+    // A disabled monitor never constructs the interval timer, so a zero
+    // value there is not the foot-gun it would be while active.
+    let section = json!({
+        "diskSpace": { "enabled": false, "checkIntervalSecs": 0 }
+    });
+    assert!(
+        validate_section("maintenance", &section).is_ok(),
+        "zero checkIntervalSecs on a disabled monitor should be accepted"
+    );
+}
+
+#[test]
+fn rejects_disk_space_warning_below_critical() {
+    // WHY(#5128): `classify()` checks the critical threshold first; a
+    // warning threshold below critical makes the Warning band unreachable,
+    // silently inverting the severity progression.
+    let section = json!({
+        "diskSpace": {
+            "enabled": true,
+            "warningThresholdMb": 50,
+            "criticalThresholdMb": 100
+        }
+    });
+    let result = validate_section("maintenance", &section);
+    assert!(
+        result.is_err(),
+        "warningThresholdMb below criticalThresholdMb should be rejected"
+    );
+    let err = result.unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("warningThresholdMb")),
+        "error should mention warningThresholdMb: {err:?}"
+    );
+}
+
+#[test]
+fn accepts_disk_space_warning_equal_to_critical() {
+    // WHY: at equality every available-bytes value classifies unambiguously
+    // (Critical below, Ok at/above); the Warning band is merely empty, which
+    // is a valid (if unusual) operator choice, not an inversion.
+    let section = json!({
+        "diskSpace": {
+            "enabled": true,
+            "warningThresholdMb": 100,
+            "criticalThresholdMb": 100
+        }
+    });
+    assert!(
+        validate_section("maintenance", &section).is_ok(),
+        "warningThresholdMb equal to criticalThresholdMb should be accepted"
+    );
+}
+
+#[test]
+fn accepts_disk_space_warning_above_critical() {
+    let section = json!({
+        "diskSpace": {
+            "enabled": true,
+            "warningThresholdMb": 1024,
+            "criticalThresholdMb": 100,
+            "checkIntervalSecs": 60
+        }
+    });
+    assert!(
+        validate_section("maintenance", &section).is_ok(),
+        "the default-shaped ordering (warning above critical) should be accepted"
+    );
+}
+
+#[test]
+fn accepts_disk_space_inverted_thresholds_when_disabled() {
+    // WHY(#5128): a disabled monitor's stale/inverted thresholds cannot
+    // misclassify a write, so they are not validation-blocking.
+    let section = json!({
+        "diskSpace": {
+            "enabled": false,
+            "warningThresholdMb": 50,
+            "criticalThresholdMb": 100
+        }
+    });
+    assert!(
+        validate_section("maintenance", &section).is_ok(),
+        "inverted thresholds on a disabled monitor should be accepted"
+    );
+}
+
+#[test]
 fn accepts_valid_backup_settings() {
     let section = json!({
         "backup": { "backupIntervalHours": 24, "backupRetentionCount": 7 }

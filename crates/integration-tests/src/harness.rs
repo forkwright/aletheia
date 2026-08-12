@@ -304,6 +304,9 @@ impl TestHarness {
             #[cfg(feature = "knowledge-store")]
             knowledge_store: knowledge_store.clone(),
             embedding_provider: embedding_provider.clone(),
+            // WHY(#5128): no maintenance config surface in this harness; disk
+            // monitoring is production-only wiring, not exercised here.
+            disk_monitor: None,
             turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
             metrics_registry,
             event_bus: Arc::new(pylon::event_bus::EventBus::new(256)),
