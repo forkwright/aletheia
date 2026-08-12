@@ -24,6 +24,58 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+      # WHY(#6713): release-please does not fail, or even exit non-zero, when an
+      # `extra-files` jsonpath matches nothing. It logs "No entries modified" and
+      # reports success, so a release PR that silently left a declared file
+      # unbumped looks identical to a correct one. Measured: the two proskenion
+      # entries have emitted that warning on EVERY observed run, including the one
+      # that produced 0.35.0 -- they have never applied. The divergence surfaces
+      # downstream at check-proskenion-pins, which reads as a broken branch rather
+      # than a broken release tool, and blocks the release.
+      #
+      # WARNING: this step deliberately only DETECTS. It must never push a fix. A
+      # lockfile amend from CI authenticates with GITHUB_TOKEN, which raises no
+      # workflow-triggering events, so every required check goes missing rather
+      # than red and the PR is permanently BLOCKED -- see the warning below and
+      # releases 0.33.1 / 0.33.3.
+      - name: Assert every declared extra-file actually moved
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          HEAD_BRANCH: ${{ fromJson(steps.release.outputs.pr).headBranchName }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=2 origin "$HEAD_BRANCH"
+          head="$(git rev-parse "origin/${HEAD_BRANCH}")"
+          # WHY the commit's OWN diff, not a diff against main: the release branch
+          # lags main between cuts, so comparing the two attributes every commit
+          # that landed meanwhile to the release. Tested against the live stuck PR
+          # -- the main-relative form reported success because an unrelated merge
+          # had touched the very file that was NOT bumped, which is the precise
+          # false negative this guard exists to prevent.
+          changed="$(git diff --name-only "${head}^..${head}")"
+
+          # Cargo.toml is the version SSOT. If it did not move this is not a
+          # version bump, and there is nothing to assert about files tracking it.
+          if ! grep -qx 'Cargo.toml' <<<"$changed"; then
+            echo "Cargo.toml unchanged; not a version bump. Nothing to assert."
+            exit 0
+          fi
+
+          missing=0
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            if ! grep -qxF "$path" <<<"$changed"; then
+              echo "::error::release-please declares an extra-file at '${path}' but the release PR did not change it, while Cargo.toml moved. Its jsonpath matched nothing and the tool reported success anyway (aletheia#6713)."
+              missing=1
+            fi
+          done < <(jq -r '.packages["."]["extra-files"][]?.path // empty' release-please-config.json | sort -u)
+
+          if [ "$missing" -eq 1 ]; then
+            echo "::error::Release PR is incomplete. Do NOT patch the branch by hand -- release-please force-pushes and discards it."
+            exit 1
+          fi
+          echo "All declared extra-files moved with the version."
+
   # WHY(#6513): Cargo.lock's per-member version fields (#6418) are patched by
   # release-please itself, via the `$.package[?(!@.source)].version` extra-file
   # added in #6516 — the same entry the rest of the fleet uses. A second job

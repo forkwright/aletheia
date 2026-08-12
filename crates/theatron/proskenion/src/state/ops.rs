@@ -199,6 +199,12 @@ pub(crate) struct ServiceHealthStore {
     pub checks: Vec<HealthCheckInfo>,
     /// Reachability or parse error when health data could not be loaded.
     pub error: Option<String>,
+    /// Crate version reported by the backend. `None` when unreachable.
+    pub version: Option<String>,
+    /// Build git SHA reported by the backend. `None` when unreachable.
+    pub git_sha: Option<String>,
+    /// Seconds since backend process start. `None` when unreachable.
+    pub uptime_seconds: Option<u64>,
 }
 
 impl ServiceHealthStore {
@@ -208,6 +214,11 @@ impl ServiceHealthStore {
     }
 
     /// Build store from a parsed health response.
+    ///
+    /// WHY(#5177): `data_dir` on the response is a local filesystem path;
+    /// the issue asks it stay out of the desktop UI unless the server
+    /// gates/redacts it, so unlike the other fields it is not carried
+    /// through here.
     pub(crate) fn from_response(response: skene::api::types::HealthResponse) -> Self {
         Self {
             status: HealthStatus::from_status(&response.status),
@@ -221,6 +232,9 @@ impl ServiceHealthStore {
                 })
                 .collect(),
             error: None,
+            version: Some(response.version),
+            git_sha: Some(response.git_sha.to_string()),
+            uptime_seconds: Some(response.uptime_seconds),
         }
     }
 
@@ -230,6 +244,9 @@ impl ServiceHealthStore {
             status: HealthStatus::Unknown,
             checks: Vec::new(),
             error: Some(message),
+            version: None,
+            git_sha: None,
+            uptime_seconds: None,
         }
     }
 }
@@ -968,6 +985,9 @@ mod tests {
         assert_eq!(store.checks.len(), 1);
         assert_eq!(store.checks[0].name, "providers");
         assert!(store.error.is_none());
+        assert_eq!(store.version.as_deref(), Some("0.13.1"));
+        assert_eq!(store.git_sha.as_deref(), Some("abc123"));
+        assert_eq!(store.uptime_seconds, Some(300));
     }
 
     #[test]
@@ -976,6 +996,9 @@ mod tests {
         assert_eq!(store.status, HealthStatus::Unknown);
         assert!(store.checks.is_empty());
         assert_eq!(store.error.as_deref(), Some("connection refused"));
+        assert!(store.version.is_none());
+        assert!(store.git_sha.is_none());
+        assert!(store.uptime_seconds.is_none());
     }
 
     #[test]
@@ -1018,6 +1041,9 @@ mod tests {
         assert_eq!(s.status, HealthStatus::Unknown);
         assert!(s.checks.is_empty());
         assert!(s.error.is_none());
+        assert!(s.version.is_none());
+        assert!(s.git_sha.is_none());
+        assert!(s.uptime_seconds.is_none());
     }
 
     #[test]

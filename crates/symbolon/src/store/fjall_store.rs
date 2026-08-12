@@ -687,23 +687,20 @@ mod tests {
         let now = jiff::Timestamp::now();
         let past = now
             .checked_sub(jiff::Span::new().seconds(1))
-            .unwrap()
-            .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
+            .map(koina::fjall::iso)
+            .unwrap();
         // WHY: use `now + 100ms` rather than exactly `now` so the timestamp
         // is unambiguously strictly in the future by the time cleanup runs
         // a few microseconds later. Wall-clock-equal-to-now is untestable
         // without a time-injection seam in production.
         let near_future = now
             .checked_add(jiff::Span::new().milliseconds(100))
-            .unwrap()
-            .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
+            .map(koina::fjall::iso)
+            .unwrap();
         let future = now
             .checked_add(jiff::Span::new().seconds(1))
-            .unwrap()
-            .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
-            .to_string();
+            .map(koina::fjall::iso)
+            .unwrap();
 
         store.revoke_token("past-jti", &past).unwrap();
         store.revoke_token("present-jti", &near_future).unwrap();
