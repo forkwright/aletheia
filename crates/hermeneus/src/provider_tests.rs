@@ -308,7 +308,8 @@ fn health_aware_selection_returns_none_when_all_unavailable() {
         }
         other @ (ProviderResolutionError::NoProvider { .. }
         | ProviderResolutionError::ProviderNotFound { .. }
-        | ProviderResolutionError::ProviderDoesNotSupportModel { .. }) => {
+        | ProviderResolutionError::ProviderDoesNotSupportModel { .. }
+        | ProviderResolutionError::CapabilityMismatch { .. }) => {
             panic!("expected ProviderUnavailable, got {other}")
         }
     }
@@ -456,10 +457,242 @@ fn explicit_provider_route_reports_health_failure_directly() {
         }
         other @ (ProviderResolutionError::NoProvider { .. }
         | ProviderResolutionError::ProviderNotFound { .. }
-        | ProviderResolutionError::ProviderDoesNotSupportModel { .. }) => {
+        | ProviderResolutionError::ProviderDoesNotSupportModel { .. }
+        | ProviderResolutionError::CapabilityMismatch { .. }) => {
             panic!("expected ProviderUnavailable, got {other}")
         }
     }
+}
+
+// WHY(#5253): capability-aware resolution tests. `resolve_provider`/
+// `find_provider` stay capability-blind (unchanged above); these exercise
+// `resolve_provider_for_request`, the negotiation surface routing/fallback
+// consult so a tool-bearing turn is never selected for an incapable provider.
+
+#[test]
+fn capability_aware_selection_prefers_capable_equivalent_provider() {
+    // WHY: mirrors health_aware_selection_prefers_healthy_equivalent_provider
+    // — an equivalent (same specificity) capable provider must be selected
+    // over an incapable one registered first, exactly as an unhealthy one
+    // is skipped in favor of a healthy equivalent.
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(
+        MockProvider::new("incapable response")
+            .named("incapable")
+            .models(&["shared-model"])
+            .without_tool_loop(),
+    ));
+    registry.register(Box::new(
+        MockProvider::new("capable response")
+            .named("capable")
+            .models(&["shared-model"]),
+    ));
+
+    let selected = registry
+        .resolve_provider_for_request(
+            "shared-model",
+            ProviderRoute::ModelOnly,
+            ProviderCapabilities::with_tool_loop(true),
+        )
+        .expect("a capable equivalent provider must exist");
+    assert_eq!(selected.name(), "capable");
+
+    // WHY: capability-blind resolution is unaffected — it still returns the
+    // first-registered provider regardless of capability.
+    let blind = registry.find_provider("shared-model").unwrap();
+    assert_eq!(blind.name(), "incapable");
+}
+
+#[test]
+fn capability_aware_selection_reports_mismatch_when_every_provider_incapable() {
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(
+        MockProvider::new("a")
+            .named("alpha")
+            .models(&["shared-model"])
+            .without_tool_loop(),
+    ));
+    registry.register(Box::new(
+        MockProvider::new("b")
+            .named("beta")
+            .models(&["shared-model"])
+            .without_tool_loop(),
+    ));
+
+    let err = registry
+        .resolve_provider_for_request(
+            "shared-model",
+            ProviderRoute::ModelOnly,
+            ProviderCapabilities::with_tool_loop(true),
+        )
+        .expect_err("no provider can satisfy the required capability");
+
+    match err {
+        ProviderResolutionError::CapabilityMismatch {
+            name, capability, ..
+        } => {
+            assert_eq!(name, "alpha", "reports the first capability-incapable provider");
+            assert_eq!(capability, TOOL_LOOP_CAPABILITY);
+        }
+        other => panic!("expected CapabilityMismatch, got {other}"),
+    }
+}
+
+#[test]
+fn capability_aware_selection_ignores_incapable_provider_for_non_tool_request() {
+    // WHY: a non-tool-bearing request has no capability requirement, so an
+    // incapable provider (e.g. a seat-bridged CLI) is still eligible and
+    // routes exactly as it did before this mechanism existed.
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(
+        MockProvider::new("incapable response")
+            .named("incapable")
+            .models(&["shared-model"])
+            .without_tool_loop(),
+    ));
+
+    let selected = registry
+        .resolve_provider_for_request(
+            "shared-model",
+            ProviderRoute::ModelOnly,
+            ProviderCapabilities::with_tool_loop(false),
+        )
+        .expect("an incapable provider must still serve a request that needs no capability");
+    assert_eq!(selected.name(), "incapable");
+}
+
+#[test]
+fn capability_aware_explicit_route_rejects_incapable_provider() {
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(
+        MockProvider::new("incapable response")
+            .named("named-provider")
+            .models(&["some-model"])
+            .without_tool_loop(),
+    ));
+
+    let err = registry
+        .resolve_provider_for_request(
+            "some-model",
+            ProviderRoute::Explicit("named-provider"),
+            ProviderCapabilities::with_tool_loop(true),
+        )
+        .expect_err("explicit route to an incapable provider must fail");
+
+    match err {
+        ProviderResolutionError::CapabilityMismatch { name, model, .. } => {
+            assert_eq!(name, "named-provider");
+            assert_eq!(model, "some-model");
+        }
+        other => panic!("expected CapabilityMismatch, got {other}"),
+    }
+}
+
+#[test]
+fn capability_aware_explicit_route_allows_incapable_provider_for_non_tool_request() {
+    let mut registry = ProviderRegistry::new();
+    registry.register(Box::new(
+        MockProvider::new("incapable response")
+            .named("named-provider")
+            .models(&["some-model"])
+            .without_tool_loop(),
+    ));
+
+    let selected = registry
+        .resolve_provider_for_request(
+            "some-model",
+            ProviderRoute::Explicit("named-provider"),
+            ProviderCapabilities::with_tool_loop(false),
+        )
+        .expect("a non-tool-bearing explicit route must still succeed");
+    assert_eq!(selected.name(), "named-provider");
+}
+
+#[test]
+fn capability_mismatch_reports_after_health_when_both_present_in_tier() {
+    // WHY(#5254): validates the priority `ProviderRegistry::resolve_model_only`
+    // documents — an unhealthy-but-capable candidate is reported over a
+    // healthy-but-incapable one, because health may recover on its own and a
+    // capability gap never will. `crates/nous/src/execute/model_fallback.rs`
+    // depends on this: it is what lets a fallback route correctly wait out a
+    // transient health blip instead of the registry silently reporting (and a
+    // capability-blind dispatcher then selecting) the incapable alternative.
+    let mut registry = ProviderRegistry::new();
+    registry.register_with_config(
+        Box::new(
+            MockProvider::new("down-but-capable")
+                .named("capable-down")
+                .models(&["shared-model"]),
+        ),
+        down_after_one_error_config(),
+    );
+    registry.register(Box::new(
+        MockProvider::new("up-but-incapable")
+            .named("incapable-up")
+            .models(&["shared-model"])
+            .without_tool_loop(),
+    ));
+
+    registry.record_error("capable-down", &api_request_error());
+
+    let err = registry
+        .resolve_provider_for_request(
+            "shared-model",
+            ProviderRoute::ModelOnly,
+            ProviderCapabilities::with_tool_loop(true),
+        )
+        .expect_err("no eligible provider: one is down, the other is incapable");
+
+    match err {
+        // WHY: proves the incapable-but-healthy provider was NOT selected as
+        // a consolation prize just because it happens to be Up — the only
+        // other possible outcome here would have been `Ok("incapable-up")`.
+        ProviderResolutionError::ProviderUnavailable { name, .. } => {
+            assert_eq!(name, "capable-down");
+        }
+        other => panic!(
+            "expected ProviderUnavailable (health reported before capability), got {other}"
+        ),
+    }
+}
+
+#[test]
+fn provider_capabilities_required_by_reflects_request_tools() {
+    let mut request = CompletionRequest {
+        model: "m".to_owned(),
+        ..Default::default()
+    };
+    assert!(!ProviderCapabilities::required_by(&request).tool_loop);
+
+    request.tools = vec![ToolDefinition {
+        name: "t".to_owned(),
+        description: "d".to_owned(),
+        input_schema: serde_json::json!({}),
+        disable_passthrough: None,
+    }];
+    assert!(ProviderCapabilities::required_by(&request).tool_loop);
+}
+
+#[test]
+fn provider_capabilities_satisfies_and_missing_for_agree() {
+    let capable = ProviderCapabilities::with_tool_loop(true);
+    let incapable = ProviderCapabilities::with_tool_loop(false);
+    let required = ProviderCapabilities::with_tool_loop(true);
+    let not_required = ProviderCapabilities::with_tool_loop(false);
+
+    assert!(capable.satisfies(&required));
+    assert!(capable.missing_for(&required).is_none());
+
+    assert!(!incapable.satisfies(&required));
+    assert_eq!(
+        incapable.missing_for(&required),
+        Some(TOOL_LOOP_CAPABILITY)
+    );
+
+    // WHY: an incapable provider still satisfies a request that never needed
+    // the capability in the first place.
+    assert!(incapable.satisfies(&not_required));
+    assert!(incapable.missing_for(&not_required).is_none());
 }
 
 #[test]

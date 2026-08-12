@@ -3,11 +3,12 @@
 use std::collections::HashSet;
 use std::sync::Arc;
 
+use snafu::IntoError as _;
 use tracing::{debug, warn};
 
 use hermeneus::complexity::{ComplexityInput, route_model};
 use hermeneus::provider::{
-    DeploymentTarget, LlmProvider, ProviderRegistry, ProviderResolutionError,
+    DeploymentTarget, LlmProvider, ProviderCapabilities, ProviderRegistry, ProviderResolutionError,
 };
 use hermeneus::types::{ContentBlock, ServerToolDefinition};
 use koina::id::ToolName;
@@ -116,33 +117,75 @@ pub(super) fn resolve_turn_route(
     }
 }
 
-/// Resolve the LLM provider for `route` and verify it is not marked down.
+/// Resolve the LLM provider for `route` and verify it is not marked down,
+/// negotiating `required` capabilities before the provider is ever
+/// dispatched to.
+///
+/// WHY(#5253): only the no-fallback call path uses this directly — a
+/// fallback-configured turn goes through
+/// `model_fallback::complete_with_registry_fallback`, which does its own
+/// per-route capability gating so an incapable route is skipped rather than
+/// terminating the whole chain. Here there is no chain to fall back into, so
+/// a capability mismatch surfaces immediately as
+/// `hermeneus::error::Error::CapabilityMismatch` — the identical error
+/// #4510's `reject_tool_bearing_request` raises as a backstop, so a mismatch
+/// caught here (before dispatch) and one that slips through to the backstop
+/// (inside the provider) read identically to callers, metrics, and logs.
+///
+/// Takes `required` rather than a `CompletionRequest` because the
+/// streaming-support preflight in `execute_streaming_with_deadline` resolves
+/// a provider before that turn's request exists (it is built per-iteration
+/// inside the execute loop) — it derives `required` from the same
+/// `tool_count` approximation `resolve_turn_route` already uses.
 pub(super) fn resolve_provider_checked<'a>(
     providers: &'a ProviderRegistry,
     route: &ModelProviderRoute,
+    required: ProviderCapabilities,
 ) -> error::Result<&'a dyn LlmProvider> {
     providers
-        .resolve_provider(&route.model, route.provider_route())
-        .map_err(|err| {
-            let message = match err {
-                ProviderResolutionError::NoProvider { model } => {
-                    format!("no provider for model: {model}")
-                }
-                ProviderResolutionError::ProviderNotFound { name, model } => {
-                    format!("provider '{name}' is not registered for model: {model}")
-                }
-                ProviderResolutionError::ProviderDoesNotSupportModel { name, model } => {
-                    format!("provider '{name}' does not support model: {model}")
-                }
-                ProviderResolutionError::ProviderUnavailable { name, health } => {
-                    format!("provider '{name}' is currently unavailable: {health:?}")
-                }
-            };
-            error::PipelineStageSnafu {
+        .resolve_provider_for_request(&route.model, route.provider_route(), required)
+        .map_err(|err| match err {
+            ProviderResolutionError::NoProvider { model } => error::PipelineStageSnafu {
                 stage: "execute",
-                message,
+                message: format!("no provider for model: {model}"),
             }
-            .build()
+            .build(),
+            ProviderResolutionError::ProviderNotFound { name, model } => {
+                error::PipelineStageSnafu {
+                    stage: "execute",
+                    message: format!("provider '{name}' is not registered for model: {model}"),
+                }
+                .build()
+            }
+            ProviderResolutionError::ProviderDoesNotSupportModel { name, model } => {
+                error::PipelineStageSnafu {
+                    stage: "execute",
+                    message: format!("provider '{name}' does not support model: {model}"),
+                }
+                .build()
+            }
+            ProviderResolutionError::ProviderUnavailable { name, health } => {
+                error::PipelineStageSnafu {
+                    stage: "execute",
+                    message: format!("provider '{name}' is currently unavailable: {health:?}"),
+                }
+                .build()
+            }
+            ProviderResolutionError::CapabilityMismatch {
+                name,
+                model,
+                capability,
+            } => error::LlmSnafu.into_error(
+                hermeneus::error::CapabilityMismatchSnafu {
+                    provider: name.clone(),
+                    capability: capability.to_owned(),
+                    message: format!(
+                        "provider '{name}' cannot satisfy required capability '{capability}' \
+                         for model '{model}'; route this request to a native API provider instead"
+                    ),
+                }
+                .build(),
+            ),
         })
 }
 
