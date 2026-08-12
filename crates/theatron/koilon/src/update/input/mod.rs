@@ -499,14 +499,53 @@ pub(crate) fn handle_copy_last_response(app: &App) {
 pub(crate) fn handle_compose_in_editor(app: &mut App) {
     let env = RealSystem;
     let editor = env.var("EDITOR").unwrap_or_else(|| "vi".to_string());
-    let tmpfile = env.temp_dir().join("aletheia-compose.md");
+
+    // WHY(#6507): a fixed name under the shared temp root belongs to whichever
+    // account creates it first — every other account then fails to overwrite
+    // it (EACCES) and silently reads back that first account's draft instead.
+    // user_runtime_dir scopes the directory to this account; the pid in the
+    // filename further scopes the file to this process so two compose
+    // sessions under the same account can't clobber each other's draft.
+    let compose_dir = koina::system::user_runtime_dir(&env).join("compose");
+    if let Err(e) = std::fs::create_dir_all(&compose_dir) {
+        tracing::error!(error = %e, "compose-in-editor: could not create runtime dir");
+        return;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) =
+            std::fs::set_permissions(&compose_dir, std::fs::Permissions::from_mode(0o700))
+        {
+            tracing::error!(error = %e, "compose-in-editor: could not restrict runtime dir");
+            return;
+        }
+    }
+    let tmpfile = compose_dir.join(format!("draft-{}.md", std::process::id()));
+
+    // WHY(#6507): the runtime dir above is ours and freshly created, so a
+    // write failure here is a real error rather than evidence the path
+    // belongs to someone else — surface it instead of falling through to open
+    // the editor on a draft that doesn't exist.
     #[expect(
         clippy::disallowed_methods,
         reason = "theatron TUI reads configuration and exports from disk in synchronous initialization paths"
     )]
-    // kanon:ignore RUST/no-silent-result-swallow — best-effort tmpfile creation; failure is handled by empty-read fallback
-    // kanon:ignore SECURITY/config-write-no-perms — tmpfile lives in env::temp_dir(), not a config/credential path; empty initial content
-    let _ = std::fs::write(&tmpfile, "");
+    if let Err(e) = std::fs::write(&tmpfile, "") {
+        tracing::error!(error = %e, "compose-in-editor: could not create draft");
+        return;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // WHY: restrict the draft to owner-only (0600) — contains message text
+        if let Err(e) = std::fs::set_permissions(&tmpfile, std::fs::Permissions::from_mode(0o600))
+        {
+            tracing::error!(error = %e, "compose-in-editor: could not restrict draft");
+            return;
+        }
+    }
+
     ratatui::restore();
     // kanon:ignore RUST/no-direct-process-command — $EDITOR is user-configured external tool; no project wrapper applicable
     let status = std::process::Command::new(&editor).arg(&tmpfile).status();

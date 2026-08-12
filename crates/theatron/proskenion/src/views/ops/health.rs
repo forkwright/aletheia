@@ -52,6 +52,12 @@ const MESSAGE_STYLE: &str = "\
     white-space: nowrap;\
 ";
 
+const META_STYLE: &str = "\
+    color: var(--text-muted); \
+    font-size: var(--text-xs); \
+    margin-bottom: var(--space-3);\
+";
+
 const STATUS_BADGE_BASE: &str = "\
     font-size: var(--text-xs); \
     font-weight: var(--weight-bold); \
@@ -91,6 +97,15 @@ pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
                 }
             }
 
+            if let (Some(ref version), Some(ref git_sha), Some(uptime_seconds)) =
+                (&data.version, &data.git_sha, data.uptime_seconds)
+            {
+                div {
+                    style: "{META_STYLE}",
+                    "v{version} \u{b7} {short_sha(git_sha)} \u{b7} up {format_uptime(uptime_seconds)}"
+                }
+            }
+
             for check in &data.checks {
                 {render_check_row(check)}
             }
@@ -124,5 +139,54 @@ fn badge_text_color(status: HealthStatus) -> &'static str {
     match status {
         HealthStatus::Degraded => "var(--text-primary)",
         _ => "var(--bg-surface)",
+    }
+}
+
+/// Truncate a git SHA to its short (7-char) display form.
+fn short_sha(sha: &str) -> &str {
+    sha.get(..7).unwrap_or(sha)
+}
+
+fn format_uptime(seconds: u64) -> String {
+    let days = seconds / 86400;
+    let hours = (seconds % 86400) / 3600;
+    let mins = (seconds % 3600) / 60;
+
+    if days > 0 {
+        format!("{days}d {hours}h")
+    } else if hours > 0 {
+        format!("{hours}h {mins}m")
+    } else {
+        format!("{mins}m")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn short_sha_truncates() {
+        assert_eq!(short_sha("abcdef1234567"), "abcdef1");
+    }
+
+    #[test]
+    fn short_sha_keeps_short_input() {
+        assert_eq!(short_sha("abc123"), "abc123");
+    }
+
+    #[test]
+    fn format_uptime_minutes_only() {
+        assert_eq!(format_uptime(300), "5m");
+    }
+
+    #[test]
+    fn format_uptime_hours_and_minutes() {
+        assert_eq!(format_uptime(3900), "1h 5m");
+    }
+
+    #[test]
+    fn format_uptime_days_and_hours() {
+        assert_eq!(format_uptime(90000), "1d 1h");
     }
 }
