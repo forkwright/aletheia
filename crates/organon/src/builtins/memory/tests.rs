@@ -8,12 +8,13 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
 
 use graphe::store::SessionStore;
+use graphe::types::BlackboardVisibility;
 use koina::id::{NousId, SessionId, ToolName};
 
 use crate::registry::ToolRegistry;
 use crate::types::{
-    BlackboardEntry, BlackboardStore, NoteEntry, NoteStore, ServerToolConfig, ToolContext,
-    ToolHttpClients, ToolInput, ToolServices,
+    BlackboardEntry, BlackboardStore, BlackboardViewer, NoteEntry, NoteStore, ServerToolConfig,
+    ToolContext, ToolHttpClients, ToolInput, ToolServices,
 };
 
 use crate::error::StoreError;
@@ -88,6 +89,20 @@ impl MockBlackboardStore {
             entries: Mutex::new(Vec::new()),
         }
     }
+
+    /// Test-only: seed an entry with an explicit visibility/session scope,
+    /// bypassing `BlackboardStore::write` (which always writes `Shared`) —
+    /// mirrors how the real `ws:` working-state path writes scoped rows
+    /// directly against the concrete backend store rather than through this
+    /// general-purpose trait (aletheia#5032).
+    fn insert_scoped(&self, entry: BlackboardEntry) {
+        let mut entries = self
+            .entries
+            .lock()
+            .expect("entries mutex should not be poisoned");
+        entries.retain(|e| e.key != entry.key);
+        entries.push(entry);
+    }
 }
 
 impl BlackboardStore for MockBlackboardStore {
@@ -98,38 +113,43 @@ impl BlackboardStore for MockBlackboardStore {
         author: &str,
         ttl_seconds: i64,
     ) -> Result<(), StoreError> {
-        let mut entries = self
-            .entries
-            .lock()
-            .expect("entries mutex should not be poisoned");
-        entries.retain(|e| e.key != key);
-        entries.push(BlackboardEntry {
+        self.insert_scoped(BlackboardEntry {
             key: key.to_owned(),
             value: value.to_owned(),
             author_nous_id: author.to_owned(),
             ttl_seconds,
             created_at: "2026-01-01T00:00:00Z".to_owned(),
             expires_at: None,
+            session_id: None,
+            visibility: BlackboardVisibility::Shared,
         });
         Ok(())
     }
 
-    fn read(&self, key: &str) -> Result<Option<BlackboardEntry>, StoreError> {
+    fn read(
+        &self,
+        key: &str,
+        viewer: &BlackboardViewer,
+    ) -> Result<Option<BlackboardEntry>, StoreError> {
         Ok(self
             .entries
             .lock()
             .expect("entries mutex should not be poisoned")
             .iter()
             .find(|e| e.key == key)
+            .filter(|e| viewer.can_see(e))
             .cloned())
     }
 
-    fn list(&self) -> Result<Vec<BlackboardEntry>, StoreError> {
+    fn list(&self, viewer: &BlackboardViewer) -> Result<Vec<BlackboardEntry>, StoreError> {
         Ok(self
             .entries
             .lock()
             .expect("entries mutex should not be poisoned")
-            .clone())
+            .iter()
+            .filter(|e| viewer.can_see(e))
+            .cloned()
+            .collect())
     }
 
     fn delete(&self, key: &str, author: &str) -> Result<bool, StoreError> {
@@ -515,6 +535,158 @@ async fn blackboard_delete_only_author() {
     assert!(
         r2.content.text_summary().contains("deleted"),
         "expected r2.content.text_summary().contains(\"deleted\") to be true"
+    );
+}
+
+/// Pins aletheia#5032 closed: the general-purpose `blackboard` tool's
+/// `list`/`read` actions must never surface `SessionPrivate` rows scoped to
+/// another session — the exact shape of an internal `ws:` working-state key
+/// — even when the row's author matches the viewer's own agent.
+#[tokio::test]
+async fn blackboard_list_and_read_exclude_other_session_private_rows() {
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let note_store = Arc::new(MockNoteStore::new());
+    let bb_store = Arc::new(MockBlackboardStore::new());
+    let ctx = ctx_with_services(
+        note_store,
+        Arc::clone(&bb_store) as Arc<dyn BlackboardStore>,
+    );
+
+    // A row belonging to the SAME agent but a DIFFERENT session — the
+    // shape of a `ws:` working-state key written by the export/import
+    // path for a session other than the one currently running.
+    bb_store.insert_scoped(BlackboardEntry {
+        key: "ws:test-agent:other-session".to_owned(),
+        value: "leaked-task-stack".to_owned(),
+        author_nous_id: ctx.nous_id.as_str().to_owned(),
+        ttl_seconds: 86_400,
+        created_at: "2026-01-01T00:00:00Z".to_owned(),
+        expires_at: None,
+        session_id: Some("other-session".to_owned()),
+        visibility: BlackboardVisibility::SessionPrivate,
+    });
+    // A NousPrivate row belonging to a different agent entirely.
+    bb_store.insert_scoped(BlackboardEntry {
+        key: "someone-elses-secret".to_owned(),
+        value: "leaked-private-note".to_owned(),
+        author_nous_id: "other-agent".to_owned(),
+        ttl_seconds: 3600,
+        created_at: "2026-01-01T00:00:00Z".to_owned(),
+        expires_at: None,
+        session_id: None,
+        visibility: BlackboardVisibility::NousPrivate,
+    });
+    // An ordinary Shared row, written through the tool as any user would.
+    let write = ToolInput {
+        name: ToolName::new("blackboard").expect("valid"),
+        tool_use_id: "tu_w".to_owned(),
+        arguments: serde_json::json!({"action": "write", "key": "goal", "value": "ship it"}),
+    };
+    reg.execute(&write, &ctx).await.expect("execute");
+
+    let list = ToolInput {
+        name: ToolName::new("blackboard").expect("valid"),
+        tool_use_id: "tu_l".to_owned(),
+        arguments: serde_json::json!({"action": "list"}),
+    };
+    let list_result = reg.execute(&list, &ctx).await.expect("execute");
+    let list_text = list_result.content.text_summary();
+    assert!(
+        list_text.contains("[goal]"),
+        "the general list path must still show ordinary Shared entries: {list_text}"
+    );
+    assert!(
+        !list_text.contains("leaked-task-stack"),
+        "the general list path must not surface a SessionPrivate ws: row from another session: {list_text}"
+    );
+    assert!(
+        !list_text.contains("leaked-private-note"),
+        "the general list path must not surface another agent's NousPrivate row: {list_text}"
+    );
+
+    let read_ws = ToolInput {
+        name: ToolName::new("blackboard").expect("valid"),
+        tool_use_id: "tu_r1".to_owned(),
+        arguments: serde_json::json!({"action": "read", "key": "ws:test-agent:other-session"}),
+    };
+    let read_ws_result = reg.execute(&read_ws, &ctx).await.expect("execute");
+    assert!(
+        !read_ws_result
+            .content
+            .text_summary()
+            .contains("leaked-task-stack"),
+        "reading a ws: key directly by name must not bypass session scoping: {}",
+        read_ws_result.content.text_summary()
+    );
+
+    let read_secret = ToolInput {
+        name: ToolName::new("blackboard").expect("valid"),
+        tool_use_id: "tu_r2".to_owned(),
+        arguments: serde_json::json!({"action": "read", "key": "someone-elses-secret"}),
+    };
+    let read_secret_result = reg.execute(&read_secret, &ctx).await.expect("execute");
+    assert!(
+        !read_secret_result
+            .content
+            .text_summary()
+            .contains("leaked-private-note"),
+        "reading another agent's NousPrivate key directly by name must not bypass ownership scoping: {}",
+        read_secret_result.content.text_summary()
+    );
+}
+
+/// The positive case for the test above: a `SessionPrivate` row scoped to
+/// the viewer's OWN session is visible through the same general list/read
+/// path — enforcement must not be a blanket deny.
+#[tokio::test]
+async fn blackboard_list_and_read_include_own_session_private_row() {
+    let mut reg = ToolRegistry::new();
+    super::register(&mut reg).expect("register");
+    let note_store = Arc::new(MockNoteStore::new());
+    let bb_store = Arc::new(MockBlackboardStore::new());
+    let ctx = ctx_with_services(
+        note_store,
+        Arc::clone(&bb_store) as Arc<dyn BlackboardStore>,
+    );
+
+    let own_session_id = ctx.session_id.to_string();
+    bb_store.insert_scoped(BlackboardEntry {
+        key: "ws:test-agent:own-session".to_owned(),
+        value: "own-task-stack".to_owned(),
+        author_nous_id: ctx.nous_id.as_str().to_owned(),
+        ttl_seconds: 86_400,
+        created_at: "2026-01-01T00:00:00Z".to_owned(),
+        expires_at: None,
+        session_id: Some(own_session_id),
+        visibility: BlackboardVisibility::SessionPrivate,
+    });
+
+    let read = ToolInput {
+        name: ToolName::new("blackboard").expect("valid"),
+        tool_use_id: "tu_1".to_owned(),
+        arguments: serde_json::json!({"action": "read", "key": "ws:test-agent:own-session"}),
+    };
+    let result = reg.execute(&read, &ctx).await.expect("execute");
+    assert!(
+        result.content.text_summary().contains("own-task-stack"),
+        "a viewer must see its own SessionPrivate row from inside the matching session: {}",
+        result.content.text_summary()
+    );
+
+    let list = ToolInput {
+        name: ToolName::new("blackboard").expect("valid"),
+        tool_use_id: "tu_2".to_owned(),
+        arguments: serde_json::json!({"action": "list"}),
+    };
+    let list_result = reg.execute(&list, &ctx).await.expect("execute");
+    assert!(
+        list_result
+            .content
+            .text_summary()
+            .contains("own-task-stack"),
+        "list must include the viewer's own SessionPrivate row from inside the matching session: {}",
+        list_result.content.text_summary()
     );
 }
 
