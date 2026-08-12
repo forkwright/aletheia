@@ -97,7 +97,7 @@ pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
                 }
             }
 
-            if let (Some(ref version), Some(ref git_sha), Some(uptime_seconds)) =
+            if let (Some(version), Some(git_sha), Some(uptime_seconds)) =
                 (&data.version, &data.git_sha, data.uptime_seconds)
             {
                 div {
