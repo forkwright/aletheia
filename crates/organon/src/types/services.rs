@@ -432,7 +432,10 @@ impl BlackboardViewer {
             BlackboardVisibility::NousPrivate => self.nous_id() == entry.author_nous_id,
             BlackboardVisibility::SessionPrivate => match self {
                 Self::Nous { .. } => false,
-                Self::Session { nous_id, session_id } => {
+                Self::Session {
+                    nous_id,
+                    session_id,
+                } => {
                     *nous_id == entry.author_nous_id
                         && entry.session_id.as_deref() == Some(session_id.as_str())
                 }

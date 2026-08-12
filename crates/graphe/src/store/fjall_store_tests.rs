@@ -1036,7 +1036,10 @@ fn blackboard_write_scoped_persists_visibility_and_session() {
             Some("ses-1"),
         )
         .expect("write");
-    let entry = store.blackboard_read("ws:syn:ses-1").expect("read").unwrap();
+    let entry = store
+        .blackboard_read("ws:syn:ses-1")
+        .expect("read")
+        .unwrap();
     assert_eq!(entry.visibility, BlackboardVisibility::SessionPrivate);
     assert_eq!(entry.session_id.as_deref(), Some("ses-1"));
 
