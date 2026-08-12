@@ -1417,3 +1417,176 @@ async fn send_message_reconnect_replays_buffered_events() {
         "reconnect must replay buffered message_complete"
     );
 }
+
+// ── Turn lifecycle domain events (#4557): turn.start / turn.complete / turn.failed ──
+//
+// WHY: `state.event_bus` is subscribed *before* the request is issued and
+// drained *after* the SSE body is read to completion. Reading the body to
+// EOF only happens once the turn task's mpsc sender is dropped, which only
+// happens after the task's own `event_bus.publish(...)` calls have already
+// been awaited — so by the time these tests drain the receiver, every domain
+// event that turn produced is guaranteed to already be sitting in the
+// channel. No sleep/poll is needed.
+
+#[tokio::test]
+async fn send_message_success_publishes_turn_start_then_turn_complete() {
+    let (state, _dir) = test_state().await;
+    let mut event_bus_rx = state.event_bus.subscribe();
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "lifecycle success" })),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let _ = body_string(resp).await;
+
+    let mut published = Vec::new();
+    while let Ok(event) = event_bus_rx.try_recv() {
+        published.push(event);
+    }
+    let topics: Vec<&str> = published.iter().map(|e| e.topic.as_str()).collect();
+    assert_eq!(
+        topics,
+        vec!["turn.start", "turn.complete"],
+        "a successful turn must publish exactly turn.start then turn.complete, no turn.failed/turn.cancelled"
+    );
+
+    let turn_ids: std::collections::HashSet<_> = published
+        .iter()
+        .filter_map(|e| e.payload.get("turn_id").and_then(|v| v.as_str()))
+        .collect();
+    assert_eq!(turn_ids.len(), 1, "both events must share one turn_id");
+
+    assert_eq!(
+        published[0].payload.get("phase").and_then(|v| v.as_str()),
+        Some("start")
+    );
+    assert_eq!(
+        published[0].payload.get("endpoint").and_then(|v| v.as_str()),
+        Some("send_message")
+    );
+    assert_eq!(
+        published[1].payload.get("phase").and_then(|v| v.as_str()),
+        Some("success")
+    );
+    assert!(published[0].id < published[1].id, "start must precede complete");
+}
+
+#[tokio::test]
+async fn send_message_provider_failure_publishes_turn_start_then_turn_failed() {
+    let (state, _dir) = test_state_with_error_provider("simulated lifecycle failure").await;
+    let mut event_bus_rx = state.event_bus.subscribe();
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{id}/messages"),
+        Some(serde_json::json!({ "content": "lifecycle failure" })),
+    );
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let _ = body_string(resp).await;
+
+    let mut published = Vec::new();
+    while let Ok(event) = event_bus_rx.try_recv() {
+        published.push(event);
+    }
+    let topics: Vec<&str> = published.iter().map(|e| e.topic.as_str()).collect();
+    assert_eq!(
+        topics,
+        vec!["turn.start", "turn.failed"],
+        "a failed turn must publish turn.start then turn.failed, and NOT turn.complete"
+    );
+
+    let failed_payload = &published[1].payload;
+    assert_eq!(
+        failed_payload.get("phase").and_then(|v| v.as_str()),
+        Some("failed")
+    );
+    assert!(
+        failed_payload
+            .get("error_class")
+            .and_then(|v| v.as_str())
+            .is_some_and(|s| !s.is_empty()),
+        "turn.failed must carry a non-empty error_class: {failed_payload:?}"
+    );
+    assert!(
+        failed_payload
+            .get("error_message")
+            .is_some_and(|v| v.is_string()),
+        "turn.failed must carry an error_message: {failed_payload:?}"
+    );
+    assert!(
+        failed_payload.get("recoverable").is_some(),
+        "turn.failed must carry a recoverable field (possibly null): {failed_payload:?}"
+    );
+}
+
+#[tokio::test]
+async fn stream_turn_success_publishes_turn_start_then_turn_complete() {
+    let (state, _dir) = test_state().await;
+    let mut event_bus_rx = state.event_bus.subscribe();
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = router
+        .oneshot(stream_turn_req(
+            "lifecycle-stream-success",
+            "lifecycle success",
+            "01ARZ3NDEKTSV4RRFFQ69G5FCA",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let _ = body_string(resp).await;
+
+    let mut published = Vec::new();
+    while let Ok(event) = event_bus_rx.try_recv() {
+        published.push(event);
+    }
+    let topics: Vec<&str> = published.iter().map(|e| e.topic.as_str()).collect();
+    assert_eq!(topics, vec!["turn.start", "turn.complete"]);
+    assert_eq!(
+        published[0].payload.get("endpoint").and_then(|v| v.as_str()),
+        Some("stream_turn")
+    );
+}
+
+#[tokio::test]
+async fn stream_turn_provider_failure_publishes_turn_start_then_turn_failed() {
+    let (state, _dir) = test_state_with_error_provider("simulated stream lifecycle failure").await;
+    let mut event_bus_rx = state.event_bus.subscribe();
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let resp = router
+        .oneshot(stream_turn_req(
+            "lifecycle-stream-failure",
+            "lifecycle failure",
+            "01ARZ3NDEKTSV4RRFFQ69G5FCB",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let _ = body_string(resp).await;
+
+    let mut published = Vec::new();
+    while let Ok(event) = event_bus_rx.try_recv() {
+        published.push(event);
+    }
+    let topics: Vec<&str> = published.iter().map(|e| e.topic.as_str()).collect();
+    assert_eq!(
+        topics,
+        vec!["turn.start", "turn.failed"],
+        "a failed streaming turn must not also publish turn.complete"
+    );
+    assert_eq!(
+        published[1].payload.get("endpoint").and_then(|v| v.as_str()),
+        Some("stream_turn")
+    );
+}

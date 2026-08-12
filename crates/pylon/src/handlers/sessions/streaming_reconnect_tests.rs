@@ -415,7 +415,14 @@ fn turn_complete_event_payload_includes_cache_tokens() {
         tool_surface_hashes: Vec::new(),
     };
 
-    let payload = turn_complete_event_payload("ses-1", "nous-1", "turn-1", &result);
+    let payload = turn_complete_event_payload(
+        "ses-1",
+        "nous-1",
+        "turn-1",
+        "req-1",
+        "send_message",
+        &result,
+    );
 
     assert_eq!(
         payload
@@ -496,10 +503,28 @@ async fn emit_turn_result_events_buffered_includes_cache_tokens() {
 
 // ── Turn abort / reconnect-after-disconnect (#4794) ──
 
+/// Build a test `TurnCancelledContext` bound to the given state's event bus.
+fn test_cancelled_ctx(
+    state: &SessionsState,
+    session_id: &str,
+    turn_id: &str,
+) -> crate::handlers::sessions::streaming::TurnCancelledContext {
+    crate::handlers::sessions::streaming::TurnCancelledContext {
+        event_bus: Arc::clone(&state.event_bus),
+        session_id: session_id.to_owned(),
+        nous_id: "nous-a".to_owned(),
+        turn_id: turn_id.to_owned(),
+        request_id: Some("req-disconnect".to_owned()),
+        endpoint: "send_message",
+    }
+}
+
 #[tokio::test]
 async fn reconnect_after_disconnect_replays_turn_abort_and_reports_aborted() {
     let (state, handle, _tmp) = reconnect_running_test_state_for("turn-abort").await;
     let (tx, _rx) = mpsc::channel::<(u64, SseEvent)>(4);
+    let mut event_bus_rx = state.event_bus.subscribe();
+    let cancelled_ctx = test_cancelled_ctx(&state, "ses-a", "turn-abort");
 
     // WHY: Exercise the real disconnect path: record a terminal turn_abort event
     // and mark the buffer aborted.
@@ -508,8 +533,25 @@ async fn reconnect_after_disconnect_replays_turn_abort_and_reports_aborted() {
         &handle,
         crate::turn_buffer::TURN_ABORT_REASON_CLIENT_DISCONNECT,
         Some("req-disconnect"),
+        &cancelled_ctx,
     )
     .await;
+
+    // WHY(#4557): the same call that replays the client-visible turn_abort
+    // SSE event must also publish the turn.cancelled domain event, exactly
+    // once, with the matching reason.
+    let published = event_bus_rx
+        .try_recv()
+        .expect("emit_turn_abort_sse must publish turn.cancelled");
+    assert_eq!(published.topic, "turn.cancelled");
+    assert_eq!(
+        published.payload.get("reason").and_then(|v| v.as_str()),
+        Some(crate::turn_buffer::TURN_ABORT_REASON_CLIENT_DISCONNECT)
+    );
+    assert!(
+        event_bus_rx.try_recv().is_err(),
+        "turn.cancelled must publish exactly once"
+    );
 
     let sse = reconnect_turn(
         axum::extract::State(state),
@@ -556,14 +598,26 @@ async fn reconnect_after_disconnect_replays_turn_abort_and_reports_aborted() {
 async fn reconnect_after_server_shutdown_replays_turn_abort() {
     let (state, handle, _tmp) = reconnect_running_test_state_for("turn-shutdown").await;
     let (tx, _rx) = mpsc::channel::<(u64, SseEvent)>(4);
+    let mut event_bus_rx = state.event_bus.subscribe();
+    let cancelled_ctx = test_cancelled_ctx(&state, "ses-a", "turn-shutdown");
 
     crate::handlers::sessions::streaming::emit_turn_abort_sse(
         &tx,
         &handle,
         crate::turn_buffer::TURN_ABORT_REASON_SERVER_SHUTDOWN,
         Some("req-shutdown"),
+        &cancelled_ctx,
     )
     .await;
+
+    let published = event_bus_rx
+        .try_recv()
+        .expect("emit_turn_abort_sse must publish turn.cancelled");
+    assert_eq!(published.topic, "turn.cancelled");
+    assert_eq!(
+        published.payload.get("reason").and_then(|v| v.as_str()),
+        Some(crate::turn_buffer::TURN_ABORT_REASON_SERVER_SHUTDOWN)
+    );
 
     let sse = reconnect_turn(
         axum::extract::State(state),
@@ -583,6 +637,56 @@ async fn reconnect_after_server_shutdown_replays_turn_abort() {
                     == Some(crate::turn_buffer::TURN_ABORT_REASON_SERVER_SHUTDOWN)
         }),
         "reconnect must replay server-shutdown turn_abort event: {body}"
+    );
+}
+
+/// WHY(#4557): the client-disconnect path is the one abort route the turn
+/// task itself never observes — `AbortOnDrop::drop` discovers it after the
+/// fact and is the *only* place that can publish `turn.cancelled` for it.
+/// This constructs the guard directly (rather than driving a real HTTP
+/// disconnect, which the test harness cannot trigger deterministically) and
+/// drops it, exercising the exact spawned cleanup path production code runs.
+#[tokio::test]
+async fn abort_on_drop_client_disconnect_publishes_turn_cancelled_exactly_once() {
+    let (state, handle, _tmp) = reconnect_running_test_state_for("turn-drop").await;
+    let mut event_bus_rx = state.event_bus.subscribe();
+    let cancelled_ctx = test_cancelled_ctx(&state, "ses-a", "turn-drop");
+
+    let guard = crate::handlers::sessions::streaming::AbortOnDrop {
+        task: tokio::spawn(async {}),
+        turn_cancel: CancellationToken::new(),
+        _idem_guard: None,
+        turn_buffer: Some(handle.clone()),
+        abort_reason: crate::turn_buffer::TURN_ABORT_REASON_CLIENT_DISCONNECT,
+        cancelled_ctx: Some(cancelled_ctx),
+    };
+    drop(guard);
+
+    // WHY: the mark+publish runs on a task spawned from `Drop`, which cannot
+    // itself be awaited; give the runtime a chance to run it before asserting.
+    let published = tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if let Ok(event) = event_bus_rx.try_recv() {
+                return event;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("AbortOnDrop::drop must publish turn.cancelled");
+
+    assert_eq!(published.topic, "turn.cancelled");
+    assert_eq!(
+        published.payload.get("reason").and_then(|v| v.as_str()),
+        Some(crate::turn_buffer::TURN_ABORT_REASON_CLIENT_DISCONNECT)
+    );
+
+    let (_, state_after) = handle.events_after(0).await;
+    assert_eq!(
+        state_after,
+        crate::turn_buffer::TurnState::Aborted {
+            reason: crate::turn_buffer::TURN_ABORT_REASON_CLIENT_DISCONNECT.to_owned(),
+        }
     );
 }
 
