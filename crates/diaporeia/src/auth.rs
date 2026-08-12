@@ -48,11 +48,17 @@ pub(crate) fn resolve_caller(
 }
 
 fn anonymous_caller(state: &DiaporeiaState) -> McpCaller {
-    let role = state
-        .none_role
-        .parse::<Role>()
-        .ok()
-        .unwrap_or(Role::Readonly);
+    // WHY(#5765): startup validation (`taxis::validate::validate_gateway`)
+    // rejects an invalid `none_role` before the server can boot, but this
+    // parse stays defense-in-depth — log loudly if that guard is ever
+    // bypassed, so a fallback to Readonly is never silent.
+    let role = state.none_role.parse::<Role>().unwrap_or_else(|_| {
+        tracing::error!(
+            none_role = %state.none_role,
+            "auth.mode=none: none_role is not a valid role; falling back to readonly"
+        );
+        Role::Readonly
+    });
     McpCaller {
         sub: "anonymous".to_owned(),
         role,
