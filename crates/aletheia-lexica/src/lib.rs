@@ -5,9 +5,14 @@
 
 #![deny(missing_docs)]
 
-// WHY(#5576): zero cross-crate consumers (`stopwords`/`keywords`/`prefixes` are
-// the modules `nous`/`melete`/`poiesis` actually consume).
-pub(crate) mod adjectives;
+// WARNING(#5576): `adjectives` stays `pub` despite zero cross-crate consumers,
+// unlike its three siblings, which `nous`/`melete`/`poiesis` do consume.
+// Demoting it does not compile: `UNFALSIFIABLE_ADJECTIVES` has no in-crate
+// caller either, so `pub(crate)` makes it dead code. That is the real finding —
+// the list is an orphaned vocabulary awaiting the lint that should read it, not
+// a visibility mistake. Tracked in #6742; do not "fix" this by demoting it
+// again, and do not delete the list without resolving that issue first.
+pub mod adjectives;
 pub mod keywords;
 pub mod prefixes;
 pub mod stopwords;
