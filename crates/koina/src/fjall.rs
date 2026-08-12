@@ -206,9 +206,18 @@ impl std::error::Error for FjallOpenError {
 /// with a literal `Z`, because that mislabels non-UTC timestamps as UTC and
 /// corrupts lexicographic ordering, TTL comparisons, and retention logic.
 pub fn now_iso() -> String {
-    jiff::Timestamp::now()
-        .strftime("%Y-%m-%dT%H:%M:%S%.3fZ")
-        .to_string()
+    iso(jiff::Timestamp::now())
+}
+
+/// Render an explicit [`jiff::Timestamp`] in the canonical format documented on
+/// [`now_iso`].
+///
+/// WHY: callers that need two related timestamps — a creation instant and the
+/// TTL expiry derived from it — must format one clock reading twice rather than
+/// reading the clock once per field. Two readings differ by the elapsed
+/// interval, which makes an expiry drift off its declared TTL by that amount.
+pub fn iso(ts: jiff::Timestamp) -> String {
+    ts.strftime("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 
 #[cfg(test)]

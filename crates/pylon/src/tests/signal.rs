@@ -137,6 +137,7 @@ fn minimal_app_state() -> Arc<AppState> {
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
         embedding_provider: None,
+        disk_monitor: None,
         turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
         metrics_registry,
         event_bus: Arc::new(crate::event_bus::EventBus::new(256)),

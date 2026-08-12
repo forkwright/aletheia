@@ -24,6 +24,7 @@ use koina::system::{FileSystem, RealSystem};
 
 use crate::config::AletheiaConfig;
 use crate::config_decrypt;
+use crate::encrypt;
 use crate::error::{
     ConfigLoadSnafu, ConfigPathEscapesRootSnafu, LoadSnafu, Result, SerializeTomlSnafu,
     WriteConfigSnafu,
@@ -503,6 +504,28 @@ pub(crate) fn write_config_checked(
     })?;
     crate::redact::expose_secret_leaves_for_toml(&mut toml_value, config);
 
+    // WHY(#5349): `expose_secret_leaves_for_toml` above unconditionally restores
+    // the raw in-memory secret, which would silently downgrade an
+    // operator-encrypted `enc:` value back to plaintext on every unrelated
+    // config write (Pylon config PUT, nous enable/tool toggle). Re-encrypting
+    // sensitive leaves here -- using the same key-name predicate as the
+    // `aletheia config encrypt` CLI path -- keeps persistence
+    // encryption-preserving instead of requiring the operator to re-run that
+    // command after every mutation. No-op when no primary key is configured
+    // (the operator never opted into at-rest encryption). A key-load failure
+    // mirrors `config_decrypt::decrypt_toml_value`'s soft-fail treatment: it
+    // degrades to "write unencrypted" (logged) rather than blocking the write
+    // on a corrupt key file the operator has not yet noticed.
+    match encrypt::primary_key_path().map(|path| encrypt::load_primary_key(&path)) {
+        Some(Ok(Some(primary_key))) => {
+            encrypt::encrypt_sensitive_values(&mut toml_value, &primary_key)?;
+        }
+        Some(Err(e)) => {
+            warn!(error = %e, "failed to load primary key; config will be written unencrypted");
+        }
+        Some(Ok(None)) | None => {}
+    }
+
     let toml = toml::to_string(&toml_value).map_err(|e| {
         SerializeTomlSnafu {
             reason: e.to_string(),
@@ -660,7 +683,13 @@ mod tests {
 
     #[test]
     fn write_config_persists_secret_string_values_unredacted() {
-        let jail = EnvJail::new();
+        let mut jail = EnvJail::new();
+        // WHY(#5349): pin "no primary key configured" explicitly rather than
+        // relying on the host having neither `$HOME/.config/aletheia/primary.key`
+        // nor `ALETHEIA_PRIMARY_KEY` set -- otherwise this test's outcome would
+        // depend on the machine running it.
+        jail.remove_env("HOME");
+        jail.remove_env("ALETHEIA_PRIMARY_KEY");
         std::fs::create_dir_all(jail.directory().join("config")).expect("create config dir");
 
         let oikos = Oikos::from_root(jail.directory());
@@ -691,6 +720,62 @@ mod tests {
                 .map(SecretString::expose_secret),
             Some(signing_key),
             "signing key should survive write/load roundtrip"
+        );
+    }
+
+    #[test]
+    fn write_config_re_encrypts_sensitive_leaves_when_primary_key_present() {
+        let mut jail = EnvJail::new();
+        std::fs::create_dir_all(jail.directory().join("config")).expect("create config dir");
+
+        let key_path = jail.directory().join("primary.key");
+        crate::encrypt::generate_primary_key(&key_path)
+            .unwrap_or_else(|e| panic!("generate primary key: {e}"));
+        jail.set_env(
+            "ALETHEIA_PRIMARY_KEY",
+            key_path.to_str().expect("utf-8 path"),
+        );
+
+        let oikos = Oikos::from_root(jail.directory());
+        let mut config = AletheiaConfig::default();
+        let signing_key = "synthetic-signing-key-gets-encrypted-at-rest";
+        config.gateway.auth.signing_key = Some(SecretString::from(signing_key));
+
+        write_config(&oikos, &config).unwrap_or_else(|e| panic!("write: {e}"));
+
+        let persisted =
+            std::fs::read_to_string(oikos.config().join("aletheia.toml")).expect("read config");
+        assert!(
+            persisted.contains("enc:"),
+            "persisted config should hold enc: ciphertext, not plaintext, for the signing key: \
+             {persisted}"
+        );
+        assert!(
+            !persisted.contains(signing_key),
+            "raw signing key must not appear on disk when a primary key is configured"
+        );
+
+        // WHY(#5349): a second write (simulating an unrelated config
+        // mutation, e.g. a Pylon config PUT) must not downgrade the
+        // already-encrypted leaf back to plaintext.
+        write_config(&oikos, &config).unwrap_or_else(|e| panic!("second write: {e}"));
+        let persisted_again = std::fs::read_to_string(oikos.config().join("aletheia.toml"))
+            .expect("read config again");
+        assert!(
+            !persisted_again.contains(signing_key),
+            "raw signing key must not reappear after a second write"
+        );
+
+        let loaded = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
+        assert_eq!(
+            loaded
+                .gateway
+                .auth
+                .signing_key
+                .as_ref()
+                .map(SecretString::expose_secret),
+            Some(signing_key),
+            "signing key should decrypt back to the original value on load"
         );
     }
 

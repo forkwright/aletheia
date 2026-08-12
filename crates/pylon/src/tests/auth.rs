@@ -179,6 +179,7 @@ async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
         embedding_provider: state.embedding_provider.clone(),
+        disk_monitor: state.disk_monitor.clone(),
         turn_buffer_registry: Arc::clone(&state.turn_buffer_registry),
         metrics_registry: state.metrics_registry.clone(),
         event_bus: Arc::clone(&state.event_bus),
