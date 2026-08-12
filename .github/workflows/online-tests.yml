@@ -96,7 +96,7 @@ jobs:
             echo "- embedded path: candle provider through BAAI/bge-small-en-v1.5"
             echo "- artifacts: config.json, tokenizer.json, model.safetensors from HuggingFace Hub"
             echo "- resources: outbound network and about 16 GB runner memory"
-            echo "- retry policy: two nextest retries; pass-on-retry is accepted as transient"
+            echo "- retry policy: two nextest retries, but a test that only passes on retry FAILS this job; the non-blocking quarantine job below is where flakes are observed"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: cargo nextest run --workspace --features test-full
@@ -105,7 +105,7 @@ jobs:
             --build-jobs 4 \
             --test-threads 4 \
             --retries 2 \
-            --flaky-result pass \
+            --flaky-result fail \
             --status-level retry \
             --final-status-level flaky
 
@@ -141,6 +141,7 @@ jobs:
             )
             if [ "${#files[@]}" -eq 0 ]; then
               echo "no HuggingFace artifacts found in ${HF_HOME}"
+              missing=1
             else
               for file in "${files[@]}"; do
                 sha=$(sha256sum "$file" | awk '{print $1}')
@@ -150,6 +151,15 @@ jobs:
             fi
           } > online-test-provenance/huggingface-artifacts.txt
           cat online-test-provenance/huggingface-artifacts.txt
+          # WHY this fails rather than only recording: the provenance file is the
+          # evidence that the embedded-embeddings path exercised real model artifacts.
+          # An empty list means the run proved nothing about that path while still
+          # reporting success -- the summary would read "no HuggingFace artifacts
+          # found" and the gate would stay green.
+          if [ "${missing:-0}" -eq 1 ]; then
+            echo "::error::no HuggingFace artifacts found in ${HF_HOME}; the embedded-embeddings path did not run against real model files"
+            exit 1
+          fi
           {
             echo
             echo "### HuggingFace artifact provenance"
