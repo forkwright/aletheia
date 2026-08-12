@@ -89,6 +89,24 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// A sandbox guarantee was requested under `enforcement = "enforcing"`
+    /// that the runtime cannot actually provide.
+    ///
+    /// SECURITY(#4997): `egress = "allowlist"` with non-loopback entries is
+    /// the motivating case -- the child-process network-namespace/seccomp
+    /// mechanism can only isolate to loopback or block everything, never
+    /// enforce a selective destination list, so registering tools under that
+    /// combination would run every subsequent sandboxed subprocess under a
+    /// policy that silently behaves as `deny` while still being reported as
+    /// `allowlist`. Refusing to register is the fail-closed alternative to
+    /// starting up on a guarantee that was never enforceable.
+    #[snafu(display("sandbox configuration is not enforceable: {message}"))]
+    SandboxConfigUnenforceable {
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias.
