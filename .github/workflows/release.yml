@@ -261,6 +261,14 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_TARGET: ${{ matrix.target }}
 
+      # WHY here: this is the last point before the artifact can be published.
+      # check-release-tarball.sh above inspects the tarball's CONTENTS; nothing
+      # yet establishes that the binary inside actually runs on the runner that
+      # built it. Both matrix targets produce a natively-runnable binary, so a
+      # failure here is real rather than a cross-compilation artifact.
+      - name: Smoke test the release binary
+        run: scripts/smoke-test.sh --binary "$BINARY"
+
       - name: Generate checksums (Linux)
         if: runner.os == 'Linux'
         run: |
