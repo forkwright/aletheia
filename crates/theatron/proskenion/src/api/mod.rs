@@ -4,3 +4,5 @@ pub(crate) mod client;
 pub(crate) mod health;
 pub mod sse;
 pub mod streaming;
+/// Backend subsystem status contract: `GET /api/v1/system/status` (#5315).
+pub(crate) mod system_status;

@@ -106,11 +106,26 @@ pub(crate) fn server_token_ref(server_id: &str) -> String {
 }
 
 /// Transient health status for the server management panel.
+///
+/// Sourced from `GET /api/v1/system/status` via
+/// [`crate::api::system_status::fetch_system_status`] (#5315) rather than
+/// the plain liveness probe, so a reachable-but-degraded server is
+/// distinguishable from a fully healthy one, and a token lacking the
+/// Operator role reports `Unauthorized` rather than a generic failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(crate) enum ServerHealth {
     #[default]
     Unchecked,
     Healthy,
+    Degraded,
+    Unhealthy,
+    /// The connected bearer token lacks the role required to read backend
+    /// health (401/403 from `/api/v1/system/status`).
+    ///
+    /// INVARIANT: distinct from `Unreachable` -- an operator-fixable
+    /// permission gap must never render identically to a connectivity
+    /// failure the operator cannot fix (operator decision, #5315).
+    Unauthorized,
     InvalidToken,
     Unreachable,
 }
@@ -120,6 +135,9 @@ impl ServerHealth {
         match self {
             Self::Unchecked => "—",
             Self::Healthy => "Healthy",
+            Self::Degraded => "Degraded",
+            Self::Unhealthy => "Unhealthy",
+            Self::Unauthorized => "Unauthorized — token lacks the Operator role",
             Self::InvalidToken => "Invalid auth token — update or clear the token",
             Self::Unreachable => "Unreachable",
         }
@@ -129,8 +147,11 @@ impl ServerHealth {
         match self {
             Self::Unchecked => "var(--text-muted)",
             Self::Healthy => "var(--status-success)",
-            Self::InvalidToken => "var(--status-error)",
-            Self::Unreachable => "var(--status-error)",
+            // WHY: Degraded and Unauthorized both render as the warning
+            // color -- reachable-and-fixable, distinct from the red used
+            // for outright failure/unreachability (#5315).
+            Self::Degraded | Self::Unauthorized => "var(--status-warning)",
+            Self::Unhealthy | Self::InvalidToken | Self::Unreachable => "var(--status-error)",
         }
     }
 }
@@ -648,5 +669,22 @@ mod tests {
             alt: false,
         };
         assert_eq!(combo.display(), "Ctrl+Shift+K");
+    }
+
+    #[test]
+    fn server_health_unauthorized_is_distinct_from_unreachable() {
+        assert_ne!(ServerHealth::Unauthorized, ServerHealth::Unreachable);
+        assert_ne!(ServerHealth::Unauthorized.label(), ServerHealth::Unreachable.label());
+    }
+
+    #[test]
+    fn server_health_unauthorized_and_degraded_share_warning_color() {
+        assert_eq!(ServerHealth::Unauthorized.color(), ServerHealth::Degraded.color());
+        assert_ne!(ServerHealth::Unauthorized.color(), ServerHealth::Unreachable.color());
+    }
+
+    #[test]
+    fn server_health_default_is_unchecked() {
+        assert_eq!(ServerHealth::default(), ServerHealth::Unchecked);
     }
 }

@@ -9,10 +9,8 @@ use std::collections::{HashMap, HashSet};
 
 use dioxus::prelude::*;
 
-use crate::services::{
-    connection::{ConnectionError, PylonClient},
-    settings_config,
-};
+use crate::api::system_status::{SystemStatusFetchError, fetch_system_status};
+use crate::services::settings_config;
 use crate::state::connection::{ConnectionConfig, ConnectionState};
 use crate::state::settings::{ServerConfigStore, ServerHealth};
 
@@ -29,24 +27,35 @@ struct ServerSnap {
 
 // ── Async helpers ──
 
-async fn probe_health(url: &str, token: Option<&str>) -> ServerHealth {
+/// Probe a saved server's backend subsystem health (#5315).
+///
+/// Uses [`fetch_system_status`] (`GET /api/v1/system/status`) rather than
+/// the plain liveness check, so the result distinguishes a fully healthy
+/// server from one that is reachable but degraded/unhealthy, and from one
+/// whose token cannot see health at all. Returns the reduced
+/// [`ServerHealth`] alongside the names of any non-healthy subsystems.
+async fn probe_health(url: &str, token: Option<&str>) -> (ServerHealth, Vec<String>) {
     let config = ConnectionConfig {
         server_url: url.to_string(),
         auth_token: token.map(str::to_string),
         auto_reconnect: false,
         ..ConnectionConfig::default()
     };
-    match PylonClient::new(&config) {
-        Ok(client) => match client.health().await {
-            // NOTE: Any successful health response means the server is reachable.
-            // A degraded/unhealthy readiness payload still indicates the server
-            // can be contacted; only transport/auth/malformed errors count as
-            // unreachable from the settings probe's point of view.
-            Ok(_) => ServerHealth::Healthy,
-            Err(_) => ServerHealth::Unreachable,
-        },
-        Err(ConnectionError::InvalidToken) => ServerHealth::InvalidToken,
-        Err(_) => ServerHealth::Unreachable,
+    match fetch_system_status(&config).await {
+        Ok(response) => {
+            let failing = response.failing_names();
+            let health = match response.status.as_str() {
+                "healthy" => ServerHealth::Healthy,
+                "degraded" => ServerHealth::Degraded,
+                // WHY: "failed" and any unrecognized aggregate value both
+                // report as Unhealthy rather than defaulting to Healthy.
+                _ => ServerHealth::Unhealthy,
+            };
+            (health, failing)
+        }
+        Err(SystemStatusFetchError::Unauthorized) => (ServerHealth::Unauthorized, Vec::new()),
+        Err(err) if err.is_invalid_token() => (ServerHealth::InvalidToken, Vec::new()),
+        Err(_) => (ServerHealth::Unreachable, Vec::new()),
     }
 }
 
@@ -62,8 +71,10 @@ pub(crate) fn ServersPanel() -> Element {
     let keybindings = use_context::<Signal<crate::state::settings::KeybindingStore>>();
 
     // WHY: Health results carry the URL they probed so a stale result is
-    // attributable ("Unreachable — <url>") instead of an anonymous failure.
-    let mut health_map: Signal<HashMap<String, (ServerHealth, String)>> = use_signal(HashMap::new);
+    // attributable ("Unreachable — <url>") instead of an anonymous failure,
+    // plus the names of any non-healthy subsystems (#5315).
+    let mut health_map: Signal<HashMap<String, (ServerHealth, String, Vec<String>)>> =
+        use_signal(HashMap::new);
     let mut testing_ids: Signal<HashSet<String>> = use_signal(HashSet::new);
     let mut show_add = use_signal(|| false);
 
@@ -134,11 +145,11 @@ pub(crate) fn ServersPanel() -> Element {
                     let sid_saved = sid.clone();
                     let surl = snap.url.clone();
                     let stoken = snap.auth_token.clone();
-                    let (health, tested_url) = health_map
+                    let (health, tested_url, failing) = health_map
                         .read()
                         .get(&snap.id)
-                        .map(|(h, u)| (*h, Some(u.clone())))
-                        .unwrap_or((ServerHealth::Unchecked, None));
+                        .map(|(h, u, f)| (*h, Some(u.clone()), f.clone()))
+                        .unwrap_or((ServerHealth::Unchecked, None, Vec::new()));
                     let is_testing = testing_ids.read().contains(&snap.id);
                     // Offer the live URL only on the active entry; other saved
                     // entries are intentionally different servers.
@@ -158,6 +169,7 @@ pub(crate) fn ServersPanel() -> Element {
                             is_active: snap.is_active,
                             health,
                             tested_url,
+                            failing,
                             update_url,
                             is_testing,
                             on_test: move |_| {
@@ -167,9 +179,9 @@ pub(crate) fn ServersPanel() -> Element {
                                 testing_ids.write().insert(id.clone());
                                 health_map.write().remove(&id);
                                 spawn(async move {
-                                    let result = probe_health(&url, token.as_deref()).await;
+                                    let (health, failing) = probe_health(&url, token.as_deref()).await;
                                     testing_ids.write().remove(&id);
-                                    health_map.write().insert(id, (result, url));
+                                    health_map.write().insert(id, (health, url, failing));
                                 });
                             },
                             on_update_url: move |_| {
@@ -235,6 +247,10 @@ fn ServerCard(
     is_active: bool,
     health: ServerHealth,
     tested_url: Option<String>,
+    /// Names of non-healthy subsystems from the last probe (#5315). Empty
+    /// when unchecked, healthy, or the failure was reachability/auth rather
+    /// than a subsystem report.
+    failing: Vec<String>,
     update_url: Option<String>,
     is_testing: bool,
     on_test: EventHandler<()>,
@@ -375,6 +391,12 @@ fn ServerCard(
                                 "{status_text}"
                             }
                         }
+                        if !failing.is_empty() {
+                            div {
+                                style: "font-size: var(--text-xs); color: var(--text-muted); margin-top: 2px;",
+                                "Failing: {failing.join(\", \")}"
+                            }
+                        }
                         if let Some(live_url) = update_url.clone() {
                             div {
                                 style: "display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-1); flex-wrap: wrap;",
@@ -506,5 +528,100 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+mod tests {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    use super::*;
+
+    fn install_crypto() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
+    fn status_body(status: &str, subsystem_status: &str) -> String {
+        serde_json::json!({
+            "status": status,
+            "generated_at": "2026-01-01T00:00:00Z",
+            "subsystems": [
+                {"id": "embeddings", "name": "Embedding Provider", "status": subsystem_status},
+            ],
+        })
+        .to_string()
+    }
+
+    async fn spawn_status_server(http_status: u16, body: String) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let Ok((mut stream, _)) = listener.accept().await else {
+                return;
+            };
+            let mut buf = [0_u8; 4096];
+            let _ = stream.read(&mut buf).await;
+            let reason = match http_status {
+                200 => "OK",
+                401 => "Unauthorized",
+                _ => "Error",
+            };
+            let response = format!(
+                "HTTP/1.1 {http_status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+        });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn probe_health_healthy_server_reports_no_failing_subsystems() {
+        install_crypto();
+        let url = spawn_status_server(200, status_body("healthy", "healthy")).await;
+        let (health, failing) = probe_health(&url, None).await;
+        assert_eq!(health, ServerHealth::Healthy);
+        assert!(failing.is_empty());
+    }
+
+    #[tokio::test]
+    async fn probe_health_degraded_server_names_the_failing_subsystem() {
+        install_crypto();
+        let url = spawn_status_server(200, status_body("degraded", "degraded")).await;
+        let (health, failing) = probe_health(&url, None).await;
+        assert_eq!(health, ServerHealth::Degraded);
+        assert_eq!(failing, vec!["Embedding Provider".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn probe_health_unauthorized_is_distinct_from_unreachable() {
+        install_crypto();
+        let url = spawn_status_server(401, "{}".to_string()).await;
+        let (health, failing) = probe_health(&url, None).await;
+        assert_eq!(health, ServerHealth::Unauthorized);
+        assert!(failing.is_empty());
+        assert_ne!(health, ServerHealth::Unreachable);
+    }
+
+    #[tokio::test]
+    async fn probe_health_unreachable_on_closed_port() {
+        install_crypto();
+        let (health, failing) = probe_health("http://127.0.0.1:1", None).await;
+        assert_eq!(health, ServerHealth::Unreachable);
+        assert!(failing.is_empty());
+    }
+
+    #[tokio::test]
+    async fn probe_health_invalid_token_reported_before_any_request() {
+        install_crypto();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let (health, _) = probe_health(&url, Some("bad\x00token")).await;
+        assert_eq!(health, ServerHealth::InvalidToken);
+        let accepted =
+            tokio::time::timeout(std::time::Duration::from_millis(100), listener.accept()).await;
+        assert!(accepted.is_err(), "invalid token must not reach the server");
     }
 }
