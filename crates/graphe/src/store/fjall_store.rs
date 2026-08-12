@@ -55,8 +55,8 @@ use eidos::meta::Stamped as _;
 use crate::error::{self, Result};
 use crate::metrics;
 use crate::types::{
-    AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus,
-    SessionType, ToolAuditRecord, UsageRecord,
+    AgentNote, BlackboardRow, BlackboardVisibility, Message, Role, Session, SessionMetrics,
+    SessionOrigin, SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
 };
 
 fn storage_error(message: impl Into<String>) -> error::Error {
@@ -2832,6 +2832,12 @@ impl SessionStore {
     // `ensure_durable` carves out.
 
     /// Write or update a blackboard entry. Upserts on key.
+    ///
+    /// Always `BlackboardVisibility::Shared` with no session scope — the
+    /// wire-compatible entry point kept for callers (raw store tests, the
+    /// agent-portability import/export path) that predate the visibility
+    /// taxonomy (aletheia#5032). Callers that need `NousPrivate`/
+    /// `SessionPrivate` classification use [`Self::blackboard_write_scoped`].
     #[instrument(skip(self, value), level = "debug")]
     pub fn blackboard_write(
         &self,
@@ -2839,6 +2845,28 @@ impl SessionStore {
         value: &str,
         author: &str,
         ttl_secs: i64,
+    ) -> Result<()> {
+        self.blackboard_write_scoped(
+            key,
+            value,
+            author,
+            ttl_secs,
+            BlackboardVisibility::Shared,
+            None,
+        )
+    }
+
+    /// Write or update a blackboard entry with an explicit visibility
+    /// classification and optional session scope. Upserts on key.
+    #[instrument(skip(self, value), level = "debug")]
+    pub fn blackboard_write_scoped(
+        &self,
+        key: &str,
+        value: &str,
+        author: &str,
+        ttl_secs: i64,
+        visibility: BlackboardVisibility,
+        session_id: Option<&str>,
     ) -> Result<()> {
         let _guard = self
             .write_lock
@@ -2870,6 +2898,8 @@ impl SessionStore {
             ttl_seconds: ttl_secs,
             created_at: now,
             expires_at,
+            session_id: session_id.map(str::to_owned),
+            visibility,
         };
         let data = serde_json::to_vec(&row).context(error::StoredJsonSnafu)?;
         let mut tx = self.db.write_tx();

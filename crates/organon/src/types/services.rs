@@ -3,6 +3,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
+use graphe::types::BlackboardVisibility;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -316,14 +317,37 @@ pub trait BlackboardStore: Send + Sync {
         ttl_seconds: i64,
     ) -> std::result::Result<(), crate::error::StoreError>;
 
-    /// Read a single entry by key.
+    /// Read a single entry by key, filtered to what `viewer` may see
+    /// (aletheia#5032).
+    ///
+    /// Returns `Ok(None)` both when no row exists at `key` and when a row
+    /// exists but `viewer` may not see it — the two cases are
+    /// indistinguishable by design, so an unauthorized caller cannot use
+    /// this method as an existence oracle for a private key.
+    ///
+    /// WHY: `viewer` is mandatory, not `Option<&BlackboardViewer>`. A caller
+    /// that omits an identity must not fall back to "see everything" — that
+    /// default is the exact leak [`BlackboardViewer`] closes. This trait
+    /// deliberately has no unrestricted variant; the one sanctioned
+    /// privileged path (the `ws:` working-state export/import path) reads
+    /// the concrete backend store directly (`graphe::store::SessionStore::
+    /// blackboard_read`/`blackboard_write_scoped`, see
+    /// `aletheia::commands::agent_io`) instead of going through this trait
+    /// at all — a differently-named method on a different type, so a
+    /// privileged call site is visible by its shape, not hidden behind a
+    /// default argument.
     fn read(
         &self,
         key: &str,
+        viewer: &BlackboardViewer,
     ) -> std::result::Result<Option<BlackboardEntry>, crate::error::StoreError>;
 
-    /// List all current entries.
-    fn list(&self) -> std::result::Result<Vec<BlackboardEntry>, crate::error::StoreError>;
+    /// List entries filtered to what `viewer` may see. See [`Self::read`]
+    /// for why `viewer` is mandatory (aletheia#5032).
+    fn list(
+        &self,
+        viewer: &BlackboardViewer,
+    ) -> std::result::Result<Vec<BlackboardEntry>, crate::error::StoreError>;
 
     /// Delete an entry by key and author.
     fn delete(
@@ -359,6 +383,62 @@ pub struct BlackboardEntry {
     pub ttl_seconds: i64,
     pub created_at: String,
     pub expires_at: Option<String>,
+    pub session_id: Option<String>,
+    pub visibility: BlackboardVisibility,
+}
+
+/// Identity of the caller asking to read or list blackboard rows
+/// (aletheia#5032).
+///
+/// WHY: every variant names a `nous_id` — there is no "anonymous" or
+/// "unscoped" variant. [`BlackboardStore::read`]/[`BlackboardStore::list`]
+/// take this by value (never `Option<&BlackboardViewer>`), so a caller
+/// cannot construct an unfiltered read by omitting an argument; see the
+/// trait's doc comment for the full rationale.
+#[derive(Debug, Clone)]
+pub enum BlackboardViewer {
+    /// Asking on behalf of `nous_id` with no session context (e.g. an MCP
+    /// caller with no notion of a live session). Sees `Shared` rows and its
+    /// own `NousPrivate` rows; never `SessionPrivate` rows, since that
+    /// visibility requires a session match this viewer cannot provide.
+    Nous {
+        /// The asking agent's identifier.
+        nous_id: String,
+    },
+    /// Asking on behalf of `nous_id` within `session_id`. Sees `Shared`,
+    /// its own `NousPrivate`, and its own `SessionPrivate` rows.
+    Session {
+        /// The asking agent's identifier.
+        nous_id: String,
+        /// The asking agent's current session identifier.
+        session_id: String,
+    },
+}
+
+impl BlackboardViewer {
+    /// The asking agent's identifier, common to every variant.
+    #[must_use]
+    pub fn nous_id(&self) -> &str {
+        match self {
+            Self::Nous { nous_id } | Self::Session { nous_id, .. } => nous_id,
+        }
+    }
+
+    /// Whether this viewer may see `entry`, per `entry.visibility`.
+    #[must_use]
+    pub fn can_see(&self, entry: &BlackboardEntry) -> bool {
+        match entry.visibility {
+            BlackboardVisibility::Shared => true,
+            BlackboardVisibility::NousPrivate => self.nous_id() == entry.author_nous_id,
+            BlackboardVisibility::SessionPrivate => match self {
+                Self::Nous { .. } => false,
+                Self::Session { nous_id, session_id } => {
+                    *nous_id == entry.author_nous_id
+                        && entry.session_id.as_deref() == Some(session_id.as_str())
+                }
+            },
+        }
+    }
 }
 
 /// Request to spawn an ephemeral sub-agent.
