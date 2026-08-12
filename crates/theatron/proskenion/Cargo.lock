@@ -331,8 +331,8 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bathron"
-version = "1.5.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
+version = "1.5.1"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.1#ff0d6c8e47aee25f3fdf08610ad11c42f932d37e"
 dependencies = [
  "dirs",
  "serde",
@@ -2148,8 +2148,8 @@ dependencies = [
 
 [[package]]
 name = "gramma"
-version = "1.5.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
+version = "1.5.1"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.1#ff0d6c8e47aee25f3fdf08610ad11c42f932d37e"
 dependencies = [
  "syntect",
 ]
@@ -2773,8 +2773,8 @@ dependencies = [
 
 [[package]]
 name = "keryx"
-version = "1.5.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
+version = "1.5.1"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.1#ff0d6c8e47aee25f3fdf08610ad11c42f932d37e"
 dependencies = [
  "bytes",
  "futures-core",
@@ -4974,8 +4974,8 @@ dependencies = [
 
 [[package]]
 name = "skeue"
-version = "1.5.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
+version = "1.5.1"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.1#ff0d6c8e47aee25f3fdf08610ad11c42f932d37e"
 dependencies = [
  "dioxus",
  "gramma",
@@ -5324,8 +5324,8 @@ dependencies = [
 
 [[package]]
 name = "themelion"
-version = "1.5.0"
-source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.0#237413b89fcf575579c8467785e77130583f5a25"
+version = "1.5.1"
+source = "git+https://github.com/forkwright/theatron.git?tag=v1.5.1#ff0d6c8e47aee25f3fdf08610ad11c42f932d37e"
 dependencies = [
  "dioxus",
 ]
