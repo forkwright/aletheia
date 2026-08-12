@@ -161,8 +161,7 @@ impl TaskRunner {
                         if !self.in_flight.contains_key(&existing.def.id) {
                             let base = existing.def.schedule.next_run().unwrap_or(None);
                             existing.next_run =
-                                apply_jitter(base, &existing.def.id, existing.def.jitter)
-                                    .or(base);
+                                apply_jitter(base, &existing.def.id, existing.def.jitter).or(base);
                         }
                         rescheduled += 1;
                     }
