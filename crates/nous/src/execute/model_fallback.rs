@@ -190,15 +190,14 @@ pub(super) async fn complete_streaming_with_registry_fallback(
             }
 
             let routed_request = request_for_route(request, primary_route);
-            let raw =
-                complete_streaming_once(
-                    providers,
-                    primary_route,
-                    &routed_request,
-                    on_event,
-                    required,
-                )
-                .await;
+            let raw = complete_streaming_once(
+                providers,
+                primary_route,
+                &routed_request,
+                on_event,
+                required,
+            )
+            .await;
             if let ControlFlow::Break(result) = record_attempt(
                 primary_route,
                 raw,
@@ -242,15 +241,14 @@ pub(super) async fn complete_streaming_with_registry_fallback(
                 crate::metrics::record_llm_fallback_attempt(nous_id, "fallback_retry");
             }
 
-            let raw =
-                complete_streaming_once(
-                    providers,
-                    fallback_route,
-                    &routed_request,
-                    on_event,
-                    required,
-                )
-                .await;
+            let raw = complete_streaming_once(
+                providers,
+                fallback_route,
+                &routed_request,
+                on_event,
+                required,
+            )
+            .await;
             if let ControlFlow::Break(result) = record_attempt(
                 fallback_route,
                 raw,

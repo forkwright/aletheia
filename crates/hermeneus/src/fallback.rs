@@ -552,13 +552,10 @@ mod tests {
             retries_before_fallback: 3,
         };
 
-        let err = complete_with_fallback(
-            &provider,
-            &tool_bearing_request("primary-model"),
-            &config,
-        )
-        .await
-        .unwrap_err();
+        let err =
+            complete_with_fallback(&provider, &tool_bearing_request("primary-model"), &config)
+                .await
+                .unwrap_err();
 
         match err {
             error::Error::CapabilityMismatch { provider, .. } => {

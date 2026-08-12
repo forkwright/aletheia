@@ -531,7 +531,10 @@ fn capability_aware_selection_reports_mismatch_when_every_provider_incapable() {
         ProviderResolutionError::CapabilityMismatch {
             name, capability, ..
         } => {
-            assert_eq!(name, "alpha", "reports the first capability-incapable provider");
+            assert_eq!(
+                name, "alpha",
+                "reports the first capability-incapable provider"
+            );
             assert_eq!(capability, TOOL_LOOP_CAPABILITY);
         }
         other => panic!("expected CapabilityMismatch, got {other}"),
@@ -650,9 +653,9 @@ fn capability_mismatch_reports_after_health_when_both_present_in_tier() {
         ProviderResolutionError::ProviderUnavailable { name, .. } => {
             assert_eq!(name, "capable-down");
         }
-        other => panic!(
-            "expected ProviderUnavailable (health reported before capability), got {other}"
-        ),
+        other => {
+            panic!("expected ProviderUnavailable (health reported before capability), got {other}")
+        }
     }
 }
 
@@ -684,10 +687,7 @@ fn provider_capabilities_satisfies_and_missing_for_agree() {
     assert!(capable.missing_for(&required).is_none());
 
     assert!(!incapable.satisfies(&required));
-    assert_eq!(
-        incapable.missing_for(&required),
-        Some(TOOL_LOOP_CAPABILITY)
-    );
+    assert_eq!(incapable.missing_for(&required), Some(TOOL_LOOP_CAPABILITY));
 
     // WHY: an incapable provider still satisfies a request that never needed
     // the capability in the first place.
