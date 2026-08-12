@@ -1384,6 +1384,66 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Handler concurrency and latency analysis",
             direction_hint: TuningDirection::Contextual,
         },
+        // ── Maintenance — disk space monitoring ──
+        //
+        // WHY(#5128): `hot_reloadable: true` matches every other
+        // `maintenance.*` field (none carry a registry entry today, so all
+        // are implicitly hot via absence from `RESTART_PREFIXES`) and
+        // `docs/HOT-RELOAD.md`'s existing claim for this exact surface. The
+        // scheduler that actually applies a live threshold/interval change
+        // is a separate, tracked gap (#5144) — not reopened here.
+        ParameterSpec {
+            key: "maintenance.diskSpace.enabled",
+            section: "maintenance.diskSpace",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Bool(true),
+            bounds: None,
+            hot_reloadable: true,
+            description: "Whether the disk-space monitor and its write guards are active",
+            affects: "disk_space_monitoring",
+            outcome_signal: "disk_exhaustion_incident_rate",
+            evidence_required: "Disk exhaustion incident history",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "maintenance.diskSpace.warningThresholdMb",
+            section: "maintenance.diskSpace",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Int(1024),
+            bounds: Some((1.0, 1_000_000.0)),
+            hot_reloadable: true,
+            description: "Emit a warning when available disk space drops below this many MB",
+            affects: "disk_space_monitoring",
+            outcome_signal: "warning_lead_time_before_critical",
+            evidence_required: "Disk usage growth rate analysis",
+            direction_hint: TuningDirection::Higher,
+        },
+        ParameterSpec {
+            key: "maintenance.diskSpace.criticalThresholdMb",
+            section: "maintenance.diskSpace",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Int(100),
+            bounds: Some((1.0, 1_000_000.0)),
+            hot_reloadable: true,
+            description: "Reject non-essential writes when available disk space drops below this many MB",
+            affects: "disk_space_write_guard",
+            outcome_signal: "disk_exhaustion_incident_rate",
+            evidence_required: "Minimum headroom required by a single write burst (session archive, backup set)",
+            direction_hint: TuningDirection::Higher,
+        },
+        ParameterSpec {
+            key: "maintenance.diskSpace.checkIntervalSecs",
+            section: "maintenance.diskSpace",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(60),
+            bounds: Some((1.0, 86_400.0)),
+            hot_reloadable: true,
+            description: "Seconds between background disk-space checks",
+            affects: "disk_space_monitoring",
+            outcome_signal: "warning_lead_time_before_critical",
+            evidence_required: "statvfs call cost vs. detection-latency tradeoff",
+            direction_hint: TuningDirection::Lower,
+        },
         // ── Daemon behavior ──
         ParameterSpec {
             key: "daemonBehavior.prosocheAnomalySampleSize",

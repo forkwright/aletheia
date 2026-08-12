@@ -13,6 +13,56 @@ use pylon::router::build_router;
 mod common;
 use common::{TestEnv, bearer, issue_test_token, permissive_security};
 
+/// RAII guard that points `ALETHEIA_PRIMARY_KEY` at a fresh, test-owned
+/// primary key file for one test's duration, restoring the previous value on
+/// drop.
+///
+/// WARNING: mutates a process-wide env var. Safe only because no other test
+/// in this binary reads `ALETHEIA_PRIMARY_KEY` or persists `enc:`-eligible
+/// config through `taxis::loader::write_config` (#5349).
+struct PrimaryKeyEnvGuard {
+    _tmp: tempfile::TempDir,
+    previous: Option<std::ffi::OsString>,
+}
+
+impl PrimaryKeyEnvGuard {
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var is unsafe in edition 2024; scoped to this test-only guard, restored on Drop"
+    )]
+    fn install() -> Self {
+        let tmp = tempfile::TempDir::new().expect("primary key tempdir");
+        let key_path = tmp.path().join("primary.key");
+        taxis::encrypt::generate_primary_key(&key_path).expect("generate primary key");
+        let previous = std::env::var_os("ALETHEIA_PRIMARY_KEY");
+        // SAFETY: single-threaded setup for a guard that owns the entire
+        // lifetime of the mutation and restores it in `Drop`.
+        unsafe {
+            std::env::set_var("ALETHEIA_PRIMARY_KEY", &key_path);
+        }
+        Self {
+            _tmp: tmp,
+            previous,
+        }
+    }
+}
+
+impl Drop for PrimaryKeyEnvGuard {
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var/remove_var is unsafe in edition 2024; restores the pre-guard state"
+    )]
+    fn drop(&mut self) {
+        // SAFETY: see `install`.
+        unsafe {
+            match &self.previous {
+                Some(v) => std::env::set_var("ALETHEIA_PRIMARY_KEY", v),
+                None => std::env::remove_var("ALETHEIA_PRIMARY_KEY"),
+            }
+        }
+    }
+}
+
 #[tokio::test]
 async fn config_get_redacts_csrf_header_value() {
     let env = TestEnv::builder().with_actor(true).build().await;
@@ -52,7 +102,12 @@ async fn config_get_redacts_csrf_header_value() {
 }
 
 #[tokio::test]
-async fn config_put_and_nous_toggle_preserve_signing_key_on_disk() {
+async fn config_put_and_nous_toggle_preserve_encryption_on_disk() {
+    // WHY(#5349): simulates an operator who has already encrypted config once
+    // (a primary key is configured) -- an unrelated config PUT or nous toggle
+    // must not downgrade the encrypted secret back to plaintext on disk.
+    let _primary_key_guard = PrimaryKeyEnvGuard::install();
+
     let env = TestEnv::builder().with_actor(true).build().await;
     let signing_key = "synthetic-signing-key-for-secret-write-preservation";
     let csrf_header_value = "synthetic-csrf-header-for-secret-write-preservation";
@@ -99,12 +154,20 @@ async fn config_put_and_nous_toggle_preserve_signing_key_on_disk() {
     let config_path = env.state.oikos.config().join("aletheia.toml");
     let persisted = std::fs::read_to_string(&config_path).expect("read persisted config");
     assert!(
-        persisted.contains(signing_key),
-        "persisted config must contain the raw signing key"
+        !persisted.contains(signing_key),
+        "raw signing key must not appear on disk once a primary key is configured"
     );
     assert!(
-        persisted.contains(csrf_header_value),
-        "persisted config must contain the raw CSRF header value"
+        !persisted.contains(csrf_header_value),
+        "raw csrf header value must not appear on disk once a primary key is configured"
+    );
+    assert!(
+        persisted.contains("signingKey = \"enc:"),
+        "signing key must persist as enc: ciphertext, not be silently dropped: {persisted}"
+    );
+    assert!(
+        persisted.contains("headerValue = \"enc:"),
+        "csrf header value must persist as enc: ciphertext, not be silently dropped: {persisted}"
     );
     assert!(
         !persisted.contains("[REDACTED]"),

@@ -9,6 +9,7 @@ use tower::ServiceExt;
 
 use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::test_utils::MockProvider;
+use koina::disk_space::{DEFAULT_CRITICAL_BYTES, DEFAULT_WARNING_BYTES, DiskSpaceMonitor};
 use koina::http::{BEARER_PREFIX, CONTENT_TYPE_JSON};
 use koina::secret::SecretString;
 use mneme::embedding::MockEmbeddingProvider;
@@ -362,6 +363,13 @@ bind = "localhost"
         #[cfg(feature = "knowledge-store")]
         knowledge_store: None,
         embedding_provider: Some(Arc::new(MockEmbeddingProvider::new(384))),
+        // WHY(#5128): a real (enabled) monitor by default so in-crate
+        // health-handler tests exercise the disk-status reporting branch
+        // rather than the "monitoring disabled" one.
+        disk_monitor: Some(DiskSpaceMonitor::new(
+            DEFAULT_WARNING_BYTES,
+            DEFAULT_CRITICAL_BYTES,
+        )),
         turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
         metrics_registry,
         event_bus: Arc::new(crate::event_bus::EventBus::new(256)),

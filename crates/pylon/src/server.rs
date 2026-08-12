@@ -229,6 +229,10 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         // WHY: pylon's standalone server does not configure embeddings; the
         // aletheia binary owns the embedding pipeline. Health reports "warn".
         embedding_provider: None,
+        // WHY(#5128): pylon's standalone (deprecated) server has no
+        // maintenance config surface; the aletheia binary owns disk-space
+        // monitoring via `RuntimeBuilder`.
+        disk_monitor: None,
         turn_buffer_registry: Arc::new(crate::turn_buffer::TurnBufferRegistry::new()),
         metrics_registry,
         event_bus: Arc::new(crate::event_bus::EventBus::new(256)),
