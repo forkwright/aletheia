@@ -1687,11 +1687,18 @@ fn subsystem_daemon_runtime(
         "external_timer_enabled": prosoche.external_timer.enabled,
     });
 
+    // WHY "unknown" rather than "healthy": an empty reader slice cannot
+    // distinguish "daemon mode is off for this instance" from "nobody wired
+    // the readers into AppState". Reporting healthy asserts the runtime is
+    // fine on no evidence, and hides a real misconfiguration — prosoche
+    // settings can be enabled here while zero task-state stores exist.
+    // "unknown" is the honest verdict and does not fail the aggregate, so a
+    // genuinely daemon-less instance still reports overall healthy.
     if daemon_task_states.is_empty() {
         return SubsystemStatus {
             id: "daemon_runtime".to_owned(),
             name: "Daemon / Cron / Dispatch Runtime".to_owned(),
-            status: "healthy".to_owned(),
+            status: "unknown".to_owned(),
             owner: "crates/oikonomos::runner".to_owned(),
             last_checked: generated_at.to_owned(),
             last_success: None,
@@ -1701,7 +1708,9 @@ fn subsystem_daemon_runtime(
             details: Some(serde_json::json!({
                 "configured": configured,
                 "runners": [],
-                "note": "daemon mode is disabled for this instance",
+                "note": "no daemon task-state readers are wired; \
+                         daemon mode is either disabled for this instance or \
+                         the readers were not threaded into AppState",
             })),
             suggested_action: None,
         };
@@ -2172,17 +2181,22 @@ mod tests {
     }
 
     #[test]
-    fn subsystem_daemon_runtime_reports_healthy_when_daemons_disabled() {
-        // WHY(#5142): an empty reader slice is what the runtime builder
-        // produces when `self.daemons` is false — a real, known state, not
-        // the permanent "unknown" this record used to report.
+    fn subsystem_daemon_runtime_reports_unknown_without_wired_readers() {
+        // WHY(#5142): an empty reader slice is ambiguous — it is what the
+        // runtime builder produces when `self.daemons` is false, AND what an
+        // unwired AppState produces. Reporting "healthy" would assert the
+        // runtime is fine on no evidence and hide the second case, including
+        // a prosoche-enabled instance with zero task-state stores. "unknown"
+        // is the honest verdict; it does not fail the aggregate, so a
+        // genuinely daemon-less instance still reports overall healthy.
         let status = subsystem_daemon_runtime(
             &[],
             &taxis::config::ProsocheMaintenanceSettings::default(),
             "2026-01-01T00:00:00Z",
         );
-        assert_eq!(status.status, "healthy");
+        assert_eq!(status.status, "unknown");
         assert!(status.failure_reason.is_none());
+        assert!(status.degraded_reason.is_none());
         let details = status.details.expect("details present");
         assert_eq!(details["runners"], serde_json::json!([]));
     }
