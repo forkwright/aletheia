@@ -5,6 +5,8 @@ tightens: per-crate CLAUDE.md files under crates/*/ can narrow conventions withi
 
 # CLAUDE.md
 
+@AGENTS.md
+
 ## At a glance
 
 Repo-level conventions for AI coding agents working on Aletheia. Key crates: aletheia, nous, pylon, mneme. Entry point: `crates/aletheia/src/main.rs`.

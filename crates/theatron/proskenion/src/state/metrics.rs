@@ -129,19 +129,6 @@ pub(crate) struct TokenSeriesPoint {
     pub output_tokens: u64,
 }
 
-impl TokenSeriesPoint {
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "used when series filtering by agent/model is implemented (#6666)"
-        )
-    )]
-    pub(crate) fn total(&self) -> u64 {
-        self.input_tokens.saturating_add(self.output_tokens)
-    }
-}
-
 /// Per-agent token usage row from the metrics API.
 #[derive(Debug, Clone, PartialEq, Default, serde::Deserialize)]
 pub(crate) struct AgentTokenRow {
@@ -855,16 +842,6 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(resp.grand_total_tokens(), 450);
-    }
-
-    #[test]
-    fn token_series_point_total() {
-        let p = TokenSeriesPoint {
-            input_tokens: 100,
-            output_tokens: 200,
-            ..Default::default()
-        };
-        assert_eq!(p.total(), 300);
     }
 
     #[test]

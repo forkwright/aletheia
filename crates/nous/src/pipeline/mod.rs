@@ -1241,8 +1241,14 @@ pub(crate) async fn run_pipeline(
                 session_key: &input.session.session_key,
                 timestamp: &now,
             };
-            // kanon:ignore RUST/no-silent-result-swallow — hook failure must not abort the turn
-            let _ = hook_registry.run_session_start(&session_start_ctx).await;
+            // WHY: mirrors the before-query hook handling below — an aborting hook
+            // result must actually stop the turn, or the abort contract the hook
+            // registry advertises (and the registry_tests assert) is a no-op.
+            if let crate::hooks::HookResult::Abort { reason } =
+                hook_registry.run_session_start(&session_start_ctx).await
+            {
+                return Err(error::GuardRejectedSnafu { reason }.build());
+            }
         }
 
         let mut ctx = PipelineContext::default();

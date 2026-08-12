@@ -133,24 +133,12 @@ fn render_json(replay: &SessionReplayResponse) -> Result<String> {
 
 fn write_output(content: &str, path: Option<&std::path::Path>) -> Result<()> {
     match path {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "aletheia CLI commands use synchronous filesystem operations for session export writes"
-        )]
-        Some(p) => {
-            std::fs::write(p, content)
-                .with_whatever_context(|_| format!("failed to write to {}", p.display()))?;
-            // WHY: restrict session export to owner-only (0600) — contains private conversation history
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(p, std::fs::Permissions::from_mode(0o600))
-                    .with_whatever_context(|_| {
-                        format!("failed to set permissions on {}", p.display())
-                    })?;
-            }
-            Ok(())
-        }
+        // WHY: session export contains private conversation history — write with
+        // owner-only (0600) permissions from the moment the file is created, rather
+        // than create-then-chmod, which leaves a window where the file is briefly
+        // readable under the process umask (and stays that way if the chmod fails).
+        Some(p) => koina::fs::write_restricted(p, content.as_bytes())
+            .with_whatever_context(|_| format!("failed to write to {}", p.display())),
         None => std::io::stdout()
             .write_all(content.as_bytes())
             .whatever_context("failed to write to stdout"),

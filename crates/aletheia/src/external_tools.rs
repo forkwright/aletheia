@@ -408,7 +408,7 @@ async fn connect_mcp_server(
     entry: &ExternalToolEntry,
 ) -> diaporeia::error::Result<ExternalMcpClient> {
     if let Some(endpoint) = entry.endpoint.as_deref() {
-        let auth = entry.auth.as_ref().map(mcp_auth_to_diaporeia);
+        let auth = entry.auth.as_ref().map(mcp_auth_to_diaporeia).transpose()?;
         return ExternalMcpClient::connect_streamable_http_with_auth(endpoint, auth.as_ref()).await;
     }
 
@@ -426,22 +426,40 @@ async fn connect_mcp_server(
 }
 
 #[cfg(feature = "mcp")]
-fn mcp_auth_to_diaporeia(auth: &ExternalToolAuth) -> diaporeia::client::McpAuth {
+fn mcp_auth_to_diaporeia(
+    auth: &ExternalToolAuth,
+) -> diaporeia::error::Result<diaporeia::client::McpAuth> {
     match auth {
-        ExternalToolAuth::Bearer { token } => diaporeia::client::McpAuth::Bearer {
+        ExternalToolAuth::Bearer { token } => Ok(diaporeia::client::McpAuth::Bearer {
             token: token.expose_secret().to_owned(),
-        },
-        ExternalToolAuth::Header { name, value } => diaporeia::client::McpAuth::Header {
+        }),
+        ExternalToolAuth::Header { name, value } => Ok(diaporeia::client::McpAuth::Header {
             name: name.clone(),
             value: value.expose_secret().to_owned(),
-        },
+        }),
         ExternalToolAuth::EnvToken {
             header_name,
             env_var,
-        } => diaporeia::client::McpAuth::EnvToken {
+        } => Ok(diaporeia::client::McpAuth::EnvToken {
             header_name: header_name.clone(),
             env_var: env_var.clone(),
-        },
+        }),
+        // WHY this refuses instead of falling back to no auth: ExternalToolAuth is
+        // #[non_exhaustive] in taxis, so a variant added there compiles here without
+        // touching this file. Mapping an unrecognised scheme to "no credentials"
+        // would send an unauthenticated request to an external MCP server that the
+        // operator explicitly configured auth for -- a silent downgrade. Refusing
+        // the connection surfaces the gap instead.
+        // WHY constructed directly rather than through a Snafu selector: diaporeia
+        // declares snafu(visibility(pub(crate))), so its context selectors are not
+        // reachable from here. The variant itself is public.
+        _ => Err(diaporeia::error::Error::InvalidInput {
+            message: "external MCP auth scheme is not supported by this build; \
+                      aletheia cannot convert it and will not connect without \
+                      credentials"
+                .to_owned(),
+            location: snafu::location!(),
+        }),
     }
 }
 
