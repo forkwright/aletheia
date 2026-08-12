@@ -16,6 +16,7 @@ use tracing::{Instrument, error, info, warn};
 use agora::types::ChannelProvider;
 use aletheia_routing::{AfterActionStore, RecordingRouter};
 use hermeneus::provider::ProviderRegistry;
+use koina::disk_space::DiskSpaceMonitor;
 use koina::id::ToolName;
 use koina::secret::SecretString;
 use koina::system::{Environment, RealSystem};
@@ -120,6 +121,73 @@ fn resolve_pack_paths(oikos: &Oikos, configured: &[PathBuf]) -> Vec<PathBuf> {
         .iter()
         .map(|path| resolve_pack_path(oikos, path))
         .collect()
+}
+
+/// Spawn the disk-space monitor from `maintenance.diskSpace` config.
+///
+/// Returns `None` (and spawns nothing) when `enabled = false`, per #5128's
+/// acceptance criteria — write-guard callers must treat a `None` monitor as
+/// "monitoring intentionally disabled", not "assume space is available".
+/// Checks `oikos.data()`, matching the one-shot startup check in
+/// `taxis::preflight::check_disk_space` (#5128).
+///
+/// WHY: previously created unconditionally in `commands::server` with
+/// hardcoded `DEFAULT_WARNING_BYTES`/`DEFAULT_CRITICAL_BYTES` and a fixed
+/// one-minute interval via an untracked `tokio::spawn`, ignoring config
+/// entirely and outliving the `task_tracker` drain on shutdown. Spawning here
+/// (config-driven, `task_tracker`-tracked) lets the monitor live on
+/// `AppState` for health/diagnostics and be reused by log retention instead
+/// of each caller building its own.
+fn spawn_disk_space_monitor(
+    oikos: &Oikos,
+    settings: &taxis::config::DiskSpaceSettings,
+    task_tracker: &TaskTracker,
+    token: CancellationToken,
+) -> Option<DiskSpaceMonitor> {
+    // WHY: saturating conversion mirrors `koina::disk_space`'s own
+    // `available_bytes_from_stat` — an operator-supplied MB value large
+    // enough to overflow u64 bytes should clamp, not wrap into a tiny
+    // (falsely critical) threshold.
+    const BYTES_PER_MB: u64 = 1024 * 1024;
+
+    if !settings.enabled {
+        return None;
+    }
+
+    let warning_bytes = settings.warning_threshold_mb.saturating_mul(BYTES_PER_MB);
+    let critical_bytes = settings.critical_threshold_mb.saturating_mul(BYTES_PER_MB);
+
+    let monitor = DiskSpaceMonitor::new(warning_bytes, critical_bytes);
+    let task_monitor = monitor.clone();
+    let path = oikos.data();
+    // WHY(#6080-style): config validation rejects a zero interval before this
+    // point is ever reached; `.max(1)` is a defense-in-depth floor only —
+    // `Duration::from_secs(0)` would tick as fast as possible and spin CPU.
+    let interval = Duration::from_secs(settings.check_interval_secs.max(1));
+    let span = tracing::info_span!("disk_space_monitor", path = %path.display());
+    task_tracker.spawn(
+        async move {
+            let mut ticker = tokio::time::interval(interval);
+            loop {
+                tokio::select! {
+                    biased;
+                    () = token.cancelled() => break,
+                    _ = ticker.tick() => {
+                        match task_monitor.refresh(&path) {
+                            Ok(status) => {
+                                tracing::debug!(%status, "disk space monitor refreshed");
+                            }
+                            Err(e) => {
+                                tracing::warn!(error = %e, path = %path.display(), "disk space monitor refresh failed");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .instrument(span),
+    );
+    Some(monitor)
 }
 
 /// Build a per-agent prosoche `TaskDef` from config values.
@@ -718,6 +786,19 @@ impl RuntimeBuilder {
         let mut daemon_task_state_handles: Vec<(String, oikonomos::state::TaskStateStore)> =
             Vec::new();
 
+        // WHY(#5128): spawned unconditionally regardless of `self.daemons` --
+        // disk-space monitoring backs write guards (config persistence,
+        // session storage) that matter even when the daemon subsystem itself
+        // is disabled (e.g. `RuntimeBuilder::minimal`, whose `daemons: false`
+        // still calls `build()`; `validation_only` never reaches this point
+        // at all -- `check-config` calls `.validate()`, not `.build()`).
+        let disk_monitor = spawn_disk_space_monitor(
+            &self.oikos,
+            &self.config.maintenance.disk_space,
+            &task_tracker,
+            shutdown_token.child_token(),
+        );
+
         if self.daemons {
             let runner_output_mode =
                 daemon_output_mode(self.config.daemon_behavior.runner_output_mode);
@@ -1019,6 +1100,7 @@ impl RuntimeBuilder {
             #[cfg(feature = "recall")]
             knowledge_store,
             embedding_provider: Some(Arc::clone(&embedding_provider)),
+            disk_monitor,
             turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::with_limits(
                 turn_buffer_completed_ttl,
                 self.config.api_limits.turn_buffer_max_events_per_turn,

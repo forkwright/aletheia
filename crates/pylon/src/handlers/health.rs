@@ -1520,6 +1520,7 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
             ),
         ),
         subsystem_event_bus(state, generated_at).await,
+        subsystem_disk_space(state, generated_at),
         subsystem_from_check(
             combine_checks(
                 "config_security_posture",
@@ -1775,6 +1776,127 @@ fn subsystem_daemon_runtime(
     }
 }
 
+/// Convert unix epoch seconds to an ISO 8601 string, matching `generated_at`'s
+/// format. Returns `None` if the value is outside jiff's representable range
+/// (never in practice for a `SystemTime::now()`-derived timestamp).
+fn format_epoch_secs(secs: u64) -> Option<String> {
+    i64::try_from(secs)
+        .ok()
+        .and_then(|s| jiff::Timestamp::from_second(s).ok())
+        .map(|ts| ts.to_string())
+}
+
+/// Disk-space monitor subsystem (#5128): current status, configured
+/// thresholds, and last successful refresh from the shared
+/// `DiskSpaceMonitor` on `AppState`. Reports `"unknown"` — not a fabricated
+/// pass — when `maintenance.diskSpace.enabled = false`.
+fn subsystem_disk_space(state: &HealthState, generated_at: &str) -> SubsystemStatus {
+    const BYTES_PER_MB: u64 = 1024 * 1024;
+    const OWNER: &str = "crates/koina::disk_space";
+
+    let Some(monitor) = state.disk_monitor.as_ref() else {
+        return SubsystemStatus {
+            id: "disk_space".to_owned(),
+            name: "Disk Space Monitor".to_owned(),
+            status: "unknown".to_owned(),
+            owner: OWNER.to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: None,
+            degraded_reason: None,
+            failure_reason: Some(
+                "maintenance.diskSpace.enabled = false -- monitoring not active".to_owned(),
+            ),
+            details: Some(serde_json::json!({ "config_active": false })),
+            suggested_action: None,
+        };
+    };
+
+    let status = monitor.status();
+    let available_mb = status.available_bytes() / BYTES_PER_MB;
+    let warning_mb = monitor.warning_bytes() / BYTES_PER_MB;
+    let critical_mb = monitor.critical_bytes() / BYTES_PER_MB;
+    let last_refreshed = monitor
+        .last_refreshed_unix_secs()
+        .and_then(format_epoch_secs);
+
+    let details = Some(serde_json::json!({
+        "config_active": true,
+        "available_mb": available_mb,
+        "warning_threshold_mb": warning_mb,
+        "critical_threshold_mb": critical_mb,
+        "last_refreshed": last_refreshed,
+    }));
+
+    match status {
+        koina::disk_space::DiskStatus::Ok { .. } => SubsystemStatus {
+            id: "disk_space".to_owned(),
+            name: "Disk Space Monitor".to_owned(),
+            status: "healthy".to_owned(),
+            owner: OWNER.to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: last_refreshed,
+            last_failure: None,
+            degraded_reason: None,
+            failure_reason: None,
+            details,
+            suggested_action: None,
+        },
+        koina::disk_space::DiskStatus::Warning { .. } => SubsystemStatus {
+            id: "disk_space".to_owned(),
+            name: "Disk Space Monitor".to_owned(),
+            status: "degraded".to_owned(),
+            owner: OWNER.to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: last_refreshed,
+            last_failure: None,
+            degraded_reason: Some(format!(
+                "available space ({available_mb} MB) is below the warning threshold \
+                 ({warning_mb} MB)"
+            )),
+            failure_reason: None,
+            details,
+            suggested_action: Some(
+                "Free disk space or raise maintenance.diskSpace.warningThresholdMb.".to_owned(),
+            ),
+        },
+        koina::disk_space::DiskStatus::Critical { .. } => SubsystemStatus {
+            id: "disk_space".to_owned(),
+            name: "Disk Space Monitor".to_owned(),
+            status: "failed".to_owned(),
+            owner: OWNER.to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: last_refreshed,
+            degraded_reason: None,
+            failure_reason: Some(format!(
+                "available space ({available_mb} MB) is below the critical threshold \
+                 ({critical_mb} MB); non-essential writes are being rejected"
+            )),
+            details,
+            suggested_action: Some(
+                "Free disk space immediately -- non-essential writes are currently blocked."
+                    .to_owned(),
+            ),
+        },
+        // WHY: `DiskStatus` is `#[non_exhaustive]` in koina; an unrecognized
+        // future variant must surface as a gap, not silently pass or fail.
+        _ => SubsystemStatus {
+            id: "disk_space".to_owned(),
+            name: "Disk Space Monitor".to_owned(),
+            status: "unknown".to_owned(),
+            owner: OWNER.to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: None,
+            degraded_reason: None,
+            failure_reason: Some("unrecognized DiskStatus variant".to_owned()),
+            details,
+            suggested_action: None,
+        },
+    }
+}
+
 /// Tool execution history subsystem: a real read against the tool-audit
 /// log, not a fabricated pass. Full aggregated tool usage statistics live
 /// behind `GET /api/tool-stats` (#4484), which this deliberately does not
@@ -1922,6 +2044,7 @@ mod tests {
             let _: &Arc<tokio::sync::RwLock<AletheiaConfig>> = &state.config;
             let _: &Option<Arc<dyn mneme::embedding::EmbeddingProvider>> =
                 &state.embedding_provider;
+            let _: &Option<koina::disk_space::DiskSpaceMonitor> = &state.disk_monitor;
         }
         assert!(std::mem::size_of::<HealthState>() > 0);
     }
