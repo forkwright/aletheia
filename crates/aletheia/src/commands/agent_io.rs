@@ -1622,124 +1622,129 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
             )
             .map_err(|e| import_error(&e))?;
 
-            let imported = store
-                .import_session(
-                    &mneme::types::Session {
-                        id: session.id.clone(),
-                        nous_id: nous_id.clone(),
-                        session_key: session.session_key.clone(),
-                        status,
-                        model: agent_file.nous.model.clone(),
-                        session_type,
-                        created_at: session.created_at.clone(),
-                        updated_at: session.updated_at.clone(),
-                        metrics: SessionMetrics {
-                            token_count_estimate: session.token_count_estimate,
-                            message_count: session.message_count,
-                            // WHY(#5783): restore identity metrics from the export;
-                            // absent in v1 files, where serde(default) yields None/0.
-                            last_input_tokens: session.last_input_tokens.unwrap_or(0),
-                            bootstrap_hash: session.bootstrap_hash.clone(),
-                            distillation_count: session.distillation_count,
-                            last_distilled_at: session.last_distilled_at.clone(),
-                            computed_context_tokens: session.computed_context_tokens.unwrap_or(0),
-                        },
-                        origin: SessionOrigin {
-                            // WHY(#5783): faithful round-trip — preserve origin
-                            // metadata exactly as exported (including None), so a
-                            // re-export is byte-identical (the #4163 fidelity contract).
-                            parent_session_id: session.parent_session_id.clone(),
-                            thread_id: session.thread_id.clone(),
-                            transport: session.transport.clone(),
-                            display_name: session.display_name.clone(),
-                        },
-                        artefact_meta: None,
+            let session_record = mneme::types::Session {
+                id: session.id.clone(),
+                nous_id: nous_id.clone(),
+                session_key: session.session_key.clone(),
+                status,
+                model: agent_file.nous.model.clone(),
+                session_type,
+                created_at: session.created_at.clone(),
+                updated_at: session.updated_at.clone(),
+                metrics: SessionMetrics {
+                    token_count_estimate: session.token_count_estimate,
+                    message_count: session.message_count,
+                    // WHY(#5783): restore identity metrics from the export;
+                    // absent in v1 files, where serde(default) yields None/0.
+                    last_input_tokens: session.last_input_tokens.unwrap_or(0),
+                    bootstrap_hash: session.bootstrap_hash.clone(),
+                    distillation_count: session.distillation_count,
+                    last_distilled_at: session.last_distilled_at.clone(),
+                    computed_context_tokens: session.computed_context_tokens.unwrap_or(0),
+                },
+                origin: SessionOrigin {
+                    // WHY(#5783): faithful round-trip — preserve origin
+                    // metadata exactly as exported (including None), so a
+                    // re-export is byte-identical (the #4163 fidelity contract).
+                    parent_session_id: session.parent_session_id.clone(),
+                    thread_id: session.thread_id.clone(),
+                    transport: session.transport.clone(),
+                    display_name: session.display_name.clone(),
+                },
+                artefact_meta: None,
+            };
+
+            // WHY(#5033): every child record is built and validated BEFORE
+            // any store call, so a role-parse failure on message N never
+            // leaves messages 1..N-1 (or the session row) committed without
+            // the rest — `import_session_bundle` writes the whole session in
+            // one transaction below.
+            let mut messages = Vec::with_capacity(session.messages.len());
+            for msg in &session.messages {
+                let role = parse_message_role(&msg.role, &session.id, args.allow_unknown_values)
+                    .map_err(|e| import_error(&e))?;
+                messages.push(mneme::types::Message {
+                    id: msg.seq,
+                    session_id: session_record.id.clone(),
+                    seq: msg.seq,
+                    role,
+                    content: msg.content.clone(),
+                    tool_call_id: msg.tool_call_id.clone(),
+                    tool_name: msg.tool_name.clone(),
+                    token_estimate: msg.token_estimate,
+                    is_distilled: msg.is_distilled,
+                    created_at: msg.created_at.clone(),
+                });
+            }
+
+            let usage_records: Vec<mneme::types::UsageRecord> = session
+                .usage_records
+                .iter()
+                .flatten()
+                .map(|record| mneme::types::UsageRecord {
+                    session_id: session_record.id.clone(),
+                    turn_seq: record.turn_seq,
+                    input_tokens: record.input_tokens,
+                    output_tokens: record.output_tokens,
+                    cache_read_tokens: record.cache_read_tokens,
+                    cache_write_tokens: record.cache_write_tokens,
+                    model: record.model.clone(),
+                    created_at: record.created_at.clone(),
+                })
+                .collect();
+
+            // WHY(#5033): category validity is enforced by the store
+            // (`import_session_bundle` -> `put_note_in_tx`, same
+            // `VALID_CATEGORIES` check `add_note` uses) rather than
+            // silently substituted here — an invalid category now fails the
+            // whole session's import instead of writing a note under a
+            // different category than the export actually recorded.
+            let notes: Vec<mneme::store::ImportSessionNote<'_>> = session
+                .notes
+                .iter()
+                .map(|note| mneme::store::ImportSessionNote {
+                    category: note.category.as_str(),
+                    content: note.content.as_str(),
+                    created_at: note.created_at.as_str(),
+                })
+                .collect();
+
+            let working_state_value = session
+                .working_state
+                .as_ref()
+                .map(|ws| {
+                    serde_json::to_string(ws).with_whatever_context(|_| {
+                        format!("failed to serialize working_state for {}", session.id)
+                    })
+                })
+                .transpose()?;
+            let ws_key = format!("ws:{nous_id}:{}", session.id);
+            let working_state = working_state_value.as_deref().map(|value| {
+                mneme::store::ImportSessionWorkingState {
+                    key: &ws_key,
+                    value,
+                    author: &nous_id,
+                    ttl_secs: 86_400,
+                }
+            });
+
+            // WHY: session row, messages, usage, notes, and working state
+            // land in one fjall transaction — an interruption anywhere in
+            // this call leaves the store exactly as it was before it,
+            // never a session whose row claims data that was not actually
+            // written (#5033).
+            store
+                .import_session_bundle(
+                    &mneme::store::ImportSessionBundle {
+                        session: &session_record,
+                        messages: &messages,
+                        usage_records: &usage_records,
+                        notes: &notes,
+                        working_state,
                     },
                     import_force,
                 )
                 .with_whatever_context(|_| format!("failed to import session {}", session.id))?;
-
-            for msg in &session.messages {
-                let role = parse_message_role(&msg.role, &session.id, args.allow_unknown_values)
-                    .map_err(|e| import_error(&e))?;
-                store
-                    .insert_message_raw(&mneme::types::Message {
-                        id: msg.seq,
-                        session_id: imported.id.clone(),
-                        seq: msg.seq,
-                        role,
-                        content: msg.content.clone(),
-                        tool_call_id: msg.tool_call_id.clone(),
-                        tool_name: msg.tool_name.clone(),
-                        token_estimate: msg.token_estimate,
-                        is_distilled: msg.is_distilled,
-                        created_at: msg.created_at.clone(),
-                    })
-                    .with_whatever_context(|_| {
-                        format!(
-                            "failed to insert message seq {} into session {}",
-                            msg.seq, session.id
-                        )
-                    })?;
-            }
-
-            if let Some(usage_records) = &session.usage_records {
-                for record in usage_records {
-                    store
-                        .record_usage(&mneme::types::UsageRecord {
-                            session_id: imported.id.clone(),
-                            turn_seq: record.turn_seq,
-                            input_tokens: record.input_tokens,
-                            output_tokens: record.output_tokens,
-                            cache_read_tokens: record.cache_read_tokens,
-                            cache_write_tokens: record.cache_write_tokens,
-                            model: record.model.clone(),
-                            created_at: record.created_at.clone(),
-                        })
-                        .with_whatever_context(|_| {
-                            format!(
-                                "failed to import usage record turn {} into session {}",
-                                record.turn_seq, session.id
-                            )
-                        })?;
-                }
-            }
-
-            if let Some(ws) = &session.working_state {
-                let ws_key = format!("ws:{nous_id}:{}", session.id);
-                let ws_value = serde_json::to_string(ws).with_whatever_context(|_| {
-                    format!("failed to serialize working_state for {}", session.id)
-                })?;
-                store
-                    .blackboard_write(&ws_key, &ws_value, &nous_id, 86_400)
-                    .with_whatever_context(|_| {
-                        format!("failed to hydrate working_state for {}", session.id)
-                    })?;
-            }
-
-            for note in &session.notes {
-                let category = if mneme::store::SessionStore::VALID_CATEGORIES
-                    .contains(&note.category.as_str())
-                {
-                    note.category.as_str()
-                } else {
-                    eprintln!(
-                        "  WARN: note category '{}' not valid, using 'context'",
-                        note.category
-                    );
-                    "context"
-                };
-                if let Err(e) = store.add_note(&imported.id, &nous_id, category, &note.content) {
-                    eprintln!("  WARN: failed to add note: {e}");
-                }
-            }
-
-            // WHY: import reports success only after the full per-session batch
-            // is durable. Otherwise a crash immediately after import can lose
-            // rows written after `import_session`.
-            store.ensure_durable().with_whatever_context(|_| {
-                format!("failed to ensure durability for session {}", session.id)
-            })?;
 
             summary.sessions += 1;
         }

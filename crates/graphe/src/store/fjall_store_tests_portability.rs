@@ -5,9 +5,11 @@
     reason = "test assertions on Vecs with asserted length"
 )]
 
+use super::super::{ImportSessionBundle, ImportSessionNote, ImportSessionWorkingState};
 use crate::test_fixtures::test_store;
 use crate::types::{
     AgentNote, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
+    UsageRecord,
 };
 
 fn seed_session(store: &super::super::SessionStore) -> String {
@@ -590,5 +592,265 @@ fn force_import_displaces_different_owner_and_cleans_nous_index() {
     assert!(
         listing.iter().any(|s| s.id == "ses-replacement"),
         "replacement session must appear in nous_idx for syn"
+    );
+}
+
+// ── Atomic per-session import (issue #5033) ────────────────────────────────
+
+#[test]
+fn import_session_bundle_writes_everything_atomically() {
+    let store = test_store();
+    let session = import_session_record(
+        "ses-bundle-1",
+        SessionStatus::Active,
+        "2024-08-01T00:00:00Z",
+    );
+    let messages = vec![
+        Message {
+            id: 1,
+            session_id: session.id.clone(),
+            seq: 1,
+            role: Role::User,
+            content: "bundled hello".to_owned(),
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 5,
+            is_distilled: false,
+            created_at: "2024-08-01T00:00:01Z".to_owned(),
+        },
+        Message {
+            id: 2,
+            session_id: session.id.clone(),
+            seq: 2,
+            role: Role::Assistant,
+            content: "bundled reply".to_owned(),
+            tool_call_id: None,
+            tool_name: None,
+            token_estimate: 8,
+            is_distilled: false,
+            created_at: "2024-08-01T00:00:02Z".to_owned(),
+        },
+    ];
+    let usage_records = vec![UsageRecord {
+        session_id: session.id.clone(),
+        turn_seq: 1,
+        input_tokens: 5,
+        output_tokens: 8,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+        model: Some("mock-model".to_owned()),
+        created_at: "2024-08-01T00:00:02Z".to_owned(),
+    }];
+    let notes = vec![ImportSessionNote {
+        category: "task",
+        content: "bundled note",
+        created_at: "2024-08-01T00:00:03Z",
+    }];
+    let ws_key = format!("ws:syn:{}", session.id);
+    let working_state = Some(ImportSessionWorkingState {
+        key: &ws_key,
+        value: "{\"step\":1}",
+        author: "syn",
+        ttl_secs: 86_400,
+    });
+
+    let result = store
+        .import_session_bundle(
+            &ImportSessionBundle {
+                session: &session,
+                messages: &messages,
+                usage_records: &usage_records,
+                notes: &notes,
+                working_state,
+            },
+            false,
+        )
+        .expect("bundle import succeeds");
+
+    assert_eq!(result.session.id, "ses-bundle-1");
+    assert_eq!(result.messages_imported, 2);
+    assert_eq!(result.usage_records_imported, 1);
+    assert_eq!(result.notes_imported, 1);
+    assert!(result.working_state_imported);
+
+    let restored = store
+        .find_session_by_id("ses-bundle-1")
+        .expect("query")
+        .expect("session present");
+    assert_eq!(restored.status, SessionStatus::Active);
+
+    let history = store
+        .get_history_raw("ses-bundle-1", None)
+        .expect("history");
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[0].content, "bundled hello");
+    assert_eq!(history[1].content, "bundled reply");
+
+    let usage = store.get_usage_for_session("ses-bundle-1").expect("usage");
+    assert_eq!(usage.len(), 1);
+    assert_eq!(usage[0].input_tokens, 5);
+
+    let notes_stored = store.get_notes("ses-bundle-1").expect("notes");
+    assert_eq!(notes_stored.len(), 1);
+    assert_eq!(notes_stored[0].content, "bundled note");
+
+    let ws = store
+        .blackboard_read(&ws_key)
+        .expect("blackboard read")
+        .expect("working state present");
+    assert_eq!(ws.value, "{\"step\":1}");
+}
+
+#[test]
+fn import_session_bundle_invalid_note_leaves_nothing_committed() {
+    let store = test_store();
+    let before_count = store.session_count();
+    let session = import_session_record(
+        "ses-bundle-2",
+        SessionStatus::Active,
+        "2024-08-02T00:00:00Z",
+    );
+    let messages = vec![Message {
+        id: 1,
+        session_id: session.id.clone(),
+        seq: 1,
+        role: Role::User,
+        content: "will not survive".to_owned(),
+        tool_call_id: None,
+        tool_name: None,
+        token_estimate: 3,
+        is_distilled: false,
+        created_at: "2024-08-02T00:00:01Z".to_owned(),
+    }];
+    let notes = vec![ImportSessionNote {
+        category: "not-a-real-category",
+        content: "bad note",
+        created_at: "2024-08-02T00:00:02Z",
+    }];
+
+    let err = store
+        .import_session_bundle(
+            &ImportSessionBundle {
+                session: &session,
+                messages: &messages,
+                usage_records: &[],
+                notes: &notes,
+                working_state: None,
+            },
+            false,
+        )
+        .expect_err("invalid note category must fail the whole import");
+    assert!(
+        err.to_string().contains("CHECK constraint failed"),
+        "got: {err}"
+    );
+
+    assert!(
+        store
+            .find_session_by_id("ses-bundle-2")
+            .expect("query")
+            .is_none(),
+        "session row must not exist after a failed bundle import"
+    );
+    assert!(
+        store
+            .get_history_raw("ses-bundle-2", None)
+            .expect("history query")
+            .is_empty(),
+        "messages must not survive a failed bundle import"
+    );
+    assert_eq!(
+        store.session_count(),
+        before_count,
+        "session counters must be unchanged after a failed bundle import"
+    );
+}
+
+#[test]
+fn import_session_bundle_duplicate_seq_rejected_before_write() {
+    let store = test_store();
+    let session = import_session_record(
+        "ses-bundle-3",
+        SessionStatus::Active,
+        "2024-08-03T00:00:00Z",
+    );
+    let dup = |seq: i64, content: &str| Message {
+        id: seq,
+        session_id: session.id.clone(),
+        seq,
+        role: Role::User,
+        content: content.to_owned(),
+        tool_call_id: None,
+        tool_name: None,
+        token_estimate: 1,
+        is_distilled: false,
+        created_at: "2024-08-03T00:00:01Z".to_owned(),
+    };
+    let messages = vec![dup(1, "first"), dup(1, "second")];
+
+    let err = store
+        .import_session_bundle(
+            &ImportSessionBundle {
+                session: &session,
+                messages: &messages,
+                usage_records: &[],
+                notes: &[],
+                working_state: None,
+            },
+            false,
+        )
+        .expect_err("duplicate seq must be rejected");
+    assert!(err.to_string().contains("duplicate"), "got: {err}");
+
+    assert!(
+        store
+            .find_session_by_id("ses-bundle-3")
+            .expect("query")
+            .is_none(),
+        "validation must reject the bundle before any write, including the session row"
+    );
+}
+
+#[test]
+fn import_session_bundle_mismatched_session_id_rejected() {
+    let store = test_store();
+    let session = import_session_record(
+        "ses-bundle-4",
+        SessionStatus::Active,
+        "2024-08-04T00:00:00Z",
+    );
+    let messages = vec![Message {
+        id: 1,
+        session_id: "some-other-session".to_owned(),
+        seq: 1,
+        role: Role::User,
+        content: "orphan".to_owned(),
+        tool_call_id: None,
+        tool_name: None,
+        token_estimate: 1,
+        is_distilled: false,
+        created_at: "2024-08-04T00:00:01Z".to_owned(),
+    }];
+
+    let err = store
+        .import_session_bundle(
+            &ImportSessionBundle {
+                session: &session,
+                messages: &messages,
+                usage_records: &[],
+                notes: &[],
+                working_state: None,
+            },
+            false,
+        )
+        .expect_err("message belonging to a different session must be rejected");
+    assert!(err.to_string().contains("belongs to session"), "got: {err}");
+
+    assert!(
+        store
+            .find_session_by_id("ses-bundle-4")
+            .expect("query")
+            .is_none(),
+        "validation must reject the bundle before any write"
     );
 }

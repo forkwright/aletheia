@@ -45,7 +45,7 @@ use tracing::{info, warn};
 use crate::dest::{Destination, TableCounts, is_empty_or_absent};
 use crate::error::{
     AtomicRenameFailedSnafu, DestinationNotEmptySnafu, IoSnafu, MigrationIncompleteSnafu, Result,
-    SqliteOpenSnafu, SqliteSnafu,
+    SchemaManifestStampSnafu, SqliteOpenSnafu, SqliteSnafu,
 };
 use crate::schema;
 use crate::source::{self, DistillationRecord, LegacyExtras, SessionRow};
@@ -568,6 +568,20 @@ fn write_staging(staging_dir: &Path, source_data: &SourceData) -> Result<TableCo
     // Make the staging store durable before the atomic publish.
     dest_handle.persist()?;
     drop(dest_handle);
+
+    // WHY(#5031): this migrator writes directly through `koina::fjall::FjallDb`
+    // rather than `graphe::store::SessionStore::open` — it never goes through
+    // the schema-manifest gate that stamps a store on creation. Without this
+    // call, the freshly migrated store would have real data but no manifest,
+    // and `SessionStore::open` would refuse it as `SchemaManifestMissing` the
+    // first time anything tries to open it. Stamped in the staging directory,
+    // before the atomic rename below, so the published store is never
+    // observed in the "has data but no manifest" state.
+    graphe::store::SessionStore::stamp_legacy_schema_manifest(staging_dir).context(
+        SchemaManifestStampSnafu {
+            path: staging_dir.to_path_buf(),
+        },
+    )?;
 
     Ok(counts)
 }
