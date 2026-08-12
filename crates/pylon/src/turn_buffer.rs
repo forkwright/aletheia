@@ -580,7 +580,9 @@ mod tests {
 
         assert!(handle.mark_completed().await);
         assert!(
-            !handle.mark_aborted(TURN_ABORT_REASON_CLIENT_DISCONNECT).await,
+            !handle
+                .mark_aborted(TURN_ABORT_REASON_CLIENT_DISCONNECT)
+                .await,
             "a losing mark_aborted after a winning mark_completed must not also transition"
         );
 
@@ -781,7 +783,9 @@ mod tests {
         let handle = TurnBufferHandle::new(buf);
 
         assert!(
-            handle.mark_aborted(TURN_ABORT_REASON_CLIENT_DISCONNECT).await,
+            handle
+                .mark_aborted(TURN_ABORT_REASON_CLIENT_DISCONNECT)
+                .await,
             "first call must win the terminal transition"
         );
         assert!(

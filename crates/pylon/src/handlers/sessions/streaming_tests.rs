@@ -574,9 +574,7 @@ fn turn_complete_event_payload_includes_partial_stop_reason() {
         Some("success")
     );
     assert_eq!(
-        payload
-            .get("endpoint")
-            .and_then(serde_json::Value::as_str),
+        payload.get("endpoint").and_then(serde_json::Value::as_str),
         Some("send_message")
     );
     assert_eq!(
@@ -601,8 +599,7 @@ fn turn_complete_event_payload_includes_partial_stop_reason() {
 
 #[test]
 fn turn_start_event_payload_includes_identity_and_endpoint() {
-    let payload =
-        turn_start_event_payload("ses-1", "nous-1", "turn-1", "req-1", "stream_turn");
+    let payload = turn_start_event_payload("ses-1", "nous-1", "turn-1", "req-1", "stream_turn");
 
     assert_eq!(
         payload
@@ -629,9 +626,7 @@ fn turn_start_event_payload_includes_identity_and_endpoint() {
         Some("start")
     );
     assert_eq!(
-        payload
-            .get("endpoint")
-            .and_then(serde_json::Value::as_str),
+        payload.get("endpoint").and_then(serde_json::Value::as_str),
         Some("stream_turn")
     );
 }

@@ -738,7 +738,13 @@ pub async fn send_message(
         .publish(crate::event_bus::DomainEvent::new(
             state.event_bus.next_id(),
             "turn.start",
-            turn_start_event_payload(&sid, &nous_id_owned, &turn_id, &request_id_str, "send_message"),
+            turn_start_event_payload(
+                &sid,
+                &nous_id_owned,
+                &turn_id,
+                &request_id_str,
+                "send_message",
+            ),
         ))
         .await;
     let cancelled_ctx = TurnCancelledContext {

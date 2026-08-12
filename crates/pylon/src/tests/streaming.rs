@@ -1467,14 +1467,20 @@ async fn send_message_success_publishes_turn_start_then_turn_complete() {
         Some("start")
     );
     assert_eq!(
-        published[0].payload.get("endpoint").and_then(|v| v.as_str()),
+        published[0]
+            .payload
+            .get("endpoint")
+            .and_then(|v| v.as_str()),
         Some("send_message")
     );
     assert_eq!(
         published[1].payload.get("phase").and_then(|v| v.as_str()),
         Some("success")
     );
-    assert!(published[0].id < published[1].id, "start must precede complete");
+    assert!(
+        published[0].id < published[1].id,
+        "start must precede complete"
+    );
 }
 
 #[tokio::test]
@@ -1553,7 +1559,10 @@ async fn stream_turn_success_publishes_turn_start_then_turn_complete() {
     let topics: Vec<&str> = published.iter().map(|e| e.topic.as_str()).collect();
     assert_eq!(topics, vec!["turn.start", "turn.complete"]);
     assert_eq!(
-        published[0].payload.get("endpoint").and_then(|v| v.as_str()),
+        published[0]
+            .payload
+            .get("endpoint")
+            .and_then(|v| v.as_str()),
         Some("stream_turn")
     );
 }
@@ -1586,7 +1595,10 @@ async fn stream_turn_provider_failure_publishes_turn_start_then_turn_failed() {
         "a failed streaming turn must not also publish turn.complete"
     );
     assert_eq!(
-        published[1].payload.get("endpoint").and_then(|v| v.as_str()),
+        published[1]
+            .payload
+            .get("endpoint")
+            .and_then(|v| v.as_str()),
         Some("stream_turn")
     );
 }
