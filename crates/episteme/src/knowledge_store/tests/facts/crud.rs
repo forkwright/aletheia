@@ -531,6 +531,92 @@ fn supersede_preserves_scope_project_visibility_and_links() {
     );
 }
 
+/// #5185: `new_fact.nous_id` binds independently from `old_fact.nous_id` —
+/// a correction may reassign ownership to a different agent. Every other
+/// `supersede_fact` test in this module uses the same nous for both rows,
+/// so this is the only coverage that would catch the query builder's two
+/// rows sharing one `$nous_id` param again (they used to).
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn supersede_fact_binds_new_nous_id_independently_of_old() {
+    let store = make_store();
+    let old_fact = make_fact("reassign-old", "agent-a", "owned by agent-a");
+    store.insert_fact(&old_fact).expect("insert old");
+
+    let new_fact = make_fact("reassign-new", "agent-b", "reassigned to agent-b");
+    store
+        .supersede_fact(&old_fact, &new_fact)
+        .expect("supersede with a different new nous_id");
+
+    let old_row = store
+        .read_facts_by_id("reassign-old")
+        .expect("read old")
+        .into_iter()
+        .next()
+        .expect("old row exists");
+    let new_row = store
+        .read_facts_by_id("reassign-new")
+        .expect("read new")
+        .into_iter()
+        .next()
+        .expect("new row exists");
+
+    assert_eq!(
+        old_row.nous_id, "agent-a",
+        "old row must keep its original owner"
+    );
+    assert_eq!(
+        new_row.nous_id, "agent-b",
+        "new row must take on the reassigned owner, not the old row's"
+    );
+}
+
+/// #5185: `supersede_fact` validates `new_fact` (same gate as `insert_fact`)
+/// BEFORE writing either row, so a rejected replacement leaves the old fact
+/// completely untouched and never creates the new fact. This is the
+/// atomicity property the old two-write `memory_correct` design could not
+/// give: there is no window where a failure leaves one row live without
+/// the other.
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn supersede_fact_rejects_invalid_new_fact_leaving_old_fact_untouched() {
+    let store = make_store();
+    let old_fact = make_fact("atomic-old", "agent-a", "original claim");
+    store.insert_fact(&old_fact).expect("insert old");
+
+    let mut invalid_new_fact = make_fact("atomic-new", "agent-a", "replacement claim");
+    invalid_new_fact.provenance.confidence = 1.5; // out of [0.0, 1.0]
+
+    let err = store
+        .supersede_fact(&old_fact, &invalid_new_fact)
+        .expect_err("out-of-range confidence must be rejected before any write");
+    assert!(
+        err.to_string().to_lowercase().contains("confidence"),
+        "rejection must name the actual validation failure, got: {err}"
+    );
+
+    let old_row = store
+        .read_facts_by_id("atomic-old")
+        .expect("read old")
+        .into_iter()
+        .next()
+        .expect("old row must still exist");
+    assert!(
+        !old_row.lifecycle.is_forgotten,
+        "old fact must be untouched when the replacement is rejected"
+    );
+    assert!(
+        old_row.lifecycle.superseded_by.is_none(),
+        "old fact must not be linked to a replacement that was never written"
+    );
+
+    let new_row = store.read_facts_by_id("atomic-new").expect("read new");
+    assert!(
+        new_row.is_empty(),
+        "the rejected replacement must not exist in the store at all"
+    );
+}
+
 #[test]
 fn forget_reason_roundtrips() {
     let store = make_store();

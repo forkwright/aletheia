@@ -198,28 +198,96 @@ impl KnowledgeStore {
         inserted
     }
 
-    /// Supersede an existing fact with a new one.
+    /// Atomically supersede an existing fact with a new one.
     ///
     /// Sets `valid_to` on the old fact to `now` and `superseded_by` to the new
-    /// fact's ID, then inserts the new fact.
+    /// fact's ID, then writes the new fact — as ONE `:put facts {...}` script
+    /// covering both rows, so both commit together or neither persists.
+    ///
+    /// WHY(#5185): this replaces the insert-then-forget two-write design that
+    /// `memory_correct` used to hand-roll (with a compensating rollback for
+    /// when the second write failed, and a residual state — both facts
+    /// live — when the rollback ALSO failed). The knowledge store's
+    /// single-script `:put` already supports multiple literal rows in one
+    /// transaction (`queries::supersede_fact`); routing the correction path
+    /// through it removes the inconsistent-state window entirely rather than
+    /// handling it.
+    ///
+    /// The old fact's lifecycle fields (`is_forgotten`, `forgotten_at`,
+    /// `forget_reason`) are written back exactly as given on `old_fact` —
+    /// this call does not itself decide whether superseding also forgets the
+    /// fact; callers that want that (e.g. `memory_correct`) set those fields
+    /// on their `old_fact` before calling. `valid_to` and `superseded_by` are
+    /// always overwritten (that is the point of superseding).
+    ///
+    /// Runs the same admission-policy gate as [`insert_fact`](Self::insert_fact)
+    /// against `new_fact` before writing — a rejected replacement must leave
+    /// the old fact completely untouched, which holds automatically here
+    /// since the gate runs before either row is written.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AdmissionRejected`](crate::error::Error::AdmissionRejected)
+    /// if `new_fact` fails the admission policy, or the same content/
+    /// confidence validation errors as `insert_fact`. Returns
+    /// [`EngineQuery`](crate::error::Error::EngineQuery) if the write fails.
     #[expect(
         clippy::too_many_lines,
         reason = "sequential param mapping, splitting adds indirection"
     )]
     #[instrument(skip(self, old_fact, new_fact), fields(old_id = %old_fact.id, new_id = %new_fact.id))]
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "fact temporal pipeline — exercised by tests only")
-    )]
-    pub(crate) fn supersede_fact(
+    pub fn supersede_fact(
         &self,
         old_fact: &crate::knowledge::Fact,
         new_fact: &crate::knowledge::Fact,
     ) -> crate::error::Result<()> {
         use std::collections::BTreeMap;
 
+        use snafu::ensure;
+
         use crate::engine::DataValue;
         use crate::knowledge::{far_future, format_timestamp};
+
+        ensure!(
+            !new_fact.content.is_empty(),
+            crate::error::EmptyContentSnafu
+        );
+        ensure!(
+            new_fact.content.len() <= crate::knowledge::MAX_CONTENT_LENGTH,
+            crate::error::ContentTooLongSnafu {
+                max: crate::knowledge::MAX_CONTENT_LENGTH,
+                actual: new_fact.content.len()
+            }
+        );
+        ensure!(
+            (0.0..=1.0).contains(&new_fact.provenance.confidence),
+            crate::error::InvalidConfidenceSnafu {
+                value: new_fact.provenance.confidence
+            }
+        );
+
+        // Admission + write must be atomic with the check itself: hold the
+        // same lock `insert_fact` holds so a concurrent insert of the
+        // replacement's identity cannot pass the gate and write independently.
+        let _guard = self.insert_lock.lock().unwrap_or_else(|e| {
+            tracing::warn!("insert_lock was poisoned, recovering");
+            e.into_inner()
+        });
+
+        let decision = self.admission_policy.should_admit(new_fact);
+        if let crate::admission::AdmissionDecision::Reject(rejection) = decision {
+            tracing::debug!(
+                fact_id = %new_fact.id,
+                factor = %rejection.factor,
+                reason = %rejection.reason,
+                "corrected fact rejected by admission policy"
+            );
+            return Err(crate::error::AdmissionRejectedSnafu {
+                reason: rejection.reason,
+            }
+            .build());
+        }
+
         let now = jiff::Timestamp::now();
         let now_str = format_timestamp(&now);
 
@@ -342,6 +410,10 @@ impl KnowledgeStore {
             DataValue::Str(new_fact.content.as_str().into()),
         );
         params.insert(
+            String::from("new_nous_id"),
+            DataValue::Str(new_fact.nous_id.as_str().into()),
+        );
+        params.insert(
             String::from("new_confidence"),
             DataValue::from(new_fact.provenance.confidence),
         );
@@ -399,6 +471,7 @@ impl KnowledgeStore {
         );
 
         self.run_mut(&queries::supersede_fact(), params)?;
+        crate::metrics::record_fact_inserted(&new_fact.nous_id);
         // WHY (#4662): supersession rewrites `facts` rows (old `valid_to`/
         // `superseded_by` plus the new row), changing derived-rule inputs.
         self.invalidate_derived_facts()

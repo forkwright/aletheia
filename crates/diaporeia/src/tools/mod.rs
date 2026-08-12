@@ -356,58 +356,25 @@ fn resolve_store(
         .ok_or_else(|| KnowledgeStoreUnavailableSnafu {}.build())
 }
 
-/// Forget a fact on a blocking-pool thread, flattening the join and store
-/// errors to strings.
+/// Run `KnowledgeStore::supersede_fact` on a blocking-pool thread, flattening
+/// the join and store errors to strings.
 ///
-/// WHY: shared by `memory_correct`'s supersede write and its compensating
-/// rollback so both go through the same error-flattening path.
+/// WHY(#5185): `memory_correct`'s single write. Replaces the former
+/// insert-then-forget two-write design (with a compensating rollback for a
+/// failed second write, and a residual "both facts live" state when the
+/// rollback ALSO failed) with one knowledge-store transaction that commits
+/// or rejects both rows together — see `KnowledgeStore::supersede_fact`'s
+/// doc comment for how the store guarantees that.
 #[cfg(feature = "knowledge-store")]
-async fn forget_fact_spawned(
+async fn supersede_fact_spawned(
     store: std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
-    fact_id: mneme::id::FactId,
-    reason: mneme::knowledge::ForgetReason,
+    old_fact: mneme::knowledge::Fact,
+    new_fact: mneme::knowledge::Fact,
 ) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || store.forget_fact(&fact_id, reason))
+    tokio::task::spawn_blocking(move || store.supersede_fact(&old_fact, &new_fact))
         .await
         .map_err(|e| e.to_string())?
-        .map(|_fact| ())
         .map_err(|e| e.to_string())
-}
-
-/// Outcome when marking a fact superseded fails after its replacement was
-/// already inserted, carrying the original supersede error.
-#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
-#[cfg(feature = "knowledge-store")]
-enum SupersedeFailure {
-    /// The supersede write failed but rolling back the new fact succeeded —
-    /// no fact was left in an inconsistent state; retrying is safe.
-    RolledBack(String),
-    /// The supersede write failed AND the rollback also failed — both facts
-    /// are now live; the caller must reconcile manually.
-    Inconsistent(String, String),
-}
-
-/// Mark the original fact superseded; on failure, roll back by forgetting
-/// the newly-inserted replacement.
-///
-/// WHY(#5185): the knowledge store exposes no cross-record transaction —
-/// insertion and supersession are two separate writes (`memory_correct`
-/// inserts the replacement fact and awaits that before calling this).
-/// Extracted as a standalone function, taking the two remaining steps as
-/// futures, so the rollback/inconsistency behavior is unit-testable against
-/// fake operations, independent of the real store (see `tests` below).
-#[cfg(feature = "knowledge-store")]
-async fn supersede_with_rollback(
-    supersede_old: impl std::future::Future<Output = Result<(), String>>,
-    rollback_new: impl std::future::Future<Output = Result<(), String>>,
-) -> Result<(), SupersedeFailure> {
-    if let Err(supersede_err) = supersede_old.await {
-        return Err(match rollback_new.await {
-            Ok(()) => SupersedeFailure::RolledBack(supersede_err),
-            Err(rollback_err) => SupersedeFailure::Inconsistent(supersede_err, rollback_err),
-        });
-    }
-    Ok(())
 }
 
 /// Return whether a recall result is owned by the scoped nous agent.
@@ -2208,15 +2175,13 @@ impl DiaporeiaServer {
             })?;
             require_nous_access_for_caller(&caller, &old_fact.nous_id, "memory_correct")?;
 
-            // WHY(#5185): the knowledge store exposes no cross-record
-            // transaction — insertion and supersession below are two
-            // separate writes. Reject re-correcting a fact that a previous,
-            // fully-successful call already superseded, so a naive client
-            // retry after success cannot silently fork a second corrected
-            // copy of the same claim. This does NOT fire for a retry after a
-            // partial failure (insert succeeded, forget failed): the
-            // rollback below un-inserts the new fact on that path, so
-            // `old_fact` is still live when the retry re-reads it.
+            // WHY(#5185): reject re-correcting a fact that a previous,
+            // successful call already superseded, so a naive client retry
+            // cannot silently fork a second corrected copy of the same
+            // claim. Safe to key on `old_fact`'s freshly-read state alone —
+            // the write below is one atomic transaction, so there is no
+            // partial-failure state where the old fact reads as superseded
+            // but the correction did not actually happen.
             if old_fact.lifecycle.is_forgotten
                 && old_fact.lifecycle.forget_reason == Some(ForgetReason::Superseded)
             {
@@ -2280,47 +2245,38 @@ impl DiaporeiaServer {
                 },
             };
 
-            store.insert_fact_async(new_fact).await.map_err(|e| {
-                rmcp::ErrorData::from(
-                    KnowledgeStoreSnafu {
-                        message: e.to_string(),
-                    }
-                    .build(),
-                )
-            })?;
+            // WHY(#5185): mark the old fact's lifecycle as superseded on our
+            // own copy — `supersede_fact` writes back whatever lifecycle the
+            // caller hands it (see its doc comment), so this is where
+            // "superseding via correction" is decided, not inside the store.
+            let mut superseded_old_fact = old_fact.clone();
+            superseded_old_fact.lifecycle.is_forgotten = true;
+            superseded_old_fact.lifecycle.forgotten_at = Some(now);
+            superseded_old_fact.lifecycle.forget_reason = Some(ForgetReason::Superseded);
 
-            // WHY(#5185): if marking the old fact superseded fails after the
-            // new fact is already live, roll the insert back (forget the new
-            // fact) rather than leaving two live facts for the same claim.
-            // If the rollback ALSO fails, surface both fact IDs so the
-            // inconsistency is visible instead of silently duplicated state.
-            // See `supersede_with_rollback` for the tested orchestration.
-            let supersede_old = forget_fact_spawned(
-                std::sync::Arc::clone(&store),
-                fact_id.clone(),
-                ForgetReason::Superseded,
-            );
-            let rollback_new =
-                forget_fact_spawned(store, new_fact_id.clone(), ForgetReason::Incorrect);
-
-            if let Err(failure) = supersede_with_rollback(supersede_old, rollback_new).await {
-                let old_id = fact_id.as_str();
-                let new_id = new_fact_id.as_str();
-                let message = match failure {
-                    SupersedeFailure::RolledBack(err) => format!(
-                        "memory_correct: failed to mark fact {old_id} superseded ({err}); \
-                         rolled back the new fact {new_id} — no changes were made, retry is safe"
-                    ),
-                    SupersedeFailure::Inconsistent(err, rollback_err) => format!(
-                        "memory_correct: failed to mark fact {old_id} superseded ({err}) AND \
-                         failed to roll back the new fact {new_id} ({rollback_err}) — both facts \
-                         are now live; manual reconciliation required"
-                    ),
-                };
-                return Err(rmcp::ErrorData::from(
-                    KnowledgeStoreSnafu { message }.build(),
-                ));
-            }
+            // WHY(#5185): one knowledge-store transaction inserts the
+            // corrected fact AND marks the original superseded — both rows
+            // commit together or neither persists, so there is no window
+            // where a partial failure leaves two facts live (or the new
+            // fact live with no forward link from the old one). See
+            // `KnowledgeStore::supersede_fact`'s doc comment.
+            supersede_fact_spawned(store, superseded_old_fact, new_fact)
+                .await
+                .map_err(|err| {
+                    rmcp::ErrorData::from(
+                        KnowledgeStoreSnafu {
+                            message: format!(
+                                "memory_correct: failed to atomically supersede fact {} with {} \
+                                 ({err}) — the transaction was rejected as a whole, so the \
+                                 original fact is unchanged and no corrected fact was written; \
+                                 retry is safe",
+                                fact_id.as_str(),
+                                new_fact_id.as_str()
+                            ),
+                        }
+                        .build(),
+                    )
+                })?;
 
             let json = serde_json::to_string_pretty(&serde_json::json!({
                 "new_fact_id": new_fact_id.as_str(),
@@ -2772,139 +2728,121 @@ mod tests {
         );
     }
 
-    // ── #5185: memory_correct insert/supersede failure injection ──
+    // ── #5185: memory_correct's atomic supersede write ──
     //
-    // WHY: the knowledge store exposes no cross-record transaction, so
-    // `memory_correct` performs insert-then-supersede as two separate
-    // writes. These tests exercise `supersede_with_rollback`'s handling of
-    // the second write failing — deterministically, via fake async
-    // operations, rather than trying to force a real store failure between
-    // two calls on the live backend.
+    // WHY: `memory_correct` used to perform insert-then-supersede as two
+    // separate writes, with a compensating rollback for a failed second
+    // write — and a residual "both facts live" state when the rollback
+    // ALSO failed. It now calls `KnowledgeStore::supersede_fact` (via the
+    // `supersede_fact_spawned` wrapper below) — one transaction covering
+    // both rows, so there is no window between them to inject a failure
+    // into. These tests exercise that call path directly against the real
+    // in-memory store: the happy path, and a rejection that must leave
+    // zero trace rather than needing a rollback to clean one up.
 
     #[cfg(feature = "knowledge-store")]
-    #[tokio::test]
-    async fn supersede_with_rollback_succeeds_when_supersede_succeeds() {
-        let result = supersede_with_rollback(async { Ok(()) }, async {
-            panic!("rollback must not run when supersede succeeds")
-        })
-        .await;
-        assert!(result.is_ok());
+    fn superseding_copy(
+        old_fact: &mneme::knowledge::Fact,
+        now: jiff::Timestamp,
+    ) -> mneme::knowledge::Fact {
+        let mut superseded = old_fact.clone();
+        superseded.lifecycle.is_forgotten = true;
+        superseded.lifecycle.forgotten_at = Some(now);
+        superseded.lifecycle.forget_reason = Some(mneme::knowledge::ForgetReason::Superseded);
+        superseded
     }
 
     #[cfg(feature = "knowledge-store")]
     #[tokio::test]
-    async fn supersede_with_rollback_reports_rolled_back_when_rollback_succeeds() {
-        // FAILURE INJECTION: the supersede write fails (as it would if
-        // `forget_fact` errored after `insert_fact_async` already
-        // succeeded). The rollback must run and, on its own success, the
-        // caller must be told this is a clean, retry-safe state — not
-        // silently swallowed and not conflated with a genuinely
-        // inconsistent outcome.
-        let result = supersede_with_rollback(
-            async { Err("supersede failed: store unavailable".to_owned()) },
-            async { Ok(()) },
-        )
-        .await;
-        assert_eq!(
-            result,
-            Err(SupersedeFailure::RolledBack(
-                "supersede failed: store unavailable".to_owned()
-            )),
-            "a failed supersede with a successful rollback must be reported as RolledBack, \
-             preserving the original supersede error for the operator"
-        );
-    }
-
-    #[cfg(feature = "knowledge-store")]
-    #[tokio::test]
-    async fn supersede_with_rollback_reports_inconsistent_when_rollback_also_fails() {
-        // FAILURE INJECTION: BOTH writes fail — the worst case, where the
-        // new fact and the old fact are both left live. This must never be
-        // silently swallowed: the caller needs both error messages to
-        // reconcile manually.
-        let result = supersede_with_rollback(
-            async { Err("supersede failed: store unavailable".to_owned()) },
-            async { Err("rollback failed: store unavailable".to_owned()) },
-        )
-        .await;
-        assert_eq!(
-            result,
-            Err(SupersedeFailure::Inconsistent(
-                "supersede failed: store unavailable".to_owned(),
-                "rollback failed: store unavailable".to_owned(),
-            )),
-            "when the rollback ALSO fails, both errors must surface — this is the state \
-             that needs manual reconciliation, so it must never be reported as merely \
-             RolledBack"
-        );
-    }
-
-    #[cfg(feature = "knowledge-store")]
-    #[tokio::test]
-    async fn memory_correct_rolls_back_new_fact_when_supersede_fails() {
-        // End-to-end against the real in-memory store (not fakes): racing
-        // `memory_correct`'s own read against a concurrent forget of the
-        // same old fact is not reproducible from a single-threaded test, so
-        // this drives the same two calls `memory_correct` makes
-        // (`forget_fact_spawned` for the supersede write, then for the
-        // rollback) directly, with the supersede write pointed at an ID that
-        // cannot succeed — proving the rollback leaves no duplicate live
-        // fact behind on the real backend, not just in the fake-driven
-        // orchestration tests above.
-        use mneme::knowledge::ForgetReason;
-
+    async fn supersede_fact_spawned_atomically_supersedes() {
         // WHY: `open_mem()` already returns `Arc<KnowledgeStore>` (matching
         // `resolve_store`'s return type) — no extra `Arc::new` wrapping.
         let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
         let old_fact = make_fact("f-correct-src", "alice", "original claim");
         store.insert_fact(&old_fact).expect("insert original fact");
 
+        let now = jiff::Timestamp::now();
         let new_fact = make_fact("f-correct-new", "alice", "corrected claim");
-        store
-            .insert_fact_async(new_fact.clone())
-            .await
-            .expect("insert corrected fact");
-
-        // Simulate the supersede write failing (e.g. a transient store
-        // error) by pointing it at a fact ID that no longer exists —
-        // `forget_fact` fails closed with FactNotFound rather than silently
-        // no-oping.
-        let missing_id = mneme::id::FactId::new("f-does-not-exist").expect("valid id");
-        let supersede_old =
-            forget_fact_spawned(Arc::clone(&store), missing_id, ForgetReason::Superseded);
-        let rollback_new = forget_fact_spawned(
+        supersede_fact_spawned(
             Arc::clone(&store),
-            new_fact.id.clone(),
-            ForgetReason::Incorrect,
+            superseding_copy(&old_fact, now),
+            new_fact,
+        )
+        .await
+        .expect("atomic supersede");
+
+        let old_row = store
+            .read_facts_by_id("f-correct-src")
+            .expect("read old")
+            .into_iter()
+            .next()
+            .expect("old fact still exists");
+        assert!(old_row.lifecycle.is_forgotten, "old fact must be forgotten");
+        assert_eq!(
+            old_row.lifecycle.forget_reason,
+            Some(mneme::knowledge::ForgetReason::Superseded)
+        );
+        assert_eq!(
+            old_row.lifecycle.superseded_by.as_deref(),
+            Some("f-correct-new"),
+            "old fact must link forward to its replacement"
         );
 
-        let result = supersede_with_rollback(supersede_old, rollback_new).await;
+        let new_row = store
+            .read_facts_by_id("f-correct-new")
+            .expect("read new")
+            .into_iter()
+            .next()
+            .expect("new fact exists");
+        assert_eq!(new_row.content, "corrected claim");
+        assert!(!new_row.lifecycle.is_forgotten, "new fact must be live");
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[tokio::test]
+    async fn supersede_fact_spawned_leaves_old_fact_untouched_when_new_fact_is_rejected() {
+        // FAILURE INJECTION: the write is rejected (invalid confidence)
+        // before either row is written. This is the property the old
+        // two-write design could only approximate with a compensating
+        // rollback: a failure here leaves NO trace — the original fact is
+        // exactly as it was, and the rejected replacement was never
+        // created, rather than being created-then-rolled-back.
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
+        let old_fact = make_fact("f-atomic-src", "alice", "original claim");
+        store.insert_fact(&old_fact).expect("insert original fact");
+
+        let now = jiff::Timestamp::now();
+        let mut invalid_new_fact = make_fact("f-atomic-new", "alice", "corrected claim");
+        invalid_new_fact.provenance.confidence = -0.5; // out of [0.0, 1.0]
+
+        let err = supersede_fact_spawned(
+            Arc::clone(&store),
+            superseding_copy(&old_fact, now),
+            invalid_new_fact,
+        )
+        .await
+        .expect_err("out-of-range confidence must be rejected");
         assert!(
-            matches!(result, Err(SupersedeFailure::RolledBack(_))),
-            "expected a rolled-back failure, got {result:?}"
+            err.to_lowercase().contains("confidence"),
+            "error must name the actual failure, got: {err}"
         );
 
-        // The original fact is untouched (never forgotten)...
         let original_still_live = store
-            .read_facts_by_id(old_fact.id.as_str())
+            .read_facts_by_id("f-atomic-src")
             .expect("read original fact");
         assert!(
-            original_still_live
-                .first()
-                .is_some_and(|f| !f.lifecycle.is_forgotten),
-            "the original fact must be untouched when the supersede write fails"
+            original_still_live.first().is_some_and(|f| {
+                !f.lifecycle.is_forgotten && f.lifecycle.superseded_by.is_none()
+            }),
+            "the original fact must be completely untouched when the write is rejected"
         );
 
-        // ...and the new fact was rolled back (forgotten), so recall does
-        // not surface two live facts for the same claim.
-        let new_fact_after = store
-            .read_facts_by_id(new_fact.id.as_str())
-            .expect("read new fact");
+        let rejected_new = store
+            .read_facts_by_id("f-atomic-new")
+            .expect("read rejected new fact");
         assert!(
-            new_fact_after
-                .first()
-                .is_some_and(|f| f.lifecycle.is_forgotten),
-            "the newly-inserted fact must be forgotten (rolled back) after a failed supersede"
+            rejected_new.is_empty(),
+            "the rejected replacement must not exist at all — not even forgotten"
         );
     }
 
