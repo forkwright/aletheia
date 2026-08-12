@@ -822,15 +822,19 @@ fn forget_fact_with_current_schema(
     }
 
     let now = mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
+    // WHY: `sensitivity` must be carried through the SELECT projection and the
+    // `:put` schema here, or the Datalog engine falls back to the column
+    // default (`'public'`) on write, silently declassifying a confidential/
+    // internal fact on every soft-delete through this tool (#5605).
     let script = r"
         ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
           superseded_by, source_session_id, recorded_at,
           access_count, last_accessed_at, stability_hours, fact_type,
-          scope, project_id, visibility, is_forgotten, forgotten_at, forget_reason] :=
+          scope, project_id, visibility, sensitivity, is_forgotten, forgotten_at, forget_reason] :=
             *facts{id, valid_from, content, nous_id, confidence, tier,
                    valid_to, superseded_by, source_session_id, recorded_at,
                    access_count, last_accessed_at, stability_hours, fact_type,
-                   scope, project_id, visibility},
+                   scope, project_id, visibility, sensitivity},
             id = $id,
             is_forgotten = true,
             forgotten_at = $now,
@@ -838,7 +842,7 @@ fn forget_fact_with_current_schema(
         :put facts {id, valid_from => content, nous_id, confidence, tier,
                     valid_to, superseded_by, source_session_id, recorded_at,
                     access_count, last_accessed_at, stability_hours, fact_type,
-                    scope, project_id, visibility, is_forgotten, forgotten_at, forget_reason}
+                    scope, project_id, visibility, sensitivity, is_forgotten, forgotten_at, forget_reason}
     ";
     let mut params = BTreeMap::new();
     params.insert("id".to_owned(), DataValue::Str(fact_id.as_str().into()));
