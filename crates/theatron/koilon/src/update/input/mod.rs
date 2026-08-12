@@ -539,8 +539,7 @@ pub(crate) fn handle_compose_in_editor(app: &mut App) {
     {
         use std::os::unix::fs::PermissionsExt;
         // WHY: restrict the draft to owner-only (0600) — contains message text
-        if let Err(e) = std::fs::set_permissions(&tmpfile, std::fs::Permissions::from_mode(0o600))
-        {
+        if let Err(e) = std::fs::set_permissions(&tmpfile, std::fs::Permissions::from_mode(0o600)) {
             tracing::error!(error = %e, "compose-in-editor: could not restrict draft");
             return;
         }
