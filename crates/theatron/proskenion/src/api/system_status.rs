@@ -257,7 +257,10 @@ mod tests {
         };
         assert_eq!(
             response.failing_names(),
-            vec!["Embedding Provider".to_string(), "unnamed_thing".to_string()]
+            vec![
+                "Embedding Provider".to_string(),
+                "unnamed_thing".to_string()
+            ]
         );
     }
 
@@ -283,7 +286,10 @@ mod tests {
             subsystems: vec![],
         };
         assert!(
-            matches!(unrecognized.to_backend_health(), BackendHealthState::Failed { .. }),
+            matches!(
+                unrecognized.to_backend_health(),
+                BackendHealthState::Failed { .. }
+            ),
             "unrecognized aggregate status must not default to healthy"
         );
     }
@@ -396,7 +402,10 @@ mod tests {
         };
 
         let result = fetch_system_status(&config).await;
-        assert!(matches!(result, Err(SystemStatusFetchError::Unreachable(_))));
+        assert!(matches!(
+            result,
+            Err(SystemStatusFetchError::Unreachable(_))
+        ));
     }
 
     #[tokio::test]

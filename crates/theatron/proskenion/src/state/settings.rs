@@ -674,13 +674,22 @@ mod tests {
     #[test]
     fn server_health_unauthorized_is_distinct_from_unreachable() {
         assert_ne!(ServerHealth::Unauthorized, ServerHealth::Unreachable);
-        assert_ne!(ServerHealth::Unauthorized.label(), ServerHealth::Unreachable.label());
+        assert_ne!(
+            ServerHealth::Unauthorized.label(),
+            ServerHealth::Unreachable.label()
+        );
     }
 
     #[test]
     fn server_health_unauthorized_and_degraded_share_warning_color() {
-        assert_eq!(ServerHealth::Unauthorized.color(), ServerHealth::Degraded.color());
-        assert_ne!(ServerHealth::Unauthorized.color(), ServerHealth::Unreachable.color());
+        assert_eq!(
+            ServerHealth::Unauthorized.color(),
+            ServerHealth::Degraded.color()
+        );
+        assert_ne!(
+            ServerHealth::Unauthorized.color(),
+            ServerHealth::Unreachable.color()
+        );
     }
 
     #[test]

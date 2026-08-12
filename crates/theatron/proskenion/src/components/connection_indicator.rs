@@ -164,10 +164,14 @@ mod tests {
 
     #[test]
     fn merge_keeps_unauthorized_distinct_from_disconnected_label() {
-        let (tone, unauthorized_label, _) =
-            merge_global_status(&SseConnectionState::Connected, &BackendHealthState::Unauthorized);
-        let (_, disconnected_label, _) =
-            merge_global_status(&SseConnectionState::Disconnected, &BackendHealthState::Unknown);
+        let (tone, unauthorized_label, _) = merge_global_status(
+            &SseConnectionState::Connected,
+            &BackendHealthState::Unauthorized,
+        );
+        let (_, disconnected_label, _) = merge_global_status(
+            &SseConnectionState::Disconnected,
+            &BackendHealthState::Unknown,
+        );
         assert_eq!(tone, IndicatorTone::Degraded);
         assert_ne!(unauthorized_label, disconnected_label);
     }

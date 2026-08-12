@@ -105,7 +105,10 @@ mod tests {
 
     #[test]
     fn unauthorized_is_distinct_from_unreachable() {
-        assert_ne!(BackendHealthState::Unauthorized, BackendHealthState::Unreachable);
+        assert_ne!(
+            BackendHealthState::Unauthorized,
+            BackendHealthState::Unreachable
+        );
         assert_ne!(
             BackendHealthState::Unauthorized.label(),
             BackendHealthState::Unreachable.label()
