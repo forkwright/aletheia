@@ -140,6 +140,11 @@ pub struct DiskSpaceMonitor {
     cached_available: Arc<AtomicU64>,
     warn_threshold: u64,
     critical_threshold: u64,
+    /// Unix epoch seconds of the last successful [`refresh`](Self::refresh),
+    /// or `0` if refresh has never succeeded. Health/diagnostics surfaces
+    /// this so an operator can tell a stale monitor (background task wedged
+    /// or never started) from a genuinely healthy one.
+    last_refreshed_unix_secs: Arc<AtomicU64>,
 }
 
 impl DiskSpaceMonitor {
@@ -153,6 +158,7 @@ impl DiskSpaceMonitor {
             cached_available: Arc::new(AtomicU64::new(u64::MAX)),
             warn_threshold: warning_bytes,
             critical_threshold: critical_bytes,
+            last_refreshed_unix_secs: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -162,10 +168,16 @@ impl DiskSpaceMonitor {
     ///
     /// # Errors
     ///
-    /// Returns an I/O error if `statvfs` fails.
+    /// Returns an I/O error if `statvfs` fails. The refresh timestamp is
+    /// left unchanged on error -- a failed refresh must not look like a
+    /// fresh successful one to [`last_refreshed`](Self::last_refreshed).
     pub fn refresh(&self, path: &Path) -> std::io::Result<DiskStatus> {
         let avail = available_space(path)?;
         self.cached_available.store(avail, Ordering::Relaxed);
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        self.last_refreshed_unix_secs.store(now, Ordering::Relaxed);
         Ok(classify(
             avail,
             self.warn_threshold,
@@ -198,6 +210,18 @@ impl DiskSpaceMonitor {
     pub fn critical_bytes(&self) -> u64 {
         self.critical_threshold
     }
+
+    /// Unix epoch seconds of the last successful [`refresh`](Self::refresh).
+    ///
+    /// Returns `None` before the first successful refresh (the cached value
+    /// is still the `u64::MAX` construction default, not a real reading).
+    #[must_use]
+    pub fn last_refreshed_unix_secs(&self) -> Option<u64> {
+        match self.last_refreshed_unix_secs.load(Ordering::Relaxed) {
+            0 => None,
+            secs => Some(secs),
+        }
+    }
 }
 
 impl fmt::Debug for DiskSpaceMonitor {
@@ -215,6 +239,7 @@ impl fmt::Debug for DiskSpaceMonitor {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -396,6 +421,48 @@ mod tests {
             monitor.status().available_bytes(),
             status.available_bytes(),
             "cached value should match refresh result"
+        );
+    }
+
+    #[test]
+    fn last_refreshed_is_none_before_first_refresh() {
+        let monitor = DiskSpaceMonitor::new(DEFAULT_WARNING_BYTES, DEFAULT_CRITICAL_BYTES);
+        assert_eq!(
+            monitor.last_refreshed_unix_secs(),
+            None,
+            "a monitor that has never refreshed must not report a fabricated timestamp"
+        );
+    }
+
+    #[test]
+    fn last_refreshed_is_set_after_successful_refresh() {
+        let monitor = DiskSpaceMonitor::new(DEFAULT_WARNING_BYTES, DEFAULT_CRITICAL_BYTES);
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        monitor.refresh(Path::new("/")).unwrap();
+        let refreshed = monitor
+            .last_refreshed_unix_secs()
+            .expect("refresh should set a timestamp");
+        assert!(
+            refreshed >= before,
+            "refresh timestamp {refreshed} should not precede the call ({before})"
+        );
+    }
+
+    #[test]
+    fn last_refreshed_unchanged_on_failed_refresh() {
+        let monitor = DiskSpaceMonitor::new(DEFAULT_WARNING_BYTES, DEFAULT_CRITICAL_BYTES);
+        monitor.refresh(Path::new("/")).unwrap();
+        let first = monitor.last_refreshed_unix_secs();
+
+        let result = monitor.refresh(Path::new("/nonexistent/path/for/disk-space-test"));
+        assert!(result.is_err(), "nonexistent path must fail statvfs");
+        assert_eq!(
+            monitor.last_refreshed_unix_secs(),
+            first,
+            "a failed refresh must not advance the last-refreshed timestamp"
         );
     }
 

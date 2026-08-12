@@ -46,6 +46,28 @@ fn spec_by_key_finds_compaction_strategy() {
 }
 
 #[test]
+fn spec_by_key_finds_disk_space_settings() {
+    // WHY(#5128): the registry must carry `maintenance.diskSpace.*` so the
+    // config surface `spawn_disk_space_monitor` reads is documented and
+    // hot-reload-classified, not silently absent.
+    for (key, expect_default) in [
+        ("maintenance.diskSpace.enabled", "true"),
+        ("maintenance.diskSpace.warningThresholdMb", "1024"),
+        ("maintenance.diskSpace.criticalThresholdMb", "100"),
+        ("maintenance.diskSpace.checkIntervalSecs", "60"),
+    ] {
+        let spec = spec_by_key(key).unwrap_or_else(|| panic!("expected spec for {key}"));
+        assert_eq!(spec.section, "maintenance.diskSpace");
+        assert_eq!(
+            spec.default.to_string(),
+            expect_default,
+            "{key} default mismatch"
+        );
+        assert!(spec.hot_reloadable, "{key} should be hot-reloadable");
+    }
+}
+
+#[test]
 fn spec_by_key_returns_none_for_unknown() {
     assert!(spec_by_key("nonexistent.key").is_none());
 }
