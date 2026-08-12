@@ -26,10 +26,10 @@ use crate::data::tuple::TupleIter;
 use crate::data::value::DataValue;
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
+use crate::query::context::QueryContext;
 use crate::query::error::*;
 use crate::runtime::minhash_lsh::LshSearch;
 use crate::runtime::temp_store::EpochStore;
-use crate::runtime::transact::SessionTx;
 
 /// HNSW approximate nearest neighbor search operator.
 ///
@@ -68,7 +68,7 @@ impl HnswSearchRA {
     /// Each parent tuple triggers one HNSW search.
     pub(crate) fn iter<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
@@ -152,7 +152,7 @@ impl FtsSearchRA {
     /// D is matching documents. BM25 scoring adds O(D log D) for ranking.
     pub(crate) fn iter<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
@@ -167,7 +167,7 @@ impl FtsSearchRA {
         let config = self.fts_search.clone();
         let filter_code = self.filter_bytecode.clone();
         let mut stack = vec![];
-        let tokenizer = tx.tokenizers.get(
+        let tokenizer = tx.tokenizers().get(
             &config.idx_handle.name,
             &config.manifest.tokenizer,
             &config.manifest.filters,
@@ -266,7 +266,7 @@ impl LshSearchRA {
     /// Each band requires a prefix scan of the LSH index.
     pub(crate) fn iter<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {
@@ -282,7 +282,7 @@ impl LshSearchRA {
         let filter_code = self.filter_bytecode.clone();
         let mut stack = vec![];
         let perms = config.manifest.get_hash_perms()?;
-        let tokenizer = tx.tokenizers.get(
+        let tokenizer = tx.tokenizers().get(
             &config.idx_handle.name,
             &config.manifest.tokenizer,
             &config.manifest.filters,

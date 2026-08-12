@@ -20,10 +20,10 @@ use std::collections::BTreeSet;
 use crate::data::error::*;
 use crate::data::expr::Expr;
 use crate::error::{InternalError, InternalResult as Result};
+use crate::query::context::QueryContext;
 use crate::query::logical::Disjunction;
 use crate::runtime::hnsw::HnswIndexManifest;
 use crate::runtime::relation::{AccessLevel, RelationHandle};
-use crate::runtime::transact::SessionTx;
 
 use super::super::atoms::*;
 use super::super::types::*;
@@ -299,7 +299,7 @@ impl SearchInput {
     pub(crate) fn normalize(
         self,
         r#gen: &mut TempSymbGen,
-        tx: &SessionTx<'_>,
+        tx: &dyn QueryContext,
     ) -> Result<Disjunction> {
         let base_handle = tx.get_relation(&self.relation, false)?;
         if base_handle.access_level < AccessLevel::ReadOnly {

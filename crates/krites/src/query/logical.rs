@@ -17,8 +17,8 @@ use crate::data::program::{
     NormalFormAtom, NormalFormRelationApplyAtom, NormalFormRuleApplyAtom, TempSymbGen, Unification,
 };
 use crate::error::InternalResult as Result;
+use crate::query::context::QueryContext;
 use crate::query::error::*;
-use crate::runtime::transact::SessionTx;
 
 #[derive(Debug)]
 pub(crate) struct Disjunction {
@@ -134,7 +134,7 @@ impl InputAtom {
         })
     }
 
-    pub(crate) fn disjunctive_normal_form(self, tx: &SessionTx<'_>) -> Result<Disjunction> {
+    pub(crate) fn disjunctive_normal_form(self, tx: &dyn QueryContext) -> Result<Disjunction> {
         let neg_form = self.negation_normal_form()?;
         let mut r#gen = TempSymbGen::default();
         neg_form.do_disjunctive_normal_form(&mut r#gen, tx)
@@ -148,7 +148,7 @@ impl InputAtom {
             span,
         }: InputNamedFieldRelationApplyAtom,
         r#gen: &mut TempSymbGen,
-        tx: &SessionTx<'_>,
+        tx: &dyn QueryContext,
     ) -> Result<InputRelationApplyAtom> {
         let stored = tx.get_relation(&name, false)?;
         let fields: BTreeSet<_> = stored
@@ -191,7 +191,7 @@ impl InputAtom {
     fn do_disjunctive_normal_form(
         self,
         r#gen: &mut TempSymbGen,
-        tx: &SessionTx<'_>,
+        tx: &dyn QueryContext,
     ) -> Result<Disjunction> {
         Ok(match self {
             InputAtom::Disjunction { inner: args, .. } => {

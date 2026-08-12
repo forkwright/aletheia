@@ -28,8 +28,8 @@ use crate::data::tuple::{Tuple, TupleIter};
 use crate::data::value::{DataValue, ValidityTs};
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
+use crate::query::context::QueryContext;
 use crate::runtime::relation::RelationHandle;
-use crate::runtime::transact::SessionTx;
 use crate::utils::swap_option_result;
 
 /// Persistent stored relation source (no time-travel).
@@ -66,7 +66,7 @@ impl StoredRA {
 
     fn point_lookup_join<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         left_iter: TupleIter<'a>,
         key_len: usize,
         left_to_prefix_indices: Vec<usize>,
@@ -83,7 +83,7 @@ impl StoredRA {
                     .map(|i| tuple[*i].clone())
                     .collect_vec();
                 let key = &prefix[0..key_len];
-                match self.storage.get(tx, key)? {
+                match tx.relation_get(&self.storage, key)? {
                     None => Ok(None),
                     Some(found) => {
                         for (lk, rk) in left_join_indices.iter().zip(right_join_indices.iter()) {
@@ -120,7 +120,7 @@ impl StoredRA {
     /// - With filter bounds: O(L * log N) via bounded range scan.
     pub(crate) fn prefix_join<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         left_iter: TupleIter<'a>,
         (left_join_indices, right_join_indices): (Vec<usize>, Vec<usize>),
         eliminate_indices: BTreeSet<usize>,
@@ -167,8 +167,7 @@ impl StoredRA {
                         || !u_bound.iter().all(|v| *v == DataValue::Bot))
                 {
                     return Left(
-                        self.storage
-                            .scan_bounded_prefix(tx, &prefix, l_bound, u_bound)
+                        tx.relation_scan_bounded_prefix(&self.storage, &prefix, l_bound, u_bound)
                             .map(move |res_found| -> Result<Option<Tuple>> {
                                 let found = res_found?;
                                 for (p, span) in self.filters_bytecodes.iter() {
@@ -185,8 +184,7 @@ impl StoredRA {
                 }
                 skip_range_check = true;
                 Right(
-                    self.storage
-                        .scan_prefix(tx, &prefix)
+                    tx.relation_scan_prefix(&self.storage, &prefix)
                         .map(move |res_found| -> Result<Option<Tuple>> {
                             let found = res_found?;
                             for (p, span) in self.filters_bytecodes.iter() {
@@ -218,7 +216,7 @@ impl StoredRA {
     /// - Materialized: O(N) to build hash set + O(L) to probe.
     pub(crate) fn neg_join<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         left_iter: TupleIter<'a>,
         (left_join_indices, right_join_indices): (Vec<usize>, Vec<usize>),
         eliminate_indices: BTreeSet<usize>,
@@ -243,7 +241,7 @@ impl StoredRA {
                             .map(|i| tuple[*i].clone())
                             .collect_vec();
 
-                        'outer: for found in self.storage.scan_prefix(tx, &prefix) {
+                        'outer: for found in tx.relation_scan_prefix(&self.storage, &prefix) {
                             let found = found?;
                             for (left_idx, right_idx) in
                                 left_join_indices.iter().zip(right_join_indices.iter())
@@ -263,7 +261,7 @@ impl StoredRA {
         } else {
             let mut right_join_vals = BTreeSet::new();
 
-            for tuple in self.storage.scan_all(tx) {
+            for tuple in tx.relation_scan_all(&self.storage) {
                 let tuple = tuple?;
                 // SAFETY: `right_join_indices` contains indices validated to be within `tuple` bounds.
                 let to_join: Box<[DataValue]> = right_join_indices
@@ -297,8 +295,8 @@ impl StoredRA {
     /// # Complexity
     ///
     /// O(N) where N is relation size. Filters add O(N * F).
-    pub(crate) fn iter<'a>(&'a self, tx: &'a SessionTx<'_>) -> Result<TupleIter<'a>> {
-        let it = self.storage.scan_all(tx);
+    pub(crate) fn iter<'a>(&'a self, tx: &'a dyn QueryContext) -> Result<TupleIter<'a>> {
+        let it = tx.relation_scan_all(&self.storage);
         Ok(if self.filters.is_empty() {
             Box::new(it)
         } else {
@@ -343,8 +341,8 @@ impl StoredWithValidityRA {
     /// # Complexity
     ///
     /// O(N) where N is relation size (skip-scan over validity).
-    pub(crate) fn iter<'a>(&'a self, tx: &'a SessionTx<'_>) -> Result<TupleIter<'a>> {
-        let it = self.storage.skip_scan_all(tx, self.valid_at);
+    pub(crate) fn iter<'a>(&'a self, tx: &'a dyn QueryContext) -> Result<TupleIter<'a>> {
+        let it = tx.relation_skip_scan_all(&self.storage, self.valid_at);
         Ok(if self.filters.is_empty() {
             Box::new(it)
         } else {
@@ -359,7 +357,7 @@ impl StoredWithValidityRA {
     /// O(L * M) where L is left tuples, M is matching entries per prefix.
     pub(crate) fn prefix_join<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         left_iter: TupleIter<'a>,
         (left_join_indices, right_join_indices): (Vec<usize>, Vec<usize>),
         eliminate_indices: BTreeSet<usize>,
@@ -394,27 +392,31 @@ impl StoredWithValidityRA {
                 {
                     let mut stack = vec![];
                     return Left(
-                        self.storage
-                            .skip_scan_bounded_prefix(tx, &prefix, l_bound, u_bound, self.valid_at)
-                            .map(move |res_found| -> Result<Option<Tuple>> {
-                                let found = res_found?;
-                                for (p, span) in self.filters_bytecodes.iter() {
-                                    if !eval_bytecode_pred(p, &found, &mut stack, *span)? {
-                                        return Ok(None);
-                                    }
+                        tx.relation_skip_scan_bounded_prefix(
+                            &self.storage,
+                            &prefix,
+                            l_bound,
+                            u_bound,
+                            self.valid_at,
+                        )
+                        .map(move |res_found| -> Result<Option<Tuple>> {
+                            let found = res_found?;
+                            for (p, span) in self.filters_bytecodes.iter() {
+                                if !eval_bytecode_pred(p, &found, &mut stack, *span)? {
+                                    return Ok(None);
                                 }
-                                let mut ret = tuple.clone();
-                                ret.extend(found);
-                                Ok(Some(ret))
-                            })
-                            .filter_map(swap_option_result),
+                            }
+                            let mut ret = tuple.clone();
+                            ret.extend(found);
+                            Ok(Some(ret))
+                        })
+                        .filter_map(swap_option_result),
                     );
                 }
                 skip_range_check = true;
                 let mut stack = vec![];
                 Right(
-                    self.storage
-                        .skip_scan_prefix(tx, &prefix, self.valid_at)
+                    tx.relation_skip_scan_prefix(&self.storage, &prefix, self.valid_at)
                         .map(move |res_found| -> Result<Option<Tuple>> {
                             let found = res_found?;
                             for (p, span) in self.filters_bytecodes.iter() {

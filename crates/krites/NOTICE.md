@@ -9,8 +9,8 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 208 files under `src/`: 142 derived, 66 sovereign, 0 dual
-- Mean verbatim match across the 142 derived files: 44.9% (unweighted average of the per-file `verbatim_pct` column below)
+- 210 files under `src/`: 142 derived, 68 sovereign, 0 dual
+- Mean verbatim match across the 142 derived files: 44.7% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -46,7 +46,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/data/program/magic.rs` | `data/program.rs` | 82.2% | derived |
 | `src/data/program/mod.rs` | `data/program.rs` | 0.0% | derived |
 | `src/data/program/search/atom_impl.rs` | `data/program.rs` | 80.0% | derived |
-| `src/data/program/search/hnsw_normalize.rs` | `data/program.rs` | 48.0% | derived |
+| `src/data/program/search/hnsw_normalize.rs` | `data/program.rs` | 46.7% | derived |
 | `src/data/program/search/lsh_fts.rs` | `data/program.rs` | 48.0% | derived |
 | `src/data/program/search/mod.rs` | `data/program.rs` | 75.5% | derived |
 | `src/data/program/types.rs` | `data/program.rs` | 80.2% | derived |
@@ -92,7 +92,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fixed_rule/csr/mod.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/csr/page_rank.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/error.rs` | — | 0.0% | sovereign |
-| `src/fixed_rule/mod.rs` | `fixed_rule/mod.rs` | 59.3% | derived |
+| `src/fixed_rule/mod.rs` | `fixed_rule/mod.rs` | 57.5% | derived |
 | `src/fixed_rule/tests/centrality_spanning.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/connectivity_misc.rs` | — | 0.0% | sovereign |
 | `src/fixed_rule/tests/mod.rs` | — | 0.0% | sovereign |
@@ -155,21 +155,22 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/parse/sys/index.rs` | `parse/sys.rs` | 18.0% | derived |
 | `src/parse/sys/mod.rs` | `parse/sys.rs` | 18.9% | derived |
 | `src/parse/sys/parse.rs` | `parse/sys.rs` | 9.9% | derived |
-| `src/query/compile.rs` | `query/compile.rs` | 79.3% | derived |
+| `src/query/compile.rs` | `query/compile.rs` | 74.6% | derived |
+| `src/query/context.rs` | — | 0.0% | sovereign |
 | `src/query/error.rs` | — | 0.0% | sovereign |
-| `src/query/eval.rs` | `query/eval.rs` | 56.8% | derived |
+| `src/query/eval.rs` | `query/eval.rs` | 52.3% | derived |
 | `src/query/graph.rs` | `query/graph.rs` | 56.7% | derived |
-| `src/query/logical.rs` | `query/logical.rs` | 78.4% | derived |
-| `src/query/magic.rs` | `query/magic.rs` | 77.5% | derived |
-| `src/query/mod.rs` | `query/mod.rs` | 17.5% | derived |
-| `src/query/ra/filter.rs` | `query/ra.rs` | 66.7% | derived |
+| `src/query/logical.rs` | `query/logical.rs` | 77.3% | derived |
+| `src/query/magic.rs` | `query/magic.rs` | 76.2% | derived |
+| `src/query/mod.rs` | `query/mod.rs` | 17.1% | derived |
+| `src/query/ra/filter.rs` | `query/ra.rs` | 64.5% | derived |
 | `src/query/ra/inline_fixed.rs` | `query/ra.rs` | 69.8% | derived |
-| `src/query/ra/join.rs` | `query/ra.rs` | 65.8% | derived |
-| `src/query/ra/mod.rs` | `query/ra.rs` | 74.3% | derived |
-| `src/query/ra/project.rs` | `query/ra.rs` | 66.1% | derived |
-| `src/query/ra/search.rs` | `query/ra.rs` | 23.7% | derived |
-| `src/query/ra/sort.rs` | `query/ra.rs` | 41.3% | derived |
-| `src/query/ra/stored.rs` | `query/ra.rs` | 65.1% | derived |
+| `src/query/ra/join.rs` | `query/ra.rs` | 64.2% | derived |
+| `src/query/ra/mod.rs` | `query/ra.rs` | 73.7% | derived |
+| `src/query/ra/project.rs` | `query/ra.rs` | 64.4% | derived |
+| `src/query/ra/search.rs` | `query/ra.rs` | 22.7% | derived |
+| `src/query/ra/sort.rs` | `query/ra.rs` | 38.7% | derived |
+| `src/query/ra/stored.rs` | `query/ra.rs` | 61.4% | derived |
 | `src/query/ra/temp_store.rs` | `query/ra.rs` | 67.3% | derived |
 | `src/query/reorder.rs` | `query/reorder.rs` | 72.3% | derived |
 | `src/query/sort.rs` | `query/sort.rs` | 46.9% | derived |
@@ -180,7 +181,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/callback.rs` | `runtime/callback.rs` | 55.3% | derived |
 | `src/runtime/db.rs` | `runtime/db.rs` | 29.8% | derived |
 | `src/runtime/error.rs` | — | 0.0% | sovereign |
-| `src/runtime/exec.rs` | `runtime/db.rs` | 68.2% | derived |
+| `src/runtime/exec.rs` | `runtime/db.rs` | 67.8% | derived |
 | `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | derived |
 | `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | derived |
 | `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | derived |
@@ -200,6 +201,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/imperative.rs` | `runtime/imperative.rs` | 35.6% | derived |
 | `src/runtime/minhash_lsh.rs` | `runtime/minhash_lsh.rs` | 53.6% | derived |
 | `src/runtime/mod.rs` | `runtime/mod.rs` | 0.0% | derived |
+| `src/runtime/query_context_impl.rs` | — | 0.0% | sovereign |
 | `src/runtime/relation/extractors.rs` | `query/stored.rs` | 56.9% | derived |
 | `src/runtime/relation/handles.rs` | `runtime/relation.rs` | 68.7% | derived |
 | `src/runtime/relation/index_create.rs` | `runtime/relation.rs` | 64.7% | derived |
@@ -208,7 +210,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/relation/mutation.rs` | `query/stored.rs` | 63.7% | derived |
 | `src/runtime/relation/relation_crud.rs` | `runtime/relation.rs` | 48.0% | derived |
 | `src/runtime/relation/validation.rs` | `query/stored.rs` | 73.3% | derived |
-| `src/runtime/sys.rs` | `runtime/db.rs` | 61.0% | derived |
+| `src/runtime/sys.rs` | `runtime/db.rs` | 60.8% | derived |
 | `src/runtime/temp_store.rs` | `runtime/temp_store.rs` | 81.0% | derived |
 | `src/runtime/tests/basic_queries.rs` | `runtime/tests.rs` | 12.3% | derived |
 | `src/runtime/tests/imperative.rs` | `runtime/tests.rs` | 44.4% | derived |

@@ -21,9 +21,9 @@ use crate::data::symb::Symbol;
 use crate::data::tuple::{Tuple, TupleIter};
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
+use crate::query::context::QueryContext;
 use crate::query::error::*;
 use crate::runtime::temp_store::EpochStore;
-use crate::runtime::transact::SessionTx;
 
 /// Unification (variable binding) operator.
 ///
@@ -72,7 +72,7 @@ impl UnificationRA {
 
     pub(crate) fn iter<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {

@@ -41,11 +41,11 @@ use crate::data::tuple::TupleIter;
 use crate::data::value::ValidityTs;
 use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
+use crate::query::context::QueryContext;
 use crate::query::error::*;
 use crate::runtime::minhash_lsh::LshSearch;
 use crate::runtime::relation::RelationHandle;
 use crate::runtime::temp_store::EpochStore;
-use crate::runtime::transact::SessionTx;
 
 mod filter;
 mod inline_fixed;
@@ -737,7 +737,7 @@ impl RelAlgebra {
     }
     pub(crate) fn iter<'a>(
         &'a self,
-        tx: &'a SessionTx<'_>,
+        tx: &'a dyn QueryContext,
         delta_rule: Option<&MagicSymbol>,
         stores: &'a BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<TupleIter<'a>> {

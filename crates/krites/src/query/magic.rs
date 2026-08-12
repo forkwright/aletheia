@@ -42,7 +42,7 @@ use crate::error::InternalResult as Result;
 use crate::parse::SourceSpan;
 use crate::query::error::*;
 
-use crate::runtime::transact::SessionTx;
+use crate::query::context::QueryContext;
 
 impl NormalFormProgram {
     pub(crate) fn exempt_aggr_rules_for_magic_sets(&self, exempt_rules: &mut BTreeSet<Symbol>) {
@@ -70,7 +70,10 @@ impl NormalFormProgram {
 }
 
 impl StratifiedNormalFormProgram {
-    pub(crate) fn magic_sets_rewrite(self, tx: &SessionTx<'_>) -> Result<StratifiedMagicProgram> {
+    pub(crate) fn magic_sets_rewrite(
+        self,
+        tx: &dyn QueryContext,
+    ) -> Result<StratifiedMagicProgram> {
         let mut exempt_rules = BTreeSet::from([Symbol::new(PROG_ENTRY, SourceSpan(0, 0))]);
         let mut collected = vec![];
         for prog in self.0 {
@@ -329,7 +332,11 @@ impl NormalFormProgram {
         }
         downstream_rules
     }
-    fn adorn(self, upstream_rules: &BTreeSet<Symbol>, tx: &SessionTx<'_>) -> Result<MagicProgram> {
+    fn adorn(
+        self,
+        upstream_rules: &BTreeSet<Symbol>,
+        tx: &dyn QueryContext,
+    ) -> Result<MagicProgram> {
         let rules_to_rewrite: BTreeSet<_> = self
             .prog
             .keys()

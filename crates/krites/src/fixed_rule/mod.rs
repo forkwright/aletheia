@@ -32,9 +32,9 @@ use crate::fixed_rule::error::InvalidInputSnafu;
 )]
 use crate::fixed_rule::utilities::*;
 use crate::parse::SourceSpan;
+use crate::query::context::QueryContext;
 use crate::runtime::db::Poison;
 use crate::runtime::temp_store::{EpochStore, RegularTempStore};
-use crate::runtime::transact::SessionTx;
 
 pub(crate) mod error;
 
@@ -51,7 +51,7 @@ pub(crate) mod utilities;
 pub struct FixedRulePayload<'a, 'b> {
     pub(crate) manifest: &'a MagicFixedRuleApply,
     pub(crate) stores: &'a BTreeMap<MagicSymbol, EpochStore>,
-    pub(crate) tx: &'a SessionTx<'b>,
+    pub(crate) tx: &'a (dyn QueryContext + 'b),
 }
 
 /// Represents an input relation during the execution of a fixed rule
@@ -59,7 +59,7 @@ pub struct FixedRulePayload<'a, 'b> {
 pub struct FixedRuleInputRelation<'a, 'b> {
     arg_manifest: &'a MagicFixedRuleRuleArg,
     stores: &'a BTreeMap<MagicSymbol, EpochStore>,
-    tx: &'a SessionTx<'b>,
+    tx: &'a (dyn QueryContext + 'b),
 }
 
 #[expect(
@@ -131,9 +131,9 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
             MagicFixedRuleRuleArg::Stored { name, valid_at, .. } => {
                 let relation = self.tx.get_relation(name, false)?;
                 if let Some(valid_at) = valid_at {
-                    Box::new(relation.skip_scan_all(self.tx, *valid_at))
+                    self.tx.relation_skip_scan_all(&relation, *valid_at)
                 } else {
-                    Box::new(relation.scan_all(self.tx))
+                    self.tx.relation_scan_all(&relation)
                 }
             }
         })
@@ -161,9 +161,9 @@ impl<'a, 'b> FixedRuleInputRelation<'a, 'b> {
                 let relation = self.tx.get_relation(name, false)?;
                 let t = vec![prefix.clone()];
                 if let Some(valid_at) = valid_at {
-                    Box::new(relation.skip_scan_prefix(self.tx, &t, *valid_at))
+                    self.tx.relation_skip_scan_prefix(&relation, &t, *valid_at)
                 } else {
-                    Box::new(relation.scan_prefix(self.tx, &t))
+                    self.tx.relation_scan_prefix(&relation, &t)
                 }
             }
         })
@@ -955,7 +955,7 @@ impl std::error::Error for BadExprValueError {}
 impl MagicFixedRuleRuleArg {
     pub(crate) fn arity(
         &self,
-        tx: &SessionTx<'_>,
+        tx: &dyn QueryContext,
         stores: &BTreeMap<MagicSymbol, EpochStore>,
     ) -> Result<usize> {
         Ok(match self {

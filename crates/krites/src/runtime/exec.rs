@@ -488,7 +488,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         let (normalized_program, out_opts) = input_program.into_normalized_program(tx)?;
         let (stratified_program, store_lifetimes) = normalized_program.into_stratified_program()?;
         let program = stratified_program.magic_sets_rewrite(tx)?;
-        let compiled = tx.stratified_magic_compile(program)?;
+        let compiled = crate::query::compile::stratified_magic_compile(tx, program)?;
 
         let poison = Poison::default();
         if let Some(secs) = out_opts.timeout {
@@ -524,7 +524,8 @@ impl<'s, S: Storage<'s>> Db<S> {
             None
         };
 
-        let (result_store, early_return) = tx.stratified_magic_evaluate(
+        let (result_store, early_return) = crate::query::eval::stratified_magic_evaluate(
+            tx,
             &compiled,
             store_lifetimes,
             total_num_to_take,
