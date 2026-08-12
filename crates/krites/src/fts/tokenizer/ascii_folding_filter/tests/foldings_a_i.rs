@@ -667,6 +667,155 @@ fn test_all_foldings_a_through_i() {
             ],
             "ij",
         ),
+        (
+            &[
+                "Ꞻ", // U+A7BA: LATIN CAPITAL LETTER GLOTTAL A
+            ],
+            "A",
+        ),
+        (
+            &[
+                "Ꞛ", // U+A79A: LATIN CAPITAL LETTER VOLAPUK AE
+            ],
+            "AE",
+        ),
+        (
+            &[
+                "Ꞗ", // U+A796: LATIN CAPITAL LETTER B WITH FLOURISH
+            ],
+            "B",
+        ),
+        (
+            &[
+                "Ꞓ", // U+A792: LATIN CAPITAL LETTER C WITH BAR
+                "Ꞔ", // U+A7C4: LATIN CAPITAL LETTER C WITH PALATAL HOOK
+            ],
+            "C",
+        ),
+        (
+            &[
+                "Ꟈ", // U+A7C7: LATIN CAPITAL LETTER D WITH SHORT STROKE OVERLAY
+            ],
+            "D",
+        ),
+        (
+            &[
+                "Ɜ", // U+A7AB: LATIN CAPITAL LETTER REVERSED OPEN E
+            ],
+            "E",
+        ),
+        (
+            &[
+                "Ꝫ", // U+A76A: LATIN CAPITAL LETTER ET
+            ],
+            "ET",
+        ),
+        (
+            &[
+                "Ꞙ", // U+A798: LATIN CAPITAL LETTER F WITH STROKE
+            ],
+            "F",
+        ),
+        (
+            &[
+                "Ꞡ", // U+A7A0: LATIN CAPITAL LETTER G WITH OBLIQUE STROKE
+                "Ɡ", // U+A7AC: LATIN CAPITAL LETTER SCRIPT G
+                "Ꟑ", // U+A7D0: LATIN CAPITAL LETTER CLOSED INSULAR G
+            ],
+            "G",
+        ),
+        (
+            &[
+                "Ɥ", // U+A78D: LATIN CAPITAL LETTER TURNED H
+                "Ɦ", // U+A7AA: LATIN CAPITAL LETTER H WITH HOOK
+                "Ꟶ", // U+A7F5: LATIN CAPITAL LETTER REVERSED HALF H
+            ],
+            "H",
+        ),
+        (
+            &[
+                "Ɪ", // U+A7AE: LATIN CAPITAL LETTER SMALL CAPITAL I
+                "Ꞽ", // U+A7BC: LATIN CAPITAL LETTER GLOTTAL I
+            ],
+            "I",
+        ),
+        (
+            &[
+                "Ꝭ", // U+A76C: LATIN CAPITAL LETTER IS
+            ],
+            "IS",
+        ),
+        (
+            &[
+                "ꞻ", // U+A7BB: LATIN SMALL LETTER GLOTTAL A
+            ],
+            "a",
+        ),
+        (
+            &[
+                "ꞛ", // U+A79B: LATIN SMALL LETTER VOLAPUK AE
+            ],
+            "ae",
+        ),
+        (
+            &[
+                "ꞗ", // U+A797: LATIN SMALL LETTER B WITH FLOURISH
+            ],
+            "b",
+        ),
+        (
+            &[
+                "ꞓ", // U+A793: LATIN SMALL LETTER C WITH BAR
+                "ꞔ", // U+A794: LATIN SMALL LETTER C WITH PALATAL HOOK
+            ],
+            "c",
+        ),
+        (
+            &[
+                "ꟈ", // U+A7C8: LATIN SMALL LETTER D WITH SHORT STROKE OVERLAY
+            ],
+            "d",
+        ),
+        (
+            &[
+                "ꝫ", // U+A76B: LATIN SMALL LETTER ET
+            ],
+            "et",
+        ),
+        (
+            &[
+                "ꞙ", // U+A799: LATIN SMALL LETTER F WITH STROKE
+            ],
+            "f",
+        ),
+        (
+            &[
+                "ꞡ", // U+A7A1: LATIN SMALL LETTER G WITH OBLIQUE STROKE
+                "ꟑ", // U+A7D1: LATIN SMALL LETTER CLOSED INSULAR G
+            ],
+            "g",
+        ),
+        (
+            &[
+                "ₕ", // U+2095: LATIN SUBSCRIPT SMALL LETTER H
+                "ꞕ", // U+A795: LATIN SMALL LETTER H WITH PALATAL HOOK
+                "ꟶ", // U+A7F6: LATIN SMALL LETTER REVERSED HALF H
+            ],
+            "h",
+        ),
+        (
+            &[
+                "ɩ", // U+0269: LATIN SMALL LETTER IOTA
+                "ꞽ", // U+A7BD: LATIN SMALL LETTER GLOTTAL I
+            ],
+            "i",
+        ),
+        (
+            &[
+                "ꝭ", // U+A76D: LATIN SMALL LETTER IS
+            ],
+            "is",
+        ),
     ];
 
     for (characters, folded) in foldings {

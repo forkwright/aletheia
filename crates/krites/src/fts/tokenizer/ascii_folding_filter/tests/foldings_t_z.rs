@@ -398,6 +398,91 @@ fn test_all_foldings_t_through_z() {
             ],
             "(z)",
         ),
+        (
+            &[
+                "Ʇ", // U+A7B1: LATIN CAPITAL LETTER TURNED T
+            ],
+            "T",
+        ),
+        (
+            &[
+                "Ꝥ", // U+A764: LATIN CAPITAL LETTER THORN WITH STROKE
+            ],
+            "TH",
+        ),
+        (
+            &[
+                "Ꞹ", // U+A7B8: LATIN CAPITAL LETTER U WITH STROKE
+                "Ꞿ", // U+A7BE: LATIN CAPITAL LETTER GLOTTAL U
+            ],
+            "U",
+        ),
+        (
+            &[
+                "Ꞟ", // U+A79E: LATIN CAPITAL LETTER VOLAPUK UE
+            ],
+            "UE",
+        ),
+        (
+            &[
+                "Ꟃ", // U+A7C2: LATIN CAPITAL LETTER ANGLICANA W
+            ],
+            "W",
+        ),
+        (
+            &[
+                "Ɀ", // U+2C7F: LATIN CAPITAL LETTER Z WITH SWASH TAIL
+                "Ᶎ", // U+A7C6: LATIN CAPITAL LETTER Z WITH PALATAL HOOK
+            ],
+            "Z",
+        ),
+        (
+            &[
+                "ₜ", // U+209C: LATIN SUBSCRIPT SMALL LETTER T
+                "ꞇ", // U+A787: LATIN SMALL LETTER INSULAR T
+            ],
+            "t",
+        ),
+        (
+            &[
+                "ꝥ", // U+A765: LATIN SMALL LETTER THORN WITH STROKE
+                "ꟓ", // U+A7D3: LATIN SMALL LETTER DOUBLE THORN
+            ],
+            "th",
+        ),
+        (
+            &[
+                "ᴝ", // U+1D1D: LATIN SMALL LETTER SIDEWAYS U
+                "ᴞ", // U+1D1E: LATIN SMALL LETTER SIDEWAYS DIAERESIZED U
+                "ꞹ", // U+A7B9: LATIN SMALL LETTER U WITH STROKE
+                "ꞿ", // U+A7BF: LATIN SMALL LETTER GLOTTAL U
+            ],
+            "u",
+        ),
+        (
+            &[
+                "ꞟ", // U+A79F: LATIN SMALL LETTER VOLAPUK UE
+            ],
+            "ue",
+        ),
+        (
+            &[
+                "ꝸ", // U+A778: LATIN SMALL LETTER UM
+            ],
+            "um",
+        ),
+        (
+            &[
+                "ỽ", // U+1EFD: LATIN SMALL LETTER MIDDLE-WELSH V
+            ],
+            "v",
+        ),
+        (
+            &[
+                "ꟃ", // U+A7C3: LATIN SMALL LETTER ANGLICANA W
+            ],
+            "w",
+        ),
     ];
 
     for (characters, folded) in foldings {

@@ -10,7 +10,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
 - 210 files under `src/`: 142 derived, 68 sovereign, 0 dual
-- Mean verbatim match across the 142 derived files: 44.7% (unweighted average of the per-file `verbatim_pct` column below)
+- Mean verbatim match across the 142 derived files: 44.4% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -115,10 +115,10 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs` | — | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 75.0% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 73.5% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 70.0% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 82.4% | derived |
-| `src/fts/tokenizer/ascii_folding_filter/tests/foldings_t_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 69.2% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 60.6% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 56.6% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 77.0% | derived |
+| `src/fts/tokenizer/ascii_folding_filter/tests/foldings_t_z.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 57.9% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 60.5% | derived |
 | `src/fts/tokenizer/empty_tokenizer.rs` | `fts/tokenizer/empty_tokenizer.rs` | 85.7% | derived |
 | `src/fts/tokenizer/lower_caser.rs` | `fts/tokenizer/lower_caser.rs` | 74.6% | derived |

@@ -630,6 +630,163 @@ fn test_all_foldings_j_through_s() {
             ],
             "st",
         ),
+        (
+            &[
+                "Ʝ", // U+A7B2: LATIN CAPITAL LETTER J WITH CROSSED-TAIL
+            ],
+            "J",
+        ),
+        (
+            &[
+                "Ꞣ", // U+A7A2: LATIN CAPITAL LETTER K WITH OBLIQUE STROKE
+                "Ʞ", // U+A7B0: LATIN CAPITAL LETTER TURNED K
+            ],
+            "K",
+        ),
+        (
+            &[
+                "Ɬ", // U+A7AD: LATIN CAPITAL LETTER L WITH BELT
+            ],
+            "L",
+        ),
+        (
+            &[
+                "ꟺ", // U+A7FA: LATIN LETTER SMALL CAPITAL TURNED M
+            ],
+            "M",
+        ),
+        (
+            &[
+                "Ꞑ", // U+A790: LATIN CAPITAL LETTER N WITH DESCENDER
+                "Ꞥ", // U+A7A4: LATIN CAPITAL LETTER N WITH OBLIQUE STROKE
+            ],
+            "N",
+        ),
+        (
+            &[
+                "Ꟁ", // U+A7C0: LATIN CAPITAL LETTER OLD POLISH O
+            ],
+            "O",
+        ),
+        (
+            &[
+                "Ꞝ", // U+A79C: LATIN CAPITAL LETTER VOLAPUK OE
+            ],
+            "OE",
+        ),
+        (
+            &[
+                "Ƣ", // U+01A2: LATIN CAPITAL LETTER OI
+            ],
+            "OI",
+        ),
+        (
+            &[
+                "ꞯ", // U+A7AF: LATIN LETTER SMALL CAPITAL Q
+            ],
+            "Q",
+        ),
+        (
+            &[
+                "Ꞧ", // U+A7A6: LATIN CAPITAL LETTER R WITH OBLIQUE STROKE
+            ],
+            "R",
+        ),
+        (
+            &[
+                "Ȿ", // U+2C7E: LATIN CAPITAL LETTER S WITH SWASH TAIL
+                "Ꞩ", // U+A7A8: LATIN CAPITAL LETTER S WITH OBLIQUE STROKE
+                "Ʂ", // U+A7C5: LATIN CAPITAL LETTER S WITH HOOK
+                "Ꟊ", // U+A7C9: LATIN CAPITAL LETTER S WITH SHORT STROKE OVERLAY
+                "Ꟍ", // U+A7CC: LATIN CAPITAL LETTER S WITH DIAGONAL STROKE
+                "Ꟗ", // U+A7D6: LATIN CAPITAL LETTER MIDDLE SCOTS S
+                "Ꟙ", // U+A7D8: LATIN CAPITAL LETTER SIGMOID S
+            ],
+            "S",
+        ),
+        (
+            &[
+                "ₖ", // U+2096: LATIN SUBSCRIPT SMALL LETTER K
+                "ꞣ", // U+A7A3: LATIN SMALL LETTER K WITH OBLIQUE STROKE
+            ],
+            "k",
+        ),
+        (
+            &[
+                "ₗ", // U+2097: LATIN SUBSCRIPT SMALL LETTER L
+                "ꞎ", // U+A78E: LATIN SMALL LETTER L WITH RETROFLEX HOOK AND BELT
+            ],
+            "l",
+        ),
+        (
+            &[
+                "ᴟ", // U+1D1F: LATIN SMALL LETTER SIDEWAYS TURNED M
+                "ₘ", // U+2098: LATIN SUBSCRIPT SMALL LETTER M
+            ],
+            "m",
+        ),
+        (
+            &[
+                "ₙ", // U+2099: LATIN SUBSCRIPT SMALL LETTER N
+                "ꞑ", // U+A791: LATIN SMALL LETTER N WITH DESCENDER
+                "ꞥ", // U+A7A5: LATIN SMALL LETTER N WITH OBLIQUE STROKE
+            ],
+            "n",
+        ),
+        (
+            &[
+                "ᴑ", // U+1D11: LATIN SMALL LETTER SIDEWAYS O
+                "ᴒ", // U+1D12: LATIN SMALL LETTER SIDEWAYS OPEN O
+                "ᴓ", // U+1D13: LATIN SMALL LETTER SIDEWAYS O WITH STROKE
+                "ꟁ", // U+A7C1: LATIN SMALL LETTER OLD POLISH O
+            ],
+            "o",
+        ),
+        (
+            &[
+                "ꞝ", // U+A79D: LATIN SMALL LETTER VOLAPUK OE
+            ],
+            "oe",
+        ),
+        (
+            &[
+                "ƣ", // U+01A3: LATIN SMALL LETTER OI
+            ],
+            "oi",
+        ),
+        (
+            &[
+                "ₚ", // U+209A: LATIN SUBSCRIPT SMALL LETTER P
+            ],
+            "p",
+        ),
+        (
+            &[
+                "ɹ", // U+0279: LATIN SMALL LETTER TURNED R
+                "ɺ", // U+027A: LATIN SMALL LETTER TURNED R WITH LONG LEG
+                "ɻ", // U+027B: LATIN SMALL LETTER TURNED R WITH HOOK
+                "ⱹ", // U+2C79: LATIN SMALL LETTER TURNED R WITH TAIL
+                "ꞧ", // U+A7A7: LATIN SMALL LETTER R WITH OBLIQUE STROKE
+            ],
+            "r",
+        ),
+        (
+            &[
+                "ₛ", // U+209B: LATIN SUBSCRIPT SMALL LETTER S
+                "ꞩ", // U+A7A9: LATIN SMALL LETTER S WITH OBLIQUE STROKE
+                "ꟊ", // U+A7CA: LATIN SMALL LETTER S WITH SHORT STROKE OVERLAY
+                "ꟍ", // U+A7CD: LATIN SMALL LETTER S WITH DIAGONAL STROKE
+                "ꟗ", // U+A7D7: LATIN SMALL LETTER MIDDLE SCOTS S
+                "ꟙ", // U+A7D9: LATIN SMALL LETTER SIGMOID S
+            ],
+            "s",
+        ),
+        (
+            &[
+                "ﬅ", // U+FB05: LATIN SMALL LIGATURE LONG S T
+            ],
+            "st",
+        ),
     ];
 
     for (characters, folded) in foldings {
