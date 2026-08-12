@@ -15,6 +15,7 @@ use mneme::embedding::EmbeddingProvider;
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::store::SessionStore;
 use nous::manager::NousManager;
+use oikonomos::state::TaskStateStore;
 use organon::registry::ToolRegistry;
 use symbolon::auth::AuthFacade;
 use symbolon::jwt::JwtManager;
@@ -101,6 +102,15 @@ pub struct AppState {
     /// When `false` (default), redact high-cardinality/sensitive labels from
     /// the `/metrics` scrape output (#5322).
     pub metrics_detailed: bool,
+    /// Daemon task-state store handles for health-check reads (#5142).
+    ///
+    /// One `(component, store)` pair per active `TaskRunner`: `"system"`
+    /// plus one per configured nous agent. Each handle is a cheap `Clone` of
+    /// the exact store the runner writes through — opening a second
+    /// `TaskStateStore` at the same fjall path would collide with the
+    /// runner's own open handle. Empty when daemon mode is disabled, which
+    /// is itself a real (not unknown) signal.
+    pub daemon_task_states: Arc<Vec<(String, TaskStateStore)>>,
 }
 
 impl AppState {
@@ -218,6 +228,9 @@ pub struct HealthState {
     /// `GET /api/v1/knowledge/check`, which this does not duplicate).
     #[cfg(feature = "knowledge-store")]
     pub knowledge_store: Option<Arc<KnowledgeStore>>,
+    /// Daemon task-state store handles (#5142; #5313 subsystem status: real
+    /// task enabled/disabled, backoff, and last-outcome signal).
+    pub daemon_task_states: Arc<Vec<(String, TaskStateStore)>>,
 }
 
 impl FromRef<Arc<AppState>> for HealthState {
@@ -238,6 +251,7 @@ impl FromRef<Arc<AppState>> for HealthState {
             turn_buffer_registry: Arc::clone(&state.turn_buffer_registry),
             #[cfg(feature = "knowledge-store")]
             knowledge_store: state.knowledge_store.clone(),
+            daemon_task_states: Arc::clone(&state.daemon_task_states),
         }
     }
 }
