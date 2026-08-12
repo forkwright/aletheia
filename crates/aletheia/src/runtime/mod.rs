@@ -122,6 +122,41 @@ fn resolve_pack_paths(oikos: &Oikos, configured: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Build the daemon's live maintenance configuration, wiring in the runtime
+/// handles that `taxis::config::MaintenanceSettings` cannot carry: the
+/// shared after-action store, the backup metrics recorder, and the
+/// session-store health probe.
+///
+/// WHY: used both at initial [`Runtime`] construction and by the
+/// config-reload task below, so the two call sites cannot drift from each
+/// other (SSOT) -- a reload that rebuilt `MaintenanceConfig` differently
+/// than startup would silently reset or duplicate these runtime handles
+/// (most sharply, `after_action_store`: `maintenance::build_config` on its
+/// own constructs a brand-new, empty store).
+fn build_daemon_maintenance_config(
+    oikos: &Oikos,
+    config: &AletheiaConfig,
+    after_action_store: &Arc<AfterActionStore>,
+    session_store: &Arc<Mutex<SessionStore>>,
+) -> oikonomos::maintenance::MaintenanceConfig {
+    let mut maintenance_config =
+        maintenance::build_config(oikos, &config.maintenance, &config.prompt_audit);
+    maintenance_config.after_action_store = Some(Arc::clone(after_action_store));
+    maintenance_config.backup_metrics = Some(Arc::new(RuntimeBackupMetricsRecorder));
+    // WHY(#6445): publish backup freshness from the manifests on disk so a
+    // reload -- not just a restart or a completed backup -- keeps exported
+    // backup-interval/enabled metrics in sync with the live config.
+    oikonomos::maintenance::instance_backup::publish_backup_state(
+        &maintenance_config.instance_backup,
+        &RuntimeBackupMetricsRecorder,
+    );
+    maintenance_config.session_store_health_probe =
+        Some(Arc::new(RuntimeSessionStoreHealthProbe {
+            session_store: Arc::clone(session_store),
+        }));
+    maintenance_config
+}
+
 /// Build a per-agent prosoche `TaskDef` from config values.
 ///
 /// WHY: keep task ID/name/schedule conversion in one place so the runtime
@@ -690,26 +725,21 @@ impl RuntimeBuilder {
             info!(count = nous_manager.count(), "nous actors spawned");
         }
 
-        let mut maintenance_config = maintenance::build_config(
+        let maintenance_config = build_daemon_maintenance_config(
             &self.oikos,
-            &self.config.maintenance,
-            &self.config.prompt_audit,
+            &self.config,
+            &after_action_store,
+            &session_store,
         );
-        maintenance_config.after_action_store = Some(Arc::clone(&after_action_store));
-        maintenance_config.backup_metrics = Some(Arc::new(RuntimeBackupMetricsRecorder));
-        // WHY(#6445): publish backup freshness from the manifests on disk
-        // before any backup runs. Without this the series only appears after
-        // this process completes a backup, so a restart — or an instance that
-        // has never backed up at all — exports nothing and BackupStale cannot
-        // fire.
-        oikonomos::maintenance::instance_backup::publish_backup_state(
-            &maintenance_config.instance_backup,
-            &RuntimeBackupMetricsRecorder,
-        );
-        maintenance_config.session_store_health_probe =
-            Some(Arc::new(RuntimeSessionStoreHealthProbe {
-                session_store: Arc::clone(&session_store),
-            }));
+        // WHY: the receiver half is moved into the system daemon_runner below
+        // (the canonical maintenance scheduler) when daemons are enabled; the
+        // sender half is moved into the config-reload task further down so
+        // that any config reload (PUT section, POST reload, SIGHUP) pushes a
+        // freshly-built MaintenanceConfig for live task reconciliation. When
+        // daemons are disabled the receiver is simply dropped and later
+        // `send` calls are ignored, matching the existing config_tx pattern.
+        let (maintenance_reload_tx, maintenance_reload_rx) =
+            tokio::sync::watch::channel(maintenance_config.clone());
         let task_state_root = self.oikos.data().join("daemon-task-state");
 
         if self.daemons {
@@ -724,7 +754,8 @@ impl RuntimeBuilder {
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
                 .with_watchdog_settings(&self.config.maintenance.watchdog)
                 .with_state_store(system_state_store)
-                .with_maintenance(maintenance_config.clone());
+                .with_maintenance(maintenance_config.clone())
+                .with_maintenance_reload(maintenance_reload_rx);
             let retention_executor = Arc::new(
                 crate::session_retention::SessionRetentionAdapter::new(Arc::clone(&session_store)),
             );
