@@ -833,7 +833,7 @@ soak_expires_at_commit_count = 0
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 73.5
+verbatim_pct = 60.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -841,7 +841,7 @@ soak_expires_at_commit_count = 0
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 70.0
+verbatim_pct = 56.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -849,7 +849,7 @@ soak_expires_at_commit_count = 0
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 82.4
+verbatim_pct = 77.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -857,7 +857,7 @@ soak_expires_at_commit_count = 0
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_t_z.rs"
 upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 69.2
+verbatim_pct = 57.9
 status = "derived"
 soak_expires_at_commit_count = 0
 

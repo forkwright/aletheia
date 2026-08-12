@@ -728,6 +728,54 @@ fn test_all_foldings_numbers_and_symbols() {
             ],
             "~",
         ),
+        (
+            &[
+                "❟", // U+275F: HEAVY LOW SINGLE COMMA QUOTATION MARK ORNAMENT
+            ],
+            "'",
+        ),
+        (
+            &[
+                "﬩", // U+FB29: HEBREW LETTER ALTERNATIVE PLUS SIGN
+            ],
+            "+",
+        ),
+        (
+            &[
+                "․", // U+2024: ONE DOT LEADER
+            ],
+            ".",
+        ),
+        (
+            &[
+                "‥", // U+2025: TWO DOT LEADER
+            ],
+            "..",
+        ),
+        (
+            &[
+                "…", // U+2026: HORIZONTAL ELLIPSIS
+            ],
+            "...",
+        ),
+        (
+            &[
+                "❠", // U+2760: HEAVY LOW DOUBLE COMMA QUOTATION MARK ORNAMENT
+            ],
+            "\"",
+        ),
+        (
+            &[
+                "｀", // U+FF40: FULLWIDTH GRAVE ACCENT
+            ],
+            "`",
+        ),
+        (
+            &[
+                "｜", // U+FF5C: FULLWIDTH VERTICAL LINE
+            ],
+            "|",
+        ),
     ];
 
     for (characters, folded) in foldings {

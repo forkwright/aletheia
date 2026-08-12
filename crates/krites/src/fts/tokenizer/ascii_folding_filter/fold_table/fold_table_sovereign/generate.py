@@ -55,7 +55,7 @@ import pathlib
 import re
 import unicodedata
 
-EXPECTED_UNICODE_VERSION = "15.0.0"
+EXPECTED_UNICODE_VERSION = "16.0.0"
 
 OUT_PATH = pathlib.Path(__file__).parent / "table.rs"
 
@@ -321,7 +321,7 @@ def phase_e(c: str) -> str | None:
 # frozen at an older Unicode edition. Excluded to keep folding behaviour
 # unchanged across the swap. Lifting them is a behavioural change with its
 # own tests, not a cleanup.
-EXCLUDE_SET = {
+FORMERLY_EXCLUDED = {
     # CLDR "Latin letters and IPA" entries the derived table's curation
     # never picked up (OI digraph, HENG WITH HOOK)
     0x01A2, 0x01A3, 0x0267,
@@ -353,7 +353,7 @@ EXCLUDE_SET = {
 
 
 def fold(cp: int) -> str | None:
-    if not in_scope(cp) or cp in EXCLUDE_SET:
+    if not in_scope(cp):
         return None
     if cp in QUIRKS:
         return QUIRKS[cp]
