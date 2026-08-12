@@ -394,6 +394,11 @@ fn decrypt_toml_values_inner(
 /// Recursively encrypt plaintext string values for sensitive keys in a TOML
 /// value tree. Only encrypts values that are not already `enc:`-prefixed.
 ///
+/// Covers both classes of sensitive leaf: fields whose *key name* marks them
+/// sensitive (`sensitive::key_is_sensitive`, e.g. `signingKey`) and fields
+/// that are sensitive by *structural position* regardless of key name (e.g.
+/// `gateway.csrf.headerValue`; see [`crate::redact::encryptable_leaf_paths`]).
+///
 /// # Errors
 ///
 /// Returns an error if any encryption operation fails.
@@ -402,8 +407,27 @@ pub(crate) fn encrypt_sensitive_values(
     primary_key: &[u8; KEY_LEN],
 ) -> Result<usize> {
     let mut count = 0;
+    encrypt_structural_leaves(value, primary_key, &mut count)?;
     encrypt_recursive(value, primary_key, &mut count)?;
     Ok(count)
+}
+
+/// Encrypt the structural leaf paths shared with `redact.rs` (#5349).
+fn encrypt_structural_leaves(
+    value: &mut toml::Value,
+    primary_key: &[u8; KEY_LEN],
+    count: &mut usize,
+) -> Result<()> {
+    for path in crate::redact::encryptable_leaf_paths() {
+        let Some(toml::Value::String(s)) = crate::redact::toml_path_mut(value, path) else {
+            continue;
+        };
+        if !s.is_empty() && !is_encrypted(s) {
+            *s = encrypt_value(s, primary_key)?;
+            *count += 1;
+        }
+    }
+    Ok(())
 }
 
 fn encrypt_recursive(
@@ -718,6 +742,32 @@ mod tests {
             decrypted, "my-secret-key",
             "decrypted sensitive value should match original"
         );
+    }
+
+    #[test]
+    fn encrypt_covers_structural_leaf_with_non_sensitive_key_name() {
+        // WHY(#5349): `gateway.csrf.headerValue` is sensitive by structural
+        // position (see `redact::SENSITIVE_LEAVES`), not by key-name fragment
+        // match -- "headerValue" contains none of `SENSITIVE_KEY_FRAGMENTS`.
+        // Without the structural pass this field is redacted on display but
+        // silently left plaintext at rest.
+        let key = fixture_key();
+        let toml_str = r#"
+            [gateway.csrf]
+            enabled = true
+            headerValue = "my-csrf-secret"
+        "#;
+        let mut value: toml::Value = toml::from_str(toml_str).unwrap();
+        let count = encrypt_sensitive_values(&mut value, &key).unwrap();
+
+        assert_eq!(count, 1, "headerValue should be encrypted structurally");
+
+        let header_value = value["gateway"]["csrf"]["headerValue"].as_str().unwrap();
+        assert!(
+            is_encrypted(header_value),
+            "headerValue must be encrypted at rest despite its non-sensitive-looking key name"
+        );
+        assert_eq!(decrypt_value(header_value, &key).unwrap(), "my-csrf-secret");
     }
 
     #[test]

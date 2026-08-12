@@ -104,7 +104,7 @@ jobs:
     # `@main` an upstream commit in another repo reddens every open PR here with no change to
     # this one — the same class as the gitignored fuzz lockfile (#6655), at a larger blast
     # radius. Bump deliberately, so the change is reviewable.
-    uses: forkwright/.github/.github/workflows/hybrid-gate.yml@d3f5e699311c0b306444ae57c0260f508c0b0a16
+    uses: forkwright/.github/.github/workflows/hybrid-gate.yml@aed4ca51974b00998dab0715723676060a6ee12e
     with:
       fmt_cmd: "cargo fmt --all -- --check"
       check_cmd: "cargo check --workspace --all-targets --features test-core"
@@ -271,6 +271,15 @@ jobs:
           cargo check -p poiesis-slides --no-default-features
           cargo check -p poiesis-sheet
           cargo check -p poiesis-sheet --no-default-features --features workbook
+
+      # WHY(#4473): gate-attestation's hybrid-gate check_cmd only builds default +
+      # --features test-core, so a gated provider feature (codex-provider,
+      # kimi-provider, ...) can break silently — #4468 shipped exactly that: a
+      # derive that only fails under codex-provider stayed broken on main until
+      # #4470. NOT --all-features (z3-sys); this is the deployment feature set
+      # used on metis.
+      - name: Aletheia gated-provider feature gate
+        run: cargo check -p aletheia --features mcp,energeia,codex-provider,kimi-provider
 
       - name: cargo check fuzz targets
         env:

@@ -3,6 +3,15 @@
 # (licenses, sources, bans, advisories), and OSV-Scanner on every PR and
 # daily against main so newly-published CVEs against existing deps are caught
 # even when no PR is open. See standards/CI.md § Vulnerability scanning.
+#
+# WHY(#6609): gitleaks + trufflehog scan committed CONTENT for secrets (full
+# git history, fetch-depth: 0) — a different threat model than cargo-deny/
+# cargo-audit/osv-scanner, which scan dependency metadata for known CVEs.
+# A secret committed once and later removed stays visible in `git log -p`
+# forever; only a history-scanning job catches that. Modeled on kanon's
+# shared workflow/templates/ci/security.yml. gitleaks reads the fully-authored
+# .gitleaks.toml already at repo root (custom rules + allowlist) rather than
+# gitleaks' bundled default ruleset.
 name: Security
 
 on:
@@ -103,3 +112,32 @@ jobs:
       security-events: write
     with:
       scan-args: '--config=osv-scanner.toml --lockfile=Cargo.lock'
+
+  secret-scan:
+    name: trufflehog secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: TruffleHog secret scan
+        uses: trufflesecurity/trufflehog@6c05c4a00b91aa542267d8e32a8254774799d68d # v3.93.8
+        with:
+          extra_args: --only-verified
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml

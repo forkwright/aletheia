@@ -63,6 +63,7 @@ pub struct TestEnvBuilder {
     jwt_access_ttl: Option<Duration>,
     #[cfg(feature = "knowledge-store")]
     knowledge_store: Option<Arc<mneme::knowledge_store::KnowledgeStore>>,
+    disk_monitor: Option<koina::disk_space::DiskSpaceMonitor>,
 }
 
 impl TestEnvBuilder {
@@ -78,6 +79,13 @@ impl TestEnvBuilder {
 
     pub fn jwt_access_ttl(mut self, ttl: Duration) -> Self {
         self.jwt_access_ttl = Some(ttl);
+        self
+    }
+
+    /// WHY(#5128): lets health/status tests exercise the `maintenance.diskSpace`
+    /// "enabled" branch without a real background poller.
+    pub fn disk_monitor(mut self, monitor: koina::disk_space::DiskSpaceMonitor) -> Self {
+        self.disk_monitor = Some(monitor);
         self
     }
 
@@ -170,6 +178,7 @@ impl TestEnvBuilder {
             #[cfg(feature = "knowledge-store")]
             knowledge_store: self.knowledge_store,
             embedding_provider: None,
+            disk_monitor: self.disk_monitor,
             turn_buffer_registry: Arc::new(pylon::turn_buffer::TurnBufferRegistry::new()),
             metrics_registry,
             event_bus: Arc::new(pylon::event_bus::EventBus::new(256)),
