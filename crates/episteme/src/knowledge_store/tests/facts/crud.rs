@@ -6,6 +6,7 @@
 )]
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use super::super::super::*;
 use crate::knowledge::ForgetReason;
@@ -711,6 +712,63 @@ fn increment_access_nonexistent_id_is_silent() {
     store
         .increment_access(&[crate::id::FactId::new("nonexistent").expect("valid test id")])
         .expect("increment nonexistent should not error");
+}
+
+#[test]
+fn increment_access_concurrent_disjoint_ids_do_not_lose_updates() {
+    // WHY(#5673): access_lock is reacquired per fact ID rather than held for
+    // the whole batch. Two concurrent increment_access callers on disjoint
+    // fact sets must both complete (no deadlock) and each fact's count must
+    // reflect exactly its own caller's increments (no lost update from the
+    // narrowed critical section).
+    let store = make_store();
+    let fact_a = make_fact("concurrent-a", "agent-a", "Fact A");
+    let fact_b = make_fact("concurrent-b", "agent-a", "Fact B");
+    store.insert_fact(&fact_a).expect("insert fact a");
+    store.insert_fact(&fact_b).expect("insert fact b");
+
+    let store_a = Arc::clone(&store);
+    let store_b = Arc::clone(&store);
+    let id_a = crate::id::FactId::new("concurrent-a").expect("valid test id");
+    let id_b = crate::id::FactId::new("concurrent-b").expect("valid test id");
+
+    let h1 = std::thread::spawn(move || {
+        for _ in 0..5 {
+            store_a
+                .increment_access(std::slice::from_ref(&id_a))
+                .expect("increment a");
+        }
+    });
+    let h2 = std::thread::spawn(move || {
+        for _ in 0..5 {
+            store_b
+                .increment_access(std::slice::from_ref(&id_b))
+                .expect("increment b");
+        }
+    });
+
+    h1.join().expect("thread a panicked");
+    h2.join().expect("thread b panicked");
+
+    let results = store
+        .query_facts("agent-a", "2026-06-01", 10)
+        .expect("query");
+    let found_a = results
+        .iter()
+        .find(|f| f.id.as_str() == "concurrent-a")
+        .expect("fact a found");
+    let found_b = results
+        .iter()
+        .find(|f| f.id.as_str() == "concurrent-b")
+        .expect("fact b found");
+    assert_eq!(
+        found_a.access.access_count, 5,
+        "fact a should have exactly 5 increments despite concurrent unrelated access"
+    );
+    assert_eq!(
+        found_b.access.access_count, 5,
+        "fact b should have exactly 5 increments despite concurrent unrelated access"
+    );
 }
 
 #[test]
