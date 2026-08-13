@@ -525,7 +525,8 @@ fn capability_aware_selection_reports_mismatch_when_every_provider_incapable() {
             ProviderRoute::ModelOnly,
             ProviderCapabilities::with_tool_loop(true),
         )
-        .expect_err("no provider can satisfy the required capability");
+        .err()
+        .expect("no provider can satisfy the required capability");
 
     match err {
         ProviderResolutionError::CapabilityMismatch {
@@ -580,7 +581,8 @@ fn capability_aware_explicit_route_rejects_incapable_provider() {
             ProviderRoute::Explicit("named-provider"),
             ProviderCapabilities::with_tool_loop(true),
         )
-        .expect_err("explicit route to an incapable provider must fail");
+        .err()
+        .expect("explicit route to an incapable provider must fail");
 
     match err {
         ProviderResolutionError::CapabilityMismatch { name, model, .. } => {
@@ -644,7 +646,8 @@ fn capability_mismatch_reports_after_health_when_both_present_in_tier() {
             ProviderRoute::ModelOnly,
             ProviderCapabilities::with_tool_loop(true),
         )
-        .expect_err("no eligible provider: one is down, the other is incapable");
+        .err()
+        .expect("no eligible provider: one is down, the other is incapable");
 
     match err {
         // WHY: proves the incapable-but-healthy provider was NOT selected as
