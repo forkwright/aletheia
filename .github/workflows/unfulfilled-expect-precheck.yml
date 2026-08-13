@@ -1,0 +1,51 @@
+# WHY: under `-D warnings`, an `#[expect(lint)]` whose lint never fires is
+# itself a hard error (unfulfilled-lint-expectations) -- but clippy only
+# reports it after the whole workspace compiles, at the end of a ~25-minute
+# gate. Measured twice in one day (2026-08-13):
+# `crates/theatron/proskenion/src/api/system_status.rs` and
+# `crates/graphe/src/store/fjall_store_tests_schema.rs`, both a copy-pasted
+# test-file header carrying a lint the file's own tests never trigger.
+#
+# scripts/check-unfulfilled-expects.py catches the reliable subset of this
+# shape (file-level and mod-level `#[expect(clippy::LINT)]`, three lints
+# with an unambiguous textual trigger) by reading source instead of
+# compiling it, failing in seconds rather than 25 minutes.
+# scripts/test-check-unfulfilled-expects.py is its self-test, run first so a
+# broken checker fails loudly here rather than silently passing everything.
+name: Unfulfilled Expect Precheck
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unfulfilled-expect:
+    name: unfulfilled #[expect(...)] attributes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): #6757 -- a metadata-only checkout on this repo
+          # full-clones under this job's short timeout unless scoped. This
+          # job's own concern is a handful of files (the checker and its
+          # self-test); it never needs blob history, only the tracked
+          # source tree at HEAD.
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Self-test the checker
+        run: scripts/test-check-unfulfilled-expects.py
+
+      - name: Check for unfulfilled #[expect(...)] attributes
+        run: scripts/check-unfulfilled-expects.py
