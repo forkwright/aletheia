@@ -4,6 +4,7 @@ use std::collections::HashMap;
 
 use eidos::id::FactId;
 use eidos::knowledge::MemoryScope;
+use koina::id::NousId;
 use serde::de::{self, Deserializer, SeqAccess, Visitor};
 use serde::ser::{SerializeSeq as _, SerializeStruct as _, Serializer};
 use serde::{Deserialize, Serialize};
@@ -494,7 +495,13 @@ impl Default for CachingConfig {
 #[serde(deny_unknown_fields)]
 pub struct NousDefinition {
     /// Unique agent identifier (matches the `nous/{id}/` directory name).
-    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire/serde config field: id maps to the agent's directory name in TOML, not a runtime domain identifier
+    ///
+    /// WHY(#4638): typed as `NousId` so a malformed id (uppercase, underscore,
+    /// path separator, leading/trailing hyphen) cannot survive config load —
+    /// deserialization runs the same shared validator as `init`, `add-nous`,
+    /// import, and the HTTP create path, instead of a sixth hand-rolled check
+    /// that could drift or be forgotten.
+    pub id: NousId,
     /// Human-readable display name.
     #[serde(default)]
     pub name: Option<String>,
@@ -547,7 +554,11 @@ pub struct NousDefinition {
 impl Default for NousDefinition {
     fn default() -> Self {
         Self {
-            id: String::new(),
+            // WHY: `NousId` has no empty/unset state -- every caller of
+            // `NousDefinition::default()` overrides `id` via struct-update
+            // syntax before the value is ever read, so this placeholder is
+            // inert; it exists only because the struct must be fully built.
+            id: NousId::from_static("unset"),
             name: None,
             enabled: true,
             model: None,

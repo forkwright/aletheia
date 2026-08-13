@@ -7,6 +7,7 @@ use std::time::Duration;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use koina::id::NousId;
 use nous::config::NousConfig;
 use nous::cross::AddressMask;
 use organon::surface::{DenialReason, SurfaceEntry, SurfaceEntryKind, SurfaceInputs};
@@ -27,7 +28,11 @@ pub use nous_dto::{
 };
 
 fn agent_definition<'a>(config: &'a AletheiaConfig, id: &str) -> Option<&'a NousDefinition> {
-    config.agents.list.iter().find(|agent| agent.id == id)
+    config
+        .agents
+        .list
+        .iter()
+        .find(|agent| agent.id.as_str() == id)
 }
 
 fn model_routes_for_config(config: &NousConfig) -> Vec<(String, Option<String>)> {
@@ -64,11 +69,19 @@ fn ensure_agent_definition<'a>(
         .agents
         .list
         .iter()
-        .position(|agent| agent.id == runtime.id.as_ref());
+        .position(|agent| agent.id.as_str() == runtime.id.as_ref());
 
     if idx.is_none() {
+        // WHY: `runtime.id` came from an already-running actor, which only
+        // exists because its id already passed the same `NousId` validator
+        // (config load or the HTTP create path below) -- this cannot fail
+        // in practice, but we propagate rather than panic in a handler.
+        let id = NousId::new(runtime.id.to_string()).map_err(|e| ApiError::Internal {
+            message: format!("live agent id failed validation: {e}"),
+            location: snafu::location!(),
+        })?;
         config.agents.list.push(NousDefinition {
-            id: runtime.id.to_string(),
+            id,
             name: runtime.name.clone(),
             enabled: true,
             model: None,

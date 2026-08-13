@@ -94,7 +94,7 @@ fn test_builder_matches_supersede_fact() {
          $old_tier, $now, $new_id, $old_source, $old_recorded,
          $old_access_count, $old_last_accessed_at, $old_stability_hours, $old_fact_type,
          $old_is_forgotten, $old_forgotten_at, $old_forget_reason, $old_scope, $old_project_id, $old_visibility, $old_sensitivity],
-        [$new_id, $now, $new_content, $nous_id, $new_confidence,
+        [$new_id, $now, $new_content, $new_nous_id, $new_confidence,
          $new_tier, $new_valid_to, null, $source_session_id, $now,
          0, "", $stability_hours, $fact_type,
          false, null, null, $scope, $project_id, $visibility, $sensitivity]

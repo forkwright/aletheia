@@ -15,7 +15,7 @@ use crate::state::connection::ConnectionConfig;
 use crate::state::events::EventState;
 use crate::state::fetch::FetchState;
 use crate::state::ops::{
-    AgentCapabilities, AgentCardData, AgentStatusStore, AgentToggle, FeatureFlag, HealthTier,
+    AgentCapabilities, AgentCardData, AgentStatusStore, AgentToggle, FeatureFlag,
     ServiceHealthStore, ToggleApplyState, ToggleStore, ToolToggle, health_from_status,
 };
 
@@ -68,6 +68,33 @@ impl AgentListResponse {
             Self::Wrapped { nous } => nous,
             Self::Bare(agents) => agents,
         }
+    }
+}
+
+/// Build one dashboard card from a `GET /api/v1/nous` list entry and its
+/// (possibly absent) per-agent capability fetch result.
+///
+/// WHY(#4807): pulled out of the dashboard refresh closure so the
+/// `health`/`connected` derivation from `entry.status` is unit-testable
+/// without the surrounding HTTP fetch machinery. pylon's list endpoint
+/// reports the actor's real lifecycle status, or `"unknown"` on a missing
+/// handle, actor error, or timeout (see
+/// `pylon::handlers::nous::live_status_label`). A missing client-side
+/// status is normalized to that same `"unknown"` sentinel here so `health`
+/// and `connected` derive from one fact instead of two independent,
+/// driftable fallbacks.
+fn build_agent_card(entry: &AgentEntry, capabilities: Option<AgentCapabilities>) -> AgentCardData {
+    let live_status = entry.status.as_deref().unwrap_or("unknown");
+    AgentCardData {
+        id: entry.id.as_str().into(),
+        name: entry.name.clone().unwrap_or_else(|| entry.id.clone()),
+        emoji: entry.emoji.clone(),
+        health: health_from_status(live_status),
+        model: entry.model.clone().unwrap_or_else(|| "-".to_string()),
+        active_turns: 0,
+        last_activity: None,
+        connected: live_status != "unknown",
+        capabilities,
     }
 }
 
@@ -332,6 +359,13 @@ pub(crate) fn Ops() -> Element {
     let mut stats = use_signal(ToolStats::default);
     let mut tools_fetch = use_signal(|| FetchState::<()>::Loading);
 
+    // ── Credentials-tab state ──
+    // WHY(#4877): credentials fetch state is otherwise entirely local to
+    // `CredentialsView`, so the top-level Refresh button had nothing to
+    // drive. Hoisting just the trigger (not the fetch itself) keeps
+    // `CredentialsView` the owner of its own request/parse/error handling.
+    let mut cred_refresh = use_signal(|| 0u32);
+
     // ── Dashboard data fetch ──
     let mut refresh_dashboard = move || {
         let cfg = config.read().clone();
@@ -422,17 +456,7 @@ pub(crate) fn Ops() -> Element {
             let cards: Vec<AgentCardData> = agents_data
                 .iter()
                 .zip(capabilities)
-                .map(|(a, capabilities)| AgentCardData {
-                    id: a.id.as_str().into(),
-                    name: a.name.clone().unwrap_or_else(|| a.id.clone()),
-                    emoji: a.emoji.clone(),
-                    health: HealthTier::Healthy,
-                    model: a.model.clone().unwrap_or_else(|| "-".to_string()),
-                    active_turns: 0,
-                    last_activity: None,
-                    connected: true,
-                    capabilities,
-                })
+                .map(|(a, capabilities)| build_agent_card(a, capabilities))
                 .collect();
             agent_store.write().load(cards);
 
@@ -639,7 +663,10 @@ pub(crate) fn Ops() -> Element {
                             match tab {
                                 OpsTab::Dashboard => refresh_dashboard(),
                                 OpsTab::Tools => refresh_tools(),
-                                OpsTab::Credentials => {},
+                                // WHY(#4877): was a no-op -- credentials owns
+                                // its own fetch, so this only needs to bump
+                                // the shared trigger it watches.
+                                OpsTab::Credentials => cred_refresh.set(cred_refresh() + 1),
                             }
                         },
                         "Refresh"
@@ -757,7 +784,7 @@ pub(crate) fn Ops() -> Element {
                 },
 
                 OpsTab::Credentials => rsx! {
-                    credentials::CredentialsView {}
+                    credentials::CredentialsView { refresh_trigger: cred_refresh }
                 },
             }
         }
@@ -767,6 +794,7 @@ pub(crate) fn Ops() -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::state::ops::HealthTier;
 
     /// WHY: this payload is the `pylon::handlers::nous_dto::NousStatus`
     /// wire shape. `NousStatus` carries no `rename_all`, so serde emits the
@@ -828,5 +856,62 @@ mod tests {
             },
             "conversion must not drop or transpose a field"
         );
+    }
+
+    #[test]
+    fn build_agent_card_maps_a_live_lifecycle_status_to_healthy_and_connected() {
+        let entry = AgentEntry {
+            id: "scholiast".to_owned(),
+            status: Some("active".to_owned()),
+            ..AgentEntry::default()
+        };
+
+        let card = build_agent_card(&entry, None);
+
+        assert_eq!(card.health, HealthTier::Healthy);
+        assert!(
+            card.connected,
+            "a reported lifecycle status means the actor answered"
+        );
+    }
+
+    /// Regression test for #4807: the literal defect. pylon's `"unknown"`
+    /// sentinel (missing handle, actor error, or timeout — see
+    /// `live_status_label`) was discarded at card-build time in favor of a
+    /// hardcoded `Healthy`/`connected: true` pair. This fails if that
+    /// hardcoding is ever reintroduced.
+    #[test]
+    fn build_agent_card_never_renders_an_unknown_status_as_healthy() {
+        let entry = AgentEntry {
+            id: "ghost".to_owned(),
+            status: Some("unknown".to_owned()),
+            ..AgentEntry::default()
+        };
+
+        let card = build_agent_card(&entry, None);
+
+        assert_eq!(card.health, HealthTier::Unknown);
+        assert!(
+            !card.connected,
+            "an unknown status must not render as connected"
+        );
+    }
+
+    /// A client that has not yet received any status for an agent (missing
+    /// field, not an empty string) must be treated identically to pylon's
+    /// explicit `"unknown"` — both cases mean "no verified live status" —
+    /// so `health` and `connected` derive from one normalized value.
+    #[test]
+    fn build_agent_card_treats_a_missing_status_the_same_as_unknown() {
+        let entry = AgentEntry {
+            id: "legacy".to_owned(),
+            status: None,
+            ..AgentEntry::default()
+        };
+
+        let card = build_agent_card(&entry, None);
+
+        assert_eq!(card.health, HealthTier::Unknown);
+        assert!(!card.connected);
     }
 }

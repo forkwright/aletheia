@@ -7,7 +7,9 @@
 use dioxus::prelude::*;
 
 use crate::services::config;
-use crate::state::notifications::{DndDuration, DndState, NotificationPreferences};
+use crate::state::notifications::{
+    DndDuration, DndState, NotificationCategory, NotificationPreferences,
+};
 
 const SECTION_STYLE: &str = "\
     background: var(--bg-surface); \
@@ -84,6 +86,22 @@ const WARNING_STYLE: &str = "\
     margin-top: var(--space-1);\
 ";
 
+const TOGGLE_UNAVAILABLE: &str = "\
+    background: var(--bg-surface); \
+    color: var(--text-muted); \
+    border: 1px solid var(--border); \
+    border-radius: var(--radius-md); \
+    padding: var(--space-2) var(--space-4); \
+    font-size: var(--text-sm); \
+    cursor: not-allowed;\
+";
+
+const UNAVAILABLE_NOTE_STYLE: &str = "\
+    color: var(--text-muted); \
+    font-size: var(--text-xs); \
+    margin-top: var(--space-1);\
+";
+
 /// Notification settings panel component.
 ///
 /// Requires `Signal<NotificationPreferences>` and `Signal<DndState>` to be
@@ -96,6 +114,7 @@ pub(crate) fn NotificationSettings() -> Element {
     let enabled = prefs.read().enabled;
     let agent_completion = prefs.read().agent_completion;
     let tool_approval = prefs.read().tool_approval;
+    let tool_approval_wired = NotificationCategory::ToolApproval.is_wired();
     let errors = prefs.read().errors;
     let connection_status = prefs.read().connection_status;
     let sound_enabled = prefs.read().sound_enabled;
@@ -142,19 +161,31 @@ pub(crate) fn NotificationSettings() -> Element {
                 span {
                     style: "{LABEL_STYLE}",
                     "Tool approval requests"
-                    if !tool_approval {
+                    // WHY(#4871): no event reaches the notification
+                    // dispatcher for this category yet (see
+                    // `NotificationCategory::is_wired`), so the control
+                    // must not read as a working safety feature -- a
+                    // togglable On/Off here previously implied coverage
+                    // that did not exist.
+                    if !tool_approval_wired {
+                        div { style: "{UNAVAILABLE_NOTE_STYLE}", "Not available yet: no backing notification event for this desktop build." }
+                    } else if !tool_approval {
                         div { style: "{WARNING_STYLE}", "Warning: you may miss approval requests" }
                     }
                 }
-                button {
-                    style: if tool_approval { TOGGLE_ON } else { TOGGLE_OFF },
-                    onclick: move |_| {
-                        prefs.write().tool_approval = !tool_approval;
-                        if let Err(e) = config::save_notification_prefs(&prefs.read()) {
-                            tracing::warn!(error = %e, "failed to save notification preferences");
-                        }
-                    },
-                    if tool_approval { "On" } else { "Off" }
+                if tool_approval_wired {
+                    button {
+                        style: if tool_approval { TOGGLE_ON } else { TOGGLE_OFF },
+                        onclick: move |_| {
+                            prefs.write().tool_approval = !tool_approval;
+                            if let Err(e) = config::save_notification_prefs(&prefs.read()) {
+                                tracing::warn!(error = %e, "failed to save notification preferences");
+                            }
+                        },
+                        if tool_approval { "On" } else { "Off" }
+                    }
+                } else {
+                    button { style: "{TOGGLE_UNAVAILABLE}", disabled: true, "Unavailable" }
                 }
             }
 

@@ -28,6 +28,9 @@ pub(super) fn assemble_meta_data(
     perf: AgentPerformanceApiResponse,
     quality: QualityMetricsApiResponse,
     journal: Vec<JournalEventEntry>,
+    perf_available: bool,
+    quality_available: bool,
+    journal_available: bool,
 ) -> MetaData {
     // -- Performance --
     let mut scorecards = Vec::new();
@@ -113,7 +116,7 @@ pub(super) fn assemble_meta_data(
         scorecards,
         anomalies,
         tokens_per_response_series,
-        endpoint_available: true,
+        endpoint_available: perf_available,
     };
 
     // -- Quality --
@@ -138,7 +141,7 @@ pub(super) fn assemble_meta_data(
         thinking_time_ratio,
         depth_distribution: depth,
         top_topics: Vec::new(),
-        charts_endpoint_available: true,
+        charts_endpoint_available: quality_available,
     };
 
     // -- Knowledge growth --
@@ -383,7 +386,7 @@ pub(super) fn assemble_meta_data(
         heatmap,
         efficiency,
         journal: journal_events,
-        journal_endpoint_available: true,
+        journal_endpoint_available: journal_available,
     };
 
     MetaData {
@@ -549,5 +552,100 @@ fn day_of_week(mut year: i32, month: u32, day: u32) -> u8 {
         #[expect(clippy::as_conversions, reason = "day-of-week 0–6 fits u8")]
         let result = ((dow + 6) % 7) as u8;
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn no_health() -> HealthApiResponse {
+        HealthApiResponse { uptime_seconds: 0 }
+    }
+
+    fn assemble(
+        perf: AgentPerformanceApiResponse,
+        quality: QualityMetricsApiResponse,
+        journal: Vec<JournalEventEntry>,
+        perf_available: bool,
+        quality_available: bool,
+        journal_available: bool,
+    ) -> MetaData {
+        assemble_meta_data(
+            no_health(),
+            TokenMetricsApiResponse::default(),
+            CostMetricsApiResponse::default(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            perf,
+            quality,
+            journal,
+            perf_available,
+            quality_available,
+            journal_available,
+        )
+    }
+
+    /// A failed/defaulted fetch must render as unavailable, not as a
+    /// trusted-but-empty source. This is the regression for #4988: before
+    /// the fix, these three flags were hardcoded `true` regardless of
+    /// whether the underlying fetch ever succeeded.
+    #[test]
+    fn unavailable_sources_do_not_render_as_available() {
+        let data = assemble(
+            AgentPerformanceApiResponse::default(),
+            QualityMetricsApiResponse::default(),
+            Vec::new(),
+            false,
+            false,
+            false,
+        );
+        assert!(
+            !data.performance.endpoint_available,
+            "a failed performance fetch must not read as available"
+        );
+        assert!(
+            !data.quality.charts_endpoint_available,
+            "a failed quality fetch must not read as available"
+        );
+        assert!(
+            !data.reflection.journal_endpoint_available,
+            "a failed journal fetch must not read as available"
+        );
+    }
+
+    #[test]
+    fn available_sources_render_as_available() {
+        let data = assemble(
+            AgentPerformanceApiResponse::default(),
+            QualityMetricsApiResponse::default(),
+            Vec::new(),
+            true,
+            true,
+            true,
+        );
+        assert!(data.performance.endpoint_available);
+        assert!(data.quality.charts_endpoint_available);
+        assert!(data.reflection.journal_endpoint_available);
+    }
+
+    #[test]
+    fn mixed_availability_is_tracked_per_source() {
+        // WHY: the three flags must be independent -- one source failing
+        // must not mask another source's success or vice versa.
+        let data = assemble(
+            AgentPerformanceApiResponse::default(),
+            QualityMetricsApiResponse::default(),
+            Vec::new(),
+            true,
+            false,
+            true,
+        );
+        assert!(data.performance.endpoint_available);
+        assert!(!data.quality.charts_endpoint_available);
+        assert!(data.reflection.journal_endpoint_available);
     }
 }

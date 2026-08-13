@@ -338,12 +338,13 @@ mod tests {
     #[test]
     fn validate_agent_workspaces_fails_when_workspace_missing() {
         use crate::config::NousDefinition;
+        use koina::id::NousId;
 
         let dir = tempfile::tempdir().unwrap();
         let oikos = Oikos::from_root(dir.path());
         let mut config = AletheiaConfig::default();
         config.agents.list.push(NousDefinition {
-            id: "alice".to_owned(),
+            id: NousId::new("alice").unwrap(),
             name: None,
             model: None,
             workspace: "nous/alice".to_owned(),
@@ -374,6 +375,7 @@ mod tests {
     #[test]
     fn validate_agent_workspaces_fails_when_soul_md_missing() {
         use crate::config::NousDefinition;
+        use koina::id::NousId;
 
         let dir = tempfile::tempdir().unwrap();
         let workspace_dir = dir.path().join("nous").join("bob");
@@ -383,7 +385,7 @@ mod tests {
         let oikos = Oikos::from_root(dir.path());
         let mut config = AletheiaConfig::default();
         config.agents.list.push(NousDefinition {
-            id: "bob".to_owned(),
+            id: NousId::new("bob").unwrap(),
             name: None,
             model: None,
             workspace: "nous/bob".to_owned(),
@@ -414,6 +416,7 @@ mod tests {
     #[test]
     fn validate_agent_workspaces_passes_when_workspace_valid() {
         use crate::config::NousDefinition;
+        use koina::id::NousId;
 
         let dir = tempfile::tempdir().unwrap();
         let workspace_dir = dir.path().join("nous").join("carol");
@@ -427,7 +430,7 @@ mod tests {
         let oikos = Oikos::from_root(dir.path());
         let mut config = AletheiaConfig::default();
         config.agents.list.push(NousDefinition {
-            id: "carol".to_owned(),
+            id: NousId::new("carol").unwrap(),
             name: None,
             model: None,
             workspace: "nous/carol".to_owned(),

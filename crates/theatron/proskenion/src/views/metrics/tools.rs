@@ -9,7 +9,6 @@ use crate::state::tool_metrics::{DateRange, ToolStatsResponse, format_delta, for
 
 /// Local store for the tools overview view.
 #[derive(Debug, Clone)]
-#[expect(dead_code, reason = "used by ToolsOverview component")]
 struct ToolsOverviewStore {
     data: FetchState<ToolStatsResponse>,
     date_range: DateRange,
@@ -82,7 +81,7 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
             div {
                 style: "display: flex; align-items: center; gap: var(--space-2);",
                 span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "Range:" }
-                for range in [DateRange::Last7Days] {
+                for range in DateRange::all() {
                     {
                         let is_active = store.read().date_range == range;
                         let btn_style = if is_active {
@@ -127,7 +126,6 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
     }
 }
 
-#[expect(dead_code, reason = "used by ToolsOverview component")]
 fn render_overview_content(
     store: Signal<ToolsOverviewStore>,
     mut on_select_tool: impl FnMut(String) + 'static,

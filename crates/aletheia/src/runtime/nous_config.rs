@@ -312,7 +312,7 @@ mod tests {
             ..AgentBehaviorDefaults::default()
         };
         config.agents.list.push(NousDefinition {
-            id: "custom".to_owned(),
+            id: koina::id::NousId::new("custom").expect("valid test id"),
             workspace: "nous/custom".to_owned(),
             behavior: Some(behavior.clone()),
             ..NousDefinition::default()

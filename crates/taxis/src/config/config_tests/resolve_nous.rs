@@ -54,7 +54,7 @@ fn resolve_nous_uses_defaults_when_no_override() {
 fn resolve_nous_per_agent_override_wins() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "custom".to_owned(),
+        id: koina::id::NousId::new("custom").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/tmp/nous/custom".to_owned(),
@@ -95,7 +95,7 @@ fn resolve_nous_per_agent_override_wins() {
 fn resolve_nous_non_overriding_agent_uses_defaults() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "plain".to_owned(),
+        id: koina::id::NousId::new("plain").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/tmp/nous/plain".to_owned(),
@@ -127,7 +127,7 @@ fn resolve_nous_non_overriding_agent_uses_defaults() {
 fn resolve_nous_recall_profile_override_wins() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "identity".to_owned(),
+        id: koina::id::NousId::new("identity").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/tmp/nous/identity".to_owned(),
@@ -157,7 +157,7 @@ fn resolve_nous_recall_profile_override_wins() {
 fn resolve_nous_episteme_cohort_override_wins() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "identity".to_owned(),
+        id: koina::id::NousId::new("identity").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/tmp/nous/identity".to_owned(),

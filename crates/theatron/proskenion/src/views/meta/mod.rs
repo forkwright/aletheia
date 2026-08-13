@@ -658,23 +658,30 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         _ => Vec::new(),
     };
 
-    let perf: AgentPerformanceApiResponse = match perf_res {
-        Ok(resp) if resp.status().is_success() => optional_json(resp, "agent performance").await,
-        _ => AgentPerformanceApiResponse::default(),
-    };
+    let (perf, perf_available): (AgentPerformanceApiResponse, bool) =
+        fetch_source(perf_res, "agent performance").await;
 
-    let quality: QualityMetricsApiResponse = match quality_res {
-        Ok(resp) if resp.status().is_success() => optional_json(resp, "quality").await,
-        _ => QualityMetricsApiResponse::default(),
-    };
+    let (quality, quality_available): (QualityMetricsApiResponse, bool) =
+        fetch_source(quality_res, "quality").await;
 
-    let journal: Vec<JournalEventEntry> = match journal_res {
-        Ok(resp) if resp.status().is_success() => optional_json(resp, "journal").await,
-        _ => Vec::new(),
-    };
+    let (journal, journal_available): (Vec<JournalEventEntry>, bool) =
+        fetch_source(journal_res, "journal").await;
 
     let data = assemble_meta_data(
-        health, tokens, costs, facts, entities, timeline, sessions, agents, perf, quality, journal,
+        health,
+        tokens,
+        costs,
+        facts,
+        entities,
+        timeline,
+        sessions,
+        agents,
+        perf,
+        quality,
+        journal,
+        perf_available,
+        quality_available,
+        journal_available,
     );
     FetchState::Loaded(data)
 }
@@ -689,6 +696,32 @@ where
             tracing::warn!(endpoint, error = %err, "failed to parse optional meta response");
             T::default()
         }
+    }
+}
+
+/// Fetch and parse one optional meta-insights source, reporting whether it
+/// is genuinely usable (2xx response, body parsed) alongside the value.
+///
+/// WHY: a failed or malformed source must degrade to `T::default()` *and*
+/// `false` -- collapsing "unavailable" into the same default value as
+/// "genuinely empty" is what let downstream stores mark an unfetched source
+/// as available (#4988).
+async fn fetch_source<T>(
+    result: Result<reqwest::Response, reqwest::Error>,
+    endpoint: &'static str,
+) -> (T, bool)
+where
+    T: DeserializeOwned + Default,
+{
+    match result {
+        Ok(resp) if resp.status().is_success() => match resp.json::<T>().await {
+            Ok(value) => (value, true),
+            Err(err) => {
+                tracing::warn!(endpoint, error = %err, "failed to parse optional meta response");
+                (T::default(), false)
+            }
+        },
+        _ => (T::default(), false),
     }
 }
 

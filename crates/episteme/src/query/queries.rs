@@ -230,11 +230,19 @@ pub(crate) fn facts_at_time() -> String {
         .build_script()
 }
 
-/// Supersede a fact (close old, insert new). Two rows in one `:put`.
+/// Supersede a fact (close old, insert new). Two rows in one `:put` — one
+/// script, one transaction: both rows commit together or neither persists
+/// (aletheia#5185).
 /// Params: `$old_id`, `$old_valid_from`, `$old_content`, `$nous_id`,
 /// `$old_confidence`, `$old_tier`, `$now`, `$new_id`, `$old_source`,
-/// `$old_recorded`, `$new_content`, `$new_confidence`, `$new_tier`,
-/// `$new_valid_to`, `$source_session_id`.
+/// `$old_recorded`, `$new_content`, `$new_nous_id`, `$new_confidence`,
+/// `$new_tier`, `$new_valid_to`, `$source_session_id`.
+///
+/// WHY `$new_nous_id` is separate from `$nous_id`: the old row keeps the
+/// fact's original owner; the new row takes whatever nous the caller
+/// resolved the correction to (normally the same agent, but
+/// `memory_correct` allows an explicit reassignment). Reusing one param
+/// for both rows would silently pin every correction to the old owner.
 #[must_use]
 pub(crate) fn supersede_fact() -> String {
     use FactsField::{
@@ -293,7 +301,7 @@ pub(crate) fn supersede_fact() -> String {
             "$new_id",
             "$now",
             "$new_content",
-            "$nous_id",
+            "$new_nous_id",
             "$new_confidence",
             "$new_tier",
             "$new_valid_to",

@@ -13,6 +13,7 @@
     reason = "serde_json::Value indexing on known-present keys in redaction assertions"
 )]
 
+use koina::id::NousId;
 use koina::secret::SecretString;
 use taxis::config::{
     AgencyLevel, AletheiaConfig, ChannelBinding, EgressPolicy, ModelPricing, ModelRoute, ModelSpec,
@@ -81,7 +82,7 @@ fn resolve_nous_unknown_agent_falls_back_to_defaults() {
 fn resolve_nous_agent_model_override_replaces_defaults() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "syn".to_owned(),
+        id: NousId::new("syn").expect("valid test id"),
         name: Some("Synthetic".to_owned()),
         model: Some(ModelSpec {
             primary: ModelRoute::new("claude-opus-4-6"),
@@ -112,7 +113,7 @@ fn resolve_nous_agent_model_override_replaces_defaults() {
 fn resolve_nous_unrestricted_agency_sets_10k_tool_iterations() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "free".to_owned(),
+        id: NousId::new("free").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/tmp/free".to_owned(),
@@ -138,7 +139,7 @@ fn resolve_nous_unrestricted_agency_sets_10k_tool_iterations() {
 fn resolve_nous_restricted_agency_sets_50_tool_iterations() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "safe".to_owned(),
+        id: NousId::new("safe").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/tmp/safe".to_owned(),

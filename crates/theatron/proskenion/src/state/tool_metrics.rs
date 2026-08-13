@@ -122,9 +122,7 @@ pub(crate) struct ToolInvocation {
 pub(crate) enum DateRange {
     #[default]
     Last7Days,
-    #[cfg_attr(not(test), expect(dead_code, reason = "reserved for future use"))]
     Last30Days,
-    #[cfg_attr(not(test), expect(dead_code, reason = "reserved for future use"))]
     Last90Days,
 }
 
@@ -135,6 +133,14 @@ impl DateRange {
             Self::Last30Days => 30,
             Self::Last90Days => 90,
         }
+    }
+
+    /// All selectable ranges, in display order.
+    ///
+    /// INVARIANT: the Tools metrics range selector renders exactly this set;
+    /// a range added here must remain reachable from the UI.
+    pub(crate) const fn all() -> [Self; 3] {
+        [Self::Last7Days, Self::Last30Days, Self::Last90Days]
     }
 }
 
@@ -322,6 +328,18 @@ mod tests {
     #[test]
     fn date_range_default_is_7days() {
         assert_eq!(DateRange::default(), DateRange::Last7Days);
+    }
+
+    #[test]
+    fn date_range_all_includes_every_range_the_type_supports() {
+        // WHY: regression for the range selector hardcoding a single-entry
+        // list -- if a variant is added to `DateRange` without adding it
+        // here, this assertion (not just a compiler warning) catches it.
+        let all = DateRange::all();
+        assert_eq!(all.len(), 3);
+        assert!(all.contains(&DateRange::Last7Days));
+        assert!(all.contains(&DateRange::Last30Days));
+        assert!(all.contains(&DateRange::Last90Days));
     }
 
     #[test]

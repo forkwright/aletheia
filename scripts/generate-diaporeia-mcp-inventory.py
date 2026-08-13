@@ -37,6 +37,7 @@ MUTATION_SIGNATURES = [
     "send_turn_streaming",
     "insert_fact_async",
     "forget_fact",
+    "supersede_fact",
     "vault.store(",
     "vault.remove(",
     "store.add_note(",
