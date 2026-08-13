@@ -129,7 +129,7 @@ jobs:
     # `@main` an upstream commit in another repo reddens every open PR here with no change to
     # this one — the same class as the gitignored fuzz lockfile (#6655), at a larger blast
     # radius. Bump deliberately, so the change is reviewable.
-    uses: forkwright/.github/.github/workflows/hybrid-gate.yml@963532686f7853fa3555aab434455693969b63a1
+    uses: forkwright/.github/.github/workflows/hybrid-gate.yml@54f1af7c711546304409593695e1258a91004453
     with:
       fmt_cmd: "cargo fmt --all -- --check"
       check_cmd: "cargo check --workspace --all-targets --features test-core"
