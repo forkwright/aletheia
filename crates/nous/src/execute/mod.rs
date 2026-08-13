@@ -18,7 +18,7 @@ use tokio::sync::mpsc;
 use tracing::{debug, info, instrument, warn};
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
-use hermeneus::provider::{DeploymentTarget, ProviderRegistry};
+use hermeneus::provider::{DeploymentTarget, ProviderCapabilities, ProviderRegistry};
 use hermeneus::types::{
     CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role,
     ServerToolDefinition, StopReason, ThinkingConfig,
@@ -204,7 +204,11 @@ fn build_llm_future<'a>(
             Ok((fut, None))
         }
         (None, Some(on_event)) => {
-            let provider = resolve_provider_checked(providers, turn_route)?;
+            let provider = resolve_provider_checked(
+                providers,
+                turn_route,
+                ProviderCapabilities::required_by(request),
+            )?;
             let requested_model = turn_route.model.clone();
             let provider_name = provider.name().to_owned();
             let name_for_caller = provider_name.clone();
@@ -220,7 +224,11 @@ fn build_llm_future<'a>(
             Ok((fut, Some(name_for_caller)))
         }
         (None, None) => {
-            let provider = resolve_provider_checked(providers, turn_route)?;
+            let provider = resolve_provider_checked(
+                providers,
+                turn_route,
+                ProviderCapabilities::required_by(request),
+            )?;
             let requested_model = turn_route.model.clone();
             let provider_name = provider.name().to_owned();
             let name_for_caller = provider_name.clone();
@@ -500,7 +508,16 @@ pub(crate) async fn execute_streaming_with_deadline(
     );
     let turn_route = resolve_turn_route(ctx, config, providers, tool_count);
 
-    let streaming_provider = resolve_provider_checked(providers, &turn_route)?;
+    // WHY(#5253): the turn's real CompletionRequest is built per-iteration
+    // inside run_execute_loop below, so this preflight approximates required
+    // capabilities from tool_count — the same approximation resolve_turn_route
+    // already uses for complexity routing. The per-iteration call inside
+    // build_llm_future negotiates against the real request once it exists.
+    let streaming_provider = resolve_provider_checked(
+        providers,
+        &turn_route,
+        ProviderCapabilities::with_tool_loop(tool_count > 0),
+    )?;
     if !streaming_provider.supports_streaming() {
         return run_execute_loop(
             ctx,

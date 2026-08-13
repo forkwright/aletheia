@@ -474,6 +474,14 @@ impl LlmProvider for KimiProvider {
         "kimi"
     }
 
+    fn capabilities(&self) -> crate::provider::ProviderCapabilities {
+        // WHY(#5253, #4510): Kimi delegates to the `kimi` CLI's own agentic
+        // loop and cannot translate aletheia's tools into it — see
+        // `execute`'s `reject_tool_bearing_request` call, the backstop this
+        // declaration lets routing avoid hitting in the normal path.
+        crate::provider::ProviderCapabilities { tool_loop: false }
+    }
+
     fn supports_streaming(&self) -> bool {
         true
     }
@@ -541,6 +549,21 @@ mod tests {
             Some(MatchKind::Exact)
         );
         assert_eq!(provider.match_specificity("claude-sonnet-4-6"), None);
+    }
+
+    #[test]
+    fn kimi_provider_declares_no_tool_loop_capability() {
+        // WHY(#5253): routing/fallback consult this so a tool-bearing turn
+        // is never selected for kimi in the first place — the #4510
+        // `reject_tool_bearing_request` hard-fail is the backstop for
+        // anything that slips through, not the primary mechanism.
+        let provider = KimiProvider {
+            kimi_binary: PathBuf::from("kimi"),
+            working_directory: PathBuf::from("."),
+            default_model: koina::models::names::kimi().to_owned(),
+            timeout: Duration::from_secs(1),
+        };
+        assert!(!provider.capabilities().tool_loop);
     }
 
     #[test]

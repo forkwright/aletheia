@@ -135,6 +135,14 @@ impl LlmProvider for ArcMockProvider {
     fn name(&self) -> &str {
         self.0.name()
     }
+
+    fn capabilities(&self) -> hermeneus::provider::ProviderCapabilities {
+        // WHY(#5253): forwarded explicitly — the trait default (every
+        // capability) would otherwise silently override `MockProvider`'s
+        // `.without_tool_loop()` for every test that wraps it in `Arc` to
+        // share a handle for post-call assertions.
+        self.0.capabilities()
+    }
 }
 
 fn make_multi_tool_response(tool_uses: Vec<(&str, &str, serde_json::Value)>) -> CompletionResponse {
@@ -532,6 +540,160 @@ async fn single_provider_config_does_not_attempt_fallback() {
         ["test-model"],
         "single-provider config should attempt only the primary model"
     );
+}
+
+// WHY(#5253, #5254): capability-aware routing/fallback tests. `MockProvider`
+// stands in for a seat-bridged CLI provider (cc/codex/kimi) via
+// `.without_tool_loop()`, so these exercise the negotiation mechanism itself
+// rather than needing a real subprocess provider under a feature flag.
+
+#[tokio::test]
+async fn tool_bearing_turn_never_dispatches_to_incapable_provider_without_fallback() {
+    let primary = Arc::new(
+        MockProvider::new("should never be seen")
+            .named("primary")
+            .models(&["test-model"])
+            .without_tool_loop(),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&primary))));
+
+    let err = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &make_exec_and_read_registry(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect_err("a tool-bearing turn must not route to a capability-incapable provider");
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("capability") || msg.contains("tool-loop") || msg.contains("tool loop"),
+        "error should name the capability mismatch, got: {msg}"
+    );
+    assert!(
+        primary.captured_requests().is_empty(),
+        "negotiation must reject the turn before the provider is ever dispatched to"
+    );
+}
+
+#[tokio::test]
+async fn tool_bearing_fallback_chain_skips_incapable_route_for_capable_one() {
+    let primary = Arc::new(
+        MockProvider::new("must never be dispatched to")
+            .named("primary")
+            .models(&["test-model"])
+            .without_tool_loop(),
+    );
+    let fallback = Arc::new(
+        MockProvider::new("fallback answer")
+            .named("secondary")
+            .models(&["fallback-model"]),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&primary))));
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&fallback))));
+
+    let mut config = test_config();
+    config.generation.fallback_models = vec!["fallback-model".to_owned()];
+    config.generation.retries_before_fallback = 3;
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &make_exec_and_read_registry(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("fallback chain should skip the incapable primary and use the capable fallback");
+
+    assert_eq!(result.content, "fallback answer");
+    assert!(
+        primary.captured_requests().is_empty(),
+        "an incapable route must never be dispatched to, not even once"
+    );
+    assert_eq!(fallback.captured_requests().len(), 1);
+}
+
+#[tokio::test]
+async fn tool_bearing_fallback_chain_reports_capability_mismatch_when_every_route_incapable() {
+    let primary = Arc::new(
+        MockProvider::new("must never be dispatched to")
+            .named("primary")
+            .models(&["test-model"])
+            .without_tool_loop(),
+    );
+    let fallback = Arc::new(
+        MockProvider::new("must never be dispatched to either")
+            .named("secondary")
+            .models(&["fallback-model"])
+            .without_tool_loop(),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&primary))));
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&fallback))));
+
+    let mut config = test_config();
+    config.generation.fallback_models = vec!["fallback-model".to_owned()];
+    config.generation.retries_before_fallback = 2;
+
+    let err = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &make_exec_and_read_registry(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect_err("a chain with no capable route must fail rather than dispatch anywhere");
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("capability") || msg.contains("tool-loop") || msg.contains("tool loop"),
+        "error should name the capability mismatch rather than reading as a generic \
+         connection failure, got: {msg}"
+    );
+    assert!(primary.captured_requests().is_empty());
+    assert!(fallback.captured_requests().is_empty());
+}
+
+#[tokio::test]
+async fn non_tool_turn_still_routes_normally_to_a_capability_incapable_provider() {
+    // WHY(#5253): the capability check must be a no-op for a turn that never
+    // needed the missing capability — a seat-bridged-shaped provider serves
+    // a tool-free turn exactly as it did before this mechanism existed.
+    let primary = Arc::new(
+        MockProvider::new("plain answer")
+            .named("primary")
+            .models(&["test-model"])
+            .without_tool_loop(),
+    );
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&primary))));
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &test_config(),
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("a non-tool-bearing turn must still route to a capability-incapable provider");
+
+    assert_eq!(result.content, "plain answer");
+    assert_eq!(primary.captured_requests().len(), 1);
 }
 
 #[tokio::test]

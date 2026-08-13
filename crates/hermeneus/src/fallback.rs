@@ -5,7 +5,7 @@
 //! immediately without attempting fallbacks.
 
 use crate::error::Result;
-use crate::provider::LlmProvider;
+use crate::provider::{LlmProvider, ProviderCapabilities};
 use crate::types::{CompletionRequest, CompletionResponse};
 
 /// Configuration for the model fallback chain.
@@ -55,6 +55,51 @@ pub async fn complete_with_fallback(
         .map(|completion| completion.response)
 }
 
+/// Attempt one model up to `retries` times, recording every retryable
+/// failure into `attempt_errors` and `last_error`.
+///
+/// Returns `Ok(Some(response))` on success, `Ok(None)` when every retryable
+/// attempt is exhausted (caller should advance the fallback chain), or the
+/// first non-retryable error — which ends the whole chain immediately.
+async fn attempt_model_with_retries(
+    provider: &dyn LlmProvider,
+    request: &CompletionRequest,
+    retries: u32,
+    phase: &'static str,
+    attempt_errors: &mut Vec<String>,
+    last_error: &mut Option<crate::error::Error>,
+) -> Result<Option<CompletionResponse>> {
+    for attempt in 0..retries.max(1) {
+        if attempt > 0 {
+            tracing::warn!(
+                model = %request.model,
+                attempt,
+                phase,
+                "retrying model"
+            );
+        }
+
+        match provider.complete(request).await {
+            Ok(response) => return Ok(Some(response)),
+            Err(e) => {
+                if !e.is_retryable() {
+                    return Err(e);
+                }
+                tracing::warn!(
+                    model = %request.model,
+                    attempt,
+                    phase,
+                    error = %e,
+                    "model failed with retryable error"
+                );
+                attempt_errors.push(format!("{}: {e}", request.model));
+                *last_error = Some(e);
+            }
+        }
+    }
+    Ok(None)
+}
+
 /// Execute a completion request with model fallback and return the successful model.
 ///
 /// The returned model is the request model that succeeded. This lets callers
@@ -66,40 +111,46 @@ pub async fn complete_with_fallback_observed(
     request: &CompletionRequest,
     config: &FallbackConfig,
 ) -> Result<FallbackCompletion> {
+    // WHY(#5253, #5254): every attempt in this chain calls the SAME provider
+    // instance, varying only `request.model` — capability does not depend on
+    // the model string, so if `provider` cannot serve `request` now, no
+    // retry or fallback model changes that. Failing before the first
+    // attempt (rather than after exhausting the retry budget) is what
+    // "provider- and capability-aware fallback" means when there is only
+    // one provider in the chain: this is a planning failure, not a late
+    // provider error.
+    let required = ProviderCapabilities::required_by(request);
+    if let Some(capability) = provider.capabilities().missing_for(&required) {
+        return Err(crate::error::CapabilityMismatchSnafu {
+            provider: provider.name().to_owned(),
+            capability: capability.to_owned(),
+            message: format!(
+                "provider '{}' cannot satisfy required capability '{capability}'; \
+                 route this request to a native API provider instead",
+                provider.name()
+            ),
+        }
+        .build());
+    }
+
     let primary = &request.model;
     let mut last_error = None;
     let mut attempt_errors = Vec::new();
 
-    for attempt in 0..config.retries_before_fallback.max(1) {
-        if attempt > 0 {
-            tracing::warn!(
-                model = %primary,
-                attempt,
-                "retrying primary model"
-            );
-        }
-
-        match provider.complete(request).await {
-            Ok(response) => {
-                return Ok(FallbackCompletion {
-                    model: primary.clone(),
-                    response,
-                });
-            }
-            Err(e) => {
-                if !e.is_retryable() {
-                    return Err(e);
-                }
-                tracing::warn!(
-                    model = %primary,
-                    attempt,
-                    error = %e,
-                    "primary model failed with retryable error"
-                );
-                attempt_errors.push(format!("{primary}: {e}"));
-                last_error = Some(e);
-            }
-        }
+    if let Some(response) = attempt_model_with_retries(
+        provider,
+        request,
+        config.retries_before_fallback,
+        "primary",
+        &mut attempt_errors,
+        &mut last_error,
+    )
+    .await?
+    {
+        return Ok(FallbackCompletion {
+            model: primary.clone(),
+            response,
+        });
     }
 
     for fallback_model in &config.fallback_models {
@@ -109,43 +160,27 @@ pub async fn complete_with_fallback_observed(
         // WHY(#4882): each fallback model gets the same number of attempts as the primary,
         // so a transient overload on fallback-1 does not permanently skip fallback-2 when
         // retrying the same model once would have succeeded.
-        for fallback_attempt in 0..config.retries_before_fallback.max(1) {
-            if fallback_attempt == 0 {
-                tracing::warn!(
-                    primary = %primary,
-                    fallback = %fallback_model,
-                    reason = %last_error.as_ref().map_or("unknown", |_| "retryable error on previous model"),
-                    "falling back to alternative model"
-                );
-            } else {
-                tracing::warn!(
-                    model = %fallback_model,
-                    attempt = fallback_attempt,
-                    "retrying fallback model"
-                );
-            }
+        tracing::warn!(
+            primary = %primary,
+            fallback = %fallback_model,
+            reason = %last_error.as_ref().map_or("unknown", |_| "retryable error on previous model"),
+            "falling back to alternative model"
+        );
 
-            match provider.complete(&fallback_req).await {
-                Ok(response) => {
-                    return Ok(FallbackCompletion {
-                        model: fallback_model.clone(),
-                        response,
-                    });
-                }
-                Err(e) => {
-                    if !e.is_retryable() {
-                        return Err(e);
-                    }
-                    tracing::warn!(
-                        model = %fallback_model,
-                        attempt = fallback_attempt,
-                        error = %e,
-                        "fallback model failed with retryable error"
-                    );
-                    attempt_errors.push(format!("{fallback_model}: {e}"));
-                    last_error = Some(e);
-                }
-            }
+        if let Some(response) = attempt_model_with_retries(
+            provider,
+            &fallback_req,
+            config.retries_before_fallback,
+            "fallback",
+            &mut attempt_errors,
+            &mut last_error,
+        )
+        .await?
+        {
+            return Ok(FallbackCompletion {
+                model: fallback_model.clone(),
+                response,
+            });
         }
     }
 
@@ -186,6 +221,9 @@ mod tests {
         responses: Mutex<Vec<Result<CompletionResponse>>>,
         call_models: Mutex<Vec<String>>,
         call_count: AtomicU32,
+        /// Mirrors `ProviderCapabilities::tool_loop`; `false` simulates a
+        /// seat-bridged CLI provider for capability-preflight tests (#5253).
+        tool_loop: bool,
     }
 
     impl MockFallbackProvider {
@@ -194,6 +232,14 @@ mod tests {
                 responses: Mutex::new(responses),
                 call_models: Mutex::new(Vec::new()),
                 call_count: AtomicU32::new(0),
+                tool_loop: true,
+            }
+        }
+
+        fn without_tool_loop(responses: Vec<Result<CompletionResponse>>) -> Self {
+            Self {
+                tool_loop: false,
+                ..Self::new(responses)
             }
         }
 
@@ -237,6 +283,10 @@ mod tests {
         )]
         fn name(&self) -> &str {
             "mock-fallback"
+        }
+
+        fn capabilities(&self) -> crate::provider::ProviderCapabilities {
+            crate::provider::ProviderCapabilities::with_tool_loop(self.tool_loop)
         }
     }
 
@@ -293,6 +343,17 @@ mod tests {
             max_tokens: 1024,
             ..Default::default()
         }
+    }
+
+    fn tool_bearing_request(model: &str) -> CompletionRequest {
+        let mut request = make_request(model);
+        request.tools = vec![ToolDefinition {
+            name: "read_file".to_owned(),
+            description: "Read a file from disk".to_owned(),
+            input_schema: serde_json::json!({"type": "object"}),
+            disable_passthrough: None,
+        }];
+        request
     }
 
     #[tokio::test]
@@ -490,5 +551,54 @@ mod tests {
             provider.called_models(),
             vec!["primary-model", "fallback-1", "fallback-2"]
         );
+    }
+
+    #[tokio::test]
+    async fn tool_bearing_request_short_circuits_before_any_attempt() {
+        // WHY(#5253, #5254): every attempt in this chain would call the SAME
+        // provider, so once it is known incapable, no retry or fallback
+        // model can help — the whole chain fails before the first call
+        // instead of burning the retry budget on a deterministic mismatch.
+        let provider = MockFallbackProvider::without_tool_loop(vec![ok_response("primary-model")]);
+        let config = FallbackConfig {
+            fallback_models: vec!["fallback-1".to_owned()],
+            retries_before_fallback: 3,
+        };
+
+        let err =
+            complete_with_fallback(&provider, &tool_bearing_request("primary-model"), &config)
+                .await
+                .unwrap_err();
+
+        match err {
+            error::Error::CapabilityMismatch { provider, .. } => {
+                assert_eq!(provider, "mock-fallback");
+            }
+            other => panic!("expected Error::CapabilityMismatch, got: {other}"),
+        }
+        assert_eq!(
+            provider.call_count(),
+            0,
+            "a capability-incapable provider must never be dispatched to"
+        );
+    }
+
+    #[tokio::test]
+    async fn tool_free_request_still_reaches_a_capability_incapable_provider() {
+        // WHY(#5253): the capability preflight must not reject requests that
+        // do not actually need the missing capability — a non-tool turn
+        // routes to a seat-bridged-shaped provider exactly as before.
+        let provider = MockFallbackProvider::without_tool_loop(vec![ok_response("primary-model")]);
+        let config = FallbackConfig {
+            fallback_models: vec!["fallback-1".to_owned()],
+            retries_before_fallback: 1,
+        };
+
+        let resp = complete_with_fallback(&provider, &make_request("primary-model"), &config)
+            .await
+            .unwrap();
+
+        assert_eq!(resp.model, "primary-model");
+        assert_eq!(provider.call_count(), 1);
     }
 }

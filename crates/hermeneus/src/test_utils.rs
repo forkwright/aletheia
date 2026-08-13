@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::sync::Mutex; // kanon:ignore RUST/std-mutex-in-async
 
 use crate::error::{self, Result};
-use crate::provider::{LlmProvider, MatchKind};
+use crate::provider::{LlmProvider, MatchKind, ProviderCapabilities};
 use crate::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 
 /// Build a [`CompletionResponse`] with a single text block.
@@ -62,6 +62,9 @@ pub struct MockProvider {
     requests: Mutex<Vec<CompletionRequest>>,
     /// Override for `match_specificity`. `None` = use the default exact-match logic.
     match_kind_override: Option<MatchKind>,
+    /// Override for `capabilities`. `None` = [`ProviderCapabilities::default`]
+    /// (every capability), matching a native API provider.
+    capabilities_override: Option<ProviderCapabilities>,
 }
 
 impl MockProvider {
@@ -76,6 +79,7 @@ impl MockProvider {
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
             match_kind_override: None,
+            capabilities_override: None,
         }
     }
 
@@ -92,6 +96,7 @@ impl MockProvider {
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
             match_kind_override: None,
+            capabilities_override: None,
         }
     }
 
@@ -111,6 +116,7 @@ impl MockProvider {
             provider_name: "mock",
             requests: Mutex::new(Vec::new()),
             match_kind_override: None,
+            capabilities_override: None,
         }
     }
 
@@ -138,6 +144,17 @@ impl MockProvider {
     pub fn with_match_kind(mut self, kind: MatchKind) -> Self {
         // kanon:ignore RUST/pub-visibility
         self.match_kind_override = Some(kind);
+        self
+    }
+
+    /// Declare this mock incapable of the aletheia organon tool loop,
+    /// mirroring the real seat-bridged CLI providers (`cc`, `codex`, `kimi`)
+    /// for capability-routing/fallback tests (#5253, #5254) without needing
+    /// a real subprocess provider.
+    #[must_use]
+    pub fn without_tool_loop(mut self) -> Self {
+        // kanon:ignore RUST/pub-visibility
+        self.capabilities_override = Some(ProviderCapabilities::with_tool_loop(false));
         self
     }
 
@@ -212,5 +229,9 @@ impl LlmProvider for MockProvider {
 
     fn name(&self) -> &str {
         self.provider_name
+    }
+
+    fn capabilities(&self) -> ProviderCapabilities {
+        self.capabilities_override.unwrap_or_default()
     }
 }

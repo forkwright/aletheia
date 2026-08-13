@@ -194,7 +194,13 @@ pub fn resolve_model_route_readiness(
                 Err(
                     ProviderResolutionError::NoProvider { .. }
                     | ProviderResolutionError::ProviderNotFound { .. }
-                    | ProviderResolutionError::ProviderDoesNotSupportModel { .. },
+                    | ProviderResolutionError::ProviderDoesNotSupportModel { .. }
+                    // WHY(#5253): this call site uses `resolve_provider`, which
+                    // carries no request context and can never actually return
+                    // CapabilityMismatch — only `resolve_provider_for_request`
+                    // does. Listed for exhaustiveness so admin readiness
+                    // reporting is not silently broken if that changes.
+                    | ProviderResolutionError::CapabilityMismatch { .. },
                 ) => (provider_name.clone(), None),
             };
 

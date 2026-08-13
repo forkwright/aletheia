@@ -5,7 +5,9 @@ use std::ops::ControlFlow;
 use hermeneus::anthropic::StreamEvent;
 use hermeneus::error as llm_error;
 use hermeneus::health::ProviderHealth;
-use hermeneus::provider::{LlmProvider, ProviderRegistry, ProviderResolutionError};
+use hermeneus::provider::{
+    LlmProvider, ProviderCapabilities, ProviderRegistry, ProviderResolutionError,
+};
 use hermeneus::types::{CompletionRequest, CompletionResponse};
 use koina::redact::redact_sensitive;
 
@@ -60,38 +62,50 @@ pub(super) async fn complete_with_registry_fallback(
     config: &RegistryFallbackConfig,
     nous_id: &str,
 ) -> llm_error::Result<RegistryFallbackCompletion> {
+    let required = ProviderCapabilities::required_by(request);
     let primary_label = route_label(primary_route);
     let mut last_error = None;
     let mut attempt_errors = Vec::new();
     let mut attempts: u32 = 0;
 
-    for attempt in 0..config.retries_before_fallback.max(1) {
-        if attempt > 0 {
-            tracing::warn!(
-                model = %primary_route.model,
-                provider = primary_route.provider.as_deref().unwrap_or("model-only"),
-                attempt,
-                "retrying primary model route"
-            );
-            crate::metrics::record_llm_fallback_attempt(nous_id, "primary_retry");
-        }
+    if let Some(skip) = capability_gap(providers, primary_route, required) {
+        log_capability_skip(nous_id, &skip, "primary");
+        attempt_errors.push(skip);
+    } else {
+        for attempt in 0..config.retries_before_fallback.max(1) {
+            if attempt > 0 {
+                tracing::warn!(
+                    model = %primary_route.model,
+                    provider = primary_route.provider.as_deref().unwrap_or("model-only"),
+                    attempt,
+                    "retrying primary model route"
+                );
+                crate::metrics::record_llm_fallback_attempt(nous_id, "primary_retry");
+            }
 
-        let routed_request = request_for_route(request, primary_route);
-        let raw = complete_once(providers, primary_route, &routed_request).await;
-        if let ControlFlow::Break(result) = record_attempt(
-            primary_route,
-            raw,
-            "primary model route failed with retryable error",
-            attempt,
-            &mut attempts,
-            &mut attempt_errors,
-            &mut last_error,
-        ) {
-            return result;
+            let routed_request = request_for_route(request, primary_route);
+            let raw = complete_once(providers, primary_route, &routed_request, required).await;
+            if let ControlFlow::Break(result) = record_attempt(
+                primary_route,
+                raw,
+                "primary model route failed with retryable error",
+                attempt,
+                &mut attempts,
+                &mut attempt_errors,
+                &mut last_error,
+            ) {
+                return result;
+            }
         }
     }
 
     for fallback_route in &config.fallback_routes {
+        if let Some(skip) = capability_gap(providers, fallback_route, required) {
+            log_capability_skip(nous_id, &skip, "fallback");
+            attempt_errors.push(skip);
+            continue;
+        }
+
         let fallback_label = route_label(fallback_route);
         let routed_request = request_for_route(request, fallback_route);
 
@@ -114,7 +128,7 @@ pub(super) async fn complete_with_registry_fallback(
                 crate::metrics::record_llm_fallback_attempt(nous_id, "fallback_retry");
             }
 
-            let raw = complete_once(providers, fallback_route, &routed_request).await;
+            let raw = complete_once(providers, fallback_route, &routed_request, required).await;
             if let ControlFlow::Break(result) = record_attempt(
                 fallback_route,
                 raw,
@@ -127,6 +141,10 @@ pub(super) async fn complete_with_registry_fallback(
                 return result;
             }
         }
+    }
+
+    if attempts == 0 && last_error.is_none() {
+        return Err(capability_exhausted_error(&attempt_errors));
     }
 
     fallback_chain_error(
@@ -150,39 +168,57 @@ pub(super) async fn complete_streaming_with_registry_fallback(
     nous_id: &str,
     on_event: &mut (dyn FnMut(StreamEvent) + Send),
 ) -> llm_error::Result<RegistryFallbackCompletion> {
+    let required = ProviderCapabilities::required_by(request);
     let primary_label = route_label(primary_route);
     let mut last_error = None;
     let mut attempt_errors = Vec::new();
     let mut attempts: u32 = 0;
 
-    for attempt in 0..config.retries_before_fallback.max(1) {
-        if attempt > 0 {
-            tracing::warn!(
-                model = %primary_route.model,
-                provider = primary_route.provider.as_deref().unwrap_or("model-only"),
-                attempt,
-                "retrying primary streaming model route"
-            );
-            crate::metrics::record_llm_fallback_attempt(nous_id, "primary_retry");
-        }
+    if let Some(skip) = capability_gap(providers, primary_route, required) {
+        log_capability_skip(nous_id, &skip, "primary");
+        attempt_errors.push(skip);
+    } else {
+        for attempt in 0..config.retries_before_fallback.max(1) {
+            if attempt > 0 {
+                tracing::warn!(
+                    model = %primary_route.model,
+                    provider = primary_route.provider.as_deref().unwrap_or("model-only"),
+                    attempt,
+                    "retrying primary streaming model route"
+                );
+                crate::metrics::record_llm_fallback_attempt(nous_id, "primary_retry");
+            }
 
-        let routed_request = request_for_route(request, primary_route);
-        let raw =
-            complete_streaming_once(providers, primary_route, &routed_request, on_event).await;
-        if let ControlFlow::Break(result) = record_attempt(
-            primary_route,
-            raw,
-            "primary streaming model route failed with retryable error before stream output",
-            attempt,
-            &mut attempts,
-            &mut attempt_errors,
-            &mut last_error,
-        ) {
-            return result;
+            let routed_request = request_for_route(request, primary_route);
+            let raw = complete_streaming_once(
+                providers,
+                primary_route,
+                &routed_request,
+                on_event,
+                required,
+            )
+            .await;
+            if let ControlFlow::Break(result) = record_attempt(
+                primary_route,
+                raw,
+                "primary streaming model route failed with retryable error before stream output",
+                attempt,
+                &mut attempts,
+                &mut attempt_errors,
+                &mut last_error,
+            ) {
+                return result;
+            }
         }
     }
 
     for fallback_route in &config.fallback_routes {
+        if let Some(skip) = capability_gap(providers, fallback_route, required) {
+            log_capability_skip(nous_id, &skip, "fallback");
+            attempt_errors.push(skip);
+            continue;
+        }
+
         let fallback_label = route_label(fallback_route);
         let routed_request = request_for_route(request, fallback_route);
 
@@ -205,8 +241,14 @@ pub(super) async fn complete_streaming_with_registry_fallback(
                 crate::metrics::record_llm_fallback_attempt(nous_id, "fallback_retry");
             }
 
-            let raw =
-                complete_streaming_once(providers, fallback_route, &routed_request, on_event).await;
+            let raw = complete_streaming_once(
+                providers,
+                fallback_route,
+                &routed_request,
+                on_event,
+                required,
+            )
+            .await;
             if let ControlFlow::Break(result) = record_attempt(
                 fallback_route,
                 raw,
@@ -219,6 +261,10 @@ pub(super) async fn complete_streaming_with_registry_fallback(
                 return result;
             }
         }
+    }
+
+    if attempts == 0 && last_error.is_none() {
+        return Err(capability_exhausted_error(&attempt_errors));
     }
 
     fallback_chain_error(
@@ -277,8 +323,9 @@ async fn complete_once(
     providers: &ProviderRegistry,
     route: &ModelProviderRoute,
     request: &CompletionRequest,
+    required: ProviderCapabilities,
 ) -> RawAttempt {
-    let provider = match resolve_provider_for_route(providers, route) {
+    let provider = match resolve_provider_for_route(providers, route, required) {
         Ok(provider) => provider,
         Err(e) => {
             return RawAttempt {
@@ -311,8 +358,9 @@ async fn complete_streaming_once(
     route: &ModelProviderRoute,
     request: &CompletionRequest,
     on_event: &mut (dyn FnMut(StreamEvent) + Send),
+    required: ProviderCapabilities,
 ) -> RawAttempt {
-    let provider = match resolve_provider_for_route(providers, route) {
+    let provider = match resolve_provider_for_route(providers, route, required) {
         Ok(provider) => provider,
         Err(e) => {
             return RawAttempt {
@@ -350,8 +398,19 @@ async fn complete_streaming_once(
 fn resolve_provider_for_route<'a>(
     providers: &'a ProviderRegistry,
     route: &ModelProviderRoute,
+    required: ProviderCapabilities,
 ) -> llm_error::Result<&'a dyn LlmProvider> {
-    let provider = match providers.resolve_provider(&route.model, route.provider_route()) {
+    // WHY(#5253): capability-aware, matching `capability_gap`'s pre-check —
+    // a capability-incapable provider must never be the one actually
+    // selected for dispatch, even when a co-tier alternative is merely
+    // unhealthy (health is preferred in the registry's own reporting, but
+    // an incapable provider is never eligible to be *selected* regardless
+    // of another candidate's health; see `ProviderRegistry::resolve_model_only`).
+    let provider = match providers.resolve_provider_for_request(
+        &route.model,
+        route.provider_route(),
+        required,
+    ) {
         Ok(provider) => provider,
         Err(ProviderResolutionError::NoProvider { .. }) => {
             return Err(llm_error::UnsupportedModelSnafu {
@@ -374,6 +433,31 @@ fn resolve_provider_for_route<'a>(
         Err(ProviderResolutionError::ProviderUnavailable { name, health }) => {
             return Err(llm_error::ApiRequestSnafu {
                 message: format!("provider '{name}' is currently unavailable: {health:?}"),
+            }
+            .build());
+        }
+        // WHY(#5253, #5254): reachable only under a health-flip race between
+        // `capability_gap`'s pre-check and this call — the pre-check already
+        // skips the route (moving straight to the next one, without
+        // attempting) whenever it observes a definite capability mismatch.
+        // If a health flip removes the last capable-and-healthy candidate in
+        // the narrow window between the two calls, this is a permanent
+        // (non-retryable) error and — unlike the pre-check's route-level
+        // skip — DOES abort the whole chain via `record_attempt`'s
+        // non-retryable branch, the same accepted trade-off as the
+        // provider-health TOCTOU already below this match.
+        Err(ProviderResolutionError::CapabilityMismatch {
+            name,
+            model,
+            capability,
+        }) => {
+            return Err(llm_error::CapabilityMismatchSnafu {
+                provider: name.clone(),
+                capability: capability.to_owned(),
+                message: format!(
+                    "provider '{name}' cannot satisfy required capability \
+                     '{capability}' for model: {model}"
+                ),
             }
             .build());
         }
@@ -402,6 +486,74 @@ fn route_label(route: &ModelProviderRoute) -> String {
         || route.model.clone(),
         |provider| format!("{} via {}", route.model, provider),
     )
+}
+
+/// Whether `route` resolves to a provider that cannot satisfy `required`
+/// capabilities, checked once per route rather than once per attempt.
+///
+/// WHY(#5254): capability is a route-invariant fact — unlike health, no
+/// number of retries changes whether a seat-bridged CLI subprocess provider
+/// can run aletheia's tool loop. Gating here, before a route's attempt loop
+/// even starts, means a tool-bearing turn skips straight past an incapable
+/// route to the next one instead of burning its retry budget and then
+/// aborting the *whole* chain on a `Permanent`-classified error — capability
+/// mismatch is exactly that class (see `error.rs::capability_mismatch_is_not_retryable`),
+/// so threading it through `record_attempt`'s retryable/permanent split
+/// would abort the chain instead of skipping the route.
+///
+/// Returns `None` for any other resolution failure (unhealthy, unregistered,
+/// wrong model) — those are left to the existing per-attempt path via
+/// `resolve_provider_for_route`, which already retries or skips them.
+fn capability_gap(
+    providers: &ProviderRegistry,
+    route: &ModelProviderRoute,
+    required: ProviderCapabilities,
+) -> Option<String> {
+    match providers.resolve_provider_for_request(&route.model, route.provider_route(), required) {
+        Err(ProviderResolutionError::CapabilityMismatch {
+            name, capability, ..
+        }) => Some(format!(
+            "{}: provider '{name}' cannot satisfy required capability '{capability}'",
+            route_label(route)
+        )),
+        _ => None,
+    }
+}
+
+/// Log and account for a route skipped by [`capability_gap`], consistently
+/// between the primary and fallback loops in both the streaming and
+/// non-streaming fallback functions.
+fn log_capability_skip(nous_id: &str, skip_reason: &str, route_kind: &'static str) {
+    tracing::warn!(
+        route_kind,
+        reason = %skip_reason,
+        "model route cannot satisfy request capabilities; skipping"
+    );
+    crate::metrics::record_llm_fallback_attempt(nous_id, "capability_skip");
+}
+
+/// Terminal error for a fallback chain where every route — primary and every
+/// configured fallback — was skipped by [`capability_gap`] before any
+/// provider was actually dispatched to.
+///
+/// WHY(#5254): without this, the chain would fall through to
+/// [`fallback_chain_error`]'s generic "connection unavailable" `ApiRequest`
+/// message, which the `"connection"` transient marker misclassifies as
+/// retryable — retrying the identical chain against the identical
+/// tool-bearing request always fails the same deterministic way. Surfacing
+/// the same [`hermeneus::error::Error::CapabilityMismatch`] #4510 defined as
+/// its backstop instead reads this as the `Permanent`/`Surface` planning
+/// failure it is.
+fn capability_exhausted_error(attempt_errors: &[String]) -> llm_error::Error {
+    llm_error::CapabilityMismatchSnafu {
+        provider: "fallback-chain".to_owned(),
+        capability: hermeneus::provider::TOOL_LOOP_CAPABILITY.to_owned(),
+        message: format!(
+            "no route in the fallback chain can satisfy this request's required capabilities: {}",
+            attempt_errors.join("; ")
+        ),
+    }
+    .build()
 }
 
 fn fallback_chain_error(
