@@ -69,7 +69,7 @@ pub(crate) fn reject_tool_bearing_request(
 
     crate::error::CapabilityMismatchSnafu {
         provider: provider_name.to_owned(),
-        capability: "aletheia organon tool-loop".to_owned(),
+        capability: crate::provider::TOOL_LOOP_CAPABILITY.to_owned(),
         message: format!(
             "{cli_product_name} runs its own agentic loop and cannot execute \
              {tool_count} aletheia-defined tool(s); route this request to a \

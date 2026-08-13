@@ -621,7 +621,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         .agents
         .list
         .iter()
-        .any(|agent| agent.id == args.nous_id)
+        .any(|agent| agent.id.as_str() == args.nous_id)
     {
         whatever!("nous agent '{}' not found in configuration", args.nous_id);
     }

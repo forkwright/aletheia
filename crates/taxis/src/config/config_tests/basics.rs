@@ -512,7 +512,7 @@ surprise = true
 fn resolve_merges_agent_overrides() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "syn".to_owned(),
+        id: koina::id::NousId::new("syn").expect("valid test id"),
         name: Some("Synthetic".to_owned()),
         model: Some(ModelSpec {
             primary: ModelRoute::new("claude-opus-4-6"),
@@ -613,7 +613,7 @@ fn resolve_merges_allowed_roots() {
     let mut config = AletheiaConfig::default();
     config.agents.defaults.allowed_roots = vec!["/shared".to_owned()];
     config.agents.list.push(NousDefinition {
-        id: "syn".to_owned(),
+        id: koina::id::NousId::new("syn").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/home/user/nous/syn".to_owned(),
@@ -642,7 +642,7 @@ fn resolve_merges_allowed_roots() {
 fn resolve_thinking_override() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "thinker".to_owned(),
+        id: koina::id::NousId::new("thinker").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/home/user/nous/thinker".to_owned(),

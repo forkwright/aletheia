@@ -431,6 +431,14 @@ impl LlmProvider for CodexProvider {
         self.deployment_target
     }
 
+    fn capabilities(&self) -> crate::provider::ProviderCapabilities {
+        // WHY(#5253, #4510): Codex delegates to the `codex` CLI's own
+        // agentic loop and cannot translate aletheia's tools into it — see
+        // `execute`'s `reject_tool_bearing_request` call, the backstop this
+        // declaration lets routing avoid hitting in the normal path.
+        crate::provider::ProviderCapabilities { tool_loop: false }
+    }
+
     fn supports_streaming(&self) -> bool {
         true
     }
@@ -679,6 +687,24 @@ mod tests {
         )));
         assert!(provider.supports_model(koina::models::names::codex()));
         assert!(!provider.supports_model("claude-sonnet-4-6"));
+    }
+
+    #[test]
+    fn codex_provider_declares_no_tool_loop_capability() {
+        // WHY(#5253): routing/fallback consult this so a tool-bearing turn
+        // is never selected for codex in the first place — the #4510
+        // `reject_tool_bearing_request` hard-fail is the backstop for
+        // anything that slips through, not the primary mechanism.
+        let provider = CodexProvider {
+            name: "codex".to_owned(),
+            codex_binary: PathBuf::from("codex"),
+            working_directory: None,
+            models: Vec::new(),
+            default_model: format!("{CODEX_MODEL_PREFIX}{}", koina::models::names::codex()),
+            timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
+        };
+        assert!(!provider.capabilities().tool_loop);
     }
 
     #[test]

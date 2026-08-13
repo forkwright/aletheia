@@ -71,8 +71,12 @@ fn is_loopback(addr: &IpAddr) -> bool {
 ///
 /// Parses each entry as an IP address or CIDR (prefix/len). Returns `true`
 /// if every entry resolves to a loopback address. Unparseable entries are
-/// treated as non-loopback so the caller logs a warning.
-// kanon:ignore RUST/doc-promised-observability -- WHY: the "caller logs" note is prose description, not an observability contract; function is a pure predicate
+/// treated as non-loopback, so a typo fails closed the same way a genuine
+/// non-loopback entry does rather than silently passing as enforceable --
+/// callers key startup validation (`SandboxConfig::validate`), runtime
+/// diagnostics (`egress_guarantee_status`), and spawn-time rejection
+/// (`apply_sandbox`) off this single predicate.
+// kanon:ignore RUST/doc-promised-observability -- WHY: caller behavior (validate/reject/log) is prose description of consumers, not an observability contract; function is a pure predicate
 pub(crate) fn allowlist_is_loopback_only(entries: &[String]) -> bool {
     entries.iter().all(|entry| {
         let ip_part = entry.split('/').next().unwrap_or(entry);
@@ -377,6 +381,21 @@ impl SandboxPolicy {
     /// all outbound connections to external hosts without requiring root
     /// privileges. The user namespace is required because `CLONE_NEWNET`
     /// alone requires `CAP_SYS_ADMIN`.
+    ///
+    /// WHY `Deny` and `Allowlist` share this arm (#4997): neither `unshare`
+    /// nor the seccomp fallback below can inspect a destination address --
+    /// they can only isolate the child to loopback or block sockets
+    /// outright, so there is no way to honor a specific `egress_allowlist`
+    /// entry at this layer. Selectivity is enforced upstream instead:
+    /// `SandboxConfig::validate` and `egress_guarantee_status` (this
+    /// module's `probe_guarantees` path) both key off
+    /// `allowlist_is_loopback_only` to refuse (enforcing) or degrade
+    /// (permissive) an `Allowlist` policy this arm cannot actually satisfy,
+    /// rather than silently letting `Allowlist` report the same guarantee
+    /// `Deny` gets. Do not add per-destination logic here without also
+    /// giving the child a real route to those destinations (e.g. a
+    /// configured veth + firewall rules) -- inspecting an address with no
+    /// path to reach it changes nothing observable.
     #[cfg(target_os = "linux")]
     fn apply_egress(&self) -> std::io::Result<()> {
         match self.egress {
@@ -750,10 +769,7 @@ fn probe_guarantees(policy: &SandboxPolicy) -> SandboxGuarantees {
         }
     };
     let seccomp = seccomp_guarantee_status(policy);
-    let egress = match policy.egress {
-        EgressPolicy::Allow => GuaranteeStatus::Unrestricted,
-        _ => seccomp,
-    };
+    let egress = egress_guarantee_status(policy, seccomp);
     SandboxGuarantees {
         landlock,
         seccomp,
@@ -788,6 +804,39 @@ fn seccomp_guarantee_status(policy: &SandboxPolicy) -> GuaranteeStatus {
         GuaranteeStatus::Unavailable
     } else {
         GuaranteeStatus::Degraded
+    }
+}
+
+/// Compute the `egress` guarantee status, accounting for whether an
+/// `Allowlist` policy's entries are within what the child-process
+/// network-namespace/seccomp mechanism can actually provide.
+///
+/// SECURITY(#4997): `apply_egress` (below) has exactly two real outcomes for
+/// a non-`Allow` policy -- isolate the child to loopback-only network access,
+/// or block network entirely -- it never inspects `egress_allowlist` to honor
+/// a specific destination. An allowlist confined to loopback entries
+/// (`allowlist_is_loopback_only`) is within that real capability and tracks
+/// the same kernel/arch support `Deny` does. An allowlist with any
+/// non-loopback entry is NOT: those entries can never be reached, so
+/// reporting the same status `Deny` gets (as a bare `_ => seccomp` match
+/// once did here) would tell an operator their listed destinations are
+/// enforced when the mechanism can never provide that -- indistinguishable
+/// from `deny` in every observable way except the name.
+#[cfg(target_os = "linux")]
+#[must_use]
+fn egress_guarantee_status(policy: &SandboxPolicy, seccomp: GuaranteeStatus) -> GuaranteeStatus {
+    match policy.egress {
+        EgressPolicy::Allow => GuaranteeStatus::Unrestricted,
+        EgressPolicy::Deny => seccomp,
+        EgressPolicy::Allowlist => {
+            if allowlist_is_loopback_only(&policy.egress_allowlist) {
+                seccomp
+            } else if policy.enforcement == SandboxEnforcement::Enforcing {
+                GuaranteeStatus::Unavailable
+            } else {
+                GuaranteeStatus::Degraded
+            }
+        }
     }
 }
 
@@ -990,11 +1039,27 @@ pub fn apply_sandbox(
             ));
         }
         if guarantees.egress == GuaranteeStatus::Unavailable {
-            return Err(std::io::Error::other(
-                "egress filtering unavailable on this platform; \
-                 tool execution blocked by enforcing sandbox. \
-                 Set enforcement=permissive or egress=allow to run without egress filtering.",
-            ));
+            // WHY: distinguish the two ways egress can be Unavailable so the
+            // operator gets an actionable message instead of a generic one.
+            // `register_domain_tools` already refuses to register tools for
+            // this exact allowlist shape (SECURITY(#4997)); this is the
+            // defense-in-depth check for callers that build a `SandboxPolicy`
+            // directly (tests, or a future caller that bypasses
+            // `SandboxConfig::validate`) rather than through that path.
+            let reason = if policy.egress == EgressPolicy::Allowlist
+                && !allowlist_is_loopback_only(&policy.egress_allowlist)
+            {
+                "egress_allowlist contains non-loopback entries; the child-process sandbox \
+                 can only enforce loopback destinations without root privileges, so \
+                 \"allowlist\" cannot honor this configuration"
+            } else {
+                "egress filtering unavailable on this platform"
+            };
+            return Err(std::io::Error::other(format!(
+                "{reason}; tool execution blocked by enforcing sandbox. Restrict \
+                 egress_allowlist to loopback entries, set enforcement=permissive, or set \
+                 egress=allow to proceed."
+            )));
         }
     }
 

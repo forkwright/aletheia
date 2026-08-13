@@ -153,7 +153,9 @@ fn approval_tool_registry(executions: Arc<AtomicUsize>) -> ToolRegistry {
     registry
 }
 
-async fn approval_test_app(executions: Arc<AtomicUsize>) -> (axum::Router, tempfile::TempDir) {
+async fn approval_test_app(
+    executions: Arc<AtomicUsize>,
+) -> (axum::Router, Arc<crate::state::AppState>, tempfile::TempDir) {
     let provider =
         MockProvider::with_responses(vec![approval_tool_response(), provider_text_response()])
             .models(&["mock-model", "claude-opus-4-20250514"]);
@@ -161,6 +163,7 @@ async fn approval_test_app(executions: Arc<AtomicUsize>) -> (axum::Router, tempf
     let (state, dir) = test_state_with_approval_test_tool(Some(Box::new(provider)), registry).await;
     (
         build_router(Arc::clone(&state), &test_security_config()),
+        state,
         dir,
     )
 }
@@ -218,9 +221,15 @@ where
 #[tokio::test]
 async fn send_message_policy_denies_irreversible_tool_without_approval_gate() {
     let executions = Arc::new(AtomicUsize::new(0));
-    let (router, _dir) = approval_test_app(Arc::clone(&executions)).await;
+    let (router, state, _dir) = approval_test_app(Arc::clone(&executions)).await;
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
+
+    // WHY(#4557): a tool-level denial is not a turn-level failure — the model
+    // still produces a final response, so the turn's domain-event lifecycle
+    // must read as an ordinary success (turn.start, turn.complete), not
+    // turn.failed. Subscribe before the request so the sequence is captured.
+    let mut event_bus_rx = state.event_bus.subscribe();
 
     let req = authed_request(
         "POST",
@@ -252,12 +261,23 @@ async fn send_message_policy_denies_irreversible_tool_without_approval_gate() {
         0,
         "legacy no-gate approval denial must skip execution"
     );
+
+    let mut published_topics = Vec::new();
+    while let Ok(event) = event_bus_rx.try_recv() {
+        published_topics.push(event.topic);
+    }
+    assert_eq!(
+        published_topics,
+        vec!["turn.start", "turn.complete"],
+        "a tool-level approval denial the model recovers from must still complete the turn \
+         successfully, not emit turn.failed"
+    );
 }
 
 #[tokio::test]
 async fn stream_turn_requires_operator_approval_for_irreversible_tool() {
     let executions = Arc::new(AtomicUsize::new(0));
-    let (router, _dir) = approval_test_app(Arc::clone(&executions)).await;
+    let (router, _state, _dir) = approval_test_app(Arc::clone(&executions)).await;
 
     let resp = router
         .clone()

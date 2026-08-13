@@ -1505,7 +1505,7 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
         ),
         subsystem_turn_event_persistence(state, generated_at).await,
         subsystem_memory_graph(state, generated_at),
-        subsystem_daemon_runtime(&checks.prosoche, generated_at),
+        subsystem_daemon_runtime(&state.daemon_task_states, &checks.prosoche, generated_at),
         subsystem_tool_execution_history(state, generated_at).await,
         subsystem_training_qa_persistence(generated_at),
         subsystem_from_check(
@@ -1606,17 +1606,79 @@ fn subsystem_memory_graph(state: &HealthState, generated_at: &str) -> SubsystemS
     }
 }
 
-/// Daemon / cron / dispatch runtime subsystem: genuinely `"unknown"`.
+/// Aggregate outcome across every attached daemon task-state store.
+struct DaemonTaskStateSummary {
+    /// One `{runner, task_count}` record per attached store.
+    runner_task_counts: Vec<serde_json::Value>,
+    /// Tasks auto-disabled after 3 consecutive failures (#5130).
+    disabled_tasks: Vec<serde_json::Value>,
+    /// Enabled tasks currently in backoff after a recent failure.
+    backoff_tasks: Vec<serde_json::Value>,
+    /// Stores that could not be read at all.
+    read_errors: Vec<String>,
+}
+
+/// Read every attached [`oikonomos::state::TaskStateStore`] and classify
+/// each persisted task.
 ///
-/// WHY(#5142, #5313): true daemon task state (enabled/disabled, last
-/// success/failure, backoff, hung detection) for cron/maintenance,
-/// retention enforcement, and the dispatch/runtime pipeline lives in
-/// aletheia's runtime layer (`crates/aletheia/src/runtime`), which is not
-/// attached to `AppState`/`HealthState`. This record makes that gap visible
-/// instead of defaulting it to `"healthy"`. `details` still surfaces the
-/// CONFIGURED intent pulled from `state.config` — real data, clearly
-/// distinguished from a verified runtime state.
+/// WHY: a registered task's `enabled` flag only ever transitions to `false`
+/// via [`oikonomos`]'s own 3-consecutive-failure auto-disable — every
+/// registration path (maintenance tasks, prosoche tasks) starts `enabled:
+/// true` and disabled-by-config tasks are never registered at all — so a
+/// persisted `enabled: Some(false)` unambiguously means auto-disabled, not
+/// "administrator turned this off intentionally".
+fn summarize_daemon_task_states(
+    daemon_task_states: &[(String, oikonomos::state::TaskStateStore)],
+) -> DaemonTaskStateSummary {
+    let mut summary = DaemonTaskStateSummary {
+        runner_task_counts: Vec::with_capacity(daemon_task_states.len()),
+        disabled_tasks: Vec::new(),
+        backoff_tasks: Vec::new(),
+        read_errors: Vec::new(),
+    };
+
+    for (component, store) in daemon_task_states {
+        match store.load_all() {
+            Ok(states) => {
+                summary.runner_task_counts.push(serde_json::json!({
+                    "runner": component,
+                    "task_count": states.len(),
+                }));
+                for task in &states {
+                    // WHY(#5130): legacy records predate the persisted
+                    // `enabled` flag; absence means "was enabled", not unknown.
+                    let enabled = task.enabled.unwrap_or(true);
+                    let detail = serde_json::json!({
+                        "runner": component,
+                        "task_id": task.task_id,
+                        "consecutive_failures": task.consecutive_failures,
+                        "last_error": task.last_error,
+                    });
+                    if !enabled {
+                        summary.disabled_tasks.push(detail);
+                    } else if task.consecutive_failures > 0 {
+                        summary.backoff_tasks.push(detail);
+                    }
+                }
+            }
+            Err(e) => summary.read_errors.push(format!("{component}: {e}")),
+        }
+    }
+
+    summary
+}
+
+/// Daemon / cron / maintenance runtime subsystem: real task state read from
+/// the runner-attached [`oikonomos::state::TaskStateStore`] handles (#5142).
+///
+/// An empty `daemon_task_states` is itself a real, known signal — daemon
+/// mode is disabled for this instance — not the permanent `"unknown"` this
+/// record used to report unconditionally before a reader was attached.
+/// `details.configured` still carries the configured intent pulled from
+/// `state.config`, alongside the verified runtime state, so a mismatch
+/// between "should be running" and "is running" stays visible.
 fn subsystem_daemon_runtime(
+    daemon_task_states: &[(String, oikonomos::state::TaskStateStore)],
     prosoche: &taxis::config::ProsocheMaintenanceSettings,
     generated_at: &str,
 ) -> SubsystemStatus {
@@ -1624,28 +1686,110 @@ fn subsystem_daemon_runtime(
         "heartbeat_enabled": prosoche.heartbeat.enabled,
         "self_audit_enabled": prosoche.self_audit.enabled,
         "external_timer_enabled": prosoche.external_timer.enabled,
-        "note": "configured intent only — not a verified runtime state",
     });
+
+    // WHY "unknown" rather than "healthy": an empty reader slice cannot
+    // distinguish "daemon mode is off for this instance" from "nobody wired
+    // the readers into AppState". Reporting healthy asserts the runtime is
+    // fine on no evidence, and hides a real misconfiguration — prosoche
+    // settings can be enabled here while zero task-state stores exist.
+    // "unknown" is the honest verdict and does not fail the aggregate, so a
+    // genuinely daemon-less instance still reports overall healthy.
+    if daemon_task_states.is_empty() {
+        return SubsystemStatus {
+            id: "daemon_runtime".to_owned(),
+            name: "Daemon / Cron / Dispatch Runtime".to_owned(),
+            status: "unknown".to_owned(),
+            owner: "crates/oikonomos::runner".to_owned(),
+            last_checked: generated_at.to_owned(),
+            last_success: None,
+            last_failure: None,
+            degraded_reason: None,
+            // WHY failure_reason and not details.note: the DTO defines this
+            // field as the explanation for `failed` OR `unknown`, and the
+            // sibling `subsystem_training_qa_persistence` uses it for exactly
+            // that. Putting the explanation only in `details` made
+            // daemon_runtime the one `unknown` subsystem that explains itself
+            // somewhere else, which the public-API test correctly rejects.
+            failure_reason: Some(
+                "no daemon task-state readers are wired; daemon mode is either \
+                 disabled for this instance or the readers were not threaded \
+                 into AppState"
+                    .to_owned(),
+            ),
+            details: Some(serde_json::json!({
+                "configured": configured,
+                "runners": [],
+            })),
+            suggested_action: None,
+        };
+    }
+
+    let summary = summarize_daemon_task_states(daemon_task_states);
+    let details = Some(serde_json::json!({
+        "configured": configured,
+        "runners": summary.runner_task_counts,
+        "disabled_tasks": summary.disabled_tasks,
+        "backoff_tasks": summary.backoff_tasks,
+    }));
+
+    let (status, degraded_reason, failure_reason, suggested_action) =
+        if summary.read_errors.is_empty() {
+            if !summary.disabled_tasks.is_empty() {
+                (
+                    "failed",
+                    None,
+                    Some(format!(
+                        "{} task(s) auto-disabled after 3 consecutive failures",
+                        summary.disabled_tasks.len()
+                    )),
+                    Some(
+                        "Check daemon logs for the disabled task's last_error and re-enable \
+                         once fixed."
+                            .to_owned(),
+                    ),
+                )
+            } else if summary.backoff_tasks.is_empty() {
+                ("healthy", None, None, None)
+            } else {
+                (
+                    "degraded",
+                    Some(format!(
+                        "{} task(s) in backoff after a recent failure",
+                        summary.backoff_tasks.len()
+                    )),
+                    None,
+                    Some("Check daemon logs for the failing task's last_error.".to_owned()),
+                )
+            }
+        } else {
+            (
+                "failed",
+                None,
+                Some(format!(
+                    "task-state store unreadable: {}",
+                    summary.read_errors.join("; ")
+                )),
+                Some(
+                    "Check the daemon-task-state fjall directory for corruption or a lock \
+                     conflict."
+                        .to_owned(),
+                ),
+            )
+        };
+
     SubsystemStatus {
         id: "daemon_runtime".to_owned(),
         name: "Daemon / Cron / Dispatch Runtime".to_owned(),
-        status: "unknown".to_owned(),
-        owner: "crates/aletheia::runtime".to_owned(),
+        status: status.to_owned(),
+        owner: "crates/oikonomos::runner".to_owned(),
         last_checked: generated_at.to_owned(),
         last_success: None,
         last_failure: None,
-        degraded_reason: None,
-        failure_reason: Some(
-            "daemon task state (cron/maintenance, retention, dispatch pipeline) is not yet \
-             wired into AppState; this endpoint can only see configured intent, not live \
-             runtime state"
-                .to_owned(),
-        ),
-        details: Some(configured),
-        suggested_action: Some(
-            "Attach a daemon task-state reader to AppState from aletheia::runtime (#5142)."
-                .to_owned(),
-        ),
+        degraded_reason,
+        failure_reason,
+        details,
+        suggested_action,
     }
 }
 
@@ -1880,6 +2024,7 @@ fn aggregate_subsystem_status(subsystems: &[SubsystemStatus]) -> &'static str {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: vec/JSON indices valid after len assertions"
@@ -2149,6 +2294,127 @@ mod tests {
             msg.contains("disabled"),
             "message should name the disabled path: {msg}"
         );
+    }
+
+    /// Build a `TaskStateStore` backed by a fresh temp directory and seed it
+    /// with one persisted task record.
+    fn seeded_daemon_task_store(
+        component: &str,
+        task: &oikonomos::state::TaskState,
+    ) -> (
+        tempfile::TempDir,
+        (String, oikonomos::state::TaskStateStore),
+    ) {
+        let dir = tempfile::tempdir().unwrap();
+        let store = oikonomos::state::TaskStateStore::open(dir.path()).unwrap();
+        store.save(task).unwrap();
+        (dir, (component.to_owned(), store))
+    }
+
+    #[test]
+    fn subsystem_daemon_runtime_reports_unknown_without_wired_readers() {
+        // WHY(#5142): an empty reader slice is ambiguous — it is what the
+        // runtime builder produces when `self.daemons` is false, AND what an
+        // unwired AppState produces. Reporting "healthy" would assert the
+        // runtime is fine on no evidence and hide the second case, including
+        // a prosoche-enabled instance with zero task-state stores. "unknown"
+        // is the honest verdict; it does not fail the aggregate, so a
+        // genuinely daemon-less instance still reports overall healthy.
+        let status = subsystem_daemon_runtime(
+            &[],
+            &taxis::config::ProsocheMaintenanceSettings::default(),
+            "2026-01-01T00:00:00Z",
+        );
+        assert_eq!(status.status, "unknown");
+        assert!(status.degraded_reason.is_none());
+        // An `unknown` subsystem must say WHY in the field the DTO reserves
+        // for it, the same as every other subsystem — the public-API contract
+        // test asserts exactly this across all of them.
+        assert!(
+            status
+                .failure_reason
+                .as_deref()
+                .is_some_and(|r| r.contains("no daemon task-state readers are wired")),
+            "unknown must explain itself in failure_reason, got {:?}",
+            status.failure_reason
+        );
+        let details = status.details.expect("details present");
+        assert_eq!(details["runners"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn subsystem_daemon_runtime_reports_healthy_with_running_tasks() {
+        let (_dir, handle) = seeded_daemon_task_store(
+            "system",
+            &oikonomos::state::TaskState {
+                task_id: "retention".to_owned(),
+                enabled: Some(true),
+                consecutive_failures: 0,
+                ..Default::default()
+            },
+        );
+        let status = subsystem_daemon_runtime(
+            &[handle],
+            &taxis::config::ProsocheMaintenanceSettings::default(),
+            "2026-01-01T00:00:00Z",
+        );
+        assert_eq!(status.status, "healthy");
+        let details = status.details.expect("details present");
+        assert_eq!(details["runners"][0]["task_count"], serde_json::json!(1));
+    }
+
+    #[test]
+    fn subsystem_daemon_runtime_reports_degraded_when_task_in_backoff() {
+        let (_dir, handle) = seeded_daemon_task_store(
+            "system",
+            &oikonomos::state::TaskState {
+                task_id: "graph-cleanup".to_owned(),
+                enabled: Some(true),
+                consecutive_failures: 1,
+                last_error: Some("connection refused".to_owned()),
+                ..Default::default()
+            },
+        );
+        let status = subsystem_daemon_runtime(
+            &[handle],
+            &taxis::config::ProsocheMaintenanceSettings::default(),
+            "2026-01-01T00:00:00Z",
+        );
+        assert_eq!(status.status, "degraded");
+        let reason = status.degraded_reason.expect("degraded_reason present");
+        assert!(
+            reason.contains("backoff"),
+            "reason should name backoff: {reason}"
+        );
+        let details = status.details.expect("details present");
+        assert_eq!(details["backoff_tasks"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn subsystem_daemon_runtime_reports_failed_when_task_auto_disabled() {
+        let (_dir, handle) = seeded_daemon_task_store(
+            "syn",
+            &oikonomos::state::TaskState {
+                task_id: "syn-prosoche".to_owned(),
+                enabled: Some(false),
+                consecutive_failures: 3,
+                last_error: Some("provider unreachable".to_owned()),
+                ..Default::default()
+            },
+        );
+        let status = subsystem_daemon_runtime(
+            &[handle],
+            &taxis::config::ProsocheMaintenanceSettings::default(),
+            "2026-01-01T00:00:00Z",
+        );
+        assert_eq!(status.status, "failed");
+        let reason = status.failure_reason.expect("failure_reason present");
+        assert!(
+            reason.contains("auto-disabled"),
+            "reason should name auto-disable: {reason}"
+        );
+        let details = status.details.expect("details present");
+        assert_eq!(details["disabled_tasks"].as_array().unwrap().len(), 1);
     }
 
     #[test]

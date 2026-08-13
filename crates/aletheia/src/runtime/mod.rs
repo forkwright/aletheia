@@ -123,6 +123,41 @@ fn resolve_pack_paths(oikos: &Oikos, configured: &[PathBuf]) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Build the daemon's live maintenance configuration, wiring in the runtime
+/// handles that `taxis::config::MaintenanceSettings` cannot carry: the
+/// shared after-action store, the backup metrics recorder, and the
+/// session-store health probe.
+///
+/// WHY: used both at initial [`Runtime`] construction and by the
+/// config-reload task below, so the two call sites cannot drift from each
+/// other (SSOT) -- a reload that rebuilt `MaintenanceConfig` differently
+/// than startup would silently reset or duplicate these runtime handles
+/// (most sharply, `after_action_store`: `maintenance::build_config` on its
+/// own constructs a brand-new, empty store).
+fn build_daemon_maintenance_config(
+    oikos: &Oikos,
+    config: &AletheiaConfig,
+    after_action_store: &Arc<AfterActionStore>,
+    session_store: &Arc<Mutex<SessionStore>>,
+) -> oikonomos::maintenance::MaintenanceConfig {
+    let mut maintenance_config =
+        maintenance::build_config(oikos, &config.maintenance, &config.prompt_audit);
+    maintenance_config.after_action_store = Some(Arc::clone(after_action_store));
+    maintenance_config.backup_metrics = Some(Arc::new(RuntimeBackupMetricsRecorder));
+    // WHY(#6445): publish backup freshness from the manifests on disk so a
+    // reload -- not just a restart or a completed backup -- keeps exported
+    // backup-interval/enabled metrics in sync with the live config.
+    oikonomos::maintenance::instance_backup::publish_backup_state(
+        &maintenance_config.instance_backup,
+        &RuntimeBackupMetricsRecorder,
+    );
+    maintenance_config.session_store_health_probe =
+        Some(Arc::new(RuntimeSessionStoreHealthProbe {
+            session_store: Arc::clone(session_store),
+        }));
+    maintenance_config
+}
+
 /// Spawn the disk-space monitor from `maintenance.diskSpace` config.
 ///
 /// Returns `None` (and spawns nothing) when `enabled = false`, per #5128's
@@ -569,7 +604,7 @@ impl RuntimeBuilder {
         let knowledge_stores = if self.embedding {
             let mut cohorts = BTreeSet::from(["shared".to_owned()]);
             for agent_def in &self.config.agents.list {
-                let resolved = resolve_nous(&self.config, &agent_def.id);
+                let resolved = resolve_nous(&self.config, agent_def.id.as_str());
                 cohorts.insert(resolved.episteme_cohort.to_string());
             }
             open_knowledge_stores(
@@ -745,8 +780,12 @@ impl RuntimeBuilder {
 
         {
             for agent_def in &self.config.agents.list {
-                let (nous_config, pipeline_config) =
-                    build_nous_runtime_config(&self.config, &self.oikos, &packs, &agent_def.id);
+                let (nous_config, pipeline_config) = build_nous_runtime_config(
+                    &self.config,
+                    &self.oikos,
+                    &packs,
+                    agent_def.id.as_str(),
+                );
                 if let Err(e) = nous_manager.spawn(nous_config, pipeline_config).await {
                     error!(
                         agent = %agent_def.id,
@@ -758,27 +797,28 @@ impl RuntimeBuilder {
             info!(count = nous_manager.count(), "nous actors spawned");
         }
 
-        let mut maintenance_config = maintenance::build_config(
+        let maintenance_config = build_daemon_maintenance_config(
             &self.oikos,
-            &self.config.maintenance,
-            &self.config.prompt_audit,
+            &self.config,
+            &after_action_store,
+            &session_store,
         );
-        maintenance_config.after_action_store = Some(Arc::clone(&after_action_store));
-        maintenance_config.backup_metrics = Some(Arc::new(RuntimeBackupMetricsRecorder));
-        // WHY(#6445): publish backup freshness from the manifests on disk
-        // before any backup runs. Without this the series only appears after
-        // this process completes a backup, so a restart — or an instance that
-        // has never backed up at all — exports nothing and BackupStale cannot
-        // fire.
-        oikonomos::maintenance::instance_backup::publish_backup_state(
-            &maintenance_config.instance_backup,
-            &RuntimeBackupMetricsRecorder,
-        );
-        maintenance_config.session_store_health_probe =
-            Some(Arc::new(RuntimeSessionStoreHealthProbe {
-                session_store: Arc::clone(&session_store),
-            }));
+        // WHY: the receiver half is moved into the system daemon_runner below
+        // (the canonical maintenance scheduler) when daemons are enabled; the
+        // sender half is moved into the config-reload task further down so
+        // that any config reload (PUT section, POST reload, SIGHUP) pushes a
+        // freshly-built MaintenanceConfig for live task reconciliation. When
+        // daemons are disabled the receiver is simply dropped and later
+        // `send` calls are ignored, matching the existing config_tx pattern.
+        let (maintenance_reload_tx, maintenance_reload_rx) =
+            tokio::sync::watch::channel(maintenance_config.clone());
         let task_state_root = self.oikos.data().join("daemon-task-state");
+        // WHY(#5142): cloned handles (not reopened stores — a second open on
+        // the same fjall path collides with the runner's own lock) so
+        // AppState/HealthState can read real daemon task state instead of
+        // reporting it as permanently unknown.
+        let mut daemon_task_state_handles: Vec<(String, oikonomos::state::TaskStateStore)> =
+            Vec::new();
 
         // WHY(#5128): spawned unconditionally regardless of `self.daemons` --
         // disk-space monitoring backs write guards (config persistence,
@@ -800,12 +840,14 @@ impl RuntimeBuilder {
             let system_state_store =
                 oikonomos::state::TaskStateStore::open(&task_state_root.join("system"))
                     .with_whatever_context(|_| "failed to open system daemon task-state store")?;
+            daemon_task_state_handles.push(("system".to_owned(), system_state_store.clone()));
             let mut daemon_runner = TaskRunner::new("system", daemon_token)
                 .with_output_mode(runner_output_mode)
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
                 .with_watchdog_settings(&self.config.maintenance.watchdog)
                 .with_state_store(system_state_store)
-                .with_maintenance(maintenance_config.clone());
+                .with_maintenance(maintenance_config.clone())
+                .with_maintenance_reload(maintenance_reload_rx);
             let retention_executor = Arc::new(
                 crate::session_retention::SessionRetentionAdapter::new(Arc::clone(&session_store)),
             );
@@ -943,6 +985,17 @@ impl RuntimeBuilder {
             )));
             for agent_def in &self.config.agents.list {
                 let agent_token = shutdown_token.child_token();
+                let agent_state_store = oikonomos::state::TaskStateStore::open(
+                    &task_state_root.join(task_state_component(agent_def.id.as_str())),
+                )
+                .with_whatever_context(|_| {
+                    format!(
+                        "failed to open daemon task-state store for {}",
+                        agent_def.id
+                    )
+                })?;
+                daemon_task_state_handles
+                    .push((agent_def.id.to_string(), agent_state_store.clone()));
                 let mut runner = TaskRunner::with_bridge(
                     agent_def.id.clone(),
                     agent_token,
@@ -951,23 +1004,13 @@ impl RuntimeBuilder {
                 .with_output_mode(runner_output_mode)
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
                 .with_watchdog_settings(&self.config.maintenance.watchdog)
-                .with_state_store(
-                    oikonomos::state::TaskStateStore::open(
-                        &task_state_root.join(task_state_component(&agent_def.id)),
-                    )
-                    .with_whatever_context(|_| {
-                        format!(
-                            "failed to open daemon task-state store for {}",
-                            agent_def.id
-                        )
-                    })?,
-                )
+                .with_state_store(agent_state_store)
                 .with_maintenance(maintenance_config.clone());
                 let prosoche = &self.config.maintenance.prosoche;
                 if prosoche.mode.runs_daemon_tasks() {
                     if prosoche.heartbeat.enabled {
                         runner.register(prosoche_task_def(
-                            &agent_def.id,
+                            agent_def.id.as_str(),
                             &format!("{}-prosoche", agent_def.id),
                             "Prosoche attention check",
                             prosoche.heartbeat.enabled,
@@ -982,7 +1025,7 @@ impl RuntimeBuilder {
                     }
                     if prosoche.self_audit.enabled {
                         runner.register(prosoche_task_def(
-                            &agent_def.id,
+                            agent_def.id.as_str(),
                             &format!("{}-prosoche-self-audit", agent_def.id),
                             "Prosoche self-audit",
                             prosoche.self_audit.enabled,
@@ -1028,6 +1071,15 @@ impl RuntimeBuilder {
         let reload_manager = Arc::clone(&nous_manager);
         let reload_oikos = Arc::clone(&self.oikos);
         let reload_packs = Arc::clone(&packs);
+        // WHY these two are cloned into the reload task: the maintenance
+        // config carries runtime handles that `maintenance::build_config`
+        // cannot reconstruct on its own, so a reload must rebuild it through
+        // the same `build_daemon_maintenance_config` startup uses. Rebuilding
+        // it differently here is exactly the drift that helper exists to
+        // prevent — most sharply for `after_action_store`, where the plain
+        // builder would hand the scheduler a brand-new empty store.
+        let reload_after_action_store = Arc::clone(&after_action_store);
+        let reload_session_store = Arc::clone(&session_store);
         task_tracker.spawn(
             async move {
                 loop {
@@ -1044,9 +1096,9 @@ impl RuntimeBuilder {
                                 &config,
                                 &reload_oikos,
                                 &reload_packs,
-                                &agent.id,
+                                agent.id.as_str(),
                             );
-                            (agent.id.clone(), nous_config, pipeline_config)
+                            (agent.id.to_string(), nous_config, pipeline_config)
                         })
                         .collect();
                     if let Err(e) = reload_manager
@@ -1054,6 +1106,25 @@ impl RuntimeBuilder {
                         .await
                     {
                         warn!(error = %e, "failed to apply hot-reloaded actor config");
+                    }
+
+                    // WHY(#5144): this send is what makes the maintenance
+                    // settings genuinely hot-reloadable rather than merely
+                    // classified as such. The system daemon runner holds the
+                    // receiver and reconciles live scheduler tasks from it;
+                    // without this the runner listens and nothing ever speaks.
+                    // A send error means daemons are disabled so the receiver
+                    // was dropped, which is expected, not a fault.
+                    let reloaded_maintenance = build_daemon_maintenance_config(
+                        &reload_oikos,
+                        &config,
+                        &reload_after_action_store,
+                        &reload_session_store,
+                    );
+                    if maintenance_reload_tx.send(reloaded_maintenance).is_err() {
+                        tracing::debug!(
+                            "no maintenance reload receiver; daemons are disabled for this instance"
+                        );
                     }
                 }
             }
@@ -1106,6 +1177,7 @@ impl RuntimeBuilder {
             // without an operator opt-in.
             metrics_mode: self.config.gateway.metrics.mode,
             metrics_detailed: self.config.gateway.metrics.detailed,
+            daemon_task_states: Arc::new(daemon_task_state_handles),
         });
 
         Ok(Runtime {

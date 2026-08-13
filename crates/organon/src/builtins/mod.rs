@@ -209,22 +209,32 @@ pub(crate) fn register_domain_tools(
     sandbox: SandboxConfig,
     #[cfg(feature = "energeia")] energeia_services: Option<&energeia::EnergeiaServices>,
 ) -> Result<()> {
-    // SECURITY(#5081, #5064, #5232): surface misleading sandbox guarantees
-    // once at startup rather than leaving them discoverable only by reading
-    // source or scattered per-invocation log lines.
+    // SECURITY(#5081, #5064, #5232, #4997): surface misleading sandbox
+    // guarantees once at startup rather than leaving them discoverable only
+    // by reading source or scattered per-invocation log lines. A guarantee
+    // that is `broken_under_enforcing` (currently: `egress = "allowlist"`
+    // with non-loopback entries) is not merely weaker than advertised --
+    // under `enforcement = "enforcing"` it is not enforceable at all, so
+    // registration is refused rather than starting up on a promise the
+    // sandbox can never keep. Under `enforcement = "permissive"` the same
+    // condition is logged only, matching every other guarantee's documented
+    // "logged but not blocked" behavior.
     let enforcing = sandbox.enforcement == crate::sandbox::SandboxEnforcement::Enforcing;
     for issue in sandbox.validate() {
         if issue.broken_under_enforcing && enforcing {
             tracing::error!(
                 message = %issue.message,
-                "sandbox configuration guarantee is not enforceable"
+                "sandbox configuration guarantee is not enforceable; refusing to register tools"
             );
-        } else {
-            tracing::warn!(
-                message = %issue.message,
-                "sandbox configuration guarantee is weaker than it may appear"
-            );
+            return crate::error::SandboxConfigUnenforceableSnafu {
+                message: issue.message,
+            }
+            .fail();
         }
+        tracing::warn!(
+            message = %issue.message,
+            "sandbox configuration guarantee is weaker than it may appear"
+        );
     }
 
     #[cfg(feature = "computer-use")]
@@ -278,6 +288,7 @@ pub(crate) fn register_domain_tools(
 }
 
 #[cfg(all(test, feature = "energeia", not(feature = "bookkeeper")))]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -300,5 +311,67 @@ mod tests {
             "feature-gated bookkeeper tools must not be exposed by default"
         );
         Ok(())
+    }
+
+    #[test]
+    fn enforcing_sandbox_rejects_unenforceable_egress_allowlist() {
+        // SECURITY(#4997): regression test. Before this fix, an `egress =
+        // "allowlist"` config with non-loopback entries under
+        // `enforcement = "enforcing"` was only logged (tracing::error!) and
+        // registration continued — every subsequent subprocess spawn then
+        // ran under a policy that silently behaved as `egress = "deny"`
+        // while still being configured and reported as "allowlist". This
+        // must now be refused outright rather than start up on a guarantee
+        // the sandbox can never keep.
+        let mut registry = ToolRegistry::new();
+        let sandbox = SandboxConfig {
+            enforcement: crate::sandbox::SandboxEnforcement::Enforcing,
+            egress: crate::sandbox::EgressPolicy::Allowlist,
+            egress_allowlist: vec!["93.184.216.34".to_owned()],
+            ..SandboxConfig::default()
+        };
+        let err = register_domain_tools(&mut registry, sandbox, None)
+            .expect_err("an unenforceable allowlist under enforcement=enforcing must be refused");
+        assert!(
+            matches!(err, crate::error::Error::SandboxConfigUnenforceable { .. }),
+            "must fail with the dedicated sandbox-config error variant: {err:?}"
+        );
+        assert!(
+            err.to_string().contains("allowlist"),
+            "error should name the unenforceable control: {err}"
+        );
+    }
+
+    #[test]
+    fn permissive_sandbox_still_registers_with_unenforceable_egress_allowlist() {
+        // WHY: enforcement=permissive's documented contract across every
+        // other guarantee (Landlock, seccomp, allowed_root) is "logged but
+        // not blocked"; the allowlist-specific rejection above must not
+        // widen that contract into a hard failure under permissive.
+        let mut registry = ToolRegistry::new();
+        let sandbox = SandboxConfig {
+            enforcement: crate::sandbox::SandboxEnforcement::Permissive,
+            egress: crate::sandbox::EgressPolicy::Allowlist,
+            egress_allowlist: vec!["93.184.216.34".to_owned()],
+            ..SandboxConfig::default()
+        };
+        register_domain_tools(&mut registry, sandbox, None)
+            .expect("permissive enforcement must still register tools, only warn");
+    }
+
+    #[test]
+    fn enforcing_sandbox_registers_with_loopback_only_egress_allowlist() {
+        // WHY: a loopback-only allowlist IS within what the child-process
+        // network-namespace mechanism can provide (see
+        // `allowlist_is_loopback_only`), so it must not be rejected.
+        let mut registry = ToolRegistry::new();
+        let sandbox = SandboxConfig {
+            enforcement: crate::sandbox::SandboxEnforcement::Enforcing,
+            egress: crate::sandbox::EgressPolicy::Allowlist,
+            egress_allowlist: vec!["127.0.0.1".to_owned()],
+            ..SandboxConfig::default()
+        };
+        register_domain_tools(&mut registry, sandbox, None)
+            .expect("a loopback-only allowlist is enforceable and must not be refused");
     }
 }

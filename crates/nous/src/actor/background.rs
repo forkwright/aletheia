@@ -121,7 +121,15 @@ impl NousActor {
         assistant_content: &str,
         tool_calls: &[crate::pipeline::ToolCall],
         reasoning: &str,
+        is_degraded: bool,
     ) {
+        // WHY(#5367): gated here, not only at the `finalize_turn` call site,
+        // so no future caller of this function can forget the check — see
+        // `pipeline::turn_admits_corpus_side_effects` for the sibling gate
+        // covering training-capture and DPO extraction.
+        if is_degraded {
+            return;
+        }
         let Some(ref extraction_config) = self.pipeline_config.extraction else {
             return;
         };
@@ -216,9 +224,15 @@ impl NousActor {
         &mut self,
         tool_calls: &[crate::pipeline::ToolCall],
         source_session_id: &str,
+        is_degraded: bool,
     ) {
         use mneme::skills::{ToolCallRecord, TrackResult};
 
+        // WHY(#5367): see `maybe_spawn_extraction` — a degraded turn's tool
+        // calls (if any) must never reach the candidate tracker.
+        if is_degraded {
+            return;
+        }
         if tool_calls.is_empty() {
             return;
         }
@@ -325,7 +339,12 @@ impl NousActor {
         );
     }
 
-    pub(super) async fn maybe_spawn_distillation(&mut self, session_key: &str) {
+    pub(super) async fn maybe_spawn_distillation(&mut self, session_key: &str, is_degraded: bool) {
+        // WHY(#5367): see `maybe_spawn_extraction` — a degraded turn must not
+        // trigger consolidation of the session it just produced.
+        if is_degraded {
+            return;
+        }
         // WHY: two turns finishing close together can both observe the distillation trigger before
         // either task commits: the atomic flag ensures only one distillation task runs at a time (#1035)
         if self
@@ -432,7 +451,12 @@ impl NousActor {
     }
 
     #[cfg(feature = "knowledge-store")]
-    pub(super) async fn maybe_run_auto_dream(&mut self) {
+    pub(super) async fn maybe_run_auto_dream(&mut self, is_degraded: bool) {
+        // WHY(#5367): see `maybe_spawn_extraction` — a degraded turn must not
+        // trigger dream consolidation off the session it just produced.
+        if is_degraded {
+            return;
+        }
         let (Some(session_store), Some(knowledge_store)) = (
             self.stores.session_store.as_ref(),
             self.stores.knowledge_store.as_ref(),

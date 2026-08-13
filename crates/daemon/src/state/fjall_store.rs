@@ -25,6 +25,16 @@ const PARTITION: &str = "ops:tasks";
 ///
 /// One keyspace directory holds state for all tasks in a runner.
 /// Uses `SingleWriterTxDatabase` for durability without WAL complexity.
+///
+/// WHY(#5142): `Clone` is a cheap handle clone (`SingleWriterTxDatabase`
+/// derives `Clone` over its own internal `Arc`), not a second keyspace open.
+/// Callers that need read-only access to a store a [`TaskRunner`] already
+/// owns (e.g. a health-check reader) must clone the runner's handle rather
+/// than reopening the same fjall path — a second `open()` on that path
+/// collides with the runner's own lock (`fjall::Error::Locked`).
+///
+/// [`TaskRunner`]: crate::runner::TaskRunner
+#[derive(Clone)]
 pub struct TaskStateStore {
     db: SingleWriterTxDatabase,
 }

@@ -89,6 +89,25 @@ pub enum ProviderResolutionError {
         /// The current health state of the unavailable provider.
         health: ProviderHealth,
     },
+    /// Every provider that would otherwise serve `model` at the winning
+    /// specificity tier cannot satisfy a capability the caller requires.
+    ///
+    /// WHY(#5253): only returned by
+    /// [`ProviderRegistry::resolve_provider_for_request`] — `resolve_provider`
+    /// carries no request context and so can never produce this variant.
+    /// A capability gap does not fall through to a lower-specificity
+    /// provider: specificity is an operator-intent contract (e.g. an
+    /// explicit `cc/` prefix route), and silently crossing tiers to dodge
+    /// a capability gap would violate that contract the same way falling
+    /// through to an unhealthy-tier provider already does not.
+    CapabilityMismatch {
+        /// Name of the (first) capability-incapable provider found.
+        name: String,
+        /// Requested model ID.
+        model: String,
+        /// Capability the request required but the provider does not support.
+        capability: &'static str,
+    },
 }
 
 impl std::fmt::Display for ProviderResolutionError {
@@ -104,11 +123,100 @@ impl std::fmt::Display for ProviderResolutionError {
             Self::ProviderUnavailable { name, health } => {
                 write!(f, "provider '{name}' is currently unavailable: {health:?}")
             }
+            Self::CapabilityMismatch {
+                name,
+                model,
+                capability,
+            } => write!(
+                f,
+                "provider '{name}' cannot satisfy required capability \
+                 '{capability}' for model: {model}"
+            ),
         }
     }
 }
 
 impl std::error::Error for ProviderResolutionError {}
+
+/// Human-readable name for the capability a tool-bearing request needs from
+/// a provider. Shared verbatim between the pre-dispatch negotiation in this
+/// module and the #4510 backstop
+/// (`crate::seat_bridged::reject_tool_bearing_request`) so a mismatch caught
+/// either way reads identically to callers, metrics, and logs.
+pub const TOOL_LOOP_CAPABILITY: &str = "aletheia organon tool-loop";
+
+/// Capabilities a provider can serve for a completion request.
+///
+/// WHY(#5253): compares what a request needs against what a provider
+/// declares before the request is dispatched, instead of discovering the
+/// mismatch only after the subprocess is spawned or the HTTP call is made.
+/// `tool_loop` is the first field wired end-to-end — it makes #4510's
+/// `Error::CapabilityMismatch` backstop unreachable in the normal path,
+/// while leaving it in place for anything that slips through. The other
+/// request features #5253 names as silently dropped by adapters (thinking,
+/// prompt-cache controls, citations, structured output, server tools) are
+/// follow-on fields, not modeled here yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ProviderCapabilities {
+    /// Whether the provider can execute aletheia's organon tool loop
+    /// (`request.tools`). `false` for seat-bridged CLI subprocess
+    /// providers (`cc`, `codex`, `kimi`), which run their own agentic loop
+    /// and cannot translate aletheia-defined tools into it.
+    pub tool_loop: bool,
+}
+
+impl Default for ProviderCapabilities {
+    /// Every capability enabled — the safe assumption for a provider that
+    /// speaks the full Anthropic-shaped request contract. A provider that
+    /// cannot serve some part of it overrides
+    /// [`LlmProvider::capabilities`] to declare the gap explicitly.
+    fn default() -> Self {
+        Self { tool_loop: true }
+    }
+}
+
+impl ProviderCapabilities {
+    /// Capabilities with `tool_loop` set explicitly and every other
+    /// (future) field at its [`Default`] value.
+    ///
+    /// `#[non_exhaustive]` blocks struct-literal construction from outside
+    /// this crate, so external callers that only know about `tool_loop`
+    /// (e.g. a preflight that has a tool count but no
+    /// [`CompletionRequest`](crate::types::CompletionRequest) yet) use this
+    /// instead of [`Self::required_by`].
+    #[must_use]
+    pub fn with_tool_loop(tool_loop: bool) -> Self {
+        Self { tool_loop }
+    }
+
+    /// Capabilities `request` requires from a provider.
+    #[must_use]
+    pub fn required_by(request: &CompletionRequest) -> Self {
+        Self {
+            tool_loop: !request.tools.is_empty(),
+        }
+    }
+
+    /// Name of the first capability `required` needs that `self` lacks, or
+    /// `None` if `self` satisfies `required`.
+    ///
+    /// Sole owner of the satisfaction check — [`Self::satisfies`] delegates
+    /// here so the two cannot drift apart as more fields are added.
+    #[must_use]
+    pub fn missing_for(&self, required: &Self) -> Option<&'static str> {
+        if required.tool_loop && !self.tool_loop {
+            return Some(TOOL_LOOP_CAPABILITY);
+        }
+        None
+    }
+
+    /// Whether these capabilities satisfy `required`.
+    #[must_use]
+    pub fn satisfies(&self, required: &Self) -> bool {
+        self.missing_for(required).is_none()
+    }
+}
 
 /// Trait for LLM providers.
 ///
@@ -176,6 +284,22 @@ pub trait LlmProvider: Send + Sync {
     /// Provider name for logging and diagnostics.
     fn name(&self) -> &str;
 
+    /// Capabilities this provider can serve.
+    ///
+    /// WHY(#5253): lets routing and fallback compare a request's needs
+    /// against a provider's declared capabilities BEFORE dispatch, via
+    /// [`ProviderRegistry::resolve_provider_for_request`], instead of
+    /// discovering a mismatch only after the request reaches the provider.
+    /// Defaults to [`ProviderCapabilities::default`] (every capability),
+    /// the safe assumption for a provider that speaks the full request
+    /// contract. Seat-bridged CLI subprocess providers (`cc`, `codex`,
+    /// `kimi`) override this to declare what their own agentic loop cannot
+    /// translate — see `crate::seat_bridged::reject_tool_bearing_request`
+    /// for the backstop this makes unreachable in the normal path.
+    fn capabilities(&self) -> ProviderCapabilities {
+        ProviderCapabilities::default()
+    }
+
     /// Where this provider runs, for data-sovereignty gating (#3404, #3413).
     ///
     /// The recall pipeline filters facts whose `FactSensitivity` exceeds the
@@ -240,14 +364,9 @@ pub trait LlmProvider: Send + Sync {
 }
 
 /// Per-model pricing rates for cost estimation.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModelPricing {
-    /// Cost per million input tokens (USD).
-    pub input_cost_per_mtok: f64,
-    /// Cost per million output tokens (USD).
-    pub output_cost_per_mtok: f64,
-}
+// WHY(#5583): single owner is `koina::models::ModelPrice`; alias keeps the
+// existing call sites and camelCase wire format unchanged.
+pub type ModelPricing = koina::models::ModelPrice;
 
 /// Controls whether Anthropic prompt-cache markers (`cache_control`) are
 /// emitted on outgoing requests.
@@ -540,6 +659,14 @@ impl ProviderRegistry {
     /// Model-only routing is health-aware and specificity-ordered. An explicit
     /// provider id respects operator intent and reports the provider's health
     /// directly when it is unavailable.
+    ///
+    /// Carries no request context, so it can never return
+    /// [`ProviderResolutionError::CapabilityMismatch`] — callers that have a
+    /// request in hand should prefer [`Self::resolve_provider_for_request`],
+    /// which negotiates capabilities as part of selection instead of
+    /// discovering a mismatch only once the provider is already dispatched
+    /// to. This method stays capability-blind for the many callers with no
+    /// request context (introspection, health/admin endpoints, diagnostics).
     pub fn resolve_provider<'a>(
         &'a self,
         model: &str,
@@ -547,8 +674,32 @@ impl ProviderRegistry {
     ) -> std::result::Result<&'a dyn LlmProvider, ProviderResolutionError> {
         // kanon:ignore RUST/pub-visibility
         match route {
-            ProviderRoute::ModelOnly => self.resolve_model_only(model),
-            ProviderRoute::Explicit(name) => self.resolve_explicit_provider(model, name),
+            ProviderRoute::ModelOnly => self.resolve_model_only(model, None),
+            ProviderRoute::Explicit(name) => self.resolve_explicit_provider(model, name, None),
+        }
+    }
+
+    /// Resolve a provider for `model` according to `route`, additionally
+    /// requiring the resolved provider to satisfy `required` capabilities.
+    ///
+    /// WHY(#5253): a provider that cannot serve `required` is excluded from
+    /// selection rather than selected and left to fail once dispatched — see
+    /// [`ProviderCapabilities`]. Model-only routing skips a capability-
+    /// incapable provider in favor of an equally-specific capable
+    /// alternative, exactly as it already skips an unhealthy one; an
+    /// explicit route reports the mismatch immediately.
+    pub fn resolve_provider_for_request<'a>(
+        &'a self,
+        model: &str,
+        route: ProviderRoute<'_>,
+        required: ProviderCapabilities,
+    ) -> std::result::Result<&'a dyn LlmProvider, ProviderResolutionError> {
+        // kanon:ignore RUST/pub-visibility
+        match route {
+            ProviderRoute::ModelOnly => self.resolve_model_only(model, Some(required)),
+            ProviderRoute::Explicit(name) => {
+                self.resolve_explicit_provider(model, name, Some(required))
+            }
         }
     }
 
@@ -564,11 +715,15 @@ impl ProviderRegistry {
     fn resolve_model_only<'a>(
         &'a self,
         model: &str,
+        required: Option<ProviderCapabilities>,
     ) -> std::result::Result<&'a dyn LlmProvider, ProviderResolutionError> {
         // WHY: specificity is an intentful contract. Determine the best
         // specificity claimed by any matching provider first, then only
         // consider healthy providers at that tier. Lower-specificity providers
         // are not used as fallbacks because they are not equivalent matches.
+        // Capability is checked within that tier too, for the same reason: a
+        // capability gap at the winning tier does not fall through to a
+        // lower-specificity provider (#5253).
         let mut target_specificity: Option<MatchKind> = None;
         for entry in &self.providers {
             if let Some(kind) = entry.provider.match_specificity(model)
@@ -586,9 +741,25 @@ impl ProviderRegistry {
         };
 
         let mut skipped: Vec<(String, ProviderHealth)> = Vec::new();
+        let mut capability_gap: Option<(String, &'static str)> = None;
 
         for entry in &self.providers {
             if entry.provider.match_specificity(model) != Some(target_kind) {
+                continue;
+            }
+
+            if let Some(required) = required
+                && let Some(capability) = entry.provider.capabilities().missing_for(&required)
+            {
+                tracing::debug!(
+                    provider = entry.provider.name(),
+                    model,
+                    specificity = ?target_kind,
+                    capability,
+                    "provider skipped: capability mismatch"
+                );
+                capability_gap
+                    .get_or_insert_with(|| (entry.provider.name().to_owned(), capability));
                 continue;
             }
 
@@ -624,11 +795,21 @@ impl ProviderRegistry {
             model,
             specificity = ?target_kind,
             skipped = ?skipped,
-            "no healthy provider at target specificity"
+            capability_gap = ?capability_gap,
+            "no eligible provider at target specificity"
         );
 
+        // WHY: an unhealthy-but-capable candidate is reported first — health
+        // may recover on its own, which is more actionable than a capability
+        // gap that never will.
         if let Some((name, health)) = skipped.into_iter().next() {
             Err(ProviderResolutionError::ProviderUnavailable { name, health })
+        } else if let Some((name, capability)) = capability_gap {
+            Err(ProviderResolutionError::CapabilityMismatch {
+                name,
+                model: model.to_owned(),
+                capability,
+            })
         } else {
             Err(ProviderResolutionError::NoProvider {
                 model: model.to_owned(),
@@ -640,6 +821,7 @@ impl ProviderRegistry {
         &'a self,
         model: &str,
         name: &str,
+        required: Option<ProviderCapabilities>,
     ) -> std::result::Result<&'a dyn LlmProvider, ProviderResolutionError> {
         let entry = self
             .providers
@@ -659,6 +841,22 @@ impl ProviderRegistry {
             return Err(ProviderResolutionError::ProviderDoesNotSupportModel {
                 name: name.to_owned(),
                 model: model.to_owned(),
+            });
+        }
+
+        if let Some(required) = required
+            && let Some(capability) = entry.provider.capabilities().missing_for(&required)
+        {
+            tracing::info!(
+                provider = name,
+                model,
+                capability,
+                "explicit provider cannot satisfy required capability"
+            );
+            return Err(ProviderResolutionError::CapabilityMismatch {
+                name: name.to_owned(),
+                model: model.to_owned(),
+                capability,
             });
         }
 

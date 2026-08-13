@@ -519,6 +519,14 @@ impl LlmProvider for CcProvider {
         self.deployment_target
     }
 
+    fn capabilities(&self) -> crate::provider::ProviderCapabilities {
+        // WHY(#5253, #4510): CC delegates to the `claude` CLI's own agentic
+        // loop and cannot translate aletheia's tools into it — see
+        // `execute`'s `reject_tool_bearing_request` call, the backstop this
+        // declaration lets routing avoid hitting in the normal path.
+        crate::provider::ProviderCapabilities { tool_loop: false }
+    }
+
     fn supports_streaming(&self) -> bool {
         true
     }
@@ -714,6 +722,24 @@ mod tests {
             deployment_target: DeploymentTarget::Cloud,
         };
         assert_eq!(provider.deployment_target(), DeploymentTarget::Cloud);
+    }
+
+    #[test]
+    fn cc_provider_declares_no_tool_loop_capability() {
+        // WHY(#5253): routing/fallback consult this so a tool-bearing turn
+        // is never selected for cc in the first place — the #4510
+        // `reject_tool_bearing_request` hard-fail is the backstop for
+        // anything that slips through, not the primary mechanism.
+        let provider = CcProvider {
+            name: "cc".to_owned(),
+            cc_binary: PathBuf::from("claude"),
+            working_directory: None,
+            models: Vec::new(),
+            default_model: crate::models::names::opus().to_owned(),
+            timeout: Duration::from_secs(1),
+            deployment_target: DeploymentTarget::Cloud,
+        };
+        assert!(!provider.capabilities().tool_loop);
     }
 
     #[test]

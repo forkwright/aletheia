@@ -540,7 +540,14 @@ fn turn_complete_event_payload_includes_partial_stop_reason() {
         tool_surface_hashes: Vec::new(),
     };
 
-    let payload = turn_complete_event_payload("ses-1", "nous-1", "turn-1", &result);
+    let payload = turn_complete_event_payload(
+        "ses-1",
+        "nous-1",
+        "turn-1",
+        "req-1",
+        "send_message",
+        &result,
+    );
 
     assert_eq!(
         payload
@@ -555,6 +562,20 @@ fn turn_complete_event_payload_includes_partial_stop_reason() {
     assert_eq!(
         payload.get("turn_id").and_then(serde_json::Value::as_str),
         Some("turn-1")
+    );
+    assert_eq!(
+        payload
+            .get("request_id")
+            .and_then(serde_json::Value::as_str),
+        Some("req-1")
+    );
+    assert_eq!(
+        payload.get("phase").and_then(serde_json::Value::as_str),
+        Some("success")
+    );
+    assert_eq!(
+        payload.get("endpoint").and_then(serde_json::Value::as_str),
+        Some("send_message")
     );
     assert_eq!(
         payload
@@ -574,6 +595,159 @@ fn turn_complete_event_payload_includes_partial_stop_reason() {
             .and_then(serde_json::Value::as_str),
         Some("max_tool_iterations")
     );
+}
+
+#[test]
+fn turn_start_event_payload_includes_identity_and_endpoint() {
+    let payload = turn_start_event_payload("ses-1", "nous-1", "turn-1", "req-1", "stream_turn");
+
+    assert_eq!(
+        payload
+            .get("session_id")
+            .and_then(serde_json::Value::as_str),
+        Some("ses-1")
+    );
+    assert_eq!(
+        payload.get("nous_id").and_then(serde_json::Value::as_str),
+        Some("nous-1")
+    );
+    assert_eq!(
+        payload.get("turn_id").and_then(serde_json::Value::as_str),
+        Some("turn-1")
+    );
+    assert_eq!(
+        payload
+            .get("request_id")
+            .and_then(serde_json::Value::as_str),
+        Some("req-1")
+    );
+    assert_eq!(
+        payload.get("phase").and_then(serde_json::Value::as_str),
+        Some("start")
+    );
+    assert_eq!(
+        payload.get("endpoint").and_then(serde_json::Value::as_str),
+        Some("stream_turn")
+    );
+}
+
+#[test]
+fn turn_failed_event_payload_includes_error_class_and_recoverable() {
+    let payload = turn_failed_event_payload(
+        "ses-1",
+        "nous-1",
+        "turn-1",
+        "req-1",
+        "send_message",
+        &TurnFailure {
+            class: "rate_limited",
+            message: "rate limit exceeded, retry after 500ms",
+            recoverable: Some(true),
+        },
+    );
+
+    assert_eq!(
+        payload.get("phase").and_then(serde_json::Value::as_str),
+        Some("failed")
+    );
+    assert_eq!(
+        payload
+            .get("error_class")
+            .and_then(serde_json::Value::as_str),
+        Some("rate_limited")
+    );
+    assert_eq!(
+        payload
+            .get("error_message")
+            .and_then(serde_json::Value::as_str),
+        Some("rate limit exceeded, retry after 500ms")
+    );
+    assert_eq!(
+        payload
+            .get("recoverable")
+            .and_then(serde_json::Value::as_bool),
+        Some(true)
+    );
+}
+
+#[test]
+fn turn_failed_event_payload_recoverable_omits_as_null_when_unknown() {
+    let payload = turn_failed_event_payload(
+        "ses-1",
+        "nous-1",
+        "turn-1",
+        "req-1",
+        "send_message",
+        &TurnFailure {
+            class: "turn_failed",
+            message: "an internal error occurred",
+            recoverable: None,
+        },
+    );
+
+    assert!(
+        payload
+            .get("recoverable")
+            .is_some_and(serde_json::Value::is_null),
+        "unknown classification must serialize as an explicit null, not be dropped: {payload}"
+    );
+}
+
+#[test]
+fn turn_cancelled_event_payload_carries_reason_and_no_recoverable_field() {
+    let payload = turn_cancelled_event_payload(
+        "ses-1",
+        "nous-1",
+        "turn-1",
+        "req-1",
+        "stream_turn",
+        TURN_ABORT_REASON_TIMEOUT,
+    );
+
+    assert_eq!(
+        payload.get("phase").and_then(serde_json::Value::as_str),
+        Some("cancelled")
+    );
+    assert_eq!(
+        payload.get("reason").and_then(serde_json::Value::as_str),
+        Some(TURN_ABORT_REASON_TIMEOUT)
+    );
+    assert!(
+        payload.get("recoverable").is_none(),
+        "reason alone carries retry-worthiness for cancellations; no separate flag"
+    );
+}
+
+// ── turn_error_recoverable: Classifiable delegation (#4557) ──
+
+#[test]
+fn turn_error_recoverable_transient_is_some_true() {
+    use snafu::IntoError;
+    let err = nous::error::AskTimeoutSnafu {
+        nous_id: "target".to_owned(),
+        timeout_secs: 10_u64,
+    }
+    .into_error(snafu::NoneError);
+    assert_eq!(turn_error_recoverable(&err), Some(true));
+}
+
+#[test]
+fn turn_error_recoverable_permanent_is_some_false() {
+    let err = nous::error::GuardRejectedSnafu {
+        reason: "token limit exceeded",
+    }
+    .build();
+    assert_eq!(turn_error_recoverable(&err), Some(false));
+}
+
+#[test]
+fn turn_error_recoverable_unknown_is_none() {
+    let err = nous::error::PipelineStageSnafu {
+        stage: "recall",
+        message: "embedding service down",
+    }
+    .build();
+    assert_eq!(turn_error_recoverable(&err), None);
 }
 
 // ── serialization_record_payload / record_sse_event / record_turn_event: serialization-failure handling (#5374) ──

@@ -314,7 +314,7 @@ path = "crates/daemon"
 layer = "ops"
 purpose = "Per-nous background task runner, cron scheduling, maintenance services, prosoche attention, watchdog"
 depends_on = ["aletheia-routing", "episteme", "koina", "mneme", "taxis"]
-used_by = ["aletheia", "taxis"]
+used_by = ["aletheia", "pylon", "taxis"]
 dev_depends_on = ["episteme"]
 
 [crates.oikonomos.features]
@@ -522,7 +522,7 @@ dev_depends_on = []
 path = "crates/pylon"
 layer = "http"
 purpose = "Axum HTTP gateway for Aletheia"
-depends_on = ["dianoia", "hermeneus", "koina", "mneme", "nous", "organon", "symbolon", "taxis"]
+depends_on = ["dianoia", "hermeneus", "koina", "mneme", "nous", "oikonomos", "organon", "symbolon", "taxis"]
 used_by = ["aletheia", "integration-tests", "taxis"]
 dev_depends_on = ["hermeneus", "koina", "mneme", "organon", "skene", "symbolon"]
 

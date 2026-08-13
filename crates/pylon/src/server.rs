@@ -237,6 +237,10 @@ pub async fn run(config: ServerConfig) -> Result<(), ServerError> {
         metrics_registry,
         event_bus: Arc::new(crate::event_bus::EventBus::new(256)),
         approval_registry: Arc::new(crate::approval_registry::ApprovalRegistry::new()),
+        // WHY: the standalone pylon-only gateway harness does not assemble
+        // daemon runners (that lives in the aletheia binary's runtime
+        // builder); no runners means no task-state stores to attach.
+        daemon_task_states: Arc::new(Vec::new()),
     });
 
     #[cfg(unix)]

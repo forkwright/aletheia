@@ -24,11 +24,20 @@
 pub(crate) const CLI_BINARY: &str = "claude";
 
 /// Agent SDK engine: OAuth-enabled, permission-aware dispatch backend.
+// WHY(#6750): zero cross-crate consumers, but `AgentSdkEngine` has zero
+// in-crate callers too — invisible to the plain `cargo check` (lib) pass
+// `-D warnings` runs under. `pub(crate)` makes the module dead code there.
+// Stays `pub` until wired to a real caller or removed.
 pub mod agent_sdk;
 /// High-level dispatch backend trait for control plane integration.
+// WHY(#6750): same dead-code trap as `agent_sdk` above — `DispatchBackend`
+// has zero real callers outside its own file. Stays `pub`.
 pub mod backend;
 /// Atomic budget tracking for dispatch runs.
-pub mod budget;
+// WHY(#5576): `Budget`/`BudgetStatus` are re-exported at `types` (the
+// consumed cross-crate surface); the module path itself has zero external
+// consumers.
+pub(crate) mod budget;
 /// Per-blast-radius cost attribution ledger.
 pub mod cost_ledger;
 /// Cron scheduler for recurring dispatch tasks with fjall-backed locking.
@@ -43,10 +52,16 @@ pub mod engine;
 /// Error types for energeia operations.
 pub mod error;
 /// Friction capture: parse structured observations from PR bodies.
+// WHY(#6750): same dead-code trap as `agent_sdk` above — `Observation`/
+// `parse_pr_body` have zero real callers. Stays `pub`.
 pub mod friction;
 /// Parallel-execution frontier derivation from a [`dag::PromptDag`].
-pub mod frontier;
+// WHY(#5576): `compute_frontier` is re-exported at `dag` (the consumed
+// cross-crate surface); the module path itself has zero external consumers.
+pub(crate) mod frontier;
 /// Hermeneus-based dispatch engine with prompt caching.
+// WHY(#6750): same dead-code trap as `agent_sdk` above — `HermeneusEngine`
+// has zero real callers. Stays `pub`.
 pub mod hermeneus_engine;
 /// HTTP/SSE dispatch engine: subprocess-based `DispatchEngine` and mock.
 pub mod http;
@@ -57,18 +72,28 @@ pub mod orchestrator;
 /// 4-stage dispatch pipeline: preparation → execution → post-processing.
 pub(crate) mod pipeline;
 /// Predictive budget allocation from prompt characteristics.
+// WHY(#6750): same dead-code trap as `agent_sdk` above —
+// `classify_with_detail`/`predict_budget` have zero real callers. Stays
+// `pub`.
 pub mod predictive_budget;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
 /// Prompt cache optimization: static prefix / dynamic suffix split.
-pub mod prompt_cache;
+pub(crate) mod prompt_cache;
 /// Quality assurance gate trait.
 pub mod qa;
 /// Multi-stage resume escalation policy.
-pub mod resume;
+// WHY(#5576): `ResumePolicy`/`ResumeStage` are re-exported at `types` (the
+// consumed cross-crate surface); the module path itself has zero external
+// consumers.
+pub(crate) mod resume;
 /// Provider routing: static config-driven and empirical success-rate-based selection.
 pub(crate) mod routing;
 /// Per-prompt session management: spawn, monitor, resume, budget enforce.
+// WHY(#6750): same dead-code trap as `agent_sdk` above — `session::isolation`
+// (worktree resolution) and `EngineConfig`'s builder methods are exercised
+// only by their own unit tests; nothing else in-crate calls them. Stays
+// `pub`.
 pub mod session;
 /// Steward CI management pipeline: classify, merge, fix, and manage pull requests.
 pub mod steward;

@@ -169,16 +169,69 @@ async fn gateway_keepalive(
         .text(text)
 }
 
+/// Identity and delivery context for publishing the `turn.cancelled` domain
+/// event when a turn's terminal state is `Aborted`.
+///
+/// WHY(#4557): shared by every abort site — the shutdown `tokio::select!`
+/// branch, the cancellation/timeout arm of the `Err` branch, and the
+/// disconnect `Drop` guard (`AbortOnDrop`) — so all three publish through one
+/// payload shape via `publish_turn_cancelled` instead of three call sites
+/// drifting apart. `Clone` because `AbortOnDrop` must hold its own copy
+/// (survives until the stream is dropped, possibly long after the turn task
+/// itself has moved its copy into `async move`).
+#[derive(Clone)]
+struct TurnCancelledContext {
+    event_bus: Arc<crate::event_bus::EventBus>,
+    session_id: String,
+    nous_id: String,
+    turn_id: String,
+    request_id: Option<String>,
+    /// Which handler admitted this turn (`"send_message"` or
+    /// `"stream_turn"`) — see `turn_start_event_payload`'s WHY.
+    endpoint: &'static str,
+}
+
+/// Build the `turn.start` domain-event payload.
+///
+/// WHY(#4557): fired once a turn has passed every preflight check (session
+/// resolution, field validation, idempotency) and is about to execute — the
+/// same point the per-turn `message_start`/`accepted` SSE event already
+/// fires from. Carries only identity; no result exists yet to report.
+/// `endpoint` lets a subscriber split legacy (`send_message`) vs turn-stream
+/// (`stream_turn`) traffic without pylon fragmenting the lifecycle
+/// vocabulary into per-endpoint topics.
+fn turn_start_event_payload(
+    session_id: &str,
+    nous_id: &str,
+    turn_id: &str,
+    request_id: &str,
+    endpoint: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session_id,
+        "nous_id": nous_id,
+        "turn_id": turn_id,
+        "request_id": request_id,
+        "phase": "start",
+        "endpoint": endpoint,
+    })
+}
+
 fn turn_complete_event_payload(
     session_id: &str,
     nous_id: &str,
     turn_id: &str,
+    request_id: &str,
+    endpoint: &str,
     result: &TurnResult,
 ) -> serde_json::Value {
     serde_json::json!({
         "session_id": session_id,
         "nous_id": nous_id,
         "turn_id": turn_id,
+        "request_id": request_id,
+        "phase": "success",
+        "endpoint": endpoint,
         "input_tokens": result.usage.input_tokens,
         "output_tokens": result.usage.output_tokens,
         "cache_read_tokens": result.usage.cache_read_tokens,
@@ -187,6 +240,125 @@ fn turn_complete_event_payload(
         "model": result.model_used.as_str(),
         "provider": result.provider_used.as_deref(),
     })
+}
+
+/// Build the `turn.failed` domain-event payload.
+///
+/// WHY(#4557): `error_class` reuses the exact code `turn_error_info` already
+/// computes for the client-visible SSE `error` event, so a dashboard sees the
+/// identical vocabulary on the domain bus and the direct turn stream — one
+/// taxonomy, not two drifting in parallel. `recoverable` is a second,
+/// orthogonal signal derived from `nous::error::Error`'s own
+/// `Classifiable::class()` (see `turn_error_recoverable`) — the fleet-wide
+/// retry/escalate classification the pipeline itself already acts on, not a
+/// new ad hoc mapping.
+/// How a turn failed: the borrowed classification, the message, and whether
+/// the pipeline considers it retryable.
+///
+/// WHY grouped: these three are derived together and always travel together —
+/// `recoverable` is computed from the same `nous::error::Error` that produced
+/// `error_class`. Passing them flat put this builder at 8 arguments where its
+/// three siblings take 5-6, which `clippy::too_many_arguments` rejects and
+/// which this crate has no `#[allow]` precedent for.
+struct TurnFailure<'a> {
+    class: &'a str,
+    message: &'a str,
+    recoverable: Option<bool>,
+}
+
+fn turn_failed_event_payload(
+    session_id: &str,
+    nous_id: &str,
+    turn_id: &str,
+    request_id: &str,
+    endpoint: &str,
+    failure: &TurnFailure<'_>,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session_id,
+        "nous_id": nous_id,
+        "turn_id": turn_id,
+        "request_id": request_id,
+        "phase": "failed",
+        "endpoint": endpoint,
+        "error_class": failure.class,
+        "error_message": failure.message,
+        "recoverable": failure.recoverable,
+    })
+}
+
+/// Build the `turn.cancelled` domain-event payload.
+///
+/// WHY(#4557): covers every non-error terminal abort — client disconnect,
+/// server shutdown, and pipeline/ask timeout — the same grouping
+/// `TurnState::Aborted` and the per-turn `turn_abort` SSE event already use
+/// (WHY(#4794) at `turn_buffer.rs`: timeouts are terminal aborts, not generic
+/// turn failures). `reason` is the closed, already-public
+/// `TURN_ABORT_REASON_*` vocabulary. No separate `recoverable` flag: the
+/// reason itself already answers whether retrying makes sense (`timeout`
+/// does; `client_disconnect`/`server_shutdown` are operational conditions,
+/// not turn-correctness ones) — a second flag here would just restate it.
+fn turn_cancelled_event_payload(
+    session_id: &str,
+    nous_id: &str,
+    turn_id: &str,
+    request_id: &str,
+    endpoint: &str,
+    reason: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": session_id,
+        "nous_id": nous_id,
+        "turn_id": turn_id,
+        "request_id": request_id,
+        "phase": "cancelled",
+        "endpoint": endpoint,
+        "reason": reason,
+    })
+}
+
+/// Map a nous pipeline error to the `turn.failed` `recoverable` field.
+///
+/// WHY(#4557): delegates to `Classifiable` (`koina::error_class`) — the
+/// fleet-wide error classification already driving pipeline retry/escalate
+/// decisions (`nous::error::Error::action`) — instead of re-deriving
+/// retry-safety from the client-facing `error_class` string, which exists
+/// for a different purpose (a stable code for UI/API consumers) and is not
+/// itself a retry judgment. `Unknown` maps to `None`: recoverability is only
+/// asserted when the pipeline itself has an opinion, matching the acceptance
+/// criteria's "recoverability where applicable" rather than forcing a guess.
+fn turn_error_recoverable(err: &nous::error::Error) -> Option<bool> {
+    use koina::error_class::{Classifiable, ErrorClass};
+    match err.class() {
+        ErrorClass::Transient => Some(true),
+        ErrorClass::Permanent => Some(false),
+        // WHY: `ErrorClass` is `#[non_exhaustive]` (koina reserves the right
+        // to add classes); `Unknown` and any future class both mean "the
+        // pipeline has no opinion here" — treat identically.
+        _ => None,
+    }
+}
+
+/// Publish the `turn.cancelled` domain event for a terminal `Aborted` turn.
+///
+/// WHY(#4557): the single call-through for all three abort sites (see
+/// `TurnCancelledContext`), so there is exactly one place that actually
+/// calls `EventBus::publish` for this topic.
+async fn publish_turn_cancelled(ctx: &TurnCancelledContext, reason: &str) {
+    ctx.event_bus
+        .publish(crate::event_bus::DomainEvent::new(
+            ctx.event_bus.next_id(),
+            "turn.cancelled",
+            turn_cancelled_event_payload(
+                &ctx.session_id,
+                &ctx.nous_id,
+                &ctx.turn_id,
+                ctx.request_id.as_deref().unwrap_or(""),
+                ctx.endpoint,
+                reason,
+            ),
+        ))
+        .await;
 }
 
 /// Guard that aborts a spawned task and releases an in-flight idempotency key
@@ -206,6 +378,14 @@ struct AbortOnDrop {
     /// The handle is cloned so the cleanup task can outlive the drop.
     turn_buffer: Option<TurnBufferHandle>,
     abort_reason: &'static str,
+    /// WHY(#4557): `Some` only when this guard owns a turn's terminal
+    /// transition (mirrors `turn_buffer`'s `Some`/`None` split — the two
+    /// non-owning `GuardedStream` uses, `existing_turn_stream` and
+    /// `reconnect_turn`, pass `None` for both). This is the client-disconnect
+    /// path's only route to publishing `turn.cancelled`: unlike the shutdown
+    /// and cancellation/timeout arms, a disconnect is discovered here, in
+    /// `Drop`, not inside the turn task itself.
+    cancelled_ctx: Option<TurnCancelledContext>,
 }
 
 impl Drop for AbortOnDrop {
@@ -216,8 +396,17 @@ impl Drop for AbortOnDrop {
         if let Some(ref handle) = self.turn_buffer {
             let handle = handle.clone();
             let reason = self.abort_reason;
+            let cancelled_ctx = self.cancelled_ctx.clone();
             tokio::spawn(async move {
-                handle.mark_aborted(reason).await;
+                // WHY(#4557): only the caller that actually wins the terminal
+                // CAS publishes `turn.cancelled` — if the turn task already
+                // completed/failed/aborted first, this disconnect lost the
+                // race and must not publish a second terminal event.
+                if handle.mark_aborted(reason).await
+                    && let Some(ctx) = cancelled_ctx
+                {
+                    publish_turn_cancelled(&ctx, reason).await;
+                }
             });
         }
         self.turn_cancel.cancel();
@@ -358,9 +547,9 @@ impl<S: tokio_stream::Stream + Unpin> tokio_stream::Stream for GuardedStream<S> 
     ),
     security(("bearer_auth" = []))
 )]
-// NOTE(#940): ~89 lines excluding match arms: single SSE handler with preflight checks,
-// idempotency guard, and spawned turn task. The match arms account for the bulk of raw
-// line count; the control flow is a single cohesive request lifecycle.
+// NOTE(#940): single SSE handler with preflight checks, idempotency guard, turn-lifecycle
+// domain-event publication (#4557), and spawned turn task. The match arms account for the
+// bulk of raw line count; the control flow is a single cohesive request lifecycle.
 //
 /// # Cancel safety
 ///
@@ -550,6 +739,36 @@ pub async fn send_message(
     let buf_handle = TurnBufferHandle::new(turn_buf);
 
     let request_id_str = request_id.0.clone();
+
+    // WHY(#4557): publish turn.start synchronously here, before the turn task
+    // is even spawned, so it is guaranteed visible to any subscriber before
+    // the client receives its first byte of response — no ordering race with
+    // the spawned task or a same-instant client disconnect is possible.
+    let nous_id_owned = session.nous_id.clone();
+    state
+        .event_bus
+        .publish(crate::event_bus::DomainEvent::new(
+            state.event_bus.next_id(),
+            "turn.start",
+            turn_start_event_payload(
+                &sid,
+                &nous_id_owned,
+                &turn_id,
+                &request_id_str,
+                "send_message",
+            ),
+        ))
+        .await;
+    let cancelled_ctx = TurnCancelledContext {
+        event_bus: Arc::clone(&state.event_bus),
+        session_id: sid.clone(),
+        nous_id: nous_id_owned,
+        turn_id: turn_id.clone(),
+        request_id: Some(request_id_str.clone()),
+        endpoint: "send_message",
+    };
+    let cancelled_ctx_task = cancelled_ctx.clone();
+
     let turn_span = tracing::info_span!(
         "send_turn",
         session.id = %session_id,
@@ -566,6 +785,7 @@ pub async fn send_message(
     let event_bus = Arc::clone(&state.event_bus);
     let turn_handle = tokio::spawn(
         async move {
+            let cancelled_ctx = cancelled_ctx_task;
             // WHY(#2113): Emit an immediate acknowledgment so the client never sees an empty
             // body, even if the turn fails before producing any content events.
             let event = SseEvent::MessageStart {
@@ -601,6 +821,7 @@ pub async fn send_message(
                         &buf_handle_task,
                         TURN_ABORT_REASON_SERVER_SHUTDOWN,
                         Some(&request_id_str),
+                        &cancelled_ctx,
                     )
                     .await;
                     return;
@@ -615,15 +836,23 @@ pub async fn send_message(
                         Some(&request_id_str),
                     )
                     .await;
-                    buf_handle_task.mark_completed().await;
 
-                    event_bus
-                        .publish(crate::event_bus::DomainEvent::new(
-                            event_bus.next_id(),
-                            "turn.complete",
-                            turn_complete_event_payload(&sid, &session.nous_id, &turn_id, &result),
-                        ))
-                        .await;
+                    if buf_handle_task.mark_completed().await {
+                        event_bus
+                            .publish(crate::event_bus::DomainEvent::new(
+                                event_bus.next_id(),
+                                "turn.complete",
+                                turn_complete_event_payload(
+                                    &sid,
+                                    &session.nous_id,
+                                    &turn_id,
+                                    &request_id_str,
+                                    "send_message",
+                                    &result,
+                                ),
+                            ))
+                            .await;
+                    }
 
                     // WHY(#4865): Store the canonical turn id, not a lossy
                     // completion summary. Duplicate completed requests replay
@@ -671,13 +900,19 @@ pub async fn send_message(
                         } else {
                             TURN_ABORT_REASON_TIMEOUT
                         };
-                        emit_turn_abort_sse(&tx, &buf_handle_task, reason, Some(&request_id_str))
-                            .await;
+                        emit_turn_abort_sse(
+                            &tx,
+                            &buf_handle_task,
+                            reason,
+                            Some(&request_id_str),
+                            &cancelled_ctx,
+                        )
+                        .await;
                     }
 
                     let (err_code, err_message) = turn_error_info(&err);
                     let event = SseEvent::Error {
-                        code: err_code,
+                        code: err_code.clone(),
                         message: err_message.clone(),
                         request_id: Some(request_id_str.clone()),
                     };
@@ -703,13 +938,31 @@ pub async fn send_message(
                         },
                         provider: None,
                         request_id: Some(request_id_str.clone()),
-                        error: Some(err_message),
+                        error: Some(err_message.clone()),
                     };
                     if let Some(recorded) = record_sse_event(&buf_handle_task, &event).await {
                         let _ = tx.send(recorded).await;
                     }
-                    if !is_abort {
-                        buf_handle_task.mark_failed().await;
+                    if !is_abort && buf_handle_task.mark_failed().await {
+                        let recoverable = turn_error_recoverable(&err);
+                        event_bus
+                            .publish(crate::event_bus::DomainEvent::new(
+                                event_bus.next_id(),
+                                "turn.failed",
+                                turn_failed_event_payload(
+                                    &sid,
+                                    &session.nous_id,
+                                    &turn_id,
+                                    &request_id_str,
+                                    "send_message",
+                                    &TurnFailure {
+                                        class: &err_code,
+                                        message: &err_message,
+                                        recoverable,
+                                    },
+                                ),
+                            ))
+                            .await;
                     }
                 }
             }
@@ -729,6 +982,7 @@ pub async fn send_message(
             _idem_guard: idem_guard_stream,
             turn_buffer: Some(buf_handle.clone()),
             abort_reason: TURN_ABORT_REASON_CLIENT_DISCONNECT,
+            cancelled_ctx: Some(cancelled_ctx),
         },
     };
 
@@ -759,8 +1013,9 @@ pub async fn send_message(
     ),
     security(("bearer_auth" = []))
 )]
-// NOTE(#940): ~109 lines excluding match arms: sequential SSE bridge setup with
-// turn spawn and completion event emission. Match arms inflate raw line count.
+// NOTE(#940): sequential SSE bridge setup with turn-lifecycle domain-event
+// publication (#4557), turn spawn, and completion event emission. Match arms
+// inflate raw line count.
 //
 /// # Cancel safety
 ///
@@ -970,6 +1225,27 @@ pub async fn stream_turn(
     let sid = session_id.clone();
     let aid = agent_id;
 
+    // WHY(#4557): publish turn.start synchronously here, before either the
+    // bridge or turn task is spawned — same rationale as `send_message`: a
+    // guaranteed happens-before relative to anything that could race it.
+    state
+        .event_bus
+        .publish(crate::event_bus::DomainEvent::new(
+            state.event_bus.next_id(),
+            "turn.start",
+            turn_start_event_payload(&sid, &aid, &turn_id, &stream_request_id, "stream_turn"),
+        ))
+        .await;
+    let cancelled_ctx = TurnCancelledContext {
+        event_bus: Arc::clone(&state.event_bus),
+        session_id: sid.clone(),
+        nous_id: aid.clone(),
+        turn_id: turn_id.clone(),
+        request_id: Some(stream_request_id.clone()),
+        endpoint: "stream_turn",
+    };
+    let cancelled_ctx_task = cancelled_ctx.clone();
+
     let turn_span = tracing::info_span!(
         "stream_turn",
         session.id = %sid,
@@ -1094,6 +1370,7 @@ pub async fn stream_turn(
     let idem_turn_id = turn_id.clone();
     let stream_turn_handle = tokio::spawn(
         async move {
+            let cancelled_ctx = cancelled_ctx_task;
             // WHY(#3958): hold the approval registry guard for the lifetime of
             // the streaming task so the session's sender stays registered
             // until the turn ends — then drops, unregistering it.
@@ -1121,6 +1398,7 @@ pub async fn stream_turn(
                         &buf_handle_task,
                         TURN_ABORT_REASON_SERVER_SHUTDOWN,
                         Some(&stream_request_id),
+                        &cancelled_ctx,
                     )
                     .await;
                     return;
@@ -1152,15 +1430,23 @@ pub async fn stream_turn(
                     if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
                         let _ = turn_tx.send(recorded).await;
                     }
-                    buf_handle_task.mark_completed().await;
 
-                    event_bus
-                        .publish(crate::event_bus::DomainEvent::new(
-                            event_bus.next_id(),
-                            "turn.complete",
-                            turn_complete_event_payload(&sid, &aid, &turn_id, &result),
-                        ))
-                        .await;
+                    if buf_handle_task.mark_completed().await {
+                        event_bus
+                            .publish(crate::event_bus::DomainEvent::new(
+                                event_bus.next_id(),
+                                "turn.complete",
+                                turn_complete_event_payload(
+                                    &sid,
+                                    &aid,
+                                    &turn_id,
+                                    &stream_request_id,
+                                    "stream_turn",
+                                    &result,
+                                ),
+                            ))
+                            .await;
+                    }
 
                     if let Some(ref key) = idem_key {
                         idem_cache.complete(
@@ -1198,13 +1484,14 @@ pub async fn stream_turn(
                             &buf_handle_task,
                             reason,
                             Some(&stream_request_id),
+                            &cancelled_ctx,
                         )
                         .await;
                     }
 
                     let (err_code, err_message) = turn_error_info(&err);
                     let event = PylonTurnStreamEvent::Error {
-                        code: err_code,
+                        code: err_code.clone(),
                         message: err_message.clone(),
                         request_id: Some(stream_request_id.clone()),
                     };
@@ -1224,8 +1511,8 @@ pub async fn stream_turn(
                     let event = PylonTurnStreamEvent::MessageComplete {
                         outcome: TurnOutcome {
                             text: observed.text,
-                            nous_id: aid,
-                            session_id: sid,
+                            nous_id: aid.clone(),
+                            session_id: sid.clone(),
                             model: configured_model,
                             provider: None,
                             tool_calls: observed.tool_calls,
@@ -1234,14 +1521,32 @@ pub async fn stream_turn(
                             cache_read_tokens: observed.usage.cache_read_tokens,
                             cache_write_tokens: observed.usage.cache_write_tokens,
                             stop_reason: "error".to_owned(),
-                            error: Some(err_message),
+                            error: Some(err_message.clone()),
                         },
                     };
                     if let Some(recorded) = record_turn_event(&buf_handle_task, &event).await {
                         let _ = turn_tx.send(recorded).await;
                     }
-                    if !is_abort {
-                        buf_handle_task.mark_failed().await;
+                    if !is_abort && buf_handle_task.mark_failed().await {
+                        let recoverable = turn_error_recoverable(&err);
+                        event_bus
+                            .publish(crate::event_bus::DomainEvent::new(
+                                event_bus.next_id(),
+                                "turn.failed",
+                                turn_failed_event_payload(
+                                    &sid,
+                                    &aid,
+                                    &turn_id,
+                                    &stream_request_id,
+                                    "stream_turn",
+                                    &TurnFailure {
+                                        class: &err_code,
+                                        message: &err_message,
+                                        recoverable,
+                                    },
+                                ),
+                            ))
+                            .await;
                     }
                     if let Some(ref key) = idem_key {
                         idem_cache.complete(
@@ -1284,6 +1589,7 @@ pub async fn stream_turn(
             _idem_guard: None,
             turn_buffer: Some(buf_handle.clone()),
             abort_reason: TURN_ABORT_REASON_CLIENT_DISCONNECT,
+            cancelled_ctx: Some(cancelled_ctx),
         },
     };
 
@@ -1382,6 +1688,7 @@ async fn existing_turn_stream(
             _idem_guard: None,
             turn_buffer: None,
             abort_reason: "",
+            cancelled_ctx: None,
         },
     };
 
@@ -1535,32 +1842,47 @@ fn turn_stream_turn_abort_event(reason: &str, request_id: Option<&str>) -> Pylon
     }
 }
 
-/// Record and emit a `turn_abort` event on the legacy message stream.
+/// Record and emit a `turn_abort` event on the legacy message stream, and
+/// publish the matching `turn.cancelled` domain event if this call wins the
+/// turn's terminal transition.
+///
+/// WHY(#4557): shared by the shutdown branch and the cancellation/timeout arm
+/// of the `Err` branch — both route to the same terminal `Aborted` state the
+/// buffer already models, so both route through the one `publish_turn_cancelled`
+/// call-through rather than duplicating the mark+publish sequence.
 async fn emit_turn_abort_sse(
     tx: &mpsc::Sender<(u64, SseEvent)>,
     buf: &TurnBufferHandle,
     reason: &str,
     request_id: Option<&str>,
+    cancelled_ctx: &TurnCancelledContext,
 ) {
     let event = sse_turn_abort_event(reason, request_id);
     if let Some(recorded) = record_sse_event(buf, &event).await {
         let _ = tx.send(recorded).await;
     }
-    buf.mark_aborted(reason).await;
+    if buf.mark_aborted(reason).await {
+        publish_turn_cancelled(cancelled_ctx, reason).await;
+    }
 }
 
-/// Record and emit a `turn_abort` event on the turn stream protocol.
+/// Record and emit a `turn_abort` event on the turn stream protocol, and
+/// publish the matching `turn.cancelled` domain event if this call wins the
+/// turn's terminal transition. See `emit_turn_abort_sse`.
 async fn emit_turn_abort_turn_stream(
     tx: &mpsc::Sender<(u64, PylonTurnStreamEvent)>,
     buf: &TurnBufferHandle,
     reason: &str,
     request_id: Option<&str>,
+    cancelled_ctx: &TurnCancelledContext,
 ) {
     let event = turn_stream_turn_abort_event(reason, request_id);
     if let Some(recorded) = record_turn_event(buf, &event).await {
         let _ = tx.send(recorded).await;
     }
-    buf.mark_aborted(reason).await;
+    if buf.mark_aborted(reason).await {
+        publish_turn_cancelled(cancelled_ctx, reason).await;
+    }
 }
 
 /// Return true if the turn error represents a time-limit exceeded condition.
@@ -2076,6 +2398,7 @@ pub async fn reconnect_turn(
             _idem_guard: None,
             turn_buffer: None,
             abort_reason: "",
+            cancelled_ctx: None,
         },
     };
 

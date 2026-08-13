@@ -833,6 +833,36 @@ fn make_turn_result(
     }
 }
 
+/// Same shape as `make_turn_result`, but with a populated `degraded` field
+/// — the `DegradedMode::Unavailable` variant that
+/// `degraded_mode::build_degraded_response_with_provenance` constructs when
+/// the LLM provider is unreachable and no distillation cache exists (see
+/// `crate::degraded_mode`). Used by call-site regression tests for #5367;
+/// only `degraded.is_some()` matters to the gate under test, so the
+/// provenance fields below are representative synthetic values, not a
+/// verbatim reproduction of every field that path sets.
+fn make_degraded_turn_result() -> crate::pipeline::TurnResult {
+    let mut result = make_turn_result(0, vec![]);
+    result.model_used = String::new();
+    result.degraded = Some(crate::pipeline::DegradedMode::Unavailable {
+        status_banner: "test: provider unavailable".to_owned(),
+        provenance: crate::degraded_mode::DegradedProvenance {
+            attempted_provider: None,
+            attempted_model: "test-model".to_owned(),
+            configured_model: "test-model".to_owned(),
+            routed_model: "test-model".to_owned(),
+            original_error_class: "transient".to_owned(),
+            original_error_message: "synthetic failure for test".to_owned(),
+            original_error_hash: String::new(),
+            degradation_source: crate::degraded_mode::DegradationSource::Unavailable,
+            source_id: None,
+            synthetic_response: true,
+            provider_usage_recorded: false,
+        },
+    });
+    result
+}
+
 fn make_tool_call(name: &str, is_error: bool) -> crate::pipeline::ToolCall {
     make_tool_call_with_result(name, is_error, None)
 }

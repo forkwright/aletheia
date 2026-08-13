@@ -178,6 +178,11 @@ fn ConnectedApp() -> Element {
     // and has access to the finalized connection config.
     crate::services::sse_coroutine::start_sse_coroutine(&config.read());
 
+    // WHY(#5315): Start the backend subsystem health poller alongside the SSE
+    // coroutine. Backend health and SSE transport are separate failure
+    // domains; the global status indicator merges both by worst severity.
+    crate::services::backend_health::start_backend_health_coroutine(&config.read());
+
     // WHY: Fetch agents immediately on connection so the sidebar nous roster
     // is populated. Without this, agents only appear when the Ops view is
     // visited — the roster would be empty on first launch.

@@ -60,6 +60,13 @@ pub struct TaskRunner {
     shutdown: CancellationToken,
     bridge: Option<Arc<dyn DaemonBridge>>,
     maintenance: Option<MaintenanceConfig>,
+    /// Live channel for maintenance config reconciliation.
+    ///
+    /// WHY `Option`: only the system daemon runner (the canonical
+    /// maintenance scheduler) is wired to this, via
+    /// [`Self::with_maintenance_reload`]; per-nous runners never receive a
+    /// sender, so [`Self::poll_maintenance_reload`] is a no-op for them.
+    maintenance_reload_rx: Option<tokio::sync::watch::Receiver<MaintenanceConfig>>,
     retention_executor: Option<Arc<dyn RetentionExecutor>>,
     knowledge_executor: Option<Arc<dyn KnowledgeMaintenanceExecutor>>,
     #[cfg(feature = "knowledge-store")]
@@ -215,6 +222,7 @@ impl TaskRunner {
             shutdown,
             bridge: None,
             maintenance: None,
+            maintenance_reload_rx: None,
             retention_executor: None,
             knowledge_executor: None,
             #[cfg(feature = "knowledge-store")]
@@ -242,6 +250,7 @@ impl TaskRunner {
             shutdown,
             bridge: Some(bridge),
             maintenance: None,
+            maintenance_reload_rx: None,
             retention_executor: None,
             knowledge_executor: None,
             #[cfg(feature = "knowledge-store")]
@@ -269,6 +278,21 @@ impl TaskRunner {
             config.after_action_store = Some(store);
         }
         self.maintenance = Some(config);
+        self
+    }
+
+    /// Wire a live maintenance-config channel for reconciliation.
+    ///
+    /// Each scheduler tick ([`Self::run`]) checks the channel non-blocking
+    /// and, on a new value, calls [`Self::reconcile_maintenance`] to add,
+    /// remove, or re-interval scheduled maintenance tasks without a process
+    /// restart.
+    #[must_use]
+    pub fn with_maintenance_reload(
+        mut self,
+        rx: tokio::sync::watch::Receiver<MaintenanceConfig>,
+    ) -> Self {
+        self.maintenance_reload_rx = Some(rx);
         self
     }
 
