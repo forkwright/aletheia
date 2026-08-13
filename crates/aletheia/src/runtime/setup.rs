@@ -1279,7 +1279,7 @@ pub(super) fn start_inbound_dispatch(
             .iter()
             .find(|a| a.default)
             .or_else(|| config.agents.list.first())
-            .map(|a| a.id.clone());
+            .map(|a| a.id.to_string());
         let router = Arc::new(MessageRouter::new(config.bindings.clone(), default_nous_id));
 
         Some(crate::dispatch::spawn_dispatcher(

@@ -18,6 +18,7 @@ mod common;
 
 use std::path::{Path, PathBuf};
 
+use koina::id::NousId;
 use serde_json::json;
 
 use taxis::cascade::{self, Tier};
@@ -195,7 +196,7 @@ fn validate_startup_rejects_agent_with_nonexistent_workspace() {
     let oikos = Oikos::from_root(dir.path());
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "alice".to_owned(),
+        id: NousId::new("alice").expect("valid test id"),
         name: None,
         model: None,
         workspace: "nous/alice-missing".to_owned(),
@@ -226,7 +227,7 @@ fn validate_startup_accepts_agent_with_real_workspace_directory() {
     let oikos = Oikos::from_root(dir.path());
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "bob".to_owned(),
+        id: NousId::new("bob").expect("valid test id"),
         name: None,
         model: None,
         workspace: "nous/bob".to_owned(),

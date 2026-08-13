@@ -195,7 +195,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
             if caller
                 .nous_id
                 .as_deref()
-                .is_some_and(|scoped| scoped != agent.id)
+                .is_some_and(|scoped| scoped != agent.id.as_str())
             {
                 continue;
             }

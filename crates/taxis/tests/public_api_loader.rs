@@ -214,6 +214,130 @@ fn load_config_rejects_encrypted_value_when_primary_key_is_missing() {
     );
 }
 
+// ─── Agent id validation at config load (#4638) ────────────────────────
+//
+// WHY: `NousDefinition.id` is typed as `koina::id::NousId`, so a malformed
+// id can no longer survive deserialization -- these tests exercise that
+// boundary the same way the CLI (`add-nous`, import) and HTTP create path
+// already did, closing the one surface that used to bypass the shared
+// validator by writing directly into `aletheia.toml`.
+
+#[test]
+fn load_config_rejects_uppercase_agent_id() {
+    let jail = EnvJail::new();
+    let root = seed_instance(&jail);
+    write_toml(
+        root,
+        "[[agents.list]]\nid = \"Bad-Id\"\nworkspace = \"nous/bad\"\n",
+    );
+
+    let oikos = Oikos::from_root(root);
+    let err = load_config(&oikos).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("lowercase"),
+        "error should name the charset violation: {msg}"
+    );
+}
+
+#[test]
+fn load_config_rejects_agent_id_with_underscore() {
+    let jail = EnvJail::new();
+    let root = seed_instance(&jail);
+    write_toml(
+        root,
+        "[[agents.list]]\nid = \"bad_id\"\nworkspace = \"nous/bad\"\n",
+    );
+
+    let oikos = Oikos::from_root(root);
+    let err = load_config(&oikos).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("lowercase"),
+        "error should name the charset violation: {msg}"
+    );
+}
+
+#[test]
+fn load_config_rejects_agent_id_with_path_separator() {
+    let jail = EnvJail::new();
+    let root = seed_instance(&jail);
+    write_toml(
+        root,
+        "[[agents.list]]\nid = \"../etc\"\nworkspace = \"nous/bad\"\n",
+    );
+
+    let oikos = Oikos::from_root(root);
+    let err = load_config(&oikos).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("lowercase"),
+        "error should reject the path-traversal id: {msg}"
+    );
+}
+
+#[test]
+fn load_config_rejects_agent_id_with_leading_hyphen() {
+    let jail = EnvJail::new();
+    let root = seed_instance(&jail);
+    write_toml(
+        root,
+        "[[agents.list]]\nid = \"-agent\"\nworkspace = \"nous/bad\"\n",
+    );
+
+    let oikos = Oikos::from_root(root);
+    let err = load_config(&oikos).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("hyphen"),
+        "error should name the leading-hyphen violation: {msg}"
+    );
+}
+
+#[test]
+fn load_config_rejects_agent_id_with_reserved_template_prefix() {
+    // WHY: `nous/_default` and `nous/_template` are reserved scaffold
+    // directories (crates/aletheia/src/init/scaffold.rs); the shared
+    // charset already excludes underscore, so this is rejected as a side
+    // effect -- asserted here so the exclusion stays intentional at the
+    // config-load boundary too.
+    let jail = EnvJail::new();
+    let root = seed_instance(&jail);
+    write_toml(
+        root,
+        "[[agents.list]]\nid = \"_template\"\nworkspace = \"nous/_template\"\n",
+    );
+
+    let oikos = Oikos::from_root(root);
+    let err = load_config(&oikos).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("lowercase"),
+        "error should reject the reserved-prefix-shaped id: {msg}"
+    );
+}
+
+#[test]
+fn load_config_accepts_valid_agent_id() {
+    let jail = EnvJail::new();
+    let root = seed_instance(&jail);
+    write_toml(
+        root,
+        "[[agents.list]]\nid = \"worker-1\"\nworkspace = \"nous/worker-1\"\n",
+    );
+
+    let oikos = Oikos::from_root(root);
+    let config = load_config(&oikos).expect("valid lowercase-hyphen id should load");
+    assert!(
+        config
+            .agents
+            .list
+            .iter()
+            .any(|a| a.id.as_str() == "worker-1"),
+        "loaded config should contain the worker-1 agent"
+    );
+}
+
 // ─── Env var interpolation via the loader ──────────────────────────────
 
 #[test]

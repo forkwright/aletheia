@@ -144,6 +144,20 @@ pub fn format_error_fields_for_display(
     }
 }
 
+// WARNING(#5899): this duplicates keryx::response's private
+// `extract_body_message` (crates/keryx/src/response.rs in the forkwright/theatron
+// repo, pinned via git tag in this workspace's root Cargo.toml) — same
+// message-then-error field precedence, same `Option<String>` shape. It
+// cannot be replaced with a call to that function: it is `fn`, not `pub
+// fn`, in every tagged theatron release through the version pinned here
+// (verified against theatron's `main` branch too — not yet fixed upstream
+// either), so it is unreachable from this crate. This is the single
+// aletheia-owned copy — every consumer here (`format_http_error_body`,
+// used by `sse.rs`'s reconnect loop, `client.rs`, `streaming.rs`, and
+// proskenion's callers) goes through it rather than re-deriving the same
+// three lines locally. Delete this function and call
+// `keryx::response::extract_body_message` directly once that symbol is
+// `pub` in the pinned theatron tag.
 fn legacy_flat_error_message(body: &str) -> Option<String> {
     serde_json::from_str::<Value>(body).ok().and_then(|json| {
         json.get("message")

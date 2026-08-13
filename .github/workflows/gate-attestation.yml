@@ -157,9 +157,15 @@ jobs:
     # model. Running unconditionally in parallel also keeps this job off
     # hybrid-gate's critical path.
     steps:
+      # WHY(filter): this job reads a commit message, one kanon.toml, and a
+      # tree hash -- it never builds. Cloning every blob under a 5-minute
+      # budget is what makes it time out, and an overrun reports `cancelled`,
+      # which the gate cannot distinguish from a supersede: the PR then reads
+      # as a gate failure caused by nothing.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          filter: blob:none
           persist-credentials: false
 
       - name: Verify Gate-Passed trailer binds to the tip's tree
