@@ -11,7 +11,9 @@ use super::{
 };
 use crate::error::Error;
 use crate::test_fixtures::test_store;
-use crate::types::{BlackboardRow, Role, SessionStatus, SessionType, UsageRecord};
+use crate::types::{
+    BlackboardRow, BlackboardVisibility, Role, SessionStatus, SessionType, UsageRecord,
+};
 use tempfile::TempDir;
 
 fn write_raw(store: &super::SessionStore, partition_name: &str, key: &str, value: &[u8]) {
@@ -1003,6 +1005,12 @@ fn blackboard_crud() {
     let entry = store.blackboard_read("goal").expect("read").unwrap();
     assert_eq!(entry.value, "finish M0b");
     assert_eq!(entry.author_nous_id, "syn");
+    assert_eq!(
+        entry.visibility,
+        BlackboardVisibility::Shared,
+        "blackboard_write must default to Shared visibility"
+    );
+    assert_eq!(entry.session_id, None);
 
     store
         .blackboard_write("goal", "updated goal", "syn", 3600)
@@ -1013,6 +1021,44 @@ fn blackboard_crud() {
     let deleted = store.blackboard_delete("goal", "syn").expect("delete");
     assert!(deleted);
     assert!(store.blackboard_read("goal").expect("read").is_none());
+}
+
+#[test]
+fn blackboard_write_scoped_persists_visibility_and_session() {
+    let store = test_store();
+    store
+        .blackboard_write_scoped(
+            "ws:syn:ses-1",
+            "task-stack",
+            "syn",
+            3600,
+            BlackboardVisibility::SessionPrivate,
+            Some("ses-1"),
+        )
+        .expect("write");
+    let entry = store
+        .blackboard_read("ws:syn:ses-1")
+        .expect("read")
+        .unwrap();
+    assert_eq!(entry.visibility, BlackboardVisibility::SessionPrivate);
+    assert_eq!(entry.session_id.as_deref(), Some("ses-1"));
+
+    store
+        .blackboard_write_scoped(
+            "goal-private",
+            "quiet goal",
+            "syn",
+            3600,
+            BlackboardVisibility::NousPrivate,
+            None,
+        )
+        .expect("write");
+    let private = store
+        .blackboard_read("goal-private")
+        .expect("read")
+        .unwrap();
+    assert_eq!(private.visibility, BlackboardVisibility::NousPrivate);
+    assert_eq!(private.session_id, None);
 }
 
 #[test]
@@ -1048,6 +1094,8 @@ fn cleanup_expired_entries_removes_expired_blackboard_rows() {
         ttl_seconds: 1,
         created_at: "1970-01-01T00:00:00.000Z".to_owned(),
         expires_at: Some("1970-01-01T00:00:01.000Z".to_owned()),
+        session_id: None,
+        visibility: BlackboardVisibility::Shared,
     };
     let data = serde_json::to_vec(&row).expect("blackboard row serializes");
     write_raw(&store, "blackboard", "goal", &data);

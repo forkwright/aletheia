@@ -22,7 +22,9 @@ mod mapping;
 mod markdown;
 mod msg;
 mod sanitize;
+mod secret_store;
 mod state;
+
 mod text;
 mod theme;
 mod update;

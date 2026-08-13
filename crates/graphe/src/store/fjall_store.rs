@@ -68,8 +68,8 @@ use eidos::meta::Stamped as _;
 use crate::error::{self, Result};
 use crate::metrics;
 use crate::types::{
-    AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus,
-    SessionType, ToolAuditRecord, UsageRecord,
+    AgentNote, BlackboardRow, BlackboardVisibility, Message, Role, Session, SessionMetrics,
+    SessionOrigin, SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
 };
 
 fn storage_error(message: impl Into<String>) -> error::Error {
@@ -3161,8 +3161,8 @@ impl SessionStore {
     /// Build a [`BlackboardRow`] with `created_at`/`expires_at` derived from
     /// one clock reading.
     ///
-    /// WHY: shared by [`Self::blackboard_write`] (its own commit) and the
-    /// portability [`Self::import_session_bundle`] (row inserted into the
+    /// WHY: shared by [`Self::blackboard_write_scoped`] (its own commit) and
+    /// the portability [`Self::import_session_bundle`] (row inserted into the
     /// caller's existing transaction) — `created_at` and `expires_at` must
     /// derive from the SAME clock reading in both, or the expiry drifts off
     /// its declared TTL by the interval between two separate reads.
@@ -3171,6 +3171,8 @@ impl SessionStore {
         value: &str,
         author: &str,
         ttl_secs: i64,
+        visibility: BlackboardVisibility,
+        session_id: Option<&str>,
     ) -> Result<BlackboardRow> {
         let now_ts = jiff::Timestamp::now();
         let now = koina::fjall::iso(now_ts);
@@ -3195,10 +3197,18 @@ impl SessionStore {
             ttl_seconds: ttl_secs,
             created_at: now,
             expires_at,
+            session_id: session_id.map(str::to_owned),
+            visibility,
         })
     }
 
     /// Write or update a blackboard entry. Upserts on key.
+    ///
+    /// Always `BlackboardVisibility::Shared` with no session scope — the
+    /// wire-compatible entry point kept for callers (raw store tests, the
+    /// agent-portability import/export path) that predate the visibility
+    /// taxonomy (aletheia#5032). Callers that need `NousPrivate`/
+    /// `SessionPrivate` classification use [`Self::blackboard_write_scoped`].
     #[instrument(skip(self, value), level = "debug")]
     pub fn blackboard_write(
         &self,
@@ -3207,13 +3217,35 @@ impl SessionStore {
         author: &str,
         ttl_secs: i64,
     ) -> Result<()> {
+        self.blackboard_write_scoped(
+            key,
+            value,
+            author,
+            ttl_secs,
+            BlackboardVisibility::Shared,
+            None,
+        )
+    }
+
+    /// Write or update a blackboard entry with an explicit visibility
+    /// classification and optional session scope. Upserts on key.
+    #[instrument(skip(self, value), level = "debug")]
+    pub fn blackboard_write_scoped(
+        &self,
+        key: &str,
+        value: &str,
+        author: &str,
+        ttl_secs: i64,
+        visibility: BlackboardVisibility,
+        session_id: Option<&str>,
+    ) -> Result<()> {
         let _guard = self
             .write_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let bb_part = self.partition("blackboard")?;
 
-        let row = Self::build_blackboard_row(key, value, author, ttl_secs)?;
+        let row = Self::build_blackboard_row(key, value, author, ttl_secs, visibility, session_id)?;
         let data = serde_json::to_vec(&row).context(error::StoredJsonSnafu)?;
         let mut tx = self.db.write_tx();
         tx.insert(&bb_part, key, data.as_slice());
@@ -4129,8 +4161,23 @@ impl SessionStore {
             )?;
         }
 
+        // WHY(#5032): a bundle's working state is, by definition, one
+        // session's `ws:` scratch row — never a caller-chosen classification
+        // — so `import_session_bundle` hardcodes `SessionPrivate` scoped to
+        // `bundle.session.id` instead of taking visibility as a field on
+        // `ImportSessionWorkingState`. Writing it `Shared` (the default a
+        // caller-supplied field could accidentally leave in place) would
+        // reopen the leak #6731 closed: the general blackboard list/read
+        // tools would surface another agent's session-private scratch.
         let working_state_imported = if let Some(ws) = bundle.working_state.as_ref() {
-            let row = Self::build_blackboard_row(ws.key, ws.value, ws.author, ws.ttl_secs)?;
+            let row = Self::build_blackboard_row(
+                ws.key,
+                ws.value,
+                ws.author,
+                ws.ttl_secs,
+                BlackboardVisibility::SessionPrivate,
+                Some(bundle.session.id.as_str()),
+            )?;
             let data = serde_json::to_vec(&row).context(error::StoredJsonSnafu)?;
             tx.insert(&bb_part, ws.key, data.as_slice());
             true

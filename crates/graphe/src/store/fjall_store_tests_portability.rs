@@ -8,8 +8,8 @@
 use super::super::{ImportSessionBundle, ImportSessionNote, ImportSessionWorkingState};
 use crate::test_fixtures::test_store;
 use crate::types::{
-    AgentNote, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
-    UsageRecord,
+    AgentNote, BlackboardVisibility, Message, Role, Session, SessionMetrics, SessionOrigin,
+    SessionStatus, SessionType, UsageRecord,
 };
 
 fn seed_session(store: &super::super::SessionStore) -> String {
@@ -699,6 +699,12 @@ fn import_session_bundle_writes_everything_atomically() {
         .expect("blackboard read")
         .expect("working state present");
     assert_eq!(ws.value, "{\"step\":1}");
+    // WHY(#5032/#5033): the bundle path must classify working state the same
+    // as `agent_io`'s import did — `SessionPrivate` scoped to this session,
+    // never the default `Shared` a plain `blackboard_write` would produce.
+    // A regression here reopens the leak #6731 closed.
+    assert_eq!(ws.visibility, BlackboardVisibility::SessionPrivate);
+    assert_eq!(ws.session_id.as_deref(), Some(session.id.as_str()));
 }
 
 #[test]

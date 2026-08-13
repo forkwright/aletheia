@@ -154,8 +154,8 @@ pub mod store {
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types {
     pub use graphe::types::{
-        AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin,
-        SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
+        AgentNote, BlackboardRow, BlackboardVisibility, Message, Role, Session, SessionMetrics,
+        SessionOrigin, SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
     };
     pub use graphe::types::{
         ReservedIdPrefixError, ReservedIdPrefixSnafu, ValidatedId, is_reserved_session_prefix,
