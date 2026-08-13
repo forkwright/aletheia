@@ -55,6 +55,51 @@ pub async fn complete_with_fallback(
         .map(|completion| completion.response)
 }
 
+/// Attempt one model up to `retries` times, recording every retryable
+/// failure into `attempt_errors` and `last_error`.
+///
+/// Returns `Ok(Some(response))` on success, `Ok(None)` when every retryable
+/// attempt is exhausted (caller should advance the fallback chain), or the
+/// first non-retryable error — which ends the whole chain immediately.
+async fn attempt_model_with_retries(
+    provider: &dyn LlmProvider,
+    request: &CompletionRequest,
+    retries: u32,
+    phase: &'static str,
+    attempt_errors: &mut Vec<String>,
+    last_error: &mut Option<crate::error::Error>,
+) -> Result<Option<CompletionResponse>> {
+    for attempt in 0..retries.max(1) {
+        if attempt > 0 {
+            tracing::warn!(
+                model = %request.model,
+                attempt,
+                phase,
+                "retrying model"
+            );
+        }
+
+        match provider.complete(request).await {
+            Ok(response) => return Ok(Some(response)),
+            Err(e) => {
+                if !e.is_retryable() {
+                    return Err(e);
+                }
+                tracing::warn!(
+                    model = %request.model,
+                    attempt,
+                    phase,
+                    error = %e,
+                    "model failed with retryable error"
+                );
+                attempt_errors.push(format!("{}: {e}", request.model));
+                *last_error = Some(e);
+            }
+        }
+    }
+    Ok(None)
+}
+
 /// Execute a completion request with model fallback and return the successful model.
 ///
 /// The returned model is the request model that succeeded. This lets callers
@@ -92,36 +137,20 @@ pub async fn complete_with_fallback_observed(
     let mut last_error = None;
     let mut attempt_errors = Vec::new();
 
-    for attempt in 0..config.retries_before_fallback.max(1) {
-        if attempt > 0 {
-            tracing::warn!(
-                model = %primary,
-                attempt,
-                "retrying primary model"
-            );
-        }
-
-        match provider.complete(request).await {
-            Ok(response) => {
-                return Ok(FallbackCompletion {
-                    model: primary.clone(),
-                    response,
-                });
-            }
-            Err(e) => {
-                if !e.is_retryable() {
-                    return Err(e);
-                }
-                tracing::warn!(
-                    model = %primary,
-                    attempt,
-                    error = %e,
-                    "primary model failed with retryable error"
-                );
-                attempt_errors.push(format!("{primary}: {e}"));
-                last_error = Some(e);
-            }
-        }
+    if let Some(response) = attempt_model_with_retries(
+        provider,
+        request,
+        config.retries_before_fallback,
+        "primary",
+        &mut attempt_errors,
+        &mut last_error,
+    )
+    .await?
+    {
+        return Ok(FallbackCompletion {
+            model: primary.clone(),
+            response,
+        });
     }
 
     for fallback_model in &config.fallback_models {
@@ -131,43 +160,27 @@ pub async fn complete_with_fallback_observed(
         // WHY(#4882): each fallback model gets the same number of attempts as the primary,
         // so a transient overload on fallback-1 does not permanently skip fallback-2 when
         // retrying the same model once would have succeeded.
-        for fallback_attempt in 0..config.retries_before_fallback.max(1) {
-            if fallback_attempt == 0 {
-                tracing::warn!(
-                    primary = %primary,
-                    fallback = %fallback_model,
-                    reason = %last_error.as_ref().map_or("unknown", |_| "retryable error on previous model"),
-                    "falling back to alternative model"
-                );
-            } else {
-                tracing::warn!(
-                    model = %fallback_model,
-                    attempt = fallback_attempt,
-                    "retrying fallback model"
-                );
-            }
+        tracing::warn!(
+            primary = %primary,
+            fallback = %fallback_model,
+            reason = %last_error.as_ref().map_or("unknown", |_| "retryable error on previous model"),
+            "falling back to alternative model"
+        );
 
-            match provider.complete(&fallback_req).await {
-                Ok(response) => {
-                    return Ok(FallbackCompletion {
-                        model: fallback_model.clone(),
-                        response,
-                    });
-                }
-                Err(e) => {
-                    if !e.is_retryable() {
-                        return Err(e);
-                    }
-                    tracing::warn!(
-                        model = %fallback_model,
-                        attempt = fallback_attempt,
-                        error = %e,
-                        "fallback model failed with retryable error"
-                    );
-                    attempt_errors.push(format!("{fallback_model}: {e}"));
-                    last_error = Some(e);
-                }
-            }
+        if let Some(response) = attempt_model_with_retries(
+            provider,
+            &fallback_req,
+            config.retries_before_fallback,
+            "fallback",
+            &mut attempt_errors,
+            &mut last_error,
+        )
+        .await?
+        {
+            return Ok(FallbackCompletion {
+                model: fallback_model.clone(),
+                response,
+            });
         }
     }
 
