@@ -181,7 +181,6 @@ pub(crate) async fn fetch_system_status(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use std::error::Error;
 
