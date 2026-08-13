@@ -252,15 +252,27 @@ fn turn_complete_event_payload(
 /// `Classifiable::class()` (see `turn_error_recoverable`) — the fleet-wide
 /// retry/escalate classification the pipeline itself already acts on, not a
 /// new ad hoc mapping.
+/// How a turn failed: the borrowed classification, the message, and whether
+/// the pipeline considers it retryable.
+///
+/// WHY grouped: these three are derived together and always travel together —
+/// `recoverable` is computed from the same `nous::error::Error` that produced
+/// `error_class`. Passing them flat put this builder at 8 arguments where its
+/// three siblings take 5-6, which `clippy::too_many_arguments` rejects and
+/// which this crate has no `#[allow]` precedent for.
+struct TurnFailure<'a> {
+    class: &'a str,
+    message: &'a str,
+    recoverable: Option<bool>,
+}
+
 fn turn_failed_event_payload(
     session_id: &str,
     nous_id: &str,
     turn_id: &str,
     request_id: &str,
     endpoint: &str,
-    error_class: &str,
-    error_message: &str,
-    recoverable: Option<bool>,
+    failure: &TurnFailure<'_>,
 ) -> serde_json::Value {
     serde_json::json!({
         "session_id": session_id,
@@ -269,9 +281,9 @@ fn turn_failed_event_payload(
         "request_id": request_id,
         "phase": "failed",
         "endpoint": endpoint,
-        "error_class": error_class,
-        "error_message": error_message,
-        "recoverable": recoverable,
+        "error_class": failure.class,
+        "error_message": failure.message,
+        "recoverable": failure.recoverable,
     })
 }
 
@@ -943,9 +955,11 @@ pub async fn send_message(
                                     &turn_id,
                                     &request_id_str,
                                     "send_message",
-                                    &err_code,
-                                    &err_message,
-                                    recoverable,
+                                    &TurnFailure {
+                                        class: &err_code,
+                                        message: &err_message,
+                                        recoverable,
+                                    },
                                 ),
                             ))
                             .await;
@@ -1525,9 +1539,11 @@ pub async fn stream_turn(
                                     &turn_id,
                                     &stream_request_id,
                                     "stream_turn",
-                                    &err_code,
-                                    &err_message,
-                                    recoverable,
+                                    &TurnFailure {
+                                        class: &err_code,
+                                        message: &err_message,
+                                        recoverable,
+                                    },
                                 ),
                             ))
                             .await;

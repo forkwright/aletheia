@@ -639,9 +639,11 @@ fn turn_failed_event_payload_includes_error_class_and_recoverable() {
         "turn-1",
         "req-1",
         "send_message",
-        "rate_limited",
-        "rate limit exceeded, retry after 500ms",
-        Some(true),
+        &TurnFailure {
+            class: "rate_limited",
+            message: "rate limit exceeded, retry after 500ms",
+            recoverable: Some(true),
+        },
     );
 
     assert_eq!(
@@ -676,9 +678,11 @@ fn turn_failed_event_payload_recoverable_omits_as_null_when_unknown() {
         "turn-1",
         "req-1",
         "send_message",
-        "turn_failed",
-        "an internal error occurred",
-        None,
+        &TurnFailure {
+            class: "turn_failed",
+            message: "an internal error occurred",
+            recoverable: None,
+        },
     );
 
     assert!(

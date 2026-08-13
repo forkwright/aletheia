@@ -1526,7 +1526,7 @@ async fn send_message_provider_failure_publishes_turn_start_then_turn_failed() {
     assert!(
         failed_payload
             .get("error_message")
-            .is_some_and(|v| v.is_string()),
+            .is_some_and(serde_json::Value::is_string),
         "turn.failed must carry an error_message: {failed_payload:?}"
     );
     assert!(
