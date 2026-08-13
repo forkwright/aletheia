@@ -7,7 +7,6 @@
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use koina::system::{Environment, RealSystem};
@@ -159,30 +158,6 @@ impl CodexProvider {
         parts.join("\n\n")
     }
 
-    fn warn_dropped_tools(dropped_tools: usize) -> bool {
-        // WHY: Seat-bridged subprocess providers run their own CLI-side agentic loop, so
-        // aletheia's tools are intentionally not translated through this adapter.
-        static WARNED: AtomicBool = AtomicBool::new(false);
-
-        if dropped_tools == 0 {
-            return false;
-        }
-
-        let warned = WARNED
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok();
-
-        if warned {
-            warn!(
-                provider = "codex",
-                dropped_tools,
-                "codex dropped {dropped_tools} tool definitions; this seat-bridged CLI runs its own agentic loop so aletheia's tools are not invoked. Use a native API provider for aletheia's tool-loop"
-            );
-        }
-
-        warned
-    }
-
     /// Run the Codex subprocess for a completion, retrying the subprocess
     /// call itself (not just the surrounding call) on a transient spawn or
     /// timeout failure.
@@ -239,9 +214,9 @@ impl CodexProvider {
     }
 
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+        crate::seat_bridged::reject_tool_bearing_request(&self.name, "codex", request.tools.len())?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
 
         let outcome: Result<CompletionResponse> = async {
@@ -297,9 +272,9 @@ impl CodexProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        crate::seat_bridged::reject_tool_bearing_request(&self.name, "codex", request.tools.len())?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
 
         let outcome: Result<CompletionResponse> = async {
@@ -531,8 +506,9 @@ fn find_codex_binary() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::Error;
     use crate::types::{
-        CompletionRequest, Content, ContentBlock, Message, Role, ToolResultContent,
+        CompletionRequest, Content, ContentBlock, Message, Role, ToolDefinition, ToolResultContent,
     };
 
     #[test]
@@ -808,13 +784,6 @@ mod tests {
     }
 
     #[test]
-    fn warns_once_for_dropped_tools() {
-        assert!(!CodexProvider::warn_dropped_tools(0));
-        assert!(CodexProvider::warn_dropped_tools(1));
-        assert!(!CodexProvider::warn_dropped_tools(2));
-    }
-
-    #[test]
     fn records_cache_metrics_from_response() {
         use koina::metrics::MetricsRegistry;
 
@@ -980,5 +949,78 @@ mod tests {
         }
 
         let _ = std::fs::remove_file(&script);
+    }
+
+    fn tool_bearing_request() -> CompletionRequest {
+        let mut request = single_message_request();
+        request.tools = vec![ToolDefinition {
+            name: "read_file".to_owned(),
+            description: "Read a file from disk".to_owned(),
+            input_schema: serde_json::json!({"type": "object"}),
+            disable_passthrough: None,
+        }];
+        request
+    }
+
+    #[tokio::test]
+    async fn execute_hard_fails_on_tool_bearing_request() {
+        // WHY(#4510): a tool-bearing turn must never reach the subprocess —
+        // this provider's own agentic loop cannot run aletheia's tools. The
+        // binary path here is deliberately nonexistent: if the capability
+        // check were skipped, this test would fail with a spawn error
+        // instead of the expected CapabilityMismatch, catching a regression
+        // either way.
+        let provider = flaky_provider(PathBuf::from("/nonexistent/codex-must-not-be-spawned"));
+        let request = tool_bearing_request();
+
+        match provider.execute(&request).await {
+            Ok(response) => {
+                panic!("expected a capability-mismatch hard failure, got: {response:?}")
+            }
+            Err(Error::CapabilityMismatch { provider, .. }) => assert_eq!(provider, "codex"),
+            Err(other) => panic!("expected Error::CapabilityMismatch, got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_streaming_hard_fails_on_tool_bearing_request() {
+        // WHY(#4510): the streaming path must reject a tool-bearing request
+        // before the subprocess is spawned, same as the non-streaming path.
+        let provider = flaky_provider(PathBuf::from("/nonexistent/codex-must-not-be-spawned"));
+        let request = tool_bearing_request();
+        let mut events = Vec::new();
+
+        match provider
+            .execute_streaming(&request, &mut |event| events.push(event))
+            .await
+        {
+            Ok(response) => {
+                panic!("expected a capability-mismatch hard failure, got: {response:?}")
+            }
+            Err(Error::CapabilityMismatch { provider, .. }) => assert_eq!(provider, "codex"),
+            Err(other) => panic!("expected Error::CapabilityMismatch, got: {other}"),
+        }
+        assert!(
+            events.is_empty(),
+            "no stream events should be emitted before the capability check runs"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_without_tools_still_reaches_the_subprocess() {
+        // WHY: pins the inverse of the two tests above — a tool-free request
+        // must not be rejected by the new check, so the retry-budget test's
+        // nonexistent-binary error (a spawn failure, not CapabilityMismatch)
+        // still exercises the code path it did before #4510.
+        let provider = flaky_provider(PathBuf::from("/nonexistent/codex-must-not-be-spawned"));
+        let request = single_message_request();
+
+        match provider.execute(&request).await {
+            Ok(response) => panic!("expected a spawn failure, got: {response:?}"),
+            Err(Error::CapabilityMismatch { .. }) => {
+                panic!("a tool-free request must not raise CapabilityMismatch")
+            }
+            Err(_) => {}
+        }
     }
 }
