@@ -18,6 +18,7 @@ use tracing::Instrument as _;
 use koina::id::SessionId;
 use mneme::types::parse_session_or_agent_id;
 use organon::surface::{SurfaceAvailability, SurfaceInputs};
+use organon::types::BlackboardViewer;
 use symbolon::types::Role;
 
 use crate::auth::{McpCaller, resolve_caller};
@@ -2013,7 +2014,15 @@ impl DiaporeiaServer {
                         .build(),
                     )
                 })?;
-                let entry = store.read(&key).map_err(|e| {
+                // WHY(#5032): diaporeia's MCP callers have no session
+                // concept — a nous-only viewer sees Shared + its own
+                // NousPrivate rows, and never SessionPrivate rows (it has
+                // no session to match). Mandatory, not `Option`: see
+                // `BlackboardStore::read`'s doc comment.
+                let viewer = BlackboardViewer::Nous {
+                    nous_id: effective_nous_id(&caller, "memory_blackboard")?,
+                };
+                let entry = store.read(&key, &viewer).map_err(|e| {
                     rmcp::ErrorData::from(
                         BlackboardStoreSnafu {
                             message: e.to_string(),
@@ -2034,7 +2043,10 @@ impl DiaporeiaServer {
                 }
             }
             "list" => {
-                let entries = store.list().map_err(|e| {
+                let viewer = BlackboardViewer::Nous {
+                    nous_id: effective_nous_id(&caller, "memory_blackboard")?,
+                };
+                let entries = store.list(&viewer).map_err(|e| {
                     rmcp::ErrorData::from(
                         BlackboardStoreSnafu {
                             message: e.to_string(),
