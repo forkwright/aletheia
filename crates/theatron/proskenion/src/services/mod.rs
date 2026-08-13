@@ -3,6 +3,8 @@
 //! Each service runs as a background task (Dioxus coroutine or tokio task)
 //! and writes into signal-backed state as events arrive.
 
+/// Backend subsystem health poller (#5315).
+pub(crate) mod backend_health;
 /// In-memory API response cache with TTL and request deduplication.
 pub(crate) mod cache;
 pub mod config;

@@ -6,6 +6,8 @@
 
 pub mod agents;
 pub mod app;
+/// Backend subsystem health state, distinct from SSE transport state (#5315).
+pub(crate) mod backend_health;
 pub(crate) mod chat;
 /// Checkpoint approval gate state for the planning project detail view.
 pub(crate) mod checkpoints;

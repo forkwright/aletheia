@@ -363,6 +363,13 @@ const PROSKENION_API_INVENTORY: &[DesktopApiContract] = &[
         coverage: ContractCoverage::Covered,
     },
     DesktopApiContract {
+        method: "GET",
+        source_path: "/api/v1/system/status",
+        pylon_route: "/api/v1/system/status",
+        expected_shape: "aggregate status string plus subsystems array; 401 without a token and 403 below Operator role, neither carrying partial health data",
+        coverage: ContractCoverage::Covered,
+    },
+    DesktopApiContract {
         method: "POST",
         source_path: "/api/v1/system/credentials",
         pylon_route: "/api/v1/system/credentials",
