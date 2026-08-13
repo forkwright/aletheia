@@ -83,10 +83,9 @@ impl SseConnection {
 
                     if !resp.status().is_success() {
                         let status = resp.status();
-                        let reason = status.canonical_reason().unwrap_or("Unknown");
                         // kanon:ignore RUST/no-result-unwrap-or-default — empty body on text() failure is acceptable; status code is the primary error signal
                         let body = resp.text().await.unwrap_or_default();
-                        let message = format_http_error_body(status.as_u16(), reason, &body);
+                        let message = reconnect_error_message(status, &body);
                         tracing::warn!("SSE error: {message}");
                         if tx.send(SseEvent::Disconnected).await.is_err() {
                             return;
@@ -165,6 +164,19 @@ impl SseConnection {
     pub async fn next(&mut self) -> Option<SseEvent> {
         self.rx.recv().await
     }
+}
+
+/// Build the log message for a non-2xx response to the subscribe request.
+///
+/// WHY(#5899): a thin named wrapper around [`format_http_error_body`] —
+/// skene's single body-message extractor — so the reconnect loop has one
+/// call site to change rather than re-deriving field-precedence logic
+/// inline, and so this precedence (pylon envelope, then legacy flat
+/// `{message}`/`{error}`, then `"{status} {reason}"`) is unit-testable
+/// without spinning up a real HTTP response.
+fn reconnect_error_message(status: reqwest::StatusCode, body: &str) -> String {
+    let reason = status.canonical_reason().unwrap_or("Unknown");
+    format_http_error_body(status.as_u16(), reason, body)
 }
 
 fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> Option<&'a str> {
@@ -378,6 +390,40 @@ mod tests {
     use crate::api::client::build_streaming_client;
 
     use super::*;
+
+    // ── #5899: reconnect_error_message delegates to the single owning
+    // extractor rather than re-deriving field-precedence logic ──
+
+    #[test]
+    fn reconnect_error_message_prefers_pylon_envelope() {
+        let body =
+            r#"{"error":{"code":"unauthorized","message":"token expired","request_id":"req-1"}}"#;
+        let message = reconnect_error_message(reqwest::StatusCode::UNAUTHORIZED, body);
+        assert!(message.contains("token expired"));
+        assert!(message.contains("code unauthorized"));
+        assert!(message.contains("request_id req-1"));
+    }
+
+    #[test]
+    fn reconnect_error_message_falls_back_to_legacy_flat_message() {
+        let body = r#"{"message":"maintenance window"}"#;
+        let message = reconnect_error_message(reqwest::StatusCode::SERVICE_UNAVAILABLE, body);
+        assert_eq!(message, "maintenance window");
+    }
+
+    #[test]
+    fn reconnect_error_message_falls_back_to_legacy_flat_error_string() {
+        let body = r#"{"error":"bad request"}"#;
+        let message = reconnect_error_message(reqwest::StatusCode::BAD_REQUEST, body);
+        assert_eq!(message, "bad request");
+    }
+
+    #[test]
+    fn reconnect_error_message_falls_back_to_status_reason_on_non_json() {
+        let message =
+            reconnect_error_message(reqwest::StatusCode::INTERNAL_SERVER_ERROR, "not json");
+        assert_eq!(message, "500 Internal Server Error");
+    }
 
     #[test]
     fn parse_turn_before_valid() {
