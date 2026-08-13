@@ -4222,6 +4222,20 @@ impl SessionStore {
     }
 }
 
+// WHY: `fjall::TxDatabase` (aliased `SingleWriterTxDatabase`) does not
+// implement `Debug`, so `#[derive(Debug)]` on `SessionStore` cannot compile.
+// Report the fields that are actually useful for diagnostics and omit the
+// db handle and write lock rather than deriving.
+impl std::fmt::Debug for SessionStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionStore")
+            .field("path", &self.path)
+            .field("is_temp", &self._temp_dir.is_some())
+            .field("session_counts", &self.session_counts)
+            .finish()
+    }
+}
+
 /// Check whether a blackboard row has expired.
 fn is_expired(row: &BlackboardRow) -> bool {
     let Some(ref expires_at) = row.expires_at else {
