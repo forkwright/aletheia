@@ -73,7 +73,7 @@ pub enum TaskRole {
 ///
 /// WHY(#5583): `camelCase` wire format preserves operator-config compatibility
 /// for the `hermeneus`/`taxis` consumers that alias this type — neither had a
-/// snake_case wire consumer to break.
+/// `snake_case` wire consumer to break.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelPrice {
