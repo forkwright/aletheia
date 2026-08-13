@@ -2755,6 +2755,8 @@ mod tests {
     #[cfg(feature = "knowledge-store")]
     #[tokio::test]
     async fn supersede_fact_spawned_atomically_supersedes() {
+        use mneme::id::FactId;
+
         // WHY: `open_mem()` already returns `Arc<KnowledgeStore>` (matching
         // `resolve_store`'s return type) — no extra `Arc::new` wrapping.
         let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("open memory store");
@@ -2783,7 +2785,7 @@ mod tests {
             Some(mneme::knowledge::ForgetReason::Superseded)
         );
         assert_eq!(
-            old_row.lifecycle.superseded_by.as_deref(),
+            old_row.lifecycle.superseded_by.as_ref().map(FactId::as_str),
             Some("f-correct-new"),
             "old fact must link forward to its replacement"
         );
