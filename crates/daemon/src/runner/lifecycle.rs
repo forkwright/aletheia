@@ -52,9 +52,11 @@ impl TaskRunner {
                 // SAFETY: cancel-safe. `interval.tick()` is cancel-safe; dropping it
                 // before it fires simply delays the next tick without losing state.
                 // `check_in_flight` polls already-spawned handles and does not
-                // mutate scheduler state if cancelled mid-loop.
+                // mutate scheduler state if cancelled mid-loop. `poll_maintenance_reload`
+                // has no `.await` point, so it cannot be interrupted mid-reconciliation.
                 _ = interval.tick() => {
                     self.check_in_flight().await;
+                    self.poll_maintenance_reload();
                     self.tick();
                 }
                 // WHY: send WATCHDOG=1 on the systemd watchdog interval so

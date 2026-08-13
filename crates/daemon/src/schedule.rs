@@ -10,7 +10,7 @@ use crate::error::Result;
 
 /// When a task should run.
 #[non_exhaustive]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Schedule {
     /// Cron expression (e.g., `"0 */45 8-23 * * *"` for every 45min 8am-11pm).
     Cron(String),
@@ -466,6 +466,24 @@ mod tests {
         assert!(
             !Schedule::in_window(Some((10, 10))),
             "same start and end should always be false"
+        );
+    }
+
+    #[test]
+    fn schedule_partial_eq() {
+        assert_eq!(
+            Schedule::Interval(Duration::from_mins(1)),
+            Schedule::Interval(Duration::from_mins(1))
+        );
+        assert_ne!(
+            Schedule::Interval(Duration::from_mins(1)),
+            Schedule::Interval(Duration::from_mins(2)),
+            "reconciliation diffs schedules by value; differing intervals must compare unequal"
+        );
+        assert_ne!(
+            Schedule::Cron("0 0 3 * * *".to_owned()),
+            Schedule::Interval(Duration::from_mins(1)),
+            "differing variants must compare unequal"
         );
     }
 

@@ -441,12 +441,43 @@ mod tests {
     }
 
     #[test]
+    fn maintenance_scheduler_sections_are_registered_and_hot() {
+        // WHY: the maintenance scheduler reconciles live tasks against these
+        // exact sections on reload (see oikonomos::runner::TaskRunner::
+        // reconcile_maintenance) -- each must have an explicit registry
+        // entry with hot_reloadable = true, not just an absence from
+        // RESTART_PREFIXES that happens to default hot.
+        for key in [
+            "maintenance.traceRotation",
+            "maintenance.driftDetection",
+            "maintenance.dbMonitoring",
+            "maintenance.retention",
+            "maintenance.backup",
+            "maintenance.cronTasks",
+            "maintenance.knowledgeMaintenanceEnabled",
+            "maintenance.knowledgeMaintenanceSerendipity",
+            "promptAudit",
+        ] {
+            let spec = crate::registry::spec_by_key(key)
+                .unwrap_or_else(|| panic!("expected a registered ParameterSpec for {key}"));
+            assert!(
+                spec.hot_reloadable,
+                "{key} must be declared hot_reloadable: it is reconciled live, not frozen at startup"
+            );
+            assert!(
+                !requires_restart(key),
+                "{key} must not appear in RESTART_PREFIXES"
+            );
+        }
+    }
+
+    #[test]
     fn maintenance_disk_space_classified_hot_matching_registry() {
         // WHY(#5128): classification is derived from the registry's
         // `hot_reloadable` flag, not hand-picked here -- this proves the new
         // `maintenance.diskSpace.*` specs actually landed with the flag the
-        // registry declares (whether the scheduler *reconciles* a live
-        // change is the separate, tracked gap in #5144).
+        // registry declares. #5144 closed the matching gap, so the scheduler
+        // now reconciles a live change rather than only classifying it.
         for key in [
             "maintenance.diskSpace.enabled",
             "maintenance.diskSpace.warningThresholdMb",
