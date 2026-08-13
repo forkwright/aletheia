@@ -634,8 +634,13 @@ pub struct KnowledgeStore {
     dim: usize,
     embedding_model: String,
     allow_assumed_embedding_meta: bool,
-    /// Serializes read-modify-write access counter increments to prevent races.
-    access_lock: std::sync::Mutex<()>,
+    /// Guards a single fact's read-modify-write access counter increment
+    /// against a concurrent lost update.
+    ///
+    /// WHY(#5673): scoped per fact ID inside `increment_access`'s loop, not
+    /// held for the whole batch — an N-fact call must not serialize every
+    /// other caller behind N sequential DB round-trips.
+    access_lock: parking_lot::Mutex<()>,
     /// Serializes admission-check + insert so concurrent writers for the same
     /// fact cannot both pass the admission gate and write independently.
     ///
@@ -645,7 +650,7 @@ pub struct KnowledgeStore {
     /// The `:put` upsert means the end-state is still correct (one row), but
     /// the admission gate would have fired twice — potentially consuming policy
     /// budget (e.g. rate counters) or triggering side effects on both paths.
-    insert_lock: std::sync::Mutex<()>,
+    insert_lock: parking_lot::Mutex<()>,
     /// Admission policy gate: checked before every fact insertion.
     admission_policy: Box<dyn crate::admission::AdmissionPolicy>,
 }
@@ -695,8 +700,8 @@ impl KnowledgeStore {
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
-            access_lock: std::sync::Mutex::new(()),
-            insert_lock: std::sync::Mutex::new(()),
+            access_lock: parking_lot::Mutex::new(()),
+            insert_lock: parking_lot::Mutex::new(()),
             admission_policy: config.admission_policy,
         };
         store.init_schema()?;
@@ -749,8 +754,8 @@ impl KnowledgeStore {
             dim: config.dim,
             embedding_model: config.embedding_model,
             allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
-            access_lock: std::sync::Mutex::new(()),
-            insert_lock: std::sync::Mutex::new(()),
+            access_lock: parking_lot::Mutex::new(()),
+            insert_lock: parking_lot::Mutex::new(()),
             admission_policy: config.admission_policy,
         };
         store.init_schema()?;
