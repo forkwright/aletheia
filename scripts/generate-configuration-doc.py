@@ -1109,10 +1109,16 @@ def _defaults_for_type(type_name: str):
 
 
 def enum_default_variant(enum_def: EnumDef) -> VariantDef | None:
+    # WHY no fallback to variants[0]: a Rust enum only has a structural
+    # `Default::default()` when one variant is tagged `#[default]` (or a
+    # manual `impl Default` supplies one, which this function is never the
+    # source of truth for). Guessing the first declared variant would
+    # fabricate a default for a type this generator cannot actually prove
+    # implements `Default`, violating the module's never-guess contract.
     for v in enum_def.variants:
         if v.is_default:
             return v
-    return enum_def.variants[0] if enum_def.variants else None
+    return None
 
 
 def resolve_named_default_fn(file_path: Path, fn_name: str) -> str | None:
@@ -1216,13 +1222,21 @@ def scalar_default(fd: FieldDef, container: StructDef) -> str:
     base_ty = unwrap_option(fd.ty)
     is_option = base_ty != fd.ty
 
+    # WHY is_option is checked before structural_default: `Option<T>`'s
+    # structural default is always `None` ("unset"), regardless of what
+    # `T::default()` would produce. A field such as
+    # `#[serde(default)] pub api_family: Option<OpenAiApiFamily>` on a
+    # container with no `impl Default` has no resolvable literal for T, and
+    # its real runtime default is `None` -- computing structural_default(T)
+    # first would fabricate a value (e.g. T's first enum variant, or `""`
+    # for `Option<String>`) that the field is never actually assigned.
+    if is_option and (fd.has_bare_default or container.has_derive_default or container.has_impl_default):
+        return "unset"
+
     if fd.has_bare_default or container.has_derive_default:
         structural = structural_default(base_ty)
         if structural is not None:
             return structural
-
-    if is_option and (fd.has_bare_default or container.has_derive_default or container.has_impl_default):
-        return "unset"
 
     return "*required*"
 
@@ -1358,7 +1372,22 @@ def non_unit_enum_for(ty: str) -> EnumDef | None:
     base_ty = unwrap_option(ty)
     head = strip_generics_name(unwrap_vec(base_ty) or base_ty)
     parsed = parse_type(head)
-    if isinstance(parsed, EnumDef) and any(v.payload_kind != "unit" for v in parsed.variants):
+    # WHY has_serde is required, not just a non-unit variant: this classifies
+    # the field as a `#[serde(tag = "...")]`-style tagged-variant subsection,
+    # and `render_enum_variants_section` hardcodes "Tagged on `type`" prose.
+    # An enum with a hand-written (non-derived) Serialize/Deserialize impl --
+    # e.g. `AgentToolGroupPolicy`, which deserializes a bare string or a bare
+    # sequence with no tag at all -- has no derived shape this generator can
+    # verify, so asserting internal tagging for it would fabricate a wire
+    # format the field does not use. `simplify_scalar_type` and
+    # `resolve_value` already gate their own enum handling on `has_serde` for
+    # the same reason; this mirrors that guard rather than introducing a new
+    # rule.
+    if (
+        isinstance(parsed, EnumDef)
+        and parsed.has_serde
+        and any(v.payload_kind != "unit" for v in parsed.variants)
+    ):
         return parsed
     return None
 
