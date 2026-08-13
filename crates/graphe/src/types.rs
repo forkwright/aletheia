@@ -338,6 +338,26 @@ pub struct ToolAuditRecord {
     pub created_at: String,
 }
 
+/// Visibility classification for a blackboard entry (aletheia#5032).
+///
+/// WHY: `Shared` is `#[default]` so rows written before this taxonomy
+/// existed, and any writer that omits the field, keep today's behavior —
+/// visible to every viewer. This type only carries the classification; it
+/// is `organon::types::services::BlackboardViewer` (and the filtering built
+/// on it) that turns it into an enforced policy — this crate stores the
+/// value but never filters by it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum BlackboardVisibility {
+    /// Visible to any viewer.
+    #[default]
+    Shared,
+    /// Visible only to a viewer whose `nous_id` matches `author_nous_id`.
+    NousPrivate,
+    /// Visible only to a viewer whose `nous_id` AND `session_id` both match.
+    SessionPrivate,
+}
+
 /// Blackboard entry: shared agent state with TTL.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[expect(
@@ -351,6 +371,13 @@ pub struct BlackboardRow {
     pub ttl_seconds: i64,
     pub created_at: String,
     pub expires_at: Option<String>,
+    // WHY(#5032): additive fields on an already-persisted row type — old
+    // rows without them deserialize via `#[serde(default)]` as Shared/no
+    // session, matching pre-taxonomy behavior.
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub visibility: BlackboardVisibility,
 }
 
 /// Agent note: explicit agent-written context that survives distillation.

@@ -32,12 +32,12 @@
                 {
                     "type": "toml",
                     "path": "crates/theatron/proskenion/Cargo.lock",
-                    "jsonpath": "$.package[?(@.name == 'koina')].version"
+                    "jsonpath": "$.package[?(@.name.value == 'koina')].version"
                 },
                 {
                     "type": "toml",
                     "path": "crates/theatron/proskenion/Cargo.lock",
-                    "jsonpath": "$.package[?(@.name == 'skene')].version"
+                    "jsonpath": "$.package[?(@.name.value == 'skene')].version"
                 }
             ]
         }

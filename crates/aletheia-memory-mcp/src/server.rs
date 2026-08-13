@@ -245,17 +245,6 @@ impl MemoryServer {
         Ok(Self::new(store, Some(path)))
     }
 
-    /// Open an in-memory knowledge store (for tests and ephemeral use).
-    pub fn open_in_memory() -> error::Result<Self> {
-        let store = KnowledgeStore::open_mem().map_err(|e| {
-            OpenStoreSnafu {
-                message: e.to_string(),
-            }
-            .build()
-        })?;
-        Ok(Self::new(store, None))
-    }
-
     /// Serve MCP over stdio until the peer closes the connection.
     ///
     /// Blocks the current tokio task; call from `main` after configuring
@@ -362,12 +351,6 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(matches!(err, crate::error::Error::WriteNotAvailable { .. }));
-    }
-
-    #[test]
-    fn open_in_memory_creates_server() {
-        let server = MemoryServer::open_in_memory().unwrap();
-        assert!(server.store_path.is_none());
     }
 
     #[test]

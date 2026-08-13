@@ -60,6 +60,31 @@
 # forkwright/.github. no-ai-attribution.yml stays alongside unchanged — it
 # carries extra pattern/waiver coverage beyond the reusable's inline
 # ai-attribution job, so this is belt-and-suspenders, not a replacement.
+#
+# WHY the standalone `attestation-verify` job exists (aletheia#6440): the
+# reusable's own check-trailer job (forkwright/.github, not editable from
+# here) accepts ANY line matching the bare prefix `^Gate-Passed:` as proof
+# the tree was gated — no parse of the canonical shape, no comparison of a
+# claimed sha against the tip's actual tree. `Gate-Passed: anything` on the
+# PR tip is therefore sufficient, today, to skip full-gate-build entirely.
+# workflow_call exposes no `outputs:` on hybrid-gate.yml, so this caller
+# cannot see WHY the reusable's internal gate said success — a real
+# full-gate-build and a forged trailer are indistinguishable from
+# `needs.hybrid-gate.result` alone. `attestation-verify` re-derives the
+# verdict independently, from the same tip commit, against the byte-exact
+# shape `kanon gate --tier full --stamp` actually emits (verified against
+# crates/pragma/src/commands/gate/mod.rs `finish_gate_results` in a live
+# kanon clone: `kanon <version>[+scope:pkg,...] +stages:<list>
+# sha:<40-hex tree>` — a tree sha, not a commit sha, because a tree survives
+# the --stamp amend itself; see kanon#2134). The `gate` job below fails
+# closed whenever this job finds a trailer PRESENT but INVALID, regardless
+# of what hybrid-gate reported, because that report may itself be the thing
+# being forged. It cannot force a rejected trailer to fall through to a
+# real full-gate-build — that decision already happened inside the already-
+# completed reusable call — so the systemic fix (reject-routes-to-build,
+# living where check-trailer itself can react to it) still belongs in
+# forkwright/.github; this is the fail-closed backstop available from the
+# caller in the meantime.
 name: Gate Attestation
 
 on:
@@ -104,7 +129,7 @@ jobs:
     # `@main` an upstream commit in another repo reddens every open PR here with no change to
     # this one — the same class as the gitignored fuzz lockfile (#6655), at a larger blast
     # radius. Bump deliberately, so the change is reviewable.
-    uses: forkwright/.github/.github/workflows/hybrid-gate.yml@aed4ca51974b00998dab0715723676060a6ee12e
+    uses: forkwright/.github/.github/workflows/hybrid-gate.yml@963532686f7853fa3555aab434455693969b63a1
     with:
       fmt_cmd: "cargo fmt --all -- --check"
       check_cmd: "cargo check --workspace --all-targets --features test-core"
@@ -118,6 +143,109 @@ jobs:
       ai_attribution_check: true
       docs_only_exemption: true
     secrets: inherit
+
+  attestation-verify:
+    name: attestation-verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      trailer_present: ${{ steps.verify.outputs.trailer_present }}
+      trailer_valid: ${{ steps.verify.outputs.trailer_valid }}
+    # WHY no `needs:` on hybrid-gate: this job must reach its verdict from the
+    # tip commit alone, never from hybrid-gate's own (potentially forged)
+    # result — see the top-of-file WHY(aletheia#6440) for the full threat
+    # model. Running unconditionally in parallel also keeps this job off
+    # hybrid-gate's critical path.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify Gate-Passed trailer binds to the tip's tree
+        id: verify
+        env:
+          # WHY head.sha over HEAD (mirrors hybrid-gate.yml's check-trailer):
+          # on a pull_request event the checked-out HEAD is a synthetic merge
+          # commit GitHub builds on the fly, whose message carries no
+          # trailer. head.sha is the actual PR branch tip — empty on a push,
+          # where HEAD already IS the tip.
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          tip="${PR_HEAD_SHA:-HEAD}"
+          body=$(git log -1 --format="%B" "$tip")
+          # WHY tail -1, not head -1: mirrors kanon's own re-stamp logic
+          # (gate_already_passed) — the LAST Gate-Passed line is the one a
+          # re-stamp replaced, so an earlier, superseded line must not win.
+          trailer=$(printf '%s\n' "$body" | grep -E '^Gate-Passed:' | tail -1 || true)
+
+          if [ -z "$trailer" ]; then
+            echo "trailer_present=false" >> "$GITHUB_OUTPUT"
+            echo "trailer_valid=false" >> "$GITHUB_OUTPUT"
+            echo "No Gate-Passed trailer on tip ($tip); the required gate defers to hybrid-gate's full-gate-build result for this commit."
+            exit 0
+          fi
+          echo "trailer_present=true" >> "$GITHUB_OUTPUT"
+          echo "Candidate trailer on tip ($tip): $trailer"
+
+          # WHY derived from kanon.toml, never a second hand-typed list: this
+          # repo's [gate].stages is already the one place that names what a
+          # Gate-Passed trailer must attest (see kanon.toml's own
+          # WHY(#6363) on the deliberately-excluded lint stage) — restating
+          # the list here would drift from it silently the next time it
+          # changes.
+          required_stages=$(python3 -c "import tomllib; print('\n'.join(tomllib.load(open('kanon.toml','rb'))['gate']['stages']))")
+
+          # WHY this exact shape: byte-for-byte what `kanon gate --tier full
+          # --stamp` emits (verified against crates/pragma/src/commands/
+          # gate/mod.rs `finish_gate_results` in a live kanon clone) — an
+          # optional `+scope:pkg,...` token for a package-scoped run, a
+          # mandatory `+stages:a,b,c` token, and a mandatory `sha:<40-hex>`
+          # tree binding. The old sha-less shape kanon's own re-stamp logic
+          # treats as STALE (kanon#2134) is rejected here too, not
+          # grandfathered.
+          if ! printf '%s\n' "$trailer" \
+              | grep -qE '^Gate-Passed: kanon [0-9][0-9A-Za-z.+_-]*( \+scope:[^ ]+)? \+stages:[a-z]+(,[a-z]+)* sha:[0-9a-f]{40}$'; then
+            echo "::error::malformed Gate-Passed trailer on tip ($tip): $trailer"
+            echo "Expected shape: Gate-Passed: kanon <version> [+scope:pkg,...] +stages:<list> sha:<40-hex tree sha>"
+            echo "trailer_valid=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          stages_token=$(printf '%s\n' "$trailer" | grep -oE '\+stages:[a-z,]+' | sed 's/^+stages://')
+          missing=""
+          while IFS= read -r stage; do
+            [ -z "$stage" ] && continue
+            case ",${stages_token}," in
+              *",${stage},"*) ;;
+              *) missing="${missing} ${stage}" ;;
+            esac
+          done <<< "$required_stages"
+          if [ -n "$missing" ]; then
+            echo "::error::trailer stage coverage '$stages_token' on tip ($tip) is missing required stage(s):$missing"
+            echo "kanon.toml [gate].stages requires: $(printf '%s' "$required_stages" | tr '\n' ' ')"
+            echo "trailer_valid=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # WHY tree, not commit: `kanon gate --stamp` amends the commit
+          # message to add the trailer, which changes the commit sha but not
+          # the tree sha — binding to the commit would make every stamp
+          # self-invalidate the instant it was written. The tree sha changes
+          # exactly when content changes (a later amend, rebase, or squash
+          # onto a different tree), which is the staleness signal this check
+          # exists to catch.
+          claimed=$(printf '%s\n' "$trailer" | grep -oE 'sha:[0-9a-f]{40}' | sed 's/^sha://')
+          actual=$(git rev-parse "${tip}^{tree}")
+          if [ "$claimed" != "$actual" ]; then
+            echo "::error::trailer tree sha $claimed does not match tip $tip's actual tree $actual"
+            echo "The tree changed after stamping (amend, rebase, or squash) — re-run 'kanon gate --tier full --stamp' on the current tip."
+            echo "trailer_valid=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Gate-Passed trailer verified: stage coverage complete, tree-bound to tip ($actual)."
+          echo "trailer_valid=true" >> "$GITHUB_OUTPUT"
 
   gate-coverage-scripts:
     name: gate-coverage-scripts
@@ -288,7 +416,7 @@ jobs:
 
   gate:
     name: gate
-    needs: [hybrid-gate, gate-coverage-scripts, gate-coverage-compile-checks]
+    needs: [hybrid-gate, gate-coverage-scripts, gate-coverage-compile-checks, attestation-verify]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -298,7 +426,41 @@ jobs:
           HYBRID_GATE_RESULT: ${{ needs.hybrid-gate.result }}
           COVERAGE_SCRIPTS_RESULT: ${{ needs.gate-coverage-scripts.result }}
           COVERAGE_COMPILE_RESULT: ${{ needs.gate-coverage-compile-checks.result }}
+          ATTESTATION_VERIFY_RESULT: ${{ needs.attestation-verify.result }}
+          TRAILER_PRESENT: ${{ needs.attestation-verify.outputs.trailer_present }}
+          TRAILER_VALID: ${{ needs.attestation-verify.outputs.trailer_valid }}
         run: |
+          # WHY(#6440) checked FIRST, unconditionally, ahead of every other
+          # verdict below: hybrid-gate.yml's own check-trailer job trusts a bare
+          # `^Gate-Passed:` prefix match with no shape, stage, or tree
+          # validation, so HYBRID_GATE_RESULT can read "success" purely
+          # because a forged trailer satisfied that weak check and skipped
+          # full-gate-build — see attestation-verify's own WHY for the full
+          # threat model. A PR tip carrying a trailer that fails this repo's
+          # independent re-verification must not merge on the strength of
+          # hybrid-gate's report, because that report may be the thing being
+          # forged. No trailer at all is NOT this case — check-trailer sees
+          # the same absence and runs a real full-gate-build, so that path is
+          # still governed by HYBRID_GATE_RESULT below.
+          case "$ATTESTATION_VERIFY_RESULT" in
+            success) ;;
+            cancelled|skipped)
+              echo "CANCELLED: attestation-verify did not run to a verdict (result: ${ATTESTATION_VERIFY_RESULT}). This is NOT a check failure: re-run the job. See aletheia#6701." >&2
+              exit 1
+              ;;
+            *)
+              echo "ERROR: attestation-verify did not succeed (result: ${ATTESTATION_VERIFY_RESULT})." >&2
+              exit 1
+              ;;
+          esac
+          if [ "$TRAILER_PRESENT" = "true" ] && [ "$TRAILER_VALID" != "true" ]; then
+            echo "ERROR: PR tip carries a Gate-Passed trailer that failed independent verification" >&2
+            echo "(malformed shape, incomplete stage coverage, or bound to a different tree)." >&2
+            echo "Run 'kanon gate --tier full --stamp' on the current tip to produce a valid trailer," >&2
+            echo "or drop it so full-gate-build runs for real." >&2
+            exit 1
+          fi
+
           # WHY(#6433): gate-coverage-* jobs are NOT part of hybrid-gate.yml's
           # trusted-automation waiver — unlike fmt/check/clippy/nextest (which
           # a dispatch worker or bot PR may legitimately be unable to stamp

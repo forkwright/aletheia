@@ -4659,6 +4659,7 @@ dependencies = [
 name = "koilon"
 version = "0.35.0"
 dependencies = [
+ "aes-gcm",
  "arboard",
  "bathron",
  "clap",
@@ -4669,6 +4670,7 @@ dependencies = [
  "gramma",
  "image",
  "jiff",
+ "keyring",
  "koina",
  "open",
  "parodos",

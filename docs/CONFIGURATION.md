@@ -505,6 +505,14 @@ actionable provider error.
 | OpenAI-compatible local/third-party (`openai-compatible`) | Optional (`apiKeyEnv`) | yes | yes | `/v1/chat/completions` wire format for llama.cpp, ollama, vllm, and compatible proxies. |
 | Claude Code subprocess (`claude-code`) | Local Claude Code OAuth seat | yes | no | Feature-gated (`cc-provider`); declarative entries use `name`, `models`, `binary`, `workdir`, and `timeoutSecs`. |
 | Codex subprocess (`codex-oauth`) | Local Codex seat | yes | no | Feature-gated (`codex-provider`); declarative entries use `name`, `models`, `binary`, `workdir`, and `timeoutSecs`. |
+| Kimi subprocess | Local Kimi CLI OAuth seat | yes | no | Feature-gated (`kimi-provider`); auto-registered when the `kimi` binary is found — no `[[providers]]` entry exists for it. |
+
+A tool-loop-incompatible row above never silently drops the tool definitions
+and continues. A request that declares tools and routes to Claude Code,
+Codex, or Kimi fails before the subprocess is spawned with
+`hermeneus::error::Error::CapabilityMismatch`, naming the provider instance
+and the missing capability. Route tool-bearing turns to a provider whose
+"Aletheia organon tool-loop" column reads `yes` instead.
 
 The `aletheia add-nous` scaffolding command supports `anthropic` and `openai` provider strings. It checks for `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` and creates or updates the matching `[[providers]]` entry when the generated agent needs declarative provider routing. Other provider kinds must be configured manually in `aletheia.toml`.
 

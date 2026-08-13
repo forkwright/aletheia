@@ -78,10 +78,7 @@ impl KnowledgeStore {
 
         // Admission + insert must be atomic: hold the lock so a concurrent insert
         // of the same fact cannot pass the gate and write independently.
-        let _guard = self.insert_lock.lock().unwrap_or_else(|e| {
-            tracing::warn!("insert_lock was poisoned, recovering");
-            e.into_inner()
-        });
+        let _guard = self.insert_lock.lock();
 
         // Admission control gate: check policy before persisting.
         let decision = self.admission_policy.should_admit(fact);
@@ -495,7 +492,12 @@ impl KnowledgeStore {
 
     /// Increment access count and update last-accessed timestamp for the given fact IDs.
     ///
-    /// Serialized via `access_lock` to prevent concurrent read-modify-write races.
+    /// WHY(#5673): `access_lock` is acquired per fact ID, inside the loop —
+    /// not once for the whole batch. It still spans one fact's
+    /// read-then-write (see INVARIANT below), but an N-fact call no longer
+    /// holds the store's only access lock across N sequential DB
+    /// round-trips; other callers interleave between facts instead of
+    /// queuing behind the entire batch.
     #[instrument(skip(self), fields(count = fact_ids.len()))]
     pub(crate) fn increment_access(
         &self,
@@ -504,12 +506,14 @@ impl KnowledgeStore {
         if fact_ids.is_empty() {
             return Ok(());
         }
-        let _guard = self.access_lock.lock().unwrap_or_else(|e| {
-            tracing::warn!("access_lock was poisoned, recovering");
-            e.into_inner()
-        });
         let now = jiff::Timestamp::now();
         for id in fact_ids {
+            // INVARIANT: access_lock must span this fact's read AND write —
+            // a concurrent increment that reads between our read and our
+            // write would compute from the same pre-increment count and
+            // clobber this write (lost update) once both land.
+            let _guard = self.access_lock.lock();
+
             // WHY: a single Datalog read-modify-write rule does not reflect
             // the mutation in subsequent reads, so we read-increment-write in Rust.
             let facts = match self.read_facts_by_id(id.as_str()) {
@@ -528,6 +532,7 @@ impl KnowledgeStore {
                     tracing::warn!(error = %e, fact_id = %id, "failed to write incremented access count");
                 }
             }
+            // _guard drops here, releasing access_lock before the next id.
         }
         Ok(())
     }
