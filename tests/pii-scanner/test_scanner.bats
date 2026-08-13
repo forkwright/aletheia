@@ -125,3 +125,27 @@ EOF
     run "${WORK}/scripts/scan-pii.sh"
     [ "${status}" -eq 0 ]
 }
+
+# #5439: a malformed PCRE2 pattern must fail the scanner loudly rather than
+# being silently treated as "zero matches" for that pattern while everything
+# else in the tree still gets checked and CI reports green.
+@test "invalid PCRE2 pattern fails the scanner instead of being silently skipped" {
+    echo '[unclosed' >> "${WORK}/.github/pii-patterns.txt"
+    echo "nothing sensitive here" > "${WORK}/plain.txt"
+    run "${WORK}/scripts/scan-pii.sh"
+    [ "${status}" -ne 0 ]
+    [[ "${output}" == *"invalid PCRE2 pattern"* ]]
+    [[ "${output}" != *"scan-pii: clean"* ]]
+}
+
+# The prior implementation piped ripgrep through `2>/dev/null || true`,
+# which discarded the real exit code entirely — this asserts a genuinely
+# malformed pattern is caught even when it is the only content in the file
+# (no valid patterns to mask the missing validation step behind).
+@test "sole invalid pattern in the file is still caught, not swallowed" {
+    printf '(unterminated group\n' > "${WORK}/.github/pii-patterns.txt"
+    echo "nothing sensitive here" > "${WORK}/plain.txt"
+    run "${WORK}/scripts/scan-pii.sh"
+    [ "${status}" -ne 0 ]
+    [[ "${output}" != *"scan-pii: clean"* ]]
+}

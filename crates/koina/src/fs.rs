@@ -2,6 +2,58 @@
 
 use std::path::{Path, PathBuf};
 
+/// Reject a config-supplied path before it is joined onto a root directory.
+///
+/// Rejects an empty path, an absolute path, and any path containing a
+/// non-plain component (`..`, `.`, or a root/prefix). This is the pre-join
+/// half of path containment: `Path::join` silently discards the base when
+/// its argument is itself absolute (`root.join("/etc")` == `/etc`), so a
+/// config value meant to name a subdirectory of `root` must be checked
+/// *before* joining — by the time an escape reaches
+/// [`validate_within_root`], `fs::create_dir_all` may already have run
+/// against the escaped path. Requires no filesystem access, so it is safe
+/// to call before `root` exists or is even known.
+///
+/// Pair with [`validate_within_root`] once the joined path exists, to also
+/// catch a symlink placed inside `root` that resolves back out of it —
+/// something a string-only check cannot see.
+///
+/// # Errors
+///
+/// Returns [`std::io::Error`] (`InvalidInput`) if `path` is empty,
+/// absolute, or contains any component other than a plain directory/file
+/// name (rejects `..`, `.`, and root/prefix components alike).
+pub fn reject_path_override(path: &str) -> std::io::Result<()> {
+    if path.trim().is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "path must not be empty",
+        ));
+    }
+
+    let p = Path::new(path);
+    if p.is_absolute() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("path must be relative, got absolute path: {path}"),
+        ));
+    }
+
+    for component in p.components() {
+        if !matches!(component, std::path::Component::Normal(_)) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!(
+                    "path contains a disallowed component ({component:?}); only plain \
+                     directory/file names are allowed: {path}"
+                ),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
 /// Validate that `path` resolves within `root` after canonicalization.
 ///
 /// Follows the security standard's path validation sequence:
@@ -108,6 +160,59 @@ pub fn write_restricted(path: &Path, content: &[u8]) -> std::io::Result<()> {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reject_path_override_accepts_plain_relative_path() {
+        assert!(reject_path_override("data/training").is_ok());
+    }
+
+    #[test]
+    fn reject_path_override_rejects_empty_path() {
+        let err = reject_path_override("").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn reject_path_override_rejects_blank_path() {
+        let err = reject_path_override("   ").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn reject_path_override_rejects_absolute_path() {
+        let err = reject_path_override("/etc/passwd").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn reject_path_override_rejects_dotdot_traversal() {
+        let err = reject_path_override("data/../../etc").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn reject_path_override_rejects_dotdot_prefix() {
+        let err = reject_path_override("../escape").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn reject_path_override_rejects_leading_curdir_component() {
+        // WHY leading, not "data/./training": `Path::components()` silently
+        // normalizes a mid-path `.` away (it never yields `CurDir` there),
+        // so there is nothing to reject — `data/./training` and
+        // `data/training` name the same location. A *leading* `./` does
+        // surface as an explicit `Component::CurDir`.
+        let err = reject_path_override("./data/training").unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn reject_path_override_accepts_mid_path_dot_as_equivalent_to_normalized() {
+        // `components()` treats "data/./training" identically to
+        // "data/training" — see the WHY above.
+        assert!(reject_path_override("data/./training").is_ok());
+    }
 
     #[test]
     fn validate_within_root_accepts_child_path() {

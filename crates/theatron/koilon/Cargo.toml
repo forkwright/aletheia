@@ -53,6 +53,7 @@ dirs = "6"
 # Bearer-token secret storage: OS keyring, AES-256-GCM encrypted fallback (#5321)
 aes-gcm = { workspace = true }
 keyring = "3"
+zeroize = { workspace = true }
 
 # Logging (file-based, not stdout)
 tracing = { workspace = true }

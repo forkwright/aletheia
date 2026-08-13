@@ -229,9 +229,10 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "jwt" => validate_jwt(value, &mut errors),
         "providers" => validate_providers(value, &mut errors),
         "tools" => validate_tools(value, &mut errors),
+        "training" => validate_training(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
         "packs" | "pricing" | "sandbox" | "logging" | "observability" | "mcp" | "localProvider"
-        | "training" | "anthropic" | "promptAudit" | "dispatch" | "workspace" => {}
+        | "anthropic" | "promptAudit" | "dispatch" | "workspace" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 
@@ -705,6 +706,27 @@ fn validate_data(value: &Value, errors: &mut Vec<String>) {
     if let Some(retention) = value.get("retention") {
         check_positive_u32(retention, "sessionMaxAgeDays", errors);
         check_positive_u32(retention, "orphanMessageMaxAgeDays", errors);
+    }
+}
+
+// WHY(#5385): `training.path` is documented as relative to the instance
+// root but this validator passed it through unchecked. `taxis::loader`
+// already rejects an escaping path at the TOML-cascade load (#6648), but
+// `pylon::handlers::config::update_section` (`PUT /api/v1/config/training`)
+// validates an incoming JSON body through this function directly and never
+// calls the loader — that HTTP path had no containment check at all until
+// this fix. The DPO writer (`nous::actor`) joins this same field onto the
+// instance root independently of the training-capture writer, so there is
+// no separate "DPO path" to validate here — one field, checked once. This
+// is the structural (no-filesystem-access) half of containment; the writer
+// (`nous::training::TrainingCapture::new`) re-checks after creation via
+// `koina::fs::validate_within_root`, which also catches a symlink escape
+// this string-only check cannot see.
+fn validate_training(value: &Value, errors: &mut Vec<String>) {
+    if let Some(path) = value.get("path").and_then(Value::as_str)
+        && let Err(err) = koina::fs::reject_path_override(path)
+    {
+        errors.push(format!("training.path: {err}"));
     }
 }
 

@@ -3,13 +3,23 @@
 //! Tokens are written to the OS keyring first. If that backend is unavailable,
 //! the desktop falls back to AES-256-GCM encrypted files under the desktop
 //! config directory. TOML settings store only stable non-secret references.
+//!
+//! NOTE: the fallback AES key and the decrypted token are held in
+//! [`zeroize::Zeroizing`] / [`koina::secret::SecretString`], both of which
+//! wipe their backing buffer on drop. This narrows, but does not close, the
+//! residual-memory window — a buffer that was copied or reallocated before
+//! wrapping (e.g. an intermediate `Vec` from a resize) leaves copies the
+//! wrapper never touches, and the OS may still have paged either buffer to
+//! swap before it was wiped.
 
 use std::path::{Path, PathBuf};
 
 use aes_gcm::aead::generic_array::GenericArray;
 use aes_gcm::aead::{Aead as _, AeadCore as _, OsRng};
 use aes_gcm::{Aes256Gcm, KeyInit as _};
+use koina::secret::SecretString;
 use snafu::{ResultExt as _, Snafu};
+use zeroize::{Zeroize as _, Zeroizing};
 
 /// Errors from desktop secret storage.
 #[derive(Debug, Snafu)]
@@ -103,9 +113,12 @@ pub(crate) fn store_token(
 ///
 /// Returns an error if encrypted fallback data exists but cannot be read or
 /// decrypted.
-pub(crate) fn load_token(base: &Path, token_ref: &str) -> Result<Option<String>, SecretStoreError> {
+pub(crate) fn load_token(
+    base: &Path,
+    token_ref: &str,
+) -> Result<Option<SecretString>, SecretStoreError> {
     match try_load_keyring(token_ref) {
-        KeyringLoad::Found(token) => return Ok(Some(token)),
+        KeyringLoad::Found(token) => return Ok(Some(SecretString::from(token))),
         KeyringLoad::Missing => {}
         KeyringLoad::Unavailable => {
             tracing::debug!(
@@ -231,7 +244,7 @@ fn write_fallback(base: &Path, token_ref: &str, token: &str) -> Result<(), Secre
     write_secure_file(&token_path, payload.as_bytes())
 }
 
-fn read_fallback(base: &Path, token_ref: &str) -> Result<Option<String>, SecretStoreError> {
+fn read_fallback(base: &Path, token_ref: &str) -> Result<Option<SecretString>, SecretStoreError> {
     let token_path = fallback_file(base, token_ref);
     if !token_path.exists() {
         return Ok(None);
@@ -253,7 +266,7 @@ fn read_fallback(base: &Path, token_ref: &str) -> Result<Option<String>, SecretS
     })?;
     String::from_utf8(plaintext)
         .context(Utf8Snafu { path: token_path })
-        .map(Some)
+        .map(|token| Some(SecretString::from(token)))
 }
 
 fn delete_fallback(base: &Path, token_ref: &str) -> Result<(), SecretStoreError> {
@@ -270,25 +283,28 @@ fn delete_fallback(base: &Path, token_ref: &str) -> Result<(), SecretStoreError>
     Ok(())
 }
 
-fn load_or_create_key(path: &Path) -> Result<[u8; KEY_LEN], SecretStoreError> {
+fn load_or_create_key(path: &Path) -> Result<Zeroizing<[u8; KEY_LEN]>, SecretStoreError> {
     match read_key(path) {
         Ok(key) => Ok(key),
         Err(SecretStoreError::ReadFile { source, .. })
             if source.kind() == std::io::ErrorKind::NotFound =>
         {
             let key = generate_key();
-            write_secure_file(path, &key)?;
+            write_secure_file(path, key.as_slice())?;
             Ok(key)
         }
         Err(err) => Err(err),
     }
 }
 
-fn read_key(path: &Path) -> Result<[u8; KEY_LEN], SecretStoreError> {
-    let bytes = std::fs::read(path).context(ReadFileSnafu { path })?;
-    bytes
-        .try_into()
-        .map_err(|_bytes: Vec<u8>| SecretStoreError::InvalidEncryptedSecret {
+fn read_key(path: &Path) -> Result<Zeroizing<[u8; KEY_LEN]>, SecretStoreError> {
+    let mut bytes = std::fs::read(path).context(ReadFileSnafu { path })?;
+    let key: Result<[u8; KEY_LEN], _> = bytes.as_slice().try_into();
+    // WARNING: zeroize the read buffer regardless of outcome — it held a
+    // copy of the key even on the length-check failure path below.
+    bytes.zeroize();
+    key.map(Zeroizing::new)
+        .map_err(|_| SecretStoreError::InvalidEncryptedSecret {
             path: path.to_path_buf(),
             message: "encryption key file has wrong length",
         })
@@ -319,10 +335,10 @@ fn write_secure_file(path: &Path, bytes: &[u8]) -> Result<(), SecretStoreError> 
     Ok(())
 }
 
-fn generate_key() -> [u8; KEY_LEN] {
+fn generate_key() -> Zeroizing<[u8; KEY_LEN]> {
     let mut key = [0u8; KEY_LEN];
     aes_gcm::aead::rand_core::RngCore::fill_bytes(&mut OsRng, &mut key);
-    key
+    Zeroizing::new(key)
 }
 
 fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<String> {
@@ -374,10 +390,41 @@ mod tests {
         store_token(base, token_ref, token).unwrap();
         let restored = load_token(base, token_ref).unwrap();
 
-        assert_eq!(restored.as_deref(), Some(token));
+        assert_eq!(
+            restored.as_ref().map(SecretString::expose_secret),
+            Some(token)
+        );
         let raw = std::fs::read_to_string(fallback_file(base, token_ref)).unwrap();
         assert!(!raw.contains(token));
         assert!(raw.starts_with(FALLBACK_SENTINEL));
+    }
+
+    /// `generate_key`/`read_key`/`load_or_create_key` are typed to return
+    /// `Zeroizing<[u8; KEY_LEN]>` — this test would fail to compile if that
+    /// regressed to a bare array. We cannot safely inspect memory after
+    /// drop (that's UB), so — matching `koina::secret::SecretString`'s own
+    /// test idiom — the runtime half proves the delegated `zeroize()` call
+    /// (exactly what `Zeroizing::drop` invokes) actually clears the bytes.
+    #[test]
+    fn fallback_key_is_wrapped_for_zeroize_on_drop() {
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("test.key");
+
+        let key: Zeroizing<[u8; KEY_LEN]> = load_or_create_key(&key_path).unwrap();
+        assert!(
+            key.iter().any(|&b| b != 0),
+            "precondition: generated key is non-zero"
+        );
+
+        let mut copy = *key;
+        copy.zeroize();
+        assert!(
+            copy.iter().all(|&b| b == 0),
+            "zeroize should clear key bytes"
+        );
+
+        let reread: Zeroizing<[u8; KEY_LEN]> = read_key(&key_path).unwrap();
+        assert_eq!(*reread, *key, "read_key must round-trip the stored key");
     }
 
     /// The secret file is owner-only and its directory owner-only-traversable,
