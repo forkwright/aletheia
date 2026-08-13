@@ -512,6 +512,7 @@ impl TrainingManifest {
 /// at an authorship gate: if the user message is classified as non-user-authored
 /// with confidence >= the configured threshold, the turn is rejected and logged
 /// rather than written to training storage.
+#[derive(Debug)]
 pub struct TrainingCapture {
     /// Training data directory.
     dir: PathBuf,

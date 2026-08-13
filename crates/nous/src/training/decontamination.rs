@@ -74,6 +74,7 @@ impl Verdict {
 }
 
 /// Screens candidate corpus rows against the configured authorship policy.
+#[derive(Debug)]
 pub(crate) struct DecontaminationGate {
     /// Classifier instance, `None` when the policy does not screen.
     classifier: Option<Arc<Classifier>>,
