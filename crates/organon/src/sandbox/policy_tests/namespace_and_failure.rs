@@ -62,7 +62,7 @@ fn enforcing_fails_closed_when_landlock_unavailable() {
 /// with full network isolation (safe) but under a policy that reported
 /// itself as an honored "allowlist" rather than refusing to start. This
 /// pins the fail-closed alternative: the spawn itself is refused, and CI
-/// runs on x86_64/aarch64 so this assertion does not need the Landlock-style
+/// runs on `x86_64`/`aarch64` so this assertion does not need the Landlock-style
 /// probe-and-branch (seccomp support is unconditional on those arches).
 #[cfg(target_os = "linux")]
 #[test]
