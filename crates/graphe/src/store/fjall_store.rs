@@ -503,7 +503,9 @@ pub struct SessionStore {
     /// Shared write mutex — see [`koina::fjall::FjallDb::write_lock`].
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
-    _temp_dir: Option<tempfile::TempDir>,
+    /// Read (not just held) by the `Debug` impl below, so it does not carry
+    /// the leading underscore that would mark it as write-only.
+    temp_dir: Option<tempfile::TempDir>,
     /// Approximate session row counts by lifecycle status, maintained by the
     /// create, status-change, delete and import paths.
     ///
@@ -923,7 +925,7 @@ impl SessionStore {
             db: Arc::new(fdb.db),
             path,
             write_lock: fdb.write_lock,
-            _temp_dir: fdb._temp_dir,
+            temp_dir: fdb._temp_dir,
             session_counts,
         })
     }
@@ -4067,6 +4069,56 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Insert a bundle's messages, usage records, and notes into an existing
+    /// write transaction, without committing.
+    ///
+    /// Split out of [`Self::import_session_bundle`] to keep that function
+    /// under clippy's line-count ceiling. These three loops carry no
+    /// bundle-level policy of their own — unlike the working-state write,
+    /// which stays inline in the caller (see the `SessionPrivate` hardcoding
+    /// note there, #5032).
+    fn import_bundle_children_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        messages_part: &fjall::SingleWriterTxKeyspace,
+        usage_part: &fjall::SingleWriterTxKeyspace,
+        notes_part: &fjall::SingleWriterTxKeyspace,
+        counters_part: &fjall::SingleWriterTxKeyspace,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+        bundle: &ImportSessionBundle<'_>,
+    ) -> Result<()> {
+        for msg in bundle.messages {
+            Self::insert_message_raw_in_tx(tx, messages_part, sessions_part, counters_part, msg)?;
+        }
+
+        for usage in bundle.usage_records {
+            Self::record_usage_in_tx(tx, usage_part, sessions_part, usage)?;
+        }
+
+        for note in bundle.notes {
+            Self::put_note_in_tx(
+                tx,
+                NoteTxParts {
+                    notes: notes_part,
+                    counters: counters_part,
+                    sessions: sessions_part,
+                },
+                PutNoteSpec {
+                    session_id: bundle.session.id.as_str(),
+                    nous_id: bundle.session.nous_id.as_str(),
+                    category: note.category,
+                    content: note.content,
+                    opts: PutNoteOpts {
+                        created_at: Some(note.created_at),
+                        provided_id: None,
+                        validate_category: true,
+                    },
+                },
+            )?;
+        }
+
+        Ok(())
+    }
+
     /// Import one session and every child record it carries — messages,
     /// usage, notes, and working state — as a single fjall transaction.
     ///
@@ -4125,41 +4177,15 @@ impl SessionStore {
             existing_key_owner.as_deref(),
         )?;
 
-        for msg in bundle.messages {
-            Self::insert_message_raw_in_tx(
-                &mut tx,
-                &messages_part,
-                &sessions_part,
-                &counters_part,
-                msg,
-            )?;
-        }
-
-        for usage in bundle.usage_records {
-            Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, usage)?;
-        }
-
-        for note in bundle.notes {
-            Self::put_note_in_tx(
-                &mut tx,
-                NoteTxParts {
-                    notes: &notes_part,
-                    counters: &counters_part,
-                    sessions: &sessions_part,
-                },
-                PutNoteSpec {
-                    session_id: bundle.session.id.as_str(),
-                    nous_id: bundle.session.nous_id.as_str(),
-                    category: note.category,
-                    content: note.content,
-                    opts: PutNoteOpts {
-                        created_at: Some(note.created_at),
-                        provided_id: None,
-                        validate_category: true,
-                    },
-                },
-            )?;
-        }
+        Self::import_bundle_children_in_tx(
+            &mut tx,
+            &messages_part,
+            &usage_part,
+            &notes_part,
+            &counters_part,
+            &sessions_part,
+            bundle,
+        )?;
 
         // WHY(#5032): a bundle's working state is, by definition, one
         // session's `ws:` scratch row — never a caller-chosen classification
@@ -4225,14 +4251,15 @@ impl SessionStore {
 // WHY: `fjall::TxDatabase` (aliased `SingleWriterTxDatabase`) does not
 // implement `Debug`, so `#[derive(Debug)]` on `SessionStore` cannot compile.
 // Report the fields that are actually useful for diagnostics and omit the
-// db handle and write lock rather than deriving.
+// db handle and write lock rather than deriving — `finish_non_exhaustive`
+// marks that omission as deliberate instead of an accidental gap.
 impl std::fmt::Debug for SessionStore {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SessionStore")
             .field("path", &self.path)
-            .field("is_temp", &self._temp_dir.is_some())
+            .field("is_temp", &self.temp_dir.is_some())
             .field("session_counts", &self.session_counts)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
