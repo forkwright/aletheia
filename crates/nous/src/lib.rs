@@ -27,14 +27,24 @@ pub mod config;
 /// Inter-agent messaging: fire-and-forget, request-response, and delivery audit.
 pub mod cross;
 /// Graceful degradation contracts when the LLM provider is unavailable.
-// WHY(#5576): `DegradedMode` is re-exported at the crate's public `pipeline`
-// contract (`pipeline::DegradedMode`); the module path itself has zero
-// cross-crate consumers.
-pub(crate) mod degraded_mode;
+// WHY(#6750): `DegradedMode` is re-exported at the crate's public `pipeline`
+// contract (`pipeline::DegradedMode`), but `DegradedAttemptContext::unknown`,
+// `is_storage_failure`, and `build_degraded_response` are not re-exported and
+// have no in-crate callers outside their own `#[cfg(test)]` blocks — dead
+// code under the plain `cargo check` (lib) pass when the module itself is
+// `pub(crate)`. Stays `pub` until wired to a real caller or removed.
+pub mod degraded_mode;
 /// Distillation trigger logic and orchestration.
-pub(crate) mod distillation;
+// WHY(#6750): same dead-code trap as `competence` above —
+// `DistillTriggerConfig::from_behavior` and `maybe_distill` have zero real
+// callers anywhere in the workspace. Stays `pub`.
+pub mod distillation;
 /// Quality drift detection: rolling-window metrics with z-score deviation alerts.
-pub(crate) mod drift;
+// WHY(#6750): same dead-code trap as `competence` above —
+// `DriftConfig::from_behavior` has zero real callers, and
+// `DriftDetector::turn_count`/`reset` are exercised only by the module's own
+// `#[cfg(test)]` block. Stays `pub`.
+pub mod drift;
 /// Nous-specific error types.
 pub mod error;
 /// LLM execution stage: sends the assembled prompt to the provider.
@@ -63,13 +73,22 @@ pub mod pipeline;
 /// Semantic recall stage: vector search over knowledge memories.
 pub mod recall;
 /// Task-specific _llm/ loading recipes for multi-resolution context.
-pub(crate) mod recipes;
+// WHY(#6750): same dead-code trap as `competence` above — `Recipe`'s
+// `avg_reduction_pct`/`success_rate` and most of `RecipeRegistry`'s API
+// (`all`, `len`, `is_empty`, `select_for_task`, `select`, `ordered_recipes`,
+// the `recipe_order` field) are exercised only by the module's own
+// `#[cfg(test)]` block. Stays `pub`.
+pub mod recipes;
 /// Parallel research orchestrator: spawns domain researchers via the sub-agent system.
 // WHY(#6750): same dead-code trap as `competence` above — zero real callers,
 // only exercised by its own `#[cfg(test)]` block. Stays `pub`.
 pub mod research;
 /// Specialized role templates for ephemeral sub-agents.
-pub(crate) mod roles;
+// WHY(#6750): same dead-code trap as `competence` above —
+// `ToolPolicy::Unrestricted`, `RoleTemplate::role`, and most of
+// `ContractRegistry`'s API (`from_toml`, `all`, `len`, `is_empty`) are
+// exercised only by their own `#[cfg(test)]` blocks. Stays `pub`.
+pub mod roles;
 /// Self-auditing loop: prosoche checks, audit triggers, and knowledge graph storage.
 pub mod self_audit;
 /// Session state tracking within a nous actor.
@@ -92,7 +111,13 @@ pub mod tasks;
 /// is a pipeline concern, not a memory operation.
 pub mod training;
 /// Self-tuning feedback loop: evidence-based parameter change proposals.
-pub(crate) mod tuning;
+// WHY(#6750): same dead-code trap as `competence` above — most of this
+// module's diagnostic fields (`MetricSample::timestamp`,
+// `ProposalEvidence::metric_before`/`metric_after`, the `ProposalOutcome`
+// variant fields) and its `signals` submodule (`OutcomeSignal` and its
+// scoring functions) are set or defined but never read outside the module's
+// own `#[cfg(test)]` blocks. Stays `pub`.
+pub mod tuning;
 /// Durable turn-attempt lifecycle records and finalize idempotency.
 pub(crate) mod turn_record;
 /// Uncertainty quantification: calibration tracking for agent confidence predictions.
