@@ -25,6 +25,20 @@ struct ServerSnap {
     is_active: bool,
 }
 
+/// One server's last health probe (#5315).
+///
+/// WHY a named struct rather than the tuple this replaces: the result carries
+/// the URL it probed so a stale entry is attributable ("Unreachable — <url>")
+/// instead of an anonymous failure, plus the non-healthy subsystem names. As a
+/// `(ServerHealth, String, Vec<String>)` that meaning lived only in a comment,
+/// and the nesting tripped `clippy::type_complexity`.
+#[derive(Clone)]
+struct HealthProbe {
+    health: ServerHealth,
+    url: String,
+    failing: Vec<String>,
+}
+
 // ── Async helpers ──
 
 /// Probe a saved server's backend subsystem health (#5315).
@@ -70,11 +84,7 @@ pub(crate) fn ServersPanel() -> Element {
     let appearance = use_context::<Signal<crate::state::settings::AppearanceSettings>>();
     let keybindings = use_context::<Signal<crate::state::settings::KeybindingStore>>();
 
-    // WHY: Health results carry the URL they probed so a stale result is
-    // attributable ("Unreachable — <url>") instead of an anonymous failure,
-    // plus the names of any non-healthy subsystems (#5315).
-    let mut health_map: Signal<HashMap<String, (ServerHealth, String, Vec<String>)>> =
-        use_signal(HashMap::new);
+    let mut health_map: Signal<HashMap<String, HealthProbe>> = use_signal(HashMap::new);
     let mut testing_ids: Signal<HashSet<String>> = use_signal(HashSet::new);
     let mut show_add = use_signal(|| false);
 
@@ -148,7 +158,7 @@ pub(crate) fn ServersPanel() -> Element {
                     let (health, tested_url, failing) = health_map
                         .read()
                         .get(&snap.id)
-                        .map(|(h, u, f)| (*h, Some(u.clone()), f.clone()))
+                        .map(|p| (p.health, Some(p.url.clone()), p.failing.clone()))
                         .unwrap_or((ServerHealth::Unchecked, None, Vec::new()));
                     let is_testing = testing_ids.read().contains(&snap.id);
                     // Offer the live URL only on the active entry; other saved
@@ -181,7 +191,14 @@ pub(crate) fn ServersPanel() -> Element {
                                 spawn(async move {
                                     let (health, failing) = probe_health(&url, token.as_deref()).await;
                                     testing_ids.write().remove(&id);
-                                    health_map.write().insert(id, (health, url, failing));
+                                    health_map.write().insert(
+                                        id,
+                                        HealthProbe {
+                                            health,
+                                            url,
+                                            failing,
+                                        },
+                                    );
                                 });
                             },
                             on_update_url: move |_| {
