@@ -380,6 +380,7 @@ bind = "localhost"
         // explicit mode tests override these fields.
         metrics_mode: taxis::config::MetricsMode::Public,
         metrics_detailed: true,
+        daemon_task_states: Arc::new(Vec::new()),
     });
 
     (state, dir)

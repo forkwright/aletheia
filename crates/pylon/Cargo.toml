@@ -81,6 +81,10 @@ mneme = { path = "../mneme" }
 nous = { path = "../nous" }
 symbolon = { path = "../symbolon" }
 dianoia = { path = "../dianoia" }
+# WHY(#5142): daemon task-state store handles, cloned by the runtime
+# assembler into AppState/HealthState so /api/v1/system/status can read
+# real daemon task state instead of reporting it as permanently unknown.
+oikonomos = { path = "../daemon" }
 
 [dev-dependencies]
 hermeneus = { path = "../hermeneus", features = ["test-utils"] }

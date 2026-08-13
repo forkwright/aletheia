@@ -7004,6 +7004,7 @@ dependencies = [
  "mime_guess",
  "mneme",
  "nous",
+ "oikonomos",
  "opener",
  "organon",
  "prometheus-client",

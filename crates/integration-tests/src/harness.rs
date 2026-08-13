@@ -313,6 +313,7 @@ impl TestHarness {
             approval_registry: Arc::new(pylon::approval_registry::ApprovalRegistry::new()),
             metrics_mode: taxis::config::MetricsMode::Public,
             metrics_detailed: true,
+            daemon_task_states: Arc::new(Vec::new()),
         });
 
         Self {

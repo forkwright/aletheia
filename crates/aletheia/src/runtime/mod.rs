@@ -779,6 +779,12 @@ impl RuntimeBuilder {
                 session_store: Arc::clone(&session_store),
             }));
         let task_state_root = self.oikos.data().join("daemon-task-state");
+        // WHY(#5142): cloned handles (not reopened stores — a second open on
+        // the same fjall path collides with the runner's own lock) so
+        // AppState/HealthState can read real daemon task state instead of
+        // reporting it as permanently unknown.
+        let mut daemon_task_state_handles: Vec<(String, oikonomos::state::TaskStateStore)> =
+            Vec::new();
 
         // WHY(#5128): spawned unconditionally regardless of `self.daemons` --
         // disk-space monitoring backs write guards (config persistence,
@@ -800,6 +806,7 @@ impl RuntimeBuilder {
             let system_state_store =
                 oikonomos::state::TaskStateStore::open(&task_state_root.join("system"))
                     .with_whatever_context(|_| "failed to open system daemon task-state store")?;
+            daemon_task_state_handles.push(("system".to_owned(), system_state_store.clone()));
             let mut daemon_runner = TaskRunner::new("system", daemon_token)
                 .with_output_mode(runner_output_mode)
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
@@ -943,6 +950,16 @@ impl RuntimeBuilder {
             )));
             for agent_def in &self.config.agents.list {
                 let agent_token = shutdown_token.child_token();
+                let agent_state_store = oikonomos::state::TaskStateStore::open(
+                    &task_state_root.join(task_state_component(&agent_def.id)),
+                )
+                .with_whatever_context(|_| {
+                    format!(
+                        "failed to open daemon task-state store for {}",
+                        agent_def.id
+                    )
+                })?;
+                daemon_task_state_handles.push((agent_def.id.clone(), agent_state_store.clone()));
                 let mut runner = TaskRunner::with_bridge(
                     agent_def.id.clone(),
                     agent_token,
@@ -951,17 +968,7 @@ impl RuntimeBuilder {
                 .with_output_mode(runner_output_mode)
                 .with_daemon_behavior(self.config.daemon_behavior.clone())
                 .with_watchdog_settings(&self.config.maintenance.watchdog)
-                .with_state_store(
-                    oikonomos::state::TaskStateStore::open(
-                        &task_state_root.join(task_state_component(&agent_def.id)),
-                    )
-                    .with_whatever_context(|_| {
-                        format!(
-                            "failed to open daemon task-state store for {}",
-                            agent_def.id
-                        )
-                    })?,
-                )
+                .with_state_store(agent_state_store)
                 .with_maintenance(maintenance_config.clone());
                 let prosoche = &self.config.maintenance.prosoche;
                 if prosoche.mode.runs_daemon_tasks() {
@@ -1106,6 +1113,7 @@ impl RuntimeBuilder {
             // without an operator opt-in.
             metrics_mode: self.config.gateway.metrics.mode,
             metrics_detailed: self.config.gateway.metrics.detailed,
+            daemon_task_states: Arc::new(daemon_task_state_handles),
         });
 
         Ok(Runtime {
