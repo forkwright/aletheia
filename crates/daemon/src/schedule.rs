@@ -472,17 +472,17 @@ mod tests {
     #[test]
     fn schedule_partial_eq() {
         assert_eq!(
-            Schedule::Interval(Duration::from_secs(60)),
-            Schedule::Interval(Duration::from_secs(60))
+            Schedule::Interval(Duration::from_mins(1)),
+            Schedule::Interval(Duration::from_mins(1))
         );
         assert_ne!(
-            Schedule::Interval(Duration::from_secs(60)),
-            Schedule::Interval(Duration::from_secs(120)),
+            Schedule::Interval(Duration::from_mins(1)),
+            Schedule::Interval(Duration::from_mins(2)),
             "reconciliation diffs schedules by value; differing intervals must compare unequal"
         );
         assert_ne!(
             Schedule::Cron("0 0 3 * * *".to_owned()),
-            Schedule::Interval(Duration::from_secs(60)),
+            Schedule::Interval(Duration::from_mins(1)),
             "differing variants must compare unequal"
         );
     }
