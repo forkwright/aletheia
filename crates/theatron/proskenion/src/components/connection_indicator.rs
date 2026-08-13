@@ -53,11 +53,15 @@ fn sse_props(state: &SseConnectionState) -> (IndicatorTone, String, String) {
 /// Map backend subsystem health onto skeue's 3-tone palette.
 ///
 /// The tone is derived from [`BackendHealthState::severity`] (SSOT for
-/// backend ordering) rather than re-deriving it here: `Unauthorized` and
-/// `Unreachable` both bucket into `Failed`/`Degraded`-tone (skeue has no
-/// fourth or fifth color); they stay distinguishable by label/tooltip text
-/// and, load-bearing, by the underlying [`BackendHealthState`] type --
-/// callers can never conflate them in code, only in this 3-color rendering.
+/// backend ordering) rather than re-deriving it here.
+///
+/// WHY: `Unauthorized` buckets into `Degraded`-tone alongside true
+/// `Degraded`, not `Failed`-tone alongside `Unreachable` -- mirroring
+/// [`crate::state::settings::ServerHealth::color`]'s "reachable-and-fixable
+/// stays warning, not error" split (#5315). `Unauthorized` and `Unreachable`
+/// stay distinguishable by label/tooltip text and, load-bearing, by the
+/// underlying [`BackendHealthState`] type -- callers can never conflate them
+/// in code, only in this 3-color rendering.
 fn backend_props(state: &BackendHealthState) -> (IndicatorTone, String, String) {
     let tone = match state.severity() {
         0 => IndicatorTone::Healthy,
@@ -140,12 +144,12 @@ mod tests {
     }
 
     #[test]
-    fn backend_unauthorized_and_unreachable_share_tone_but_differ_in_text() {
+    fn backend_unauthorized_and_unreachable_differ_in_tone_and_text() {
         let (unauthorized_tone, unauthorized_label, _) =
             backend_props(&BackendHealthState::Unauthorized);
         let (unreachable_tone, unreachable_label, _) =
             backend_props(&BackendHealthState::Unreachable);
-        assert_eq!(unauthorized_tone, IndicatorTone::Failed);
+        assert_eq!(unauthorized_tone, IndicatorTone::Degraded);
         assert_eq!(unreachable_tone, IndicatorTone::Failed);
         assert_ne!(unauthorized_label, unreachable_label);
     }
@@ -197,7 +201,7 @@ mod tests {
         assert_eq!(tone, IndicatorTone::Degraded);
         assert!(label.contains("Reconnecting"));
         assert!(label.contains("embeddings"));
-        assert!(tooltip.contains("Reconnecting"));
+        assert!(tooltip.contains("Reconnection"));
         assert!(tooltip.contains("embeddings"));
     }
 
