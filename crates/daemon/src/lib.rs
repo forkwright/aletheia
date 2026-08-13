@@ -18,7 +18,7 @@ pub mod coordination;
 /// Periodic cron tasks: evolution, reflection, and graph cleanup.
 pub mod cron;
 /// Minimal jiff-native cron expression parser (replaces external `cron` + `chrono` crates).
-pub mod cron_expr;
+pub(crate) mod cron_expr;
 /// Error types for task execution, scheduling, and maintenance operations.
 pub mod error;
 /// Task action execution: commands, builtins, prompts, and knowledge maintenance.
@@ -33,7 +33,7 @@ pub mod metrics;
 /// that detect capability drift before external QA surfaces it.
 pub mod probe;
 /// Prosoche (directed attention) periodic check-in for calendar, tasks, and system health.
-pub mod prosoche;
+pub(crate) mod prosoche;
 /// Prosoche self-audit framework: five structured attention-quality checks + audit runner.
 ///
 /// Implements Phase 05 REQ-01 (check types) and REQ-02 (audit runner + persistence).

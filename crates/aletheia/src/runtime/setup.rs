@@ -79,19 +79,9 @@ fn concurrency_config_from_provider_behavior(
 pub(super) fn build_provider_registry(config: &AletheiaConfig, oikos: &Oikos) -> ProviderRegistry {
     let mut registry = ProviderRegistry::new();
 
-    let pricing: std::collections::HashMap<String, hermeneus::provider::ModelPricing> = config
-        .pricing
-        .iter()
-        .map(|(model, p)| {
-            (
-                model.clone(),
-                hermeneus::provider::ModelPricing {
-                    input_cost_per_mtok: p.input_cost_per_mtok,
-                    output_cost_per_mtok: p.output_cost_per_mtok,
-                },
-            )
-        })
-        .collect();
+    // WHY(#5583): `taxis::config::ModelPricing` and `hermeneus::provider::ModelPricing`
+    // are both aliases of `koina::models::ModelPrice`; no field-copy conversion needed.
+    let pricing = config.pricing.clone();
 
     let cred_source = config.credential.source.as_str();
     let credential_chain = if provider_plan_needs_credential_chain(config) {

@@ -70,7 +70,12 @@ pub enum TaskRole {
 }
 
 /// Per-model pricing rates for cost estimation.
+///
+/// WHY(#5583): `camelCase` wire format preserves operator-config compatibility
+/// for the `hermeneus`/`taxis` consumers that alias this type — neither had a
+/// `snake_case` wire consumer to break.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelPrice {
     /// Cost per million input tokens in USD.
     pub input_cost_per_mtok: f64,
