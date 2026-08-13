@@ -269,10 +269,7 @@ impl KnowledgeStore {
         // Admission + write must be atomic with the check itself: hold the
         // same lock `insert_fact` holds so a concurrent insert of the
         // replacement's identity cannot pass the gate and write independently.
-        let _guard = self.insert_lock.lock().unwrap_or_else(|e| {
-            tracing::warn!("insert_lock was poisoned, recovering");
-            e.into_inner()
-        });
+        let _guard = self.insert_lock.lock();
 
         let decision = self.admission_policy.should_admit(new_fact);
         if let crate::admission::AdmissionDecision::Reject(rejection) = decision {
