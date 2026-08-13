@@ -105,7 +105,7 @@ async fn add_agent_with_workspace(state: &Arc<DiaporeiaState>, id: &str, files: 
 
     let mut config = state.config.write().await;
     config.agents.list.push(NousDefinition {
-        id: id.to_owned(),
+        id: koina::id::NousId::new(id).expect("valid test id"),
         name: Some(id.to_owned()),
         ..NousDefinition::default()
     });

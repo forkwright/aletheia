@@ -2045,7 +2045,7 @@ fn validate_startup_rejects_agent_workspace_missing_soul() {
     let mut config = AletheiaConfig::default();
     config.agents.list.clear();
     config.agents.list.push(crate::config::NousDefinition {
-        id: "alice".to_owned(),
+        id: koina::id::NousId::new("alice").unwrap(),
         name: None,
         model: None,
         workspace: "nous/alice".to_owned(),

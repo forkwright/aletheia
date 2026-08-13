@@ -46,7 +46,11 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &SessionCreateArgs) -> 
 
     let config = load_config(&oikos).with_whatever_context(|_| "failed to load aletheia config")?;
 
-    let agent_exists = config.agents.list.iter().any(|a| a.id == args.nous_id);
+    let agent_exists = config
+        .agents
+        .list
+        .iter()
+        .any(|a| a.id.as_str() == args.nous_id);
     if !agent_exists {
         snafu::whatever!("nous agent '{}' not found in configuration", args.nous_id);
     }
