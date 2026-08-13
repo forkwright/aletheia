@@ -24,9 +24,15 @@
 pub(crate) const CLI_BINARY: &str = "claude";
 
 /// Agent SDK engine: OAuth-enabled, permission-aware dispatch backend.
-pub(crate) mod agent_sdk;
+// WHY(#6750): zero cross-crate consumers, but `AgentSdkEngine` has zero
+// in-crate callers too — invisible to the plain `cargo check` (lib) pass
+// `-D warnings` runs under. `pub(crate)` makes the module dead code there.
+// Stays `pub` until wired to a real caller or removed.
+pub mod agent_sdk;
 /// High-level dispatch backend trait for control plane integration.
-pub(crate) mod backend;
+// WHY(#6750): same dead-code trap as `agent_sdk` above — `DispatchBackend`
+// has zero real callers outside its own file. Stays `pub`.
+pub mod backend;
 /// Atomic budget tracking for dispatch runs.
 // WHY(#5576): `Budget`/`BudgetStatus` are re-exported at `types` (the
 // consumed cross-crate surface); the module path itself has zero external
@@ -46,13 +52,17 @@ pub mod engine;
 /// Error types for energeia operations.
 pub mod error;
 /// Friction capture: parse structured observations from PR bodies.
-pub(crate) mod friction;
+// WHY(#6750): same dead-code trap as `agent_sdk` above — `Observation`/
+// `parse_pr_body` have zero real callers. Stays `pub`.
+pub mod friction;
 /// Parallel-execution frontier derivation from a [`dag::PromptDag`].
 // WHY(#5576): `compute_frontier` is re-exported at `dag` (the consumed
 // cross-crate surface); the module path itself has zero external consumers.
 pub(crate) mod frontier;
 /// Hermeneus-based dispatch engine with prompt caching.
-pub(crate) mod hermeneus_engine;
+// WHY(#6750): same dead-code trap as `agent_sdk` above — `HermeneusEngine`
+// has zero real callers. Stays `pub`.
+pub mod hermeneus_engine;
 /// HTTP/SSE dispatch engine: subprocess-based `DispatchEngine` and mock.
 pub mod http;
 /// Metrics and reporting: health signals, cost reports, status dashboard, Prometheus.
@@ -62,7 +72,10 @@ pub mod orchestrator;
 /// 4-stage dispatch pipeline: preparation → execution → post-processing.
 pub(crate) mod pipeline;
 /// Predictive budget allocation from prompt characteristics.
-pub(crate) mod predictive_budget;
+// WHY(#6750): same dead-code trap as `agent_sdk` above —
+// `classify_with_detail`/`predict_budget` have zero real callers. Stays
+// `pub`.
+pub mod predictive_budget;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
 /// Prompt cache optimization: static prefix / dynamic suffix split.

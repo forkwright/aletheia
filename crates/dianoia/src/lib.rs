@@ -25,11 +25,17 @@ pub mod plan;
 /// Project types and lifecycle management: creation, phase tracking, and state transitions.
 pub mod project;
 /// State reconciler: keeps planning state consistent between database and filesystem.
-pub(crate) mod reconciler;
+// WHY(#6750): zero cross-crate consumers, but its only in-crate exerciser is
+// its own `#[cfg(test)] mod tests` — invisible to the plain `cargo check`
+// (lib) pass that `-D warnings` runs under. `pub(crate)` here makes every
+// item in the module dead code in that pass, same failure class as `gate`
+// above. Stays `pub` until reconciler/runtime are wired to a real caller or
+// removed (tracked in #6750).
+pub mod reconciler;
 /// Pattern-based stuck detection: repeated errors, same-args loops, alternating failures, escalating retries.
 pub mod research;
 /// Runtime surface for project planning orchestration.
-pub(crate) mod runtime;
+pub mod runtime;
 /// Project lifecycle state machine: valid transitions, pause/resume, and terminal states.
 pub mod state;
 /// Stuck detection: prevent blind retry loops via error-pattern hashing.

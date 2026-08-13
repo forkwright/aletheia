@@ -16,7 +16,12 @@ pub mod budget;
 /// Context compaction: microcompaction (per-turn clearing) and full compaction (summarization).
 pub(crate) mod compact;
 /// Per-agent per-domain competence tracking with rolling statistics and model escalation.
-pub(crate) mod competence;
+// WHY(#6750): zero cross-crate consumers, but `CompetenceTracker`'s only
+// in-crate exerciser is its own `#[cfg(test)] mod tests` — invisible to the
+// plain `cargo check` (lib) pass `-D warnings` runs under. `pub(crate)`
+// makes the whole module dead code in that pass. Stays `pub` until wired to
+// a real caller or removed.
+pub mod competence;
 /// Per-agent and per-pipeline configuration types.
 pub mod config;
 /// Inter-agent messaging: fire-and-forget, request-response, and delivery audit.
@@ -60,7 +65,9 @@ pub mod recall;
 /// Task-specific _llm/ loading recipes for multi-resolution context.
 pub(crate) mod recipes;
 /// Parallel research orchestrator: spawns domain researchers via the sub-agent system.
-pub(crate) mod research;
+// WHY(#6750): same dead-code trap as `competence` above — zero real callers,
+// only exercised by its own `#[cfg(test)]` block. Stays `pub`.
+pub mod research;
 /// Specialized role templates for ephemeral sub-agents.
 pub(crate) mod roles;
 /// Self-auditing loop: prosoche checks, audit triggers, and knowledge graph storage.
@@ -74,7 +81,9 @@ pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.
 pub mod stream;
 /// Task registry with progress streaming, cooperative cancellation, and GC.
-pub(crate) mod tasks;
+// WHY(#6750): same dead-code trap as `competence` above — `TaskRegistry` has
+// zero real callers anywhere in the workspace. Stays `pub`.
+pub mod tasks;
 /// Training data capture: append-only JSONL writer for conversation turns.
 ///
 /// Pipeline tap that observes the turn loop and writes qualifying turns
@@ -87,10 +96,18 @@ pub(crate) mod tuning;
 /// Durable turn-attempt lifecycle records and finalize idempotency.
 pub(crate) mod turn_record;
 /// Uncertainty quantification: calibration tracking for agent confidence predictions.
-pub(crate) mod uncertainty;
+// WHY(#6750): `CalibrationBin`/`OverconfidencePattern`/`CalibrationSummary`
+// are `pub` with zero real callers, only exercised by the module's own
+// `#[cfg(test)]` block — dead code under the plain `cargo check` (lib) pass
+// when the module itself is `pub(crate)`. Stays `pub`. `UncertaintyTracker`
+// is separately `pub(crate)` at the item level and unaffected by this line.
+pub mod uncertainty;
 /// User-facing error formatting for display in chat responses.
 pub mod user_error;
 /// Working-memory checkpoint persistence.
-pub(crate) mod working_memory;
+// WHY(#6750): same dead-code trap as `competence` above —
+// `FjallWorkingCheckpointStore` has zero real callers, only exercised by its
+// own test modules. Stays `pub`.
+pub mod working_memory;
 /// Working state management: task stack, focus context, wait state.
 pub(crate) mod working_state;

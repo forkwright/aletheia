@@ -73,6 +73,11 @@ pub mod types;
 ///
 /// Shared contract for providers that delegate LLM calls to a local CLI binary
 /// (e.g. `claude`, `codex`) which owns the OAuth credential handshake.
-// WHY(#5576): consumed only by the in-crate `cc`/`codex`/`kimi` provider
-// modules (each individually feature-gated); zero cross-crate consumers.
-pub(crate) mod seat_bridged;
+// WHY(#6750): consumed only by the in-crate `cc`/`codex` provider modules,
+// each behind a non-default feature (`cc-provider`/`codex-provider`). The
+// gate's `cargo check --features test-core` never enables them, so
+// `pub(crate)` leaves the trait with zero live implementors in that build
+// and fails `-D warnings` dead-code. Stays `pub` — zero cross-crate
+// consumers is still true, but visibility can't track a feature axis the
+// CI-exact check doesn't turn on.
+pub mod seat_bridged;
