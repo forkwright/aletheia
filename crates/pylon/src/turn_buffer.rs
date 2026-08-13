@@ -376,44 +376,67 @@ impl TurnBufferHandle {
         buf.push(event_type.to_owned(), data.to_owned())
     }
 
-    /// Mark the turn as completed if it is not already terminal.
-    pub(crate) async fn mark_completed(&self) {
+    /// Mark the turn as completed if it is not already terminal. Returns
+    /// `true` if this call performed the terminal transition, `false` if the
+    /// turn was already terminal (a race lost to another caller).
+    ///
+    /// WHY(#4557): the return value is the exactly-once signal domain-event
+    /// publishers gate on — `Completed`/`Failed`/`Aborted` share one
+    /// `terminal` CAS, so a turn that finishes successfully at the same
+    /// moment its client disconnects publishes `turn.complete` XOR
+    /// `turn.cancelled`, never both, without the publish call sites needing
+    /// their own coordination.
+    pub(crate) async fn mark_completed(&self) -> bool {
         if self
             .terminal
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
-            return;
+            return false;
         }
         let mut buf = self.inner.lock().await;
         buf.finish(TurnState::Completed);
+        true
     }
 
-    /// Mark the turn as failed if it is not already terminal.
-    pub(crate) async fn mark_failed(&self) {
+    /// Mark the turn as failed if it is not already terminal. Returns `true`
+    /// if this call performed the terminal transition, `false` if the turn
+    /// was already terminal.
+    ///
+    /// WHY(#4557): see `mark_completed` — same exactly-once contract for the
+    /// `turn.failed` publish site.
+    pub(crate) async fn mark_failed(&self) -> bool {
         if self
             .terminal
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
-            return;
+            return false;
         }
         let mut buf = self.inner.lock().await;
         buf.finish(TurnState::Failed);
+        true
     }
 
     /// Mark the turn as aborted with a client-visible reason if it is not
-    /// already terminal.
-    pub(crate) async fn mark_aborted(&self, reason: &str) {
+    /// already terminal. Returns `true` if this call performed the terminal
+    /// transition, `false` if the turn was already terminal.
+    ///
+    /// WHY(#4557): see `mark_completed` — same exactly-once contract for the
+    /// `turn.cancelled` publish site, which three independent call sites
+    /// (shutdown, cancellation/timeout, and the disconnect `Drop` guard) can
+    /// all reach for the same turn.
+    pub(crate) async fn mark_aborted(&self, reason: &str) -> bool {
         if self
             .terminal
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_err()
         {
-            return;
+            return false;
         }
         let mut buf = self.inner.lock().await;
         buf.abort(reason.to_owned());
+        true
     }
 
     /// Get events after a given sequence number, plus the current turn state.
@@ -524,6 +547,51 @@ mod tests {
 
         let (_, state) = handle.events_after(0).await;
         assert_eq!(state, TurnState::Completed);
+    }
+
+    #[tokio::test]
+    async fn mark_completed_returns_true_once_then_false() {
+        // WHY(#4557): the domain-event publish sites gate on this return
+        // value to publish exactly one terminal event per turn.
+        let registry = TurnBufferRegistry::new();
+        let buf = registry.get_or_create("ses-1", "turn-1").await;
+        let handle = TurnBufferHandle::new(buf);
+
+        assert!(
+            handle.mark_completed().await,
+            "first call must win the terminal transition"
+        );
+        assert!(
+            !handle.mark_completed().await,
+            "second call must lose — the turn is already terminal"
+        );
+    }
+
+    #[tokio::test]
+    async fn mark_completed_and_mark_aborted_race_is_exclusive() {
+        // WHY(#4557): models the real race between a turn completing
+        // successfully and the client disconnecting at the same moment
+        // (`AbortOnDrop`). Only one of the two terminal transitions may win,
+        // regardless of which method is called — the CAS is shared across
+        // all three terminal methods, not scoped per-method.
+        let registry = TurnBufferRegistry::new();
+        let buf = registry.get_or_create("ses-1", "turn-1").await;
+        let handle = TurnBufferHandle::new(buf);
+
+        assert!(handle.mark_completed().await);
+        assert!(
+            !handle
+                .mark_aborted(TURN_ABORT_REASON_CLIENT_DISCONNECT)
+                .await,
+            "a losing mark_aborted after a winning mark_completed must not also transition"
+        );
+
+        let (_, state) = handle.events_after(0).await;
+        assert_eq!(
+            state,
+            TurnState::Completed,
+            "the winning transition (Completed) must be the one retained"
+        );
     }
 
     #[tokio::test]
@@ -701,6 +769,37 @@ mod tests {
             TurnState::Aborted {
                 reason: TURN_ABORT_REASON_CLIENT_DISCONNECT.to_owned(),
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn mark_aborted_returns_true_once_then_false() {
+        // WHY(#4557): three independent call sites (shutdown, the
+        // cancellation/timeout error arm, and the disconnect `Drop` guard)
+        // can all reach `mark_aborted` for the same turn; only the first must
+        // publish `turn.cancelled`.
+        let registry = TurnBufferRegistry::new();
+        let buf = registry.get_or_create("ses-1", "turn-1").await;
+        let handle = TurnBufferHandle::new(buf);
+
+        assert!(
+            handle
+                .mark_aborted(TURN_ABORT_REASON_CLIENT_DISCONNECT)
+                .await,
+            "first call must win the terminal transition"
+        );
+        assert!(
+            !handle.mark_aborted(TURN_ABORT_REASON_SERVER_SHUTDOWN).await,
+            "second call must lose regardless of a different reason"
+        );
+
+        let (_, state) = handle.events_after(0).await;
+        assert_eq!(
+            state,
+            TurnState::Aborted {
+                reason: TURN_ABORT_REASON_CLIENT_DISCONNECT.to_owned(),
+            },
+            "the winning reason must be the one retained"
         );
     }
 

@@ -607,9 +607,35 @@ Persistent SSE subscription endpoint for reconnect-capable clients. Accepts an o
 ### `GET /api/v1/events/discovery`
 
 Returns a JSON manifest of available event types, their schemas, and current subscription state.
-Used by clients to enumerate supported SSE event kinds before subscribing.
+Used by clients to enumerate supported SSE event kinds before subscribing. The manifest is
+generated from `event_bus_dto::DISCOVERABLE_TOPICS`, the single source of truth for the topic
+list — it cannot drift from what pylon actually publishes.
 
 **Response `200 OK`** - JSON event-type manifest.
+
+#### Turn lifecycle topics
+
+Every turn (`POST /api/v1/sessions/{id}/messages` and `POST /api/v1/sessions/stream`) publishes
+`turn.start`, followed by exactly one of `turn.complete`, `turn.failed`, or `turn.cancelled` — never
+zero, never more than one. Every domain event on this bus (`fact.created`, `nous.lifecycle`,
+`credential.*`, and the turn lifecycle below) shares one envelope — `{id, topic, payload, at}`,
+delivered via `GET /api/v1/events/subscribe?topics=...` — and the four turn events additionally
+share a payload carrying `session_id`, `nous_id`, `turn_id`, `request_id`, `phase`, and `endpoint`
+(`send_message` or `stream_turn`, naming which handler admitted the turn).
+
+| Topic | `phase` | Additional payload | Fires when |
+|-------|---------|---------------------|------------|
+| `turn.start` | `start` | — | The turn passed every preflight check (session/nous resolution, validation, idempotency) and is about to execute. |
+| `turn.complete` | `success` | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `stop_reason`, `model`, `provider` | The turn produced a result — including a turn whose model called a tool that was itself denied or failed, as long as the model still reached a final response. |
+| `turn.failed` | `failed` | `error_class` (the same code the SSE `error` event carries), `error_message`, `recoverable` (`true`/`false`/`null`) | The turn returned a genuine pipeline error: provider failure, tool-dispatch failure, guard rejection, loop detection, etc. |
+| `turn.cancelled` | `cancelled` | `reason` (`client_disconnect`, `server_shutdown`, or `timeout`) | The turn ended without a result for a non-error reason: the client disconnected, the server is shutting down, or the turn exceeded its pipeline/ask timeout. Timeouts are grouped here, not under `turn.failed` — retrying is usually the right response, unlike a genuine pipeline error. |
+
+A subscriber that attaches mid-turn does not receive a synthetic `turn.start` for turns already in
+flight — it still receives that turn's terminal event when it fires, since all four topics share
+the same process-wide bus and journal-replay semantics as every other domain event (`Last-Event-ID`
+reconnect works identically). `recoverable` is derived from the pipeline's own error classification
+(`koina::error_class::Classifiable`) — `null` when the pipeline itself has no opinion, rather than a
+guess.
 
 ---
 

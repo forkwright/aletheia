@@ -7,9 +7,23 @@ use serde::{Deserialize, Serialize};
 /// WHY: Discovery and subscription tests share a single source of truth so the
 /// advertised topic list cannot drift from the topics actually emitted by pylon
 /// handlers.
+///
+/// WHY(#4557): `turn.start`/`turn.complete`/`turn.failed`/`turn.cancelled` are
+/// the complete turn lifecycle — every turn publishes exactly `turn.start`
+/// followed by exactly one of the other three, never zero and never more than
+/// one terminal event (enforced by `TurnBufferHandle`'s terminal-state CAS,
+/// the same guard that already serializes the per-turn SSE buffer's
+/// Completed/Failed/Aborted transition). `turn.cancelled` covers every
+/// non-error terminal abort — client disconnect, server shutdown, and
+/// pipeline/ask timeout — mirroring `TurnState::Aborted`'s existing grouping
+/// (WHY(#4794) at `turn_buffer.rs`: timeouts are terminal aborts, not generic
+/// turn failures).
 pub(crate) const DISCOVERABLE_TOPICS: &[&str] = &[
     "fact.created",
+    "turn.start",
     "turn.complete",
+    "turn.failed",
+    "turn.cancelled",
     "nous.lifecycle",
     // WHY(#4878): credential add/rotate/remove (state-changing) and validate
     // (read-only provider probe) are kept as separate topics so a security
