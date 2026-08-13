@@ -1705,13 +1705,21 @@ fn subsystem_daemon_runtime(
             last_success: None,
             last_failure: None,
             degraded_reason: None,
-            failure_reason: None,
+            // WHY failure_reason and not details.note: the DTO defines this
+            // field as the explanation for `failed` OR `unknown`, and the
+            // sibling `subsystem_training_qa_persistence` uses it for exactly
+            // that. Putting the explanation only in `details` made
+            // daemon_runtime the one `unknown` subsystem that explains itself
+            // somewhere else, which the public-API test correctly rejects.
+            failure_reason: Some(
+                "no daemon task-state readers are wired; daemon mode is either \
+                 disabled for this instance or the readers were not threaded \
+                 into AppState"
+                    .to_owned(),
+            ),
             details: Some(serde_json::json!({
                 "configured": configured,
                 "runners": [],
-                "note": "no daemon task-state readers are wired; \
-                         daemon mode is either disabled for this instance or \
-                         the readers were not threaded into AppState",
             })),
             suggested_action: None,
         };
@@ -2318,8 +2326,18 @@ mod tests {
             "2026-01-01T00:00:00Z",
         );
         assert_eq!(status.status, "unknown");
-        assert!(status.failure_reason.is_none());
         assert!(status.degraded_reason.is_none());
+        // An `unknown` subsystem must say WHY in the field the DTO reserves
+        // for it, the same as every other subsystem — the public-API contract
+        // test asserts exactly this across all of them.
+        assert!(
+            status
+                .failure_reason
+                .as_deref()
+                .is_some_and(|r| r.contains("no daemon task-state readers are wired")),
+            "unknown must explain itself in failure_reason, got {:?}",
+            status.failure_reason
+        );
         let details = status.details.expect("details present");
         assert_eq!(details["runners"], serde_json::json!([]));
     }
