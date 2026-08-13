@@ -4,24 +4,30 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 
 ## Summary
 
-| Category | Hot Fields | Cold Fields |
-|----------|-----------|-------------|
-| Gateway | 11 | 9 |
-| Agents | 28 | 0 |
-| Channels | 0 | 6 |
-| Bindings | 4 | 0 |
-| Embedding | 3 | 0 |
-| Data | 1 | 0 |
-| Maintenance | 26 | 0 |
-| Pricing | 2 | 0 |
-| Sandbox | 0 | 8 |
-| Tools | 0 | 2 |
-| Credential | 4 | 0 |
-| Logging | 5 | 0 |
-| MCP | 3 | 0 |
-| Local Provider | 4 | 0 |
-| Packs | 0 | 1 |
-| **Total** | **93** | **24** |
+Counts below are field rows in the "Detailed classification" tables further
+down this document (the tables are the source; count them again after
+editing a table so this summary cannot drift the way it previously did).
+"Reserved" fields are declared but not wired into runtime startup at all —
+neither hot nor cold.
+
+| Category | Hot Fields | Cold Fields | Reserved |
+|----------|-----------|-------------|----------|
+| Gateway | 0 | 26 | 0 |
+| Agents | 36 | 0 | 0 |
+| Channels | 0 | 6 | 0 |
+| Bindings | 5 | 0 | 0 |
+| Embedding | 3 | 0 | 0 |
+| Data | 1 | 0 | 0 |
+| Maintenance | 24 | 1 | 4 |
+| Pricing | 2 | 0 | 0 |
+| Sandbox | 0 | 9 | 0 |
+| Tools | 0 | 2 | 0 |
+| Credential | 6 | 0 | 0 |
+| Logging | 7 | 0 | 0 |
+| MCP | 3 | 0 | 0 |
+| Local Provider | 4 | 0 | 0 |
+| Packs | 0 | 1 | 0 |
+| **Total** | **91** | **45** | **4** |
 
 ---
 
@@ -39,24 +45,24 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 | `gateway.tls.enabled` | **Cold** | TLS termination settings require listener reconfiguration |
 | `gateway.tls.certPath` | **Cold** | Certificate paths loaded at startup for TLS context |
 | `gateway.tls.keyPath` | **Cold** | Private key paths loaded at startup for TLS context |
-| `gateway.cors.allowedOrigins` | Hot | CORS headers evaluated per-request |
-| `gateway.cors.maxAgeSecs` | Hot | Preflight cache duration; read per-request |
+| `gateway.cors.allowedOrigins` | **Cold** | Whole `gateway.cors` subtree is a registry-declared restart prefix (#5173): CORS is a security-relevant control, not evaluated fresh per-request |
+| `gateway.cors.maxAgeSecs` | **Cold** | Same `gateway.cors` restart prefix |
 | `gateway.bodyLimit.maxBytes` | **Cold** | Body limit configured in Axum router at startup |
 | `gateway.csrf.enabled` | **Cold** | CSRF middleware layer initialized at startup |
 | `gateway.csrf.disableAcknowledged` | **Cold** | Acknowledgement for running without CSRF protection |
 | `gateway.csrf.headerName` | **Cold** | Header name captured by CSRF middleware at startup |
 | `gateway.csrf.headerValue` | **Cold** | Expected value captured by CSRF middleware at startup |
-| `gateway.rateLimit.enabled` | Hot | Rate limiting can be toggled at runtime |
-| `gateway.rateLimit.requestsPerMinute` | Hot | Rate limit threshold read per-request |
+| `gateway.rateLimit.enabled` | **Cold** | Whole `gateway.rateLimit` subtree is a registry-declared restart prefix (#5173): rate limiting is security-relevant and must not silently take effect on SIGHUP |
+| `gateway.rateLimit.requestsPerMinute` | **Cold** | Same `gateway.rateLimit` restart prefix |
 | `gateway.rateLimit.trustProxy` | **Cold** | Rate limiter is built with this flag at startup |
-| `gateway.rateLimit.perUser.enabled` | Hot | Per-user rate limiting toggle |
-| `gateway.rateLimit.perUser.defaultRpm` | Hot | Per-user default rate limit |
-| `gateway.rateLimit.perUser.defaultBurst` | Hot | Per-user burst allowance |
-| `gateway.rateLimit.perUser.llmRpm` | Hot | LLM endpoint rate limit |
-| `gateway.rateLimit.perUser.llmBurst` | Hot | LLM endpoint burst allowance |
-| `gateway.rateLimit.perUser.toolRpm` | Hot | Tool execution rate limit |
-| `gateway.rateLimit.perUser.toolBurst` | Hot | Tool execution burst allowance |
-| `gateway.rateLimit.perUser.staleAfterSecs` | Hot | Stale user eviction timeout |
+| `gateway.rateLimit.perUser.enabled` | **Cold** | Same `gateway.rateLimit` restart prefix |
+| `gateway.rateLimit.perUser.defaultRpm` | **Cold** | Same `gateway.rateLimit` restart prefix |
+| `gateway.rateLimit.perUser.defaultBurst` | **Cold** | Same `gateway.rateLimit` restart prefix |
+| `gateway.rateLimit.perUser.llmRpm` | **Cold** | Same `gateway.rateLimit` restart prefix |
+| `gateway.rateLimit.perUser.llmBurst` | **Cold** | Same `gateway.rateLimit` restart prefix |
+| `gateway.rateLimit.perUser.toolRpm` | **Cold** | Same `gateway.rateLimit` restart prefix |
+| `gateway.rateLimit.perUser.toolBurst` | **Cold** | Same `gateway.rateLimit` restart prefix |
+| `gateway.rateLimit.perUser.staleAfterSecs` | **Cold** | Same `gateway.rateLimit` restart prefix |
 
 ### Agents (`agents`)
 
@@ -246,48 +252,61 @@ Every `AletheiaConfig` field is classified as either **Hot** (safe to apply via 
 
 ---
 
-## Verification against `RESTART_PREFIXES`
+## Restart prefixes are derived from the registry, not hand-copied
 
-The `crates/taxis/src/reload.rs` file defines the following `RESTART_PREFIXES`:
+`crates/taxis/src/reload.rs`'s `RESTART_PREFIXES` is not a hand-maintained list: it is a
+`LazyLock` derived from `crates/taxis/src/registry.rs`'s `all_specs()`, taking the `key` of
+every `ParameterSpec` whose `hot_reloadable` field is `false`. A single declaration (the
+registry) drives both the parameter metadata and reload behavior.
 
-```rust
-const RESTART_PREFIXES: &[&str] = &[
-    "gateway.port",
-    "gateway.bind",
-    "gateway.tls",
-    "gateway.auth.mode",
-    "gateway.csrf",
-    "gateway.bodyLimit",
-    "channels",
-    "sandbox",
-    "tools",
-];
-```
+An earlier version of this document hand-copied that list as a `const RESTART_PREFIXES`
+snippet. The copy was a second source for one fact and it drifted from the registry more
+than once — at one point it was missing `gateway.cors`, `gateway.rateLimit`,
+`workspace.root`, `providerBehavior.nonStreamingTimeoutSecs`, `messaging.pollIntervalMs`,
+`messaging.bufferCapacity`, and `apiLimits.idempotencyCapacity`, and told operators that
+rate limiting was safe to change via SIGHUP after the registry had already made it cold
+(#5173). There is no second copy to keep in sync anymore: read
+`crates/taxis/src/registry.rs` for the authoritative list (grep for
+`hot_reloadable: false`), or call `taxis::reload::restart_prefixes()` at runtime — both
+resolve to the same `REGISTRY` static and cannot disagree with each other.
 
-### Match status: ⚠️ PARTIAL GAP
+### Fields cold at runtime but not covered by a registry restart prefix
 
-`RESTART_PREFIXES` covers fields that trigger the "preserve cold values" path in `apply_reload`. Two additional fields are effectively cold but are not in `RESTART_PREFIXES`, meaning a SIGHUP will update the in-memory config value without applying the change to the live runtime state:
+Two `gateway.auth.*` fields are cold at runtime but are not registry-declared restart
+prefixes, so a SIGHUP updates the in-memory config value without applying it to the live
+runtime state:
 
-- **`gateway.auth.noneRole`**: stored in `AppState.none_role` (set at startup in `server.rs`); `apply_reload` does not update `AppState` fields.
-- **`gateway.auth.signingKey`**: used to build `JwtManager` at startup; the manager is not rebuilt on reload.
+- **`gateway.auth.noneRole`**: stored in `AppState.none_role` (set at startup in
+  `server.rs`); `apply_reload` does not update `AppState` fields.
+- **`gateway.auth.signingKey`**: used to build `JwtManager` at startup; the manager is not
+  rebuilt on reload.
 
-Both are classified Cold in this document. A code fix to add `gateway.auth.noneRole` and `gateway.auth.signingKey` to `RESTART_PREFIXES` (or to rebuild auth state on reload) is tracked separately.
+Both are classified Cold in this document. A code fix to add `gateway.auth.noneRole` and
+`gateway.auth.signingKey` to the registry (or to rebuild auth state on reload) is tracked
+separately.
 
-| Prefix in Code | Document Status | Notes |
-|----------------|-----------------|-------|
-| `gateway.port` | Cold ✅ | TCP listener binding |
-| `gateway.bind` | Cold ✅ | Interface binding |
-| `gateway.tls` | Cold ✅ | TLS termination settings |
-| `gateway.auth.mode` | Cold ✅ | Auth middleware mode |
-| `gateway.csrf` | Cold ✅ | CSRF middleware |
-| `gateway.bodyLimit` | Cold ✅ | Axum body limit |
-| `channels` | Cold ✅ | Channel transport lifecycle |
-| `sandbox` | Cold ✅ | Tool registry captures sandbox config at startup |
-| `tools` | Cold ✅ | Tool registry captures external tool config at startup |
-| `gateway.auth.noneRole` | Cold ⚠️ | Not in `RESTART_PREFIXES`; `AppState.none_role` not refreshed on reload |
-| `gateway.auth.signingKey` | Cold ⚠️ | Not in `RESTART_PREFIXES`; `JwtManager` not rebuilt on reload |
+**`packs` is Cold but not a registry restart prefix:** the runtime does not force a
+restart when `packs` changes — SIGHUP proceeds and rebuilds actor configs from the
+existing pack snapshot. Pack manifests, context files, and pack tools are not refreshed
+from disk. Operators must restart manually after adding, removing, or modifying packs.
+Adding `packs` to the registry with `hot_reloadable: false` would make the runtime
+enforce restart automatically.
 
-**`packs` is Cold but not in `RESTART_PREFIXES`:** The runtime does not force a restart when `packs` changes — SIGHUP will proceed and rebuild actor configs from the existing pack snapshot. Pack manifests, context files, and pack tools are not refreshed from disk. Operators must restart manually after adding, removing, or modifying packs. Adding `packs` to `RESTART_PREFIXES` would make the runtime enforce restart automatically.
+### Cold field detail: `gateway.cors`
+
+**Note:** The `gateway.cors` prefix is cold (#5173). CORS is a security-relevant control
+— treating it as hot meant an operator's tightened or widened origin allowlist could sit
+unenforced in the running process while the config file (and any `GET` of it) read as
+already applied. The whole subtree is cold, covering `allowedOrigins` and `maxAgeSecs`,
+rather than caching a value that can silently diverge from what is on disk.
+
+### Cold field detail: `gateway.rateLimit`
+
+**Note:** The `gateway.rateLimit` prefix is cold (#5173) for the same reason: rate
+limiting is a security/availability control, and treating it as hot meant a config that
+read as "rate limiting enabled" could be silently unenforced after a SIGHUP that changed
+it. The whole subtree is cold, including every `perUser.*` field, via the same
+`starts_with` prefix match `requires_restart` uses for every other prefix.
 
 ### Cold field detail: `gateway.csrf`
 
@@ -312,7 +331,7 @@ Both are classified Cold in this document. A code fix to add `gateway.auth.noneR
 ### Safe to change via SIGHUP (hot reload)
 
 - **Agent settings**: Model selection, token budgets, thinking settings, tool iterations, recall parameters
-- **Rate limiting**: All gateway and MCP rate limit settings
+- **MCP rate limiting**: `mcp.rateLimit.*` settings (the gateway's own rate limiting is cold — see below)
 - **Maintenance schedules**: Trace rotation, drift detection, DB monitoring thresholds
 - **Logging**: Log levels, retention, redaction settings
 
@@ -322,7 +341,9 @@ Both are classified Cold in this document. A code fix to add `gateway.auth.noneR
 - **Authentication mode**: Switching between token/none/JWT modes
 - **Anonymous role assignment** (`gateway.auth.noneRole`): stored in `AppState` at startup; change requires restart
 - **JWT signing key** (`gateway.auth.signingKey`): baked into `JwtManager` at startup; key rotation requires restart
+- **CORS policy** (`gateway.cors.*`): allowed origins and preflight cache duration (#5173)
 - **CSRF protection**: Enabling/disabling CSRF middleware
+- **Gateway rate limiting** (`gateway.rateLimit.*`, including every `perUser.*` field): enabling, disabling, and changing thresholds all require a restart to take effect — a SIGHUP that changes these values is silently unenforced until the process restarts (#5173)
 - **Request limits**: Body size limits (Axum router configuration)
 - **Channel transports**: Signal messenger configuration and account settings
 - **Sandbox policies**: Enforcement mode, egress rules, path allowances

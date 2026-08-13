@@ -569,7 +569,7 @@ impl RuntimeBuilder {
         let knowledge_stores = if self.embedding {
             let mut cohorts = BTreeSet::from(["shared".to_owned()]);
             for agent_def in &self.config.agents.list {
-                let resolved = resolve_nous(&self.config, &agent_def.id);
+                let resolved = resolve_nous(&self.config, agent_def.id.as_str());
                 cohorts.insert(resolved.episteme_cohort.to_string());
             }
             open_knowledge_stores(
@@ -745,8 +745,12 @@ impl RuntimeBuilder {
 
         {
             for agent_def in &self.config.agents.list {
-                let (nous_config, pipeline_config) =
-                    build_nous_runtime_config(&self.config, &self.oikos, &packs, &agent_def.id);
+                let (nous_config, pipeline_config) = build_nous_runtime_config(
+                    &self.config,
+                    &self.oikos,
+                    &packs,
+                    agent_def.id.as_str(),
+                );
                 if let Err(e) = nous_manager.spawn(nous_config, pipeline_config).await {
                     error!(
                         agent = %agent_def.id,
@@ -951,7 +955,7 @@ impl RuntimeBuilder {
             for agent_def in &self.config.agents.list {
                 let agent_token = shutdown_token.child_token();
                 let agent_state_store = oikonomos::state::TaskStateStore::open(
-                    &task_state_root.join(task_state_component(&agent_def.id)),
+                    &task_state_root.join(task_state_component(agent_def.id.as_str())),
                 )
                 .with_whatever_context(|_| {
                     format!(
@@ -959,7 +963,8 @@ impl RuntimeBuilder {
                         agent_def.id
                     )
                 })?;
-                daemon_task_state_handles.push((agent_def.id.clone(), agent_state_store.clone()));
+                daemon_task_state_handles
+                    .push((agent_def.id.to_string(), agent_state_store.clone()));
                 let mut runner = TaskRunner::with_bridge(
                     agent_def.id.clone(),
                     agent_token,
@@ -974,7 +979,7 @@ impl RuntimeBuilder {
                 if prosoche.mode.runs_daemon_tasks() {
                     if prosoche.heartbeat.enabled {
                         runner.register(prosoche_task_def(
-                            &agent_def.id,
+                            agent_def.id.as_str(),
                             &format!("{}-prosoche", agent_def.id),
                             "Prosoche attention check",
                             prosoche.heartbeat.enabled,
@@ -989,7 +994,7 @@ impl RuntimeBuilder {
                     }
                     if prosoche.self_audit.enabled {
                         runner.register(prosoche_task_def(
-                            &agent_def.id,
+                            agent_def.id.as_str(),
                             &format!("{}-prosoche-self-audit", agent_def.id),
                             "Prosoche self-audit",
                             prosoche.self_audit.enabled,
@@ -1051,9 +1056,9 @@ impl RuntimeBuilder {
                                 &config,
                                 &reload_oikos,
                                 &reload_packs,
-                                &agent.id,
+                                agent.id.as_str(),
                             );
-                            (agent.id.clone(), nous_config, pipeline_config)
+                            (agent.id.to_string(), nous_config, pipeline_config)
                         })
                         .collect();
                     if let Err(e) = reload_manager

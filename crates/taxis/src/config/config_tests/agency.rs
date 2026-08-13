@@ -58,7 +58,7 @@ fn resolve_agency_inherits_global_default() {
 fn resolve_agency_unrestricted_sets_high_iterations() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "free".to_owned(),
+        id: koina::id::NousId::new("free").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/home/user/nous/free".to_owned(),
@@ -91,7 +91,7 @@ fn resolve_agency_unrestricted_sets_high_iterations() {
 fn resolve_agency_restricted_uses_old_defaults() {
     let mut config = AletheiaConfig::default();
     config.agents.list.push(NousDefinition {
-        id: "safe".to_owned(),
+        id: koina::id::NousId::new("safe").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/home/user/nous/safe".to_owned(),
@@ -125,7 +125,7 @@ fn resolve_agency_per_agent_overrides_global() {
     let mut config = AletheiaConfig::default();
     config.agents.defaults.agency = AgencyLevel::Restricted;
     config.agents.list.push(NousDefinition {
-        id: "override".to_owned(),
+        id: koina::id::NousId::new("override").expect("valid test id"),
         name: None,
         model: None,
         workspace: "/home/user/nous/override".to_owned(),

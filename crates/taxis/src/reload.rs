@@ -355,6 +355,45 @@ mod tests {
     }
 
     #[test]
+    fn cors_settings_require_restart() {
+        // WHY(#5173): gateway.cors was reclassified hot->cold because CORS
+        // is a security-relevant control; these pin the leaf paths an
+        // operator would actually change, not just the bare prefix.
+        assert!(
+            requires_restart("gateway.cors.allowedOrigins"),
+            "changing the CORS origin allowlist should require restart"
+        );
+        assert!(
+            requires_restart("gateway.cors.maxAgeSecs"),
+            "changing the CORS preflight cache duration should require restart"
+        );
+    }
+
+    #[test]
+    fn rate_limit_settings_require_restart() {
+        // WHY(#5173): gateway.rateLimit was reclassified hot->cold for the
+        // same reason as CORS -- enabling, disabling, and changing
+        // thresholds must all be cold, matching the issue's stated
+        // acceptance criterion.
+        assert!(
+            requires_restart("gateway.rateLimit.enabled"),
+            "enabling/disabling gateway rate limiting should require restart"
+        );
+        assert!(
+            requires_restart("gateway.rateLimit.requestsPerMinute"),
+            "changing the gateway rate-limit threshold should require restart"
+        );
+        assert!(
+            requires_restart("gateway.rateLimit.perUser.defaultRpm"),
+            "changing a per-user rate-limit threshold should require restart"
+        );
+        assert!(
+            requires_restart("gateway.rateLimit.perUser.enabled"),
+            "toggling per-user rate limiting should require restart"
+        );
+    }
+
+    #[test]
     fn sandbox_settings_require_restart() {
         assert!(
             requires_restart("sandbox.enabled"),
@@ -388,6 +427,8 @@ mod tests {
             "gateway.auth.mode",
             "gateway.csrf",
             "gateway.bodyLimit",
+            "gateway.cors",
+            "gateway.rateLimit",
             "channels",
             "providerBehavior.nonStreamingTimeoutSecs",
             "messaging.pollIntervalMs",
@@ -508,6 +549,87 @@ mod tests {
                 .iter()
                 .any(|c| c.path.contains("gateway.port")),
             "gateway.port should appear in cold changes"
+        );
+    }
+
+    #[test]
+    fn diff_detects_cors_origin_change_as_cold() {
+        // WHY(#5173): the acceptance criterion names "changing origins" as
+        // one of the classes a reload test must cover.
+        let old = AletheiaConfig::default();
+        let mut new = old.clone();
+        new.gateway.cors.allowed_origins = vec!["https://example.com".to_owned()];
+
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
+        assert!(
+            diff.cold_changes()
+                .iter()
+                .any(|c| c.path.contains("gateway.cors.allowedOrigins")),
+            "changed CORS origin allowlist should appear in cold changes"
+        );
+        assert!(
+            diff.hot_changes().iter().all(|c| !c.path.contains("cors")),
+            "no CORS change should appear in hot changes"
+        );
+    }
+
+    #[test]
+    fn diff_detects_rate_limit_enabling_and_disabling_as_cold() {
+        // WHY(#5173): the acceptance criterion names "enabling" and
+        // "disabling" as classes a reload test must cover, in both
+        // directions -- a bool flip is symmetric but the prefix match is
+        // not automatically, since it keys off the changed path only.
+        let disabled = AletheiaConfig::default();
+        let mut enabled = disabled.clone();
+        enabled.gateway.rate_limit.enabled = true;
+
+        let diff =
+            diff_configs(&disabled, &enabled).unwrap_or_else(|e| panic!("diff configs: {e}"));
+        assert!(
+            diff.cold_changes()
+                .iter()
+                .any(|c| c.path.contains("gateway.rateLimit.enabled")),
+            "enabling gateway rate limiting should appear in cold changes"
+        );
+
+        let diff =
+            diff_configs(&enabled, &disabled).unwrap_or_else(|e| panic!("diff configs: {e}"));
+        assert!(
+            diff.cold_changes()
+                .iter()
+                .any(|c| c.path.contains("gateway.rateLimit.enabled")),
+            "disabling gateway rate limiting should appear in cold changes"
+        );
+    }
+
+    #[test]
+    fn diff_detects_rate_limit_threshold_change_as_cold() {
+        // WHY(#5173): the acceptance criterion names "changing thresholds"
+        // as a class a reload test must cover, including the perUser.*
+        // leaves the whole-subtree prefix must still catch.
+        let old = AletheiaConfig::default();
+        let mut new = old.clone();
+        new.gateway.rate_limit.requests_per_minute = 999;
+        new.gateway.rate_limit.per_user.default_rpm = 999;
+
+        let diff = diff_configs(&old, &new).unwrap_or_else(|e| panic!("diff configs: {e}"));
+        assert!(
+            diff.cold_changes()
+                .iter()
+                .any(|c| c.path.contains("gateway.rateLimit.requestsPerMinute")),
+            "changed global rate-limit threshold should appear in cold changes"
+        );
+        assert!(
+            diff.cold_changes()
+                .iter()
+                .any(|c| c.path.contains("gateway.rateLimit.perUser.defaultRpm")),
+            "changed per-user rate-limit threshold should appear in cold changes"
+        );
+        assert!(
+            diff.hot_changes()
+                .iter()
+                .all(|c| !c.path.contains("rateLimit")),
+            "no rate-limit change should appear in hot changes"
         );
     }
 
@@ -693,6 +815,42 @@ mod tests {
         assert_eq!(
             live.agents.defaults.model_defaults.thinking_budget,
             staged.agents.defaults.model_defaults.thinking_budget
+        );
+    }
+
+    #[test]
+    fn preserve_restart_required_values_restores_cors_and_rate_limit() {
+        // WHY(#5173): a staged CORS/rate-limit change must not leak into the
+        // live/effective config -- if `RESTART_PREFIXES` regressed to
+        // treating these as hot, this test would fail because `live` would
+        // pick up the staged (unapplied) values instead of `current`'s.
+        let current = AletheiaConfig::default();
+        let mut staged = current.clone();
+        staged.gateway.cors.allowed_origins = vec!["https://example.com".to_owned()];
+        staged.gateway.rate_limit.enabled = true;
+        staged.gateway.rate_limit.requests_per_minute = 999;
+        staged.gateway.rate_limit.per_user.enabled = true;
+
+        let diff = diff_configs(&current, &staged).unwrap_or_else(|e| panic!("diff configs: {e}"));
+        let live = preserve_restart_required_values(&current, &staged, &diff)
+            .unwrap_or_else(|e| panic!("preserve cold values: {e}"));
+
+        assert_eq!(
+            live.gateway.cors.allowed_origins, current.gateway.cors.allowed_origins,
+            "staged CORS origin change must not apply live"
+        );
+        assert_eq!(
+            live.gateway.rate_limit.enabled, current.gateway.rate_limit.enabled,
+            "staged rate-limit enable must not apply live"
+        );
+        assert_eq!(
+            live.gateway.rate_limit.requests_per_minute,
+            current.gateway.rate_limit.requests_per_minute,
+            "staged rate-limit threshold must not apply live"
+        );
+        assert_eq!(
+            live.gateway.rate_limit.per_user.enabled, current.gateway.rate_limit.per_user.enabled,
+            "staged per-user rate-limit enable must not apply live"
         );
     }
 

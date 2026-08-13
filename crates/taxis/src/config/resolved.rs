@@ -116,7 +116,7 @@ pub struct ResolvedNousConfig {
 )]
 pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfig {
     let defaults = &config.agents.defaults;
-    let agent = config.agents.list.iter().find(|a| a.id == nous_id);
+    let agent = config.agents.list.iter().find(|a| a.id.as_str() == nous_id);
 
     let model_selection = match agent.and_then(|a| a.model.as_ref()) {
         Some(spec) => ResolvedModelSelection {

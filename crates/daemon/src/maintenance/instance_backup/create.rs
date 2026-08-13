@@ -418,7 +418,8 @@ impl InstanceBackup {
         for agent in &config.agents.list {
             let source = resolve_workspace_source(instance_root, &agent.workspace);
             let name = format!("workspace:{}", agent.id);
-            let configured_backup_path = PathBuf::from("workspace/configured").join(&agent.id);
+            let configured_backup_path =
+                PathBuf::from("workspace/configured").join(agent.id.as_str());
 
             let source_class = classify_workspace_source(instance_root, &agent.workspace, &source);
 
@@ -429,7 +430,7 @@ impl InstanceBackup {
                     backup_path: configured_backup_path,
                     restore_path: None,
                     status: String::from(STATUS_EXCLUDED),
-                    agent_id: Some(agent.id.clone()),
+                    agent_id: Some(agent.id.to_string()),
                     workspace_source_class: Some(source_class),
                     exclusion_reason: Some(String::from(
                         "absolute workspace outside instance root requires explicit backup policy",
@@ -449,7 +450,7 @@ impl InstanceBackup {
                     backup_path: configured_backup_path,
                     restore_path: Some(restore_path),
                     status: String::from(STATUS_EXCLUDED),
-                    agent_id: Some(agent.id.clone()),
+                    agent_id: Some(agent.id.to_string()),
                     workspace_source_class: Some(source_class),
                     exclusion_reason: Some(String::from("workspace path missing")),
                     byte_count: 0,
@@ -465,7 +466,7 @@ impl InstanceBackup {
                 source.clone(),
                 &dst,
                 configured_backup_path.clone(),
-                agent.id.clone(),
+                agent.id.to_string(),
                 source_class.clone(),
             )?;
         }

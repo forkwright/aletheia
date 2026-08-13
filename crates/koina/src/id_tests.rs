@@ -36,6 +36,13 @@ fn nous_id_display() {
 }
 
 #[test]
+fn nous_id_from_static_matches_validated_construction() {
+    let literal = NousId::from_static("unset");
+    let validated = NousId::new("unset").unwrap();
+    assert_eq!(literal, validated);
+}
+
+#[test]
 fn nous_id_serde_roundtrip() {
     let id = NousId::new("syn").unwrap();
     let json = serde_json::to_string(&id).unwrap();

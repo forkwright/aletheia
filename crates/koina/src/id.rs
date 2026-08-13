@@ -145,6 +145,16 @@ impl NousId {
         Ok(Self(id))
     }
 
+    /// Construct a `NousId` from a string literal known to be valid at compile time.
+    ///
+    /// The caller is responsible for passing a known-valid literal (mirrors
+    /// [`ToolName::from_static`]). Intended for inert placeholders, such as a
+    /// `Default` impl's unread base value, that never take a live agent id.
+    #[must_use]
+    pub fn from_static(id: &'static str) -> Self {
+        Self(id.to_owned())
+    }
+
     /// The underlying string value.
     #[must_use]
     pub fn as_str(&self) -> &str {
