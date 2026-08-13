@@ -3,22 +3,14 @@
 # #B and #C as plain mentions, so their work merges while they stay open.
 #
 # The failure is invisible at every point someone would catch it: the rendered
-# body shows all three as issue links, nothing warns at merge, and the damage
-# only surfaces later when a triage pass finds an open issue whose fix is
-# already in main — at which point it reads as a lost fix rather than a lost
-# link. Measured on this repo: 13 merged PRs used the form and left 21 issues
-# stranded across two sweeps.
+# body shows all three as issue links, nothing warns at merge, and it only
+# surfaces when a triage pass finds an open issue whose fix is already in main
+# -- where it reads as a lost fix rather than a lost link. Measured on this
+# repo: 13 merged PRs used the form and stranded 21 issues across two sweeps.
 #
-# WHY this guard is worth its own check rather than a review habit: it scales
-# with a practice worth keeping. Batching many issues into one PR is correct
-# when CI minutes are the binding constraint, so the more that strategy is
-# used, the more issues the defect strands.
-#
-# WHY the pattern requires a second `#N` after the comma: `Closes #123, and
-# see #456` is CORRECT as written — the author asked to close one issue and
-# merely referenced another, which is exactly what GitHub does. Only a comma
-# directly joining two issue references expresses an intent GitHub will not
-# honour.
+# WHY a script rather than an inline grep: the rule has to tolerate a body that
+# DOCUMENTS it, which means ignoring code spans, and that is worth unit tests
+# (scripts/test-pr-closes-keyword.py) rather than a regex buried in YAML.
 name: PR Closes Keyword
 
 on:
@@ -39,23 +31,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check PR body for comma-listed closing keywords
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Self-test the checker
+        run: scripts/test-pr-closes-keyword.py
+
+      - name: Check PR body
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          PATTERN='(clos(e|es|ed)|fix(es|ed)?|resolve[sd]?)[[:space:]]+#[0-9]+[[:space:]]*,[[:space:]]*#[0-9]+'
-          if echo "${PR_BODY}" | grep -qiE "${PATTERN}"; then
-            echo "pr-closes-keyword: a closing keyword is followed by a comma-separated list." >&2
-            echo "" >&2
-            echo "  Matched:" >&2
-            echo "${PR_BODY}" | grep -inE "${PATTERN}" | sed 's/^/    /' >&2
-            echo "" >&2
-            echo "  GitHub closes ONLY the first issue in such a list. The rest merge" >&2
-            echo "  with their work done and stay open." >&2
-            echo "" >&2
-            echo "  Repeat the keyword per issue, one per line:" >&2
-            echo "    Closes #123" >&2
-            echo "    Closes #456" >&2
-            exit 1
-          fi
-          echo "pr-closes-keyword: clean"
+        run: scripts/check-pr-closes-keyword.py
