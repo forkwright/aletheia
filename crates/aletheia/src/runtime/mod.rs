@@ -1059,6 +1059,15 @@ impl RuntimeBuilder {
         let reload_manager = Arc::clone(&nous_manager);
         let reload_oikos = Arc::clone(&self.oikos);
         let reload_packs = Arc::clone(&packs);
+        // WHY these two are cloned into the reload task: the maintenance
+        // config carries runtime handles that `maintenance::build_config`
+        // cannot reconstruct on its own, so a reload must rebuild it through
+        // the same `build_daemon_maintenance_config` startup uses. Rebuilding
+        // it differently here is exactly the drift that helper exists to
+        // prevent — most sharply for `after_action_store`, where the plain
+        // builder would hand the scheduler a brand-new empty store.
+        let reload_after_action_store = Arc::clone(&after_action_store);
+        let reload_session_store = Arc::clone(&session_store);
         task_tracker.spawn(
             async move {
                 loop {
@@ -1085,6 +1094,25 @@ impl RuntimeBuilder {
                         .await
                     {
                         warn!(error = %e, "failed to apply hot-reloaded actor config");
+                    }
+
+                    // WHY(#5144): this send is what makes the maintenance
+                    // settings genuinely hot-reloadable rather than merely
+                    // classified as such. The system daemon runner holds the
+                    // receiver and reconciles live scheduler tasks from it;
+                    // without this the runner listens and nothing ever speaks.
+                    // A send error means daemons are disabled so the receiver
+                    // was dropped, which is expected, not a fault.
+                    let reloaded_maintenance = build_daemon_maintenance_config(
+                        &reload_oikos,
+                        &config,
+                        &reload_after_action_store,
+                        &reload_session_store,
+                    );
+                    if maintenance_reload_tx.send(reloaded_maintenance).is_err() {
+                        tracing::debug!(
+                            "no maintenance reload receiver; daemons are disabled for this instance"
+                        );
                     }
                 }
             }
