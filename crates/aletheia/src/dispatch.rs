@@ -16,6 +16,7 @@ use agora::registry::ChannelRegistry;
 use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
 use nous::manager::NousManager;
+use organon::types::BlackboardViewer;
 
 const COMMAND_RECORD_SCHEMA: &str = "aletheia.agora.command.v1";
 
@@ -692,21 +693,30 @@ async fn execute_command(
     let skills: Vec<String> = Vec::new();
 
     let blackboard_entries: Vec<String> = match nous_manager.blackboard_store() {
-        Some(blackboard_store) => match blackboard_store.list() {
-            Ok(entries) => entries
-                .iter()
-                .map(|entry| {
-                    format!(
-                        "[{}] = {} (by {})",
-                        entry.key, entry.value, entry.author_nous_id
-                    )
-                })
-                .collect(),
-            Err(e) => {
-                warn!(error = %e, "failed to list blackboard entries");
-                Vec::new()
+        Some(blackboard_store) => {
+            // WHY(#5032): scoped to the acting agent — no session id is
+            // available at this chat-command layer (only the hashed
+            // `session_key`, not the store's session UUID), so `Nous`
+            // fails closed on SessionPrivate rows rather than guessing.
+            let viewer = BlackboardViewer::Nous {
+                nous_id: nous_id.to_owned(),
+            };
+            match blackboard_store.list(&viewer) {
+                Ok(entries) => entries
+                    .iter()
+                    .map(|entry| {
+                        format!(
+                            "[{}] = {} (by {})",
+                            entry.key, entry.value, entry.author_nous_id
+                        )
+                    })
+                    .collect(),
+                Err(e) => {
+                    warn!(error = %e, "failed to list blackboard entries");
+                    Vec::new()
+                }
             }
-        },
+        }
         None => Vec::new(),
     };
 
@@ -785,7 +795,7 @@ mod tests {
     use hermeneus::provider::ProviderRegistry;
     use hermeneus::test_utils::MockProvider;
     use mneme::store::SessionStore;
-    use mneme::types::Role;
+    use mneme::types::{BlackboardVisibility, Role};
     use nous::adapters::SessionBlackboardAdapter;
     use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
     use nous::manager::NousManager;
@@ -1349,6 +1359,69 @@ mod tests {
             "{reply}"
         );
         assert!(!reply.contains("Blackboard empty"), "{reply}");
+    }
+
+    /// Pins aletheia#5032 closed for the `!blackboard` chat command: it must
+    /// not surface a `ws:`-style `SessionPrivate` row from another session,
+    /// nor another agent's `NousPrivate` row, even though it only has a
+    /// nous-scoped viewer (no session UUID at this layer).
+    #[tokio::test(flavor = "multi_thread")]
+    async fn blackboard_command_excludes_private_rows() {
+        organon::testing::install_crypto_provider();
+        let (_dir, oikos) = make_oikos();
+        let session_store = Arc::new(Mutex::new(
+            SessionStore::open_in_memory().expect("in-memory session store"),
+        ));
+        {
+            let store = session_store.lock().await;
+            store
+                .blackboard_write("goal", "finish the demo", "alice", 3600)
+                .expect("write shared entry");
+            store
+                .blackboard_write_scoped(
+                    "ws:alice:some-other-session",
+                    "leaked-task-stack",
+                    "alice",
+                    3600,
+                    BlackboardVisibility::SessionPrivate,
+                    Some("some-other-session"),
+                )
+                .expect("write session-private entry");
+            store
+                .blackboard_write_scoped(
+                    "bobs-secret",
+                    "leaked-private-note",
+                    "bob",
+                    3600,
+                    BlackboardVisibility::NousPrivate,
+                    None,
+                )
+                .expect("write nous-private entry");
+        }
+        let tool_services = make_tool_services(&session_store);
+        let mgr = make_dispatch_manager(oikos, Some(tool_services));
+
+        let reply = execute_command(
+            &command::Command::Blackboard,
+            "alice",
+            "main",
+            &mgr,
+            &ChannelRegistry::new(),
+        )
+        .await;
+
+        assert!(
+            reply.contains("[goal] = finish the demo (by alice)"),
+            "shared entries must still show: {reply}"
+        );
+        assert!(
+            !reply.contains("leaked-task-stack"),
+            "a SessionPrivate row from another session must not appear: {reply}"
+        );
+        assert!(
+            !reply.contains("leaked-private-note"),
+            "another agent's NousPrivate row must not appear: {reply}"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

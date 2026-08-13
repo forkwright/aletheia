@@ -13,8 +13,8 @@
 use std::collections::BTreeMap;
 
 use graphe::types::{
-    AgentNote, BlackboardRow, Message, Role, Session, SessionMetrics, SessionOrigin, SessionStatus,
-    SessionType, UsageRecord,
+    AgentNote, BlackboardRow, BlackboardVisibility, Message, Role, Session, SessionMetrics,
+    SessionOrigin, SessionStatus, SessionType, UsageRecord,
 };
 use rusqlite::types::FromSql;
 use rusqlite::{Connection, Row};
@@ -417,6 +417,12 @@ fn map_blackboard(row: &Row<'_>) -> rusqlite::Result<BlackboardRow> {
         ttl_seconds: row.get("ttl_seconds")?,
         created_at: row.get("created_at")?,
         expires_at: row.get("expires_at")?,
+        // WHY(#5032): the legacy SQLite schema predates the visibility
+        // taxonomy — migrated rows get Shared/no-session, matching the
+        // pre-taxonomy default a JSON row without these fields deserializes
+        // to via `#[serde(default)]`.
+        session_id: None,
+        visibility: BlackboardVisibility::default(),
     })
 }
 

@@ -10,7 +10,7 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
+    BlackboardViewer, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
     ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
     ToolTag,
 };
@@ -35,6 +35,13 @@ impl ToolExecutor for BlackboardExecutor {
             let Some(bb_store) = services.blackboard_store.as_ref() else {
                 return Ok(ToolResult::error("blackboard store not configured"));
             };
+            // WHY(#5032): the caller identity for this turn IS the viewer —
+            // `read`/`list` require it on every call so a row's visibility
+            // is always enforced, never bypassed by omission.
+            let viewer = BlackboardViewer::Session {
+                nous_id: ctx.nous_id.as_str().to_owned(),
+                session_id: ctx.session_id.to_string(),
+            };
 
             let action = extract_str(&input.arguments, "action", &input.name)?;
 
@@ -56,7 +63,7 @@ impl ToolExecutor for BlackboardExecutor {
                 }
                 "read" => {
                     let key = extract_str(&input.arguments, "key", &input.name)?;
-                    match bb_store.read(key) {
+                    match bb_store.read(key, &viewer) {
                         Ok(Some(entry)) => Ok(ToolResult::text(format!(
                             "[{key}] = {} (by {}, expires: {})",
                             entry.value,
@@ -67,7 +74,7 @@ impl ToolExecutor for BlackboardExecutor {
                         Err(e) => Ok(ToolResult::error(format!("Failed to read blackboard: {e}"))),
                     }
                 }
-                "list" => match bb_store.list() {
+                "list" => match bb_store.list(&viewer) {
                     Ok(entries) if entries.is_empty() => {
                         Ok(ToolResult::text("Blackboard is empty."))
                     }
