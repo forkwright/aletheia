@@ -606,7 +606,7 @@ mod tests {
 
     #[test]
     fn load_config_rejects_absolute_training_path() {
-        let mut jail = EnvJail::new();
+        let jail = EnvJail::new();
         jail.create_file(
             "config/aletheia.toml",
             "[training]\npath = \"/etc/aletheia-training\"\n",
@@ -623,7 +623,7 @@ mod tests {
 
     #[test]
     fn load_config_rejects_dotdot_training_path() {
-        let mut jail = EnvJail::new();
+        let jail = EnvJail::new();
         jail.create_file(
             "config/aletheia.toml",
             "[training]\npath = \"data/../../escape\"\n",
@@ -640,7 +640,7 @@ mod tests {
 
     #[test]
     fn load_config_rejects_empty_training_path() {
-        let mut jail = EnvJail::new();
+        let jail = EnvJail::new();
         jail.create_file("config/aletheia.toml", "[training]\npath = \"\"\n");
         let oikos = Oikos::from_root(jail.directory());
 
@@ -654,7 +654,7 @@ mod tests {
 
     #[test]
     fn load_config_accepts_plain_relative_training_path() {
-        let mut jail = EnvJail::new();
+        let jail = EnvJail::new();
         jail.create_file(
             "config/aletheia.toml",
             "[training]\npath = \"data/training\"\n",

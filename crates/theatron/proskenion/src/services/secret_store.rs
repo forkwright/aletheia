@@ -299,12 +299,17 @@ fn load_or_create_key(path: &Path) -> Result<Zeroizing<[u8; KEY_LEN]>, SecretSto
 
 fn read_key(path: &Path) -> Result<Zeroizing<[u8; KEY_LEN]>, SecretStoreError> {
     let mut bytes = std::fs::read(path).context(ReadFileSnafu { path })?;
-    let key: Result<[u8; KEY_LEN], _> = bytes.as_slice().try_into();
+    // WHY Option rather than Result: the only failure `try_into` can report
+    // here is a length mismatch, and `TryFromSliceError` carries no payload
+    // describing it. Discarding it through `map_err(|_| ..)` is what
+    // `clippy::map_err_ignore` objects to, and it is right that the shape
+    // looks lossy — so drop to a form that has nothing to lose.
+    let key = <[u8; KEY_LEN]>::try_from(bytes.as_slice()).ok();
     // WARNING: zeroize the read buffer regardless of outcome — it held a
     // copy of the key even on the length-check failure path below.
     bytes.zeroize();
     key.map(Zeroizing::new)
-        .map_err(|_| SecretStoreError::InvalidEncryptedSecret {
+        .ok_or_else(|| SecretStoreError::InvalidEncryptedSecret {
             path: path.to_path_buf(),
             message: "encryption key file has wrong length",
         })
