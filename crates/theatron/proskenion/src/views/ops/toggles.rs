@@ -10,7 +10,8 @@ use skeue::EmptyState;
 use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::ops::{
-    RecoverOutcome, ReloadOutcome, ToggleActionResult, ToggleApplyState, ToggleStore,
+    FeatureFlagConfigEntry, RecoverOutcome, ReloadOutcome, ToggleActionResult, ToggleApplyState,
+    ToggleStore,
 };
 
 const PANEL_STYLE: &str = "\
@@ -189,6 +190,12 @@ pub(crate) fn ToggleControlsPanel(
         data.restart_required.clone()
     };
 
+    // WHY(#4986): the backend feature-flag write is whole-section, so a
+    // second flag flipped while one write is outstanding could race and
+    // stomp the first write's persisted value -- disable every row's
+    // control while any one flag is pending, not just its own.
+    let any_feature_pending = flag_data.iter().any(|(_, _, _, pending, _)| *pending);
+
     rsx! {
         div {
             style: "{PANEL_STYLE}",
@@ -246,7 +253,7 @@ pub(crate) fn ToggleControlsPanel(
                     flag_key: key,
                     description,
                     enabled,
-                    pending,
+                    pending: pending || any_feature_pending,
                     error,
                     store,
                     config,
@@ -930,10 +937,16 @@ fn fire_tool_toggle(
 }
 
 /// Server response shape for `PUT /api/v1/config/feature_flags`.
+///
+/// WHY(#4986): `config` carries the canonical, server-normalized section
+/// (`ConfigUpdateResponse.config` in pylon) -- read it back into the store on
+/// every success instead of trusting the client's optimistic guess.
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct ConfigFeatureFlagsUpdateResponse {
     #[serde(default)]
     restart_required: Vec<String>,
+    #[serde(default)]
+    config: Vec<FeatureFlagConfigEntry>,
 }
 
 fn fire_feature_toggle(
@@ -941,6 +954,9 @@ fn fire_feature_toggle(
     config: Signal<ConnectionConfig>,
     key: String, // kanon:ignore RUST/plain-string-secret -- feature flag identifier, not credential material (#3988)
 ) {
+    // WHY(#4986): `flip_feature` itself refuses when another feature-flag
+    // write is already in flight (whole-section writes can otherwise race),
+    // so this also doubles as that guard.
     let prev = store.write().flip_feature(&key);
     let Some(prev_val) = prev else { return };
 
@@ -957,6 +973,7 @@ fn fire_feature_toggle(
                     prev_val,
                     Some(err.to_string()),
                     Vec::new(),
+                    None,
                 );
                 return;
             }
@@ -982,6 +999,7 @@ fn fire_feature_toggle(
                             prev_val,
                             None,
                             body.restart_required,
+                            Some(body.config),
                         );
                     }
                     Err(err) => {
@@ -991,6 +1009,7 @@ fn fire_feature_toggle(
                             prev_val,
                             Some(format!("failed to parse config response: {err}")),
                             Vec::new(),
+                            None,
                         );
                     }
                 }
@@ -1004,6 +1023,7 @@ fn fire_feature_toggle(
                     prev_val,
                     Some(message),
                     Vec::new(),
+                    None,
                 );
             }
             Err(e) => {
@@ -1013,6 +1033,7 @@ fn fire_feature_toggle(
                     prev_val,
                     Some(format!("connection error: {e}")),
                     Vec::new(),
+                    None,
                 );
             }
         }

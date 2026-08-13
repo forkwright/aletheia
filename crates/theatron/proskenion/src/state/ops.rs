@@ -382,6 +382,20 @@ pub(crate) struct FeatureFlagPayloadEntry {
     pub enabled: bool,
 }
 
+/// A single flag as returned in the canonical `config` section of
+/// `ConfigUpdateResponse` (pylon `crates/pylon/src/handlers/config_dto.rs`).
+///
+/// WHY(#4986): read back after every write so normalization, defaults, or a
+/// server-rejected value are reflected instead of trusting the client's
+/// optimistic guess.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub(crate) struct FeatureFlagConfigEntry {
+    pub key: String,
+    pub description: String,
+    #[serde(default)]
+    pub enabled: bool,
+}
+
 /// Aggregate toggle state with optimistic update support.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ToggleStore {
@@ -550,7 +564,16 @@ impl ToggleStore {
     }
 
     /// Optimistically flip a feature flag.
+    ///
+    /// Returns `None` (and flips nothing) both when `key` is unknown and
+    /// when another feature-flag write is already in flight -- the backend
+    /// write is whole-section (see [`Self::feature_flags_payload`]), so two
+    /// overlapping writes can complete out of order and the later-sent one
+    /// can stomp the earlier-sent one's just-persisted value (#4986).
     pub(crate) fn flip_feature(&mut self, key: &str) -> Option<bool> {
+        if self.any_feature_flag_pending() {
+            return None;
+        }
         self.feature_flags
             .iter_mut()
             .find(|f| f.key == key)
@@ -560,6 +583,17 @@ impl ToggleStore {
                 f.pending = true;
                 prev
             })
+    }
+
+    /// Whether any feature flag currently has a write in flight.
+    ///
+    /// Used both to gate a new write from starting (see [`Self::flip_feature`])
+    /// and by the panel to disable every flag's control while one write is
+    /// outstanding, since the backend section write is not scoped to a
+    /// single key.
+    #[must_use]
+    pub(crate) fn any_feature_flag_pending(&self) -> bool {
+        self.feature_flags.iter().any(|f| f.pending)
     }
 
     /// Build the complete `Vec<FeatureFlagPayloadEntry>` that must be sent to
@@ -579,27 +613,50 @@ impl ToggleStore {
 
     /// Resolve an in-flight feature flag toggle.
     ///
-    /// On failure the optimistic flip is *not* silently reverted; instead the
-    /// flag keeps its new state and `error` is populated so the UI can show a
-    /// visible failure state. On success the error is cleared.
+    /// On success with a canonical section (`Some`), local state is replaced
+    /// wholesale from the server's response instead of trusting the
+    /// optimistic guess -- this is what lets server-side normalization, a
+    /// default, or a write that landed differently than requested reach the
+    /// UI (#4986). On success without a canonical section (a 2xx the client
+    /// could not otherwise interpret), only the resolved flag's pending/error
+    /// state is cleared. On failure the optimistic flip is reverted to `prev`
+    /// so a rejected write cannot render as though it persisted.
     pub(crate) fn resolve_feature(
         &mut self,
         key: &str,
         success: bool,
-        _prev: bool,
+        prev: bool,
         error: Option<String>,
         restart_required: Vec<String>,
+        canonical: Option<Vec<FeatureFlagConfigEntry>>,
     ) {
         self.restart_required = restart_required;
+
+        if success {
+            if let Some(entries) = canonical {
+                self.feature_flags = entries
+                    .into_iter()
+                    .map(|e| FeatureFlag {
+                        key: e.key,
+                        description: e.description,
+                        enabled: e.enabled,
+                        pending: false,
+                        error: None,
+                    })
+                    .collect();
+                return;
+            }
+            if let Some(f) = self.feature_flags.iter_mut().find(|f| f.key == key) {
+                f.pending = false;
+                f.error = None;
+            }
+            return;
+        }
+
         if let Some(f) = self.feature_flags.iter_mut().find(|f| f.key == key) {
             f.pending = false;
-            if success {
-                f.error = None;
-            } else {
-                // Keep the optimistic state (do not roll back) and surface the
-                // failure so the operator sees the write did not land.
-                f.error = error.or(Some("Update failed".to_string()));
-            }
+            f.enabled = prev;
+            f.error = error.or(Some("Update failed".to_string()));
         }
     }
 
@@ -1219,7 +1276,10 @@ mod tests {
     }
 
     #[test]
-    fn toggle_store_resolve_feature_failure_rolls_back() {
+    fn toggle_store_resolve_feature_failure_reverts_to_persisted_value() {
+        // WHY(#4986): a rejected write must not render as though it
+        // persisted -- revert to `prev` rather than keeping the optimistic
+        // guess.
         let mut store = ToggleStore::new();
         store.feature_flags.push(FeatureFlag {
             key: "k".to_string(),
@@ -1234,10 +1294,11 @@ mod tests {
             false,
             Some("server error".to_string()),
             Vec::new(),
+            None,
         );
         assert!(
-            store.feature_flags[0].enabled,
-            "failure must keep optimistic state"
+            !store.feature_flags[0].enabled,
+            "failure must revert to the pre-optimistic value"
         );
         assert!(!store.feature_flags[0].pending);
         assert_eq!(
@@ -1257,7 +1318,14 @@ mod tests {
             pending: true,
             error: Some("old error".to_string()),
         });
-        store.resolve_feature("k", true, false, None, vec!["feature_flags.k".to_string()]);
+        store.resolve_feature(
+            "k",
+            true,
+            false,
+            None,
+            vec!["feature_flags.k".to_string()],
+            None,
+        );
         assert!(store.feature_flags[0].enabled);
         assert!(!store.feature_flags[0].pending);
         assert!(
@@ -1268,12 +1336,131 @@ mod tests {
     }
 
     #[test]
+    fn toggle_store_resolve_feature_success_applies_canonical_config() {
+        // WHY(#4986): the regression this issue is actually about -- a
+        // canonical response that disagrees with the optimistic guess (here,
+        // the server normalized the description and left the flag off
+        // despite the optimistic flip to on) must win.
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "k".to_string(),
+            description: "stale local copy".to_string(),
+            enabled: true,
+            pending: true,
+            error: None,
+        });
+        store.resolve_feature(
+            "k",
+            true,
+            false,
+            None,
+            Vec::new(),
+            Some(vec![FeatureFlagConfigEntry {
+                key: "k".to_string(),
+                description: "canonical from server".to_string(),
+                enabled: false,
+            }]),
+        );
+        assert_eq!(store.feature_flags.len(), 1);
+        assert!(
+            !store.feature_flags[0].enabled,
+            "canonical server value must win over the optimistic guess"
+        );
+        assert_eq!(store.feature_flags[0].description, "canonical from server");
+        assert!(!store.feature_flags[0].pending);
+    }
+
+    #[test]
+    fn toggle_store_resolve_feature_success_canonical_replaces_whole_list() {
+        // A canonical response describes the whole section: a flag the
+        // client held locally but the server no longer reports must not
+        // survive the replace.
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "kept".to_string(),
+            description: String::new(),
+            enabled: false,
+            pending: true,
+            error: None,
+        });
+        store.feature_flags.push(FeatureFlag {
+            key: "removed-server-side".to_string(),
+            description: String::new(),
+            enabled: true,
+            pending: false,
+            error: None,
+        });
+        store.resolve_feature(
+            "kept",
+            true,
+            false,
+            None,
+            Vec::new(),
+            Some(vec![FeatureFlagConfigEntry {
+                key: "kept".to_string(),
+                description: String::new(),
+                enabled: true,
+            }]),
+        );
+        assert_eq!(store.feature_flags.len(), 1);
+        assert_eq!(store.feature_flags[0].key, "kept");
+    }
+
+    #[test]
+    fn toggle_store_any_feature_flag_pending_reflects_any_row() {
+        let mut store = ToggleStore::new();
+        assert!(!store.any_feature_flag_pending());
+        store.feature_flags.push(FeatureFlag {
+            key: "a".to_string(),
+            description: String::new(),
+            enabled: false,
+            pending: false,
+            error: None,
+        });
+        store.feature_flags.push(FeatureFlag {
+            key: "b".to_string(),
+            description: String::new(),
+            enabled: false,
+            pending: true,
+            error: None,
+        });
+        assert!(store.any_feature_flag_pending());
+    }
+
+    #[test]
+    fn toggle_store_flip_feature_refuses_while_another_write_is_pending() {
+        // WHY(#4986): the write is whole-section, so overlapping writes can
+        // race and stomp each other's persisted value.
+        let mut store = ToggleStore::new();
+        store.feature_flags.push(FeatureFlag {
+            key: "a".to_string(),
+            description: String::new(),
+            enabled: false,
+            pending: true,
+            error: None,
+        });
+        store.feature_flags.push(FeatureFlag {
+            key: "b".to_string(),
+            description: String::new(),
+            enabled: false,
+            pending: false,
+            error: None,
+        });
+        assert_eq!(
+            store.flip_feature("b"),
+            None,
+            "must refuse a second flip while `a` is still in flight"
+        );
+        assert!(!store.feature_flags[1].enabled, "b must not have flipped");
+    }
+
+    #[test]
     fn toggle_store_resolve_unknown_id_no_panic() {
         let mut store = ToggleStore::new();
         // Should not panic when id is missing.
         store.resolve_agent(&nid("ghost"), true, false, None);
         store.resolve_tool(&nid("ghost"), "missing", true, false, None);
-        store.resolve_feature("missing", true, false, None, Vec::new());
+        store.resolve_feature("missing", true, false, None, Vec::new(), None);
         assert!(store.agent_toggles.is_empty());
         assert!(store.tool_toggles.is_empty());
         assert!(store.feature_flags.is_empty());
@@ -1402,8 +1589,7 @@ mod tests {
             pending: true,
             error: None,
         });
-        store.flip_feature("k");
-        store.resolve_feature("k", false, true, None, Vec::new());
+        store.resolve_feature("k", false, true, None, Vec::new(), None);
         assert_eq!(
             store.feature_flags[0].error,
             Some("Update failed".to_string())
