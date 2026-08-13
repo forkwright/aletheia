@@ -359,6 +359,13 @@ pub(crate) fn Ops() -> Element {
     let mut stats = use_signal(ToolStats::default);
     let mut tools_fetch = use_signal(|| FetchState::<()>::Loading);
 
+    // ── Credentials-tab state ──
+    // WHY(#4877): credentials fetch state is otherwise entirely local to
+    // `CredentialsView`, so the top-level Refresh button had nothing to
+    // drive. Hoisting just the trigger (not the fetch itself) keeps
+    // `CredentialsView` the owner of its own request/parse/error handling.
+    let mut cred_refresh = use_signal(|| 0u32);
+
     // ── Dashboard data fetch ──
     let mut refresh_dashboard = move || {
         let cfg = config.read().clone();
@@ -656,7 +663,10 @@ pub(crate) fn Ops() -> Element {
                             match tab {
                                 OpsTab::Dashboard => refresh_dashboard(),
                                 OpsTab::Tools => refresh_tools(),
-                                OpsTab::Credentials => {},
+                                // WHY(#4877): was a no-op -- credentials owns
+                                // its own fetch, so this only needs to bump
+                                // the shared trigger it watches.
+                                OpsTab::Credentials => cred_refresh.set(cred_refresh() + 1),
                             }
                         },
                         "Refresh"
@@ -774,7 +784,7 @@ pub(crate) fn Ops() -> Element {
                 },
 
                 OpsTab::Credentials => rsx! {
-                    credentials::CredentialsView {}
+                    credentials::CredentialsView { refresh_trigger: cred_refresh }
                 },
             }
         }

@@ -74,6 +74,7 @@ pub(crate) enum MetricsTab {
     #[default]
     Tokens,
     Costs,
+    Tools,
 }
 
 /// Sort direction for data tables.

@@ -20,13 +20,31 @@ pub(crate) enum NotificationCategory {
     AgentCompletion,
     /// Tool approval required.
     ///
-    /// NOTE: Awaiting `ToolApprovalNeeded` global SSE event type. Currently
-    /// not fired from the dispatch layer -- placeholder for future wiring.
+    /// NOTE: Awaiting a global `ToolApprovalNeeded` SSE event. The event
+    /// pylon streams today (`ToolApprovalRequired`) is scoped to a single
+    /// open turn's SSE stream and already drives the in-chat approval
+    /// overlay -- it is not the global, session-independent signal
+    /// `NotificationDispatch` needs to alert an operator who is not looking
+    /// at that session. See [`Self::is_wired`].
     ToolApproval,
     /// Agent error or tool failure (triggered by `ToolFailed` SSE event).
     Error,
     /// SSE connection lost or restored.
     ConnectionStatus,
+}
+
+impl NotificationCategory {
+    /// Whether a real event source backs this category today.
+    ///
+    /// WHY(#4871): `ToolApproval` has a preference toggle and dispatch-side
+    /// handling (DND bypass, toast severity) but no global event ever
+    /// reaches [`crate::services::notification_dispatch::NotificationDispatch`]
+    /// for it -- flipping the preference is currently a no-op. Callers must
+    /// gate the control on this rather than implying live coverage.
+    #[must_use]
+    pub(crate) const fn is_wired(self) -> bool {
+        !matches!(self, Self::ToolApproval)
+    }
 }
 
 /// Duration preset for activating Do Not Disturb mode.
@@ -272,5 +290,24 @@ mod tests {
         };
         assert!(!prefs.category_enabled(NotificationCategory::AgentCompletion));
         assert!(prefs.category_enabled(NotificationCategory::Error));
+    }
+
+    #[test]
+    fn tool_approval_is_not_wired() {
+        // WHY(#4871): regression for the control lying about live coverage --
+        // no event reaches the dispatcher for this category today, so it
+        // must not report itself as wired.
+        assert!(!NotificationCategory::ToolApproval.is_wired());
+    }
+
+    #[test]
+    fn other_categories_are_wired() {
+        for cat in [
+            NotificationCategory::AgentCompletion,
+            NotificationCategory::Error,
+            NotificationCategory::ConnectionStatus,
+        ] {
+            assert!(cat.is_wired(), "{cat:?} has a real event source");
+        }
     }
 }

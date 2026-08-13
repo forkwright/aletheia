@@ -313,8 +313,14 @@ const ERROR_TEXT: &str = "\
 // ── Components ──
 
 /// Credential management panel.
+///
+/// `refresh_trigger` is bumped by the Ops-level Refresh button (WHY(#4877):
+/// that button was previously a no-op on this tab, since credentials fetch
+/// state lived entirely inside this component with nothing external able to
+/// drive it) -- a bump re-runs the same fetch effect as the internal
+/// `fetch_trigger` that mutation success handlers already use.
 #[component]
-pub(crate) fn CredentialsView() -> Element {
+pub(crate) fn CredentialsView(refresh_trigger: Signal<u32>) -> Element {
     let mut fetch_trigger = use_signal(|| 0u32);
     let mut fetch_state: Signal<FetchState<CredentialStore>> = use_signal(|| FetchState::Loading);
     let config: Signal<ConnectionConfig> = use_context();
@@ -344,6 +350,7 @@ pub(crate) fn CredentialsView() -> Element {
 
     use_effect(move || {
         let _trigger = *fetch_trigger.read();
+        let _external_trigger = *refresh_trigger.read();
         let cfg = config.read().clone();
         let allowed = {
             let role = cfg.auth_token.as_deref().and_then(decode_role_claim);
