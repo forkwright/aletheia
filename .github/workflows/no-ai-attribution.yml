@@ -40,6 +40,9 @@ jobs:
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
         with:
           fetch-depth: 0
+          # WHY(filter): reads commit messages via `git log --format`, never file
+          # contents, so the commit graph is the whole requirement.
+          filter: blob:none
           persist-credentials: false
 
       - name: Scan PR body and title for attribution markers
