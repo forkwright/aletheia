@@ -249,7 +249,7 @@ Individual agent definitions; merged with `defaults` at resolution time.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `id` | string | "" | Unique agent identifier (matches the `nous/{id}/` directory name). |
+| `id` | `NousId` | `NousId::from_static("unset")` | Unique agent identifier (matches the `nous/{id}/` directory name). WHY(#4638): typed as `NousId` so a malformed id (uppercase, underscore, path separator, leading/trailing hyphen) cannot survive config load — deserialization runs the same shared validator as `init`, `add-nous`, import, and the HTTP create path, instead of a sixth hand-rolled check that could drift or be forgotten. |
 | `name` | string | unset | Human-readable display name. |
 | `enabled` | bool | true | Whether the agent is enabled in the operator surface. |
 | `workspace` | string | "" | Filesystem path to the agent's workspace directory. |
