@@ -80,7 +80,7 @@ impl NousActor {
     }
 
     /// Finalize turn: update session tokens, check drift, spawn side-effects, reset state.
-    async fn finalize_turn(
+    pub(super) async fn finalize_turn(
         &mut self,
         session_key: &str,
         content: &str,
@@ -106,20 +106,36 @@ impl NousActor {
             // budget) rather than the coarse "non-degraded == success" proxy.
             self.record_router_outcome(session_key, content, turn_result);
 
+            // WHY(#5367): every corpus/consolidation side effect below is
+            // fed `turn_result.is_degraded()` explicitly. A degraded turn is
+            // a locally synthesized fallback (no real model completion) —
+            // see `pipeline::turn_admits_corpus_side_effects` for the sibling
+            // gate on training-capture and DPO extraction. Each callee also
+            // gates on this flag internally, so a future call site added
+            // here without threading it through fails to compile rather than
+            // silently admitting degraded turns.
+            let is_degraded = turn_result.is_degraded();
+
             self.maybe_spawn_extraction(
                 content,
                 &turn_result.content,
                 &turn_result.tool_calls,
                 &turn_result.reasoning,
+                is_degraded,
             );
             let source_session_id = self
                 .sessions
                 .get(session_key)
                 .map_or_else(|| session_key.to_owned(), |session| session.id.clone());
-            self.maybe_spawn_skill_analysis(&turn_result.tool_calls, &source_session_id);
-            self.maybe_spawn_distillation(session_key).await;
+            self.maybe_spawn_skill_analysis(
+                &turn_result.tool_calls,
+                &source_session_id,
+                is_degraded,
+            );
+            self.maybe_spawn_distillation(session_key, is_degraded)
+                .await;
             #[cfg(feature = "knowledge-store")]
-            self.maybe_run_auto_dream().await;
+            self.maybe_run_auto_dream(is_degraded).await;
         }
 
         self.active_session = None;

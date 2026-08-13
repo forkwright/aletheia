@@ -7,12 +7,22 @@ use skene::id::NousId;
 
 // -- Agent card data ----------------------------------------------------------
 
-/// Health tier for an agent, derived from SSE status strings.
+/// Health tier for an agent, derived from SSE status strings or the initial
+/// `GET /api/v1/nous` load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[non_exhaustive]
 pub enum HealthTier {
-    /// Agent is operating normally.
+    /// No live status has been reported yet, or the reported status is not
+    /// recognized.
+    ///
+    /// WHY(#4807): the default on purpose — a card built before any real
+    /// status is known (or from an unrecognized status string) must not
+    /// silently claim health it has not verified. Mirrors
+    /// `HealthStatus::Unknown`'s same reasoning for aggregate service
+    /// health below.
     #[default]
+    Unknown,
+    /// Agent is operating normally.
     Healthy,
     /// Agent has warnings or partial failures.
     Degraded,
@@ -28,6 +38,7 @@ impl HealthTier {
             Self::Healthy => "var(--status-success)",
             Self::Degraded => "var(--status-warning)",
             Self::Error => "var(--status-error)",
+            Self::Unknown => "var(--text-muted)",
         }
     }
 
@@ -38,6 +49,7 @@ impl HealthTier {
             Self::Healthy => "healthy",
             Self::Degraded => "degraded",
             Self::Error => "error",
+            Self::Unknown => "unknown",
         }
     }
 }
@@ -682,13 +694,25 @@ impl ToggleStore {
 
 // -- SSE status parsing -------------------------------------------------------
 
-/// Derive a [`HealthTier`] from an SSE status string.
+/// Derive a [`HealthTier`] from a status string.
+///
+/// Covers two vocabularies that share this one mapping: the per-turn SSE
+/// status stream (`idle`, `working`, `tool-failed:*`, `error`, `failed`) and
+/// the actor lifecycle string reported by `GET /api/v1/nous`'s `status`
+/// field (`active`, `idle`, `dormant`, `degraded`, or `unknown` — see
+/// `pylon::handlers::nous::live_status_label`, #4807). Any string outside
+/// both — including `unknown` itself and a client-side missing status —
+/// falls through to [`HealthTier::Unknown`] rather than the old silent
+/// `Healthy` default: an unreported or unrecognized state must never render
+/// as healthy.
 #[must_use]
 pub(crate) fn health_from_status(status: &str) -> HealthTier {
     match status {
         s if s.starts_with("tool-failed:") => HealthTier::Degraded,
         "error" | "failed" => HealthTier::Error,
-        _ => HealthTier::Healthy,
+        "degraded" => HealthTier::Degraded,
+        "idle" | "working" | "active" | "dormant" => HealthTier::Healthy,
+        _ => HealthTier::Unknown,
     }
 }
 
@@ -907,11 +931,24 @@ mod tests {
 
     #[test]
     fn health_from_status_mapping() {
+        // SSE per-turn vocabulary.
         assert_eq!(health_from_status("idle"), HealthTier::Healthy);
         assert_eq!(health_from_status("working"), HealthTier::Healthy);
         assert_eq!(health_from_status("tool-failed:exec"), HealthTier::Degraded);
         assert_eq!(health_from_status("error"), HealthTier::Error);
         assert_eq!(health_from_status("failed"), HealthTier::Error);
+        // Actor lifecycle vocabulary from GET /api/v1/nous (#4807).
+        assert_eq!(health_from_status("active"), HealthTier::Healthy);
+        assert_eq!(health_from_status("dormant"), HealthTier::Healthy);
+        assert_eq!(health_from_status("degraded"), HealthTier::Degraded);
+        // WHY(#4807): the literal defect — an unreported or unrecognized
+        // status must resolve to Unknown, never fall through to Healthy.
+        assert_eq!(health_from_status("unknown"), HealthTier::Unknown);
+        assert_eq!(health_from_status(""), HealthTier::Unknown);
+        assert_eq!(
+            health_from_status("some-future-lifecycle"),
+            HealthTier::Unknown
+        );
     }
 
     #[test]
@@ -919,6 +956,7 @@ mod tests {
         assert_eq!(HealthTier::Healthy.dot_color(), "var(--status-success)");
         assert_eq!(HealthTier::Degraded.dot_color(), "var(--status-warning)");
         assert_eq!(HealthTier::Error.dot_color(), "var(--status-error)");
+        assert_eq!(HealthTier::Unknown.dot_color(), "var(--text-muted)");
     }
 
     #[test]
@@ -926,11 +964,15 @@ mod tests {
         assert_eq!(HealthTier::Healthy.label(), "healthy");
         assert_eq!(HealthTier::Degraded.label(), "degraded");
         assert_eq!(HealthTier::Error.label(), "error");
+        assert_eq!(HealthTier::Unknown.label(), "unknown");
     }
 
+    /// WHY(#4807): a card built via `..Default::default()` (or any future
+    /// caller of `HealthTier::default()`) must not claim verified health —
+    /// see the `#[default]` WHY on the `Unknown` variant.
     #[test]
-    fn health_tier_default_healthy() {
-        assert_eq!(HealthTier::default(), HealthTier::Healthy);
+    fn health_tier_default_is_unknown() {
+        assert_eq!(HealthTier::default(), HealthTier::Unknown);
     }
 
     #[test]

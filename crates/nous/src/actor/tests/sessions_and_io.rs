@@ -147,7 +147,7 @@ fn maybe_spawn_extraction_skips_when_no_config() {
     };
     let (mut actor, _tx, _dir) = make_test_actor(config);
 
-    actor.maybe_spawn_extraction("hello world", "response text", &[], "");
+    actor.maybe_spawn_extraction("hello world", "response text", &[], "", false);
 
     assert_eq!(
         actor.runtime.background_tasks.len(),
@@ -167,7 +167,7 @@ fn maybe_spawn_extraction_skips_when_disabled() {
     };
     let (mut actor, _tx, _dir) = make_test_actor(config);
 
-    actor.maybe_spawn_extraction("hello world", "response", &[], "");
+    actor.maybe_spawn_extraction("hello world", "response", &[], "", false);
 
     assert_eq!(
         actor.runtime.background_tasks.len(),
@@ -188,7 +188,7 @@ fn maybe_spawn_extraction_skips_when_content_too_short() {
     };
     let (mut actor, _tx, _dir) = make_test_actor(config);
 
-    actor.maybe_spawn_extraction("short", "response", &[], "");
+    actor.maybe_spawn_extraction("short", "response", &[], "", false);
 
     assert_eq!(
         actor.runtime.background_tasks.len(),
@@ -217,7 +217,13 @@ async fn maybe_spawn_extraction_skips_when_task_limit_reached() {
     }
     assert_eq!(actor.runtime.background_tasks.len(), MAX_SPAWNED_TASKS);
 
-    actor.maybe_spawn_extraction("long enough content here", "response text here", &[], "");
+    actor.maybe_spawn_extraction(
+        "long enough content here",
+        "response text here",
+        &[],
+        "",
+        false,
+    );
 
     assert_eq!(
         actor.runtime.background_tasks.len(),
@@ -254,6 +260,7 @@ async fn maybe_spawn_extraction_spawns_with_tool_calls_and_reasoning() {
         "assistant response here",
         &tool_calls,
         "I need to check the file first.",
+        false,
     );
 
     assert_eq!(
@@ -275,12 +282,52 @@ async fn maybe_spawn_extraction_spawns_without_tool_calls_or_reasoning() {
     };
     let (mut actor, _tx, _dir) = make_test_actor(config);
 
-    actor.maybe_spawn_extraction("user message here", "assistant response here", &[], "");
+    actor.maybe_spawn_extraction(
+        "user message here",
+        "assistant response here",
+        &[],
+        "",
+        false,
+    );
 
     assert_eq!(
         actor.runtime.background_tasks.len(),
         1,
         "extraction task should be spawned even without tool calls or reasoning"
+    );
+}
+
+/// Regression test for #5367: a degraded turn carries no real model
+/// completion, so it must never enter the extraction/memory corpus even when
+/// every other admission condition (config enabled, content long enough) is
+/// met. Same fixture as `maybe_spawn_extraction_spawns_without_tool_calls_or_reasoning`
+/// (which proves the non-degraded control spawns), differing only in
+/// `is_degraded` — so this fails if the gate is ever removed from this call
+/// site.
+#[tokio::test]
+async fn maybe_spawn_extraction_skips_when_degraded() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    actor.maybe_spawn_extraction(
+        "user message here",
+        "assistant response here",
+        &[],
+        "",
+        true,
+    );
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "a degraded turn must never spawn extraction, even when config would otherwise admit it"
     );
 }
 
@@ -290,7 +337,7 @@ async fn maybe_spawn_extraction_spawns_without_tool_calls_or_reasoning() {
 fn maybe_spawn_skill_analysis_noop_on_empty_tool_calls() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
 
-    actor.maybe_spawn_skill_analysis(&[], "my-session");
+    actor.maybe_spawn_skill_analysis(&[], "my-session", false);
 
     assert_eq!(actor.runtime.background_tasks.len(), 0);
 }
@@ -300,7 +347,7 @@ fn maybe_spawn_skill_analysis_processes_successful_tool_calls() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
 
     let calls = vec![make_tool_call("bash", false)];
-    actor.maybe_spawn_skill_analysis(&calls, "my-session");
+    actor.maybe_spawn_skill_analysis(&calls, "my-session", false);
     // WHY: no task is spawned unless the candidate is promoted (first occurrence never promotes).
     assert_eq!(actor.runtime.background_tasks.len(), 0);
 }
@@ -311,8 +358,78 @@ fn maybe_spawn_skill_analysis_processes_errored_tool_calls() {
 
     let calls = vec![make_tool_call("bash", true)];
     // NOTE: error calls are recorded as ToolCallRecord::errored.
-    actor.maybe_spawn_skill_analysis(&calls, "s");
+    actor.maybe_spawn_skill_analysis(&calls, "s", false);
     assert_eq!(actor.runtime.background_tasks.len(), 0);
+}
+
+/// A tool call sequence that clears every heuristic gate in
+/// `episteme::skills::heuristics::score_sequence` (length >= 5, >= 3 distinct
+/// tools, no debugging-spiral/single-file-edit/config-specific rejection) —
+/// mirrors `good_seq()` in `episteme::skills::candidate::tests`, which the
+/// upstream Rule-of-Three tests (`third_occurrence_returns_promoted`) confirm
+/// promotes on the third distinct-session occurrence.
+fn good_skill_sequence() -> Vec<crate::pipeline::ToolCall> {
+    ["Grep", "Read", "Read", "Edit", "Bash", "Bash"]
+        .into_iter()
+        .map(|name| make_tool_call(name, false))
+        .collect()
+}
+
+/// Control for `maybe_spawn_skill_analysis_skips_when_degraded`: proves the
+/// fixture actually reaches Rule-of-Three promotion (and therefore a spawn)
+/// when the turn is NOT degraded, so the companion test's zero-spawn result
+/// is meaningful rather than incidental.
+#[tokio::test]
+async fn maybe_spawn_skill_analysis_promotes_and_spawns_when_not_degraded() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+    let calls = good_skill_sequence();
+
+    actor.maybe_spawn_skill_analysis(&calls, "s1", false);
+    actor.maybe_spawn_skill_analysis(&calls, "s2", false);
+    actor.maybe_spawn_skill_analysis(&calls, "s3", false);
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        1,
+        "the third distinct-session occurrence of a passing sequence should promote and spawn skill extraction"
+    );
+}
+
+/// Regression test for #5367: three identical passing sequences would
+/// promote and spawn on the third occurrence (see the control test above);
+/// with every one of them marked degraded, none may reach the candidate
+/// tracker at all, so recurrence never accumulates and nothing spawns. This
+/// fails if the gate is ever removed from this call site.
+#[tokio::test]
+async fn maybe_spawn_skill_analysis_skips_when_degraded() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+    let calls = good_skill_sequence();
+
+    actor.maybe_spawn_skill_analysis(&calls, "s1", true);
+    actor.maybe_spawn_skill_analysis(&calls, "s2", true);
+    actor.maybe_spawn_skill_analysis(&calls, "s3", true);
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "a degraded turn's tool calls must never reach the candidate tracker, so three occurrences never promote"
+    );
 }
 
 // ── background.rs: maybe_spawn_distillation ──────────────────────────────────
@@ -326,7 +443,7 @@ async fn maybe_spawn_distillation_skips_when_flag_already_set() {
         .distillation_in_progress
         .store(true, std::sync::atomic::Ordering::Release);
 
-    actor.maybe_spawn_distillation("s").await;
+    actor.maybe_spawn_distillation("s", false).await;
 
     assert!(
         actor
@@ -346,7 +463,7 @@ async fn maybe_spawn_distillation_skips_when_flag_already_set() {
 async fn maybe_spawn_distillation_clears_flag_when_no_session_store() {
     let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
 
-    actor.maybe_spawn_distillation("s").await;
+    actor.maybe_spawn_distillation("s", false).await;
 
     assert!(
         !actor
@@ -365,7 +482,9 @@ async fn maybe_spawn_distillation_clears_flag_when_session_not_found() {
     let store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
     actor.stores.session_store = Some(Arc::new(tokio::sync::Mutex::new(store)));
 
-    actor.maybe_spawn_distillation("nonexistent-session").await;
+    actor
+        .maybe_spawn_distillation("nonexistent-session", false)
+        .await;
 
     assert!(
         !actor
@@ -375,6 +494,160 @@ async fn maybe_spawn_distillation_clears_flag_when_session_not_found() {
         "flag must be cleared when session is not found"
     );
     assert_eq!(actor.runtime.background_tasks.len(), 0);
+}
+
+/// Build an actor whose session `"s"` (store id `"ses-1"`) has enough
+/// messages to trip `should_trigger_distillation`'s "never distilled"
+/// threshold (`AgentBehaviorDefaults::distillation_never_distilled_trigger`,
+/// default 30 — see `crates/taxis/src/config/agents.rs`), with a provider
+/// registered for `DistillTriggerConfig::default().model` so
+/// `try_spawn_distillation` clears every gate up to the actual spawn.
+fn make_distillation_ready_actor() -> (
+    NousActor,
+    mpsc::Sender<NousMessage>,
+    tempfile::TempDir, // kept alive: drop would delete tempdir
+) {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("distilled").models(&[koina::defaults::DEFAULT_MODEL]),
+    ));
+    let (mut actor, tx, dir) =
+        make_test_actor_with_providers(Arc::new(providers), PipelineConfig::default());
+
+    let store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
+    store
+        .create_session("ses-1", "test-agent", "s", None, None)
+        .expect("create session");
+    for i in 0..30_i64 {
+        store
+            .append_message(
+                "ses-1",
+                mneme::types::Role::User,
+                &format!("turn {i}"),
+                None,
+                None,
+                10,
+            )
+            .expect("append message");
+    }
+    actor.stores.session_store = Some(Arc::new(tokio::sync::Mutex::new(store)));
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+
+    (actor, tx, dir)
+}
+
+/// Control for `maybe_spawn_distillation_skips_when_degraded`: proves the
+/// fixture actually reaches a spawn when the turn is NOT degraded, so the
+/// companion test's zero-spawn result is meaningful rather than incidental.
+#[tokio::test]
+async fn maybe_spawn_distillation_spawns_when_not_degraded() {
+    let (mut actor, _tx, _dir) = make_distillation_ready_actor();
+
+    actor.maybe_spawn_distillation("s", false).await;
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        1,
+        "a never-distilled session past the message-count threshold should spawn a distillation task"
+    );
+}
+
+/// Regression test for #5367: same fixture as the control above, which
+/// would otherwise spawn — a degraded turn must never trigger distillation
+/// of the session it just produced. Fails if the gate is ever removed from
+/// this call site.
+#[tokio::test]
+async fn maybe_spawn_distillation_skips_when_degraded() {
+    let (mut actor, _tx, _dir) = make_distillation_ready_actor();
+
+    actor.maybe_spawn_distillation("s", true).await;
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "a degraded turn must never spawn distillation, even when the session is otherwise eligible"
+    );
+    assert!(
+        !actor
+            .runtime
+            .distillation_in_progress
+            .load(std::sync::atomic::Ordering::Acquire),
+        "the in-progress flag must never be touched for a degraded turn"
+    );
+}
+
+// ── turn.rs: finalize_turn corpus side-effect gating (#5367) ────────────────
+
+/// Control for `finalize_turn_never_spawns_extraction_for_a_degraded_turn`:
+/// proves `finalize_turn`'s wiring reaches the extraction call site (and
+/// threads a real, non-degraded `TurnResult`) so the companion test's
+/// zero-spawn result is meaningful rather than incidental. Together the pair
+/// exercises the actual call site in `finalize_turn`, not just the predicate
+/// or the callee in isolation — it fails if `finalize_turn` ever stops
+/// threading `turn_result.is_degraded()` through to `maybe_spawn_extraction`.
+#[tokio::test]
+async fn finalize_turn_spawns_extraction_for_a_healthy_turn() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    let result: crate::error::Result<crate::pipeline::TurnResult> =
+        Ok(make_turn_result(50, vec![]));
+    actor
+        .finalize_turn(
+            "no-such-session",
+            "user content long enough to pass the extraction gate",
+            &result,
+        )
+        .await;
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        1,
+        "finalize_turn must still reach the extraction call site for a healthy turn"
+    );
+}
+
+/// Regression test for #5367: same fixture as the control above, calling the
+/// real `finalize_turn` entry point (not the `maybe_spawn_extraction` callee
+/// directly) with a synthesized degraded `TurnResult`. This is the test that
+/// would have caught the original defect — the call site in `finalize_turn`
+/// never checked `is_degraded` at all.
+#[tokio::test]
+async fn finalize_turn_never_spawns_extraction_for_a_degraded_turn() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    let result: crate::error::Result<crate::pipeline::TurnResult> = Ok(make_degraded_turn_result());
+    actor
+        .finalize_turn(
+            "no-such-session",
+            "user content long enough to pass the extraction gate",
+            &result,
+        )
+        .await;
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        0,
+        "finalize_turn must never spawn extraction for a degraded turn"
+    );
 }
 
 /// Regression test for #758/#916/#923: session ID divergence.
