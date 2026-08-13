@@ -69,3 +69,52 @@ fn probe_guarantees_reflects_egress_policy() {
         GuaranteeStatus::Unrestricted
     );
 }
+
+#[test]
+fn probe_guarantees_reflects_unenforceable_allowlist() {
+    // SECURITY(#4997): regression test. The previous `_ => seccomp` match reported
+    // `egress = "active"` for ANY non-Allow policy, including an Allowlist
+    // with non-loopback entries -- `apply_egress` can only isolate a child
+    // to loopback or block it entirely, so those entries could never be
+    // reached even though the diagnostic claimed the guarantee was active.
+    // This pins the honest status: unenforceable under enforcing, degraded
+    // under permissive, never "active".
+    let enforcing = SandboxPolicy {
+        enabled: true,
+        read_paths: Vec::new(),
+        write_paths: Vec::new(),
+        exec_paths: Vec::new(),
+        enforcement: SandboxEnforcement::Enforcing,
+        egress: EgressPolicy::Allowlist,
+        egress_allowlist: vec!["93.184.216.34".to_owned()],
+    };
+    assert_eq!(
+        probe_guarantees(&enforcing).egress,
+        GuaranteeStatus::Unavailable,
+        "a non-loopback allowlist entry must not be reported as enforced under enforcing"
+    );
+
+    let permissive = SandboxPolicy {
+        enforcement: SandboxEnforcement::Permissive,
+        ..enforcing.clone()
+    };
+    assert_eq!(
+        probe_guarantees(&permissive).egress,
+        GuaranteeStatus::Degraded,
+        "permissive mode degrades rather than blocks, but must not claim active either"
+    );
+
+    // A loopback-only allowlist IS within what apply_egress can provide (see
+    // allowlist_is_loopback_only), so it keeps tracking the same seccomp/
+    // netns capability status `deny` does -- this must NOT regress to
+    // Unavailable/Degraded alongside the non-loopback case above.
+    let loopback_only = SandboxPolicy {
+        egress_allowlist: vec!["127.0.0.1".to_owned()],
+        ..enforcing.clone()
+    };
+    assert_eq!(
+        probe_guarantees(&loopback_only).egress,
+        GuaranteeStatus::Active,
+        "a loopback-only allowlist entry is within the mechanism's real capability"
+    );
+}

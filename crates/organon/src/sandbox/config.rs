@@ -155,13 +155,15 @@ impl SandboxConfig {
     /// Check for configuration combinations that make this config's stated
     /// guarantees misleading, independent of any single tool invocation.
     ///
-    /// SECURITY(#5081, #5064, #5232): `enabled = true` does not by itself
-    /// mean "safe" -- a permissive enforcement, an explicit broad
+    /// SECURITY(#5081, #5064, #5232, #4997): `enabled = true` does not by
+    /// itself mean "safe" -- a permissive enforcement, an explicit broad
     /// `allowed_root`, or an `egress = "allowlist"` policy the
     /// child-process network-namespace path cannot enforce beyond loopback
     /// are all states an operator could previously only discover by
     /// reading source or scattered per-invocation log lines. Call this once
-    /// at startup (see `register_domain_tools`) and log every issue.
+    /// at startup (see `register_domain_tools`) and log every issue; an
+    /// issue with `broken_under_enforcing` set refuses registration outright
+    /// under `enforcement = "enforcing"` rather than only logging it.
     #[must_use]
     pub fn validate(&self) -> Vec<SandboxConfigIssue> {
         let mut issues = Vec::new();
@@ -202,13 +204,21 @@ impl SandboxConfig {
             && !super::policy::allowlist_is_loopback_only(&self.egress_allowlist)
         {
             issues.push(SandboxConfigIssue {
-                message: "sandbox.egress = \"allowlist\" with non-loopback entries: the \
-                          child-process network-namespace path can only enforce loopback \
-                          destinations without root privileges; non-loopback entries behave \
-                          as egress = \"deny\" for subprocess-sandboxed tools (in-process \
-                          tools -- http_request, web_fetch, web_search -- enforce the full \
-                          allowlist via their own egress checkpoint, independent of this path)"
-                    .to_owned(),
+                message: format!(
+                    "sandbox.egress = \"allowlist\" with non-loopback entries: the \
+                     child-process network-namespace path can only enforce loopback \
+                     destinations without root privileges; non-loopback entries can never be \
+                     reached, not selectively denied like a real allowlist (in-process tools \
+                     -- http_request, web_fetch, web_search -- enforce the full allowlist via \
+                     their own egress checkpoint, independent of this path).{}",
+                    if permissive {
+                        " enforcement=permissive logs this and continues, running \
+                          subprocess-sandboxed tools as if egress = \"deny\""
+                    } else {
+                        " enforcement=enforcing refuses to register tools rather than start up \
+                          on a guarantee it cannot keep"
+                    }
+                ),
                 broken_under_enforcing: true,
             });
         }

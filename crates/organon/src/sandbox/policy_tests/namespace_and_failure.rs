@@ -53,6 +53,43 @@ fn enforcing_fails_closed_when_landlock_unavailable() {
     }
 }
 
+/// Test that enforcing mode fails closed for an egress allowlist the
+/// network-namespace/seccomp mechanism cannot honor.
+///
+/// SECURITY(#4997): regression test. Before this fix, `apply_sandbox` proceeded to
+/// spawn the child under enforcing mode even when `egress_allowlist` named
+/// destinations `apply_egress` can never selectively permit -- the child ran
+/// with full network isolation (safe) but under a policy that reported
+/// itself as an honored "allowlist" rather than refusing to start. This
+/// pins the fail-closed alternative: the spawn itself is refused, and CI
+/// runs on `x86_64`/`aarch64` so this assertion does not need the Landlock-style
+/// probe-and-branch (seccomp support is unconditional on those arches).
+#[cfg(target_os = "linux")]
+#[test]
+fn enforcing_fails_closed_for_unenforceable_egress_allowlist() {
+    let workspace = tempfile::tempdir().expect("create workspace");
+    let policy = SandboxPolicy {
+        enabled: true,
+        read_paths: vec![workspace.path().to_path_buf()],
+        write_paths: vec![workspace.path().to_path_buf()],
+        exec_paths: vec![PathBuf::from("/bin"), PathBuf::from("/usr/bin")],
+        enforcement: SandboxEnforcement::Enforcing,
+        egress: EgressPolicy::Allowlist,
+        egress_allowlist: vec!["93.184.216.34".to_owned()],
+    };
+
+    let mut cmd = Command::new("echo");
+    cmd.arg("should not run");
+
+    let err = apply_sandbox(&mut cmd, policy)
+        .expect_err("a non-loopback allowlist must not be treated as enforceable");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("allowlist") || msg.contains("loopback"),
+        "error must explain the allowlist cannot be honored: {msg}"
+    );
+}
+
 /// Test that permissive mode fails open (logs but continues) when Landlock is unavailable.
 #[cfg(target_os = "linux")]
 #[test]
