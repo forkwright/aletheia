@@ -90,7 +90,11 @@ pub(crate) mod resume;
 /// Provider routing: static config-driven and empirical success-rate-based selection.
 pub(crate) mod routing;
 /// Per-prompt session management: spawn, monitor, resume, budget enforce.
-pub(crate) mod session;
+// WHY(#6750): same dead-code trap as `agent_sdk` above — `session::isolation`
+// (worktree resolution) and `EngineConfig`'s builder methods are exercised
+// only by their own unit tests; nothing else in-crate calls them. Stays
+// `pub`.
+pub mod session;
 /// Steward CI management pipeline: classify, merge, fix, and manage pull requests.
 pub mod steward;
 /// State persistence layer (fjall key-value store).

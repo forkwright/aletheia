@@ -13,7 +13,12 @@ pub(crate) mod error;
 /// Phase boundary gates: conditions that must be met before advancing between phases.
 pub mod gate;
 /// Context handoff protocol: continuity across distillation, shutdown, and crash recovery.
-pub(crate) mod handoff;
+// WHY(#6750): same dead-code trap as `reconciler` below — `HandoffContext`'s
+// only exerciser anywhere in the workspace is the `#[cfg(test)] mod
+// assertions` block further down this file, invisible to the plain `cargo
+// check` (lib) pass `-D warnings` runs under. Stays `pub` until wired to a
+// real caller or removed.
+pub mod handoff;
 /// Intent persistence with conviction tiers for sustained autonomous governance.
 pub mod intent;
 /// Prometheus metric definitions for planning and project orchestration.
