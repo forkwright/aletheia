@@ -11,7 +11,6 @@
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use koina::system::{Environment, RealSystem};
@@ -168,30 +167,6 @@ impl CcProvider {
         parts.join("\n\n")
     }
 
-    fn warn_dropped_tools(dropped_tools: usize) -> bool {
-        // WHY: Seat-bridged subprocess providers run their own CLI-side agentic loop, so
-        // aletheia's tools are intentionally not translated through this adapter.
-        static WARNED: AtomicBool = AtomicBool::new(false);
-
-        if dropped_tools == 0 {
-            return false;
-        }
-
-        let warned = WARNED
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_ok();
-
-        if warned {
-            warn!(
-                provider = "cc",
-                dropped_tools,
-                "cc dropped {dropped_tools} tool definitions; this seat-bridged CLI runs its own agentic loop so aletheia's tools are not invoked. Use a native API provider for aletheia's tool-loop"
-            );
-        }
-
-        warned
-    }
-
     /// Run the CC subprocess for a non-streaming completion, retrying once
     /// the subprocess itself (not just the surrounding call) on a transient
     /// spawn or timeout failure.
@@ -323,9 +298,13 @@ impl CcProvider {
 
     /// Execute a non-streaming completion via CC subprocess.
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
+        crate::seat_bridged::reject_tool_bearing_request(
+            &self.name,
+            "claude",
+            request.tools.len(),
+        )?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
         let system = request.system.as_deref();
 
@@ -382,9 +361,13 @@ impl CcProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
+        crate::seat_bridged::reject_tool_bearing_request(
+            &self.name,
+            "claude",
+            request.tools.len(),
+        )?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        Self::warn_dropped_tools(request.tools.len());
         let prompt = Self::format_prompt(request);
         let system = request.system.as_deref();
 
@@ -616,7 +599,8 @@ fn find_cc_binary() -> Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{CompletionRequest, Content, ContentBlock, Message, Role};
+    use crate::error::Error;
+    use crate::types::{CompletionRequest, Content, ContentBlock, Message, Role, ToolDefinition};
 
     #[test]
     fn format_prompt_single_message() {
@@ -749,13 +733,6 @@ mod tests {
         );
         assert_eq!(provider.subprocess_timeout(), Duration::from_mins(5));
         assert_eq!(provider.cli_product_name(), "claude");
-    }
-
-    #[test]
-    fn warns_once_for_dropped_tools() {
-        assert!(!CcProvider::warn_dropped_tools(0));
-        assert!(CcProvider::warn_dropped_tools(1));
-        assert!(!CcProvider::warn_dropped_tools(2));
     }
 
     #[test]
@@ -923,5 +900,78 @@ mod tests {
         }
 
         let _ = std::fs::remove_file(&script);
+    }
+
+    fn tool_bearing_request() -> CompletionRequest {
+        let mut request = single_message_request();
+        request.tools = vec![ToolDefinition {
+            name: "read_file".to_owned(),
+            description: "Read a file from disk".to_owned(),
+            input_schema: serde_json::json!({"type": "object"}),
+            disable_passthrough: None,
+        }];
+        request
+    }
+
+    #[tokio::test]
+    async fn execute_hard_fails_on_tool_bearing_request() {
+        // WHY(#4510): a tool-bearing turn must never reach the subprocess —
+        // this provider's own agentic loop cannot run aletheia's tools. The
+        // binary path here is deliberately nonexistent: if the capability
+        // check were skipped, this test would fail with a spawn error
+        // instead of the expected CapabilityMismatch, catching a regression
+        // either way.
+        let provider = flaky_provider(PathBuf::from("/nonexistent/claude-must-not-be-spawned"));
+        let request = tool_bearing_request();
+
+        match provider.execute(&request).await {
+            Ok(response) => {
+                panic!("expected a capability-mismatch hard failure, got: {response:?}")
+            }
+            Err(Error::CapabilityMismatch { provider, .. }) => assert_eq!(provider, "cc"),
+            Err(other) => panic!("expected Error::CapabilityMismatch, got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn execute_streaming_hard_fails_on_tool_bearing_request() {
+        // WHY(#4510): the streaming path must reject a tool-bearing request
+        // before the subprocess is spawned, same as the non-streaming path.
+        let provider = flaky_provider(PathBuf::from("/nonexistent/claude-must-not-be-spawned"));
+        let request = tool_bearing_request();
+        let mut events = Vec::new();
+
+        match provider
+            .execute_streaming(&request, &mut |event| events.push(event))
+            .await
+        {
+            Ok(response) => {
+                panic!("expected a capability-mismatch hard failure, got: {response:?}")
+            }
+            Err(Error::CapabilityMismatch { provider, .. }) => assert_eq!(provider, "cc"),
+            Err(other) => panic!("expected Error::CapabilityMismatch, got: {other}"),
+        }
+        assert!(
+            events.is_empty(),
+            "no stream events should be emitted before the capability check runs"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_without_tools_still_reaches_the_subprocess() {
+        // WHY: pins the inverse of the two tests above — a tool-free request
+        // must not be rejected by the new check, so the retry-budget test's
+        // nonexistent-binary error (a spawn failure, not CapabilityMismatch)
+        // still exercises the code path it did before #4510.
+        let provider = flaky_provider(PathBuf::from("/nonexistent/claude-must-not-be-spawned"));
+        let request = single_message_request();
+
+        match provider.execute(&request).await {
+            Ok(response) => panic!("expected a spawn failure, got: {response:?}"),
+            Err(Error::CapabilityMismatch { .. }) => {
+                panic!("a tool-free request must not raise CapabilityMismatch")
+            }
+            Err(_) => {}
+        }
     }
 }

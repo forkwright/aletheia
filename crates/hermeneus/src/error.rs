@@ -108,6 +108,25 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// A request required a capability the resolved provider cannot honor
+    /// (e.g. a tool-bearing turn routed to a seat-bridged CLI subprocess
+    /// provider that runs its own agentic loop). Routing must reject this
+    /// before dispatch rather than silently dropping the unsupported part
+    /// of the request.
+    #[snafu(display(
+        "provider '{provider}' cannot satisfy required capability '{capability}': {message}"
+    ))]
+    CapabilityMismatch {
+        /// Provider instance name that received the request.
+        provider: String,
+        /// Capability the request required but the provider does not support.
+        capability: String,
+        /// Actionable detail: what was requested and how the caller should route instead.
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Authentication failed.
     #[snafu(display("authentication failed: {message}"))]
     AuthFailed {
@@ -211,9 +230,10 @@ impl koina::error_class::Classifiable for Error {
             }
 
             // Permanent: retrying will not help — auth, unsupported model,
-            // non-5xx API errors, parse failures
+            // capability mismatch, non-5xx API errors, parse failures
             Error::AuthFailed { .. }
             | Error::UnsupportedModel { .. }
+            | Error::CapabilityMismatch { .. }
             | Error::ApiError { .. }
             | Error::ParseResponse { .. }
             | Error::ProviderContract { .. } => ErrorClass::Permanent,
@@ -254,6 +274,16 @@ impl koina::error_class::Classifiable for Error {
             },
             Error::UnsupportedModel { model, .. } => ErrorAction::Surface {
                 user_message: format!("Model '{model}' is not supported by this provider."),
+            },
+            Error::CapabilityMismatch {
+                provider,
+                capability,
+                message,
+                ..
+            } => ErrorAction::Surface {
+                user_message: format!(
+                    "Provider '{provider}' cannot satisfy required capability '{capability}': {message}"
+                ),
             },
             Error::ApiError {
                 status, message, ..
@@ -342,6 +372,40 @@ mod tests {
         }
         .build();
         assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn capability_mismatch_is_not_retryable() {
+        // WHY(#4510): a tool-bearing turn routed to a provider that cannot
+        // run aletheia's tool loop is a routing mistake, not a transient
+        // condition — retrying the same provider can never succeed.
+        let err = CapabilityMismatchSnafu {
+            provider: "cc".to_owned(),
+            capability: "aletheia organon tool-loop".to_owned(),
+            message: "cc dropped 2 tool definitions".to_owned(),
+        }
+        .build();
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn capability_mismatch_classifies_permanent_and_surfaces() {
+        use koina::error_class::{ErrorAction, ErrorClass};
+
+        let err = CapabilityMismatchSnafu {
+            provider: "cc".to_owned(),
+            capability: "aletheia organon tool-loop".to_owned(),
+            message: "cc dropped 2 tool definitions".to_owned(),
+        }
+        .build();
+        assert_eq!(err.class(), ErrorClass::Permanent);
+        match err.action() {
+            ErrorAction::Surface { user_message } => {
+                assert!(user_message.contains("cc"));
+                assert!(user_message.contains("aletheia organon tool-loop"));
+            }
+            other => panic!("expected ErrorAction::Surface, got: {other:?}"),
+        }
     }
 
     #[test]

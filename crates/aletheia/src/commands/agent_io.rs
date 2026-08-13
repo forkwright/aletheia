@@ -273,7 +273,9 @@ pub(crate) struct InitArgs {
 
 use taxis::oikos::Oikos;
 
-use mneme::types::{Role, SessionMetrics, SessionOrigin, SessionStatus, SessionType};
+use mneme::types::{
+    BlackboardVisibility, Role, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
+};
 
 #[cfg(feature = "recall")]
 fn knowledge_path_for_nous(oikos: &Oikos, nous_id: &str) -> PathBuf {
@@ -1710,8 +1712,18 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                 let ws_value = serde_json::to_string(ws).with_whatever_context(|_| {
                     format!("failed to serialize working_state for {}", session.id)
                 })?;
+                // WHY(#5032): working state is internal per-session scratch,
+                // not shared coordination state — written SessionPrivate so
+                // the general blackboard list/read tools never surface it.
                 store
-                    .blackboard_write(&ws_key, &ws_value, &nous_id, 86_400)
+                    .blackboard_write_scoped(
+                        &ws_key,
+                        &ws_value,
+                        &nous_id,
+                        86_400,
+                        BlackboardVisibility::SessionPrivate,
+                        Some(&session.id),
+                    )
                     .with_whatever_context(|_| {
                         format!("failed to hydrate working_state for {}", session.id)
                     })?;
