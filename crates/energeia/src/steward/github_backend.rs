@@ -251,6 +251,18 @@ mod tests {
 
     use super::*;
 
+    /// WHY: reqwest is built with the `rustls-no-provider` feature, so a rustls
+    /// `CryptoProvider` must be installed process-wide before any client is
+    /// constructed. In production `main()` does it; a test binary never runs
+    /// `main()`, so every test that builds a client installs it first. Same
+    /// shape as the test module in `aletheia/src/external_tools.rs`.
+    ///
+    /// NOTE: `install_default` returns `Err` when a provider is already
+    /// installed, which is harmless -- every caller wants the same one.
+    fn ensure_crypto_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
     fn test_pr(number: u64) -> PullRequest {
         PullRequest {
             number,
@@ -280,6 +292,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_open_prs_parses_github_shape_and_reports_mergeable_none() {
+        ensure_crypto_provider();
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/repo/pulls"))
@@ -314,6 +327,7 @@ mod tests {
 
     #[tokio::test]
     async fn list_open_prs_surfaces_http_error() {
+        ensure_crypto_provider();
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/repo/pulls"))
@@ -331,6 +345,7 @@ mod tests {
 
     #[tokio::test]
     async fn checks_unwraps_check_runs_envelope() {
+        ensure_crypto_provider();
         let server = MockServer::start().await;
         Mock::given(method("GET"))
             .and(path("/repos/acme/repo/commits/abc123/check-runs"))
@@ -356,6 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn merge_sends_configured_method() {
+        ensure_crypto_provider();
         let server = MockServer::start().await;
         Mock::given(method("PUT"))
             .and(path("/repos/acme/repo/pulls/7/merge"))
@@ -374,6 +390,7 @@ mod tests {
 
     #[tokio::test]
     async fn merge_surfaces_failure_body() {
+        ensure_crypto_provider();
         let server = MockServer::start().await;
         Mock::given(method("PUT"))
             .and(path("/repos/acme/repo/pulls/7/merge"))
