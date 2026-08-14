@@ -662,6 +662,9 @@ pub(crate) fn Chat() -> Element {
                 thinking: None,
                 tool_call_details: Vec::new(),
                 plans: Vec::new(),
+                turn_id: None,
+                session_id: None,
+                request_id: None,
             });
         }
 

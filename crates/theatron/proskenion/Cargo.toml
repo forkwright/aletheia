@@ -133,7 +133,7 @@ pulldown-cmark = { version = "0.13", features = ["simd"] }
 
 # Config persistence
 dirs = "6"
-toml = "1.0"
+toml = "1.1"
 aes-gcm = "0.10"
 keyring = "3"
 # WHY: version/features must be kept in sync with the aletheia root

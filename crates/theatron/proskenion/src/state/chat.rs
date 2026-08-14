@@ -1,6 +1,6 @@
 //! Chat session and message state for the desktop chat view.
 
-use skene::id::{NousId, SessionId};
+use skene::id::{NousId, RequestId, SessionId, TurnId};
 
 /// Session selected by another view for the chat route to activate.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +90,12 @@ pub struct ChatMessage {
     pub input_tokens: u32,
     /// Output tokens produced.
     pub output_tokens: u32,
+    /// Turn ID the message was generated under, from `TurnStart`.
+    pub turn_id: Option<TurnId>,
+    /// Session ID the message's turn belongs to, from `TurnStart`.
+    pub session_id: Option<SessionId>,
+    /// Server-assigned request ID for the message's turn, from `TurnStart`.
+    pub request_id: Option<RequestId>,
 }
 
 /// Format a Unix timestamp as a relative time string.
@@ -238,6 +244,9 @@ mod tests {
             model: Some("claude-sonnet-4".to_string()),
             input_tokens: 100,
             output_tokens: 200,
+            turn_id: Some(TurnId::from("t1")),
+            session_id: Some(SessionId::from("s1")),
+            request_id: Some(RequestId::from("r1")),
         };
         let cloned = msg.clone();
         assert_eq!(cloned, msg);
@@ -246,5 +255,7 @@ mod tests {
         assert_eq!(cloned.input_tokens, 100);
         assert_eq!(cloned.output_tokens, 200);
         assert!(cloned.is_streaming);
+        assert_eq!(cloned.turn_id, msg.turn_id);
+        assert_eq!(cloned.request_id, msg.request_id);
     }
 }

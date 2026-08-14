@@ -134,6 +134,9 @@ fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessa
         thinking: None,
         tool_call_details: Vec::new(),
         plans: Vec::new(),
+        turn_id: None,
+        session_id: None,
+        request_id: None,
     })
 }
 
@@ -208,6 +211,9 @@ mod tests {
             thinking: None,
             tool_call_details: Vec::new(),
             plans: Vec::new(),
+            turn_id: None,
+            session_id: None,
+            request_id: None,
         });
         let mut agent_store = AgentStore::new();
         agent_store.load_from_api(vec![agent("syn")]);
@@ -253,6 +259,9 @@ mod tests {
             thinking: None,
             tool_call_details: Vec::new(),
             plans: Vec::new(),
+            turn_id: None,
+            session_id: None,
+            request_id: None,
         });
         let mut agent_store = AgentStore::new();
         agent_store.load_from_api(vec![agent("syn")]);
@@ -361,6 +370,9 @@ mod tests {
             thinking: None,
             tool_call_details: Vec::new(),
             plans: Vec::new(),
+            turn_id: None,
+            session_id: None,
+            request_id: None,
         });
         chat_state.streaming.is_streaming = true;
         chat_state.streaming.text = "partial answer".to_string();

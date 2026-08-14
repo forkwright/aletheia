@@ -15,6 +15,11 @@ koina::newtype_id!(
     pub struct SessionId(String) // kanon:ignore RUST/pub-visibility
 );
 
+koina::newtype_id!(
+    /// Request identifier, stamped by pylon on stream-start payloads.
+    pub struct RequestId(String) // kanon:ignore RUST/pub-visibility
+);
+
 /// Turn identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
