@@ -12,6 +12,7 @@ use serde_json::Value;
 pub use keryx::error::{
     ApiError, AuthSnafu, HttpSnafu, InvalidTokenSnafu, RateLimitedSnafu, Result, ServerSnafu,
 };
+use keryx::response::extract_body_message;
 
 /// Structured body from a pylon non-2xx response.
 ///
@@ -105,7 +106,7 @@ pub fn parse_pylon_error_envelope(status: u16, body: &str) -> Option<ErrorEnvelo
 #[must_use]
 pub fn format_http_error_body(status: u16, reason: &str, body: &str) -> String {
     parse_pylon_error_envelope(status, body).map_or_else(
-        || legacy_flat_error_message(body).unwrap_or_else(|| format!("{status} {reason}")),
+        || extract_body_message(body).unwrap_or_else(|| format!("{status} {reason}")),
         |envelope| envelope.display_message(),
     )
 }
@@ -142,29 +143,6 @@ pub fn format_error_fields_for_display(
     } else {
         format!("{message} ({})", parts.join("; "))
     }
-}
-
-// WARNING(#5899): this duplicates keryx::response's private
-// `extract_body_message` (crates/keryx/src/response.rs in the forkwright/theatron
-// repo, pinned via git tag in this workspace's root Cargo.toml) — same
-// message-then-error field precedence, same `Option<String>` shape. It
-// cannot be replaced with a call to that function: it is `fn`, not `pub
-// fn`, in every tagged theatron release through the version pinned here
-// (verified against theatron's `main` branch too — not yet fixed upstream
-// either), so it is unreachable from this crate. This is the single
-// aletheia-owned copy — every consumer here (`format_http_error_body`,
-// used by `sse.rs`'s reconnect loop, `client.rs`, `streaming.rs`, and
-// proskenion's callers) goes through it rather than re-deriving the same
-// three lines locally. Delete this function and call
-// `keryx::response::extract_body_message` directly once that symbol is
-// `pub` in the pinned theatron tag.
-fn legacy_flat_error_message(body: &str) -> Option<String> {
-    serde_json::from_str::<Value>(body).ok().and_then(|json| {
-        json.get("message")
-            .or_else(|| json.get("error"))
-            .and_then(Value::as_str)
-            .map(ToOwned::to_owned)
-    })
 }
 
 /// Extract a `Retry-After` delta-seconds value from response headers.
@@ -297,6 +275,27 @@ mod tests {
         assert_eq!(
             format_http_error_body(400, "Bad Request", body),
             "bad request"
+        );
+    }
+
+    #[test]
+    fn format_http_error_body_prefers_flat_message_over_error() {
+        // INVARIANT(#5899): keryx::response::extract_body_message's
+        // message-then-error precedence, exercised through this crate's
+        // sole call site (`format_http_error_body`, used by sse.rs's
+        // reconnect loop).
+        let body = r#"{"message":"preferred","error":"fallback"}"#;
+        assert_eq!(
+            format_http_error_body(400, "Bad Request", body),
+            "preferred"
+        );
+    }
+
+    #[test]
+    fn format_http_error_body_falls_back_for_non_json() {
+        assert_eq!(
+            format_http_error_body(502, "Bad Gateway", "plain text err"),
+            "502 Bad Gateway"
         );
     }
 
