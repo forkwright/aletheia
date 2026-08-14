@@ -9,8 +9,8 @@ use std::pin::Pin;
 
 use indexmap::IndexMap;
 
+use energeia::steward::GithubStewardBackend;
 use energeia::steward::service::{StewardConfig, run_once};
-use energeia::steward::{GithubStewardBackend, StewardBackend};
 use koina::id::ToolName;
 
 use crate::error::Result;
@@ -129,7 +129,7 @@ impl ToolExecutor for EpitroposExecutor {
             // WHY: Always use run_once in tool context — a polling loop would block
             // the tool executor indefinitely. Callers that need the polling loop
             // should schedule a recurring trigger instead.
-            let result = run_once(&config, &backend as &dyn StewardBackend).await;
+            let result = run_once(&config, &backend).await;
 
             let output = serde_json::json!({
                 "project": project,

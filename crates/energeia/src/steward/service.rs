@@ -274,10 +274,14 @@ async fn decide_and_act(
 }
 
 #[cfg(test)]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions over fixture data")]
 mod tests {
     use std::collections::HashMap;
-    use std::sync::Mutex;
+
+    // WHY: parking_lot::Mutex (not tokio::sync::Mutex) — merge_calls is only
+    // ever locked synchronously to record or read a call, never held across
+    // an .await.
+    use parking_lot::Mutex;
 
     use super::super::backend::{BackendError, BackendFuture};
     use super::super::types::{MergeMethod, PrFile, QaVerdictStatus};
@@ -328,7 +332,7 @@ mod tests {
             method: MergeMethod,
         ) -> BackendFuture<'a, ()> {
             Box::pin(async move {
-                self.merge_calls.lock().unwrap().push((pr.number, method));
+                self.merge_calls.lock().push((pr.number, method));
                 if self.merge_err {
                     return Err(BackendError::Request {
                         message: "merge failed".to_owned(),
@@ -425,7 +429,7 @@ mod tests {
         assert_eq!(result.needs_fix[0].pr.number, 2);
         assert!(result.merged.is_empty());
         assert!(
-            backend.merge_calls.lock().unwrap().is_empty(),
+            backend.merge_calls.lock().is_empty(),
             "a red-CI PR must never reach backend.merge"
         );
     }
@@ -450,7 +454,7 @@ mod tests {
         );
         assert!(result.needs_fix.is_empty());
         assert!(result.blocked.is_empty());
-        assert!(backend.merge_calls.lock().unwrap().is_empty());
+        assert!(backend.merge_calls.lock().is_empty());
     }
 
     #[tokio::test]
@@ -553,7 +557,7 @@ mod tests {
         };
         assert!(result.success);
         assert_eq!(
-            backend.merge_calls.lock().unwrap().as_slice(),
+            backend.merge_calls.lock().as_slice(),
             &[(10, MergeMethod::Squash)],
             "backend.merge must actually be called with the PR and configured method"
         );
@@ -576,7 +580,7 @@ mod tests {
         assert!(!result.success);
         assert_eq!(result.error.as_deref(), Some("dry_run"));
         assert!(
-            backend.merge_calls.lock().unwrap().is_empty(),
+            backend.merge_calls.lock().is_empty(),
             "dry_run must never call backend.merge"
         );
     }
@@ -609,7 +613,7 @@ mod tests {
         let outcome = decide_and_act(&cpr, &opts, "acme/repo", &backend).await;
 
         assert!(matches!(outcome, PassOutcome::Blocked(_)));
-        assert!(backend.merge_calls.lock().unwrap().is_empty());
+        assert!(backend.merge_calls.lock().is_empty());
     }
 
     #[tokio::test]
@@ -622,7 +626,7 @@ mod tests {
         let outcome = decide_and_act(&cpr, &opts, "acme/repo", &backend).await;
 
         assert!(matches!(outcome, PassOutcome::NoAction));
-        assert!(backend.merge_calls.lock().unwrap().is_empty());
+        assert!(backend.merge_calls.lock().is_empty());
     }
 
     // ── run(): polling loop ─────────────────────────────────────────────
