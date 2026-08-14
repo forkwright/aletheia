@@ -119,7 +119,11 @@ fn create_backup_manifest_does_not_leak_absolute_source_paths() {
 
     let manifest: BackupManifest = serde_json::from_str(&manifest_json).unwrap();
     assert_eq!(manifest.source_root, PathBuf::new());
-    for entry in manifest.stores.iter().chain(manifest.optional_stores.iter()) {
+    for entry in manifest
+        .stores
+        .iter()
+        .chain(manifest.optional_stores.iter())
+    {
         assert_eq!(
             entry.source_path,
             PathBuf::new(),

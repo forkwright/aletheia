@@ -4,7 +4,7 @@ use crate::error;
 
 use super::{
     BackupBuild, EntryManifestMetadata, OptionalStoreRecord, STATUS_OK, StoreEntry, copy_path,
-    ensure_relative_manifest_path, hash_path,
+    copy_path_excluding, ensure_relative_manifest_path, hash_path,
 };
 
 impl BackupBuild {
@@ -60,6 +60,52 @@ impl BackupBuild {
         let restore_path = self.restore_path_for_source(&src)?;
         self.total_bytes += bytes;
         self.total_files += file_count;
+        self.record_copy_instant();
+        let entry = StoreEntry {
+            name: String::from(name),
+            source_path: src,
+            backup_path,
+            snapshot_time: jiff::Zoned::now().to_string(),
+            byte_count: bytes,
+            status: String::from(STATUS_OK),
+            agent_id: None,
+            workspace_source_class: None,
+            exclusion_reason: None,
+            sha256,
+        };
+        let metadata = EntryManifestMetadata {
+            file_count: Some(file_count),
+            restore_path: Some(restore_path),
+        };
+        if optional {
+            self.optional_stores.push(entry);
+            self.optional_store_metadata.push(metadata);
+        } else {
+            self.stores.push(entry);
+            self.store_metadata.push(metadata);
+        }
+        Ok(())
+    }
+
+    /// Like [`Self::copy_entry`], but skips any source file for which
+    /// `exclude` returns `true` and tallies how many were skipped into
+    /// [`BackupBuild::credential_keys_excluded`]. (#5353)
+    pub(crate) fn copy_entry_excluding<F: Fn(&Path) -> bool>(
+        &mut self,
+        name: &str,
+        src: PathBuf,
+        dst: &Path,
+        backup_path: PathBuf,
+        optional: bool,
+        exclude: &F,
+    ) -> error::Result<()> {
+        let (bytes, files, excluded) = copy_path_excluding(&src, dst, exclude)?;
+        let sha256 = Some(hash_path(dst)?);
+        let file_count = u64::from(files);
+        let restore_path = self.restore_path_for_source(&src)?;
+        self.total_bytes += bytes;
+        self.total_files += file_count;
+        self.credential_keys_excluded += excluded;
         self.record_copy_instant();
         let entry = StoreEntry {
             name: String::from(name),

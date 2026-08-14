@@ -14,7 +14,7 @@ use super::{
     MANIFEST_VERSION, OptionalStoreRecord, SNAPSHOT_PROTOCOL_VERSION, STAGING_DIR_PREFIX,
     STATUS_EXCLUDED, SYMLINK_POLICY, WorkspaceOmission, classify_workspace_source, dir_size,
     inject_credential_evidence, inject_manifest_evidence, inject_quiesce_evidence,
-    manifest_created_time, remove_credential_key_sidecars, resolve_workspace_source,
+    is_credential_key_sidecar, manifest_created_time, resolve_workspace_source,
     set_dir_restrictive, set_files_restrictive, write_text_file,
 };
 
@@ -310,12 +310,22 @@ impl InstanceBackup {
     fn copy_config(&self, backup_path: &Path, build: &mut BackupBuild) -> error::Result<()> {
         let config_src = self.config.instance_root.join("config");
         if config_src.exists() {
-            build.copy_entry(
+            // SECURITY(#5353): symbolon stores each credential's decryption
+            // key as a bare sidecar file (`<name>.key`) next to the
+            // ciphertext it decrypts -- copying both into a portable backup
+            // set makes the backup as sensitive as the plaintext tokens it
+            // protects, since nothing else on disk is needed to decrypt.
+            // Excluded during the copy (not deleted afterward) so the
+            // entry's byte count, file count, and hash describe the backup
+            // that was actually produced. The ciphertext itself is kept:
+            // useless without its key, but evidence a credential existed.
+            build.copy_entry_excluding(
                 "config",
                 config_src,
                 &backup_path.join("config"),
                 PathBuf::from("config"),
                 false,
+                &is_credential_key_sidecar,
             )?;
 
             // WHY(#5140): credentials and TLS keys are copied verbatim into the
@@ -326,15 +336,6 @@ impl InstanceBackup {
                 if dst.exists() {
                     set_files_restrictive(&dst);
                 }
-            }
-
-            // SECURITY(#5353): exclude credential decryption-key sidecars --
-            // see `remove_credential_key_sidecars` for why copying them
-            // alongside the ciphertext is credential-equivalent to plaintext.
-            let credentials_dst = backup_path.join("config").join("credentials");
-            if credentials_dst.exists() {
-                build.credential_keys_excluded +=
-                    remove_credential_key_sidecars(&credentials_dst)?;
             }
         }
         Ok(())

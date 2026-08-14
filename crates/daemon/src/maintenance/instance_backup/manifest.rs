@@ -210,7 +210,10 @@ pub(crate) fn inject_quiesce_evidence(
 ///
 /// WHY: mirrors `inject_quiesce_evidence` -- not a `BackupManifest` struct
 /// field so out-of-crate `BackupManifest { .. }` literals are unaffected.
-pub(crate) fn inject_credential_evidence(manifest_value: &mut serde_json::Value, build: &BackupBuild) {
+pub(crate) fn inject_credential_evidence(
+    manifest_value: &mut serde_json::Value,
+    build: &BackupBuild,
+) {
     let Some(object) = manifest_value.as_object_mut() else {
         return;
     };
