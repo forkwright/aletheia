@@ -486,7 +486,7 @@ mod tests {
     }
 
     /// Egress denial and a loopback-only allowlist are both genuine
-    /// restrictions; validate() must not flag either as open egress.
+    /// restrictions; `validate()` must not flag either as open egress.
     #[test]
     fn validate_does_not_flag_restricted_egress() {
         for (egress, allowlist) in [
