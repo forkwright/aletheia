@@ -272,6 +272,100 @@ mod tests {
         )
     }
 
+    #[cfg(feature = "storage-fjall")]
+    fn terminal_outcomes() -> Vec<crate::types::SessionOutcome> {
+        vec![
+            crate::types::SessionOutcome {
+                prompt_number: 1,
+                status: SessionStatus::Success,
+                session_id: Some("cc-session-1".to_owned()),
+                cost_usd: 0.42,
+                num_turns: 12,
+                duration_ms: 45_000,
+                resume_count: 1,
+                pr_url: Some("https://github.com/acme/repo/pull/7".to_owned()),
+                error: None,
+                failure_class: None,
+                model: Some("claude-opus-4".to_owned()),
+                blast_radius: vec!["crates/energeia".to_owned()],
+                corrective_attempts: 2,
+                cache_hit_tokens: 1_500,
+                cache_miss_tokens: 300,
+                structured_output: Some(serde_json::json!({"kind": "feature"})),
+            },
+            crate::types::SessionOutcome {
+                prompt_number: 2,
+                status: SessionStatus::InfraFailure,
+                session_id: Some("cc-session-2".to_owned()),
+                cost_usd: 0.01,
+                num_turns: 1,
+                duration_ms: 250,
+                resume_count: 0,
+                pr_url: None,
+                error: Some("provider rate limit".to_owned()),
+                failure_class: Some(crate::types::FailureClass::RateLimit),
+                model: None,
+                blast_radius: vec!["crates/energeia".to_owned()],
+                corrective_attempts: 0,
+                cache_hit_tokens: 0,
+                cache_miss_tokens: 0,
+                structured_output: None,
+            },
+        ]
+    }
+
+    #[cfg(feature = "storage-fjall")]
+    fn assert_terminal_export(export: &crate::store::records::DispatchExport) {
+        assert_eq!(
+            export.dispatch.status,
+            crate::store::records::DispatchStatus::Completed
+        );
+        assert_eq!(export.dispatch.total_sessions, 2);
+        assert!((export.dispatch.total_cost_usd - 0.43).abs() < f64::EPSILON);
+        assert_eq!(export.sessions.len(), 2);
+
+        let success = &export.sessions[0];
+        assert_eq!(success.session_id.as_deref(), Some("cc-session-1"));
+        assert_eq!(success.status, SessionStatus::Success);
+        assert!((success.cost_usd - 0.42).abs() < f64::EPSILON);
+        assert_eq!(success.num_turns, 12);
+        assert_eq!(success.duration_ms, 45_000);
+        assert_eq!(
+            success.pr_url.as_deref(),
+            Some("https://github.com/acme/repo/pull/7")
+        );
+        assert!(success.error.is_none());
+        assert_eq!(success.model.as_deref(), Some("claude-opus-4"));
+        assert!(success.failure_class.is_none());
+        assert_eq!(success.resume_count, 1);
+        assert_eq!(success.corrective_attempts, 2);
+        assert_eq!(success.cache_hit_tokens, 1_500);
+        assert_eq!(success.cache_miss_tokens, 300);
+        assert_eq!(
+            success.structured_output,
+            Some(serde_json::json!({"kind": "feature"}))
+        );
+
+        let failed = &export.sessions[1];
+        assert_eq!(failed.session_id.as_deref(), Some("cc-session-2"));
+        assert_eq!(failed.status, SessionStatus::InfraFailure);
+        assert!((failed.cost_usd - 0.01).abs() < f64::EPSILON);
+        assert_eq!(failed.num_turns, 1);
+        assert_eq!(failed.duration_ms, 250);
+        assert!(failed.pr_url.is_none());
+        assert_eq!(failed.error.as_deref(), Some("provider rate limit"));
+        assert!(failed.model.is_none());
+        assert_eq!(
+            failed.failure_class,
+            Some(crate::types::FailureClass::RateLimit)
+        );
+        assert_eq!(failed.resume_count, 0);
+        assert_eq!(failed.corrective_attempts, 0);
+        assert_eq!(failed.cache_hit_tokens, 0);
+        assert_eq!(failed.cache_miss_tokens, 0);
+        assert!(failed.structured_output.is_none());
+    }
+
     #[tokio::test]
     async fn post_processing_sets_result() {
         let prompts = vec![PromptSpec {
@@ -309,6 +403,69 @@ mod tests {
         assert_eq!(result.outcomes[0].status, SessionStatus::Success);
         assert!((result.total_cost_usd - 0.50).abs() < 0.01);
         assert!(!result.dispatch_id.is_empty());
+    }
+
+    #[cfg(feature = "storage-fjall")]
+    #[tokio::test]
+    async fn post_processing_persists_terminal_attribution_across_reopen() {
+        let tmp = tempfile::tempdir().expect("create temp dir");
+        let db = fjall::Database::builder(tmp.path())
+            .open()
+            .expect("open database");
+        let store = Arc::new(crate::store::EnergeiaStore::new(&db).expect("open store"));
+        let prompts = [1, 2]
+            .into_iter()
+            .map(|number| PromptSpec {
+                number,
+                description: format!("test prompt {number}"),
+                depends_on: vec![],
+                context_policy: crate::dag::ContextPolicy::Fresh,
+                output_format: None,
+                worktree: crate::prompt::WorktreePolicy::default(),
+                acceptance_criteria: vec![],
+                blast_radius: vec!["crates/energeia".to_owned()],
+                body: "do the thing".to_owned(),
+                prompt_components: None,
+            })
+            .collect::<Vec<_>>();
+        let engine = Arc::new(MockEngine::new(vec![]));
+        let qa = Arc::new(AlwaysPassQa);
+        let spec = DispatchSpec::new("acme".to_owned(), vec![1, 2]);
+        let mut ctx = PipelineContext::new(
+            spec,
+            prompts,
+            engine,
+            qa,
+            OrchestratorConfig::default(),
+            Some(Arc::clone(&store)),
+        );
+
+        PreparationStage
+            .run(&mut ctx)
+            .await
+            .expect("preparation must succeed");
+        let dispatch_id = ctx
+            .store_dispatch_id
+            .clone()
+            .expect("preparation must create a stored dispatch");
+        ctx.outcomes = terminal_outcomes();
+
+        PostProcessingStage
+            .run(&mut ctx)
+            .await
+            .expect("post-processing must persist the outcomes");
+        drop(ctx);
+        drop(store);
+        drop(db);
+
+        let reopened_db = fjall::Database::builder(tmp.path())
+            .open()
+            .expect("reopen database");
+        let reopened = crate::store::EnergeiaStore::new(&reopened_db).expect("reopen store");
+        let export = reopened
+            .export_dispatch(&dispatch_id)
+            .expect("export persisted dispatch");
+        assert_terminal_export(&export);
     }
 
     // ── After-action JSONL tests ──
