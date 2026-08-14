@@ -7,7 +7,7 @@ use ratatui::symbols;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use crate::app::{AgentStatus, App, ContextActionsOverlay, Overlay};
+use crate::app::{AgentStatus, App, BackendHealth, ContextActionsOverlay, Overlay};
 use crate::diff;
 use crate::keybindings;
 use crate::state::ControlMutationStatus;
@@ -425,6 +425,14 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
 
         let emoji = agent.emoji.as_deref().unwrap_or("");
         let session_count = agent.sessions.len();
+        let backend_str = match agent.backend_health {
+            BackendHealth::Healthy => None,
+            BackendHealth::Dormant => Some(("dormant", theme.style_dim())),
+            BackendHealth::Degraded => {
+                Some(("degraded", Style::default().fg(theme.status.warning)))
+            }
+            BackendHealth::Unknown => Some(("unknown", theme.style_dim())),
+        };
 
         lines.push(Line::from(vec![
             Span::styled(
@@ -434,10 +442,14 @@ fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
             Span::styled(format!("({}) ", agent.id), theme.style_dim()),
             status_str,
         ]));
-        lines.push(Line::from(Span::styled(
+        let mut detail = vec![Span::styled(
             format!("     {} sessions", session_count),
             theme.style_dim(),
-        )));
+        )];
+        if let Some((label, style)) = backend_str {
+            detail.push(Span::styled(format!(" · backend: {label}"), style));
+        }
+        lines.push(Line::from(detail));
     }
 
     lines.push(Line::raw(""));

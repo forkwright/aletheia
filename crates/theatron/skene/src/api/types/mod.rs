@@ -77,7 +77,7 @@ pub struct Agent {
     pub emoji: Option<String>,
     /// Live lifecycle status: `"active"`, `"idle"`, `"dormant"`,
     /// `"degraded"`, or `"unknown"`, mirroring
-    /// `pylon::handlers::nous_dto::NousSummary::status` (#4807).
+    /// `pylon::handlers::nous_dto::NousSummary::status` (#4641).
     #[serde(default)]
     pub status: Option<String>,
 }

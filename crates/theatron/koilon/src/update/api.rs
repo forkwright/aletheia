@@ -3,7 +3,9 @@ use crate::app::App;
 use crate::id::NousId;
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
-use crate::state::{AgentState, AgentStatus, ChatMessage, ControlMutationStatus, Overlay};
+use crate::state::{
+    AgentState, AgentStatus, BackendHealth, ChatMessage, ControlMutationStatus, Overlay,
+};
 use tracing::Instrument;
 
 #[tracing::instrument(skip_all, fields(count = agents.len()))]
@@ -20,6 +22,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
                 name_lower,
                 emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                 status: AgentStatus::Idle,
+                backend_health: BackendHealth::from_status(a.status.as_deref()),
                 active_tool: None,
                 sessions: sanitize_sessions(Vec::new()),
                 model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
@@ -590,11 +593,18 @@ mod tests {
             name: Some("Syn".to_string()),
             model: Some("claude-opus-4-6".to_string()),
             emoji: Some("\u{1F9E0}".to_string()),
+            status: Some("degraded".to_string()),
         }];
         handle_agents_loaded(&mut app, agents);
         assert_eq!(app.dashboard.agents.len(), 1);
         assert_eq!(app.dashboard.agents[0].name, "Syn");
         assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
+        // WHY(#4641): the backend's real lifecycle status must survive into
+        // AgentState rather than being dropped on the floor at ingestion.
+        assert_eq!(
+            app.dashboard.agents[0].backend_health,
+            BackendHealth::Degraded
+        );
     }
 
     #[test]

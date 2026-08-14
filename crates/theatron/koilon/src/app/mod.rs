@@ -35,12 +35,13 @@ use crate::state::virtual_scroll::VirtualScroll;
     reason = "re-exported for downstream modules that import from crate::app"
 )]
 pub use crate::state::{
-    ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
-    ContextActionsOverlay, ControlMutationStatus, DecisionCardOverlay, DecisionField,
-    DecisionOption, ErrorBanner, FilterState, FocusedPane, InputState, MemoryInspectorState,
-    MessageKind, NotificationStore, OpsState, Overlay, PlanApprovalOverlay, PlanStepApproval,
-    SelectionContext, SessionPickerOverlay, SlashCompleteState, StreamPhase, SubmittedDecision,
-    TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
+    ActiveTool, AgentState, AgentStatus, BackendHealth, ChatMessage, CommandPaletteState,
+    ContextAction, ContextActionsOverlay, ControlMutationStatus, DecisionCardOverlay,
+    DecisionField, DecisionOption, ErrorBanner, FilterState, FocusedPane, InputState,
+    MemoryInspectorState, MessageKind, NotificationStore, OpsState, Overlay, PlanApprovalOverlay,
+    PlanStepApproval, SelectionContext, SessionPickerOverlay, SlashCompleteState, StreamPhase,
+    SubmittedDecision, TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View,
+    ViewStack,
 };
 #[cfg(test)]
 use crate::theme::THEME;
@@ -421,6 +422,7 @@ impl App {
                     name_lower,
                     emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                     status: AgentStatus::Idle,
+                    backend_health: BackendHealth::from_status(a.status.as_deref()),
                     active_tool: None,
                     sessions: Vec::new(),
                     model: a.model.map(|m| sanitize_for_display(&m).into_owned()),

@@ -5,7 +5,7 @@ use ratatui::symbols;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph};
 
-use crate::app::{AgentStatus, App};
+use crate::app::{AgentStatus, App, BackendHealth};
 use crate::theme::{self, Theme};
 
 pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
@@ -74,6 +74,25 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 badge,
                 Style::default().fg(theme.colors.accent),
             ));
+        }
+
+        // WHY(#4641): the local turn-status icon above only distinguishes
+        // idle/working/streaming/compacting; it says nothing about whether
+        // the backend actor is even reachable. Surface a distinct badge so a
+        // dormant/degraded/unknown backend never renders identically to a
+        // healthy idle agent.
+        if let Some(label) = match agent.backend_health {
+            BackendHealth::Healthy => None,
+            BackendHealth::Dormant => Some(" dormant"),
+            BackendHealth::Degraded => Some(" degraded"),
+            BackendHealth::Unknown => Some(" unknown"),
+        } {
+            let style = if agent.backend_health == BackendHealth::Degraded {
+                Style::default().fg(theme.status.warning)
+            } else {
+                theme.style_dim()
+            };
+            spans.push(Span::styled(label, style));
         }
 
         lines.push(Line::from(spans));
