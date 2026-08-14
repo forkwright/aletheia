@@ -116,10 +116,13 @@ fn recall_sub_result(score: &RecallScore) -> ScenarioSubResult {
     }
 }
 
-fn recall_signal_sub_result(has_signal: bool) -> ScenarioSubResult {
+fn recall_signal_sub_result(
+    has_signal: bool,
+    classification: ScenarioClassification,
+) -> ScenarioSubResult {
     ScenarioSubResult {
         sub_id: "ground-truth-retrieval-signal".to_owned(),
-        classification: ScenarioClassification::Assertive,
+        classification,
         passed: has_signal,
         criteria: Some(
             "at least one configured ground-truth document id must appear in retrieved results"
@@ -137,18 +140,35 @@ fn recall_signal_sub_result(has_signal: bool) -> ScenarioSubResult {
 /// Scenario that benchmarks recall@k against the knowledge search API.
 struct RecallBenchmarkScenario {
     relevant_set: Vec<DocId>,
+    /// `Assertive` when the operator configured real ground-truth document
+    /// IDs via [`RecallBenchmarkScenario::RELEVANT_IDS_ENV`]; `Smoke` when
+    /// this scenario fell back to synthetic IDs and a fixed query, since a
+    /// synthetic-ID result cannot stand in for a real assertive benchmark.
+    classification: ScenarioClassification,
 }
 
 impl RecallBenchmarkScenario {
     const RELEVANT_IDS_ENV: &'static str = "ALETHEIA_RECALL_RELEVANT_IDS";
 
     fn from_operator_config() -> Self {
-        let relevant_set = std::env::var(Self::RELEVANT_IDS_ENV)
-            .ok()
-            .map(|raw| parse_relevant_set(&raw))
-            .filter(|ids| !ids.is_empty())
-            .unwrap_or_else(Self::default_ground_truth);
-        Self { relevant_set }
+        Self::from_raw_env(std::env::var(Self::RELEVANT_IDS_ENV).ok().as_deref())
+    }
+
+    /// Build from an already-read environment value so the operator-config
+    /// vs. synthetic-fallback decision is testable without touching real
+    /// process environment state.
+    fn from_raw_env(raw: Option<&str>) -> Self {
+        let configured = raw.map(parse_relevant_set).filter(|ids| !ids.is_empty());
+        match configured {
+            Some(relevant_set) => Self {
+                relevant_set,
+                classification: ScenarioClassification::Assertive,
+            },
+            None => Self {
+                relevant_set: Self::default_ground_truth(),
+                classification: ScenarioClassification::Smoke,
+            },
+        }
     }
 
     fn default_ground_truth() -> Vec<DocId> {
@@ -179,7 +199,7 @@ impl Scenario for RecallBenchmarkScenario {
             expected_contains: None,
             expected_pattern: None,
 
-            classification: ScenarioClassification::Assertive,
+            classification: self.classification,
         }
     }
 
@@ -205,7 +225,7 @@ impl Scenario for RecallBenchmarkScenario {
                     let scores = compute_recall_benchmark(&relevant, &retrieved);
                     sub_results.extend(scores.iter().map(recall_sub_result));
                     let has_signal = recall_has_signal(&scores);
-                    sub_results.push(recall_signal_sub_result(has_signal));
+                    sub_results.push(recall_signal_sub_result(has_signal, self.classification));
 
                     for score in &scores {
                         tracing::info!(
@@ -309,6 +329,44 @@ mod tests {
         assert!(
             (score.score - 2.0 / 3.0).abs() < f64::EPSILON,
             "2 of 3 relevant docs should produce 2/3 recall"
+        );
+    }
+
+    #[test]
+    fn scenario_without_operator_env_is_smoke_only() {
+        let scenario = RecallBenchmarkScenario::from_raw_env(None);
+        assert_eq!(
+            scenario.classification,
+            ScenarioClassification::Smoke,
+            "the synthetic-ID/fixed-query fallback must never masquerade as assertive"
+        );
+        assert_eq!(
+            scenario.relevant_set,
+            RecallBenchmarkScenario::default_ground_truth()
+        );
+    }
+
+    #[test]
+    fn scenario_with_blank_operator_env_is_smoke_only() {
+        let scenario = RecallBenchmarkScenario::from_raw_env(Some("  , ,  "));
+        assert_eq!(
+            scenario.classification,
+            ScenarioClassification::Smoke,
+            "an env value that parses to zero ids is the same as unset"
+        );
+    }
+
+    #[test]
+    fn scenario_with_operator_env_is_assertive() {
+        let scenario = RecallBenchmarkScenario::from_raw_env(Some("doc-1,doc-2"));
+        assert_eq!(
+            scenario.classification,
+            ScenarioClassification::Assertive,
+            "operator-configured ground-truth ids make this a real assertive benchmark"
+        );
+        assert_eq!(
+            scenario.relevant_set,
+            vec!["doc-1".to_owned(), "doc-2".to_owned()]
         );
     }
 

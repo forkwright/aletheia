@@ -63,7 +63,12 @@ poiesis-typst = { path = "../poiesis/typst" }
 poiesis-scaffold = { path = "../poiesis/scaffold" }
 poiesis-verify = { path = "../poiesis/verify" }
 poiesis-intake = { path = "../poiesis/intake" }
-poiesis-doc = { path = "../poiesis/doc" }
+poiesis-doc = { path = "../poiesis/doc", default-features = false, features = [
+    "docx",
+    "inspect",
+    "pandoc",
+    "odt",
+] }
 poiesis-charts = { path = "../poiesis/charts", features = ["theme-bridge"] }
 poiesis-theme = { path = "../poiesis/theme" }
 poiesis-diff = { path = "../poiesis/diff" }

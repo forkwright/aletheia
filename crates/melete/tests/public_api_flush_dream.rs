@@ -14,6 +14,7 @@ mod memory_flush {
             content: "Use snafu for errors".to_owned(),
             timestamp: "2026-04-09T00:00:00Z".to_owned(),
             source: FlushSource::Extracted,
+            source_message_ids: vec![],
         }
     }
 
@@ -25,11 +26,13 @@ mod memory_flush {
                 content: "Incorrect scheme".to_owned(),
                 timestamp: "2026-04-09T00:01:00Z".to_owned(),
                 source: FlushSource::AgentNote,
+                source_message_ids: vec![],
             }],
             facts: vec![FlushItem {
                 content: "Config lives in taxis".to_owned(),
                 timestamp: "2026-04-09T00:02:00Z".to_owned(),
                 source: FlushSource::ToolPattern,
+                source_message_ids: vec![],
             }],
             task_state: Some("writing tests".to_owned()),
         };

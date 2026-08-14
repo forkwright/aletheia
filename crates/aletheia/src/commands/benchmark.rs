@@ -823,6 +823,8 @@ mod tests {
                     retrieval_scoring: None,
                     recall_at_k: None,
                     ndcg_at_k: None,
+                    mrr_at_k: None,
+                    hallucination_rate: None,
                 },
                 QuestionResult {
                     id: "q2".to_owned(),
@@ -842,6 +844,8 @@ mod tests {
                     retrieval_scoring: None,
                     recall_at_k: None,
                     ndcg_at_k: None,
+                    mrr_at_k: None,
+                    hallucination_rate: None,
                 },
             ],
         )

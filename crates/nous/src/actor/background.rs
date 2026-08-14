@@ -1225,6 +1225,7 @@ mod tests {
                 content: "the team standardized on jiff for time handling".to_owned(),
                 timestamp: jiff::Timestamp::now().to_string(),
                 source: melete::flush::FlushSource::Extracted,
+                source_message_ids: vec![],
             }],
             task_state: None,
         };

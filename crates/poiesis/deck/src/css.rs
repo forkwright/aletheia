@@ -1,8 +1,7 @@
 use std::fmt::Write;
 
-use poiesis_deck_layout::zone_to_css;
-
 use crate::SlideLayout;
+use crate::layout::zone_to_css;
 
 /// Generate the three-layer CSS stylesheet for a deck.
 #[must_use]
@@ -33,7 +32,7 @@ pub(crate) fn three_layer_css(layout: &SlideLayout) -> String {
     // Layer 3: zone positioning
     for (name, zone) in &layout.zones {
         let class = name.css_class();
-        let style = zone_to_css(zone, &layout.canvas);
+        let style = zone_to_css(zone, layout.canvas);
         let _ = writeln!(css, ".{class} {{ position: absolute; {style} }}");
     }
 

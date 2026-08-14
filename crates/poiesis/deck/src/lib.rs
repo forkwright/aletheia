@@ -3,15 +3,24 @@
 pub mod error;
 
 mod css;
+mod layout;
 mod render;
 
 use poiesis_core::bodies::Deck;
 use poiesis_core::components::ComponentRegistry;
 use poiesis_core::envelope::Meta;
 use poiesis_core::scalar::AspectRatio;
-use poiesis_deck_layout::SlideLayout;
 
 pub use error::DeckError;
+/// Re-export of the layout types that appear in [`DeckRenderer`]'s public fields.
+pub use layout::{Canvas, SlideLayout, Zone, ZoneName};
+// WHY exported rather than suppressed: folding `poiesis-deck-layout` in made
+// `zone_to_emu` unreachable, since `mod layout` is private -- so dead-code
+// analysis flagged it and the two helpers it calls. It is a working, documented
+// OOXML conversion awaiting the PPTX backend named in `layout`'s module docs;
+// publishing it keeps the capability available to that consumer, where an
+// `expect(dead_code)` would only hide the fact that nothing can reach it.
+pub use layout::zone_to_emu;
 
 /// The deck renderer.
 #[derive(Debug, Clone)]
@@ -26,7 +35,7 @@ impl DeckRenderer {
     /// Create a new renderer from a registry and aspect ratio.
     #[must_use]
     pub fn new(registry: ComponentRegistry, aspect: &AspectRatio) -> Self {
-        let layout = poiesis_deck_layout::resolve_layout(aspect);
+        let layout = layout::resolve_layout(*aspect);
         Self { registry, layout }
     }
 

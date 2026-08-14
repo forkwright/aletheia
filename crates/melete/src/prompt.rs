@@ -3,6 +3,7 @@
 use hermeneus::types::{Content, ContentBlock, Message, Role};
 
 use crate::distill::DistillSection;
+use crate::provenance;
 
 /// Generate the distillation system prompt from configured sections.
 #[must_use]
@@ -35,6 +36,14 @@ pub(crate) fn build_system_prompt(sections: &[DistillSection]) -> String {
 }
 
 /// Format conversation messages into readable text for the distillation LLM.
+///
+/// Each message's role label carries a short content-hashed reference (see
+/// [`crate::provenance::message_ref_short`]) so the formatted text --
+/// exactly what the distillation LLM reads -- can be mapped back to the
+/// source [`Message`] it was rendered from. This is the text
+/// [`crate::distill::DistillResult::input_hash`] hashes, so reconstruction
+/// depends on this function producing byte-identical output from the same
+/// inputs.
 #[must_use]
 pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) -> String {
     let mut output = String::new();
@@ -46,11 +55,14 @@ pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) ->
             Role::Assistant => "ASSISTANT",
             _ => "UNKNOWN",
         };
+        let msg_ref = provenance::message_ref_short(msg);
 
         match &msg.content {
             Content::Text(text) => {
                 output.push('[');
                 output.push_str(role_label);
+                output.push_str(" #");
+                output.push_str(&msg_ref);
                 output.push_str("]\n");
                 output.push_str(text);
                 output.push_str("\n\n");
@@ -99,6 +111,8 @@ pub(crate) fn format_messages(messages: &[Message], include_tool_calls: bool) ->
                 if !block_text.is_empty() {
                     output.push('[');
                     output.push_str(role_label);
+                    output.push_str(" #");
+                    output.push_str(&msg_ref);
                     output.push_str("]\n");
                     output.push_str(&block_text);
                     output.push('\n');
@@ -204,10 +218,28 @@ mod tests {
             text_msg(Role::Assistant, "Hi there"),
         ];
         let formatted = format_messages(&messages, true);
-        assert!(formatted.contains("[USER]"));
+        assert!(formatted.contains("[USER #"));
         assert!(formatted.contains("Hello"));
-        assert!(formatted.contains("[ASSISTANT]"));
+        assert!(formatted.contains("[ASSISTANT #"));
         assert!(formatted.contains("Hi there"));
+    }
+
+    #[test]
+    fn format_messages_embeds_recoverable_message_refs() {
+        let messages = vec![
+            text_msg(Role::User, "first message"),
+            text_msg(Role::Assistant, "second message"),
+        ];
+        let formatted = format_messages(&messages, true);
+
+        for message in &messages {
+            let expected_ref = format!("#{}", provenance::message_ref_short(message));
+            assert!(
+                formatted.contains(&expected_ref),
+                "formatted text must embed a ref recoverable from the same \
+                 message content: expected {expected_ref} in {formatted:?}"
+            );
+        }
     }
 
     #[test]

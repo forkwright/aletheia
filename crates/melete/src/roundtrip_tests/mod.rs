@@ -48,6 +48,7 @@ pub(super) fn sample_flush_item(content: &str, source: FlushSource) -> FlushItem
         content: content.to_owned(),
         timestamp: "2026-03-09T12:00:00Z".to_owned(),
         source,
+        source_message_ids: vec![],
     }
 }
 

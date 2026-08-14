@@ -13,6 +13,7 @@ use crate::contradiction::{self, ContradictionLog};
 use crate::error::{EmptySummarySnafu, LlmCallSnafu, NoMessagesSnafu, Result};
 use crate::flush::{FlushItem, FlushSource, MemoryFlush};
 use crate::prompt;
+use crate::provenance;
 use crate::similarity::{
     self, DEFAULT_MAX_SIMILARITY_MESSAGES, DEFAULT_SIMILARITY_THRESHOLD, PruningStats,
 };
@@ -225,6 +226,23 @@ pub struct DistillResult {
     pub pruning_stats: Option<PruningStats>,
     /// Contradictions detected across chunks during distillation.
     pub contradiction_log: ContradictionLog,
+    /// Content-hashed references (see [`crate::provenance::message_ref`])
+    /// for the pruned, post-similarity-filtering messages actually sent to
+    /// the LLM -- the same set [`prompt::format_messages`] rendered into
+    /// the prompt this run's `input_hash` covers.
+    pub source_message_ids: Vec<String>,
+    /// Hash of the exact conversation text formatted into the LLM prompt
+    /// (see [`prompt::format_messages`]).
+    pub input_hash: String,
+    /// Hash of the complete request sent to the LLM provider (system
+    /// prompt plus the formatted conversation).
+    pub prompt_hash: String,
+    /// The model that actually produced this distillation (the
+    /// distillation-specific override when set, otherwise the primary
+    /// model -- see [`DistillConfig::distillation_model`]).
+    pub model: String,
+    /// Hash of the [`DistillConfig`] used for this run.
+    pub config_snapshot_hash: String,
 }
 
 /// The distillation engine.
@@ -317,6 +335,15 @@ impl DistillEngine {
         ratio >= threshold
     }
 
+    /// The model that will actually run distillation: the distillation-specific
+    /// override when set, otherwise the primary model.
+    fn resolved_model(&self) -> &str {
+        self.config
+            .distillation_model
+            .as_deref()
+            .unwrap_or(&self.config.model)
+    }
+
     /// Build the distillation prompt for the given messages.
     ///
     /// # Complexity
@@ -326,12 +353,7 @@ impl DistillEngine {
         let formatted = prompt::format_messages(messages, self.config.include_tool_calls);
         let system_prompt = prompt::build_system_prompt(&self.config.sections);
 
-        let model = self
-            .config
-            .distillation_model
-            .as_deref()
-            .unwrap_or(&self.config.model)
-            .to_owned();
+        let model = self.resolved_model().to_owned();
 
         let safe_nous_id = sanitize_nous_id(nous_id);
         let user_content = format!(
@@ -429,11 +451,7 @@ impl DistillEngine {
                 .filter(|t| !t.is_empty())
                 .collect();
 
-            let model = self
-                .config
-                .distillation_model
-                .as_deref()
-                .unwrap_or(&self.config.model);
+            let model = self.resolved_model();
 
             match contradiction::detect_contradictions(&chunks, provider, model).await {
                 Ok(log) => {
@@ -501,7 +519,32 @@ impl DistillEngine {
 
         let tokens_after = response.usage.output_tokens;
         let timestamp = jiff::Timestamp::now().to_string();
-        let memory_flush = parse_summary_to_flush(&summary, &timestamp);
+
+        // WHY: source_message_ids covers the pruned, post-similarity-filtering
+        // set actually sent to the LLM -- the same set `formatted` renders and
+        // `input_hash` covers -- not the pre-pruning `to_summarize` slice.
+        let source_message_ids = provenance::message_refs(&pruned_messages);
+        let memory_flush = parse_summary_to_flush(&summary, &timestamp, &source_message_ids);
+
+        let formatted = prompt::format_messages(&pruned_messages, self.config.include_tool_calls);
+        let input_hash = provenance::hash_str(&formatted);
+        // WHY: read the system prompt and user content back off the already-
+        // built `request` rather than reconstructing `build_prompt`'s wrapper
+        // formula here, so there is exactly one place that formula lives.
+        let system_prompt_text = request.system.clone().unwrap_or_default();
+        let user_content_text = request
+            .messages
+            .first()
+            .map(|m| match &m.content {
+                Content::Text(text) => text.clone(),
+                _ => String::new(),
+            })
+            .unwrap_or_default();
+        let prompt_hash =
+            provenance::hash_str(&format!("{system_prompt_text}\n{user_content_text}"));
+        let model = self.resolved_model().to_owned();
+        let config_snapshot_hash =
+            provenance::hash_str(&serde_json::to_string(&self.config).unwrap_or_default());
 
         record_outcome(nous_id, &distill_start, true, tokens_before, tokens_after);
 
@@ -516,6 +559,11 @@ impl DistillEngine {
             memory_flush,
             pruning_stats: Some(pruning_stats),
             contradiction_log,
+            source_message_ids,
+            input_hash,
+            prompt_hash,
+            model,
+            config_snapshot_hash,
         })
     }
 
@@ -523,6 +571,86 @@ impl DistillEngine {
     pub fn config(&self) -> &DistillConfig {
         &self.config
     }
+}
+
+/// Reconstruct a distillation's provenance hashes from the same inputs
+/// [`DistillEngine::distill`] would have used, and confirm they match a
+/// stored [`DistillResult`].
+///
+/// `messages` must be the pruned, post-similarity-filtering set actually
+/// distilled -- the same set [`DistillResult::source_message_ids`] names,
+/// not the pre-pruning conversation. `nous_id` is not itself part of the
+/// stored provenance (see [`DistillResult`]'s field list); the caller
+/// supplies it from whatever external context associates a distillation
+/// run with its session, the same way that context was available when
+/// [`DistillEngine::distill`] originally ran.
+///
+/// # Errors
+///
+/// Returns an error naming the first field whose recomputed value does not
+/// match what `result` stored.
+pub fn verify_provenance(
+    result: &DistillResult,
+    messages: &[Message],
+    config: &DistillConfig,
+    nous_id: &str,
+) -> std::result::Result<(), String> {
+    let engine = DistillEngine::new(config.clone());
+
+    let expected_ids = provenance::message_refs(messages);
+    if expected_ids != result.source_message_ids {
+        return Err(format!(
+            "source_message_ids mismatch: expected {expected_ids:?}, stored {:?}",
+            result.source_message_ids
+        ));
+    }
+
+    let expected_model = engine.resolved_model();
+    if expected_model != result.model {
+        return Err(format!(
+            "model mismatch: expected {expected_model}, stored {}",
+            result.model
+        ));
+    }
+
+    let formatted = prompt::format_messages(messages, config.include_tool_calls);
+    let expected_input_hash = provenance::hash_str(&formatted);
+    if expected_input_hash != result.input_hash {
+        return Err(format!(
+            "input_hash mismatch: expected {expected_input_hash}, stored {}",
+            result.input_hash
+        ));
+    }
+
+    let request = engine.build_prompt(messages, nous_id);
+    let system_prompt_text = request.system.clone().unwrap_or_default();
+    let user_content_text = request
+        .messages
+        .first()
+        .map(|m| match &m.content {
+            Content::Text(text) => text.clone(),
+            _ => String::new(),
+        })
+        .unwrap_or_default();
+    let expected_prompt_hash =
+        provenance::hash_str(&format!("{system_prompt_text}\n{user_content_text}"));
+    if expected_prompt_hash != result.prompt_hash {
+        return Err(format!(
+            "prompt_hash mismatch: expected {expected_prompt_hash}, stored {}",
+            result.prompt_hash
+        ));
+    }
+
+    let expected_config_hash =
+        provenance::hash_str(&serde_json::to_string(config).unwrap_or_default());
+    if expected_config_hash != result.config_snapshot_hash {
+        return Err(format!(
+            "config_snapshot_hash mismatch: expected {expected_config_hash}, stored {}",
+            result.config_snapshot_hash
+        ));
+    }
+
+    Ok(())
 }
 
 /// Record distillation metrics (duration, success/failure, token savings).
@@ -623,11 +751,17 @@ fn extract_summary_text(content: &[hermeneus::types::ContentBlock]) -> String {
 /// all other sections (Summary, Task Context, Completed Work, Current State,
 /// Open Threads) are stored as facts to prevent information loss across
 /// distillation boundaries.
-fn parse_summary_to_flush(summary: &str, timestamp: &str) -> MemoryFlush {
-    let mut decisions: Vec<FlushItem> = Vec::new();
-    let mut corrections: Vec<FlushItem> = Vec::new();
-    let mut facts: Vec<FlushItem> = Vec::new();
-    let mut task_state: Option<String> = None;
+fn parse_summary_to_flush(
+    summary: &str,
+    timestamp: &str,
+    source_message_ids: &[String],
+) -> MemoryFlush {
+    let mut flush = MemoryFlush {
+        decisions: Vec::new(),
+        corrections: Vec::new(),
+        facts: Vec::new(),
+        task_state: None,
+    };
     let mut current_section = "";
     let mut section_lines: Vec<&str> = Vec::new();
 
@@ -637,10 +771,8 @@ fn parse_summary_to_flush(summary: &str, timestamp: &str) -> MemoryFlush {
                 current_section,
                 &section_lines,
                 timestamp,
-                &mut decisions,
-                &mut corrections,
-                &mut facts,
-                &mut task_state,
+                source_message_ids,
+                &mut flush,
             );
             current_section = heading.trim();
             section_lines.clear();
@@ -652,18 +784,11 @@ fn parse_summary_to_flush(summary: &str, timestamp: &str) -> MemoryFlush {
         current_section,
         &section_lines,
         timestamp,
-        &mut decisions,
-        &mut corrections,
-        &mut facts,
-        &mut task_state,
+        source_message_ids,
+        &mut flush,
     );
 
-    MemoryFlush {
-        decisions,
-        corrections,
-        facts,
-        task_state,
-    }
+    flush
 }
 
 /// Extract bullet items from section content lines.
@@ -687,10 +812,8 @@ fn collect_flush_section(
     section: &str,
     lines: &[&str],
     timestamp: &str,
-    decisions: &mut Vec<FlushItem>,
-    corrections: &mut Vec<FlushItem>,
-    facts: &mut Vec<FlushItem>,
-    task_state: &mut Option<String>,
+    source_message_ids: &[String],
+    flush: &mut MemoryFlush,
 ) {
     let content: Vec<&str> = lines
         .iter()
@@ -703,42 +826,46 @@ fn collect_flush_section(
     match section {
         "Key Decisions" => {
             for text in extract_bullet_items(&content) {
-                decisions.push(FlushItem {
+                flush.decisions.push(FlushItem {
                     content: text.to_owned(),
                     timestamp: timestamp.to_owned(),
                     source: FlushSource::Extracted,
+                    source_message_ids: source_message_ids.to_vec(),
                 });
             }
         }
         "Corrections" => {
             for text in extract_bullet_items(&content) {
-                corrections.push(FlushItem {
+                flush.corrections.push(FlushItem {
                     content: text.to_owned(),
                     timestamp: timestamp.to_owned(),
                     source: FlushSource::Extracted,
+                    source_message_ids: source_message_ids.to_vec(),
                 });
             }
         }
         "Task Context" => {
-            *task_state = Some(content.join("\n"));
+            flush.task_state = Some(content.join("\n"));
         }
         "Summary" => {
             // WHY: The one-sentence overview is a high-level fact for recall.
             let text = content.join(" ");
-            facts.push(FlushItem {
+            flush.facts.push(FlushItem {
                 content: format!("[Summary] {text}"),
                 timestamp: timestamp.to_owned(),
                 source: FlushSource::Extracted,
+                source_message_ids: source_message_ids.to_vec(),
             });
         }
         "Completed Work" => {
             // WHY: Each completed work item becomes a fact so future sessions
             // know what was already done without re-discovering from narrative.
             for text in extract_bullet_items(&content) {
-                facts.push(FlushItem {
+                flush.facts.push(FlushItem {
                     content: format!("[Completed] {text}"),
                     timestamp: timestamp.to_owned(),
                     source: FlushSource::Extracted,
+                    source_message_ids: source_message_ids.to_vec(),
                 });
             }
         }
@@ -746,20 +873,22 @@ fn collect_flush_section(
             // WHY: Task status snapshot persists as a fact so future sessions
             // can resume without rediscovering where things stand.
             let text = content.join("\n");
-            facts.push(FlushItem {
+            flush.facts.push(FlushItem {
                 content: format!("[State] {text}"),
                 timestamp: timestamp.to_owned(),
                 source: FlushSource::Extracted,
+                source_message_ids: source_message_ids.to_vec(),
             });
         }
         "Open Threads" => {
             // WHY: Unfinished items persist as facts so future sessions can
             // resume them instead of losing deferred work.
             for text in extract_bullet_items(&content) {
-                facts.push(FlushItem {
+                flush.facts.push(FlushItem {
                     content: format!("[Open] {text}"),
                     timestamp: timestamp.to_owned(),
                     source: FlushSource::Extracted,
+                    source_message_ids: source_message_ids.to_vec(),
                 });
             }
         }

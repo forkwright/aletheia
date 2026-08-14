@@ -240,7 +240,8 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         // fails `check-config` with "unknown config section", which means a
         // fresh `aletheia init` writes a config its own checker rejects.
         "packs" | "pricing" | "sandbox" | "logging" | "observability" | "mcp" | "localProvider"
-        | "anthropic" | "promptAudit" | "dispatch" | "workspace" | "recallSources" => {}
+        | "anthropic" | "promptAudit" | "dispatch" | "workspace" | "recallSources"
+        | "serverTools" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 

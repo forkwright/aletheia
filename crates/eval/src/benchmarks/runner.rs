@@ -163,12 +163,43 @@ impl QuestionFailure {
     }
 }
 
-type RetrievalMetrics = (
-    Option<Vec<RetrievedFact>>,
-    Option<RetrievalScoring>,
-    Option<f64>,
-    Option<f64>,
-);
+struct RetrievalMetrics {
+    retrieved_facts: Option<Vec<RetrievedFact>>,
+    retrieval_scoring: Option<RetrievalScoring>,
+    recall_at_k: Option<f64>,
+    ndcg_at_k: Option<f64>,
+    mrr_at_k: Option<f64>,
+    hallucination_rate: Option<f64>,
+}
+
+impl RetrievalMetrics {
+    /// `retrieval_k` is not configured for this run: no metrics apply.
+    fn unconfigured() -> Self {
+        Self {
+            retrieved_facts: None,
+            retrieval_scoring: None,
+            recall_at_k: None,
+            ndcg_at_k: None,
+            mrr_at_k: None,
+            hallucination_rate: None,
+        }
+    }
+
+    /// The question was non-scorable, or the knowledge search itself
+    /// failed: retrieval was attempted (or should have been) but produced
+    /// no usable result, so score-shaped metrics count as a zero rather
+    /// than staying absent.
+    fn failed() -> Self {
+        Self {
+            retrieved_facts: None,
+            retrieval_scoring: None,
+            recall_at_k: Some(0.0),
+            ndcg_at_k: Some(0.0),
+            mrr_at_k: Some(0.0),
+            hallucination_rate: None,
+        }
+    }
+}
 
 impl BenchmarkRunner {
     /// Create a new runner with the given client and configuration.
@@ -262,8 +293,7 @@ impl BenchmarkRunner {
         let judge_score = self
             .evaluate_judge(&question, &execution.answer, status)
             .await;
-        let (retrieved_facts, retrieval_scoring, recall_at_k, ndcg_at_k) =
-            self.evaluate_retrieval(&question, status).await;
+        let retrieval = self.evaluate_retrieval(&question, status).await;
 
         let result = QuestionResult {
             id: question.id,
@@ -275,10 +305,12 @@ impl BenchmarkRunner {
             expected_evidence_refs: question.expected_evidence_refs,
             score,
             judge_score,
-            retrieved_facts,
-            retrieval_scoring,
-            recall_at_k,
-            ndcg_at_k,
+            retrieved_facts: retrieval.retrieved_facts,
+            retrieval_scoring: retrieval.retrieval_scoring,
+            recall_at_k: retrieval.recall_at_k,
+            ndcg_at_k: retrieval.ndcg_at_k,
+            mrr_at_k: retrieval.mrr_at_k,
+            hallucination_rate: retrieval.hallucination_rate,
         };
         QuestionRunResult {
             result,
@@ -398,7 +430,7 @@ impl BenchmarkRunner {
     ) -> RetrievalMetrics {
         if let Some(k) = self.config.retrieval_k {
             if !status.is_scored() {
-                return (None, None, Some(0.0), Some(0.0));
+                return RetrievalMetrics::failed();
             }
 
             match self
@@ -442,9 +474,15 @@ impl BenchmarkRunner {
                         retrieved_evidence_refs,
                         retrieved_content_refs,
                     );
-                    let r = metrics::recall_at_k(&retrieved_refs, &scoring.relevant_refs, k);
-                    let n = metrics::ndcg_at_k(&retrieved_refs, &scoring.relevant_refs, k);
-                    (Some(retrieved), Some(scoring), Some(r), Some(n))
+                    let (r, n, m, h) = retrieval_score_metrics(&retrieved_refs, &scoring, k);
+                    RetrievalMetrics {
+                        retrieved_facts: Some(retrieved),
+                        retrieval_scoring: Some(scoring),
+                        recall_at_k: Some(r),
+                        ndcg_at_k: Some(n),
+                        mrr_at_k: Some(m),
+                        hallucination_rate: h,
+                    }
                 }
                 Err(e) => {
                     warn!(
@@ -453,11 +491,11 @@ impl BenchmarkRunner {
                         error = %e,
                         "knowledge search failed"
                     );
-                    (None, None, Some(0.0), Some(0.0))
+                    RetrievalMetrics::failed()
                 }
             }
         } else {
-            (None, None, None, None)
+            RetrievalMetrics::unconfigured()
         }
     }
 
@@ -651,6 +689,33 @@ fn retrieval_scoring_refs(
     }
 }
 
+/// Compute recall@k, NDCG@k, MRR@k, and hallucination rate for one
+/// question's retrieved refs against its scoring basis.
+///
+/// Hallucination rate is `None` unless `scoring.mode` is
+/// [`RetrievalScoringMode::EvidenceId`] — checking it against the
+/// normalized-content fallback would call every paraphrase of the expected
+/// answer a hallucination.
+fn retrieval_score_metrics(
+    retrieved_refs: &[String],
+    scoring: &RetrievalScoring,
+    k: usize,
+) -> (f64, f64, f64, Option<f64>) {
+    let recall = metrics::recall_at_k(retrieved_refs, &scoring.relevant_refs, k);
+    let ndcg = metrics::ndcg_at_k(retrieved_refs, &scoring.relevant_refs, k);
+    let mrr = metrics::mrr_at_k(retrieved_refs, &scoring.relevant_refs, k);
+    // WHY None rather than 0.0 off the EvidenceId path: a hallucination rate is
+    // only meaningful against real evidence refs. Under normalized-content
+    // fallback scoring there is nothing to be wrong about, and a 0.0 would read
+    // as "measured, and clean" rather than "not measurable".
+    let hallucination = if matches!(scoring.mode, RetrievalScoringMode::EvidenceId) {
+        metrics::hallucinated_evidence_rate(retrieved_refs, &scoring.relevant_refs)
+    } else {
+        None
+    };
+    (recall, ndcg, mrr, hallucination)
+}
+
 fn normalize_evidence_ref(reference: &str) -> String {
     let trimmed = reference.trim();
     trimmed
@@ -790,5 +855,76 @@ mod tests {
         assert!(scoring.fallback_used);
         assert_eq!(scoring.relevant_refs, vec![content_ref.clone()]);
         assert_eq!(refs, vec![content_ref]);
+    }
+
+    #[test]
+    fn retrieval_score_metrics_computes_hallucination_rate_for_evidence_ids() {
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: Vec::new(),
+            question: "What color?".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            expected_evidence_refs: vec!["fact:fact-blue".to_owned()],
+            category: "single-session-user".to_owned(),
+        };
+
+        let (scoring, refs) = retrieval_scoring_refs(
+            &question,
+            vec!["fact-blue".to_owned(), "fact-unrelated".to_owned()],
+            Vec::new(),
+        );
+
+        let (_, _, _, hallucination_rate) = retrieval_score_metrics(&refs, &scoring, 2);
+        assert_eq!(
+            hallucination_rate,
+            Some(0.5),
+            "1 of 2 retrieved refs is not in the evidence-ref ground truth"
+        );
+    }
+
+    #[test]
+    fn retrieval_score_metrics_skips_hallucination_rate_for_content_fallback() {
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: Vec::new(),
+            question: "What color?".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            expected_evidence_refs: Vec::new(),
+            category: "single-session-user".to_owned(),
+        };
+
+        let content_ref = metrics::normalized_content_ref("blue");
+        let (scoring, refs) =
+            retrieval_scoring_refs(&question, Vec::new(), vec![content_ref.clone()]);
+
+        let (_, _, _, hallucination_rate) = retrieval_score_metrics(&refs, &scoring, 1);
+        assert_eq!(
+            hallucination_rate, None,
+            "no real evidence refs to check hallucination against in fallback mode"
+        );
+    }
+
+    #[test]
+    fn retrieval_score_metrics_computes_mrr() {
+        let question = BenchmarkQuestion {
+            id: "q1".to_owned(),
+            sessions: Vec::new(),
+            question: "What color?".to_owned(),
+            expected_answers: vec!["blue".to_owned()],
+            expected_evidence_refs: vec!["fact:fact-blue".to_owned()],
+            category: "single-session-user".to_owned(),
+        };
+
+        let (scoring, refs) = retrieval_scoring_refs(
+            &question,
+            vec!["fact-other".to_owned(), "fact-blue".to_owned()],
+            Vec::new(),
+        );
+
+        let (_, _, mrr, _) = retrieval_score_metrics(&refs, &scoring, 2);
+        assert!(
+            (mrr - 0.5).abs() < f64::EPSILON,
+            "the relevant ref is at 1-indexed rank 2, so mrr should be 1/2"
+        );
     }
 }

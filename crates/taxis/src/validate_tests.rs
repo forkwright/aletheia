@@ -521,6 +521,15 @@ fn unknown_section_errors() {
 }
 
 #[test]
+fn server_tools_section_is_a_recognized_pass_through() {
+    let section = json!({ "webSearch": true, "codeExecution": false });
+    assert!(
+        validate_section("serverTools", &section).is_ok(),
+        "serverTools must be a registered section, not fall to the unknown-section catch-all"
+    );
+}
+
+#[test]
 fn rejects_bootstrap_exceeding_context() {
     let section = json!({
         "defaults": {

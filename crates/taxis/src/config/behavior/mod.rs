@@ -29,5 +29,5 @@ pub use provider::{
 };
 pub use recall::{AcademicSourceConfig, RecallSourcesConfig};
 pub use timeouts::{CapacityConfig, RetrySettings, TimeoutsConfig};
-pub use tools::ToolLimitsConfig;
+pub use tools::{ServerToolsConfig, ToolLimitsConfig};
 pub use tuning::TuningConfig;

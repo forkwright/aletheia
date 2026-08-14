@@ -19,8 +19,8 @@ pub use behavior::{
     DaemonBehaviorConfig, DaemonRunnerOutputMode, DeploymentTarget, DispatchConfig,
     DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig, LlmProviderConfig,
     MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig,
-    ProviderKind, RecallSourcesConfig, RetrySettings, TimeoutsConfig, ToolLimitsConfig,
-    TuningConfig,
+    ProviderKind, RecallSourcesConfig, RetrySettings, ServerToolsConfig, TimeoutsConfig,
+    ToolLimitsConfig, TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
@@ -208,6 +208,12 @@ pub struct AletheiaConfig {
     /// message size limits must match the deployment's security posture and
     /// resource constraints.
     pub tool_limits: ToolLimitsConfig,
+    /// Anthropic server-side tool (web search, code execution) availability.
+    ///
+    /// WHY configurable: server tools run on the provider's infrastructure
+    /// and carry cost/data-exposure tradeoffs the operator opts into per
+    /// deployment; see [`ServerToolsConfig`].
+    pub server_tools: ServerToolsConfig,
     /// Agora messaging transport poll, buffer, and circuit-breaker settings.
     ///
     /// WHY configurable: poll intervals and buffer sizes depend on channel

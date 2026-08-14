@@ -706,6 +706,61 @@ impl BenchmarkReport {
         Some(values.iter().sum::<f64>() / values.len() as f64) // SAFETY: value counts <10_000 per function-level #[expect]
     }
 
+    /// Mean MRR@k (Mean Reciprocal Rank) across all questions with recorded
+    /// retrieval metrics.
+    ///
+    /// The benchmark runner records `0.0` when `retrieval_k` is configured but
+    /// a question is non-scorable or the knowledge search fails, so those
+    /// retrieval failures stay in the denominator. Legacy reports with missing
+    /// retrieval fields are still excluded because they lack a recorded metric.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "value counts are small (<10000); f64 mantissa handles them exactly"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to f64 — value counts are bounded and small"
+    )]
+    pub fn mean_mrr(&self) -> Option<f64> {
+        let values: Vec<f64> = self.questions.iter().filter_map(|q| q.mrr_at_k).collect();
+        if values.is_empty() {
+            return None;
+        }
+        Some(values.iter().sum::<f64>() / values.len() as f64) // SAFETY: value counts <10_000 per function-level #[expect]
+    }
+
+    /// Mean hallucinated-evidence rate across all questions with a recorded
+    /// value.
+    ///
+    /// Unlike [`BenchmarkReport::mean_recall_at_k`] and
+    /// [`BenchmarkReport::mean_ndcg_at_k`], a non-scorable question or a
+    /// failed knowledge search does NOT contribute a recorded zero here —
+    /// [`crate::benchmarks::types::QuestionResult::hallucination_rate`] stays
+    /// `None` whenever there was no real evidence-ref ground truth to check
+    /// retrieved content against, so the denominator is exactly the
+    /// questions this metric could actually be computed for.
+    #[must_use]
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "value counts are small (<10000); f64 mantissa handles them exactly"
+    )]
+    #[expect(
+        clippy::as_conversions,
+        reason = "usize to f64 — value counts are bounded and small"
+    )]
+    pub fn mean_hallucination_rate(&self) -> Option<f64> {
+        let values: Vec<f64> = self
+            .questions
+            .iter()
+            .filter_map(|q| q.hallucination_rate)
+            .collect();
+        if values.is_empty() {
+            return None;
+        }
+        Some(values.iter().sum::<f64>() / values.len() as f64) // SAFETY: value counts <10_000 per function-level #[expect]
+    }
+
     /// Group attempted questions by category and return `(category, EM, F1)`.
     ///
     /// Non-scorable outcomes remain in each category denominator and

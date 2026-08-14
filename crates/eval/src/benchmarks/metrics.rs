@@ -7,6 +7,10 @@
 //!
 //! The runner picks the best score across all expected answers (benchmarks
 //! often allow multiple valid forms of the same answer).
+//!
+//! Also implements the retrieval metrics scored against a question's
+//! ground-truth evidence refs: [`recall_at_k`], [`ndcg_at_k`], [`mrr_at_k`],
+//! and [`hallucinated_evidence_rate`].
 
 use serde::{Deserialize, Serialize};
 
@@ -214,7 +218,68 @@ pub fn ndcg_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
     if idcg == 0.0 { 0.0 } else { dcg / idcg }
 }
 
+/// Compute one question's contribution to Mean Reciprocal Rank: the
+/// reciprocal of the 1-indexed rank of the first relevant item within the
+/// top-k retrieved, or `0.0` if no relevant item appears in the top-k.
+///
+/// The caller averages this per-question value across all scored questions
+/// (see [`crate::benchmarks::report::BenchmarkReport::mean_mrr`]) to produce
+/// MRR@k.
+///
+/// # Panics
+///
+/// Panics if `k == 0`.
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "rank is small (<10000); f64 mantissa handles it exactly"
+)]
+#[expect(
+    clippy::as_conversions,
+    reason = "usize to f64 — rank is bounded and small"
+)]
+pub fn mrr_at_k(retrieved: &[String], relevant: &[String], k: usize) -> f64 {
+    assert!(k > 0, "k must be > 0");
+    if relevant.is_empty() {
+        return 1.0;
+    }
+    let top_k = retrieved.get(..retrieved.len().min(k)).unwrap_or(retrieved);
+    top_k
+        .iter()
+        .position(|item| relevant.contains(item))
+        .map_or(0.0, |rank| 1.0 / (rank + 1) as f64) // SAFETY: rank bounded by k (<10_000); exact in f64 mantissa
+}
+
+/// Fraction of retrieved refs with zero overlap against `relevant` —
+/// content the retriever surfaced that the ground-truth set never named.
+///
+/// Returns `None` when nothing was retrieved; a hallucination rate needs a
+/// non-empty retrieved set to be meaningful. Callers should pass real
+/// dataset evidence refs as `relevant`, not a normalized-content fallback —
+/// checking hallucination against a hash of the expected answer text would
+/// call every paraphrase a hallucination.
+#[must_use]
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "counts are small (<10000); f64 mantissa handles them exactly"
+)]
+#[expect(
+    clippy::as_conversions,
+    reason = "usize to f64 — counts are bounded and small"
+)]
+pub fn hallucinated_evidence_rate(retrieved: &[String], relevant: &[String]) -> Option<f64> {
+    if retrieved.is_empty() {
+        return None;
+    }
+    let hallucinated = retrieved
+        .iter()
+        .filter(|item| !relevant.contains(item))
+        .count();
+    Some(hallucinated as f64 / retrieved.len() as f64) // SAFETY: counts <10_000 per function-level #[expect]
+}
+
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
@@ -373,6 +438,86 @@ mod tests {
         let retrieved = vec!["fact-a".to_owned(), "fact-b".to_owned()];
         let relevant = vec!["fact-b".to_owned()];
         assert!((recall_at_k(&retrieved, &relevant, 2) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn mrr_at_k_ranks_first_hit() {
+        let retrieved = vec![
+            "x".to_owned(),
+            "y".to_owned(),
+            "a".to_owned(),
+            "b".to_owned(),
+        ];
+        let relevant = vec!["a".to_owned(), "b".to_owned()];
+        // "a" is the first relevant item, at 1-indexed rank 3 -> 1/3
+        assert!((mrr_at_k(&retrieved, &relevant, 4) - 1.0 / 3.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn mrr_at_k_perfect_when_first_item_relevant() {
+        let retrieved = vec!["a".to_owned(), "x".to_owned()];
+        let relevant = vec!["a".to_owned()];
+        assert!((mrr_at_k(&retrieved, &relevant, 2) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn mrr_at_k_zero_when_no_relevant_in_window() {
+        let retrieved = vec!["x".to_owned(), "y".to_owned(), "a".to_owned()];
+        let relevant = vec!["a".to_owned()];
+        // "a" is at rank 3, outside the k=2 window
+        assert!(mrr_at_k(&retrieved, &relevant, 2).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn mrr_at_k_empty_relevant_is_one() {
+        let retrieved = vec!["a".to_owned()];
+        let relevant: Vec<String> = vec![];
+        assert!((mrr_at_k(&retrieved, &relevant, 1) - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn hallucinated_evidence_rate_none_when_nothing_retrieved() {
+        let retrieved: Vec<String> = vec![];
+        let relevant = vec!["a".to_owned()];
+        assert_eq!(hallucinated_evidence_rate(&retrieved, &relevant), None);
+    }
+
+    #[test]
+    fn hallucinated_evidence_rate_all_grounded_is_zero() {
+        let retrieved = vec!["a".to_owned(), "b".to_owned()];
+        let relevant = vec!["a".to_owned(), "b".to_owned(), "c".to_owned()];
+        let rate = hallucinated_evidence_rate(&retrieved, &relevant).expect("must compute");
+        assert!(
+            rate.abs() < f64::EPSILON,
+            "every retrieved item is grounded"
+        );
+    }
+
+    #[test]
+    fn hallucinated_evidence_rate_all_ungrounded_is_one() {
+        let retrieved = vec!["x".to_owned(), "y".to_owned()];
+        let relevant = vec!["a".to_owned()];
+        let rate = hallucinated_evidence_rate(&retrieved, &relevant).expect("must compute");
+        assert!(
+            (rate - 1.0).abs() < f64::EPSILON,
+            "no retrieved item is grounded"
+        );
+    }
+
+    #[test]
+    fn hallucinated_evidence_rate_partial() {
+        let retrieved = vec![
+            "a".to_owned(),
+            "x".to_owned(),
+            "y".to_owned(),
+            "b".to_owned(),
+        ];
+        let relevant = vec!["a".to_owned(), "b".to_owned()];
+        let rate = hallucinated_evidence_rate(&retrieved, &relevant).expect("must compute");
+        assert!(
+            (rate - 0.5).abs() < f64::EPSILON,
+            "2 of 4 retrieved are ungrounded"
+        );
     }
 
     #[test]

@@ -13,8 +13,8 @@ workspace = true
 
 [dependencies]
 poiesis-core = { path = "../core" }
-poiesis-deck-layout = { path = "../deck-layout" }
 minijinja = "2"
+serde = { workspace = true }
 serde_json = { workspace = true }
 snafu = { workspace = true }
 tracing = { workspace = true }

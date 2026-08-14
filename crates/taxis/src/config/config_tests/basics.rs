@@ -227,6 +227,36 @@ fn serde_roundtrip() {
 }
 
 #[test]
+fn server_tools_disabled_by_default() {
+    let config = AletheiaConfig::default();
+    assert!(
+        !config.server_tools.web_search,
+        "web search must not be enabled without explicit operator opt-in"
+    );
+    assert!(
+        !config.server_tools.code_execution,
+        "code execution must not be enabled without explicit operator opt-in"
+    );
+    assert_eq!(config.server_tools.web_search_max_uses, None);
+}
+
+#[test]
+fn server_tools_section_deserializes_under_camel_case_key() {
+    let json = serde_json::json!({
+        "serverTools": {
+            "webSearch": true,
+            "webSearchMaxUses": 5,
+            "codeExecution": true,
+        }
+    });
+    let config: AletheiaConfig =
+        serde_json::from_value(json).expect("serverTools section must deserialize");
+    assert!(config.server_tools.web_search);
+    assert_eq!(config.server_tools.web_search_max_uses, Some(5));
+    assert!(config.server_tools.code_execution);
+}
+
+#[test]
 fn gateway_rate_limit_trust_proxy_roundtrips() {
     let mut config = AletheiaConfig::default();
     config.gateway.rate_limit.enabled = true;

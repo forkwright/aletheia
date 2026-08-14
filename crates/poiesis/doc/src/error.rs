@@ -8,6 +8,7 @@ use snafu::Snafu;
 #[non_exhaustive]
 pub enum Error {
     /// The input JSON did not match the expected render schema.
+    #[cfg(feature = "docx")]
     #[snafu(display("malformed input: {detail}"))]
     MalformedInput {
         /// Human-readable description of the schema violation.
@@ -15,6 +16,7 @@ pub enum Error {
     },
 
     /// DOCX generation failed.
+    #[cfg(feature = "docx")]
     #[snafu(display("docx build failed: {detail}"))]
     BuildDocx {
         /// Human-readable description of the build failure.
@@ -22,6 +24,7 @@ pub enum Error {
     },
 
     /// ZIP inspection failed.
+    #[cfg(feature = "inspect")]
     #[snafu(display("zip read failed: {source}"))]
     ReadZip {
         /// Underlying ZIP error.
@@ -29,6 +32,7 @@ pub enum Error {
     },
 
     /// XML parsing during inspection failed.
+    #[cfg(feature = "inspect")]
     #[snafu(display("xml parse failed: {source}"))]
     ParseXml {
         /// Underlying quick-xml error.
@@ -36,6 +40,7 @@ pub enum Error {
     },
 
     /// PDF rendering via Typst failed.
+    #[cfg(feature = "pandoc")]
     #[snafu(display("pdf render failed: {detail}"))]
     PdfRenderFailed {
         /// Human-readable description.
@@ -43,6 +48,7 @@ pub enum Error {
     },
 
     /// PDF rendering needed a system `LaTeX` engine but none was available.
+    #[cfg(feature = "pandoc")]
     #[snafu(display("pdf LaTeX engine unavailable: {source}"))]
     PdfLatexEngineUnavailable {
         /// Detailed probing error from the Pandoc `LaTeX` route.
@@ -50,6 +56,7 @@ pub enum Error {
     },
 
     /// ODT rendering via the clean-room backend failed.
+    #[cfg(feature = "odt")]
     #[snafu(display("odt render failed: {detail}"))]
     OdtRenderFailed {
         /// Human-readable description.
@@ -57,6 +64,7 @@ pub enum Error {
     },
 
     /// A Pandoc-backed format could not be rendered.
+    #[cfg(feature = "pandoc")]
     #[snafu(display("{format} output requires Pandoc; install pandoc >= 3.1"))]
     PandocRequired {
         /// The requested format name (e.g. "docx").
@@ -64,6 +72,7 @@ pub enum Error {
     },
 
     /// A Pandoc-backed format failed after Pandoc was found.
+    #[cfg(feature = "pandoc")]
     #[snafu(display("{format} output failed: {source}"))]
     PandocFailed {
         /// The requested format name (e.g. "docx").

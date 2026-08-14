@@ -17,6 +17,8 @@ pub mod metrics;
 pub mod probe;
 /// System prompt construction and message formatting for the distillation LLM.
 pub mod prompt;
+/// Provenance hashing for distillation reconstruction and its redaction policy.
+pub mod provenance;
 /// Jaccard similarity pruning to remove near-duplicate content before distillation.
 pub mod similarity;
 /// Re-exported hermeneus types used by distillation consumers.

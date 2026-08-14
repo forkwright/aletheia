@@ -1,13 +1,16 @@
 use poiesis_core::scalar::AspectRatio;
 
-use crate::{Canvas, SlideLayout, Zone, ZoneName};
+use super::{Canvas, SlideLayout, Zone, ZoneName};
 
 /// Resolve the default slide layout for a given aspect ratio.
 ///
 /// Builds a canvas and inserts all 9 predefined zones.
+// WHY by value: `AspectRatio` is two u16s and `Copy`, and folding this module
+// in made the function crate-internal -- `trivially_copy_pass_by_ref` exempts
+// public API, which is why `Canvas::from_aspect` beside it is untouched.
 #[must_use]
-pub fn resolve_layout(aspect: &AspectRatio) -> SlideLayout {
-    let canvas = Canvas::from_aspect(aspect);
+pub fn resolve_layout(aspect: AspectRatio) -> SlideLayout {
+    let canvas = Canvas::from_aspect(&aspect);
     let mut zones = std::collections::BTreeMap::new();
     zones.insert(
         ZoneName::Full,

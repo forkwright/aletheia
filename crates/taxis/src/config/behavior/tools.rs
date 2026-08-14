@@ -84,6 +84,28 @@ impl Default for ToolLimitsConfig {
     }
 }
 
+/// Availability of Anthropic server-side tools (web search, code execution)
+/// for per-session activation via organon's `enable_tool` meta-tool.
+///
+/// WHY configurable: server tools run on the provider's infrastructure
+/// (Anthropic-hosted web search / code execution), so enabling one carries
+/// cost and data-exposure tradeoffs the operator must opt into per
+/// deployment. Disabled by default — an absent or default section never
+/// implies opt-in, matching `RecallSourcesConfig`'s network-source policy.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct ServerToolsConfig {
+    /// Whether web search is available for activation.
+    pub web_search: bool,
+    /// Maximum web search uses per turn (`None` = provider default).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub web_search_max_uses: Option<u32>,
+    /// Whether code execution is available for activation.
+    pub code_execution: bool,
+}
+
 #[cfg(test)]
 const _: () =
     assert!(DEFAULT_MAX_PATTERN_LENGTH == organon::builtins::filesystem::MAX_PATTERN_LENGTH);

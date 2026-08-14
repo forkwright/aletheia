@@ -1,4 +1,4 @@
-use crate::{Canvas, Zone};
+use super::{Canvas, Zone};
 
 /// One pixel in EMU (English Metric Units).
 const PX_TO_EMU: f64 = 9144.0;

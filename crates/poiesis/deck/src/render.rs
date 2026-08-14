@@ -4,12 +4,12 @@ use poiesis_core::bodies::{Deck, Slide};
 use poiesis_core::components::ComponentRegistry;
 use poiesis_core::envelope::Meta;
 use poiesis_core::scalar::AspectRatio;
-use poiesis_deck_layout::SlideLayout;
 use serde_json::Value;
 use snafu::ResultExt;
 
 use crate::css::three_layer_css;
 use crate::error::{ComponentNotFoundSnafu, DeckError, TemplateLoadSnafu, TemplateRenderSnafu};
+use crate::layout::SlideLayout;
 
 /// Minimal HTML-escape for text content.
 fn html_escape(text: &str) -> String {

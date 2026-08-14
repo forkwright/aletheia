@@ -459,6 +459,25 @@ fn server_tool_config_serde_roundtrip() {
 }
 
 #[test]
+fn server_tool_config_from_taxis_config() {
+    let taxis_config = taxis::config::ServerToolsConfig {
+        web_search: true,
+        web_search_max_uses: Some(3),
+        code_execution: true,
+    };
+    let config: ServerToolConfig = taxis_config.into();
+    assert!(
+        config.web_search,
+        "web_search must carry over from taxis config"
+    );
+    assert_eq!(config.web_search_max_uses, Some(3));
+    assert!(
+        config.code_execution,
+        "code_execution must carry over from taxis config"
+    );
+}
+
+#[test]
 fn server_tool_config_catalog_entries_empty_when_disabled() {
     let config = ServerToolConfig::default();
     assert!(
