@@ -2335,6 +2335,7 @@ dependencies = [
  "cargo_metadata",
  "hermeneus",
  "http",
+ "indexmap 2.14.0",
  "jiff",
  "koina",
  "mneme",
@@ -5261,6 +5262,7 @@ dependencies = [
  "rustix 1.1.4",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "snafu",
  "tempfile",
  "tokio",
@@ -6404,18 +6406,10 @@ version = "0.37.0"
 dependencies = [
  "minijinja",
  "poiesis-core",
- "poiesis-deck-layout",
+ "serde",
  "serde_json",
  "snafu",
  "tracing",
-]
-
-[[package]]
-name = "poiesis-deck-layout"
-version = "0.37.0"
-dependencies = [
- "poiesis-core",
- "serde",
 ]
 
 [[package]]
