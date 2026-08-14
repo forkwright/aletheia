@@ -39,9 +39,29 @@ pub fn hash_str(input: &str) -> String {
     let mut out = String::with_capacity(digest.len() * 2 + 7);
     out.push_str("sha256:");
     for byte in digest {
-        out.push_str(&format!("{byte:02x}"));
+        out.push(nibble_to_hex(byte >> 4));
+        out.push(nibble_to_hex(byte & 0x0F));
     }
     out
+}
+
+// WHY nibble lookup rather than `format!("{byte:02x}")`: appending a `format!`
+// to an existing String allocates a throwaway String per byte, which
+// `clippy::format_push_string` denies. This is the shape the rest of the
+// workspace already uses for the same job -- see `hex_encode` in
+// `nous/src/hooks/builtins/correction.rs` and `hex_lower` in
+// `aletheia/src/dispatch.rs`.
+//
+// NOTE(#6789): those, plus `daemon/src/runner/output.rs` and
+// `eval/src/provenance.rs`, are four private copies of this function; this is
+// a fifth. A shared owner is tracked separately rather than adding a
+// cross-crate dependency from here.
+fn nibble_to_hex(n: u8) -> char {
+    if n < 10 {
+        char::from(b'0' + n)
+    } else {
+        char::from(b'a' + (n - 10))
+    }
 }
 
 /// A stable per-message reference for provenance tracking.
