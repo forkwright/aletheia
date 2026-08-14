@@ -23,6 +23,7 @@ use hermeneus::types::{
     CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role,
     ServerToolDefinition, StopReason, ThinkingConfig,
 };
+use mneme::knowledge::FactSensitivity;
 use organon::registry::ToolRegistry;
 use organon::surface::SurfaceInputs;
 use organon::types::ToolContext;
@@ -32,8 +33,8 @@ use self::dispatch::{
     dispatch_tool_items,
 };
 use self::resolve::{
-    process_response_blocks, resolve_active_server_tools, resolve_provider_checked,
-    resolve_turn_model, resolve_turn_route,
+    gate_turn_sensitivity, process_response_blocks, resolve_active_server_tools,
+    resolve_provider_checked, resolve_turn_model, resolve_turn_route, route_admits_sensitivity,
 };
 use crate::approval::ApprovalGate;
 use crate::config::{ModelProviderRoute, NousConfig};
@@ -104,7 +105,17 @@ pub(crate) fn routed_model_for_turn(
     resolve_turn_model(ctx, config, providers, tool_count)
 }
 
-fn fallback_config(config: &NousConfig) -> Option<model_fallback::RegistryFallbackConfig> {
+/// WHY(#4621): `route` (the primary) has already passed
+/// [`gate_turn_sensitivity`] by the time this is called, but the retry
+/// chain built here reads `config.generation.fallback_models` independently
+/// — without this filter, a route the gate excluded for this turn could
+/// still be reached when the primary fails transiently and the chain falls
+/// back to it, leaking the same classified turn the gate exists to protect.
+fn fallback_config(
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    sensitivity: FactSensitivity,
+) -> Option<model_fallback::RegistryFallbackConfig> {
     if config.generation.fallback_models.is_empty() {
         return None;
     }
@@ -122,6 +133,7 @@ fn fallback_config(config: &NousConfig) -> Option<model_fallback::RegistryFallba
                 .get(index)
                 .and_then(Clone::clone),
         })
+        .filter(|route| route_admits_sensitivity(providers, route, sensitivity))
         .collect();
 
     Some(model_fallback::RegistryFallbackConfig {
@@ -585,6 +597,13 @@ async fn run_execute_loop(
     turn_route: ModelProviderRoute,
     llm_transport: LlmTransport<'_>,
 ) -> error::Result<TurnResult> {
+    // WHY(#4621): gate before the loop, once, rather than per-iteration —
+    // the turn's classified sensitivity does not change across tool
+    // iterations, and every iteration must dispatch to the same admitted
+    // route (a mid-turn provider swap would split one turn's content across
+    // deployment targets). Covers both transports: streaming and
+    // non-streaming callers both converge on this shared loop.
+    let (turn_route, turn_sensitivity) = gate_turn_sensitivity(ctx, config, providers, turn_route)?;
     let mut model_used = turn_route.model.clone();
     let mut provider_used = None;
 
@@ -616,7 +635,7 @@ async fn run_execute_loop(
             enabled: true,
             budget_tokens: config.generation.thinking_budget,
         });
-    let fallback_config = fallback_config(config);
+    let fallback_config = fallback_config(config, providers, turn_sensitivity);
 
     // WHY: hoist the config server_tools Vec into an Arc once per turn so the
     // per-iteration backward-compat clone becomes a pointer bump (#3389).

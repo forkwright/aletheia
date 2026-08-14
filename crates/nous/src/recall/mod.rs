@@ -983,7 +983,12 @@ impl RecallStage {
 ///
 /// The ordering on `FactSensitivity` mirrors the ordering on
 /// `DeploymentTarget`, so admission reduces to `sensitivity <= max`.
-fn max_sensitivity_for(target: DeploymentTarget) -> FactSensitivity {
+///
+/// `pub(crate)` rather than private: `execute::resolve::route_admits_sensitivity`
+/// (#4621) gates the live outgoing prompt against this same table before
+/// dispatch — recall and the live prompt must agree on what a deployment
+/// target may receive, so this is the single admission table both read.
+pub(crate) fn max_sensitivity_for(target: DeploymentTarget) -> FactSensitivity {
     // WHY: `DeploymentTarget` is `#[non_exhaustive]` — any future boundary
     // this crate has not been taught about falls into the wildcard arm and
     // is treated as `Public`, the safest classification. Operators cannot

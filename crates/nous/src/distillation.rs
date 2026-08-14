@@ -464,7 +464,14 @@ fn fact_from_content(
         content: content.to_owned(),
         scope: project_id.map(|_| MemoryScope::Project),
         project_id: project_id.cloned(),
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
+        // WHY(#4687): both memory-flush producers (distillation's
+        // `commit_memory_flush` and auto-dream's `ConsolidationTarget::merge_flush`
+        // in `actor::background`) converge on this function, and neither carries a
+        // stored per-message sensitivity to preserve — `mneme::types::Message` has
+        // no such field. Infer from the fact's own content with the same
+        // marker-based classifier the pre-LLM turn triage uses, rather than
+        // defaulting every flush fact to `Public` regardless of what it says.
+        sensitivity: crate::pipeline::triage::TriageStage::classify(content).sensitivity,
         visibility: Visibility::Private,
         temporal: FactTemporal {
             valid_from: now,
@@ -864,6 +871,67 @@ mod tests {
             facts.iter().any(|fact| fact.fact_type == "task_state"
                 && fact.content == "acme rollout remains in review"),
             "task_state must be persisted, not silently dropped"
+        );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn commit_memory_flush_infers_non_public_sensitivity_from_content() {
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+        let flush = melete::flush::MemoryFlush {
+            decisions: vec![],
+            corrections: vec![],
+            facts: vec![flush_item(
+                "alice's bank account and salary details were shared with the team",
+            )],
+            task_state: None,
+        };
+        let result = distill_result_with_flush(flush);
+        let history = vec![mneme_message(
+            "alice's bank account and salary details were shared with the team",
+        )];
+
+        commit_memory_flush(&store, "ses-1", "nous-1", &result, &history, None).expect("commit");
+
+        let facts = store.list_all_facts(10).expect("list facts");
+        assert_eq!(facts.len(), 1);
+        let fact = facts.first().expect("exactly one fact was asserted above");
+        assert_eq!(
+            fact.sensitivity,
+            mneme::knowledge::FactSensitivity::Confidential,
+            "a flush fact whose content trips the confidential markers must not be stored \
+             as Public — before the fix every flush fact was hard-coded Public regardless \
+             of what it said"
+        );
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    fn persist_memory_flush_items_infers_sensitivity_for_the_auto_dream_producer_path() {
+        // WHY(#4687): `KnowledgeStoreConsolidationTarget::merge_flush`
+        // (auto-dream, `actor::background`) calls `persist_memory_flush_items`
+        // directly, bypassing `commit_memory_flush`'s probe-verified history —
+        // exercise it the same way so a fix that only reaches the distillation
+        // entry point does not leave this second producer still defaulting to
+        // `Public`.
+        let store = mneme::knowledge_store::KnowledgeStore::open_mem().expect("knowledge store");
+        let flush = melete::flush::MemoryFlush {
+            decisions: vec![],
+            corrections: vec![],
+            facts: vec![],
+            task_state: Some("nda review pending for the proprietary rollout plan".to_owned()),
+        };
+
+        persist_memory_flush_items(&store, &flush, "ses-1", "nous-1", None).expect("persist");
+
+        let facts = store.list_all_facts(10).expect("list facts");
+        assert_eq!(facts.len(), 1);
+        let fact = facts.first().expect("exactly one fact was asserted above");
+        assert_eq!(
+            fact.sensitivity,
+            mneme::knowledge::FactSensitivity::Confidential,
+            "auto-dream's merge_flush path shares persist_memory_flush_items with \
+             distillation — it must not silently keep defaulting to Public"
         );
     }
 

@@ -1845,6 +1845,95 @@ async fn test_routing_enabled_allows_local_tier_model() {
     assert_eq!(result.usage.llm_calls, 1);
 }
 
+// WHY(#4621): live-prompt sensitivity gate. Mirrors the capability-negotiation
+// tests above (`tool_bearing_turn_never_dispatches_to_incapable_provider_without_fallback`,
+// `tool_bearing_fallback_chain_skips_incapable_route_for_capable_one`) but for
+// deployment-target admission instead of tool-loop capability: recall already
+// withholds over-sensitive recalled facts before they reach a provider; these
+// prove the live user prompt gets the identical admission check before its own
+// dispatch.
+
+#[tokio::test]
+async fn confidential_turn_is_blocked_when_no_provider_admits_it() {
+    let primary = Arc::new(MockProvider::new("must never be seen").models(&["test-model"]));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&primary))));
+
+    let mut ctx = test_pipeline_ctx();
+    ctx.triage_result = Some(crate::pipeline::triage::TriageResult::new(
+        crate::pipeline::triage::Intent::Unclassified,
+        mneme::knowledge::FactSensitivity::Confidential,
+        hermeneus::complexity::ModelTier::Haiku,
+        ctx.messages[0].content.len(),
+    ));
+
+    let err = execute(
+        &ctx,
+        &test_session(),
+        &test_config(),
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect_err("a confidential turn must not dispatch to a Cloud-only provider");
+
+    let msg = err.to_string();
+    assert!(
+        msg.contains("blocked before dispatch"),
+        "error should name the sensitivity gate, got: {msg}"
+    );
+    assert!(
+        primary.captured_requests().is_empty(),
+        "the classified prompt must never reach the provider — without the gate this \
+         mock would have received it and returned \"must never be seen\" successfully"
+    );
+}
+
+#[tokio::test]
+async fn internal_turn_reroutes_to_the_eligible_local_fallback() {
+    let cloud_primary = Arc::new(MockProvider::new("must never be seen").models(&["test-model"]));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcMockProvider(Arc::clone(&cloud_primary))));
+    providers.register(Box::new(DeploymentTargetProvider::new(
+        MockProvider::with_responses(vec![make_text_response("local answer")])
+            .models(&["local-model"]),
+        DeploymentTarget::LocalHosted,
+    )));
+
+    let mut config = test_config();
+    config.generation.fallback_models = vec!["local-model".to_owned()];
+
+    let mut ctx = test_pipeline_ctx();
+    ctx.triage_result = Some(crate::pipeline::triage::TriageResult::new(
+        crate::pipeline::triage::Intent::Unclassified,
+        mneme::knowledge::FactSensitivity::Internal,
+        hermeneus::complexity::ModelTier::Haiku,
+        ctx.messages[0].content.len(),
+    ));
+
+    let result = execute(
+        &ctx,
+        &test_session(),
+        &config,
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("an Internal turn should reroute to the LocalHosted fallback rather than block");
+
+    assert_eq!(result.content, "local answer");
+    assert_eq!(result.model_used, "local-model");
+    assert!(
+        cloud_primary.captured_requests().is_empty(),
+        "the classified prompt must reach only the admitted local provider, never the \
+         configured Cloud primary"
+    );
+}
+
 /// WHY(#5820): a loop warning ends dispatch early, and the abandoned calls are recorded
 /// so their `tool_use` blocks stay paired with a `tool_result`. Those calls never ran, so
 /// `after_tool` must not fire for them — a hook that sees them would be told a tool
