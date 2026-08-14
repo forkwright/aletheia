@@ -270,9 +270,18 @@ pub async fn subscribe(
                     dropped = n,
                     "event subscriber lagged; surfacing loss to client"
                 );
-                let data = serde_json::json!({"dropped": n});
-                let data =
-                    serde_json::to_string(&data).unwrap_or_else(|_| "{\"dropped\":0}".to_owned());
+                // SECURITY(#5929): `n` counts drops on the shared broadcast
+                // channel across every topic and nous_id, not just this
+                // subscriber's scope — for a scoped token it discloses
+                // cross-agent event volume the same way an unredacted
+                // reconnect gap range would (see `reconnect_control_event`).
+                // Scoped tokens learn that loss occurred, not how much.
+                let data = if scoped_nous_id.is_some() {
+                    serde_json::json!({})
+                } else {
+                    serde_json::json!({"dropped": n})
+                };
+                let data = serde_json::to_string(&data).unwrap_or_else(|_| "{}".to_owned());
                 Some(Ok(Event::default().event(STREAM_LAGGED_EVENT).data(data)))
             }
         };

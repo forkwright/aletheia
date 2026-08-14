@@ -394,6 +394,24 @@ mod tests {
     }
 
     #[test]
+    fn auth_none_role_and_signing_key_require_restart() {
+        // WHY(#5324): `gateway.auth.mode` was already cold, but pylon's
+        // AppState.none_role and JWT auth_facade/jwt_manager are also built
+        // once from startup config and never re-read on reload -- without
+        // these entries the diff engine fell through to hot-by-default and
+        // told operators a live config PUT had applied a role or key change
+        // it had not.
+        assert!(
+            requires_restart("gateway.auth.noneRole"),
+            "changing the anonymous-request role should require restart"
+        );
+        assert!(
+            requires_restart("gateway.auth.signingKey"),
+            "changing the JWT signing key should require restart"
+        );
+    }
+
+    #[test]
     fn sandbox_settings_require_restart() {
         assert!(
             requires_restart("sandbox.enabled"),
@@ -425,6 +443,8 @@ mod tests {
             "gateway.bind",
             "gateway.tls",
             "gateway.auth.mode",
+            "gateway.auth.noneRole",
+            "gateway.auth.signingKey",
             "gateway.csrf",
             "gateway.bodyLimit",
             "gateway.cors",

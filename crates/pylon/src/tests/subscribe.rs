@@ -216,6 +216,52 @@ async fn subscribe_surfaces_lag_as_sse_control_event() {
 }
 
 #[tokio::test]
+async fn subscribe_scoped_lag_withholds_dropped_count() {
+    // SECURITY(#5929): a scoped token whose live receiver lags must still
+    // learn that loss occurred (the typed `stream_lagged` control event) but
+    // must NOT receive the raw dropped count — that count spans the shared
+    // broadcast channel across every nous_id, not just this subscriber's
+    // scope, and discloses cross-agent event volume the same way an
+    // unredacted reconnect gap range would (see
+    // `subscribe_scoped_gap_withholds_missed_id_range`).
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+
+    let req = authed_get_scoped_as(
+        "/api/v1/events/subscribe?topics=fact.created",
+        symbolon::types::Role::Operator,
+        "syn",
+    );
+    let resp = router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = resp.into_body();
+
+    // WHY: capacity 256; publish 257 scoped events after subscribing so the
+    // live broadcast receiver overflows and observes `Lagged`.
+    for i in 0..257 {
+        state
+            .event_bus
+            .publish(DomainEvent::new(
+                state.event_bus.next_id(),
+                "fact.created",
+                serde_json::json!({"fact_id": format!("f-{i}"), "nous_id": "syn"}),
+            ))
+            .await;
+    }
+
+    let bytes = collect_sse_chunks(body, Duration::from_secs(2)).await;
+    let text = String::from_utf8_lossy(&bytes);
+    assert!(
+        text.contains("event: stream_lagged"),
+        "scoped subscriber must still be told loss occurred, got: {text}"
+    );
+    assert!(
+        !text.contains("dropped"),
+        "scoped lag event must NOT leak the cross-agent dropped count, got: {text}"
+    );
+}
+
+#[tokio::test]
 async fn subscribe_replays_from_last_event_id() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());

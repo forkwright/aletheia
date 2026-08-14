@@ -40,8 +40,8 @@ neither hot nor cold.
 | `gateway.port` | **Cold** | TCP listener already bound; changing requires re-binding the socket |
 | `gateway.bind` | **Cold** | Interface binding decision made at startup; affects socket creation |
 | `gateway.auth.mode` | **Cold** | Authentication mode changes affect middleware stack initialization |
-| `gateway.auth.noneRole` | **Cold** | Stored in `AppState.none_role` at startup; not refreshed on reload |
-| `gateway.auth.signingKey` | **Cold** | Used to build `JwtManager` at startup; key rotation requires restart |
+| `gateway.auth.noneRole` | **Cold** | Registry-declared restart prefix (#5324): stored in `AppState.none_role` at startup, not refreshed on reload |
+| `gateway.auth.signingKey` | **Cold** | Registry-declared restart prefix (#5324): used to build `JwtManager` at startup, key rotation requires restart |
 | `gateway.tls.enabled` | **Cold** | TLS termination settings require listener reconfiguration |
 | `gateway.tls.certPath` | **Cold** | Certificate paths loaded at startup for TLS context |
 | `gateway.tls.keyPath` | **Cold** | Private key paths loaded at startup for TLS context |
@@ -272,19 +272,6 @@ resolve to the same `REGISTRY` static and cannot disagree with each other.
 
 ### Fields cold at runtime but not covered by a registry restart prefix
 
-Two `gateway.auth.*` fields are cold at runtime but are not registry-declared restart
-prefixes, so a SIGHUP updates the in-memory config value without applying it to the live
-runtime state:
-
-- **`gateway.auth.noneRole`**: stored in `AppState.none_role` (set at startup in
-  `server.rs`); `apply_reload` does not update `AppState` fields.
-- **`gateway.auth.signingKey`**: used to build `JwtManager` at startup; the manager is not
-  rebuilt on reload.
-
-Both are classified Cold in this document. A code fix to add `gateway.auth.noneRole` and
-`gateway.auth.signingKey` to the registry (or to rebuild auth state on reload) is tracked
-separately.
-
 **`packs` is Cold but not a registry restart prefix:** the runtime does not force a
 restart when `packs` changes — SIGHUP proceeds and rebuilds actor configs from the
 existing pack snapshot. Pack manifests, context files, and pack tools are not refreshed
@@ -307,6 +294,17 @@ limiting is a security/availability control, and treating it as hot meant a conf
 read as "rate limiting enabled" could be silently unenforced after a SIGHUP that changed
 it. The whole subtree is cold, including every `perUser.*` field, via the same
 `starts_with` prefix match `requires_restart` uses for every other prefix.
+
+### Cold field detail: `gateway.auth.noneRole` / `gateway.auth.signingKey`
+
+**Note:** These two `gateway.auth.*` leaves are registry-declared cold prefixes (#5324),
+alongside `gateway.auth.mode`. Before this, a SIGHUP that changed either field updated the
+in-memory config value without applying it to the live runtime, and the diff engine's
+hot-by-default fallthrough reported no restart required — an operator could believe a role
+or key rotation had taken effect when it had not. `AppState.none_role` (set at startup in
+`server.rs`) and the JWT `JwtManager`/`auth_facade` (built once at startup) are not
+refreshed on reload, so both must stay cold until that runtime state is rebuilt from the
+reloaded config instead.
 
 ### Cold field detail: `gateway.csrf`
 

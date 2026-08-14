@@ -200,6 +200,37 @@ fn build_registry() -> Vec<ParameterSpec> {
             evidence_required: "Authentication mode and threat model analysis",
             direction_hint: TuningDirection::Contextual,
         },
+        // WHY(#5324): `AppState.none_role` and the JWT `auth_facade`/`jwt_manager`
+        // are built once from startup config (`pylon::server::build_auth_state`)
+        // and never re-read on reload — without these entries the diff engine
+        // fell through to its hot-by-default rule and told operators a live
+        // `PUT /config/gateway` had applied a role or key change it had not.
+        ParameterSpec {
+            key: "gateway.auth.noneRole",
+            section: "gateway",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Str("readonly"),
+            bounds: None,
+            hot_reloadable: false,
+            description: "Role assigned to anonymous requests when auth mode is \"none\"",
+            affects: "gateway_auth",
+            outcome_signal: "auth_failure_rate",
+            evidence_required: "Authentication mode and threat model analysis",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
+            key: "gateway.auth.signingKey",
+            section: "gateway",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Str(""),
+            bounds: None,
+            hot_reloadable: false,
+            description: "JWT signing key for gateway bearer authentication",
+            affects: "gateway_auth",
+            outcome_signal: "auth_failure_rate",
+            evidence_required: "Authentication mode and threat model analysis",
+            direction_hint: TuningDirection::Contextual,
+        },
         ParameterSpec {
             key: "gateway.csrf",
             section: "gateway",
