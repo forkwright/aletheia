@@ -166,7 +166,7 @@ pub async fn run_once(config: &StewardConfig, backend: &dyn StewardBackend) -> S
         match backend.files(&config.project, &cpr.pr).await {
             Ok(files) => cpr.changed_files = files.into_iter().map(|f| f.filename).collect(),
             Err(e) => {
-                tracing::warn!(error = %e, pr_number = cpr.pr.number, "steward: failed to fetch files")
+                tracing::warn!(error = %e, pr_number = cpr.pr.number, "steward: failed to fetch files");
             }
         }
         classified.push(cpr);
