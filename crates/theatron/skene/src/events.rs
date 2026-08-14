@@ -1,7 +1,7 @@
 //! Parsed streaming events from the per-session SSE endpoint.
 
 use crate::api::types::{Plan, TurnOutcome};
-use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
+use crate::id::{NousId, PlanId, RequestId, SessionId, ToolId, TurnId};
 
 /// Parsed events from a `POST /api/v1/sessions/stream` response.
 #[derive(Debug)]
@@ -15,6 +15,8 @@ pub enum StreamEvent {
         nous_id: NousId,
         /// Unique identifier for this turn.
         turn_id: TurnId,
+        /// Server-assigned request identifier, if pylon stamped one.
+        request_id: Option<RequestId>,
     },
     /// Incremental text output from the model.
     TextDelta(String),
@@ -176,16 +178,34 @@ mod tests {
             session_id: "s1".into(),
             nous_id: "n1".into(),
             turn_id: "t1".into(),
+            request_id: Some("r1".into()),
         };
         if let StreamEvent::TurnStart {
             session_id,
             nous_id,
             turn_id,
+            request_id,
         } = event
         {
             assert_eq!(session_id, *"s1");
             assert_eq!(nous_id, *"n1");
             assert_eq!(turn_id, *"t1");
+            assert_eq!(request_id, Some(RequestId::from("r1")));
+        }
+    }
+
+    #[test]
+    fn stream_event_turn_start_request_id_may_be_absent() {
+        let event = StreamEvent::TurnStart {
+            session_id: "s1".into(),
+            nous_id: "n1".into(),
+            turn_id: "t1".into(),
+            request_id: None,
+        };
+        if let StreamEvent::TurnStart { request_id, .. } = event {
+            assert_eq!(request_id, None);
+        } else {
+            panic!("expected TurnStart");
         }
     }
 

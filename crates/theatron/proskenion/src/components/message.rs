@@ -14,6 +14,36 @@ pub(crate) fn should_group(prev: &ChatMessage, current: &ChatMessage) -> bool {
     prev.role == current.role && (current.timestamp - prev.timestamp).unsigned_abs() <= 60
 }
 
+/// Compact, copyable identifier string for a message's turn.
+///
+/// WHY(#4821): turn/session/request IDs were previously discarded on
+/// arrival and unavailable anywhere in the UI, making it impossible to
+/// correlate a rendered message with server-side logs. Returns `None`
+/// when no identifiers were captured for this message (e.g. a
+/// history-loaded message, which predates this field).
+fn format_message_ids(message: &ChatMessage) -> Option<String> {
+    let parts: Vec<String> = [
+        message.turn_id.as_ref().map(|id| format!("turn:{id}")),
+        message
+            .session_id
+            .as_ref()
+            .map(|id| format!("session:{id}")),
+        message
+            .request_id
+            .as_ref()
+            .map(|id| format!("request:{id}")),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" \u{b7} "))
+    }
+}
+
 /// Render a single chat message with role-based styling.
 #[component]
 pub(crate) fn MessageBubble(
@@ -91,6 +121,8 @@ pub(crate) fn MessageBubble(
     };
 
     let timestamp = relative_time(message.timestamp);
+    let ids = format_message_ids(&message);
+    let mut ids_copied = use_signal(|| false);
 
     rsx! {
         div {
@@ -148,6 +180,38 @@ pub(crate) fn MessageBubble(
                         }
                     }
                 }
+                if let Some(ids_text) = ids {
+                    // WHY(#4821): compact copyable inspector for turn/session/
+                    // request IDs, so a rendered message can be correlated
+                    // with server-side logs without leaving the app.
+                    button {
+                        style: "\
+                            all: unset; \
+                            cursor: pointer; \
+                            color: var(--text-muted); \
+                            font-family: var(--font-mono, monospace); \
+                        ",
+                        title: "{ids_text}",
+                        onclick: move |_| {
+                            let ids_text = ids_text.clone();
+                            ids_copied.set(true);
+                            spawn(async move {
+                                let js = format!(
+                                    "navigator.clipboard.writeText('{}')",
+                                    ids_text.replace('\'', "\\'")
+                                );
+                                if document::eval(&js).await.is_err() {
+                                    tracing::warn!("failed to copy message ids to clipboard");
+                                    ids_copied.set(false);
+                                    return;
+                                }
+                                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                                ids_copied.set(false);
+                            });
+                        },
+                        if *ids_copied.read() { "Copied!" } else { "Copy IDs" }
+                    }
+                }
             }
         }
     }
@@ -178,6 +242,9 @@ mod tests {
             model: None,
             input_tokens: 0,
             output_tokens: 0,
+            turn_id: None,
+            session_id: None,
+            request_id: None,
         }
     }
 
@@ -207,5 +274,32 @@ mod tests {
         assert_eq!(role_color(Role::User), "var(--role-user)");
         assert_eq!(role_color(Role::Assistant), "var(--role-assistant)");
         assert_eq!(role_color(Role::System), "var(--role-system)");
+    }
+
+    #[test]
+    fn format_message_ids_none_when_no_ids_captured() {
+        let msg = make_message(Role::Assistant, 1000);
+        assert_eq!(format_message_ids(&msg), None);
+    }
+
+    #[test]
+    fn format_message_ids_joins_all_present_ids() {
+        let mut msg = make_message(Role::Assistant, 1000);
+        msg.turn_id = Some(skene::id::TurnId::from("t1"));
+        msg.session_id = Some(skene::id::SessionId::from("s1"));
+        msg.request_id = Some(skene::id::RequestId::from("r1"));
+
+        assert_eq!(
+            format_message_ids(&msg).as_deref(),
+            Some("turn:t1 \u{b7} session:s1 \u{b7} request:r1")
+        );
+    }
+
+    #[test]
+    fn format_message_ids_omits_absent_fields() {
+        let mut msg = make_message(Role::Assistant, 1000);
+        msg.request_id = Some(skene::id::RequestId::from("r1"));
+
+        assert_eq!(format_message_ids(&msg).as_deref(), Some("request:r1"));
     }
 }

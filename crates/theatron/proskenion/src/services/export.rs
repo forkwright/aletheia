@@ -58,6 +58,9 @@ mod tests {
             model: None,
             input_tokens: 0,
             output_tokens: 0,
+            turn_id: None,
+            session_id: None,
+            request_id: None,
         }
     }
 
@@ -74,6 +77,9 @@ mod tests {
             model: None,
             input_tokens: 0,
             output_tokens: 0,
+            turn_id: None,
+            session_id: None,
+            request_id: None,
         }
     }
 

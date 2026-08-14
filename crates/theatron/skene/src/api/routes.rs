@@ -239,6 +239,12 @@ pub mod sessions {
     /// [`session_name_path`] to build an encoded path.
     pub const SESSION_NAME_TEMPLATE: &str = "/api/v1/sessions/{id}/name";
 
+    /// Template for one session's replay-faithful export.
+    ///
+    /// `{id}` is a placeholder - do not interpolate directly. Use
+    /// [`session_replay_path`] to build an encoded path.
+    pub const SESSION_REPLAY_TEMPLATE: &str = "/api/v1/sessions/{id}/replay";
+
     /// Build the path for listing or creating sessions.
     #[must_use]
     pub fn sessions_path() -> &'static str {
@@ -277,6 +283,13 @@ pub mod sessions {
     pub fn session_name_path(id: &str) -> String {
         let encoded = encoding::path_segment(id);
         format!("{SESSIONS_TEMPLATE}/{encoded}/name")
+    }
+
+    /// Build the path for one session's replay-faithful export.
+    #[must_use]
+    pub fn session_replay_path(id: &str) -> String {
+        let encoded = encoding::path_segment(id);
+        format!("{SESSIONS_TEMPLATE}/{encoded}/replay")
     }
 }
 
@@ -782,6 +795,10 @@ mod tests {
         assert_eq!(
             sessions::session_name_path("session one"),
             "/api/v1/sessions/session%20one/name"
+        );
+        assert_eq!(
+            sessions::session_replay_path("session/a?b#c"),
+            "/api/v1/sessions/session%2Fa%3Fb%23c/replay"
         );
     }
 

@@ -174,7 +174,7 @@ pub static COMMANDS: &[Command] = &[
     Command {
         name: "export",
         aliases: &[],
-        description: "Export conversation to markdown",
+        description: "Export conversation to markdown (`export json` for a replay-faithful audit export)",
         category: CommandCategory::Action,
         shortcut: None,
     },

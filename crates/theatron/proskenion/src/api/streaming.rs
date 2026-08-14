@@ -46,7 +46,7 @@ use tracing::Instrument;
 
 use skene::api::error::{format_error_fields_for_display, format_http_error_body};
 use skene::events::StreamEvent;
-use skene::id::{NousId, PlanId, SessionId, ToolId, TurnId};
+use skene::id::{NousId, PlanId, RequestId, SessionId, ToolId, TurnId};
 
 struct StreamTurnRequest<'a> {
     base_url: &'a str,
@@ -238,6 +238,17 @@ fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> 
     })
 }
 
+/// Reads the first present field as a string, without warning when absent.
+///
+/// WHY: the field is genuinely optional on the wire (older pylon builds
+/// omit `request_id`), so a missing value is not a protocol-drift
+/// condition worth logging.
+fn opt_str_any_field<'a>(json: &'a serde_json::Value, fields: &[&str]) -> Option<&'a str> {
+    fields
+        .iter()
+        .find_map(|field| json.get(field).and_then(|v| v.as_str()))
+}
+
 fn str_any_field<'a>(
     json: &'a serde_json::Value,
     fields: &[&str],
@@ -290,6 +301,8 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             turn_id: TurnId::from(
                 str_any_field(&json, &["turn_id", "turnId"], event_type)?.to_string(),
             ),
+            request_id: opt_str_any_field(&json, &["request_id", "requestId"])
+                .map(|s| RequestId::from(s.to_string())),
         }),
         "text_delta" => Some(StreamEvent::TextDelta(
             str_field(&json, "text", event_type)?.to_string(),
@@ -585,11 +598,24 @@ mod tests {
             session_id,
             nous_id,
             turn_id,
+            request_id,
         }) = result
         {
             assert_eq!(&*session_id, "s1");
             assert_eq!(&*nous_id, "syn");
             assert_eq!(&*turn_id, "t1");
+            assert_eq!(request_id, None);
+        } else {
+            panic!("expected TurnStart");
+        }
+    }
+
+    #[test]
+    fn parse_turn_start_carries_request_id() {
+        let data = r#"{"sessionId":"s1","nousId":"syn","turnId":"t1","requestId":"req-7"}"#;
+        let result = parse_stream_event("turn_start", data);
+        if let Some(StreamEvent::TurnStart { request_id, .. }) = result {
+            assert_eq!(request_id.as_deref(), Some("req-7"));
         } else {
             panic!("expected TurnStart");
         }
@@ -603,11 +629,13 @@ mod tests {
             session_id,
             nous_id,
             turn_id,
+            request_id,
         }) = result
         {
             assert_eq!(&*session_id, "s1");
             assert_eq!(&*nous_id, "syn");
             assert_eq!(&*turn_id, "t1");
+            assert_eq!(request_id, None);
         } else {
             panic!("expected TurnStart");
         }

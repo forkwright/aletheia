@@ -159,6 +159,7 @@ impl App {
                 session_id,
                 nous_id,
                 turn_id,
+                request_id: _,
             } => Msg::StreamTurnStart {
                 session_id,
                 nous_id,

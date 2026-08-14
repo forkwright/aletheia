@@ -11,7 +11,7 @@ use crate::api::client::authenticated_client;
 use crate::state::connection::ConnectionConfig;
 use crate::state::ops::{
     FeatureFlagConfigEntry, RecoverOutcome, ReloadOutcome, ToggleActionResult, ToggleApplyState,
-    ToggleStore,
+    ToggleStore, ToolToggle,
 };
 
 const PANEL_STYLE: &str = "\
@@ -302,20 +302,12 @@ fn AgentToggleRow(
     };
 
     // WHY: Collect tool data while we have the read lock.
-    let tools: Vec<_> = if is_expanded {
-        let data = store.read();
-        data.tools_for_agent(&id)
-            .iter()
-            .map(|t| {
-                (
-                    t.agent_id.clone(),
-                    t.tool_name.clone(),
-                    t.enabled,
-                    t.pending,
-                    t.apply_state,
-                    t.error.clone(),
-                )
-            })
+    let tools: Vec<ToolToggle> = if is_expanded {
+        store
+            .read()
+            .tools_for_agent(&id)
+            .into_iter()
+            .cloned()
             .collect()
     } else {
         Vec::new()
@@ -404,15 +396,10 @@ fn AgentToggleRow(
         }
 
         if is_expanded {
-            for (aid , tname , tool_enabled , tool_pending , tool_apply_state , tool_error) in tools {
+            for tool in tools {
                 ToolToggleRow {
-                    key: "{aid}-{tname}",
-                    agent_id: aid,
-                    tool_name: tname,
-                    enabled: tool_enabled,
-                    pending: tool_pending,
-                    apply_state: tool_apply_state,
-                    error: tool_error,
+                    key: "{tool.agent_id}-{tool.tool_name}",
+                    tool,
                     store,
                     config,
                 }
@@ -423,41 +410,63 @@ fn AgentToggleRow(
 
 #[component]
 fn ToolToggleRow(
-    agent_id: skene::id::NousId,
-    tool_name: String,
-    enabled: bool,
-    pending: bool,
-    apply_state: ToggleApplyState,
-    error: Option<String>,
+    tool: ToolToggle,
     store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
 ) -> Element {
-    let status_label = toggle_status_label(pending, apply_state, None);
-    let status_style = toggle_status_style(pending, apply_state);
+    let status_label = toggle_status_label(tool.pending, tool.apply_state, None);
+    let status_style = toggle_status_style(tool.pending, tool.apply_state);
+    // WHY(#4772): a denied/inactive tool has no live toggle to flip -- show
+    // WHY instead of a switch nobody can meaningfully act on.
+    let is_actionable = tool.policy_state != "denied" && tool.policy_state != "inactive";
+    let detail = {
+        let mut line = format!(
+            "{} \u{b7} {} \u{b7} {}",
+            tool.source_plane, tool.reversibility, tool.approval
+        );
+        if !tool.groups.is_empty() {
+            line.push_str(" \u{b7} ");
+            line.push_str(&tool.groups.join(", "));
+        }
+        if tool.destructive {
+            line.push_str(" \u{b7} destructive");
+        }
+        line
+    };
 
     rsx! {
         div {
-            style: "{TOOL_ROW_STYLE}",
             div {
-                style: "display: flex; align-items: center; gap: var(--space-2);",
-                span { style: "{TOOL_LABEL}", "{tool_name}" }
-                if let Some(label) = status_label {
-                    span { style: "{status_style}", "{label}" }
+                style: "{TOOL_ROW_STYLE}",
+                div {
+                    style: "display: flex; align-items: center; gap: var(--space-2);",
+                    span { style: "{TOOL_LABEL}", "{tool.tool_name}" }
+                    if let Some(label) = status_label {
+                        span { style: "{status_style}", "{label}" }
+                    }
+                }
+                if is_actionable {
+                    {toggle_switch(
+                        tool.enabled,
+                        tool.pending,
+                        {
+                            let aid = tool.agent_id.clone();
+                            let tname = tool.tool_name.clone();
+                            move |_: Event<MouseData>| {
+                                fire_tool_toggle(store, config, aid.clone(), tname.clone());
+                            }
+                        },
+                    )}
+                } else {
+                    span { style: "{STATUS_BADGE_ERROR}", "{tool.policy_state}" }
                 }
             }
-            {toggle_switch(
-                enabled,
-                pending,
-                {
-                    let aid = agent_id.clone();
-                    let tname = tool_name.clone();
-                    move |_: Event<MouseData>| {
-                        fire_tool_toggle(store, config, aid.clone(), tname.clone());
-                    }
-                },
-            )}
+            div { style: "{FLAG_DESC}", "{detail}" }
+            if let Some(ref reason) = tool.unavailable_reason {
+                div { style: "{ERROR_STYLE}", "{reason}" }
+            }
         }
-        if let Some(ref err) = error {
+        if let Some(ref err) = tool.error {
             div { style: "{ERROR_STYLE}", "{err}" }
         }
     }

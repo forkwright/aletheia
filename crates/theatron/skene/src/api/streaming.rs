@@ -14,7 +14,7 @@ use tracing::Instrument;
 use koina::http::CONTENT_TYPE_EVENT_STREAM;
 
 use crate::events::{StreamEnvelope, StreamEvent};
-use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
+use crate::id::{NousId, PlanId, RequestId, SessionId, ToolId, TurnId};
 use crate::sse::SseStream;
 
 use super::error::{
@@ -199,6 +199,17 @@ fn str_any_field<'a>(
         })
 }
 
+/// Reads the first present field as a string, without warning when absent.
+///
+/// WHY: unlike `str_any_field`, the field is genuinely optional on the wire
+/// (older pylon builds omit `request_id`), so a missing value is not a
+/// protocol-drift condition worth logging.
+fn opt_str_any_field<'a>(json: &'a serde_json::Value, fields: &[&str]) -> Option<&'a str> {
+    fields
+        .iter()
+        .find_map(|field| json.get(field).and_then(|v| v.as_str()))
+}
+
 fn bool_any_field(json: &serde_json::Value, fields: &[&str], event_type: &str) -> Option<bool> {
     fields
         .iter()
@@ -269,6 +280,8 @@ fn parse_stream_event_envelope(
             turn_id: TurnId::from(
                 str_any_field(&json, &["turn_id", "turnId"], event_type)?.to_string(),
             ),
+            request_id: opt_str_any_field(&json, &["request_id", "requestId"])
+                .map(|s| RequestId::from(s.to_string())),
         }),
         "text_delta" => wrap(StreamEvent::TextDelta(
             str_field(&json, "text", event_type)?.to_string(),
@@ -485,11 +498,35 @@ mod tests {
             session_id,
             nous_id,
             turn_id,
+            request_id,
         }) = result
         {
             assert_eq!(&*session_id, "s1");
             assert_eq!(&*nous_id, "syn");
             assert_eq!(&*turn_id, "t1");
+            assert_eq!(request_id, None);
+        } else {
+            panic!("expected TurnStart");
+        }
+    }
+
+    #[test]
+    fn parse_turn_start_request_id_snake_case() {
+        let data = r#"{"type":"turn_start","session_id":"s1","nous_id":"syn","turn_id":"t1","request_id":"req-42"}"#;
+        let result = parse("turn_start", data);
+        if let Some(StreamEvent::TurnStart { request_id, .. }) = result {
+            assert_eq!(request_id.as_deref(), Some("req-42"));
+        } else {
+            panic!("expected TurnStart");
+        }
+    }
+
+    #[test]
+    fn parse_turn_start_request_id_camel_case() {
+        let data = r#"{"type":"turn_start","sessionId":"s1","nousId":"syn","turnId":"t1","requestId":"req-99"}"#;
+        let result = parse("turn_start", data);
+        if let Some(StreamEvent::TurnStart { request_id, .. }) = result {
+            assert_eq!(request_id.as_deref(), Some("req-99"));
         } else {
             panic!("expected TurnStart");
         }

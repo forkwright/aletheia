@@ -56,16 +56,19 @@ mod tests {
             session_id: "s1".into(),
             nous_id: "n1".into(),
             turn_id: "t1".into(),
+            request_id: Some("r1".into()),
         };
         if let StreamEvent::TurnStart {
             session_id,
             nous_id,
             turn_id,
+            request_id,
         } = event
         {
             assert!(session_id == *"s1");
             assert!(nous_id == *"n1");
             assert!(turn_id == *"t1");
+            assert_eq!(request_id.as_deref(), Some("r1"));
         }
     }
 

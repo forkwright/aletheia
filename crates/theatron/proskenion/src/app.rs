@@ -174,6 +174,33 @@ fn ConnectedApp() -> Element {
     // does not advertise planning modules that Pylon cannot back.
     use_context_provider(|| Signal::new(PlanningCapabilities::default_public()));
 
+    // WHY(#4720): OS-level window focus, provided so the SSE coroutine can
+    // read it when deciding whether to suppress/downgrade a desktop
+    // notification (NotificationPreferences::only_when_backgrounded).
+    // Defaults to focused so a not-yet-fired focus event never over-notifies.
+    //
+    // NOTE: the tao/wry event wiring itself is not unit-testable without a
+    // real window -- the pure suppression logic this feeds is covered by
+    // notification_dispatch.rs's turn_after_suppressed_when_focused and
+    // only_when_backgrounded_suppresses_errors_when_focused. Manual check:
+    // blur the window during an active turn and confirm the desktop
+    // notification that would otherwise fire is suppressed/downgraded,
+    // then refocus and confirm normal notification behavior resumes.
+    // WHY `mut`: the wry handler below calls `Signal::set`, which takes `&mut self`,
+    // and that handler is a `move` closure -- so the binding it captures must be
+    // mutable even though `Signal` is `Copy`.
+    let mut window_focused = use_signal(|| true);
+    use_context_provider(|| window_focused);
+    dioxus::desktop::use_wry_event_handler(move |event, _target| {
+        if let dioxus::desktop::tao::event::Event::WindowEvent {
+            event: dioxus::desktop::tao::event::WindowEvent::Focused(is_focused),
+            ..
+        } = event
+        {
+            window_focused.set(*is_focused);
+        }
+    });
+
     // WHY: Start SSE coroutine here (not in App) so it only runs when connected
     // and has access to the finalized connection config.
     crate::services::sse_coroutine::start_sse_coroutine(&config.read());

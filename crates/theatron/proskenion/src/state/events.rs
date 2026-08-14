@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use skene::api::types::ActiveTurn;
-use skene::id::{NousId, ToolId, TurnId};
+use skene::id::{NousId, RequestId, SessionId, ToolId, TurnId};
 
 use super::tools::{PlanCardState, ToolApprovalState, ToolCallState};
 
@@ -139,6 +139,10 @@ pub struct StreamingState {
     pub is_streaming: bool,
     /// Turn ID if a turn is in progress.
     pub turn_id: Option<TurnId>,
+    /// Session ID the active turn belongs to, from `TurnStart`.
+    pub session_id: Option<SessionId>,
+    /// Server-assigned request ID for the active turn, from `TurnStart`.
+    pub request_id: Option<RequestId>,
     /// Error message if the stream errored.
     pub error: Option<String>,
 }

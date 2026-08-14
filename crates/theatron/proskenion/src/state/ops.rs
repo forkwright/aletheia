@@ -280,7 +280,12 @@ pub(crate) struct AgentToggle {
 }
 
 /// A tool toggle for a specific agent.
-#[derive(Debug, Clone)]
+///
+/// WHY(#4772): carries the same policy detail as pylon's `ToolSummary`
+/// (source plane, reversibility, approval, groups, deny reason) so the Ops
+/// tools panel can show WHY a tool is denied/inactive, not just an
+/// enabled/disabled switch.
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ToolToggle {
     pub agent_id: NousId,
     pub tool_name: String,
@@ -290,6 +295,22 @@ pub(crate) struct ToolToggle {
     /// Human-readable error from the last failed update. Kept visible until
     /// a later update succeeds, mirroring `FeatureFlag::error`.
     pub error: Option<String>,
+    /// Effective policy state for this agent: `"callable"`, `"inactive"`, or `"denied"`.
+    pub policy_state: String,
+    /// Reason the tool is unavailable under the current agent policy.
+    pub unavailable_reason: Option<String>,
+    /// Tool source plane, e.g. `"organon_builtin"` or `"runtime_bridged_mcp"`.
+    pub source_plane: String,
+    /// Reversibility metadata used to derive approval policy.
+    pub reversibility: String,
+    /// Approval requirement derived from reversibility/capability metadata.
+    pub approval: String,
+    /// Tool groups used by policy resolution.
+    pub groups: Vec<String>,
+    /// Whether the tool's default metadata marks it as side-effecting or destructive.
+    pub destructive: bool,
+    /// Whether the tool activates automatically without explicit configuration.
+    pub auto_activate: bool,
 }
 
 /// Runtime effect state for a persisted toggle request.
@@ -964,6 +985,14 @@ mod tests {
             pending: false,
             apply_state: ToggleApplyState::Synced,
             error: None,
+            policy_state: "callable".to_string(),
+            unavailable_reason: None,
+            source_plane: "organon_builtin".to_string(),
+            reversibility: "reversible".to_string(),
+            approval: "none".to_string(),
+            groups: Vec::new(),
+            destructive: false,
+            auto_activate: true,
         });
         store.tool_toggles.push(ToolToggle {
             agent_id: nid("mneme"),
@@ -972,6 +1001,14 @@ mod tests {
             pending: false,
             apply_state: ToggleApplyState::Synced,
             error: None,
+            policy_state: "callable".to_string(),
+            unavailable_reason: None,
+            source_plane: "organon_builtin".to_string(),
+            reversibility: "reversible".to_string(),
+            approval: "none".to_string(),
+            groups: Vec::new(),
+            destructive: false,
+            auto_activate: true,
         });
         store.tool_toggles.push(ToolToggle {
             agent_id: nid("syn"),
@@ -980,6 +1017,14 @@ mod tests {
             pending: false,
             apply_state: ToggleApplyState::Synced,
             error: None,
+            policy_state: "callable".to_string(),
+            unavailable_reason: None,
+            source_plane: "organon_builtin".to_string(),
+            reversibility: "reversible".to_string(),
+            approval: "none".to_string(),
+            groups: Vec::new(),
+            destructive: false,
+            auto_activate: true,
         });
 
         let syn_tools = store.tools_for_agent(&nid("syn"));
@@ -1161,6 +1206,14 @@ mod tests {
             pending: false,
             apply_state: ToggleApplyState::Synced,
             error: None,
+            policy_state: "callable".to_string(),
+            unavailable_reason: None,
+            source_plane: "organon_builtin".to_string(),
+            reversibility: "reversible".to_string(),
+            approval: "none".to_string(),
+            groups: Vec::new(),
+            destructive: false,
+            auto_activate: true,
         });
         let prev = store.flip_tool(&nid("syn"), "read");
         assert_eq!(prev, Some(false));
@@ -1185,6 +1238,14 @@ mod tests {
             pending: true,
             apply_state: ToggleApplyState::Synced,
             error: None,
+            policy_state: "callable".to_string(),
+            unavailable_reason: None,
+            source_plane: "organon_builtin".to_string(),
+            reversibility: "reversible".to_string(),
+            approval: "none".to_string(),
+            groups: Vec::new(),
+            destructive: false,
+            auto_activate: true,
         });
         store.resolve_tool(&nid("syn"), "read", true, false, None);
         let t = &store.tool_toggles[0];
@@ -1203,6 +1264,14 @@ mod tests {
             pending: true,
             apply_state: ToggleApplyState::Synced,
             error: None,
+            policy_state: "callable".to_string(),
+            unavailable_reason: None,
+            source_plane: "organon_builtin".to_string(),
+            reversibility: "reversible".to_string(),
+            approval: "none".to_string(),
+            groups: Vec::new(),
+            destructive: false,
+            auto_activate: true,
         });
         store.resolve_tool(
             &nid("syn"),
@@ -1231,6 +1300,14 @@ mod tests {
             pending: true,
             apply_state: ToggleApplyState::Synced,
             error: None,
+            policy_state: "callable".to_string(),
+            unavailable_reason: None,
+            source_plane: "organon_builtin".to_string(),
+            reversibility: "reversible".to_string(),
+            approval: "none".to_string(),
+            groups: Vec::new(),
+            destructive: false,
+            auto_activate: true,
         });
         store.resolve_tool(&nid("syn"), "read", false, false, None);
         assert_eq!(
@@ -1268,6 +1345,14 @@ mod tests {
             pending: true,
             apply_state: ToggleApplyState::Synced,
             error: None,
+            policy_state: "callable".to_string(),
+            unavailable_reason: None,
+            source_plane: "organon_builtin".to_string(),
+            reversibility: "reversible".to_string(),
+            approval: "none".to_string(),
+            groups: Vec::new(),
+            destructive: false,
+            auto_activate: true,
         });
 
         store.resolve_tool_result(

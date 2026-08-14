@@ -15,7 +15,8 @@ use super::error::{
 use super::health::{HealthFetchError, parse_health_body};
 use super::types::{
     Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
-    NousTool, NousToolsResponse, PaginatedSessionsResponse, Session, SessionsResponse,
+    NousTool, NousToolsResponse, PaginatedSessionsResponse, Session, SessionReplayResponse,
+    SessionsResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -366,6 +367,35 @@ impl ApiClient {
             operation: "history response",
         })?;
         Ok(wrapper.messages)
+    }
+
+    /// Fetch the replay-faithful export for a session.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn session_replay(&self, session_id: &str) -> Result<SessionReplayResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &super::routes::sessions::session_replay_path(session_id),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "session replay export",
+            })?;
+        let resp = Self::check_status(resp, "session replay export").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "session replay response",
+        })
     }
 
     /// Create a new session for an agent.
@@ -983,6 +1013,96 @@ mod tests {
             request.contains(r#"{"sensitivity":"confidential"}"#),
             "body must carry the requested sensitivity value, got: {request}"
         );
+    }
+
+    #[tokio::test]
+    async fn session_replay_gets_the_pylon_replay_route_and_parses_the_full_dto() {
+        // WHY(#4913): the koilon TUI export previously had no way to fetch a
+        // replay-faithful export at all -- session_replay did not exist on
+        // this client. This asserts both the wire route (GET .../replay) and
+        // that fields the TUI's Markdown export cannot carry -- tool error/
+        // approval detail, usage records -- survive the round trip.
+        crate::install_test_crypto_provider();
+        let body = r#"{
+            "version": 1,
+            "exportType": "replay",
+            "exportedAt": "2026-01-01T00:00:00Z",
+            "session": {
+                "id": "s1",
+                "nousId": "syn",
+                "sessionKey": "key",
+                "status": "active",
+                "sessionType": "chat",
+                "messageCount": 1,
+                "tokenCountEstimate": 10,
+                "distillationCount": 0,
+                "createdAt": "2026-01-01T00:00:00Z",
+                "updatedAt": "2026-01-01T00:00:00Z",
+                "lastInputTokens": 5,
+                "computedContextTokens": 5
+            },
+            "messages": [{
+                "id": 1,
+                "seq": 1,
+                "role": "assistant",
+                "content": "hi",
+                "tokenEstimate": 2,
+                "isDistilled": false,
+                "createdAt": "2026-01-01T00:00:00Z"
+            }],
+            "usageRecords": [{
+                "turnSeq": 1,
+                "inputTokens": 5,
+                "outputTokens": 5,
+                "cacheReadTokens": 0,
+                "cacheWriteTokens": 0
+            }],
+            "toolAuditRecords": [{
+                "id": 1,
+                "nousId": "syn",
+                "turnSeq": 1,
+                "toolCallId": "tc1",
+                "toolName": "read_file",
+                "durationMs": 10,
+                "isError": true,
+                "outcome": "error",
+                "result": "boom",
+                "approval": "auto",
+                "createdAt": "2026-01-01T00:00:00Z"
+            }],
+            "turnAttempts": [{
+                "version": 1,
+                "turnId": "t1",
+                "sessionId": "s1",
+                "nousId": "syn",
+                "status": "complete",
+                "createdAt": "2026-01-01T00:00:00Z"
+            }]
+        }"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let replay = client
+            .session_replay("s1")
+            .await
+            .expect("session replay export should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/sessions/s1/replay"),
+            "must GET pylon's replay route, got: {request}"
+        );
+        assert_eq!(replay.messages.len(), 1);
+        let usage = replay.usage_records.first().expect("one usage record");
+        assert_eq!(usage.input_tokens, 5);
+        let audit = replay
+            .tool_audit_records
+            .first()
+            .expect("one tool audit record");
+        assert!(audit.is_error);
+        assert_eq!(audit.approval.as_deref(), Some("auto"));
+        let attempt = replay.turn_attempts.first().expect("one turn attempt");
+        assert_eq!(attempt.status, "complete");
     }
 
     #[test]

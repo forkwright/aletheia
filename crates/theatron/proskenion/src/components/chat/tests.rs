@@ -37,6 +37,7 @@ fn turn_start_resets_streaming_state() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -45,6 +46,46 @@ fn turn_start_resets_streaming_state() {
     assert!(state.streaming.is_streaming);
     assert!(state.streaming.text.is_empty());
     assert_eq!(state.streaming.turn_id.as_deref(), Some("t1"));
+}
+
+#[test]
+fn turn_start_captures_session_id_and_request_id() {
+    // WHY(#4821): session_id and request_id were previously discarded on
+    // arrival (`session_id: _, ..`) instead of being retained on the
+    // streaming state.
+    let mut state = make_state();
+    let mut mgr = make_manager();
+
+    let _ = mgr.apply(
+        StreamEvent::TurnStart {
+            session_id: "s1".into(),
+            nous_id: "syn".into(),
+            turn_id: "t1".into(),
+            request_id: Some("req-42".into()),
+        },
+        &mut state,
+    );
+
+    assert_eq!(state.streaming.session_id.as_deref(), Some("s1"));
+    assert_eq!(state.streaming.request_id.as_deref(), Some("req-42"));
+}
+
+#[test]
+fn turn_start_request_id_absent_is_none() {
+    let mut state = make_state();
+    let mut mgr = make_manager();
+
+    let _ = mgr.apply(
+        StreamEvent::TurnStart {
+            session_id: "s1".into(),
+            nous_id: "syn".into(),
+            turn_id: "t1".into(),
+            request_id: None,
+        },
+        &mut state,
+    );
+
+    assert_eq!(state.streaming.request_id, None);
 }
 
 #[test]
@@ -57,6 +98,7 @@ fn text_delta_with_newline_flushes_immediately() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -76,6 +118,7 @@ fn text_delta_without_newline_buffers() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -106,6 +149,7 @@ fn text_delta_flushes_after_debounce_interval() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -130,6 +174,7 @@ fn adaptive_debounce_slow_stream_uses_shorter_interval() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -155,6 +200,7 @@ fn adaptive_debounce_fast_stream_uses_longer_interval() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -181,6 +227,7 @@ fn tool_start_flushes_pending_text() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -217,6 +264,7 @@ fn tool_result_updates_existing_tool_call() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -253,6 +301,7 @@ fn turn_complete_commits_message_to_history() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -281,6 +330,7 @@ fn turn_complete_commits_outcome_text_without_deltas() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -307,6 +357,7 @@ fn turn_complete_replaces_incomplete_delta_buffer() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -332,6 +383,7 @@ fn turn_abort_preserves_partial_text() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -366,6 +418,7 @@ fn turn_abort_with_no_text_commits_terminal_record() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -394,6 +447,7 @@ fn turn_complete_error_with_no_text_commits_terminal_record() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -423,6 +477,7 @@ fn error_sets_error_and_stops_streaming() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -476,6 +531,7 @@ fn thinking_delta_flushes_on_newline() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );
@@ -517,6 +573,9 @@ fn last_is_user_message_matches_failed_turn_tail() {
         thinking: None,
         tool_call_details: Vec::new(),
         plans: Vec::new(),
+        turn_id: None,
+        session_id: None,
+        request_id: None,
     });
 
     assert!(state.last_is_user_message("send this"));
@@ -538,6 +597,9 @@ fn last_is_user_message_false_for_empty_or_assistant_tail() {
         thinking: None,
         tool_call_details: Vec::new(),
         plans: Vec::new(),
+        turn_id: None,
+        session_id: None,
+        request_id: None,
     });
     assert!(!state.last_is_user_message("reply"));
 }
@@ -557,6 +619,9 @@ fn full_turn_lifecycle() {
         thinking: None,
         tool_call_details: Vec::new(),
         plans: Vec::new(),
+        turn_id: None,
+        session_id: None,
+        request_id: None,
     });
 
     let _ = mgr.apply(
@@ -564,6 +629,7 @@ fn full_turn_lifecycle() {
             session_id: "s1".into(),
             nous_id: "syn".into(),
             turn_id: "t1".into(),
+            request_id: None,
         },
         &mut state,
     );

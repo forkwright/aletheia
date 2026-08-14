@@ -45,7 +45,7 @@ use std::time::{Duration, Instant};
 
 use skene::api::types::TurnOutcome;
 use skene::events::StreamEvent;
-use skene::id::NousId;
+use skene::id::{NousId, RequestId, SessionId, TurnId};
 
 use crate::state::events::{ConnectionState, StreamingState, ToolCallInfo};
 use crate::state::tools::{
@@ -85,6 +85,12 @@ pub struct ChatMessage {
     pub tool_call_details: Vec<ToolCallState>,
     /// Planning cards associated with this message.
     pub plans: Vec<PlanCardState>,
+    /// Turn ID this message was generated under, captured from `TurnStart`.
+    pub turn_id: Option<TurnId>,
+    /// Session ID the message's turn belongs to, captured from `TurnStart`.
+    pub session_id: Option<SessionId>,
+    /// Server-assigned request ID for the turn, captured from `TurnStart`.
+    pub request_id: Option<RequestId>,
 }
 
 /// Who produced a chat message.
@@ -207,6 +213,9 @@ impl ChatState {
                 model: m.model.clone(),
                 input_tokens: m.input_tokens,
                 output_tokens: m.output_tokens,
+                turn_id: m.turn_id.clone(),
+                session_id: m.session_id.clone(),
+                request_id: m.request_id.clone(),
             })
             .collect()
     }
@@ -266,8 +275,9 @@ impl ChatStateManager {
         match event {
             StreamEvent::TurnStart {
                 turn_id,
-                session_id: _,
+                session_id,
                 nous_id: _,
+                request_id,
             } => {
                 state.streaming = StreamingState {
                     text: String::new(),
@@ -278,6 +288,8 @@ impl ChatStateManager {
                     plans: Vec::new(),
                     is_streaming: true,
                     turn_id: Some(turn_id),
+                    session_id: Some(session_id),
+                    request_id,
                     error: None,
                 };
                 self.text_buffer.clear();
@@ -396,6 +408,9 @@ impl ChatStateManager {
                     thinking,
                     tool_call_details: std::mem::take(&mut state.streaming.tool_call_details),
                     plans: std::mem::take(&mut state.streaming.plans),
+                    turn_id: state.streaming.turn_id.clone(),
+                    session_id: state.streaming.session_id.clone(),
+                    request_id: state.streaming.request_id.clone(),
                 };
                 state.messages.push(message);
                 state.streaming = StreamingState::default();
@@ -425,6 +440,9 @@ impl ChatStateManager {
                     thinking,
                     tool_call_details: std::mem::take(&mut state.streaming.tool_call_details),
                     plans: std::mem::take(&mut state.streaming.plans),
+                    turn_id: state.streaming.turn_id.clone(),
+                    session_id: state.streaming.session_id.clone(),
+                    request_id: state.streaming.request_id.clone(),
                 };
                 state.messages.push(message);
                 state.streaming = StreamingState {
