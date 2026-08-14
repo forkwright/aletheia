@@ -151,7 +151,7 @@ generated inventory is `_llm/L1-workspace.md`.
 |-------|-----------|--------|------------|
 | `koina` | `crates/koina` | Errors (snafu), tracing, fs utilities, safe wrappers | nothing (leaf) |
 | `taxis` | `crates/taxis` | Config loading (owned TOML cascade), path resolution, oikos hierarchy | koina |
-| `eidos` | `crates/eidos` | Shared knowledge types: Fact, Entity, Relationship, EpistemicTier, Visibility, MemoryScope | nothing (leaf) |
+| `eidos` | `crates/eidos` | Shared knowledge types: Fact, Entity, Relationship, EpistemicTier, Visibility, MemoryScope | koina |
 | `graphe` | `crates/graphe` | fjall session/message store, retention, archive support | eidos, koina |
 | `episteme` | `crates/episteme` | Knowledge pipeline: extraction, trace ingest, query rewrite, recall, consolidation, embedding provider | eidos, koina, graphe, krites (opt) |
 | `krites` | `crates/krites` | Embedded Datalog and graph query engine with HNSW support | eidos |
@@ -162,7 +162,7 @@ generated inventory is `_llm/L1-workspace.md`.
 | `melete` | `crates/melete` | Context distillation, compression strategies, token budget management | hermeneus |
 | `agora` | `crates/agora` | Channel registry, ChannelProvider trait, Signal JSON-RPC client | koina, taxis |
 | `daemon` (oikonomos) | `crates/daemon` | Per-nous background task scheduling, cron jobs, prosoche | koina |
-| `dianoia` | `crates/dianoia` | Multi-phase planning orchestrator, project context tracking | nothing (leaf) |
+| `dianoia` | `crates/dianoia` | Multi-phase planning orchestrator, project context tracking | koina |
 | `thesauros` | `crates/thesauros` | Domain pack loader: external knowledge, tools, config overlays | koina, organon |
 | `nous` | `crates/nous` | Agent pipeline, NousActor (tokio), working-memory injection, bootstrap, recall, execute, finalize | koina, taxis, mneme, hermeneus, organon, melete, thesauros |
 | `pylon` | `crates/pylon` | Axum HTTP gateway, SSE streaming, auth middleware, meta-insights endpoints | koina, taxis, hermeneus, organon, mneme, nous, symbolon |
@@ -275,8 +275,15 @@ instead of reaching through to the sub-crate from the application layer.
 ```
 
 **Layer rules:**
-- **Leaf** (no workspace deps): `koina`, `eidos`, `dianoia`
-- **Low** (one workspace dep): `taxis`, `hermeneus`, `symbolon`, `krites` (eidos only), `daemon` (koina), `melete` (hermeneus), `skene` (koina), `dokimion` (koina)
+
+<!-- WARNING: tier placement below is hand-classified prose, not generated -- only
+     CRATE-INDEX.toml's depends_on/used_by/dev_depends_on fields are CI-gated
+     against the Cargo.toml graph (aletheia#5574). Treat CRATE-INDEX.toml as the
+     source of truth for a crate's real dependency set; this diagram can drift
+     again the same way it did for eidos/dianoia below. -->
+
+- **Leaf** (no workspace deps): `koina`
+- **Low** (one workspace dep): `eidos` (koina), `dianoia` (koina), `taxis`, `hermeneus`, `symbolon`, `krites` (eidos only), `daemon` (koina), `melete` (hermeneus), `skene` (koina), `dokimion` (koina)
 - **Mid**: `graphe` (eidos + koina), `episteme` (eidos + koina + graphe + krites), `mneme` (facade), `organon` (koina + hermeneus), `agora` (koina + taxis), `thesauros` (koina + organon)
 - **High**: `nous` (multiple mid+low deps), `pylon` (multiple deps including nous), `diaporeia` (MCP server, multiple deps including nous)
 - **Top**: `aletheia` binary, `koilon` (koina + skene), `proskenion` (Dioxus desktop, excluded from workspace)
@@ -331,13 +338,13 @@ A dense dependency graph (many edges per node) signals that new work may fit bet
 ./scripts/topology-metric.sh
 ```
 
-**Baseline:** `crates=29, edges=102, ratio=3.51`
+**Baseline:** `crates=48, edges=179, ratio=3.72`
 
 When adding a component, prefer extending an existing edge (dependency or trait boundary) over introducing a new node, unless the new crate provides a clean abstraction boundary or is consumed by multiple unrelated crates.
 
 ## Structural properties
 
-- **koina, eidos, and dianoia are true leaf nodes.** No workspace deps in Rust.
+- **koina is the true leaf node.** No workspace deps in Rust. `eidos` and `dianoia` each depend on koina alone.
 - **symbolon depends only on koina** (plus external crates: reqwest, fjall, hmac/sha2/aes-gcm, argon2).
 - **mneme is a thin facade.** It re-exports from eidos (types), graphe (session store), episteme (knowledge pipeline), and krites (Datalog engine). No logic of its own.
 - **krites contains the Datalog+HNSW engine**, gated behind the `mneme-engine` feature.
@@ -349,7 +356,7 @@ When adding a component, prefer extending an existing edge (dependency or trait 
 - **EmbeddingProvider lives in episteme**, not mneme.
 - **Trait boundaries are extension points.** `EmbeddingProvider`, `ChannelProvider`, `LlmProvider` - implement the trait, swap the provider.
 - **daemon depends only on koina** - lightweight scheduling, not a high-layer crate. No other application crate imports it.
-- **dianoia has no workspace dependencies** - planning context fully decoupled from the agent pipeline. No other application crate imports it.
+- **dianoia depends only on koina** - planning context tracking stays decoupled from the rest of the agent pipeline (mneme, hermeneus, organon, etc). It IS imported elsewhere: `aletheia`, `nous`, `pylon`, and `taxis` all depend on it.
 - **thesauros loads domain packs** - knowledge, tools, config overlays bundled as portable extensions. Depends on koina + organon.
 - **nous requires a multi-thread Tokio runtime** (`rt-multi-thread`). The actor model and spawn-based timeout machinery depend on multiple OS threads. Single-thread runtime will deadlock.
 

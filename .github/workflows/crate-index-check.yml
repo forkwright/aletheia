@@ -1,0 +1,45 @@
+# WHY: CRATE-INDEX.toml's depends_on/used_by/dev_depends_on fields are
+# generated from the Cargo.toml workspace graph (aletheia#5574) -- they had
+# drifted from it in ~17 ways, hand-maintained with no check. This gate fails
+# a PR whose Cargo.toml edit (new path dep, a dep moved between
+# [dependencies]/[dev-dependencies], a new workspace member) left the
+# committed index stale, the same way configuration-doc-check.yml gates
+# docs/CONFIGURATION.md's generated block. No path filter: any Cargo.toml
+# under crates/** can change the graph, and a narrower trigger would let one
+# outside a chosen filter escape silently.
+name: Crate index check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: dependency-graph fields match Cargo.toml
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): this job only reads manifests to derive TOML -- no
+          # build, no git history walk. blob:none fetches trees/commits
+          # eagerly and blobs on demand, enough for a working-tree read
+          # (metadata-only-job class defect, #6757).
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_generate_crate_index.py'
+
+      - name: Check CRATE-INDEX.toml matches the Cargo.toml workspace graph
+        run: python3 scripts/generate-crate-index.py --check
