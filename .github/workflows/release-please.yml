@@ -18,6 +18,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # WHY a checkout in a job whose only action talks to the API: the assert
+      # step below runs `git fetch` and reads `release-please-config.json` from
+      # disk, and neither exists in a bare runner workspace. Without this the
+      # step dies at `fatal: not a git repository` on its first command --
+      # before it can evaluate anything -- so the guard never actually ran and
+      # instead reported a permanent red on main whenever a release PR was cut.
+      # A guard that cannot reach its own assertion is worse than none: it hides
+      # a real release failure behind a failure of its own.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
       - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         id: release
         with:
@@ -51,7 +61,14 @@ jobs:
           HEAD_BRANCH: ${{ fromJson(steps.release.outputs.pr).headBranchName }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --depth=2 origin "$HEAD_BRANCH"
+          # WHY the explicit refspec: actions/checkout narrows
+          # `remote.origin.fetch` to the ref it checked out, so a bare
+          # `git fetch origin <branch>` for any OTHER branch lands in FETCH_HEAD
+          # and never creates `refs/remotes/origin/<branch>`. The rev-parse below
+          # would then fail on an unknown revision -- the same dead guard one
+          # line later.
+          git fetch --no-tags --depth=2 origin \
+            "+refs/heads/${HEAD_BRANCH}:refs/remotes/origin/${HEAD_BRANCH}"
           head="$(git rev-parse "origin/${HEAD_BRANCH}")"
           # WHY the commit's OWN diff, not a diff against main: the release branch
           # lags main between cuts, so comparing the two attributes every commit
