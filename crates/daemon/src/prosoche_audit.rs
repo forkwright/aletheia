@@ -2068,7 +2068,11 @@ mod consistency_hoist_tests {
     }
 }
 
-#[cfg(feature = "knowledge-store")]
+// WHY `all(test, ...)`: gating a test module on the feature alone lets it
+// compile as ordinary code in a non-test build with `knowledge-store` on, where
+// nothing calls its helpers -- so dead-code analysis flags them. The sibling
+// test modules above gate on `test`; this one must gate on both.
+#[cfg(all(test, feature = "knowledge-store"))]
 mod consistency_multi_path_tests {
     use super::*;
 
