@@ -382,6 +382,7 @@ impl ToolExecutor for HttpRequestExecutor {
             rendered.push_str(&body_text);
             if truncated {
                 rendered.push_str("\n[response truncated]");
+                crate::metrics::record_output_truncation(input.name.as_str());
             }
 
             // WHY: Return an error-typed result for non-2xx so the LLM can

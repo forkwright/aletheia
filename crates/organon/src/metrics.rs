@@ -19,6 +19,8 @@ use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::Histogram;
 use prometheus_client::registry::Registry;
 
+use crate::sandbox::{EgressPolicy, SandboxEnforcement};
+
 // ── Label sets ──
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
@@ -30,6 +32,30 @@ struct ToolInvocationLabels {
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 struct ToolLabels {
     tool_name: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ApprovalDecisionLabels {
+    tool_name: String,
+    decision: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct SandboxModeLabels {
+    enforcement: String,
+    egress: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct PolicyDenialLabels {
+    tool_name: String,
+    policy: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct ReceiptLabels {
+    tool_name: String,
+    status: String,
 }
 
 // ── Metric families ──
@@ -45,6 +71,20 @@ type ToolHistogramFamily = Family<ToolLabels, Histogram, fn() -> Histogram>;
 
 static TOOL_DURATION_SECONDS: LazyLock<ToolHistogramFamily> =
     LazyLock::new(|| Family::new_with_constructor(tool_duration_histogram));
+
+static APPROVAL_DECISIONS_TOTAL: LazyLock<Family<ApprovalDecisionLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static SANDBOX_MODE_TOTAL: LazyLock<Family<SandboxModeLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static POLICY_DENIED_TOTAL: LazyLock<Family<PolicyDenialLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static RECEIPTS_TOTAL: LazyLock<Family<ReceiptLabels, Counter>> = LazyLock::new(Family::default);
+
+static TOOL_OUTPUT_TRUNCATED_TOTAL: LazyLock<Family<ToolLabels, Counter>> =
+    LazyLock::new(Family::default);
 
 // ── Live invocation tracking ──
 
@@ -152,6 +192,31 @@ pub fn register(registry: &mut Registry) {
         "Tool execution duration in seconds",
         TOOL_DURATION_SECONDS.clone(),
     );
+    registry.register(
+        "aletheia_approval_decisions",
+        "Approval-gate decisions by outcome",
+        APPROVAL_DECISIONS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_sandbox_mode",
+        "Subprocess spawns by configured sandbox enforcement/egress mode",
+        SANDBOX_MODE_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_policy_denied",
+        "Tool calls denied before execution, by denial class",
+        POLICY_DENIED_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_receipts",
+        "Tool-call receipts by emission status",
+        RECEIPTS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_tool_output_truncated",
+        "Tool invocations whose output was truncated to the configured byte bound",
+        TOOL_OUTPUT_TRUNCATED_TOTAL.clone(),
+    );
 }
 
 // ── Recording ──
@@ -187,6 +252,106 @@ pub(crate) fn record_invocation(tool_name: &str, duration_secs: f64, status: Inv
             tool_name: tool_name.to_owned(),
         })
         .observe(duration_secs);
+}
+
+/// Record an approval-gate decision for a Required/Mandatory/Advisory/None
+/// tool call.
+///
+/// `decision` is the same outcome vocabulary already carried on
+/// `ToolCall::approval` (`auto_approved`, `advisory_auto`, `no_gate_denied`,
+/// or the gate's own `approved`/`denied`) -- reused here rather than a
+/// narrower invented enum so the metric never drifts from what the caller
+/// already logs.
+pub fn record_approval_decision(tool_name: &str, decision: &str) {
+    APPROVAL_DECISIONS_TOTAL
+        .get_or_create(&ApprovalDecisionLabels {
+            tool_name: tool_name.to_owned(),
+            decision: decision.to_owned(),
+        })
+        .inc();
+}
+
+fn enforcement_str(enforcement: SandboxEnforcement) -> &'static str {
+    match enforcement {
+        SandboxEnforcement::Enforcing => "enforcing",
+        SandboxEnforcement::Permissive => "permissive",
+    }
+}
+
+fn egress_str(egress: EgressPolicy) -> &'static str {
+    match egress {
+        EgressPolicy::Deny => "deny",
+        EgressPolicy::Allow => "allow",
+        EgressPolicy::Allowlist => "allowlist",
+    }
+}
+
+/// Record the sandbox mode a subprocess was spawned under.
+///
+/// Recorded in the PARENT process at spawn time, from the policy already
+/// resolved before `Command::spawn` -- not from inside the `pre_exec`
+/// closure. A `pre_exec` closure runs in the forked child between `fork`
+/// and `exec`; a counter incremented there lives in memory the parent's
+/// registry never observes (and `exec` usually discards it immediately
+/// after), so it would silently never reach `/metrics`.
+pub fn record_sandbox_mode(enforcement: SandboxEnforcement, egress: EgressPolicy) {
+    SANDBOX_MODE_TOTAL
+        .get_or_create(&SandboxModeLabels {
+            enforcement: enforcement_str(enforcement).to_owned(),
+            egress: egress_str(egress).to_owned(),
+        })
+        .inc();
+}
+
+/// Record a subprocess spawn that ran with no sandbox policy configured.
+pub fn record_sandbox_unconfigured() {
+    SANDBOX_MODE_TOTAL
+        .get_or_create(&SandboxModeLabels {
+            enforcement: "none".to_owned(),
+            egress: "none".to_owned(),
+        })
+        .inc();
+}
+
+/// Record a tool call denied before it ever executed.
+///
+/// `policy` is the same outcome vocabulary `record_denied_call` already
+/// attaches to `ToolCall::approval` for a denied call (`denied_by_role`,
+/// `denied_by_group`, `denied_by_hook`, `denied_inactive`, `not_found`,
+/// `failed`, `undispatched_loop_warning`, `no_gate_denied`, or the approval
+/// gate's own `denied`) -- distinct from [`record_approval_decision`],
+/// which tracks every approval-gate outcome including approvals; this
+/// tracks only calls that never ran.
+pub fn record_policy_denial(tool_name: &str, policy: &str) {
+    POLICY_DENIED_TOTAL
+        .get_or_create(&PolicyDenialLabels {
+            tool_name: tool_name.to_owned(),
+            policy: policy.to_owned(),
+        })
+        .inc();
+}
+
+/// Record whether a tool call's receipt was emitted.
+///
+/// `status` is `"emitted"` when a `ReceiptSigner` was configured for the
+/// dispatch and signed the call, `"missing"` when no signer was configured.
+pub fn record_receipt(tool_name: &str, status: &str) {
+    RECEIPTS_TOTAL
+        .get_or_create(&ReceiptLabels {
+            tool_name: tool_name.to_owned(),
+            status: status.to_owned(),
+        })
+        .inc();
+}
+
+/// Record a tool invocation whose output was truncated to the configured
+/// byte bound.
+pub fn record_output_truncation(tool_name: &str) {
+    TOOL_OUTPUT_TRUNCATED_TOTAL
+        .get_or_create(&ToolLabels {
+            tool_name: tool_name.to_owned(),
+        })
+        .inc();
 }
 
 #[cfg(test)]
@@ -313,5 +478,110 @@ mod tests {
         assert_eq!(ids.len(), 2);
         assert_ne!(ids.first(), ids.get(1));
         drop((a, b));
+    }
+
+    #[test]
+    fn register_and_record_approval_decision() {
+        let r = fresh_registry();
+        record_approval_decision("_test_approval_tool", "approved");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_approval_decisions_total{tool_name=\"_test_approval_tool\",decision=\"approved\"} 1"
+            ),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn approval_decision_cardinality_is_per_tool_and_decision() {
+        let r = fresh_registry();
+        record_approval_decision("_test_card", "approved");
+        record_approval_decision("_test_card", "approved");
+        record_approval_decision("_test_card", "denied");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_approval_decisions_total{tool_name=\"_test_card\",decision=\"approved\"} 2"
+            ),
+            "got: {out}"
+        );
+        assert!(
+            out.contains(
+                "aletheia_approval_decisions_total{tool_name=\"_test_card\",decision=\"denied\"} 1"
+            ),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_sandbox_mode() {
+        let r = fresh_registry();
+        record_sandbox_mode(SandboxEnforcement::Enforcing, EgressPolicy::Deny);
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_sandbox_mode_total{enforcement=\"enforcing\",egress=\"deny\"} 1"
+            ),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_sandbox_unconfigured() {
+        let r = fresh_registry();
+        record_sandbox_unconfigured();
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_sandbox_mode_total{enforcement=\"none\",egress=\"none\"} 1"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_policy_denial() {
+        let r = fresh_registry();
+        record_policy_denial("_test_denied_tool", "denied_by_role");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_policy_denied_total{tool_name=\"_test_denied_tool\",policy=\"denied_by_role\"} 1"
+            ),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_receipt_emitted_and_missing() {
+        let r = fresh_registry();
+        record_receipt("_test_receipt_tool", "emitted");
+        record_receipt("_test_receipt_tool", "missing");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_receipts_total{tool_name=\"_test_receipt_tool\",status=\"emitted\"} 1"
+            ),
+            "got: {out}"
+        );
+        assert!(
+            out.contains(
+                "aletheia_receipts_total{tool_name=\"_test_receipt_tool\",status=\"missing\"} 1"
+            ),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_output_truncation() {
+        let r = fresh_registry();
+        record_output_truncation("_test_truncated_tool");
+        record_output_truncation("_test_truncated_tool");
+        let out = encode(&r);
+        assert!(
+            out.contains(
+                "aletheia_tool_output_truncated_total{tool_name=\"_test_truncated_tool\"} 2"
+            ),
+            "got: {out}"
+        );
     }
 }

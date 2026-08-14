@@ -401,6 +401,7 @@ fn record_approval_policy_outcome(
         approval_policy_outcome = outcome,
         "tool approval policy outcome"
     );
+    organon::metrics::record_approval_decision(tool_name, outcome);
 }
 
 fn record_stream_send_error<T>(
@@ -496,6 +497,7 @@ fn record_denied_call(
     denied: DeniedToolCall<'_>,
 ) {
     unexecuted.push(denied.id.to_owned());
+    organon::metrics::record_policy_denial(denied.name, denied.approval.unwrap_or("unknown"));
     all_tool_calls.push(ToolCall {
         id: denied.id.to_owned(),
         name: denied.name.to_owned(),
@@ -905,6 +907,7 @@ async fn dispatch_single_tool(
     }
 
     let (content, receipt) = if let Some(signer) = receipt_signer {
+        organon::metrics::record_receipt(tool_name, "emitted");
         let ts = jiff::Timestamp::now();
         let result_text = content.text_summary();
         let receipt_str = signer.sign(tool_name, &persisted_input.to_string(), &result_text, ts);
@@ -936,6 +939,7 @@ async fn dispatch_single_tool(
         };
         (tagged, Some(receipt_str))
     } else {
+        organon::metrics::record_receipt(tool_name, "missing");
         (content, None)
     };
 
