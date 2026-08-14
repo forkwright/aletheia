@@ -48,10 +48,7 @@ pub(crate) async fn read_resource(
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "test fixture setup uses sync std::fs to build an oikos before spawning a nous"
-)]
+#[expect(clippy::indexing_slicing, reason = "test assertions over fixture data")]
 mod tests {
     use std::sync::Arc;
     use std::time::Instant;
@@ -67,7 +64,7 @@ mod tests {
     /// This mirrors `tools::mod::tests::make_server_state` (the only other
     /// place in the crate builds one); duplicated rather than shared because
     /// that helper is private to a sibling test module.
-    async fn make_test_state(config: taxis::config::AletheiaConfig) -> Arc<DiaporeiaState> {
+    fn make_test_state(config: taxis::config::AletheiaConfig) -> Arc<DiaporeiaState> {
         let dir = tempfile::tempdir().expect("tempdir");
         let oikos = Arc::new(taxis::oikos::Oikos::from_root(dir.path()));
         let store = Arc::new(tokio::sync::Mutex::new(
@@ -115,7 +112,7 @@ mod tests {
     async fn config_resource_output_matches_taxis_redact_exactly() {
         let mut config = taxis::config::AletheiaConfig::default();
         config.gateway.port = 4127;
-        let state = make_test_state(config.clone()).await;
+        let state = make_test_state(config.clone());
 
         let params = ReadResourceRequestParams::new("aletheia://config");
         let contents = read_resource(&state, &params)
@@ -142,7 +139,7 @@ mod tests {
     #[tokio::test]
     async fn config_resource_output_is_widened_beyond_old_three_section_whitelist() {
         let config = taxis::config::AletheiaConfig::default();
-        let state = make_test_state(config).await;
+        let state = make_test_state(config);
 
         let params = ReadResourceRequestParams::new("aletheia://config");
         let contents = read_resource(&state, &params)
@@ -163,7 +160,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_config_uri_is_invalid_params() {
-        let state = make_test_state(taxis::config::AletheiaConfig::default()).await;
+        let state = make_test_state(taxis::config::AletheiaConfig::default());
         let params = ReadResourceRequestParams::new("aletheia://config/nonexistent");
         let err = read_resource(&state, &params)
             .await
