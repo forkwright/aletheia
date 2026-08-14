@@ -196,6 +196,198 @@ pub struct HistoryResponse {
     pub messages: Vec<HistoryMessage>,
 }
 
+/// Replay-faithful export for a single session.
+///
+/// NOTE: local mirror of `pylon::handlers::sessions::types_dto::SessionReplayResponse`
+/// -- skene has no pylon dependency, so this wire shape is duplicated
+/// rather than shared. Keep field names and camelCase wire format in
+/// sync with the pylon origin.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionReplayResponse {
+    /// Replay export schema version.
+    pub version: u32,
+    /// Export kind marker so consumers do not confuse this with transcript-only output.
+    pub export_type: String,
+    /// ISO 8601 timestamp when the server generated this export.
+    pub exported_at: String,
+    /// Session metadata.
+    pub session: ReplaySession,
+    /// Full raw message history, including distilled rows.
+    pub messages: Vec<ReplayMessage>,
+    /// Durable token usage rows keyed by turn sequence.
+    pub usage_records: Vec<ReplayUsageRecord>,
+    /// Structured tool audit rows keyed by turn sequence.
+    pub tool_audit_records: Vec<ReplayToolAuditRecord>,
+    /// Durable turn lifecycle records parsed from the session note log.
+    pub turn_attempts: Vec<ReplayTurnAttempt>,
+}
+
+/// Session metadata included in replay exports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplaySession {
+    /// Session identifier.
+    pub id: String,
+    /// Nous agent that owns this session.
+    pub nous_id: String,
+    /// Client-chosen session key.
+    pub session_key: String,
+    /// Lifecycle status.
+    pub status: String,
+    /// Session type.
+    pub session_type: String,
+    /// Model configured for the session, if known.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Total stored message count.
+    pub message_count: i64,
+    /// Estimated token count across stored messages.
+    pub token_count_estimate: i64,
+    /// Number of distillation passes recorded for this session.
+    pub distillation_count: i64,
+    /// ISO 8601 creation timestamp.
+    pub created_at: String,
+    /// ISO 8601 last-updated timestamp.
+    pub updated_at: String,
+    /// Parent session identifier for subtask lineage.
+    #[serde(default)]
+    pub parent_session_id: Option<String>,
+    /// External thread identifier.
+    #[serde(default)]
+    pub thread_id: Option<String>,
+    /// Transport that originated the session.
+    #[serde(default)]
+    pub transport: Option<String>,
+    /// Human-readable display name.
+    #[serde(default)]
+    pub display_name: Option<String>,
+    /// Most recent input token count.
+    pub last_input_tokens: i64,
+    /// Bootstrap hash used to detect context changes.
+    #[serde(default)]
+    pub bootstrap_hash: Option<String>,
+    /// Last distillation timestamp.
+    #[serde(default)]
+    pub last_distilled_at: Option<String>,
+    /// Computed context token estimate.
+    pub computed_context_tokens: i64,
+}
+
+/// Message row included in replay exports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplayMessage {
+    /// Database row ID.
+    pub id: i64,
+    /// Sequence number within the session.
+    pub seq: i64,
+    /// Message role.
+    pub role: String,
+    /// Message text content.
+    pub content: String,
+    /// Tool call ID when this row is linked to a tool call.
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
+    /// Tool name when this row is linked to a tool call.
+    #[serde(default)]
+    pub tool_name: Option<String>,
+    /// Estimated token count for this message.
+    pub token_estimate: i64,
+    /// Whether this row was produced by distillation.
+    pub is_distilled: bool,
+    /// ISO 8601 creation timestamp.
+    pub created_at: String,
+}
+
+/// Token usage row included in replay exports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplayUsageRecord {
+    /// Turn sequence number shared with audit records.
+    pub turn_seq: i64,
+    /// Input tokens consumed.
+    pub input_tokens: i64,
+    /// Output tokens generated.
+    pub output_tokens: i64,
+    /// Prompt-cache tokens read.
+    pub cache_read_tokens: i64,
+    /// Prompt-cache tokens written.
+    pub cache_write_tokens: i64,
+    /// Model used for this turn, if known.
+    #[serde(default)]
+    pub model: Option<String>,
+}
+
+/// Structured tool audit row included in replay exports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplayToolAuditRecord {
+    /// Store-assigned chronological ID.
+    pub id: i64,
+    /// Nous agent that requested the tool.
+    pub nous_id: String,
+    /// Turn sequence number shared with usage rows.
+    pub turn_seq: i64,
+    /// Provider/tool-use identifier for this call.
+    pub tool_call_id: String,
+    /// Registered tool name.
+    pub tool_name: String,
+    /// Execution duration in milliseconds.
+    pub duration_ms: u64,
+    /// Whether the tool result was an error.
+    pub is_error: bool,
+    /// Stable outcome label.
+    pub outcome: String,
+    /// Bounded tool result text captured from the execution path.
+    #[serde(default)]
+    pub result: Option<String>,
+    /// Approval outcome applied before execution.
+    #[serde(default)]
+    pub approval: Option<String>,
+    /// HMAC receipt token emitted for this tool result.
+    #[serde(default)]
+    pub receipt: Option<String>,
+    /// ISO 8601 creation timestamp.
+    pub created_at: String,
+}
+
+/// Durable turn lifecycle record included in replay exports.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplayTurnAttempt {
+    /// Turn-attempt record schema version.
+    pub version: u32,
+    /// Canonical turn ULID.
+    pub turn_id: String,
+    /// Session this turn belongs to.
+    pub session_id: String,
+    /// Nous agent that owns this turn.
+    pub nous_id: String,
+    /// Current lifecycle status.
+    pub status: String,
+    /// Pipeline stage that emitted this record, when relevant.
+    #[serde(default)]
+    pub stage: Option<String>,
+    /// Human-readable error code for failed states.
+    #[serde(default)]
+    pub error_code: Option<String>,
+    /// Redacted error message for failed states.
+    #[serde(default)]
+    pub error_message: Option<String>,
+    /// Provider/model context, when known.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Number of messages already persisted for finalize-pending records.
+    #[serde(default)]
+    pub messages_persisted: Option<usize>,
+    /// Expected total messages for finalize-pending records.
+    #[serde(default)]
+    pub expected_messages: Option<usize>,
+    /// ISO 8601 creation timestamp.
+    pub created_at: String,
+}
+
 /// Summary of a completed turn.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TurnOutcome {

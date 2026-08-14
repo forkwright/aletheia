@@ -328,7 +328,11 @@ pub(crate) async fn execute_command(app: &mut App) {
             super::tabs::handle_tab_command(app, args);
         }
         "export" => {
-            execute_export(app);
+            if args == "json" {
+                execute_export_json(app).await;
+            } else {
+                execute_export(app);
+            }
         }
         "search" => {
             super::search::handle_open(app);
@@ -562,6 +566,72 @@ fn execute_export(app: &mut App) {
     }
 }
 
+/// Export the focused session as a replay-faithful JSON audit export.
+///
+/// WHY(#4913): the Markdown export above is transcript-only -- it drops
+/// tool input/output/error detail, usage, provider/model, turn IDs,
+/// approvals, and memory links because it is built from the TUI's local,
+/// lossy `ChatMessage` state. This instead fetches the same replay schema
+/// the CLI's `aletheia export --format json` already exposes.
+async fn execute_export_json(app: &mut App) {
+    let Some(session_id) = app.dashboard.focused_session_id.clone() else {
+        app.viewport.error_toast = Some(ErrorToast::new("No session to export".into()));
+        return;
+    };
+
+    let replay = match app.client.session_replay(&session_id).await {
+        Ok(replay) => replay,
+        Err(e) => {
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Export failed: {e}")));
+            return;
+        }
+    };
+
+    let exports_dir = app::exports_dir(&app.config);
+    if let Err(e) = tokio::fs::create_dir_all(&exports_dir).await {
+        app.viewport.error_toast = Some(ErrorToast::new(format!(
+            "Failed to create exports dir: {e}"
+        )));
+        return;
+    }
+
+    let now = jiff::Zoned::now();
+    let filename = format!("conversation-{}.json", now.strftime("%Y%m%d-%H%M%S"));
+    let path = exports_dir.join(&filename);
+
+    let json = match serde_json::to_string_pretty(&replay) {
+        Ok(json) => json,
+        Err(e) => {
+            app.viewport.error_toast =
+                Some(ErrorToast::new(format!("Failed to serialize export: {e}")));
+            return;
+        }
+    };
+
+    match tokio::fs::write(&path, &json).await {
+        Ok(()) => {
+            // WHY: restrict export files to owner-only (0600) -- contain conversation data
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                if let Err(e) =
+                    tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).await
+                {
+                    app.viewport.error_toast =
+                        Some(ErrorToast::new(format!("Failed to set permissions: {e}")));
+                    return;
+                }
+            }
+            // WHY(#4913): matches the Markdown export's basename-only toast --
+            // see the WHY above on the Markdown branch's success path.
+            app.viewport.success_toast = Some(ErrorToast::new(format!("Exported to {filename}")));
+        }
+        Err(e) => {
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Export failed: {e}")));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -713,5 +783,174 @@ mod tests {
             app.interaction.command_palette.input.starts_with("quit")
                 || !app.interaction.command_palette.suggestions.is_empty()
         );
+    }
+
+    mod export_json {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::net::TcpListener;
+        use tokio::task::JoinHandle;
+
+        use super::*;
+        use crate::id::SessionId;
+
+        const REPLAY_BODY: &str = r#"{
+            "version": 1,
+            "exportType": "replay",
+            "exportedAt": "2026-01-01T00:00:00Z",
+            "session": {
+                "id": "s1",
+                "nousId": "syn",
+                "sessionKey": "key",
+                "status": "active",
+                "sessionType": "chat",
+                "messageCount": 1,
+                "tokenCountEstimate": 10,
+                "distillationCount": 0,
+                "createdAt": "2026-01-01T00:00:00Z",
+                "updatedAt": "2026-01-01T00:00:00Z",
+                "lastInputTokens": 5,
+                "computedContextTokens": 5
+            },
+            "messages": [{
+                "id": 1,
+                "seq": 1,
+                "role": "assistant",
+                "content": "hi",
+                "tokenEstimate": 2,
+                "isDistilled": false,
+                "createdAt": "2026-01-01T00:00:00Z"
+            }],
+            "usageRecords": [],
+            "toolAuditRecords": [{
+                "id": 1,
+                "nousId": "syn",
+                "turnSeq": 1,
+                "toolCallId": "tc1",
+                "toolName": "read_file",
+                "durationMs": 10,
+                "isError": true,
+                "outcome": "error",
+                "result": "boom",
+                "approval": "auto",
+                "createdAt": "2026-01-01T00:00:00Z"
+            }],
+            "turnAttempts": []
+        }"#;
+
+        async fn success_json_server(body: &'static str) -> (String, JoinHandle<()>) {
+            let listener = match TcpListener::bind("127.0.0.1:0").await {
+                Ok(listener) => listener,
+                Err(e) => panic!("bind success test server: {e}"),
+            };
+            let addr = match listener.local_addr() {
+                Ok(addr) => addr,
+                Err(e) => panic!("read success test server address: {e}"),
+            };
+            let handle = tokio::spawn(async move {
+                loop {
+                    let Ok((mut stream, _addr)) = listener.accept().await else {
+                        break;
+                    };
+                    let _connection = tokio::spawn(async move {
+                        let mut request = [0_u8; 1024];
+                        if stream.read(&mut request).await.is_err() {
+                            return;
+                        }
+                        let response = format!(
+                            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        if let Err(e) = stream.write_all(response.as_bytes()).await {
+                            tracing::debug!("failed to write test response: {e}");
+                        }
+                    });
+                }
+            });
+            (format!("http://{addr}"), handle)
+        }
+
+        fn point_app_at(app: &mut App, url: &str) {
+            app.config.url = url.to_string();
+            app.client = match crate::api::client::ApiClient::new(url, None) {
+                Ok(client) => client,
+                Err(e) => panic!("test ApiClient::new failed: {e}"),
+            };
+        }
+
+        /// Regression for #4913: before `session_replay` existed on the
+        /// client, koilon's export had no path to the replay-faithful audit
+        /// export at all -- only the lossy Markdown transcript. This asserts
+        /// the JSON file actually lands on disk with the audit fields
+        /// (tool error/approval detail) that the Markdown export drops.
+        #[tokio::test]
+        #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+        async fn execute_export_json_writes_replay_export_and_names_the_file() {
+            let dir = tempfile::tempdir().expect("create temp export dir");
+            let mut app = test_app();
+            app.config.workspace_root = Some(dir.path().to_path_buf());
+            app.dashboard.focused_session_id = Some(SessionId::from("s1"));
+            let (base_url, _server) = success_json_server(REPLAY_BODY).await;
+            point_app_at(&mut app, &base_url);
+
+            execute_export_json(&mut app).await;
+
+            let toast = app
+                .viewport
+                .success_toast
+                .as_ref()
+                .expect("export must report success");
+            assert!(
+                toast.message.starts_with("Exported to conversation-")
+                    && toast.message.ends_with(".json"),
+                "toast should name the exported JSON file: {}",
+                toast.message
+            );
+            assert!(
+                !toast.message.contains(
+                    dir.path()
+                        .to_str()
+                        .expect("temp dir path must be valid UTF-8")
+                ),
+                "toast must not leak the local export directory: {}",
+                toast.message
+            );
+
+            let exports_dir = dir.path().join("exports");
+            let mut entries =
+                std::fs::read_dir(&exports_dir).expect("exports dir must have been created");
+            let entry = entries
+                .next()
+                .expect("exactly one export file")
+                .expect("readable dir entry");
+            let written = std::fs::read_to_string(entry.path()).expect("read exported file");
+            let replay: skene::api::types::SessionReplayResponse =
+                serde_json::from_str(&written).expect("exported file must be valid JSON replay");
+            assert_eq!(replay.messages.len(), 1);
+            let audit = replay
+                .tool_audit_records
+                .first()
+                .expect("tool audit record must survive the export");
+            assert!(
+                audit.is_error,
+                "tool error detail must survive the JSON export -- the Markdown export drops it"
+            );
+            assert_eq!(audit.approval.as_deref(), Some("auto"));
+        }
+
+        #[tokio::test]
+        #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+        async fn execute_export_json_errors_without_a_focused_session() {
+            let mut app = test_app();
+            app.dashboard.focused_session_id = None;
+
+            execute_export_json(&mut app).await;
+
+            let toast = app
+                .viewport
+                .error_toast
+                .as_ref()
+                .expect("must report an error with no focused session");
+            assert_eq!(toast.message, "No session to export");
+        }
     }
 }
