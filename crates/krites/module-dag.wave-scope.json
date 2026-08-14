@@ -131,17 +131,18 @@
     {
       "from": "W4prime_hnsw",
       "to": "W5prime_value_model",
-      "count": 19,
+      "count": 20,
       "evidence": [
-        "runtime/hnsw/adaptive.rs:14 -> crate::data::value::DataValue",
-        "runtime/hnsw/adaptive.rs:17 -> crate::data::tuple::Tuple",
-        "runtime/hnsw/adaptive.rs:18 -> crate::data::value::Vector",
+        "runtime/hnsw/adaptive.rs:17 -> crate::data::value::DataValue",
+        "runtime/hnsw/adaptive.rs:20 -> crate::data::tuple::Tuple",
+        "runtime/hnsw/adaptive.rs:21 -> crate::data::value::Vector",
         "runtime/hnsw/graph.rs:29 -> crate::data::value::DataValue",
         "runtime/hnsw/graph.rs:30 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
         "runtime/hnsw/graph.rs:31 -> crate::data::value::Vector",
         "runtime/hnsw/put.rs:25 -> crate::data::value::DataValue",
         "runtime/hnsw/put.rs:27 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
         "runtime/hnsw/put.rs:28 -> crate::data::value::Vector",
+        "runtime/hnsw/put.rs:581 -> crate::data::value::DataValue",
         "runtime/hnsw/remove.rs:7 -> crate::data::value::DataValue",
         "runtime/hnsw/remove.rs:8 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
         "runtime/hnsw/search.rs:11 -> crate::data::tuple::Tuple",
@@ -240,7 +241,7 @@
         "W4prime_hnsw",
         "W5prime_value_model"
       ],
-      "W4prime_hnsw_imports_W5prime_value_model": 19,
+      "W4prime_hnsw_imports_W5prime_value_model": 20,
       "W5prime_value_model_imports_W4prime_hnsw": 0
     }
   ]
