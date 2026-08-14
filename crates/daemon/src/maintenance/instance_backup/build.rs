@@ -18,6 +18,7 @@ impl BackupBuild {
             workspace_omissions: Vec::new(),
             total_bytes: 0,
             total_files: 0,
+            credential_keys_excluded: 0,
             snapshot_time: jiff::Zoned::now().to_string(),
             first_entry_copied_at: None,
             last_entry_copied_at: None,

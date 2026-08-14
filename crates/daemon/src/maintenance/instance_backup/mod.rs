@@ -4,8 +4,13 @@
 //! `aletheia backup` command and the daemon's scheduled backup task now produce
 //! a backup *set* that includes `sessions.db`, auth/task-state stores,
 //! configuration, and workspace data needed for run replay/review. A JSON
-//! manifest records every covered store, its source path, restore target,
-//! snapshot time, byte/file counts, content digest, and verification status.
+//! manifest records every covered store, its restore target, snapshot time,
+//! byte/file counts, content digest, and verification status.
+//!
+//! SECURITY(#5043): the manifest never records the host's absolute source
+//! paths -- it is a portability/restore artifact that gets copied off the
+//! originating host, and restore/verify key off relative `backup_path`/
+//! `restore_path` alone.
 
 mod build;
 mod constants;

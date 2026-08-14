@@ -102,6 +102,34 @@ fn create_backup_copies_required_stores_and_manifest() {
 }
 
 #[test]
+fn create_backup_manifest_does_not_leak_absolute_source_paths() {
+    // SECURITY(#5043): a backup manifest is a portability/restore artifact
+    // that gets copied off the originating host -- restore and verify key
+    // off `backup_path`/`restore_path` alone (see `manifest.rs`), so the
+    // manifest must not embed the workstation's absolute instance root or
+    // per-store source paths.
+    let (tmp, backup_path) = create_basic_instance_backup();
+
+    let manifest_json = fs::read_to_string(backup_path.join("manifest.json")).unwrap();
+    let leaked_root = tmp.path().display().to_string();
+    assert!(
+        !manifest_json.contains(&leaked_root),
+        "manifest.json embeds the absolute host tempdir path: {leaked_root}"
+    );
+
+    let manifest: BackupManifest = serde_json::from_str(&manifest_json).unwrap();
+    assert_eq!(manifest.source_root, PathBuf::new());
+    for entry in manifest.stores.iter().chain(manifest.optional_stores.iter()) {
+        assert_eq!(
+            entry.source_path,
+            PathBuf::new(),
+            "{} carries a source_path from the manifest",
+            entry.name
+        );
+    }
+}
+
+#[test]
 fn create_backup_copies_runtime_stores_and_knowledge_cohorts() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let instance_root = tmp.path().join("instance");
