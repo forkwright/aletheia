@@ -8,10 +8,11 @@ use crate::error;
 
 use super::{
     BackupBuild, BackupManifest, EntryManifestMetadata, MANIFEST_CHECKPOINT_GENERATIONS_FIELD,
-    MANIFEST_FILE_COUNT_FIELD, MANIFEST_OBSERVED_SKEW_SECONDS_FIELD,
-    MANIFEST_QUIESCE_MECHANISM_FIELD, MANIFEST_RESTORE_PATH_FIELD, MANIFEST_TOTAL_FILES_FIELD,
-    MANIFEST_VERSION, ManifestEvidence, ManifestSection, SNAPSHOT_PROTOCOL_VERSION,
-    STATUS_EXCLUDED, STATUS_OK, SYMLINK_POLICY, StoreEntry,
+    MANIFEST_CREDENTIAL_KEYS_EXCLUDED_FIELD, MANIFEST_FILE_COUNT_FIELD,
+    MANIFEST_OBSERVED_SKEW_SECONDS_FIELD, MANIFEST_QUIESCE_MECHANISM_FIELD,
+    MANIFEST_RESTORE_PATH_FIELD, MANIFEST_TOTAL_FILES_FIELD, MANIFEST_VERSION, ManifestEvidence,
+    ManifestSection, SNAPSHOT_PROTOCOL_VERSION, STATUS_EXCLUDED, STATUS_OK, SYMLINK_POLICY,
+    StoreEntry,
 };
 
 pub(crate) fn join_manifest_backup_path(
@@ -202,6 +203,21 @@ pub(crate) fn inject_quiesce_evidence(
             serde_json::Value::from(skew_seconds),
         );
     }
+}
+
+/// Inject the count of excluded credential decryption-key sidecars as raw
+/// manifest evidence. (#5353)
+///
+/// WHY: mirrors `inject_quiesce_evidence` -- not a `BackupManifest` struct
+/// field so out-of-crate `BackupManifest { .. }` literals are unaffected.
+pub(crate) fn inject_credential_evidence(manifest_value: &mut serde_json::Value, build: &BackupBuild) {
+    let Some(object) = manifest_value.as_object_mut() else {
+        return;
+    };
+    object.insert(
+        String::from(MANIFEST_CREDENTIAL_KEYS_EXCLUDED_FIELD),
+        serde_json::Value::from(build.credential_keys_excluded),
+    );
 }
 
 pub(crate) fn checkpoint_generations_for_entry(

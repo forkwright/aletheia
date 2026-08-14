@@ -130,6 +130,71 @@ fn create_backup_manifest_does_not_leak_absolute_source_paths() {
 }
 
 #[test]
+fn create_backup_excludes_credential_key_sidecars() {
+    // SECURITY(#5353): symbolon stores each credential's decryption key as a
+    // bare sidecar file (`<name>.key`) next to the ciphertext it decrypts.
+    // Copying both into a backup set would make the backup as sensitive as
+    // the plaintext tokens it protects, since nothing else on disk is
+    // needed to decrypt. The sidecar key must be excluded; the (useless
+    // without it) ciphertext stays.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let instance_root = tmp.path().join("instance");
+    fs::create_dir_all(instance_root.join("data")).unwrap();
+    fs::create_dir_all(instance_root.join("config").join("credentials")).unwrap();
+    write_text_file(
+        &instance_root
+            .join("config")
+            .join("credentials")
+            .join("anthropic.json"),
+        "ALETHEIA_ENC_V1:ciphertext",
+    )
+    .unwrap();
+    write_text_file(
+        &instance_root
+            .join("config")
+            .join("credentials")
+            .join("anthropic.json.key"),
+        "thirty-two-byte-secret-key-value",
+    )
+    .unwrap();
+
+    make_fjall_store(&instance_root.join("data").join("knowledge.fjall"));
+    make_fjall_store(&instance_root.join("data").join("sessions.db"));
+
+    let manager = InstanceBackup::new(InstanceBackupConfig {
+        enabled: true,
+        instance_root,
+        backup_dir: tmp.path().join("backups"),
+        interval_hours: 24,
+        retention_count: 7,
+        additional_workspaces: Vec::new(),
+    });
+    let report = manager.create_backup().expect("backup succeeds");
+    let backup_path = report.backup_path.expect("backup path set");
+
+    let credentials_dst = backup_path.join("config").join("credentials");
+    assert!(
+        credentials_dst.join("anthropic.json").is_file(),
+        "ciphertext credential file should still be backed up"
+    );
+    assert!(
+        !credentials_dst.join("anthropic.json.key").exists(),
+        "credential decryption-key sidecar must not be backed up"
+    );
+
+    let manifest_json: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
+            .unwrap();
+    assert_eq!(
+        manifest_json
+            .get("credential_keys_excluded")
+            .and_then(serde_json::Value::as_u64),
+        Some(1),
+        "manifest should record the excluded credential key count"
+    );
+}
+
+#[test]
 fn create_backup_copies_runtime_stores_and_knowledge_cohorts() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let instance_root = tmp.path().join("instance");

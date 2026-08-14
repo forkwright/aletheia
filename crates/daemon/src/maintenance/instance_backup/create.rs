@@ -13,8 +13,9 @@ use super::{
     BackupBuild, BackupManifest, InstanceBackup, InstanceBackupConfig, InstanceBackupReport,
     MANIFEST_VERSION, OptionalStoreRecord, SNAPSHOT_PROTOCOL_VERSION, STAGING_DIR_PREFIX,
     STATUS_EXCLUDED, SYMLINK_POLICY, WorkspaceOmission, classify_workspace_source, dir_size,
-    inject_manifest_evidence, inject_quiesce_evidence, manifest_created_time,
-    resolve_workspace_source, set_dir_restrictive, set_files_restrictive, write_text_file,
+    inject_credential_evidence, inject_manifest_evidence, inject_quiesce_evidence,
+    manifest_created_time, remove_credential_key_sidecars, resolve_workspace_source,
+    set_dir_restrictive, set_files_restrictive, write_text_file,
 };
 
 static BACKUP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -326,6 +327,15 @@ impl InstanceBackup {
                     set_files_restrictive(&dst);
                 }
             }
+
+            // SECURITY(#5353): exclude credential decryption-key sidecars --
+            // see `remove_credential_key_sidecars` for why copying them
+            // alongside the ciphertext is credential-equivalent to plaintext.
+            let credentials_dst = backup_path.join("config").join("credentials");
+            if credentials_dst.exists() {
+                build.credential_keys_excluded +=
+                    remove_credential_key_sidecars(&credentials_dst)?;
+            }
         }
         Ok(())
     }
@@ -548,6 +558,7 @@ impl InstanceBackup {
                 context: String::from("serializing backup manifest integrity evidence"),
             })?;
         inject_quiesce_evidence(&mut manifest_value, build, quiesce_mechanism);
+        inject_credential_evidence(&mut manifest_value, build);
         let manifest_path = backup_path.join("manifest.json");
         let manifest_json = serde_json::to_string_pretty(&manifest_value)
             .map_err(std::io::Error::other)

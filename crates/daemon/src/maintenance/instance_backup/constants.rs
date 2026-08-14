@@ -24,6 +24,11 @@ pub(crate) const MANIFEST_QUIESCE_MECHANISM_FIELD: &str = "quiesce_mechanism";
 /// WHY(#6442): the honest, derived answer to "how non-atomic was this
 /// backup" — see [`super::BackupBuild::observed_snapshot_skew_seconds`].
 pub(crate) const MANIFEST_OBSERVED_SKEW_SECONDS_FIELD: &str = "observed_snapshot_skew_seconds";
+/// WHY(#5353): count of credential decryption-key sidecars excluded from
+/// this backup set. Injected as raw manifest evidence (never a
+/// `BackupManifest` struct field), same reasoning as
+/// `MANIFEST_QUIESCE_MECHANISM_FIELD` above.
+pub(crate) const MANIFEST_CREDENTIAL_KEYS_EXCLUDED_FIELD: &str = "credential_keys_excluded";
 
 /// Prefix for hidden staging directories inside `backup_dir`.
 ///

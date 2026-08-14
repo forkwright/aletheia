@@ -153,17 +153,6 @@ pub struct BackupManifest {
     /// Symbolic-link traversal policy used when copying source paths.
     #[serde(default = "default_symlink_policy")]
     pub symlink_policy: String,
-    /// Number of credential decryption-key sidecars excluded from this
-    /// backup set. (#5353)
-    ///
-    /// WHY: a backup set is a portability artifact that routinely leaves the
-    /// host (NAS, cloud, operator handoff). Symbolon stores each
-    /// credential's decryption key as a bare sidecar file (`<name>.key`)
-    /// next to the ciphertext it decrypts, so copying both would make the
-    /// backup as sensitive as the plaintext tokens it protects. `0` means
-    /// either no credentials were configured or none needed exclusion.
-    #[serde(default)]
-    pub credential_keys_excluded: u32,
 }
 
 /// Outcome of a whole-instance backup run.

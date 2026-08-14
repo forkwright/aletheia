@@ -269,3 +269,35 @@ pub(crate) fn set_files_restrictive(dir: &Path) {
 
 #[cfg(not(unix))]
 pub(crate) fn set_files_restrictive(_dir: &Path) {}
+
+/// Delete symbolon's per-credential decryption-key sidecars (`<name>.key`)
+/// from a backup's already-copied `credentials` directory, recursing into
+/// subdirectories. Returns the number of sidecar files removed.
+///
+/// SECURITY(#5353): the key sits next to the ciphertext it decrypts (see
+/// `symbolon::encrypt::key_file_path`), so copying both into a backup set
+/// makes the backup credential-equivalent to the plaintext tokens it
+/// protects -- nothing else on disk is needed to decrypt. The ciphertext
+/// itself is left in place: useless without its key, but evidence a
+/// credential was configured.
+pub(crate) fn remove_credential_key_sidecars(dir: &Path) -> error::Result<u32> {
+    let mut removed = 0u32;
+    let entries = fs::read_dir(dir).context(error::MaintenanceIoSnafu {
+        context: format!("reading backup credentials dir {}", dir.display()),
+    })?;
+    for entry in entries {
+        let entry = entry.context(error::MaintenanceIoSnafu {
+            context: "reading directory entry",
+        })?;
+        let path = entry.path();
+        if path.is_dir() {
+            removed += remove_credential_key_sidecars(&path)?;
+        } else if path.extension().is_some_and(|ext| ext == "key") {
+            fs::remove_file(&path).context(error::MaintenanceIoSnafu {
+                context: format!("removing credential key sidecar {}", path.display()),
+            })?;
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
