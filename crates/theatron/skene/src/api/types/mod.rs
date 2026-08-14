@@ -75,6 +75,11 @@ pub struct Agent {
     /// Emoji icon for the agent.
     #[serde(default)]
     pub emoji: Option<String>,
+    /// Live lifecycle status: `"active"`, `"idle"`, `"dormant"`,
+    /// `"degraded"`, or `"unknown"`, mirroring
+    /// `pylon::handlers::nous_dto::NousSummary::status` (#4807).
+    #[serde(default)]
+    pub status: Option<String>,
 }
 
 impl Agent {

@@ -7,6 +7,7 @@ fn agent_display_name_uses_name_if_present() {
         name: Some("Syn".to_string()),
         model: None,
         emoji: None,
+        status: None,
     };
     assert_eq!(agent.display_name(), "Syn");
 }
@@ -18,6 +19,7 @@ fn agent_display_name_falls_back_to_id() {
         name: None,
         model: None,
         emoji: None,
+        status: None,
     };
     assert_eq!(agent.display_name(), "syn");
 }
@@ -29,6 +31,7 @@ fn agent_display_name_empty_string_uses_empty() {
         name: Some(String::new()),
         model: None,
         emoji: None,
+        status: None,
     };
     // Empty string is still Some, so display_name returns it
     assert_eq!(agent.display_name(), "");
