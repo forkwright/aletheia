@@ -48,6 +48,17 @@ Behavioral eval framework: scenario-based API testing against a live Aletheia in
 - **Filter execution**: `RunConfig.filter` substring-matches scenario IDs.
 - **Skip logic**: scenarios auto-skip when auth token or nous agent is unavailable.
 - **Colored output**: `owo-colors` + `supports-color` for terminal report formatting.
+- **Two retrieval-quality measures, not one.** `cognitive/recall.rs`'s
+  `recall-at-k-benchmark` scenario is smoke-only whenever the operator has
+  not set `ALETHEIA_RECALL_RELEVANT_IDS` — it falls back to synthetic
+  document IDs and a fixed query, and its `ScenarioClassification` is
+  `Smoke` in that state so it can never masquerade as an assertive result.
+  The comparable ground-truth measure is the `benchmarks/` module (LoCoMo /
+  LongMemEval): `BenchmarkRunner` scores each question's retrieval against
+  the dataset's own parsed evidence refs (`recall_at_k`, `ndcg_at_k`,
+  `mrr_at_k`, `hallucination_rate` on `QuestionResult`), falling back to
+  normalized-content-hash matching only when a dataset carries no evidence
+  refs at all.
 
 ## Common tasks
 

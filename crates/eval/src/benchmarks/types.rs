@@ -141,6 +141,15 @@ pub struct QuestionResult {
     /// Optional retrieval metric: NDCG@k.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub ndcg_at_k: Option<f64>,
+    /// Optional retrieval metric: MRR@k (Mean Reciprocal Rank contribution).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mrr_at_k: Option<f64>,
+    /// Optional retrieval metric: fraction of retrieved facts with zero
+    /// overlap against `expected_evidence_refs`. `None` when the dataset
+    /// carries no evidence refs to check against (normalized-content
+    /// fallback scoring) or nothing was retrieved.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub hallucination_rate: Option<f64>,
 }
 
 /// One retrieved fact serialized with retrieval metric provenance.
@@ -173,7 +182,7 @@ pub enum RetrievalScoringMode {
 /// Retrieval scoring metadata for a question.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RetrievalScoring {
-    /// Relevance basis used for Recall@k and NDCG@k.
+    /// Relevance basis used for Recall@k, NDCG@k, and MRR@k.
     pub mode: RetrievalScoringMode,
     /// Whether the normalized-content fallback was used.
     pub fallback_used: bool,

@@ -22,6 +22,8 @@ fn result(id: &str, category: &str, actual: &str, expected: &[&str]) -> Question
         retrieval_scoring: None,
         recall_at_k: None,
         ndcg_at_k: None,
+        mrr_at_k: None,
+        hallucination_rate: None,
     }
 }
 
@@ -129,6 +131,41 @@ fn mean_recall_and_ndcg_computed_correctly() {
     let report = BenchmarkReport::new("Test", questions);
     assert!((report.mean_recall_at_k().unwrap() - 0.5).abs() < f64::EPSILON);
     assert!((report.mean_ndcg_at_k().unwrap() - 0.5).abs() < f64::EPSILON);
+}
+
+#[test]
+fn mean_mrr_computed_correctly() {
+    let mut q1 = result("q1", "factual", "blue", &["blue"]);
+    q1.mrr_at_k = Some(1.0);
+    let mut q2 = result("q2", "factual", "red", &["blue"]);
+    q2.mrr_at_k = Some(0.0);
+    let questions = vec![q1, q2];
+    let report = BenchmarkReport::new("Test", questions);
+    assert!((report.mean_mrr().unwrap() - 0.5).abs() < f64::EPSILON);
+}
+
+#[test]
+fn mean_mrr_none_when_no_questions_have_it() {
+    let questions = vec![result("q1", "factual", "blue", &["blue"])];
+    let report = BenchmarkReport::new("Test", questions);
+    assert!(report.mean_mrr().is_none());
+}
+
+#[test]
+fn mean_hallucination_rate_excludes_questions_without_evidence_grounding() {
+    let mut q1 = result("q1", "factual", "blue", &["blue"]);
+    q1.hallucination_rate = Some(0.0);
+    let mut q2 = result("q2", "factual", "red", &["blue"]);
+    q2.hallucination_rate = Some(1.0);
+    // q3 never had real evidence refs to check against, so it stays None
+    // and must NOT be silently treated as a zero in the denominator.
+    let q3 = result("q3", "factual", "green", &["green"]);
+    let questions = vec![q1, q2, q3];
+    let report = BenchmarkReport::new("Test", questions);
+    assert!(
+        (report.mean_hallucination_rate().unwrap() - 0.5).abs() < f64::EPSILON,
+        "mean must average only the 2 grounded questions, not divide by 3"
+    );
 }
 
 #[test]
