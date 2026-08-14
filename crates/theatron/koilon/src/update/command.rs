@@ -550,8 +550,11 @@ fn execute_export(app: &mut App) {
                     return;
                 }
             }
-            app.viewport.success_toast =
-                Some(ErrorToast::new(format!("Exported to {}", path.display())));
+            // WHY(#4913): the transient toast shows the basename only -- the
+            // full local filesystem path is not for a shared/public-clean
+            // surface. The export directory is a one-time settings fact, not
+            // per-export detail worth repeating on every export.
+            app.viewport.success_toast = Some(ErrorToast::new(format!("Exported to {filename}")));
         }
         Err(e) => {
             app.viewport.error_toast = Some(ErrorToast::new(format!("Export failed: {e}")));
@@ -563,6 +566,39 @@ fn execute_export(app: &mut App) {
 mod tests {
     use super::*;
     use crate::app::test_helpers::*;
+
+    /// Regression for #4913: the success toast is transient UI, not an
+    /// audit surface -- it must name the export without repeating the
+    /// machine-local directory it lives under.
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
+    fn export_success_toast_names_the_file_not_the_local_path() {
+        let dir = tempfile::tempdir().expect("create temp export dir");
+        let mut app = test_app_with_messages(vec![("user", "hello")]);
+        app.config.workspace_root = Some(dir.path().to_path_buf());
+
+        execute_export(&mut app);
+
+        let toast = app
+            .viewport
+            .success_toast
+            .as_ref()
+            .expect("export must report success");
+        assert!(
+            toast.message.starts_with("Exported to conversation-"),
+            "toast should name the exported file: {}",
+            toast.message
+        );
+        assert!(
+            !toast.message.contains(
+                dir.path()
+                    .to_str()
+                    .expect("temp dir path must be valid UTF-8")
+            ),
+            "toast must not leak the local export directory: {}",
+            toast.message
+        );
+    }
 
     #[test]
     fn handle_open_activates_palette() {
