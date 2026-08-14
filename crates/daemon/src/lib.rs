@@ -23,6 +23,12 @@ pub(crate) mod cron_expr;
 pub mod error;
 /// Task action execution: commands, builtins, prompts, and knowledge maintenance.
 mod execution;
+/// Shared Datalog multi-path consistency queries against the knowledge store.
+///
+/// Used by both [`prosoche`]'s periodic `AttentionItem` pipeline and
+/// [`prosoche_audit::ConsistencyCheck`]'s `Finding` pipeline.
+#[cfg(feature = "knowledge-store")]
+pub(crate) mod knowledge_consistency;
 /// Instance maintenance services: trace rotation, drift detection, DB monitoring, retention.
 pub mod maintenance;
 /// Prometheus metric definitions for daemon task execution and watchdog monitoring.

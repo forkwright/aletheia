@@ -99,7 +99,7 @@ pub enum CheckMaturity {
 ///
 /// Add new fields as `Option<T>` so existing check implementations compile
 /// without change when new state sources become available.
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct ProsocheState {
     /// The nous identity this audit is running for.
     // kanon:ignore RUST/primitive-for-domain-id — ProsocheState is an ephemeral audit input struct; nous_id is passed as &str from the runner and converted to String for serialization
@@ -122,6 +122,34 @@ pub struct ProsocheState {
     pub facts: Vec<FactSnapshot>,
     /// Current UTC timestamp (ISO 8601), set at audit start.
     pub checked_at: String,
+    /// Knowledge store handle for multi-path consistency checks.
+    ///
+    /// [`ConsistencyCheck`] runs the same orphaned-fact/dangling-reference
+    /// Datalog queries as [`crate::prosoche::ProsocheCheck`]'s periodic
+    /// memory-anomaly detection when this is present; the heuristic
+    /// term-negation check runs regardless.
+    #[cfg(feature = "knowledge-store")]
+    pub knowledge_store: Option<Arc<episteme::knowledge_store::KnowledgeStore>>,
+}
+
+impl std::fmt::Debug for ProsocheState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("ProsocheState");
+        s.field("nous_id", &self.nous_id)
+            .field("stated_goals", &self.stated_goals)
+            .field("sessions", &self.sessions)
+            .field("behavior_patterns", &self.behavior_patterns)
+            .field("facts", &self.facts)
+            .field("checked_at", &self.checked_at);
+        // WHY: episteme::knowledge_store::KnowledgeStore does not implement
+        // Debug (same reason crate::prosoche::ProsocheCheck hand-writes this).
+        #[cfg(feature = "knowledge-store")]
+        s.field(
+            "knowledge_store",
+            &self.knowledge_store.as_ref().map(|_| "<KnowledgeStore>"),
+        );
+        s.finish()
+    }
 }
 
 impl ProsocheState {
@@ -397,15 +425,31 @@ pub struct CheckFailure {
     pub reason: String,
 }
 
-/// Detect contradictions in the fact graph.
+/// Detect contradictions and structural anomalies in the fact graph.
 ///
-/// v1 heuristic: looks for fact pairs where one fact content contains a term
-/// and another contains "not <term>" or "never <term>". This catches obvious
-/// logical contradictions without requiring symbolic reasoning.
+/// Two independent detectors:
 ///
-/// Future: integrate with episteme's A-MemGuard consensus layer for full
-/// multi-path contradiction detection.
+/// - **Term-negation heuristic** (always runs): looks for fact pairs where
+///   one fact content contains a term and another contains "not <term>" or
+///   "never <term>". Catches obvious logical contradictions without
+///   requiring symbolic reasoning.
+/// - **Multi-path structural consistency** (runs when
+///   [`ProsocheState::knowledge_store`] is present): compares direct
+///   Datalog fact queries against entity-traversal paths, the same
+///   A-MemGuard-inspired (arxiv 2510.02373) consensus check
+///   [`crate::prosoche::ProsocheCheck`]'s periodic heartbeat already runs,
+///   shared via [`crate::knowledge_consistency`]. Detects orphaned facts
+///   (unreachable via entity traversal) and dangling `fact_entities`
+///   references (stale after deletion or corruption).
 pub struct ConsistencyCheck;
+
+/// Number of recent facts sampled per multi-path consistency pass.
+///
+/// Mirrors [`crate::prosoche`]'s `DEFAULT_ANOMALY_SAMPLE_SIZE` — the same
+/// queries at the same sampling scale, run from the self-audit pipeline
+/// instead of the periodic heartbeat.
+#[cfg(feature = "knowledge-store")]
+const MULTI_PATH_SAMPLE_SIZE: usize = 15;
 
 impl ConsistencyCheck {
     fn query_hash(state: &ProsocheState) -> String {
@@ -416,6 +460,153 @@ impl ConsistencyCheck {
             .collect();
         parts.sort();
         stable_hash(&parts.join("\n"))
+    }
+
+    /// Run the multi-path structural consistency queries against `store` and
+    /// append their findings to `findings`.
+    ///
+    /// Query failures are logged and skipped rather than propagated: the
+    /// term-negation heuristic already ran and its findings must survive a
+    /// knowledge-store hiccup.
+    #[cfg(feature = "knowledge-store")]
+    fn push_multi_path_findings(
+        store: &episteme::knowledge_store::KnowledgeStore,
+        findings: &mut Vec<Finding>,
+    ) {
+        let limit = i64::try_from(MULTI_PATH_SAMPLE_SIZE).unwrap_or(i64::MAX);
+        let facts = match store.list_all_facts(limit) {
+            Ok(facts) => facts,
+            Err(e) => {
+                tracing::warn!(error = %e, "multi-path consistency: failed to list facts, skipping");
+                return;
+            }
+        };
+        let fact_count = facts.len();
+
+        if !facts.is_empty() {
+            let fact_ids: Vec<&str> = facts.iter().map(|f| f.id.as_str()).collect();
+            match crate::knowledge_consistency::query_entity_linked_fact_ids(store, &fact_ids) {
+                Ok(linked_ids) => {
+                    let orphaned: Vec<_> = facts
+                        .iter()
+                        .filter(|f| !linked_ids.contains(f.id.as_str()))
+                        .collect();
+                    let orphaned_count = orphaned.len();
+                    for fact in orphaned {
+                        let query_hash = Self::multi_path_query_hash(fact.id.as_str());
+                        findings.push(Finding {
+                            finding_id: format!("PROSOCHE-CONSISTENCY-MP-{}", findings.len() + 1),
+                            claim: format!(
+                                "Fact '{}' has no fact_entities link -- unreachable via entity \
+                                 traversal.",
+                                fact.id
+                            ),
+                            evidence_level: EvidenceLevel::Exploratory,
+                            counter_argument: "Structural anomaly heuristic; a fact created \
+                                 before entity extraction ran, or one with no extractable \
+                                 entities, also shows as orphaned. Requires human review."
+                                .to_owned(),
+                            source: "prosoche::ConsistencyCheck::multi_path".to_owned(),
+                            stats: FindingStats {
+                                p_adjusted: None,
+                                effect_metric: Some("orphaned_fact_rate".to_owned()),
+                                effect_value: None,
+                                ci: None,
+                                sample_sizes: Some([orphaned_count, fact_count]),
+                                rate: rate_of(orphaned_count, fact_count),
+                                support: Some(FindingSupport {
+                                    evidence_refs: vec![
+                                        EvidenceRef::Fact {
+                                            fact_id: fact.id.to_string(),
+                                            content_hash: stable_hash(&fact.content),
+                                        },
+                                        EvidenceRef::Query { query_hash },
+                                    ],
+                                    is_stub: false,
+                                    is_heuristic: true,
+                                }),
+                            },
+                        });
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "multi-path consistency: entity-link query failed, skipping orphan check"
+                    );
+                }
+            }
+        }
+
+        match crate::knowledge_consistency::query_dangling_fact_entity_refs(
+            store,
+            MULTI_PATH_SAMPLE_SIZE,
+        ) {
+            Ok(dangling) => {
+                let dangling_count = dangling.len();
+                for dangling_id in dangling {
+                    let query_hash = Self::multi_path_query_hash(&dangling_id);
+                    findings.push(Finding {
+                        finding_id: format!("PROSOCHE-CONSISTENCY-MP-{}", findings.len() + 1),
+                        claim: format!(
+                            "fact_entities entry references fact '{dangling_id}', not found in \
+                             the facts relation."
+                        ),
+                        evidence_level: EvidenceLevel::Exploratory,
+                        counter_argument: "Structural anomaly heuristic; may reflect a fact \
+                             deleted or superseded after its entity links were written. \
+                             Requires human review."
+                            .to_owned(),
+                        source: "prosoche::ConsistencyCheck::multi_path".to_owned(),
+                        stats: FindingStats {
+                            p_adjusted: None,
+                            effect_metric: Some("dangling_reference_rate".to_owned()),
+                            effect_value: None,
+                            ci: None,
+                            sample_sizes: Some([dangling_count, MULTI_PATH_SAMPLE_SIZE]),
+                            rate: rate_of(dangling_count, MULTI_PATH_SAMPLE_SIZE),
+                            support: Some(FindingSupport {
+                                evidence_refs: vec![
+                                    EvidenceRef::Fact {
+                                        fact_id: dangling_id,
+                                        // WHY: the referenced fact does not exist in the
+                                        // `facts` relation, so there is no content to hash.
+                                        content_hash: "absent".to_owned(),
+                                    },
+                                    EvidenceRef::Query { query_hash },
+                                ],
+                                is_stub: false,
+                                is_heuristic: true,
+                            }),
+                        },
+                    });
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    "multi-path consistency: dangling-reference query failed, skipping"
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    fn multi_path_query_hash(id: &str) -> String {
+        stable_hash(&format!("multi_path:{id}"))
+    }
+}
+
+/// Normalised rate, or `None` when the denominator is zero.
+#[cfg(feature = "knowledge-store")]
+fn rate_of(count: usize, total: usize) -> Option<f64> {
+    if total == 0 {
+        None
+    } else {
+        Some(
+            f64::from(u32::try_from(count).unwrap_or(u32::MAX))
+                / f64::from(u32::try_from(total).unwrap_or(u32::MAX)),
+        )
     }
 }
 
@@ -559,6 +750,11 @@ impl ProsocheCheck for ConsistencyCheck {
                         }
                     }
                 }
+            }
+
+            #[cfg(feature = "knowledge-store")]
+            if let Some(store) = state.knowledge_store.as_deref() {
+                Self::push_multi_path_findings(store, &mut findings);
             }
 
             tracing::info!(
@@ -1868,6 +2064,233 @@ mod consistency_hoist_tests {
                 .iter()
                 .all(|f| f.evidence_level == EvidenceLevel::Exploratory),
             "consistency findings should be Exploratory"
+        );
+    }
+}
+
+#[cfg(feature = "knowledge-store")]
+mod consistency_multi_path_tests {
+    use super::*;
+
+    fn make_fact(id: &str, content: &str) -> episteme::knowledge::Fact {
+        episteme::knowledge::Fact {
+            id: episteme::id::FactId::new(id).expect("valid id"),
+            nous_id: "test-nous".to_owned(),
+            fact_type: "observation".to_owned(),
+            content: content.to_owned(),
+            scope: None,
+            project_id: None,
+            temporal: episteme::knowledge::FactTemporal {
+                valid_from: jiff::Timestamp::now(),
+                valid_to: jiff::Timestamp::from_second(253_402_207_200).expect("far future"),
+                recorded_at: jiff::Timestamp::now(),
+            },
+            provenance: episteme::knowledge::FactProvenance {
+                confidence: 0.9,
+                tier: episteme::knowledge::EpistemicTier::Verified,
+                source_session_id: None,
+                stability_hours: 720.0,
+            },
+            lifecycle: episteme::knowledge::FactLifecycle {
+                superseded_by: None,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: episteme::knowledge::FactAccess {
+                access_count: 0,
+                last_accessed_at: None,
+            },
+            sensitivity: episteme::knowledge::FactSensitivity::Public,
+            visibility: episteme::knowledge::Visibility::Private,
+        }
+    }
+
+    fn insert_fact_entity_raw(
+        store: &episteme::knowledge_store::KnowledgeStore,
+        fact_id: &str,
+        entity_id: &str,
+    ) {
+        use std::collections::BTreeMap;
+
+        use episteme::engine::DataValue;
+
+        let now = episteme::knowledge::format_timestamp(&jiff::Timestamp::now());
+        let mut params = BTreeMap::new();
+        params.insert("fact_id".to_owned(), DataValue::Str(fact_id.into()));
+        params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
+        params.insert("created_at".to_owned(), DataValue::Str(now.into()));
+        store
+            .run_mut_query(
+                r"?[fact_id, entity_id, created_at] <- [[$fact_id, $entity_id, $created_at]]
+                  :put fact_entities { fact_id, entity_id => created_at }",
+                params,
+            )
+            .expect("insert fact_entity");
+    }
+
+    fn state_with_store(store: Arc<episteme::knowledge_store::KnowledgeStore>) -> ProsocheState {
+        ProsocheState {
+            nous_id: "test-nous".to_owned(),
+            checked_at: "2026-04-22T12:00:00Z".to_owned(),
+            knowledge_store: Some(store),
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn consistency_check_without_store_skips_multi_path() {
+        let check = ConsistencyCheck;
+        let state = ProsocheState {
+            nous_id: "test-nous".to_owned(),
+            checked_at: "2026-04-22T12:00:00Z".to_owned(),
+            ..Default::default()
+        };
+
+        let findings = check.check(&state).await;
+
+        assert!(
+            findings.is_empty(),
+            "no facts and no store should produce no findings"
+        );
+    }
+
+    #[tokio::test]
+    async fn consistency_check_flags_orphaned_fact_via_finding_pipeline() {
+        let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+        let fact = make_fact("fact-orphan-mp-001", "Rust is a systems language");
+        store.insert_fact(&fact).expect("insert fact");
+
+        let check = ConsistencyCheck;
+        let state = state_with_store(store);
+        let findings = check.check(&state).await;
+
+        assert_eq!(
+            findings.len(),
+            1,
+            "should detect one orphaned fact as a Finding, got {findings:?}"
+        );
+        assert_eq!(findings[0].evidence_level, EvidenceLevel::Exploratory);
+        assert!(
+            findings[0].claim.contains("no fact_entities link"),
+            "claim should describe the orphan anomaly: {}",
+            findings[0].claim
+        );
+        assert_eq!(findings[0].source, "prosoche::ConsistencyCheck::multi_path");
+        let support = findings[0]
+            .stats
+            .support
+            .as_ref()
+            .expect("orphan finding must carry support");
+        assert!(support.is_heuristic);
+        assert!(
+            support
+                .evidence_refs
+                .iter()
+                .any(|r| matches!(r, EvidenceRef::Fact { fact_id, .. } if fact_id == "fact-orphan-mp-001")),
+            "evidence must reference the orphaned fact id"
+        );
+    }
+
+    #[tokio::test]
+    async fn consistency_check_linked_fact_produces_no_multi_path_finding() {
+        let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+        let fact = make_fact("fact-linked-mp-001", "Project Atlas uses Rust");
+        store.insert_fact(&fact).expect("insert fact");
+        let entity = episteme::knowledge::Entity {
+            id: episteme::id::EntityId::new("entity-atlas-mp-001").expect("valid"),
+            name: "Project Atlas".to_owned(),
+            entity_type: "project".to_owned(),
+            aliases: Vec::new(),
+            created_at: jiff::Timestamp::now(),
+            updated_at: jiff::Timestamp::now(),
+        };
+        store.insert_entity(&entity).expect("insert entity");
+        insert_fact_entity_raw(&store, fact.id.as_str(), entity.id.as_str());
+
+        let check = ConsistencyCheck;
+        let state = state_with_store(store);
+        let findings = check.check(&state).await;
+
+        assert!(
+            findings.is_empty(),
+            "a fact with an entity link should produce no multi-path finding, got {findings:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn consistency_check_flags_dangling_reference_via_finding_pipeline() {
+        let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+        let entity = episteme::knowledge::Entity {
+            id: episteme::id::EntityId::new("entity-ghost-mp-001").expect("valid"),
+            name: "Ghost".to_owned(),
+            entity_type: "concept".to_owned(),
+            aliases: Vec::new(),
+            created_at: jiff::Timestamp::now(),
+            updated_at: jiff::Timestamp::now(),
+        };
+        store.insert_entity(&entity).expect("insert entity");
+        insert_fact_entity_raw(&store, "phantom-fact-mp-001", entity.id.as_str());
+
+        let check = ConsistencyCheck;
+        let state = state_with_store(store);
+        let findings = check.check(&state).await;
+
+        assert_eq!(
+            findings.len(),
+            1,
+            "should detect one dangling reference as a Finding, got {findings:?}"
+        );
+        assert!(
+            findings[0].claim.contains("phantom-fact-mp-001"),
+            "claim should name the dangling fact id: {}",
+            findings[0].claim
+        );
+        assert_eq!(findings[0].source, "prosoche::ConsistencyCheck::multi_path");
+    }
+
+    #[tokio::test]
+    async fn consistency_check_runs_heuristic_and_multi_path_together() {
+        // WHY: the term-negation heuristic and the multi-path structural
+        // check are independent detectors that both contribute findings in
+        // the same check() call when a store is present.
+        let store = episteme::knowledge_store::KnowledgeStore::open_mem().expect("open_mem");
+        let fact = make_fact("fact-orphan-mp-both-001", "irrelevant content");
+        store.insert_fact(&fact).expect("insert fact");
+
+        let check = ConsistencyCheck;
+        let mut state = state_with_store(store);
+        state.facts = vec![
+            FactSnapshot {
+                fact_id: "heur-a".to_owned(),
+                content: "the sky is blue".to_owned(),
+                days_since_touched: Some(1.0),
+            },
+            FactSnapshot {
+                fact_id: "heur-b".to_owned(),
+                content: "not blue: the sky at night".to_owned(),
+                days_since_touched: Some(1.0),
+            },
+        ];
+
+        let findings = check.check(&state).await;
+
+        assert_eq!(
+            findings.len(),
+            2,
+            "expected one heuristic contradiction plus one orphaned-fact finding, got {findings:?}"
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.source == "prosoche::ConsistencyCheck"),
+            "must include a term-negation heuristic finding"
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.source == "prosoche::ConsistencyCheck::multi_path"),
+            "must include a multi-path structural finding"
         );
     }
 }

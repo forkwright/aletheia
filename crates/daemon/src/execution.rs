@@ -168,13 +168,20 @@ fn prosoche_db_paths(maintenance: &MaintenanceConfig) -> Vec<PathBuf> {
     vec![data_dir.join("sessions.db"), data_dir.join("planning.db")]
 }
 
-fn build_prosoche_audit_state(nous_id: &str) -> ProsocheState {
+fn build_prosoche_audit_state(
+    nous_id: &str,
+    #[cfg(feature = "knowledge-store")] knowledge_store: Option<
+        Arc<episteme::knowledge_store::KnowledgeStore>,
+    >,
+) -> ProsocheState {
     let total = crate::metrics::cron_executions_total();
     let successes = crate::metrics::cron_executions_ok();
     let errors = crate::metrics::cron_executions_error();
     let mut state = ProsocheState {
         nous_id: nous_id.to_owned(),
         checked_at: jiff::Timestamp::now().to_string(),
+        #[cfg(feature = "knowledge-store")]
+        knowledge_store,
         ..ProsocheState::default()
     };
 
@@ -471,6 +478,9 @@ pub(crate) async fn execute_builtin_with_behavior(
             let audit_dir = maintenance
                 .map_or_else(default_prosoche_audit_dir, |m| m.prosoche_audit_dir.clone());
             let runner = ProsocheAuditRunner::default_checks(&audit_dir);
+            #[cfg(feature = "knowledge-store")]
+            let state = build_prosoche_audit_state(nous_id, knowledge_store);
+            #[cfg(not(feature = "knowledge-store"))]
             let state = build_prosoche_audit_state(nous_id);
             let outcome = runner.run_audit(&state).await;
             let output = if let Some(err) = outcome.last_persist_error.as_deref() {
