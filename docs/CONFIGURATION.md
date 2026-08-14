@@ -237,6 +237,7 @@ Default per-agent behavioral parameters (safety, hooks, distillation, etc.).
 | `toolDatalogDefaultTimeoutSecs` | float | 5.0 | Default query timeout in seconds for the Datalog memory tool. |
 | `toolMaxImageBytes` | integer | 20_971_520 | Maximum image file size in bytes for the view-file tool. |
 | `toolMaxPdfBytes` | integer | 33_554_432 | Maximum PDF file size in bytes for the view-file tool. |
+| `toolApprovalTimeoutSecs` | float | 120.0 | Seconds to wait for an operator decision on a Required/Mandatory tool-approval request before it default-denies. Default: 120.0. |
 | `bootstrapMinTruncationBudget` | integer | 200 | Minimum token budget remaining before attempting section truncation. Below this threshold the section is dropped rather than truncated. Default: 200. |
 | `correctionsMaxCorrections` | integer | 50 | Maximum correction entries stored per agent. Default: 50. |
 | `tuningEligible` | bool | true | Whether this agent participates in the self-tuning loop. Default: true. When false, the agent's metrics are collected but no proposals are generated. Combined with the global `TuningConfig::enabled` kill switch. |
@@ -408,6 +409,7 @@ Per-agent behavioral override; when `None`, inherits from [`AgentDefaults::behav
 | `toolDatalogDefaultTimeoutSecs` | float | 5.0 | Default query timeout in seconds for the Datalog memory tool. |
 | `toolMaxImageBytes` | integer | 20_971_520 | Maximum image file size in bytes for the view-file tool. |
 | `toolMaxPdfBytes` | integer | 33_554_432 | Maximum PDF file size in bytes for the view-file tool. |
+| `toolApprovalTimeoutSecs` | float | 120.0 | Seconds to wait for an operator decision on a Required/Mandatory tool-approval request before it default-denies. Default: 120.0. |
 | `bootstrapMinTruncationBudget` | integer | 200 | Minimum token budget remaining before attempting section truncation. Below this threshold the section is dropped rather than truncated. Default: 200. |
 | `correctionsMaxCorrections` | integer | 50 | Maximum correction entries stored per agent. Default: 50. |
 | `tuningEligible` | bool | true | Whether this agent participates in the self-tuning loop. Default: true. When false, the agent's metrics are collected but no proposals are generated. Combined with the global `TuningConfig::enabled` kill switch. |

@@ -21,6 +21,14 @@ pub(crate) const DEFAULT_TOOL_DATALOG_DEFAULT_TIMEOUT_SECS: f64 = 5.0;
 pub(crate) const DEFAULT_TOOL_MAX_IMAGE_BYTES: u64 = 20_971_520;
 /// Default value used for `AgentBehaviorDefaults::tool_max_pdf_bytes`.
 pub(crate) const DEFAULT_TOOL_MAX_PDF_BYTES: u64 = 33_554_432;
+/// Default value used for `AgentBehaviorDefaults::tool_approval_timeout_secs`.
+///
+/// WHY: mirrors `nous::approval::DEFAULT_APPROVAL_TIMEOUT` (also 120s).
+/// `nous` depends on `taxis`, so the reverse direction — this field
+/// deriving from that constant — is not available; `nous::approval`
+/// keeps its own literal as the fallback for callers that construct an
+/// `ApprovalGate` with no `NousConfig` in scope (aletheia#5011).
+pub(crate) const DEFAULT_TOOL_APPROVAL_TIMEOUT_SECS: f64 = 120.0;
 
 /// Agent configuration: shared defaults and per-agent definitions.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -773,6 +781,9 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields �
     pub tool_max_image_bytes: u64,
     /// Maximum PDF file size in bytes for the view-file tool.
     pub tool_max_pdf_bytes: u64,
+    /// Seconds to wait for an operator decision on a Required/Mandatory
+    /// tool-approval request before it default-denies. Default: 120.0.
+    pub tool_approval_timeout_secs: f64,
 
     // --- Bootstrap ---
     /// Minimum token budget remaining before attempting section truncation.
@@ -890,6 +901,7 @@ impl Default for AgentBehaviorDefaults {
             tool_datalog_default_timeout_secs: DEFAULT_TOOL_DATALOG_DEFAULT_TIMEOUT_SECS,
             tool_max_image_bytes: DEFAULT_TOOL_MAX_IMAGE_BYTES,
             tool_max_pdf_bytes: DEFAULT_TOOL_MAX_PDF_BYTES,
+            tool_approval_timeout_secs: DEFAULT_TOOL_APPROVAL_TIMEOUT_SECS,
             // Bootstrap
             bootstrap_min_truncation_budget: 200,
             // Corrections

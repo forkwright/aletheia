@@ -150,20 +150,30 @@ impl KnowledgeStore {
     }
 
     /// Get pending merge candidates (review queue) for a nous.
+    ///
+    /// `pending_merges` carries no tenant column of its own, so this
+    /// scopes the same way [`load_entity_infos`](Self::load_entity_infos)
+    /// scopes dedup input: a row is `nous_id`'s iff `entity_a` is
+    /// reachable from a fact `nous_id` wrote, via `fact_entities`. Without
+    /// this join every nous's review queue returned every other nous's
+    /// pending candidates too (aletheia#5290).
     #[instrument(skip(self))]
-    #[expect(
-        clippy::used_underscore_binding,
-        reason = "nous_id reserved for future filtering"
-    )]
     pub fn get_pending_merges(
         &self,
-        _nous_id: &str,
+        nous_id: &str,
     ) -> crate::error::Result<Vec<crate::dedup::EntityMergeCandidate>> {
         use std::collections::BTreeMap;
 
+        use crate::engine::DataValue;
+
         let script = r"?[entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity, type_match, alias_overlap, merge_score] :=
-            *pending_merges{entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity, type_match, alias_overlap, merge_score}";
-        let rows = self.run_read(script, BTreeMap::new())?;
+            *pending_merges{entity_a, entity_b, name_a, name_b, name_similarity, embed_similarity, type_match, alias_overlap, merge_score},
+            *facts{id: fact_id, nous_id},
+            nous_id == $nous_id,
+            *fact_entities{fact_id, entity_id: entity_a}";
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        let rows = self.run_read(script, params)?;
 
         let mut results = Vec::new();
         for row in &rows.rows {
@@ -189,6 +199,26 @@ impl KnowledgeStore {
         Ok(results)
     }
 
+    /// Whether `entity_id` is reachable from a fact `nous_id` wrote, via
+    /// the `fact_entities` join — the tenant-ownership test used by every
+    /// nous-scoped merge-review operation below (aletheia#5290).
+    fn entity_owned_by_nous(&self, nous_id: &str, entity_id: &str) -> crate::error::Result<bool> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+
+        let script = r"?[entity_id] :=
+            *facts{id: fact_id, nous_id},
+            nous_id == $nous_id,
+            *fact_entities{fact_id, entity_id},
+            entity_id == $entity_id";
+        let mut params = BTreeMap::new();
+        params.insert("nous_id".to_owned(), DataValue::Str(nous_id.into()));
+        params.insert("entity_id".to_owned(), DataValue::Str(entity_id.into()));
+        let rows = self.run_read(script, params)?;
+        Ok(!rows.rows.is_empty())
+    }
+
     /// Approve a pending merge by executing it.
     ///
     /// Drains a candidate that
@@ -197,6 +227,14 @@ impl KnowledgeStore {
     /// survives and `execute_merge` redirects edges, transfers
     /// `fact_entities`, preserves the merged name as an alias, and clears
     /// the pending-merge row (#4165 Path A).
+    ///
+    /// Unconditional by design: this is the entry point for the pylon
+    /// `/entities/merge` operator endpoint, which gates access via
+    /// `require_unscoped_entity_write` at the API layer instead of a
+    /// `nous_id` check here. Nous-scoped callers (the CLI `dedup-approve`
+    /// path) must use [`approve_merge_scoped`](Self::approve_merge_scoped)
+    /// instead — `pending_merges` carries no tenant column, so nothing
+    /// upstream of this call proves a pair belongs to a given nous.
     #[instrument(skip(self))]
     pub fn approve_merge(
         &self,
@@ -204,6 +242,99 @@ impl KnowledgeStore {
         merged_id: &crate::id::EntityId,
     ) -> crate::error::Result<crate::dedup::MergeRecord> {
         self.execute_merge(canonical_id, merged_id)
+    }
+
+    /// Approve a pending merge after verifying both entities belong to
+    /// `nous_id`.
+    ///
+    /// See [`approve_merge`](Self::approve_merge) for why this scoped
+    /// variant exists separately: the CLI accepts `--nous-id` on
+    /// `dedup-approve` but has no role gate equivalent to pylon's
+    /// `require_unscoped_entity_write`, so it must establish ownership
+    /// itself before executing (aletheia#5290). Returns
+    /// [`Error::EntityNotOwned`](crate::error::Error::EntityNotOwned) if
+    /// either entity is not reachable from a fact `nous_id` wrote.
+    #[instrument(skip(self))]
+    pub fn approve_merge_scoped(
+        &self,
+        nous_id: &str,
+        canonical_id: &crate::id::EntityId,
+        merged_id: &crate::id::EntityId,
+    ) -> crate::error::Result<crate::dedup::MergeRecord> {
+        for entity_id in [canonical_id.as_str(), merged_id.as_str()] {
+            snafu::ensure!(
+                self.entity_owned_by_nous(nous_id, entity_id)?,
+                crate::error::EntityNotOwnedSnafu {
+                    entity_id: entity_id.to_owned(),
+                    nous_id: nous_id.to_owned(),
+                }
+            );
+        }
+        self.execute_merge(canonical_id, merged_id)
+    }
+
+    /// Reject a queued entity merge for `nous_id`, removing it from the
+    /// review queue.
+    ///
+    /// Verifies both entities belong to `nous_id` before removing —
+    /// `pending_merges` carries no tenant column, so nothing else stops
+    /// one nous's command path from clearing another nous's review
+    /// candidate given its entity ids (aletheia#5290). Tries both
+    /// `(a, b)` and `(b, a)` orderings since the row may store either;
+    /// the second ordering's not-found error is swallowed as a debug log
+    /// since at most one ordering matches.
+    #[instrument(skip(self))]
+    pub fn reject_merge(
+        &self,
+        nous_id: &str,
+        entity_a: &crate::id::EntityId,
+        entity_b: &crate::id::EntityId,
+    ) -> crate::error::Result<()> {
+        use std::collections::BTreeMap;
+
+        use crate::engine::DataValue;
+
+        for entity_id in [entity_a.as_str(), entity_b.as_str()] {
+            snafu::ensure!(
+                self.entity_owned_by_nous(nous_id, entity_id)?,
+                crate::error::EntityNotOwnedSnafu {
+                    entity_id: entity_id.to_owned(),
+                    nous_id: nous_id.to_owned(),
+                }
+            );
+        }
+
+        let mut rm_params = BTreeMap::new();
+        rm_params.insert(
+            "entity_a".to_owned(),
+            DataValue::Str(entity_a.as_str().into()),
+        );
+        rm_params.insert(
+            "entity_b".to_owned(),
+            DataValue::Str(entity_b.as_str().into()),
+        );
+        if let Err(e) = self.run_mut(&queries::rm_pending_merges(), rm_params) {
+            tracing::warn!(
+                %nous_id, %entity_a, %entity_b, error = %e,
+                "failed to remove pending_merges entry (a,b ordering)"
+            );
+        }
+        let mut rm_params2 = BTreeMap::new();
+        rm_params2.insert(
+            "entity_a".to_owned(),
+            DataValue::Str(entity_b.as_str().into()),
+        );
+        rm_params2.insert(
+            "entity_b".to_owned(),
+            DataValue::Str(entity_a.as_str().into()),
+        );
+        if let Err(e) = self.run_mut(&queries::rm_pending_merges(), rm_params2) {
+            tracing::warn!(
+                %nous_id, %entity_a, %entity_b, error = %e,
+                "failed to remove pending_merges entry (b,a ordering)"
+            );
+        }
+        Ok(())
     }
 
     /// Get the full merge history.

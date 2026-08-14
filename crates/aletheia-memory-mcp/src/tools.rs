@@ -516,6 +516,10 @@ fn run_scoped_facts_query(
     store: &KnowledgeStore,
     requester_nous_id: &str,
 ) -> crate::error::Result<Vec<ScopedFactRow>> {
+    // WHY: pulls the store's own visibility policy (aletheia#5284) rather
+    // than a hand-copied duplicate, so search/stats/topics/neighbors and
+    // this aggregation path cannot silently disagree about what a
+    // requester can see.
     let rules = mneme::knowledge_store::scoped_visibility_rules();
     let script = format!(
         "{}{}",

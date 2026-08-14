@@ -151,6 +151,147 @@ fn seed_store_two_facts() -> Arc<KnowledgeStore> {
     store
 }
 
+/// Seed a fresh in-memory store with three facts across two nouses: one
+/// private fact each for `alice` and `bob`, plus a `Shared` fact owned by
+/// `bob`.
+#[expect(
+    clippy::expect_used,
+    reason = "test setup: panic on unexpected store failure is acceptable"
+)]
+fn seed_store_cross_nous() -> Arc<KnowledgeStore> {
+    let store = KnowledgeStore::open_mem().expect("open_mem should succeed");
+    let now = jiff::Timestamp::now();
+
+    let mk_fact = |id: &str, nous_id: &str, content: &str, visibility: Visibility| Fact {
+        id: FactId::new(id).expect("valid fact id"),
+        nous_id: nous_id.to_owned(),
+        fact_type: "preference".to_owned(),
+        content: content.to_owned(),
+        scope: None,
+        project_id: None,
+        sensitivity: FactSensitivity::Public,
+        visibility,
+        temporal: FactTemporal {
+            valid_from: now,
+            valid_to: far_future(),
+            recorded_at: now,
+        },
+        provenance: FactProvenance {
+            confidence: 0.9,
+            tier: EpistemicTier::Inferred,
+            source_session_id: None,
+            stability_hours: default_stability_hours("preference"),
+        },
+        lifecycle: FactLifecycle {
+            superseded_by: None,
+            is_forgotten: false,
+            forgotten_at: None,
+            forget_reason: None,
+        },
+        access: FactAccess {
+            access_count: 0,
+            last_accessed_at: None,
+        },
+    };
+
+    store
+        .insert_fact(&mk_fact(
+            "f-alice-private",
+            "alice",
+            "Alice's private note",
+            Visibility::Private,
+        ))
+        .expect("insert alice private fact");
+    store
+        .insert_fact(&mk_fact(
+            "f-bob-private",
+            "bob",
+            "Bob's private note",
+            Visibility::Private,
+        ))
+        .expect("insert bob private fact");
+    store
+        .insert_fact(&mk_fact(
+            "f-bob-shared",
+            "bob",
+            "Bob's shared note",
+            Visibility::Shared,
+        ))
+        .expect("insert bob shared fact");
+
+    store
+}
+
+/// #5284 regression: `nous_stats`'s aggregation path
+/// (`run_scoped_facts_query`) must apply the store's own visibility policy
+/// — a requester sees its own facts plus anything `Shared`/`Published`, and
+/// nothing else. This exercises the code path that previously hand-copied
+/// `episteme::knowledge_store::marshal::scoped_visibility_rules` into a
+/// second, driftable Datalog rule set instead of calling the canonical,
+/// now-public `scoped_visibility_rules()`.
+#[tokio::test]
+#[expect(
+    clippy::expect_used,
+    reason = "test: panics on unexpected protocol failure are acceptable"
+)]
+async fn nous_stats_scopes_across_nous_boundary() {
+    let store = seed_store_cross_nous();
+    let server =
+        MemoryServer::with_write_token(store, None, None).with_nous_id(Some("alice".to_owned()));
+
+    let (server_tx, client_rx) = tokio::io::duplex(4096);
+    let (client_tx, server_rx) = tokio::io::duplex(4096);
+
+    let server_handle = tokio::spawn(async move {
+        server
+            .serve((server_rx, server_tx))
+            .await
+            .expect("server serve")
+            .waiting()
+            .await
+            .expect("server waiting")
+    });
+
+    let client_info = ClientInfo::new(
+        ClientCapabilities::default(),
+        Implementation::new("test-client", "0.1.0"),
+    );
+    let client = client_info
+        .serve((client_rx, client_tx))
+        .await
+        .expect("client handshake");
+
+    let stats = client
+        .call_tool(
+            CallToolRequestParams::new("nous_stats")
+                .with_arguments(serde_json::json!({}).as_object().expect("object").clone()),
+        )
+        .await
+        .expect("nous_stats call");
+    let stats_text = stats
+        .content
+        .first()
+        .and_then(|c| c.as_text())
+        .map(|t| t.text.clone())
+        .expect("stats text content");
+    let stats_json: serde_json::Value =
+        serde_json::from_str(&stats_text).expect("stats json parse");
+
+    // alice must see her own private fact plus bob's shared fact (2), and
+    // must never see bob's private fact.
+    assert_eq!(
+        stats_json
+            .get("fact_count")
+            .and_then(serde_json::Value::as_i64),
+        Some(2),
+        "alice must see her own fact plus bob's shared fact, and nothing \
+         from bob's private fact; got: {stats_text}"
+    );
+
+    drop(client);
+    server_handle.abort();
+}
+
 #[tokio::test]
 #[expect(
     clippy::expect_used,
