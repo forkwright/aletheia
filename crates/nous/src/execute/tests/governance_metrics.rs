@@ -133,7 +133,10 @@ async fn policy_denial_metric_records_unknown_tool() {
     let ghost_name = "_test_metrics_gov_ghost";
     // Registry needs at least one entry; the dispatched name is deliberately
     // absent from it so `denial_for` classifies it `ToolPolicyDenial::Unknown`.
-    let tools = make_registry_rev("_test_metrics_gov_ghost_sibling", Reversibility::FullyReversible);
+    let tools = make_registry_rev(
+        "_test_metrics_gov_ghost_sibling",
+        Reversibility::FullyReversible,
+    );
     let tool_uses = vec![(
         "tool-1".to_owned(),
         ghost_name.to_owned(),
