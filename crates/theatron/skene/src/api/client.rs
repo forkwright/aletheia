@@ -938,7 +938,10 @@ mod tests {
                 .expect("set read timeout");
             let mut buf = [0_u8; 4096];
             let n = stream.read(&mut buf).unwrap_or(0);
-            let request = String::from_utf8_lossy(&buf[..n]).into_owned();
+            // WHY get(): `n` comes from a read whose contract does not bind it
+            // to buf's length, so indexing is a panic clippy::indexing_slicing
+            // correctly refuses in a mock server a test depends on.
+            let request = String::from_utf8_lossy(buf.get(..n).unwrap_or(&[])).into_owned();
             let response = format!(
                 "HTTP/1.1 {status_line}\r\ncontent-type: application/json\r\nconnection: close\r\n\r\n{body}"
             );
