@@ -39,6 +39,9 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
     let prefs_signal = use_context::<Signal<NotificationPreferences>>();
     let mut history_signal = use_context::<Signal<NotificationHistory>>();
     let dnd_signal = use_context::<Signal<DndState>>();
+    // WHY(#4720): OS-level window focus, provided by ConnectedApp's
+    // use_wry_event_handler wiring.
+    let focus_signal = use_context::<Signal<bool>>();
 
     let base_url = config.server_url.trim_end_matches('/').to_string();
     let cancel = CancellationToken::new();
@@ -92,16 +95,13 @@ pub(crate) fn start_sse_coroutine(config: &ConnectionConfig) {
                 }
             }
 
-            // NOTE: Window focus state defaults to false (always notify).
-            // Full focus integration requires wiring Dioxus desktop window
-            // events -- tracked separately.
             let prefs = prefs_signal.peek().clone();
             let dnd = dnd_signal.peek().clone();
             dispatch.process_event(
                 &event,
                 &prefs,
                 &dnd,
-                false,
+                *focus_signal.peek(),
                 &mut |entry| history_signal.write().push(entry),
                 &mut |sev, title| {
                     if let Some(mut store) = try_consume_context::<Signal<ToastStore>>() {
