@@ -1393,7 +1393,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/hnsw/put.rs"
 upstream_path = "runtime/hnsw.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 29.4
+verbatim_pct = 27.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1417,7 +1417,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/hnsw/types.rs"
 upstream_path = "runtime/hnsw.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 13.4
+verbatim_pct = 11.9
 status = "derived"
 soak_expires_at_commit_count = 0
 

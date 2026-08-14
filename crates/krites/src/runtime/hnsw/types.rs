@@ -269,3 +269,36 @@ impl VectorCache {
         self.cache.len()
     }
 }
+
+/// Enumerate every vector currently in the index: one [`CompoundKey`] per
+/// level-0 self-entry (`fr == to`), which every indexed vector carries
+/// exactly one of. Insertion always reaches level 0, whether through the
+/// fresh-node path (`hnsw_put_fresh_at_levels`) or the main per-level
+/// connection loop (`hnsw_put_vector`).
+///
+/// NOTE: `hnsw_count_vectors`, `hnsw_check_consistency`, and
+/// `hnsw_exact_knn` previously scanned the `level = 1` prefix instead —
+/// that level holds only the single per-index entry-point marker row,
+/// never a real vector, so the scan returned at most one row regardless
+/// of index size (#6642).
+pub(super) fn scan_indexed_keys<'a>(
+    tx: &'a SessionTx<'_>,
+    orig_table: &RelationHandle,
+    idx_table: &RelationHandle,
+) -> impl Iterator<Item = CompoundKey> + 'a {
+    let key_len = orig_table.metadata.keys.len();
+    idx_table
+        .scan_prefix(tx, &vec![DataValue::from(0_i64)])
+        .filter_map(move |res| {
+            let tuple = res.ok()?;
+            let fr = tuple.get(1..key_len + 3)?;
+            let to = tuple.get(key_len + 3..2 * key_len + 5)?;
+            if fr != to {
+                return None;
+            }
+            let tuple_key: Tuple = tuple.get(1..key_len + 1)?.to_vec();
+            let idx = usize::try_from(tuple.get(key_len + 1)?.get_int()?).ok()?;
+            let subidx = i32::try_from(tuple.get(key_len + 2)?.get_int()?).ok()?;
+            Some((tuple_key, idx, subidx))
+        })
+}

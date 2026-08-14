@@ -292,8 +292,8 @@
     {
       "from": "runtime",
       "to": "data",
-      "count": 154,
-      "production_count": 147,
+      "count": 155,
+      "production_count": 148,
       "test_only": false,
       "first_evidence": "runtime/db.rs:29",
       "first_production_evidence": "runtime/db.rs:29"
@@ -381,7 +381,7 @@
     }
   ],
   "file_count": 205,
-  "statement_count": 1027,
+  "statement_count": 1028,
   "required_edges_present": [
     [
       "runtime",

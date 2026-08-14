@@ -61,7 +61,6 @@ pub(crate) mod exec;
     clippy::match_same_arms,
     clippy::mutable_key_type,
     clippy::range_plus_one,
-    clippy::redundant_closure_for_method_calls,
     clippy::ref_option,
     clippy::result_large_err,
     clippy::too_many_arguments,
