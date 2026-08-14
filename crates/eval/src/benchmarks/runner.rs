@@ -701,15 +701,19 @@ fn retrieval_score_metrics(
     scoring: &RetrievalScoring,
     k: usize,
 ) -> (f64, f64, f64, Option<f64>) {
-    let r = metrics::recall_at_k(retrieved_refs, &scoring.relevant_refs, k);
-    let n = metrics::ndcg_at_k(retrieved_refs, &scoring.relevant_refs, k);
-    let m = metrics::mrr_at_k(retrieved_refs, &scoring.relevant_refs, k);
-    let h = if matches!(scoring.mode, RetrievalScoringMode::EvidenceId) {
+    let recall = metrics::recall_at_k(retrieved_refs, &scoring.relevant_refs, k);
+    let ndcg = metrics::ndcg_at_k(retrieved_refs, &scoring.relevant_refs, k);
+    let mrr = metrics::mrr_at_k(retrieved_refs, &scoring.relevant_refs, k);
+    // WHY None rather than 0.0 off the EvidenceId path: a hallucination rate is
+    // only meaningful against real evidence refs. Under normalized-content
+    // fallback scoring there is nothing to be wrong about, and a 0.0 would read
+    // as "measured, and clean" rather than "not measurable".
+    let hallucination = if matches!(scoring.mode, RetrievalScoringMode::EvidenceId) {
         metrics::hallucinated_evidence_rate(retrieved_refs, &scoring.relevant_refs)
     } else {
         None
     };
-    (r, n, m, h)
+    (recall, ndcg, mrr, hallucination)
 }
 
 fn normalize_evidence_ref(reference: &str) -> String {

@@ -538,6 +538,24 @@ impl ConsistencyCheck {
             }
         }
 
+        Self::push_dangling_ref_findings(store, findings);
+    }
+
+    /// Report `fact_entities` rows pointing at facts that no longer exist.
+    ///
+    /// WHY split from `push_multi_path_findings`: the two checks are
+    /// independent -- orphaned facts are found by entity traversal, dangling
+    /// references by the reverse lookup -- and together they exceeded the
+    /// 100-line limit. Call order still matters: `finding_id` numbers from
+    /// `findings.len()`, so this must run after the orphan pass.
+    ///
+    /// Query failures are logged and skipped, not propagated, for the same
+    /// reason as the caller: earlier findings must survive a store hiccup.
+    #[cfg(feature = "knowledge-store")]
+    fn push_dangling_ref_findings(
+        store: &episteme::knowledge_store::KnowledgeStore,
+        findings: &mut Vec<Finding>,
+    ) {
         match crate::knowledge_consistency::query_dangling_fact_entity_refs(
             store,
             MULTI_PATH_SAMPLE_SIZE,
