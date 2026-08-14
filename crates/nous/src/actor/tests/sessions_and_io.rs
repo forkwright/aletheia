@@ -579,6 +579,74 @@ async fn maybe_spawn_distillation_skips_when_degraded() {
     );
 }
 
+// ── background.rs: maybe_run_auto_dream ──────────────────────────────────────
+
+/// Build an actor with everything `maybe_run_auto_dream` needs to clear every
+/// gate up to constructing the `DreamEngine`: an in-memory session store, an
+/// in-memory knowledge store, and a provider registered for
+/// `DistillTriggerConfig::default().model`. Mirrors
+/// `make_distillation_ready_actor` above.
+#[cfg(feature = "knowledge-store")]
+fn make_auto_dream_ready_actor() -> (
+    NousActor,
+    mpsc::Sender<NousMessage>,
+    tempfile::TempDir, // kept alive: drop would delete tempdir
+) {
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(
+        MockProvider::new("dreamed").models(&[koina::defaults::DEFAULT_MODEL]),
+    ));
+    let (mut actor, tx, dir) =
+        make_test_actor_with_providers(Arc::new(providers), PipelineConfig::default());
+
+    let session_store = mneme::store::SessionStore::open_in_memory().expect("in-memory store");
+    actor.stores.session_store = Some(Arc::new(tokio::sync::Mutex::new(session_store)));
+    let knowledge_store =
+        mneme::knowledge_store::KnowledgeStore::open_mem().expect("in-memory knowledge store");
+    actor.stores.knowledge_store = Some(knowledge_store);
+
+    (actor, tx, dir)
+}
+
+/// Control for `maybe_run_auto_dream_skips_when_degraded`: proves the fixture
+/// actually reaches `DreamEngine` construction when the turn is NOT degraded,
+/// so the companion test's untouched-engine result is meaningful rather than
+/// incidental — same shape as `maybe_spawn_distillation_spawns_when_not_degraded`
+/// above.
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn maybe_run_auto_dream_builds_engine_when_not_degraded() {
+    let (mut actor, _tx, _dir) = make_auto_dream_ready_actor();
+
+    actor.maybe_run_auto_dream(false).await;
+
+    assert!(
+        actor.runtime.auto_dream_engine.is_some(),
+        "a non-degraded turn with stores and a provider ready should build the dream engine"
+    );
+}
+
+/// Regression test for #6752: same fixture as the control above, which would
+/// otherwise build the engine — a degraded turn must never trigger dream
+/// consolidation off the session it just produced. Unlike the other three
+/// `is_degraded`-gated background paths, this one `.await`s inline instead of
+/// spawning, so `background_tasks.len()` cannot observe it; `auto_dream_engine`
+/// is the seam this pair asserts against instead. Fails if the `is_degraded`
+/// check is ever removed from `maybe_run_auto_dream`.
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn maybe_run_auto_dream_skips_when_degraded() {
+    let (mut actor, _tx, _dir) = make_auto_dream_ready_actor();
+
+    actor.maybe_run_auto_dream(true).await;
+
+    assert!(
+        actor.runtime.auto_dream_engine.is_none(),
+        "a degraded turn must never build the dream engine, even when stores \
+         and a provider are otherwise ready"
+    );
+}
+
 // ── turn.rs: finalize_turn corpus side-effect gating (#5367) ────────────────
 
 /// Control for `finalize_turn_never_spawns_extraction_for_a_degraded_turn`:

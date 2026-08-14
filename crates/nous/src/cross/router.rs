@@ -323,6 +323,10 @@ impl CrossNousRouter {
     /// If Actor A is already waiting on Actor B and B tries to ask A, the
     /// cycle is detected and an error is returned immediately.
     ///
+    /// `message.reply_timeout` (or [`DEFAULT_REPLY_TIMEOUT`]) bounds the
+    /// WHOLE operation, queue admission into the target's inbox plus the
+    /// reply wait, not just the reply wait after a successful enqueue.
+    ///
     /// # Cancel safety
     ///
     /// Cancellation of the ask future (e.g. task abort or `select!`) cleans up
@@ -334,7 +338,8 @@ impl CrossNousRouter {
     /// Returns [`error::Error::AskCycleDetected`] if the ask would create a cycle.
     /// Returns [`error::Error::NousNotFound`] if the target is not registered.
     /// Returns [`error::Error::DeliveryFailed`] if the target inbox is closed.
-    /// Returns [`error::Error::AskTimeout`] if no reply arrives within the timeout.
+    /// Returns [`error::Error::AskTimeout`] if admission into the target's
+    /// inbox or the reply wait — whichever comes first — exceeds the timeout.
     #[instrument(skip(self, message), fields(msg_id = %message.id, from = %message.from, to = %message.to))]
     pub async fn ask(&self, mut message: CrossNousMessage) -> error::Result<CrossNousReply> {
         let from = message.from.clone();

@@ -599,9 +599,14 @@ impl NousActor {
 
     /// # Cancel safety
     ///
-    /// Cancel-safe. No state is modified before the `.await` point: only
-    /// local variables are prepared from the envelope. If cancelled, the
-    /// actor remains in a consistent state.
+    /// Not cancel-safe in isolation, same profile as `handle_turn`:
+    /// `mark_turn_active` sets `lifecycle = Active` and `active_session`
+    /// before awaiting turn execution. If the future were dropped mid-await,
+    /// those fields would not be reset by `finalize_turn`. In practice this
+    /// is only called from the sequential actor loop (after the message has
+    /// already been received off `cross_rx`, not raced inside a `select!`
+    /// branch), so cancellation only occurs at shutdown when the actor is
+    /// consumed.
     async fn handle_cross_message(
         &mut self,
         envelope: CrossNousEnvelope,
@@ -636,6 +641,17 @@ impl NousActor {
             debug!(from = %from, ?payload, "cross-nous typed payload received (fire-and-forget)");
         }
 
+        // WHY(#5023): a cross turn must carry the same lifecycle contract as
+        // a normal turn (`handle_turn`) — `mark_turn_active` sets
+        // `active_session`/`active_turn`/`turn_started_at_ms` so a long cross
+        // turn reads as busy rather than stuck-and-dead to `check_health()`,
+        // and `finalize_turn` runs the same token accounting, drift
+        // detection, and corpus side-effect spawning (extraction,
+        // distillation, auto-dream) a normal turn gets. Skipping both left
+        // cross-turn conversations invisible to health diagnostics and never
+        // eligible for those side effects.
+        self.mark_turn_active(&session_key);
+
         let result = self
             .execute_turn_with_panic_boundary(
                 &session_key,
@@ -645,6 +661,8 @@ impl NousActor {
                 tokio_util::sync::CancellationToken::new(),
             )
             .await;
+
+        self.finalize_turn(&session_key, &content, &result).await;
 
         if expects_reply {
             let reply_content = match &result {
