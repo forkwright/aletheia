@@ -2464,6 +2464,10 @@ impl DiaporeiaServer {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "test fixture setup uses sync std::fs to build an oikos before spawning a nous"
+)]
 mod tests {
     use std::future::Future;
     use std::pin::Pin;
