@@ -76,8 +76,9 @@ pub(crate) fn compute_memory_health_metrics(
     }
 
     #[expect(
+        clippy::as_conversions,
         clippy::cast_precision_loss,
-        reason = "fact/entity counts are display-scale, never near f64's precision boundary"
+        reason = "usize->f64: fact/entity counts are display-scale, never near f64's precision boundary"
     )]
     let (avg_confidence, staleness_ratio) = if active_count > 0 {
         (
@@ -91,8 +92,9 @@ pub(crate) fn compute_memory_health_metrics(
     let entity_count = count_relation(store, "entities")?;
     let orphaned_entity_count = count_orphaned_entities(store)?;
     #[expect(
+        clippy::as_conversions,
         clippy::cast_precision_loss,
-        reason = "fact/entity counts are display-scale, never near f64's precision boundary"
+        reason = "usize->f64: fact/entity counts are display-scale, never near f64's precision boundary"
     )]
     let orphan_ratio = if entity_count > 0 {
         orphaned_entity_count as f64 / entity_count as f64
