@@ -782,6 +782,44 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Update the data-sovereignty sensitivity classification for a knowledge
+    /// fact. Accepted values (lowercase): `public`, `internal`, `confidential`
+    /// — validated server-side by pylon's `PUT .../sensitivity` handler, the
+    /// same way `knowledge_update_confidence` leaves range validation to
+    /// pylon rather than duplicating it here.
+    ///
+    /// WHY(#4622): forget/restore/confidence had peer client methods but
+    /// sensitivity — the one classification that gates which deployment
+    /// targets a fact may reach — had none, so a caller wanting to correct a
+    /// fact's sensitivity through skene had no path to pylon's existing
+    /// `PUT /api/v1/knowledge/facts/{id}/sensitivity` endpoint.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn knowledge_update_sensitivity(
+        &self,
+        fact_id: &str,
+        sensitivity: &str,
+    ) -> Result<()> {
+        let encoded = keryx::url::encode_path_segment(fact_id);
+        let resp = self
+            .request(
+                reqwest::Method::PUT,
+                &format!("/api/v1/knowledge/facts/{encoded}/sensitivity"),
+            )
+            .json(&serde_json::json!({ "sensitivity": sensitivity }))
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "update sensitivity",
+            })?;
+        Self::check_status(resp, "sensitivity request").await?;
+        Ok(())
+    }
+
     /// Consumes a response, returning it unchanged if 2xx.
     ///
     /// On non-2xx:
@@ -881,6 +919,65 @@ mod tests {
                 .expect("write HTTP error test response");
         });
         (format!("http://{addr}"), handle)
+    }
+
+    /// Like [`serve_http_error_once`], but returns the raw request the
+    /// client sent instead of driving an error path — for asserting a
+    /// wrapper method built the wire request (method, path, body) the
+    /// server actually expects, rather than only that it did not error.
+    fn serve_http_capture_once(
+        status_line: &'static str,
+        body: &'static str,
+    ) -> (String, std::thread::JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind local test server");
+        let addr = listener.local_addr().expect("read local test server addr");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 4096];
+            let n = stream.read(&mut buf).unwrap_or(0);
+            // WHY get(): `n` comes from a read whose contract does not bind it
+            // to buf's length, so indexing is a panic clippy::indexing_slicing
+            // correctly refuses in a mock server a test depends on.
+            let request = String::from_utf8_lossy(buf.get(..n).unwrap_or(&[])).into_owned();
+            let response = format!(
+                "HTTP/1.1 {status_line}\r\ncontent-type: application/json\r\nconnection: close\r\n\r\n{body}"
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write HTTP capture test response");
+            request
+        });
+        (format!("http://{addr}"), handle)
+    }
+
+    #[tokio::test]
+    async fn knowledge_update_sensitivity_puts_the_pylon_sensitivity_route() {
+        // WHY(#4622): before this method existed, nothing verified skene would
+        // even form the right request — a typo'd path or verb here would 404
+        // or 405 silently against a real pylon instance with no compile-time
+        // or test-time signal, since this was previously untestable (the
+        // method did not exist to call).
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", r#"{"status":"updated"}"#);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        client
+            .knowledge_update_sensitivity("f-abc123", "confidential")
+            .await
+            .expect("sensitivity update should succeed");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("PUT /api/v1/knowledge/facts/f-abc123/sensitivity"),
+            "must PUT pylon's sensitivity route, got: {request}"
+        );
+        assert!(
+            request.contains(r#"{"sensitivity":"confidential"}"#),
+            "body must carry the requested sensitivity value, got: {request}"
+        );
     }
 
     #[test]

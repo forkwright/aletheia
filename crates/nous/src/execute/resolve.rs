@@ -12,6 +12,7 @@ use hermeneus::provider::{
 };
 use hermeneus::types::{ContentBlock, ServerToolDefinition};
 use koina::id::ToolName;
+use mneme::knowledge::FactSensitivity;
 use organon::types::ToolContext;
 
 use crate::config::{ModelProviderRoute, NousConfig};
@@ -115,6 +116,92 @@ pub(super) fn resolve_turn_route(
     } else {
         ModelProviderRoute::model_only(decision.model)
     }
+}
+
+/// Gate `route` against the current turn's classified sensitivity before any
+/// provider is dispatched to, and return the sensitivity alongside it so the
+/// caller does not re-derive it.
+///
+/// WHY(#4621): `recall::filter_by_sensitivity` already withholds recalled
+/// facts whose sensitivity exceeds the active deployment target before they
+/// reach a provider. The live user prompt driving the turn received no
+/// equivalent check — a message triage classified `Internal`/`Confidential`
+/// could still be sent to a `Cloud` provider verbatim, because filtering
+/// recalled facts says nothing about the prompt that started the turn. When
+/// `route` cannot receive the classified sensitivity, the first configured
+/// fallback route that can is used instead; when none can, the turn is
+/// blocked with an audited [`error::Error::GuardRejected`] rather than
+/// silently downgrading the sensitivity or defaulting to `Public`.
+pub(super) fn gate_turn_sensitivity(
+    ctx: &PipelineContext,
+    config: &NousConfig,
+    providers: &ProviderRegistry,
+    route: ModelProviderRoute,
+) -> error::Result<(ModelProviderRoute, FactSensitivity)> {
+    // WHY: no triage result means triage did not run for this turn (e.g. a
+    // caller that bypasses the pipeline entirely). `Public` is the same
+    // no-op default `FactSensitivity` uses everywhere else, and it makes
+    // this gate a pass-through rather than a new failure mode for callers
+    // that never asked for classification.
+    let sensitivity = ctx
+        .triage_result
+        .as_ref()
+        .map_or(FactSensitivity::Public, |triage| triage.sensitivity);
+
+    if route_admits_sensitivity(providers, &route, sensitivity) {
+        return Ok((route, sensitivity));
+    }
+
+    for (index, model) in config.generation.fallback_models.iter().enumerate() {
+        let fallback_provider = config
+            .generation
+            .fallback_providers
+            .get(index)
+            .and_then(Clone::clone);
+        let candidate = fallback_provider.map_or_else(
+            || ModelProviderRoute::model_only(model.clone()),
+            |provider| ModelProviderRoute::explicit(model.clone(), provider),
+        );
+        if route_admits_sensitivity(providers, &candidate, sensitivity) {
+            warn!(
+                requested_model = %route.model,
+                rerouted_model = %candidate.model,
+                sensitivity = sensitivity.as_str(),
+                "turn rerouted to an eligible local provider (deployment-target sensitivity gate)"
+            );
+            return Ok((candidate, sensitivity));
+        }
+    }
+
+    Err(error::GuardRejectedSnafu {
+        reason: format!(
+            "turn classified '{}' exceeds the deployment target of '{}' and every \
+             configured fallback provider; blocked before dispatch",
+            sensitivity.as_str(),
+            route.model,
+        ),
+    }
+    .build())
+}
+
+/// Can `route`'s resolved provider receive a turn/fact of `sensitivity`?
+///
+/// Reuses [`crate::recall::max_sensitivity_for`] rather than a second
+/// admission table: two tables answering the same deployment-target question
+/// is exactly the kind of hand-off this gate exists to close (#4621). An
+/// unregistered or unresolvable route maps to [`DeploymentTarget::Cloud`] —
+/// the most restrictive assumption, matching `resolve_turn_route`'s existing
+/// fallback above and the `LlmProvider::deployment_target` default.
+pub(super) fn route_admits_sensitivity(
+    providers: &ProviderRegistry,
+    route: &ModelProviderRoute,
+    sensitivity: FactSensitivity,
+) -> bool {
+    let target = providers
+        .resolve_provider(&route.model, route.provider_route())
+        .ok()
+        .map_or(DeploymentTarget::Cloud, LlmProvider::deployment_target);
+    sensitivity <= crate::recall::max_sensitivity_for(target)
 }
 
 /// Resolve the LLM provider for `route` and verify it is not marked down,
