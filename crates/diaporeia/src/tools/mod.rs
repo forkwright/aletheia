@@ -2705,7 +2705,9 @@ mod tests {
     /// Oikos root with one nous workspace, ready for `NousManager::spawn`.
     fn make_approval_test_oikos(nous_id: &str) -> (tempfile::TempDir, Arc<taxis::oikos::Oikos>) {
         let dir = tempfile::TempDir::new().expect("tmpdir");
-        let root = dir.path();
+        // WHY owned: `dir` is moved into the returned tuple below, so a
+        // borrow of it cannot still be live at that point.
+        let root = dir.path().to_path_buf();
         std::fs::create_dir_all(root.join("nous").join(nous_id)).expect("mkdir nous");
         std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
         std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
@@ -2775,7 +2777,7 @@ mod tests {
         manager
             .spawn(
                 approval_test_nous_config(nous_id),
-                nous::pipeline::PipelineConfig::default(),
+                nous::config::PipelineConfig::default(),
             )
             .await
             .expect("spawn test nous");
