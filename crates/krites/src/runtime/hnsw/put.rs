@@ -406,17 +406,14 @@ impl SessionTx<'_> {
         Ok(())
     }
 
-    /// Count vectors currently in the index by scanning the canary prefix.
-    ///
-    /// Canary entries (level = `DataValue::from(1)`) are written once per vector
-    /// in `hnsw_put_fresh_at_levels` and serve as a per-vector marker.
+    /// Count vectors currently in the index.
     ///
     /// # Complexity
     ///
-    /// O(n) where n is the number of vectors. Requires a full scan of canary entries.
-    fn hnsw_count_vectors(&self, idx_table: &RelationHandle) -> usize {
-        let prefix = vec![DataValue::from(1_i64)];
-        idx_table.scan_prefix(self, &prefix).count()
+    /// O(n) where n is the number of vectors. Requires a full scan of level-0
+    /// self-entries.
+    fn hnsw_count_vectors(&self, orig_table: &RelationHandle, idx_table: &RelationHandle) -> usize {
+        super::types::scan_indexed_keys(self, orig_table, idx_table).count()
     }
 
     /// Public entry point for HNSW vector insertion.
@@ -448,7 +445,7 @@ impl SessionTx<'_> {
 
         // WHY: enforce max_vectors capacity limit to prevent unbounded memory/disk growth (#1722).
         if let Some(max_cap) = manifest.max_vectors {
-            let current = self.hnsw_count_vectors(idx_table);
+            let current = self.hnsw_count_vectors(orig_table, idx_table);
             let warn_threshold = max_cap * 4 / 5; // 80 %
             if current >= max_cap {
                 return Err(InvalidOperationSnafu {
@@ -523,7 +520,7 @@ impl SessionTx<'_> {
         Ok(true)
     }
 
-    /// Check that every HNSW canary entry has a corresponding row in the base relation.
+    /// Check that every HNSW-indexed vector has a corresponding row in the base relation.
     ///
     /// Scans the "self-entry" nodes at level 0 (entries where the source and destination
     /// tuple key are identical) and verifies each exists in `orig_table`.  Returns the
@@ -534,11 +531,14 @@ impl SessionTx<'_> {
     ///
     /// # Complexity
     ///
-    /// O(n) where n is the number of indexed vectors. Performs a canary scan plus
+    /// O(n) where n is the number of indexed vectors. Performs a level-0 scan plus
     /// n lookups in the base relation.
-    #[expect(
-        dead_code,
-        reason = "entry point for maintenance tasks — not yet wired into scheduler"
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "entry point for maintenance tasks — not yet wired into scheduler"
+        )
     )]
     pub(crate) fn hnsw_check_consistency(
         &self,
@@ -546,24 +546,10 @@ impl SessionTx<'_> {
         orig_table: &RelationHandle,
         idx_table: &RelationHandle,
     ) -> Result<usize> {
-        let key_len = orig_table.metadata.keys.len();
         let mut orphan_count = 0usize;
 
-        // WHY: canary entries written by `hnsw_put_fresh_at_levels` start with
-        // `DataValue::from(1_i64)`.  Each represents exactly one indexed vector.
-        let canary_prefix = vec![DataValue::from(1_i64)];
-        for res in idx_table.scan_prefix(self, &canary_prefix) {
-            let tuple = match res {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-            // Canary layout: [1, Null..., key_fields..., idx, subidx, Null..., Null, Null]
-            // The tuple_key fields start at offset 1.
-            let tuple_key: Vec<DataValue> = tuple.get(1..key_len + 1).unwrap_or_default().to_vec();
-            if tuple_key.is_empty() {
-                continue;
-            }
-            match orig_table.get(self, &tuple_key) {
+        for key in super::types::scan_indexed_keys(self, orig_table, idx_table) {
+            match orig_table.get(self, &key.0) {
                 Ok(Some(_)) => {} // base row exists -- consistent
                 Ok(None) => {
                     orphan_count = orphan_count.saturating_add(1);
@@ -592,6 +578,7 @@ impl SessionTx<'_> {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
+    use crate::DataValue;
     use crate::DbInstance;
 
     /// Create a standard 4-dim F32/L2 HNSW index on a relation named
@@ -852,5 +839,79 @@ mod tests {
             !res.rows.is_empty(),
             "rebuilt index must be searchable — base-relation rows are consistent"
         );
+    }
+
+    /// `hnsw_count_vectors` is the basis for `max_vectors` capacity
+    /// enforcement (#6642). It previously scanned the `level = 1`
+    /// entry-point-marker prefix, which holds exactly one row regardless of
+    /// how many vectors are indexed, so the count never tracked reality.
+    #[test]
+    fn count_vectors_reflects_real_index_size() {
+        let db = setup_db();
+        insert_vectors(&db, 7);
+        let tx = db.transact().unwrap();
+        let base = tx.get_relation("vectors", false).unwrap();
+        let (idx_handle, _manifest) = base.hnsw_indices.get("idx").unwrap().clone();
+        assert_eq!(
+            tx.hnsw_count_vectors(&base, &idx_handle),
+            7,
+            "count must reflect every indexed vector, not the single entry-point marker"
+        );
+    }
+
+    /// `hnsw_check_consistency` (E24) must find a manufactured orphan (a
+    /// base-relation row removed without going through `hnsw_remove`) and
+    /// report zero once the index is rebuilt. Scanning the `level = 1`
+    /// prefix instead (the pre-fix behaviour) would have reported exactly
+    /// one false orphan here regardless of which row was deleted, and
+    /// never actually examined a real vector (#6642).
+    #[test]
+    fn check_consistency_detects_manufactured_orphan() {
+        let db = setup_db();
+        insert_vectors(&db, 5);
+
+        {
+            let mut tx = db.transact_write().unwrap();
+            let base = tx.get_relation("vectors", false).unwrap();
+            let (idx_handle, manifest) = base.hnsw_indices.get("idx").unwrap().clone();
+            // Bypass hnsw_remove entirely: delete the base row directly, as
+            // if an embedding write had failed out from under an
+            // already-indexed vector.
+            let key = vec![DataValue::from(2_i64)];
+            let encoded = base
+                .encode_key_for_store(&key, crate::SourceSpan::default())
+                .unwrap();
+            tx.store_tx.del(&encoded).unwrap();
+            let orphans = tx
+                .hnsw_check_consistency(&manifest, &base, &idx_handle)
+                .unwrap();
+            assert_eq!(
+                orphans, 1,
+                "the manually-deleted row must be detected as an orphan"
+            );
+            tx.commit_tx().unwrap();
+        }
+
+        db.run_default("::hnsw drop vectors:idx").unwrap();
+        db.run_default(
+            r"::hnsw create vectors:idx {
+                dim: 4,
+                m: 16,
+                dtype: F32,
+                fields: [vec],
+                distance: L2,
+                ef_construction: 50,
+                extend_candidates: false,
+                keep_pruned_connections: false,
+            }",
+        )
+        .unwrap();
+        let tx = db.transact().unwrap();
+        let base = tx.get_relation("vectors", false).unwrap();
+        let (idx_handle, manifest) = base.hnsw_indices.get("idx").unwrap().clone();
+        let orphans = tx
+            .hnsw_check_consistency(&manifest, &base, &idx_handle)
+            .unwrap();
+        assert_eq!(orphans, 0, "a fresh rebuild must carry no orphans");
     }
 }

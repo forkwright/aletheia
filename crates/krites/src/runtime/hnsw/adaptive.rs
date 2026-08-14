@@ -3,9 +3,12 @@
 //! For small datasets, brute-force linear scan is both faster and produces
 //! perfect recall. Beyond a configurable threshold, HNSW approximate search
 //! takes over. The threshold is configurable per-index.
-#![expect(
-    dead_code,
-    reason = "infrastructure for future HNSW search-path integration"
+#![cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "infrastructure for future HNSW search-path integration"
+    )
 )]
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
@@ -68,9 +71,11 @@ pub(crate) enum SearchStrategy {
 impl SessionTx<'_> {
     /// Perform exact (brute-force) kNN search by scanning all vectors.
     ///
-    /// Iterates over every canary entry in the index, computes the distance to
-    /// the query vector, and returns the top-k nearest neighbours. This
-    /// guarantees perfect recall but is O(n) in dataset size.
+    /// Iterates over every indexed vector (one level-0 self-entry per
+    /// vector; see [`super::types::scan_indexed_keys`]), computes the
+    /// distance to the query vector, and returns the top-k nearest
+    /// neighbours. This guarantees perfect recall but is O(n) in dataset
+    /// size.
     pub(crate) fn hnsw_exact_knn(
         &self,
         q: &Vector,
@@ -82,44 +87,10 @@ impl SessionTx<'_> {
         stack: &mut Vec<DataValue>,
         bind_distance: bool,
     ) -> Result<Vec<Tuple>> {
-        // Scan all canary entries (level = 1) to enumerate all indexed vectors.
-        let canary_prefix = vec![DataValue::from(1_i64)];
-        let key_len = base_handle.metadata.keys.len();
-
         // Max-heap: we push all candidates and pop the worst when > k.
         let mut top_k: PriorityQueue<CompoundKey, OrderedFloat<f64>> = PriorityQueue::new();
 
-        for res in idx_handle.scan_prefix(self, &canary_prefix) {
-            let tuple = match res {
-                Ok(t) => t,
-                Err(_) => continue,
-            };
-
-            // Extract the compound key from the canary entry.
-            let tuple_key: Vec<DataValue> = match tuple.get(1..key_len + 1) {
-                Some(slice) => slice.to_vec(),
-                None => continue,
-            };
-            if tuple_key.is_empty() {
-                continue;
-            }
-
-            let idx = match tuple.get(key_len + 1).and_then(|v| v.get_int()) {
-                Some(x) => match usize::try_from(x) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                },
-                None => continue,
-            };
-            let subidx = match tuple.get(key_len + 2).and_then(|v| v.get_int()) {
-                Some(x) => match i32::try_from(x) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                },
-                None => continue,
-            };
-
-            let cand_key = (tuple_key, idx, subidx);
+        for cand_key in super::types::scan_indexed_keys(self, base_handle, idx_handle) {
             if vec_cache.ensure_key(&cand_key, base_handle, self).is_err() {
                 continue;
             }
@@ -265,6 +236,71 @@ mod tests {
             ids.contains(&5),
             "exact match id=5 should be in results, got {:?}",
             ids
+        );
+    }
+
+    /// `hnsw_exact_knn` is the oracle recall assertions compare approximate
+    /// search against. It previously scanned the `level = 1`
+    /// entry-point-marker prefix, which holds exactly one row regardless of
+    /// index size, so it always returned zero rows on any non-empty index
+    /// -- an oracle that cannot fail because it never examines a real
+    /// vector (#6642).
+    #[test]
+    fn exact_knn_enumerates_every_indexed_vector() {
+        use ndarray::Array1;
+
+        let db = DbInstance::default();
+        db.run_default(":create vectors { id: Int => vec: <F32; 4> }")
+            .unwrap();
+        db.run_default(
+            r"::hnsw create vectors:idx {
+                dim: 4,
+                m: 16,
+                dtype: F32,
+                fields: [vec],
+                distance: L2,
+                ef_construction: 50,
+                extend_candidates: false,
+                keep_pruned_connections: false,
+            }",
+        )
+        .unwrap();
+        for i in 0..10 {
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "test fixture with small integers"
+            )]
+            let val = i as f32;
+            db.run_default(&format!(
+                "?[id, vec] <- [[{i}, vec([{val}, {val}, {val}, {val}])]] :put vectors {{}}"
+            ))
+            .unwrap();
+        }
+
+        let tx = db.transact().unwrap();
+        let base = tx.get_relation("vectors", false).unwrap();
+        let (idx_handle, manifest) = base.hnsw_indices.get("idx").unwrap().clone();
+        let mut vec_cache = VectorCache::new(manifest.distance, 32);
+        let mut stack = Vec::new();
+        let q = Vector::F32(Array1::from(vec![5.0_f32, 5.0, 5.0, 5.0]));
+
+        let results = tx
+            .hnsw_exact_knn(
+                &q,
+                10,
+                &base,
+                &idx_handle,
+                &mut vec_cache,
+                &None,
+                &mut stack,
+                false,
+            )
+            .unwrap();
+
+        assert_eq!(
+            results.len(),
+            10,
+            "exact-kNN oracle must enumerate every indexed vector, not just the entry-point marker"
         );
     }
 }
