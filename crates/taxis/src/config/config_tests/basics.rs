@@ -291,6 +291,50 @@ surprise = true
 }
 
 #[test]
+fn knowledge_roundtrip_with_serendipity_weight() {
+    let config = KnowledgeConfig {
+        recall_serendipity_weight: 0.25,
+        ..KnowledgeConfig::default()
+    };
+    let json = serde_json::to_string(&config).expect("serialize knowledge config");
+    let back: KnowledgeConfig = serde_json::from_str(&json).expect("deserialize knowledge config");
+    assert!(
+        (back.recall_serendipity_weight - 0.25).abs() < f64::EPSILON,
+        "serendipity weight should survive serde roundtrip"
+    );
+}
+
+#[test]
+fn maintenance_roundtrip_with_serendipity_settings() {
+    let config = MaintenanceSettings {
+        knowledge_maintenance_serendipity: SerendipityMaintenanceSettings {
+            enabled: true,
+            cadence: "0 0 7 * * *".to_owned(),
+        },
+        ..MaintenanceSettings::default()
+    };
+    let json = serde_json::to_string(&config).expect("serialize maintenance config");
+    let back: MaintenanceSettings =
+        serde_json::from_str(&json).expect("deserialize maintenance config");
+    assert!(back.knowledge_maintenance_serendipity.enabled);
+    assert_eq!(
+        back.knowledge_maintenance_serendipity.cadence,
+        "0 0 7 * * *"
+    );
+}
+
+#[test]
+fn knowledge_rejects_unknown_fields() {
+    let json = r#"{"recallSerendipityWeight":0.25,"unexpectedField":1}"#;
+    let err = serde_json::from_str::<KnowledgeConfig>(json)
+        .expect_err("unknown fields should be rejected");
+    assert!(
+        err.to_string().contains("unknown field"),
+        "deny_unknown_fields should reject unexpected fields: {err}"
+    );
+}
+
+#[test]
 fn minimal_yaml_parses() {
     let yaml = r#"{"agents": {"list": []}}"#;
     let config: AletheiaConfig = serde_json::from_str(yaml).expect("parse minimal");
@@ -332,6 +376,25 @@ fn camel_case_compat() {
     assert_eq!(
         config.agents.defaults.model_defaults.bootstrap_max_tokens, 20_000,
         "camelCase bootstrapMaxTokens should be accepted"
+    );
+}
+
+#[test]
+fn snake_case_agent_keys_are_rejected() {
+    let json = r#"{
+        "agents": {
+            "defaults": {
+                "context_tokens": 100000,
+                "max_output_tokens": 8192
+            },
+            "list": []
+        }
+    }"#;
+    let err = serde_json::from_str::<AletheiaConfig>(json)
+        .expect_err("snake_case agent keys should be rejected after fixing the schema");
+    assert!(
+        err.to_string().contains("unknown field"),
+        "deny_unknown_fields should reject snake_case keys: {err}"
     );
 }
 
