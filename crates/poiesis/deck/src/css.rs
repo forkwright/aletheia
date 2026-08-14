@@ -32,7 +32,7 @@ pub(crate) fn three_layer_css(layout: &SlideLayout) -> String {
     // Layer 3: zone positioning
     for (name, zone) in &layout.zones {
         let class = name.css_class();
-        let style = zone_to_css(zone, &layout.canvas);
+        let style = zone_to_css(zone, layout.canvas);
         let _ = writeln!(css, ".{class} {{ position: absolute; {style} }}");
     }
 

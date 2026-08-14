@@ -35,7 +35,7 @@ impl DeckRenderer {
     /// Create a new renderer from a registry and aspect ratio.
     #[must_use]
     pub fn new(registry: ComponentRegistry, aspect: &AspectRatio) -> Self {
-        let layout = layout::resolve_layout(aspect);
+        let layout = layout::resolve_layout(*aspect);
         Self { registry, layout }
     }
 

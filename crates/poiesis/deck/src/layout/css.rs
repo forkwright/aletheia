@@ -12,8 +12,13 @@ fn f64_to_px(v: f64, canvas_px: u32) -> i64 {
 /// Convert a normalized zone to absolute CSS pixel coordinates.
 ///
 /// Returns a string like `"left: 64px; top: 36px; width: 1152px; height: 108px;"`.
+// WHY `canvas` by value but `zone` still borrowed: `Canvas` is two u32s and
+// `Copy`, small enough that the reference costs more than the copy, while
+// `Zone` is four f64s and stays borrowed. Both became crate-internal when this
+// module was folded in, which is when `trivially_copy_pass_by_ref` started
+// applying -- it exempts public API.
 #[must_use]
-pub fn zone_to_css(zone: &Zone, canvas: &Canvas) -> String {
+pub fn zone_to_css(zone: &Zone, canvas: Canvas) -> String {
     let left = f64_to_px(zone.x, canvas.width_px);
     let top = f64_to_px(zone.y, canvas.height_px);
     let width = f64_to_px(zone.w, canvas.width_px);
