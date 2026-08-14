@@ -97,22 +97,31 @@ def derive_graph() -> dict[str, dict[str, list[str]]]:
         manifest = load_toml(member_dir / "Cargo.toml")
         normal_raw, dev_raw = manifest_path_deps(manifest)
 
-        def resolve(raw_paths: set[str]) -> set[str]:
+        def resolve(raw_paths: set[str], *, allow_self: bool) -> set[str]:
             resolved: set[str] = set()
             for raw in raw_paths:
                 dep_dir = (member_dir / raw).resolve()
                 dep_name = name_by_dir.get(dep_dir)
-                if dep_name is not None and dep_name != crate_name:
+                if dep_name is not None and (allow_self or dep_name != crate_name):
                     resolved.add(dep_name)
             return resolved
 
-        depends_on[crate_name] = resolve(normal_raw)
-        # WHY subtract depends_on: a crate reachable through BOTH tables (a
-        # dev-only feature flag on an otherwise-normal dep, say) is a real
-        # prod edge -- dev_depends_on exists to name the deps that are ONLY
-        # reachable in a dev/test build, matching the field's use elsewhere
-        # in this file (e.g. crates.agora, crates.thesauros, crates.diaporeia).
-        dev_depends_on[crate_name] = resolve(dev_raw) - depends_on[crate_name]
+        # WHY normal deps exclude self: a genuine build-graph self-edge would
+        # be a cycle Cargo itself refuses to resolve, so it cannot occur here.
+        depends_on[crate_name] = resolve(normal_raw, allow_self=False)
+        # WHY dev deps ALLOW self: `path = "."` in `[dev-dependencies]` is a
+        # real, common Cargo idiom -- a crate depending on its own
+        # feature-gated surface (e.g. `test-support`) for its own test
+        # binaries (see crates/taxis/Cargo.toml). Excluding it would silently
+        # drop information the manifest actually states.
+        #
+        # WHY subtract depends_on beyond that: a crate reachable through BOTH
+        # tables (a dev-only feature flag on an otherwise-normal dep) is
+        # already a real prod edge -- dev_depends_on exists to name the deps
+        # that are ONLY reachable in a dev/test build, matching the field's
+        # use elsewhere in this file (e.g. crates.agora, crates.thesauros,
+        # crates.diaporeia).
+        dev_depends_on[crate_name] = resolve(dev_raw, allow_self=True) - depends_on[crate_name]
 
     used_by: dict[str, set[str]] = {name: set() for name in name_by_dir.values()}
     for consumer, deps in depends_on.items():
