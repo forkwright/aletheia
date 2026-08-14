@@ -2091,6 +2091,8 @@ mod consistency_hoist_tests {
 // nothing calls its helpers -- so dead-code analysis flags them. The sibling
 // test modules above gate on `test`; this one must gate on both.
 #[cfg(all(test, feature = "knowledge-store"))]
+#[expect(clippy::expect_used, reason = "test assertions")]
+#[expect(clippy::indexing_slicing, reason = "test assertions over fixture data")]
 mod consistency_multi_path_tests {
     use super::*;
 

@@ -279,6 +279,7 @@ pub fn hallucinated_evidence_rate(retrieved: &[String], relevant: &[String]) -> 
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
