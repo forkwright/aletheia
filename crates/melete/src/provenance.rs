@@ -18,9 +18,16 @@
 //! without repeating what was said.
 //!
 //! This module has no memory of its own; every hash it returns is a pure
-//! function of its input, so a caller holding the original messages,
-//! model, and config can always re-derive the same values (see
-//! [`crate::distill::verify_provenance`]) and confirm they match.
+//! function of its input. [`crate::distill::verify_provenance`] re-derives
+//! these values and confirms they match a stored record -- but it does so
+//! from the exact pruned, post-similarity-filtering message set that was
+//! actually distilled (see
+//! [`crate::distill::DistillResult::source_message_ids`]), not from the
+//! original conversation. Similarity pruning depends on hash-map iteration
+//! order internal to its LSH bucketing and is not guaranteed to reduce an
+//! identical conversation to an identical set twice, so a caller must
+//! retain the pruned set itself rather than re-derive it from the
+//! original messages.
 
 use sha2::{Digest, Sha256};
 

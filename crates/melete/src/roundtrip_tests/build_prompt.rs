@@ -568,8 +568,12 @@ fn build_prompt_with_system_message() {
         .first()
         .expect("request should have messages"); // WHY: test assertion
     let text = first_msg.content.text();
+    // WHY the trailing `#`: #4577 embeds a short message ref in the role header
+    // for source traceability, so the marker is `[SYSTEM #a1b2c3d4]`. Matching
+    // the prefix keeps the assertion about the marker being present rather than
+    // about the ref's exact length.
     assert!(
-        text.contains("[SYSTEM]"),
-        "prompt should include [SYSTEM] marker when a system message is present"
+        text.contains("[SYSTEM #"),
+        "prompt should include a [SYSTEM #<ref>] marker when a system message is present, got: {text}"
     );
 }

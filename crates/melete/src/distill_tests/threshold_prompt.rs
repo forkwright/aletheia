@@ -132,13 +132,19 @@ fn build_prompt_formats_messages_with_roles() {
         .first()
         .expect("request should have messages"); // WHY: test assertion
     let user_text = first_msg.content.text();
+    // WHY the trailing `#` rather than a closing bracket: #4577 embeds a short
+    // message ref in the role header so summary text can be traced back to the
+    // message it came from, making the marker `[USER #a1b2c3d4]`. The property
+    // under test is that the role label is present and attributable, not that
+    // the header is exactly two tokens, so these match the prefix and stay
+    // stable if the ref length changes.
     assert!(
-        user_text.contains("[USER]"),
-        "prompt should format user messages with [USER] role label"
+        user_text.contains("[USER #"),
+        "prompt should format user messages with a [USER #<ref>] role label, got: {user_text}"
     );
     assert!(
-        user_text.contains("[ASSISTANT]"),
-        "prompt should format assistant messages with [ASSISTANT] role label"
+        user_text.contains("[ASSISTANT #"),
+        "prompt should format assistant messages with an [ASSISTANT #<ref>] role label"
     );
 }
 

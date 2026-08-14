@@ -38,7 +38,7 @@ Context distillation engine: compresses conversation history via LLM-driven summ
 - **Memory flush**: Critical context (decisions, corrections, facts) is extracted and persisted to the knowledge store before the distillation boundary erases conversation history.
 - **Retry backoff**: Exponential backoff (1, 2, 4, 8 turns) on consecutive distillation failures prevents retry storms.
 - **Prompt engineering**: First-person voice, specific identifiers, 400-600 word target, traceable facts.
-- **Reconstructible provenance, not raw content**: `DistillResult` and `FlushItem` carry content hashes and hashed message references (`src/provenance.rs`), never the source excerpts themselves. A caller holding the original messages, model, and config can always recompute the same hashes (`verify_provenance`) to confirm a stored result is genuine, without the provenance record itself needing to retain conversation content.
+- **Reconstructible provenance, not raw content**: `DistillResult` and `FlushItem` carry content hashes and hashed message references (`src/provenance.rs`), never the source excerpts themselves. `verify_provenance` recomputes the same hashes to confirm a stored result is genuine -- but from the exact pruned, post-similarity-filtering message set actually distilled, not the original conversation. Similarity pruning (`src/similarity.rs`) is not guaranteed to reduce an identical conversation to an identical set twice, so a caller must retain that pruned set itself.
 
 ## Common tasks
 

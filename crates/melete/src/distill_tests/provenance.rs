@@ -2,9 +2,45 @@
 //! and their reconstruction via `verify_provenance`.
 #![expect(clippy::expect_used, reason = "test assertions")]
 
+use hermeneus::types::Message;
+
 use super::{default_engine, sample_conversation, success_provider};
-use crate::distill::verify_provenance;
+use crate::distill::{DistillConfig, verify_provenance};
 use crate::provenance;
+
+/// Reconstruct the pruned, post-similarity-filtering message set
+/// [`crate::distill::DistillResult::source_message_ids`] names, by
+/// replaying the same tail-split + prune steps `DistillEngine::distill`
+/// runs before sending anything to the LLM (see `distill.rs`'s
+/// `source_message_ids` field doc and its population-site WHY comment).
+/// This is the set [`verify_provenance`] must be called with -- not the
+/// original conversation, which similarity pruning is not guaranteed to
+/// reduce identically twice (see `provenance.rs`'s module doc).
+///
+/// WARNING: re-deriving the set here is only sound because
+/// `sample_conversation`'s messages are textually distinct enough that
+/// pruning is a no-op on them, so the run is stable despite the bucket
+/// iteration order that makes pruning non-deterministic in general. That is
+/// a property of the fixture, not of this helper. Adding two similar
+/// messages to `sample_conversation` could make these tests flake
+/// intermittently rather than fail outright -- the worst failure shape to
+/// diagnose. If that fixture gains near-duplicate content, capture the
+/// pruned set from the distill run instead of recomputing it.
+#[expect(
+    clippy::indexing_slicing,
+    reason = "split_at = messages.len() - tail where tail <= messages.len(), mirrors distill.rs"
+)]
+fn pruned_for_summarization(messages: &[Message], config: &DistillConfig) -> Vec<Message> {
+    let tail = config.verbatim_tail.min(messages.len());
+    let split_at = messages.len() - tail;
+    let to_summarize = &messages[..split_at];
+    let (pruned, _stats) = crate::similarity::prune_similar_messages(
+        to_summarize,
+        config.similarity_threshold,
+        crate::similarity::DEFAULT_MAX_SIMILARITY_MESSAGES,
+    );
+    pruned
+}
 
 #[tokio::test]
 async fn distill_populates_provenance_fields() {
@@ -21,10 +57,13 @@ async fn distill_populates_provenance_fields() {
         !result.source_message_ids.is_empty(),
         "source_message_ids must be populated"
     );
+    let expected = pruned_for_summarization(&messages, engine.config());
     assert_eq!(
         result.source_message_ids,
-        provenance::message_refs(&messages),
-        "source_message_ids must reference every distilled message, in order"
+        provenance::message_refs(&expected),
+        "source_message_ids must reference the pruned, post-similarity-filtering set \
+         actually sent to the LLM, in order -- not the verbatim tail, and not any \
+         near-duplicates similarity pruning removed"
     );
     assert!(result.input_hash.starts_with("sha256:"));
     assert!(result.prompt_hash.starts_with("sha256:"));
@@ -62,7 +101,8 @@ async fn verify_provenance_succeeds_on_unmodified_result() {
         .await
         .expect("distill must succeed");
 
-    verify_provenance(&result, &messages, &config, "test-nous")
+    let pruned = pruned_for_summarization(&messages, &config);
+    verify_provenance(&result, &pruned, &config, "test-nous")
         .expect("a genuine result must reconstruct cleanly from its own inputs");
 }
 
@@ -79,7 +119,8 @@ async fn verify_provenance_detects_a_tampered_input_hash() {
         .expect("distill must succeed");
     result.input_hash = "sha256:tampered".to_owned();
 
-    let err = verify_provenance(&result, &messages, &config, "test-nous")
+    let pruned = pruned_for_summarization(&messages, &config);
+    let err = verify_provenance(&result, &pruned, &config, "test-nous")
         .expect_err("a tampered input_hash must fail reconstruction");
     assert!(
         err.contains("input_hash"),
