@@ -281,6 +281,9 @@ pub struct MetricsState {
     pub metrics_mode: taxis::config::MetricsMode,
     /// When `false`, redact sensitive labels from the scrape output (#5322).
     pub metrics_detailed: bool,
+    /// Shared knowledge store, for the memory-health gauges (#4694).
+    #[cfg(feature = "knowledge-store")]
+    pub knowledge_store: Option<Arc<KnowledgeStore>>,
 }
 
 impl FromRef<Arc<AppState>> for MetricsState {
@@ -291,6 +294,8 @@ impl FromRef<Arc<AppState>> for MetricsState {
             metrics_registry: state.metrics_registry.clone(),
             metrics_mode: state.metrics_mode,
             metrics_detailed: state.metrics_detailed,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: state.knowledge_store.clone(),
         }
     }
 }

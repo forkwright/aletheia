@@ -421,19 +421,19 @@ pub(crate) struct StaleEntity {
 
 /// Compute composite memory health score.
 ///
-/// Weights: confidence_score 0.4, (1 - orphan_ratio) 0.3, (1 - staleness_ratio) 0.3.
+/// WHY delegated: `koina::memory_health::compute_health_score` is the SSOT
+/// for the 0.4/0.3/0.3 weighting -- pylon's server-side computation
+/// (`crates/pylon/src/metrics.rs`) calls the identical function, so the
+/// formula itself can never drift between client and server even though
+/// the two sides query their inputs independently. See that module's doc
+/// comment for what "independently" means here in practice.
 #[must_use]
 pub(crate) fn compute_health_score(
     avg_confidence: f64,
     orphan_ratio: f64,
     staleness_ratio: f64,
 ) -> f64 {
-    // INVARIANT: All inputs should be 0.0--1.0; clamp defensively.
-    let c = avg_confidence.clamp(0.0, 1.0);
-    let o = orphan_ratio.clamp(0.0, 1.0);
-    let s = staleness_ratio.clamp(0.0, 1.0);
-
-    c * 0.4 + (1.0 - o) * 0.3 + (1.0 - s) * 0.3
+    koina::memory_health::compute_health_score(avg_confidence, orphan_ratio, staleness_ratio)
 }
 
 /// Color for a health score (0.0--1.0).

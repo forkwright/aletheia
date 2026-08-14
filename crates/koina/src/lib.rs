@@ -31,6 +31,10 @@ pub mod fs;
 pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
+/// Composite memory-health scoring formula, shared by proskenion (client)
+/// and pylon (server) so the two never carry independent copies of the
+/// weights.
+pub mod memory_health;
 /// Shared Prometheus metrics registry (prometheus-client wrapper).
 pub mod metrics;
 /// Shared model catalog and tier defaults.

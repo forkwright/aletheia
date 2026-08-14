@@ -98,6 +98,22 @@ pub async fn expose(
 
     crate::metrics::update_system_gauges(uptime, &session_counts);
 
+    // WHY(#4694): computed on the scrape path rather than a background
+    // ticker -- the knowledge-store query runs in single-digit milliseconds
+    // against realistic fact/entity counts (same query shapes `GET
+    // /api/v1/knowledge/check` already runs synchronously), and a scrape
+    // interval of tens of seconds is the natural cadence for a gauge that
+    // changes on the order of new facts/entities being written, not faster.
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        match crate::handlers::knowledge::compute_memory_health_metrics(store) {
+            Ok(health) => crate::metrics::update_memory_health_gauges(health),
+            Err(e) => {
+                tracing::warn!(error = %e, "memory-health gauge computation failed, leaving prior values");
+            }
+        }
+    }
+
     let mut buffer = String::new();
     let Ok(()) = state.metrics_registry.encode(&mut buffer) else {
         unreachable!("encoding metrics into a String cannot fail");
@@ -169,6 +185,8 @@ mod tests {
             metrics_registry: MetricsRegistry::new(),
             metrics_mode: mode,
             metrics_detailed: detailed,
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
         }
     }
 

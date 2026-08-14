@@ -13,6 +13,8 @@ use crate::state::KnowledgeState;
 
 mod dto;
 pub(crate) mod entity;
+#[cfg(feature = "knowledge-store")]
+mod health_metrics;
 mod policy;
 #[cfg(test)]
 pub(crate) use dto::default_limit;
@@ -30,6 +32,8 @@ pub use entity::{
     __path_merge_entities,
 };
 pub use entity::{delete_entity, entity_memories, flag_entity, get_entity, merge_entities};
+#[cfg(feature = "knowledge-store")]
+pub(crate) use health_metrics::{MemoryHealthMetrics, compute_memory_health_metrics};
 #[cfg(feature = "knowledge-store")]
 use policy::visibility_from_row;
 use policy::{KnowledgeReadPolicy, visible_entity_ids};
@@ -685,46 +689,57 @@ pub async fn check_graph_health(
     .into_response()
 }
 
+/// Count rows in a knowledge-store relation via a `count(k)` Datalog query.
+///
+/// WHY module-level: shared by [`build_graph_check_report`] (the existing
+/// `GET /api/v1/knowledge/check` report) and `health_metrics`'s Prometheus
+/// gauge computation, rather than each carrying its own copy of the query.
+#[cfg(feature = "knowledge-store")]
+pub(crate) fn count_relation(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+    relation: &str,
+) -> Result<usize, String> {
+    use std::collections::BTreeMap;
+
+    let key_field = match relation {
+        "relationships" => "src",
+        "fact_entities" => "fact_id",
+        _ => "id",
+    };
+    let script = format!("row[{key_field}] := *{relation}{{{key_field}}} \n?[count(k)] := row[k]");
+    let result = store
+        .run_query(&script, BTreeMap::new())
+        .map_err(|e| format!("query failed: {e}"))?;
+    let col = result.headers.first().map_or("count(k)", String::as_str);
+    let count = result.get_i64(0, col).unwrap_or(0);
+    Ok(usize::try_from(count).unwrap_or(0))
+}
+
+/// Count entities with no relationship and no fact link.
+#[cfg(feature = "knowledge-store")]
+pub(crate) fn count_orphaned_entities(
+    store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
+) -> Result<usize, String> {
+    use std::collections::BTreeMap;
+
+    let script = r"
+        ?[id] :=
+            *entities{id},
+            not *relationships{src: id},
+            not *relationships{dst: id},
+            not *fact_entities{entity_id: id}
+    ";
+    let result = store
+        .run_query(script, BTreeMap::new())
+        .map_err(|e| format!("orphan query failed: {e}"))?;
+    Ok(result.row_count())
+}
+
 #[cfg(feature = "knowledge-store")]
 fn build_graph_check_report(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<GraphCheckReport, String> {
     use std::collections::BTreeMap;
-
-    fn count_relation(
-        store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
-        relation: &str,
-    ) -> Result<usize, String> {
-        let key_field = match relation {
-            "relationships" => "src",
-            "fact_entities" => "fact_id",
-            _ => "id",
-        };
-        let script =
-            format!("row[{key_field}] := *{relation}{{{key_field}}} \n?[count(k)] := row[k]");
-        let result = store
-            .run_query(&script, BTreeMap::new())
-            .map_err(|e| format!("query failed: {e}"))?;
-        let col = result.headers.first().map_or("count(k)", String::as_str);
-        let count = result.get_i64(0, col).unwrap_or(0);
-        Ok(usize::try_from(count).unwrap_or(0))
-    }
-
-    fn count_orphaned_entities(
-        store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
-    ) -> Result<usize, String> {
-        let script = r"
-            ?[id] :=
-                *entities{id},
-                not *relationships{src: id},
-                not *relationships{dst: id},
-                not *fact_entities{entity_id: id}
-        ";
-        let result = store
-            .run_query(script, BTreeMap::new())
-            .map_err(|e| format!("orphan query failed: {e}"))?;
-        Ok(result.row_count())
-    }
 
     fn count_dangling_edges(
         store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,

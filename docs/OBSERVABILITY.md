@@ -96,6 +96,12 @@ The `/metrics` endpoint exposes counters, gauges, and histograms from the worksp
 | `aletheia_conflict_unclassifiable_total` | Counter | - | Unclassifiable conflict-classifier responses |
 | `aletheia_recall_duration_seconds` | Histogram | `nous_id` | Recall scoring latency, per recalling agent |
 | `aletheia_embedding_duration_seconds` | Histogram | `provider` | Embedding computation latency |
+| `aletheia_memory_health_score` | Gauge | - | Composite memory health score (0.0-1.0), server-computed on each `/metrics` scrape |
+| `aletheia_memory_avg_confidence` | Gauge | - | Average confidence across active (non-forgotten, non-superseded) facts |
+| `aletheia_memory_orphan_ratio` | Gauge | - | Fraction of entities with no relationship and no fact link |
+| `aletheia_memory_staleness_ratio` | Gauge | - | Fraction of active facts unreviewed past the 30-day staleness threshold |
+
+> **Memory health semantics:** these four gauges are server-side counterparts of what `theatron/proskenion`'s Memory Health panel computes client-side from an already-fetched fact/entity list (`crates/theatron/proskenion/src/views/meta/assembly.rs`). Both sides call the identical `koina::memory_health::compute_health_score` formula (0.4 confidence + 0.3 non-orphan + 0.3 non-stale), so the two numbers should track each other; they are computed from independent queries (server scrape vs. client fetch, at different times, over potentially different visibility scopes for a scoped token), not wired point-to-point, so brief divergence during active writes is expected rather than a bug.
 
 > **Quality semantics:** `aletheia_knowledge_facts_total` and `aletheia_knowledge_extractions_total` measure throughput and liveness. The `aletheia_extraction_*_quality` counters measure whether the admitted facts are calibrated, non-redundant, and non-contradictory. A healthy deployment should see stable or falling rejection/empty-extraction rates, a broad confidence distribution rather than a spike at 0.95+, and contradiction rates that are low relative to the volume of new facts.
 
@@ -126,6 +132,9 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 | Extraction rejection/empty rate | < 50% of batches over 10 minutes | `rate(aletheia_extraction_quality_total{status="rejected"}[10m]) / rate(aletheia_extraction_quality_total[10m])` |
 | Contradiction spike | < 1% of admitted facts over 10 minutes | `rate(aletheia_extraction_contradictions_total[10m]) / rate(aletheia_knowledge_facts_total[10m])` |
 | Low-confidence admission rate | < 10% of admitted facts over 10 minutes | `rate(aletheia_knowledge_low_confidence_admissions_total[10m]) / rate(aletheia_knowledge_admission_total{outcome="admitted"}[10m])` |
+| Memory health score | >= 0.4 sustained over 30 minutes | `aletheia_memory_health_score` (0.4 matches proskenion's own `health_score_color` red-band threshold) |
+| Memory orphan ratio | < 20% sustained over 1 hour | `aletheia_memory_orphan_ratio` |
+| Memory staleness ratio | < 15% sustained over 1 hour | `aletheia_memory_staleness_ratio` |
 
 ---
 
@@ -307,6 +316,42 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 2. If admissions spike after a model switch, review the new model's calibration.
 3. If a specific fact type dominates, consider raising its admission threshold or adding a per-type prior.
 4. For transient spikes, verify that the low-confidence facts are not corrections that should supersede older facts.
+
+### MemoryHealthScoreLow
+
+**What it means:** The composite memory health score (`aletheia_memory_health_score`) stayed below 0.4 for 30 minutes -- the same red-band threshold `theatron/proskenion`'s Memory Health panel uses for its own client-side score.
+
+**Impact:** Low confidence, a high orphan ratio, and/or heavy staleness are compounding; recall quality and trust in stored facts are degraded.
+
+**Steps:**
+1. Check `aletheia_memory_avg_confidence`, `aletheia_memory_orphan_ratio`, and `aletheia_memory_staleness_ratio` individually to identify which component is driving the score down.
+2. Cross-check against `GET /api/v1/knowledge/check` (`GraphCheckReport`) for orphaned-entity and dangling-edge counts.
+3. If staleness dominates, review whether a distillation/decay pass is running on schedule.
+4. If confidence dominates, check for a recent extraction-quality regression (see the `Extraction*` alerts above).
+5. Open the TUI's Memory Health panel to see the same score computed client-side; persistent divergence between the two (beyond normal query-timing skew) suggests a visibility-scope or query bug worth filing, not just a data-quality issue.
+
+### MemoryOrphanRatioHigh
+
+**What it means:** Over 20% of entities have no relationship and no fact link, sustained for 1 hour.
+
+**Impact:** A large fraction of the entity graph is disconnected from anything queryable via traversal or fact lookup -- effectively dead weight in recall and graph views.
+
+**Steps:**
+1. Run `GET /api/v1/knowledge/check` for the current `orphaned_entity_count` and `entity_count`.
+2. Sample a few orphaned entities (via the knowledge browser) to determine whether they are stale test/import artifacts or genuinely unlinked real entities.
+3. If a bulk import introduced the orphans, consider a cleanup pass or backlinking.
+4. If the ratio was already elevated before this deployment, treat the threshold as informational and tune it per-instance rather than paging on it.
+
+### MemoryStalenessRatioHigh
+
+**What it means:** Over 15% of active (non-forgotten, non-superseded) facts have gone unreviewed past the 30-day staleness threshold, sustained for 1 hour.
+
+**Impact:** A growing share of memory reflects state that may no longer be current, raising the risk of recall surfacing outdated information as if it were fresh.
+
+**Steps:**
+1. Check whether a scheduled distillation/decay/review pass is configured and running.
+2. Sample stale facts (sorted oldest-`recorded_at`-first) to judge whether they are genuinely outdated or simply low-churn-but-still-valid.
+3. If staleness is expected for this deployment's usage pattern (e.g. a slow-moving knowledge domain), raise the alert threshold rather than treating every breach as an incident.
 
 ---
 
