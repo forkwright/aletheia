@@ -118,6 +118,38 @@ async fn update_section_preserves_cold_gateway_value_in_live_response() {
 }
 
 #[tokio::test]
+async fn update_section_preserves_cold_gateway_auth_none_role_in_live_response() {
+    // WHY(#5324): `gateway.auth.noneRole` is stored in `AppState.none_role` at
+    // startup and never refreshed on reload; before the registry declared it
+    // a restart-required prefix, this same PUT reported no restart needed
+    // even though the live process kept using the old role indefinitely.
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "PUT",
+        "/api/v1/config/gateway",
+        Some(serde_json::json!({
+            "auth": { "noneRole": "admin" }
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["section"], "gateway");
+    assert_ne!(
+        body["config"]["auth"]["noneRole"], "admin",
+        "cold gateway.auth.noneRole must not be published as live"
+    );
+    assert!(
+        body["restart_required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|path| path.as_str() == Some("gateway.auth.noneRole")),
+        "response should report staged restart-required gateway.auth.noneRole"
+    );
+}
+
+#[tokio::test]
 async fn update_section_rejects_semantic_invalidity_after_merge() {
     // WHY(#4583): A partial update that lowers contextTokens below the existing
     // bootstrapMaxTokens must be rejected before persisting, because the merged
