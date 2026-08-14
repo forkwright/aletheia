@@ -22,6 +22,27 @@ Status labels in this document mean:
   integration is incomplete or documented as pending.
 - **Planned:** not present as a complete app surface yet.
 
+## Publicly-Supported vs Maintainer-Private Workflow
+
+Everything described below (Golden Path steps 1-7, Headless Fallback) is the
+publicly-supported workflow: it runs against a public checkout with no private
+repo access and no cloud account. Start here:
+
+- [demo/README.md](../demo/README.md) — a portable, no-cloud-account demo
+  against a local LLM server.
+- [Quickstart](QUICKSTART.md) and the TUI onboarding path (`aletheia tui`)
+  described above.
+
+`AGENTS.md` and `CLAUDE.md` additionally document a maintainer-private
+workflow layer: the `Gate-Passed: kanon 0.1.0` commit trailer and the
+`forkwright/kanon`-hosted standards docs they reference (`STANDARDS.md`,
+`RUST.md`, `WRITING.md`, `SHELL.md`, `GNOMON.md`). `kanon` is maintainer
+tooling, not a public dependency — a contributor working from this checkout
+is not expected to have it installed or to run it locally; CI enforces the
+gate independently. Required setup for the publicly-supported path above does
+not depend on private repos. The kanon-reference cleanup in `AGENTS.md` /
+`CLAUDE.md` is tracked separately in #4531.
+
 ## 1. Configure Providers
 
 **Implemented:** Configure model providers and tool policy in the server config,
