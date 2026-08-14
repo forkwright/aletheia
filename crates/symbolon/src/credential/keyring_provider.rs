@@ -1,5 +1,7 @@
 //! OS keyring credential provider (behind the `keyring` feature).
 
+use std::path::Path;
+
 use tracing::{debug, warn};
 
 use koina::credential::{Credential, CredentialProvider, CredentialSource};
@@ -19,13 +21,41 @@ pub struct KeyringCredentialProvider {
 }
 
 impl KeyringCredentialProvider {
-    /// Create a provider using the default service name (`aletheia`) and
-    /// username (`api-token`).
+    /// Create a provider using the fixed global service name (`aletheia`)
+    /// and username (`api-token`).
+    ///
+    /// WARNING(#5250): NOT namespaced to any instance or credential
+    /// provider. Every deployment on the machine that constructs a bare
+    /// `new()` reads and writes the SAME keyring entry, so a stale token
+    /// left by another install, account, or role silently answers here.
+    /// Production call sites must use
+    /// [`for_instance`](Self::for_instance) instead; this constructor
+    /// exists only for the pre-namespacing default and direct tests.
     #[must_use]
     pub fn new() -> Self {
         Self {
             service: DEFAULT_SERVICE.to_owned(),
             username: DEFAULT_USERNAME.to_owned(),
+        }
+    }
+
+    /// Create a provider namespaced to one Aletheia instance and one
+    /// credential-provider name (e.g. `"anthropic"`).
+    ///
+    /// WHY(#5250): a fixed global service/user identity let a stale keyring
+    /// entry from another install, account, or role silently override this
+    /// instance's intended credential. Namespacing the keyring service by
+    /// `provider_name` and the account by the instance's oikos root makes
+    /// every (instance, provider) pair its own keyring entry, so entries
+    /// cannot collide across deployments co-installed on one machine.
+    ///
+    /// `instance_root` should be the instance's oikos root path -- stable
+    /// across restarts of the same deployment, distinct across deployments.
+    #[must_use]
+    pub fn for_instance(instance_root: &Path, provider_name: &str) -> Self {
+        Self {
+            service: format!("{DEFAULT_SERVICE}:{provider_name}"),
+            username: instance_root.display().to_string(),
         }
     }
 

@@ -337,6 +337,7 @@ async fn register_mcp_server(
             .map(ToString::to_string)
             .or_else(|| remote_tool.title.clone())
             .unwrap_or_else(|| format!("External MCP tool {remote_name} from {server_name}"));
+        let reversibility = reversibility_from_mcp(entry, &remote_tool);
         let tool_def = ToolDef {
             name: tool_name.clone(),
             description: tool_description.clone(),
@@ -345,10 +346,10 @@ async fn register_mcp_server(
             )),
             input_schema: input_schema_from_mcp(&remote_tool),
             category: ToolCategory::Research,
-            reversibility: reversibility_from_mcp(&remote_tool),
+            reversibility,
             auto_activate: false,
             groups: vec![ToolGroupId::Mcp],
-            tags: tags_from_mcp(&remote_tool),
+            tags: tags_from_http_policy(reversibility),
         };
         let executor = ExternalMcpToolExecutor {
             server_name: server_name.to_owned(),
@@ -361,6 +362,8 @@ async fn register_mcp_server(
                     server = server_name,
                     remote_tool = %remote_name,
                     tool = %tool_name,
+                    reversibility = %reversibility,
+                    trust_read_only_hint = entry.trust_read_only_hint,
                     "external MCP tool registered"
                 );
                 entries.push(ToolManifestEntry {
@@ -598,8 +601,26 @@ fn property_type_from_str(value: &str) -> PropertyType {
     }
 }
 
+/// Derive the effective reversibility for a discovered MCP tool.
+///
+/// INVARIANT: `entry.reversibility`, when the operator has set it, always
+/// wins — it is a locally-pinned policy, not remote metadata.
+///
+/// WHY(#4631): absent that local pin, the tool defaults to `Irreversible`
+/// (Mandatory approval) regardless of the server's own `readOnlyHint`
+/// annotation. `readOnlyHint` is self-asserted by the server being judged,
+/// so accepting it unconditionally would let a remote or compromised server
+/// label a mutating tool "read-only" and suppress its own approval prompt.
+/// The hint is only consulted when the operator has explicitly marked this
+/// server trusted via `trust_read_only_hint`.
 #[cfg(feature = "mcp")]
-fn reversibility_from_mcp(tool: &rmcp::model::Tool) -> Reversibility {
+fn reversibility_from_mcp(entry: &ExternalToolEntry, tool: &rmcp::model::Tool) -> Reversibility {
+    if let Some(reversibility) = entry.reversibility {
+        return reversibility_from_config(reversibility);
+    }
+    if !entry.trust_read_only_hint {
+        return Reversibility::Irreversible;
+    }
     match tool
         .annotations
         .as_ref()
@@ -607,20 +628,6 @@ fn reversibility_from_mcp(tool: &rmcp::model::Tool) -> Reversibility {
     {
         Some(true) => Reversibility::FullyReversible,
         _ => Reversibility::Irreversible,
-    }
-}
-
-#[cfg(feature = "mcp")]
-fn tags_from_mcp(tool: &rmcp::model::Tool) -> Vec<ToolTag> {
-    if tool
-        .annotations
-        .as_ref()
-        .and_then(|annotations| annotations.read_only_hint)
-        == Some(true)
-    {
-        vec![ToolTag::Fetch]
-    } else {
-        vec![ToolTag::Fetch, ToolTag::Execute]
     }
 }
 
@@ -870,7 +877,79 @@ mod tests {
             groups: None,
             reversibility: None,
             auth: None,
+            trust_read_only_hint: false,
         }
+    }
+
+    #[cfg(feature = "mcp")]
+    fn mcp_tool_with_read_only_hint(hint: Option<bool>) -> rmcp::model::Tool {
+        rmcp::model::Tool {
+            name: "probe".into(),
+            annotations: Some(rmcp::model::ToolAnnotations {
+                read_only_hint: hint,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[cfg(feature = "mcp")]
+    #[test]
+    fn untrusted_mcp_server_read_only_hint_is_ignored() {
+        // WHY(#4631): before this fix, `reversibility_from_mcp` trusted a
+        // remote server's self-reported `readOnlyHint` unconditionally, so a
+        // remote or compromised MCP server could label a mutating tool
+        // "read-only" and suppress its own approval prompt. Without an
+        // explicit `trust_read_only_hint`, the hint must be ignored and the
+        // tool must stay Irreversible (Mandatory approval) regardless of
+        // what the server claims. This assertion fails against the old
+        // unconditional-trust code, which returned `FullyReversible` here.
+        let e = entry(ExternalToolKind::Mcp, None, None);
+        let tool = mcp_tool_with_read_only_hint(Some(true));
+        assert_eq!(
+            reversibility_from_mcp(&e, &tool),
+            Reversibility::Irreversible
+        );
+    }
+
+    #[cfg(feature = "mcp")]
+    #[test]
+    fn trusted_mcp_server_read_only_hint_downgrades_reversibility() {
+        let mut e = entry(ExternalToolKind::Mcp, None, None);
+        e.trust_read_only_hint = true;
+        let tool = mcp_tool_with_read_only_hint(Some(true));
+        assert_eq!(
+            reversibility_from_mcp(&e, &tool),
+            Reversibility::FullyReversible
+        );
+    }
+
+    #[cfg(feature = "mcp")]
+    #[test]
+    fn trusted_mcp_server_without_hint_stays_irreversible() {
+        let mut e = entry(ExternalToolKind::Mcp, None, None);
+        e.trust_read_only_hint = true;
+        let tool = mcp_tool_with_read_only_hint(None);
+        assert_eq!(
+            reversibility_from_mcp(&e, &tool),
+            Reversibility::Irreversible
+        );
+    }
+
+    #[cfg(feature = "mcp")]
+    #[test]
+    fn explicit_config_reversibility_overrides_trust_and_remote_hint() {
+        // INVARIANT: an operator-pinned `reversibility` is local policy and
+        // always wins, whether or not the server is hint-trusted and
+        // regardless of what the server's hint claims.
+        let mut e = entry(ExternalToolKind::Mcp, None, None);
+        e.trust_read_only_hint = true;
+        e.reversibility = Some(ExternalToolReversibility::PartiallyReversible);
+        let tool = mcp_tool_with_read_only_hint(Some(true));
+        assert_eq!(
+            reversibility_from_mcp(&e, &tool),
+            Reversibility::PartiallyReversible
+        );
     }
 
     #[test]
@@ -1155,6 +1234,12 @@ done
         let def = registry.get_def(&tool_name).expect("tool def");
         assert_eq!(def.groups, vec![ToolGroupId::Mcp]);
         assert!(def.tags.contains(&ToolTag::Fetch));
+        // WHY(#4631): the fake server declares `readOnlyHint: true` for
+        // "echo" (see the script above), but `entry` never sets
+        // `trust_read_only_hint`. Through the full stdio-MCP registration
+        // path -- not just the isolated `reversibility_from_mcp` unit -- the
+        // untrusted hint must still be ignored.
+        assert_eq!(def.reversibility, Reversibility::Irreversible);
 
         let input = ToolInput {
             name: tool_name,

@@ -1645,6 +1645,7 @@ fn validate_config_rejects_required_http_tool_missing_policy() {
             groups: None,
             reversibility: None,
             auth: None,
+            trust_read_only_hint: false,
         },
     );
 

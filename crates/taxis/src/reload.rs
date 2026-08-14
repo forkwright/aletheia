@@ -825,6 +825,7 @@ mod tests {
                 groups: None,
                 reversibility: None,
                 auth: None,
+                trust_read_only_hint: false,
             },
         );
         staged.agents.defaults.model_defaults.thinking_budget = 20_000;

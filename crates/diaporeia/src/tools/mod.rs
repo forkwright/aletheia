@@ -2465,10 +2465,16 @@ impl DiaporeiaServer {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::future::Future;
+    use std::pin::Pin;
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::time::Instant;
 
     use hermeneus::provider::ProviderRegistry;
+    use hermeneus::test_utils::MockProvider;
+    use hermeneus::types::{CompletionResponse, ContentBlock, StopReason, Usage};
+    use koina::id::ToolName;
     use rmcp::model::CallToolRequestParams;
     use tokio_util::sync::CancellationToken;
 
@@ -2618,6 +2624,289 @@ mod tests {
             note_store: None,
             blackboard_store: None,
         })
+    }
+
+    // ── #4778: session_message approval-path coverage ──────────────────────
+    //
+    // WHY: `send_turn_streaming` (what `session_message` calls) hardcodes
+    // `approval_gate: None` at the type level -- there is no parameter to
+    // pass a gate through. The shared no-gate policy that decision leans on
+    // is exhaustively tested at the `dispatch_tools` boundary in
+    // `crates/nous/src/execute/tests/approval.rs`. What is NOT covered
+    // anywhere is the actual MCP transport: that `session_message` really
+    // does route through that hardcoded-None call, end to end, for both an
+    // auto-executing and a policy-denied tool. These two tests close that
+    // gap by driving a real nous actor through the real RMCP transport.
+
+    struct ApprovalTestExecutor {
+        calls: Arc<AtomicUsize>,
+    }
+
+    impl organon::registry::ToolExecutor for ApprovalTestExecutor {
+        fn execute<'a>(
+            &'a self,
+            input: &'a organon::types::ToolInput,
+            _ctx: &'a organon::types::ToolContext,
+        ) -> Pin<
+            Box<
+                dyn Future<Output = organon::error::Result<organon::types::ToolResult>> + Send + 'a,
+            >,
+        > {
+            Box::pin(async {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                Ok(organon::types::ToolResult::text(format!(
+                    "executed: {}",
+                    input.name.as_str()
+                )))
+            })
+        }
+    }
+
+    fn approval_test_tool_def(
+        name: &str,
+        reversibility: organon::types::Reversibility,
+    ) -> organon::types::ToolDef {
+        organon::types::ToolDef {
+            name: ToolName::new(name).expect("valid tool name"),
+            description: format!("Test tool: {name}"),
+            extended_description: None,
+            input_schema: organon::types::InputSchema {
+                properties: indexmap::IndexMap::default(),
+                required: Vec::new(),
+            },
+            category: organon::types::ToolCategory::Workspace,
+            reversibility,
+            auto_activate: true,
+            groups: vec![organon::types::ToolGroupId::Read],
+            tags: Vec::new(),
+        }
+    }
+
+    fn make_tool_call_response(tool_name: &str, tool_id: &str) -> CompletionResponse {
+        CompletionResponse {
+            id: "resp-tool".to_owned(),
+            model: "mock-model".to_owned(),
+            stop_reason: StopReason::ToolUse,
+            content: vec![ContentBlock::ToolUse {
+                id: tool_id.to_owned(),
+                name: tool_name.to_owned(),
+                input: serde_json::json!({}),
+            }],
+            usage: Usage {
+                input_tokens: 80,
+                output_tokens: 30,
+                ..Usage::default()
+            },
+            cost_usd: None,
+            duration_ms: None,
+        }
+    }
+
+    /// Oikos root with one nous workspace, ready for `NousManager::spawn`.
+    fn make_approval_test_oikos(nous_id: &str) -> (tempfile::TempDir, Arc<taxis::oikos::Oikos>) {
+        let dir = tempfile::TempDir::new().expect("tmpdir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("nous").join(nous_id)).expect("mkdir nous");
+        std::fs::create_dir_all(root.join("shared")).expect("mkdir shared");
+        std::fs::create_dir_all(root.join("theke")).expect("mkdir theke");
+        std::fs::write(
+            root.join("nous").join(nous_id).join("SOUL.md"),
+            "I am a test nous.",
+        )
+        .expect("write SOUL.md");
+        (dir, Arc::new(taxis::oikos::Oikos::from_root(root)))
+    }
+
+    fn approval_test_nous_config(nous_id: &str) -> nous::config::NousConfig {
+        nous::config::NousConfig {
+            id: Arc::from(nous_id),
+            generation: nous::config::NousGenerationConfig {
+                model: "mock-model".to_owned(),
+                ..nous::config::NousGenerationConfig::default()
+            },
+            tool_groups: organon::types::ToolGroupPolicy::AllowAll {
+                reason: "session_message approval-path test (#4778)".to_owned(),
+            },
+            ..nous::config::NousConfig::default()
+        }
+    }
+
+    /// Full `DiaporeiaState` with one live nous actor wired to a scripted
+    /// [`MockProvider`] and a registry holding one tool at a chosen
+    /// reversibility. The nous is spawned (not just configured), so a real
+    /// `session_message` call runs the real actor pipeline.
+    async fn make_approval_test_state(
+        nous_id: &str,
+        responses: Vec<CompletionResponse>,
+        tool_def: organon::types::ToolDef,
+        executor: Box<dyn organon::registry::ToolExecutor>,
+    ) -> (tempfile::TempDir, Arc<crate::state::DiaporeiaState>) {
+        let (dir, oikos) = make_approval_test_oikos(nous_id);
+        let store = Arc::new(tokio::sync::Mutex::new(
+            mneme::store::SessionStore::open(&oikos.sessions_db()).expect("open sessions store"),
+        ));
+
+        let mut providers = ProviderRegistry::new();
+        providers.register(Box::new(
+            MockProvider::with_responses(responses).models(&["mock-model"]),
+        ));
+
+        let mut tool_registry = organon::registry::ToolRegistry::new();
+        tool_registry
+            .register(tool_def, executor)
+            .expect("register test tool");
+        let tool_registry = Arc::new(tool_registry);
+
+        let mut manager = nous::manager::NousManager::new(
+            Arc::new(providers),
+            Arc::clone(&tool_registry),
+            Arc::clone(&oikos),
+            None,
+            None,
+            Some(Arc::clone(&store)),
+            #[cfg(feature = "knowledge-store")]
+            None,
+            Arc::new(Vec::new()),
+            None,
+            None,
+            taxis::config::NousBehaviorConfig::default(),
+            taxis::config::ToolLimitsConfig::default(),
+        );
+        manager
+            .spawn(
+                approval_test_nous_config(nous_id),
+                nous::pipeline::PipelineConfig::default(),
+            )
+            .await
+            .expect("spawn test nous");
+
+        let mut config = taxis::config::AletheiaConfig::default();
+        config.gateway.auth.mode = "none".to_owned();
+
+        let state = Arc::new(crate::state::DiaporeiaState {
+            session_store: store,
+            nous_manager: Arc::new(manager),
+            tool_registry,
+            oikos,
+            auth_facade: None,
+            start_time: Instant::now(),
+            config: Arc::new(tokio::sync::RwLock::new(config)),
+            auth_mode: "none".to_owned(),
+            none_role: "admin".to_owned(),
+            shutdown: CancellationToken::new(),
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
+            note_store: None,
+            blackboard_store: None,
+        });
+        (dir, state)
+    }
+
+    async fn call_session_message(
+        state: Arc<crate::state::DiaporeiaState>,
+        nous_id: &str,
+    ) -> CallToolResult {
+        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::from_config(
+            &taxis::config::McpRateLimitConfig::default(),
+        ));
+        let server = DiaporeiaServer::with_state(state, rate_limiter);
+        let (client_io, server_io) = tokio::io::duplex(16 * 1024);
+        let server_task = tokio::spawn(async move { rmcp::serve_server(server, server_io).await });
+        let mut client = rmcp::serve_client((), client_io)
+            .await
+            .expect("client initializes");
+        let mut server_service = server_task
+            .await
+            .expect("server task joins")
+            .expect("server initializes");
+
+        let mut args = serde_json::Map::new();
+        args.insert(
+            "nous_id".to_owned(),
+            serde_json::Value::String(nous_id.to_owned()),
+        );
+        args.insert(
+            "session_key".to_owned(),
+            serde_json::Value::String("probe".to_owned()),
+        );
+        args.insert(
+            "content".to_owned(),
+            serde_json::Value::String("go".to_owned()),
+        );
+
+        let result = client
+            .peer()
+            .call_tool(CallToolRequestParams::new("session_message").with_arguments(args))
+            .await
+            .expect("session_message call completes");
+
+        client.close().await.expect("client close");
+        server_service.close().await.expect("server close");
+        result
+    }
+
+    #[tokio::test]
+    async fn session_message_auto_executes_none_approval_tool() {
+        // WHY(#4778): a FullyReversible (None-approval) tool must still
+        // execute through the real MCP `session_message` call with no
+        // approval gate wired.
+        let calls = Arc::new(AtomicUsize::new(0));
+        let executor = ApprovalTestExecutor {
+            calls: Arc::clone(&calls),
+        };
+        let responses = vec![
+            make_tool_call_response("safe_probe", "call-1"),
+            hermeneus::test_utils::make_response("done"),
+        ];
+        let (_dir, state) = make_approval_test_state(
+            "syn",
+            responses,
+            approval_test_tool_def("safe_probe", organon::types::Reversibility::FullyReversible),
+            Box::new(executor),
+        )
+        .await;
+
+        call_session_message(state, "syn").await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            1,
+            "a FullyReversible tool must execute with no approval gate wired"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_message_denies_mandatory_tool_without_approval_gate() {
+        // WHY(#4778): an Irreversible (Mandatory-approval) tool must be
+        // policy-denied -- never executed -- through the real MCP
+        // `session_message` call, because no MCP approval protocol exists
+        // to consult. This is the fail-closed contract #4828 established at
+        // the shared dispatch boundary, proven here at the actual transport
+        // MCP callers use. Before that fix, a no-gate `Required` call
+        // auto-approved; this test would have failed against that code.
+        let calls = Arc::new(AtomicUsize::new(0));
+        let executor = ApprovalTestExecutor {
+            calls: Arc::clone(&calls),
+        };
+        let responses = vec![
+            make_tool_call_response("risky_probe", "call-1"),
+            hermeneus::test_utils::make_response("done"),
+        ];
+        let (_dir, state) = make_approval_test_state(
+            "syn",
+            responses,
+            approval_test_tool_def("risky_probe", organon::types::Reversibility::Irreversible),
+            Box::new(executor),
+        )
+        .await;
+
+        call_session_message(state, "syn").await;
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "an Irreversible tool must never execute through MCP session_message with no approval gate wired"
+        );
     }
 
     #[tokio::test]

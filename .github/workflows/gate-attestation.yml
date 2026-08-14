@@ -413,7 +413,7 @@ jobs:
       # #4470. NOT --all-features (z3-sys); this is the deployment feature set
       # used on metis.
       - name: Aletheia gated-provider feature gate
-        run: cargo check -p aletheia --features mcp,energeia,codex-provider,kimi-provider
+        run: cargo check -p aletheia --features mcp,energeia,codex-provider,kimi-provider,keyring
 
       - name: cargo check fuzz targets
         env:

@@ -172,6 +172,22 @@ groups = ["mcp"]
 reversibility = "irreversible"
 ```
 
+For `type = "mcp"`, an explicit `reversibility` above is a locally-pinned
+policy and always takes precedence over anything the server reports. Absent
+that, a discovered MCP tool defaults to `reversibility = "irreversible"`
+(Mandatory approval) regardless of the tool's own `readOnlyHint` annotation.
+`readOnlyHint` is self-asserted by the remote server, so it is consulted only
+when the operator sets `trustReadOnlyHint = true` on that server entry —
+never by default. Set it only for servers the operator has reviewed and
+trusts to report their own tools' side effects honestly.
+
+```toml
+[tools.optional.internal-search]
+type = "mcp"
+command = "internal-search-mcp"
+trustReadOnlyHint = true
+```
+
 ---
 
 ## gateway
