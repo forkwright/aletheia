@@ -1226,6 +1226,7 @@ fn run_dedup_approve(
 /// used to run directly here had no scoping at all: any nous's command
 /// path could clear any other nous's review candidate (aletheia#5290).
 #[cfg(feature = "recall")]
+#[allow(clippy::similar_names)] // WHY: entity_a_id/entity_b_id are a symmetric pair (reject has no canonical/merged side)
 fn run_dedup_reject(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
     nous_id: &str,
