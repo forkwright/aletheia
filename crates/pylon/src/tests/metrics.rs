@@ -32,7 +32,8 @@ async fn metrics_local_only_allows_loopback() {
     let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::LocalOnly, false).await;
     let mut req = Request::get("/metrics").body(Body::empty()).unwrap();
-    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))));
+    req.extensions_mut()
+        .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))));
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
@@ -79,10 +80,7 @@ async fn metrics_bearer_requires_authentication() {
 async fn metrics_bearer_accepts_valid_token() {
     let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::Bearer, false).await;
-    let resp = app
-        .oneshot(authed_get("/metrics"))
-        .await
-        .unwrap();
+    let resp = app.oneshot(authed_get("/metrics")).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
