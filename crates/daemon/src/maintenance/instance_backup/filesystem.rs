@@ -269,3 +269,130 @@ pub(crate) fn set_files_restrictive(dir: &Path) {
 
 #[cfg(not(unix))]
 pub(crate) fn set_files_restrictive(_dir: &Path) {}
+
+/// Copy a file or directory tree, skipping any source file for which
+/// `exclude` returns `true`. Returns `(bytes_copied, files_copied,
+/// files_excluded)`.
+///
+/// WHY(#5353): a deliberate second copy path alongside [`copy_path`] rather
+/// than an `Option<exclude>` parameter threaded onto it -- `copy_path` has
+/// six call sites that have no exclusion need, and this lets an entry's
+/// copy step drop specific files (credential decryption-key sidecars)
+/// while still hashing/counting the tree it actually produced. Copying
+/// everything and deleting afterward would leave the manifest's byte
+/// count, file count, and content hash describing a tree that no longer
+/// exists on disk, since [`super::BackupBuild::copy_entry`] hashes
+/// immediately after copying.
+pub(crate) fn copy_path_excluding<F: Fn(&Path) -> bool>(
+    src: &Path,
+    dst: &Path,
+    exclude: &F,
+) -> error::Result<(u64, u32, u32)> {
+    reject_symlinks_in_backup_source(src, src)?;
+    copy_path_checked_excluding(src, dst, src, exclude)
+}
+
+fn copy_path_checked_excluding<F: Fn(&Path) -> bool>(
+    src: &Path,
+    dst: &Path,
+    source_root: &Path,
+    exclude: &F,
+) -> error::Result<(u64, u32, u32)> {
+    let metadata = fs::symlink_metadata(src).context(error::MaintenanceIoSnafu {
+        context: format!("reading source metadata {}", src.display()),
+    })?;
+    if metadata.file_type().is_symlink() {
+        return refuse_backup_source_entry("symbolic link", src, source_root);
+    }
+
+    if metadata.is_dir() {
+        return copy_dir_recursive_excluding(src, dst, source_root, exclude);
+    }
+
+    if !metadata.is_file() {
+        return refuse_backup_source_entry("unsupported file type", src, source_root);
+    }
+
+    if exclude(src) {
+        return Ok((0, 0, 1));
+    }
+
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent).context(error::MaintenanceIoSnafu {
+            context: format!("creating backup dir {}", parent.display()),
+        })?;
+    }
+    let bytes = fs::copy(src, dst).context(error::MaintenanceIoSnafu {
+        context: format!("copying {} to {}", src.display(), dst.display()),
+    })?;
+    Ok((bytes, 1, 0))
+}
+
+/// Recursively copy a directory, skipping entries `exclude` matches.
+/// Returns `(bytes_copied, files_copied, files_excluded)`. See
+/// [`copy_path_excluding`] for why this exists alongside
+/// [`copy_dir_recursive`].
+fn copy_dir_recursive_excluding<F: Fn(&Path) -> bool>(
+    src: &Path,
+    dst: &Path,
+    source_root: &Path,
+    exclude: &F,
+) -> error::Result<(u64, u32, u32)> {
+    fs::create_dir_all(dst).context(error::MaintenanceIoSnafu {
+        context: format!("creating backup dir {}", dst.display()),
+    })?;
+
+    let mut total_bytes = 0u64;
+    let mut total_files = 0u32;
+    let mut total_excluded = 0u32;
+
+    let entries = fs::read_dir(src).context(error::MaintenanceIoSnafu {
+        context: format!("reading source dir {}", src.display()),
+    })?;
+
+    for entry in entries {
+        let entry = entry.context(error::MaintenanceIoSnafu {
+            context: "reading directory entry",
+        })?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        let metadata = fs::symlink_metadata(&src_path).context(error::MaintenanceIoSnafu {
+            context: format!("reading source metadata {}", src_path.display()),
+        })?;
+
+        if metadata.file_type().is_symlink() {
+            return refuse_backup_source_entry("symbolic link", &src_path, source_root);
+        } else if metadata.is_dir() {
+            let (bytes, files, excluded) =
+                copy_dir_recursive_excluding(&src_path, &dst_path, source_root, exclude)?;
+            total_bytes += bytes;
+            total_files += files;
+            total_excluded += excluded;
+        } else if metadata.is_file() {
+            if exclude(&src_path) {
+                total_excluded += 1;
+                continue;
+            }
+            let bytes = fs::copy(&src_path, &dst_path).context(error::MaintenanceIoSnafu {
+                context: format!("copying {} to {}", src_path.display(), dst_path.display()),
+            })?;
+            total_bytes += bytes;
+            total_files += 1;
+        } else {
+            return refuse_backup_source_entry("unsupported file type", &src_path, source_root);
+        }
+    }
+
+    Ok((total_bytes, total_files, total_excluded))
+}
+
+/// Whether `path` is a symbolon credential decryption-key sidecar
+/// (`<name>.key` under a `credentials` directory). (#5353)
+///
+/// Scoped to the `credentials` path component so `config/tls/*.key` (TLS
+/// private keys, a different artifact with a different risk profile) is
+/// unaffected.
+pub(crate) fn is_credential_key_sidecar(path: &Path) -> bool {
+    path.extension().is_some_and(|ext| ext == "key")
+        && path.components().any(|c| c.as_os_str() == "credentials")
+}

@@ -54,6 +54,15 @@ pub struct StoreEntry {
     /// Logical store name, e.g. `knowledge.fjall` or `sessions.db`.
     pub name: String,
     /// Absolute source path the store was copied from.
+    ///
+    /// SECURITY(#5043): never serialized into the manifest. A backup set is a
+    /// portability/restore artifact that gets copied off the originating
+    /// host; `backup_path` and the injected `restore_path` evidence (see
+    /// `manifest::inject_entry_evidence`) are the relative paths restore and
+    /// verify actually key off, so recording the workstation's absolute
+    /// source path here would leak usernames/mount layout/private directory
+    /// names into every exported manifest for no restore-side benefit.
+    #[serde(skip_serializing, default)]
     pub source_path: PathBuf,
     /// Relative backup path inside the backup set.
     pub backup_path: PathBuf,
@@ -93,6 +102,9 @@ pub struct BackupManifest {
     /// ISO 8601 timestamp when the backup set was created.
     pub created_at: String,
     /// Absolute path to the instance root that was backed up.
+    ///
+    /// SECURITY(#5043): never serialized -- see `StoreEntry::source_path`.
+    #[serde(skip_serializing, default)]
     pub source_root: PathBuf,
     /// Required stores (must be present and verifiable for a valid set).
     pub stores: Vec<StoreEntry>,
@@ -292,6 +304,9 @@ pub(crate) struct BackupBuild {
     pub(crate) workspace_omissions: Vec<WorkspaceOmission>,
     pub(crate) total_bytes: u64,
     pub(crate) total_files: u64,
+    /// Count of credential decryption-key sidecars excluded from this
+    /// backup set. See [`BackupManifest::credential_keys_excluded`]. (#5353)
+    pub(crate) credential_keys_excluded: u32,
     pub(crate) snapshot_time: String,
     /// Monotonic instant sampled around the first entry actually copied.
     ///

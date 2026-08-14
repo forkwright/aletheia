@@ -13,8 +13,9 @@ use super::{
     BackupBuild, BackupManifest, InstanceBackup, InstanceBackupConfig, InstanceBackupReport,
     MANIFEST_VERSION, OptionalStoreRecord, SNAPSHOT_PROTOCOL_VERSION, STAGING_DIR_PREFIX,
     STATUS_EXCLUDED, SYMLINK_POLICY, WorkspaceOmission, classify_workspace_source, dir_size,
-    inject_manifest_evidence, inject_quiesce_evidence, manifest_created_time,
-    resolve_workspace_source, set_dir_restrictive, set_files_restrictive, write_text_file,
+    inject_credential_evidence, inject_manifest_evidence, inject_quiesce_evidence,
+    is_credential_key_sidecar, manifest_created_time, resolve_workspace_source,
+    set_dir_restrictive, set_files_restrictive, write_text_file,
 };
 
 static BACKUP_SEQ: AtomicU64 = AtomicU64::new(0);
@@ -309,12 +310,22 @@ impl InstanceBackup {
     fn copy_config(&self, backup_path: &Path, build: &mut BackupBuild) -> error::Result<()> {
         let config_src = self.config.instance_root.join("config");
         if config_src.exists() {
-            build.copy_entry(
+            // SECURITY(#5353): symbolon stores each credential's decryption
+            // key as a bare sidecar file (`<name>.key`) next to the
+            // ciphertext it decrypts -- copying both into a portable backup
+            // set makes the backup as sensitive as the plaintext tokens it
+            // protects, since nothing else on disk is needed to decrypt.
+            // Excluded during the copy (not deleted afterward) so the
+            // entry's byte count, file count, and hash describe the backup
+            // that was actually produced. The ciphertext itself is kept:
+            // useless without its key, but evidence a credential existed.
+            build.copy_entry_excluding(
                 "config",
                 config_src,
                 &backup_path.join("config"),
                 PathBuf::from("config"),
                 false,
+                &is_credential_key_sidecar,
             )?;
 
             // WHY(#5140): credentials and TLS keys are copied verbatim into the
@@ -548,6 +559,7 @@ impl InstanceBackup {
                 context: String::from("serializing backup manifest integrity evidence"),
             })?;
         inject_quiesce_evidence(&mut manifest_value, build, quiesce_mechanism);
+        inject_credential_evidence(&mut manifest_value, build);
         let manifest_path = backup_path.join("manifest.json");
         let manifest_json = serde_json::to_string_pretty(&manifest_value)
             .map_err(std::io::Error::other)
