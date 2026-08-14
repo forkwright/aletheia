@@ -1,8 +1,11 @@
 //! Tracing layer that redacts sensitive field values before output.
 //!
-//! Sits in the subscriber stack as the file-output layer when redaction is
-//! enabled. Fields matching configured names are replaced or truncated, and
-//! all string values are scanned for API key patterns.
+//! Fields matching configured names are replaced or truncated, and all
+//! string values are scanned for API key patterns. This is the one
+//! implementation of that policy — every sink that needs redaction (#5251:
+//! console as well as the log file) is wired to its own `RedactingLayer`
+//! instance rather than a separately maintained call site, so "every sink
+//! is redacted" stays true by construction instead of by convention.
 
 use std::collections::HashSet;
 use std::fmt as stdfmt;
@@ -373,6 +376,50 @@ mod tests {
         assert!(
             out.contains("[REDACTED]"),
             "numeric secret must be redacted: {out}"
+        );
+    }
+
+    /// #5251: redaction was wired to the file sink only; console/stderr
+    /// layers were built separately from plain `fmt::layer()` and saw raw
+    /// field values. This composes two independent `RedactingLayer`
+    /// instances into one subscriber — the same shape `init_tracing` now
+    /// uses for console + file — and proves a secret reaching both sinks is
+    /// redacted in both, not just the one a prior fix happened to wrap.
+    #[test]
+    fn redaction_applies_uniformly_across_multiple_independent_sinks() {
+        let console_buffer = Arc::new(Mutex::new(Vec::new()));
+        let file_buffer = Arc::new(Mutex::new(Vec::new()));
+
+        let console_layer = RedactingLayer::new(
+            TestWriter(Arc::clone(&console_buffer)),
+            ["token".to_owned()],
+            [],
+            200,
+        );
+        let file_layer = RedactingLayer::new(
+            TestWriter(Arc::clone(&file_buffer)),
+            ["token".to_owned()],
+            [],
+            200,
+        );
+
+        let subscriber = tracing_subscriber::registry()
+            .with(console_layer)
+            .with(file_layer);
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(token = "sk-shared-secret", "dual-sink check");
+        });
+
+        let console_out = output_string(&console_buffer);
+        let file_out = output_string(&file_buffer);
+
+        assert!(
+            console_out.contains("[REDACTED]") && !console_out.contains("sk-shared-secret"),
+            "console sink must be redacted: {console_out}"
+        );
+        assert!(
+            file_out.contains("[REDACTED]") && !file_out.contains("sk-shared-secret"),
+            "file sink must be redacted: {file_out}"
         );
     }
 

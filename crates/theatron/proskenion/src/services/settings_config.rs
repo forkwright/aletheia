@@ -402,8 +402,17 @@ fn resolve_server_tokens(
         }
 
         if let Some(token_ref) = server.auth_token_ref.as_deref() {
-            server.auth_token =
-                secret_store::load_token(base, token_ref).context(SecretStoreSnafu)?;
+            // WHY: `ServerEntry.auth_token` is this struct's transitional
+            // plaintext field (never persisted — see `persist_server_tokens`
+            // below, which clears it after every write) and stays `String`
+            // because downstream `ConnectionConfig`/`state::settings::ServerEntry`
+            // use it as a plain bearer value for the HTTP Authorization
+            // header. Only the secret-store boundary itself is typed
+            // `SecretString` here; `expose_secret()` is this crate's audited
+            // unwrap of it.
+            server.auth_token = secret_store::load_token(base, token_ref)
+                .context(SecretStoreSnafu)?
+                .map(|token| token.expose_secret().to_owned());
         }
     }
     Ok(migrated_plaintext)

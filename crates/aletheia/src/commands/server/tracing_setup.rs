@@ -134,7 +134,8 @@ pub(super) fn spawn_trace_ingest_flush(
 /// Initialise the global tracing subscriber with dual output:
 ///
 /// - **Console**: human-readable (or JSON) at `log_level`, respecting
-///   `RUST_LOG` when set.
+///   `RUST_LOG` when set. When redaction is enabled this is always JSON —
+///   see the WHY below.
 /// - **File**: always JSON at `file_level` (default `"warn"`), written to
 ///   `log_dir/aletheia.log.<date>` with daily rotation via `tracing_appender`.
 ///
@@ -160,26 +161,35 @@ pub(super) fn init_tracing(
     let file_appender = tracing_appender::rolling::daily(log_dir, "aletheia.log");
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    // WHY: Option<L> implements Layer<S> as a no-op when None, so both arms
-    // compose cleanly without type-erasing via Box<dyn Layer>.
-    let console_filter_clone = console_filter.clone();
-    let json_console = json.then(|| {
-        fmt::layer()
-            .json()
-            .with_target(true)
-            .with_filter(console_filter_clone)
-    });
-    let text_console = (!json).then(|| {
-        fmt::layer()
-            .with_target(true)
-            .with_thread_ids(false)
-            .with_file(false)
-            .with_line_number(false)
-            .with_filter(console_filter)
-    });
-
     if redaction.enabled {
-        let redacting = RedactingLayer::new(
+        // WHY(#5251): a redactor wired to one sink means secrets reach the
+        // others — the previous shape wrapped only the file writer in
+        // `RedactingLayer` and built the console layers from plain
+        // `fmt::layer()`, so console/stderr got the raw field values.
+        // `RedactingLayer` is the one implementation of the redaction
+        // policy (`redact_fields` / `truncate_fields` / `redact_sensitive`);
+        // using it for every sink — instead of adding a second, separately
+        // maintained redaction call site — is what makes "every sink is
+        // redacted" true rather than merely asserted in a doc comment.
+        //
+        // Each sink still keeps its own filter level (console honours
+        // `RUST_LOG`/`log_level`; file stays independently at
+        // `file_level`) — that asymmetry is unrelated to redaction and the
+        // fix does not collapse it. What the fix does give up: console
+        // output is always JSON while redaction is on, because JSON is the
+        // only format `RedactingLayer` implements. The `json` flag's
+        // human-readable console mode does not apply here — a security
+        // invariant does not get to lose to a formatting preference, and
+        // JSON is still `jq`-legible.
+        let console_redacting = RedactingLayer::new(
+            std::io::stdout(),
+            redaction.redact_fields.iter().cloned(),
+            redaction.truncate_fields.iter().cloned(),
+            redaction.truncate_length,
+        )
+        .with_filter(console_filter);
+
+        let file_redacting = RedactingLayer::new(
             non_blocking,
             redaction.redact_fields.iter().cloned(),
             redaction.truncate_fields.iter().cloned(),
@@ -188,13 +198,32 @@ pub(super) fn init_tracing(
         .with_filter(file_filter);
 
         tracing_subscriber::registry()
-            .with(json_console)
-            .with(text_console)
-            .with(redacting)
+            .with(console_redacting)
+            .with(file_redacting)
             .with(trace_ingest)
             .try_init()
             .whatever_context("failed to set global tracing subscriber")?;
     } else {
+        // WHY: Option<L> implements Layer<S> as a no-op when None, so both
+        // arms compose cleanly without type-erasing via Box<dyn Layer>.
+        // Built only in this branch — redaction.enabled above takes the
+        // `RedactingLayer` path for both sinks instead.
+        let console_filter_clone = console_filter.clone();
+        let json_console = json.then(|| {
+            fmt::layer()
+                .json()
+                .with_target(true)
+                .with_filter(console_filter_clone)
+        });
+        let text_console = (!json).then(|| {
+            fmt::layer()
+                .with_target(true)
+                .with_thread_ids(false)
+                .with_file(false)
+                .with_line_number(false)
+                .with_filter(console_filter)
+        });
+
         let file_layer = fmt::layer()
             .json()
             .with_ansi(false)

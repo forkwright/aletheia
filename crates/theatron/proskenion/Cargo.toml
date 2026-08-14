@@ -18,28 +18,28 @@ rust-version = "1.94"
 
 [workspace.dependencies.themelion]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.5.1"
+tag = "v1.6.0"
 version = "1.5.0"
 
 [workspace.dependencies.skeue]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.5.1"
+tag = "v1.6.0"
 version = "1.5.0"
 
 [workspace.dependencies.gramma]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.5.1"
+tag = "v1.6.0"
 version = "1.5.0"
 
 [workspace.dependencies.bathron]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.5.1"
+tag = "v1.6.0"
 version = "1.5.0"
 features = ["logging", "atomic-write"]
 
 [workspace.dependencies.keryx]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.5.1"
+tag = "v1.6.0"
 version = "1.5.0"
 
 [package]
@@ -76,7 +76,7 @@ keryx = { workspace = true }
 # skeue / proskenion boundary break trait resolution even though each
 # compiles in isolation. Bumping is a deliberate fleet action
 # (theatron-side first, then mirror here), never auto-resolution.
-dioxus = { version = "=0.7.9", features = ["desktop", "router"] }
+dioxus = { version = "=0.7.10", features = ["desktop", "router"] }
 
 # Async runtime
 tokio = { version = "1", features = [
@@ -136,6 +136,10 @@ dirs = "6"
 toml = "1.0"
 aes-gcm = "0.10"
 keyring = "3"
+# WHY: version/features must be kept in sync with the aletheia root
+# workspace's [workspace.dependencies] entry — this standalone workspace
+# cannot inherit across the boundary (see the file header above).
+zeroize = { version = "1", default-features = false, features = ["std"] }
 
 # Desktop notifications (freedesktop.org D-Bus on Linux)
 notify-rust = "4"

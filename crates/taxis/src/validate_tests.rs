@@ -2144,3 +2144,47 @@ fn is_loopback_bind_rejects_wildcard_and_lan() {
     assert!(!crate::validate::is_loopback_bind("172.16.0.1"));
     assert!(!crate::validate::is_loopback_bind("host-a.lan"));
 }
+
+// WHY(#5385): `training.path` is documented as relative to the instance
+// root but was passed through this validator unchecked. These pin the
+// rejection so a future edit to `validate_training` cannot silently widen
+// back to a pass-through.
+
+#[test]
+fn training_accepts_plain_relative_path() {
+    let section = json!({ "path": "data/training" });
+    assert!(
+        validate_section("training", &section).is_ok(),
+        "plain relative training.path should be accepted"
+    );
+}
+
+#[test]
+fn training_rejects_absolute_path() {
+    let section = json!({ "path": "/etc/aletheia-training" });
+    let err = validate_section("training", &section).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("training.path")),
+        "error should cite training.path: {err:?}"
+    );
+}
+
+#[test]
+fn training_rejects_dotdot_traversal() {
+    let section = json!({ "path": "data/../../etc" });
+    let err = validate_section("training", &section).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("training.path")),
+        "error should cite training.path: {err:?}"
+    );
+}
+
+#[test]
+fn training_rejects_empty_path() {
+    let section = json!({ "path": "" });
+    let err = validate_section("training", &section).unwrap_err();
+    assert!(
+        err.errors.iter().any(|e| e.contains("training.path")),
+        "error should cite training.path: {err:?}"
+    );
+}

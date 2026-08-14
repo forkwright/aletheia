@@ -1,0 +1,45 @@
+# WHY: docs/CONFIGURATION.md's field-reference block is generated from the
+# `AletheiaConfig` schema (aletheia#5774); this gate fails a PR whose schema
+# change (new field, renamed key, changed default) left the committed doc
+# stale, the same way krites-verbatim-drift and docs-lint gate other
+# generated/checked doc surfaces. No path filter: the generator also resolves
+# cross-crate defaults (e.g. eidos::training::TrainingConfig), so a
+# schema-affecting change outside crates/taxis/src/config/ would silently
+# escape a narrower trigger.
+name: Configuration doc check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: field reference matches schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): this job only reads source files to render markdown --
+          # no build, no git history walk. A full clone under this job's short
+          # timeout is the metadata-only-job class defect in #6757; blob:none
+          # fetches trees/commits eagerly and blobs on demand, which is enough
+          # for a working-tree read.
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_generate_configuration_doc.py'
+
+      - name: Check docs/CONFIGURATION.md matches the config schema
+        run: python3 scripts/generate-configuration-doc.py --check
