@@ -1,3 +1,9 @@
+---
+scope: "crates/mneme/"
+defers_to: ["../../CLAUDE.md"]
+tightens: ["memory facade and run-context provenance guidance"]
+---
+
 # mneme
 
 ## At a glance
@@ -38,13 +44,14 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 | `episteme` | `embedding_eval` | `EvalDataset`, `EvalRunResult`, `compare_models` | always |
 | `episteme` | `extract` | `ConversationMessage`, `ExtractionConfig`, `ExtractionEngine`, `ExtractionError`, `ExtractionProvider`, `ExtractedToolCall`, `LlmCallSnafu` | always |
 | `episteme` | `instinct` | `ToolObservation`, `ToolOutcome`, `sanitize_parameters`, `truncate_context_summary`, constants | always |
-| `episteme` | `knowledge_store` | `HybridQuery`, `KnowledgeConfig`, `KnowledgeStore`, `QueryResult` | `mneme-engine` |
+| `episteme` | `knowledge_store` | `HybridQuery`, `KnowledgeConfig`, `KnowledgeStore`, `QueryResult`, `scoped_visibility_rules` | `mneme-engine` |
 | `episteme` | `recall` | `FactorScores`, `RecallEngine`, `RecallWeights`, `ScoredResult` | always |
 | `episteme` | `skill` | `SkillContent`, `export_skills_to_cc`, `parse_skill_md`, `scan_skill_dir` | always |
 | `episteme` | `skills` | `CandidateTracker`, `ContentEvidenceRef`, `ExtractedSkill`, `PendingSkill`, `SkillCandidate`, `SkillExtractionAudit`, `SkillExtractor`, `SkillObservationEvidence`, `SkillReviewAudit`, `SkillReviewDecision`, `SkillReviewInput`, `SkillSourceEvidence`, `ToolCallRecord`, `TrackResult`, `tool_sequence_hash` + `extract` submodule | always |
 | `episteme` | `manifest`, `query_rewrite`, `side_query`, `trace_ingest`, `verification` | public support modules used by recall, tracing, and verification consumers | always |
 | `episteme`/`graphe` | `metrics` | extraction/embedding/conflict/correction quality metrics, `record_backup_duration`, `register_knowledge`, `register_sessions` | always |
 | local | `checkpoint`, `finalize` | working-checkpoint store contract and idempotent turn-finalization primitives | always |
+| local | `run_context` | run-context provenance, inspection, and redaction records (`RunContextRecord`, `ContextItem`, `ContextInspectionReport`) | always |
 | local | `benchmark` | benchmark isolation and evidence primitives | `mneme-engine` |
 | `eidos` | `bookkeeping` | provider contracts and extraction DTOs | always |
 | `eidos` | `training` | `TrainingConfig`, `TrainingRecord`, `TRAINING_RECORD_SCHEMA_VERSION` | always |
@@ -76,6 +83,7 @@ Mneme itself has no logic. All changes go to the sub-crates:
 | Add Datalog query builder | `episteme` (query module, requires mneme-engine) |
 | Modify Datalog engine | `krites` |
 | Add embedding provider | `episteme` (embedding module) |
+| Add run-context provenance/inspection field | local (`run_context`) |
 
 ## Recent substrate notes
 

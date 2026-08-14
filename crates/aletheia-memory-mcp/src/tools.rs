@@ -405,17 +405,6 @@ fn matches_scope_filters(
     true
 }
 
-/// Datalog rule defining facts visible to a requesting nous.
-///
-/// WHY: mirrors `episteme::knowledge_store::marshal::scoped_visibility_rules`
-/// without depending on the non-public helper. A fact is visible when it is
-/// owned by the requester, marked `shared`, or marked `published`.
-const SCOPED_VISIBILITY_RULES: &str = concat!(
-    "visible_fact[id] := *facts{id, nous_id: $requester_nous_id}\n",
-    "visible_fact[id] := *facts{id, visibility: 'shared'}\n",
-    "visible_fact[id] := *facts{id, visibility: 'published'}\n",
-);
-
 /// A visible fact row materialized for aggregation tools.
 #[derive(Debug, Clone)]
 struct ScopedFactRow {
@@ -527,7 +516,7 @@ fn run_scoped_facts_query(
     store: &KnowledgeStore,
     requester_nous_id: &str,
 ) -> crate::error::Result<Vec<ScopedFactRow>> {
-    let rules = SCOPED_VISIBILITY_RULES;
+    let rules = mneme::knowledge_store::scoped_visibility_rules();
     let script = format!(
         "{}{}",
         rules,
@@ -2526,6 +2515,90 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(parsed["fact_count"], 1, "alice should count only her fact");
         assert_eq!(parsed["topic_count"], 1);
+    }
+
+    // WHY: `run_scoped_facts_query` (behind `nous_stats`/`nous_list_topics`)
+    // used to embed a private copy of the store's scoped-visibility Datalog
+    // (#5284); the copy covered only the `nous_id`-owned branch in the
+    // fixtures above. This test drives the `shared` and `published` branches
+    // through the now-shared `mneme::knowledge_store::scoped_visibility_rules`
+    // so a future edit to the canonical rule that silently drops a branch
+    // (or a stray reintroduced private copy that omits one) fails here.
+    #[tokio::test]
+    async fn stats_admits_other_nous_facts_marked_shared_or_published() {
+        let store = open_store();
+        store
+            .insert_fact(&sample_fact(
+                "f-alice-1",
+                "alice",
+                "alice note",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+        store
+            .insert_fact(&sample_fact(
+                "f-bob-shared",
+                "bob",
+                "bob shared note",
+                "note",
+                Visibility::Shared,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+        store
+            .insert_fact(&sample_fact(
+                "f-carol-published",
+                "carol",
+                "carol published task",
+                "task",
+                Visibility::Published,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+        store
+            .insert_fact(&sample_fact(
+                "f-bob-private",
+                "bob",
+                "bob private note",
+                "note",
+                Visibility::Private,
+                FactSensitivity::Public,
+                None,
+            ))
+            .unwrap();
+
+        let server = MemoryServer::with_write_token(store, None, None)
+            .with_nous_id(Some("alice".to_owned()));
+        let params = NousStatsParams {
+            project_id: None,
+            scope: None,
+            min_visibility: None,
+            max_sensitivity: None,
+            include_store_path: None,
+        };
+        let result = server.nous_stats(Parameters(params)).await.unwrap();
+        let text = result
+            .content
+            .first()
+            .unwrap()
+            .as_text()
+            .unwrap()
+            .text
+            .clone();
+        let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+        // alice's own private fact + bob's shared + carol's published are
+        // visible; bob's private fact is not.
+        assert_eq!(
+            parsed["fact_count"], 3,
+            "alice should see her own fact plus bob's shared and carol's published facts, \
+             but not bob's private fact"
+        );
+        assert_eq!(parsed["topic_count"], 2, "note and task types both present");
     }
 
     #[tokio::test]
