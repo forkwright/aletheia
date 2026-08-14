@@ -824,8 +824,8 @@ Per-model pricing for LLM cost metrics. Keyed by model name.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `inputCostPerMtok` | float | *required* |  |
-| `outputCostPerMtok` | float | *required* |  |
+| `inputCostPerMtok` | float | *required* | Cost per million input tokens in USD. |
+| `outputCostPerMtok` | float | *required* | Cost per million output tokens in USD. |
 
 ## sandbox
 

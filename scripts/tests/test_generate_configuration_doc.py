@@ -42,6 +42,8 @@ class SchemaFixtureTestCase(unittest.TestCase):
         for cache_name in (
             "_FILE_CACHE",
             "_TYPE_FILE_CACHE",
+            "_TYPE_FILE_LOCAL_CACHE",
+            "_TYPE_ALIAS_CACHE",
             "_TYPE_CACHE",
             "_USE_IMPORTS_CACHE",
             "_LOCALS_CACHE",
@@ -49,6 +51,7 @@ class SchemaFixtureTestCase(unittest.TestCase):
             getattr(doc_mod, cache_name).clear()
         doc_mod._CONFIG_FILES = None
         doc_mod._REPO_TYPE_INDEX = None
+        doc_mod._REPO_ALIAS_INDEX = None
 
     def write_rs(self, name: str, content: str) -> Path:
         path = self.config_dir / name
@@ -233,6 +236,119 @@ pub enum RetryPolicy {
         result = doc_mod.non_unit_enum_for("RetryPolicy")
         self.assertIsNotNone(result)
         self.assertEqual(result.name, "RetryPolicy")
+
+
+# ── bug 4: `pub type X = path::Y;` aliases must resolve to Y, not to a ─────
+# ── same-named struct/enum found elsewhere in the repo ─────────────────────
+
+
+class CrossCrateTypeAliasRegressionTests(SchemaFixtureTestCase):
+    """WHY (aletheia#6741 fallout): consolidating two duplicate pricing
+    types left `pub type ModelPricing = koina::models::ModelPrice;` in the
+    config module. `locate_type_file` only ever looks for `pub struct`/
+    `pub enum` declarations, never `pub type`, so resolving the bare name
+    `ModelPricing` fell straight through to the repo-wide struct/enum name
+    index -- which happened to also match an unrelated `ModelPricing` DTO
+    struct in a REST-handler crate (same name, same field names, zero doc
+    comments). The generator rendered that decoy's undocumented fields
+    instead of following the alias to the real, documented type. This
+    fixture reproduces that exact shape: a same-named decoy struct in one
+    crate, and the real aliased target (with field docs) in another.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.write_rs(
+            "mod.rs",
+            '''\
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+/// Root configuration for an Aletheia instance.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+pub struct AletheiaConfig {
+    /// Per-model pricing for LLM cost metrics. Keyed by model name.
+    pub pricing: HashMap<String, ModelPricing>,
+}
+
+/// Per-model pricing rates for cost estimation in metrics.
+pub type ModelPricing = otherkrate::models::ModelPrice;
+''',
+        )
+        # decoy: an unrelated, undocumented struct of the SAME name in a
+        # different crate -- what the repo-wide name index finds first if
+        # the alias above is never followed.
+        decoy_dir = self.repo_root / "crates" / "decoykrate" / "src"
+        decoy_dir.mkdir(parents=True)
+        (decoy_dir / "handlers.rs").write_text(
+            '''\
+use serde::Deserialize;
+
+/// Schema for a single pricing entry.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPricing {
+    pub input_cost_per_mtok: Option<f64>,
+    pub output_cost_per_mtok: Option<f64>,
+}
+''',
+            encoding="utf-8",
+        )
+        # the real aliased target, in yet another crate -- what the alias
+        # in mod.rs actually points at.
+        target_dir = self.repo_root / "crates" / "otherkrate" / "src"
+        target_dir.mkdir(parents=True)
+        (target_dir / "models.rs").write_text(
+            '''\
+use serde::{Deserialize, Serialize};
+
+/// Per-model pricing rates for cost estimation.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelPrice {
+    /// Cost per million input tokens in USD.
+    pub input_cost_per_mtok: f64,
+    /// Cost per million output tokens in USD.
+    pub output_cost_per_mtok: f64,
+}
+''',
+            encoding="utf-8",
+        )
+
+    def test_alias_resolves_to_the_aliased_crate_not_the_same_named_decoy(self) -> None:
+        parsed = doc_mod.parse_type("ModelPricing")
+        assert isinstance(parsed, doc_mod.StructDef)
+        self.assertEqual(parsed.name, "ModelPrice")
+        self.assertEqual(parsed.source_file.name, "models.rs")
+        self.assertEqual(parsed.source_file.parent.parent.name, "otherkrate")
+
+    def test_field_docs_come_from_the_aliased_type_not_the_decoy(self) -> None:
+        parsed = doc_mod.parse_type("ModelPricing")
+        assert isinstance(parsed, doc_mod.StructDef)
+        docs = {fd.name: fd.doc for fd in parsed.fields}
+        self.assertEqual(docs["input_cost_per_mtok"], "Cost per million input tokens in USD.")
+        self.assertEqual(docs["output_cost_per_mtok"], "Cost per million output tokens in USD.")
+
+    def test_rendered_reference_carries_the_aliased_field_docs_not_blank_cells(self) -> None:
+        rendered = doc_mod.build_reference()
+        self.assertIn(
+            "| `inputCostPerMtok` | float | *required* | Cost per million input tokens in USD. |",
+            rendered,
+        )
+        self.assertIn(
+            "| `outputCostPerMtok` | float | *required* | Cost per million output tokens in USD. |",
+            rendered,
+        )
+        # WHY a separate negative assertion: an empty Description cell and a
+        # populated one both satisfy "there is a row for this field" -- the
+        # bug this pins is specifically a blank cell, which the positive
+        # assertions above cannot rule out on their own (a decoy row with
+        # the same field names and type would also match a loose "contains
+        # inputCostPerMtok" check).
+        self.assertNotIn("| `inputCostPerMtok` | float | *required* |  |", rendered)
+        self.assertNotIn("| `outputCostPerMtok` | float | *required* |  |", rendered)
 
 
 # ── fail-closed parsing, generically ────────────────────────────────────────

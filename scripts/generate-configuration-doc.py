@@ -338,13 +338,25 @@ _TYPE_FILE_CACHE: dict[str, Path | None] = {}
 
 
 _REPO_TYPE_INDEX: dict[tuple[str, str], Path] | None = None
+_REPO_ALIAS_INDEX: dict[str, str] | None = None
 _REPO_ITEM_RE = re.compile(r"^\s*pub\s+(struct|enum)\s+([A-Za-z_][A-Za-z0-9_]*)\b", re.MULTILINE)
+# WHY a separate regex rather than folding `type` into `_REPO_ITEM_RE`'s
+# alternation: a `pub type X = Y;` item names its OWN identifier (X) but
+# defines no fields of its own -- resolving it means following to Y, not
+# indexing X as a definition site the way struct/enum are.
+_REPO_ALIAS_RE = re.compile(
+    r"^\s*pub\s+type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([A-Za-z_][A-Za-z0-9_:]*)", re.MULTILINE
+)
 
 
 def build_repo_type_index() -> dict[tuple[str, str], Path]:
     """One-time repo-wide (struct|enum) name -> defining-file index, built
     from a single pass over raw file text (no normalize/comment-strip --
     that cost is paid lazily, only for files actually selected for parsing).
+    The same pass also populates `_REPO_ALIAS_INDEX` (see
+    `build_repo_alias_index`), so a name that collides across both a
+    struct/enum decl and a `pub type` alias elsewhere in the repo pays the
+    walk only once total.
 
     WHY: `locate_type_file`'s fallback exists for cross-crate config types
     (e.g. `eidos::training::TrainingConfig`), but several fields also
@@ -353,10 +365,11 @@ def build_repo_type_index() -> dict[tuple[str, str], Path]:
     per-unresolved-name repo scan pays a ~1900-file, ~30MB walk once per
     such name; this index pays it once total.
     """
-    global _REPO_TYPE_INDEX
-    if _REPO_TYPE_INDEX is not None:
+    global _REPO_TYPE_INDEX, _REPO_ALIAS_INDEX
+    if _REPO_TYPE_INDEX is not None and _REPO_ALIAS_INDEX is not None:
         return _REPO_TYPE_INDEX
     index: dict[tuple[str, str], Path] = {}
+    alias_index: dict[str, str] = {}
     for f in sorted(REPO_ROOT.glob("crates/*/src/**/*.rs")):
         if any(part in SEARCH_EXCLUDE_DIR_NAMES for part in f.parts):
             continue
@@ -368,8 +381,43 @@ def build_repo_type_index() -> dict[tuple[str, str], Path]:
             continue
         for m in _REPO_ITEM_RE.finditer(raw):
             index.setdefault((m.group(1), m.group(2)), f)
+        for m in _REPO_ALIAS_RE.finditer(raw):
+            alias_index.setdefault(m.group(1), m.group(2))
     _REPO_TYPE_INDEX = index
+    _REPO_ALIAS_INDEX = alias_index
     return index
+
+
+def build_repo_alias_index() -> dict[str, str]:
+    """One-time repo-wide `pub type NAME = path::to::Target;` name -> target
+    path index. Shares `build_repo_type_index`'s single file walk."""
+    build_repo_type_index()
+    assert _REPO_ALIAS_INDEX is not None
+    return _REPO_ALIAS_INDEX
+
+
+_TYPE_FILE_LOCAL_CACHE: dict[str, Path | None] = {}
+
+
+def locate_type_file_local(type_name: str, item_kind: str) -> Path | None:
+    """Search only the crate's own config module tree (`config_files()`) for
+    `pub ITEM_KIND TYPE_NAME`, never falling back to the repo-wide name
+    index. Split out from `locate_type_file` so callers that need to know
+    "is this genuinely declared where AletheiaConfig's own tree lives"
+    (as opposed to merely findable somewhere in the repo) can ask that
+    question directly -- `parse_type` uses it to give a local `pub type`
+    alias priority over a same-named struct/enum that merely happens to
+    exist elsewhere."""
+    cache_key = f"{item_kind}:{type_name}"
+    if cache_key in _TYPE_FILE_LOCAL_CACHE:
+        return _TYPE_FILE_LOCAL_CACHE[cache_key]
+    pattern = re.compile(rf"^\s*pub\s+{item_kind}\s+{re.escape(type_name)}\b", re.MULTILINE)
+    for f in config_files():
+        if pattern.search(read_file(f)):
+            _TYPE_FILE_LOCAL_CACHE[cache_key] = f
+            return f
+    _TYPE_FILE_LOCAL_CACHE[cache_key] = None
+    return None
 
 
 def locate_type_file(type_name: str, item_kind: str = r"(?:struct|enum)") -> Path | None:
@@ -380,11 +428,10 @@ def locate_type_file(type_name: str, item_kind: str = r"(?:struct|enum)") -> Pat
     cache_key = f"{item_kind}:{type_name}"
     if cache_key in _TYPE_FILE_CACHE:
         return _TYPE_FILE_CACHE[cache_key]
-    pattern = re.compile(rf"^\s*pub\s+{item_kind}\s+{re.escape(type_name)}\b", re.MULTILINE)
-    for f in config_files():
-        if pattern.search(read_file(f)):
-            _TYPE_FILE_CACHE[cache_key] = f
-            return f
+    local = locate_type_file_local(type_name, item_kind)
+    if local is not None:
+        _TYPE_FILE_CACHE[cache_key] = local
+        return local
     index = build_repo_type_index()
     kinds = ("struct", "enum") if item_kind == r"(?:struct|enum)" else (item_kind,)
     for k in kinds:
@@ -394,6 +441,44 @@ def locate_type_file(type_name: str, item_kind: str = r"(?:struct|enum)") -> Pat
             return f
     _TYPE_FILE_CACHE[cache_key] = None
     return None
+
+
+_TYPE_ALIAS_CACHE: dict[str, str | None] = {}
+
+
+def locate_type_alias(type_name: str, *, local_only: bool = False) -> str | None:
+    """Find a `pub type TYPE_NAME = path::to::Target;` alias and return its
+    target path text (e.g. `koina::models::ModelPrice`). Searches the taxis
+    config module tree first, then (unless `local_only`) falls back to the
+    repo-wide alias index.
+
+    WHY this is a step distinct from `locate_type_file`: a `pub type X =
+    Y;` item defines neither a struct nor an enum, so it is invisible to
+    both the local struct/enum search and the repo-wide struct/enum index.
+    Left unresolved, it silently degrades to that index's bare-name
+    fallback, which returns the first SAME-NAMED struct/enum anywhere in
+    the repo -- and when one exists by coincidence (a `ModelPricing` DTO in
+    a REST-handler crate, unrelated to the taxis config alias of the same
+    name), the fallback renders that unrelated type's fields, with that
+    type's own field docs (or lack of them), instead of the aliased type.
+    """
+    cache_key = f"{'local:' if local_only else ''}{type_name}"
+    if cache_key in _TYPE_ALIAS_CACHE:
+        return _TYPE_ALIAS_CACHE[cache_key]
+    pattern = re.compile(
+        rf"^\s*pub\s+type\s+{re.escape(type_name)}\s*=\s*([A-Za-z_][A-Za-z0-9_:]*)", re.MULTILINE
+    )
+    for f in config_files():
+        m = pattern.search(read_file(f))
+        if m:
+            _TYPE_ALIAS_CACHE[cache_key] = m.group(1)
+            return m.group(1)
+    if local_only:
+        _TYPE_ALIAS_CACHE[cache_key] = None
+        return None
+    target = build_repo_alias_index().get(type_name)
+    _TYPE_ALIAS_CACHE[cache_key] = target
+    return target
 
 
 def locate_const_file(crate: str, const_name: str) -> Path | None:
@@ -610,8 +695,37 @@ def parse_type(name: str) -> StructDef | EnumDef | None:
         return _TYPE_CACHE[name]
     _TYPE_CACHE[name] = None  # cycle guard placeholder
 
+    # INVARIANT: a local `pub type NAME = path::Target;` alias, when present,
+    # is definitive -- it is how THIS crate's own compiler resolves NAME, not
+    # a guess -- so it is tried before the repo-wide struct/enum name index
+    # below, which is a last-resort bare-name fallback that a same-named
+    # struct/enum living in an unrelated crate can satisfy incorrectly (a
+    # `ModelPricing` alias to `koina::models::ModelPrice`, resolved instead
+    # to an unrelated `ModelPricing` DTO struct in a REST-handler crate).
+    if locate_type_file_local(name, "struct") is None and locate_type_file_local(name, "enum") is None:
+        alias_target = locate_type_alias(name, local_only=True)
+        if alias_target is not None:
+            target_name = alias_target.rsplit("::", 1)[-1]
+            if target_name and target_name != name:
+                resolved = parse_type(target_name)
+                _TYPE_CACHE[name] = resolved
+                return resolved
+
     struct_file = locate_type_file(name, "struct")
     enum_file = locate_type_file(name, "enum")
+
+    # A name absent locally AND absent from the repo-wide struct/enum index
+    # may still be a `pub type` alias declared elsewhere in the repo. Tried
+    # last, after the repo-wide struct/enum index, so it can never outrank a
+    # genuine same-named struct/enum found there.
+    if struct_file is None and enum_file is None:
+        alias_target = locate_type_alias(name)
+        if alias_target is not None:
+            target_name = alias_target.rsplit("::", 1)[-1]
+            if target_name and target_name != name:
+                resolved = parse_type(target_name)
+                _TYPE_CACHE[name] = resolved
+                return resolved
 
     if struct_file is not None:
         text = read_file(struct_file)
