@@ -1637,7 +1637,11 @@ def main() -> int:
     generated = build_reference()
 
     if args.check:
-        doc = read_doc()
+        try:
+            doc = read_doc()
+        except FileNotFoundError:
+            print(f"ERROR: {DOC_PATH} does not exist; run the generator to create it", file=sys.stderr)
+            return 1
         begin = doc.find(BEGIN_MARKER)
         end = doc.find(END_MARKER)
         if begin == -1 or end == -1:

@@ -38,5 +38,8 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
+      - name: Unit tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_generate_configuration_doc.py'
+
       - name: Check docs/CONFIGURATION.md matches the config schema
         run: python3 scripts/generate-configuration-doc.py --check
