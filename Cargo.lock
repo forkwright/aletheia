@@ -2340,6 +2340,7 @@ dependencies = [
  "mneme",
  "nous",
  "organon",
+ "reqwest 0.13.4",
  "rmcp",
  "rmcp-macros",
  "schemars",
