@@ -2335,6 +2335,7 @@ dependencies = [
  "cargo_metadata",
  "hermeneus",
  "http",
+ "indexmap 2.14.0",
  "jiff",
  "koina",
  "mneme",
