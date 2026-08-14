@@ -36,6 +36,80 @@ async fn cross_nous_message_processes_successfully() {
     join.await.expect("join");
 }
 
+/// Regression test for #5023: `handle_cross_message` previously called
+/// `execute_turn_with_panic_boundary` directly, bypassing `mark_turn_active`
+/// and `finalize_turn` entirely. That meant a cross turn never ran
+/// `finalize_turn`'s corpus side-effect spawning (extraction, skill
+/// analysis, distillation, auto-dream), regardless of configuration —
+/// asserted here against extraction, the side effect with no provider or
+/// knowledge-store dependency to fixture around.
+#[tokio::test]
+async fn handle_cross_message_runs_finalize_turn_side_effects() {
+    let config = PipelineConfig {
+        extraction: Some(mneme::extract::ExtractionConfig {
+            enabled: true,
+            min_message_length: 1,
+            ..mneme::extract::ExtractionConfig::default()
+        }),
+        ..PipelineConfig::default()
+    };
+    let (mut actor, _tx, _dir) = make_test_actor(config);
+
+    let envelope = CrossNousEnvelope {
+        message: CrossNousMessage::new("sender", "test-agent", "cross message content"),
+    };
+
+    actor
+        .handle_cross_message(envelope)
+        .await
+        .expect("cross message should process");
+
+    assert_eq!(
+        actor.runtime.background_tasks.len(),
+        1,
+        "finalize_turn's corpus side-effect spawning must run for a cross \
+         turn the same way it does for a normal turn"
+    );
+}
+
+/// Regression test for #5023: a cross turn must be visible to health
+/// diagnostics as active work, not read as idle/stuck-and-dead, while it is
+/// running (`check_health()` reads `active_turn` for exactly this). A turn
+/// that skipped `mark_turn_active` would leave `active_turn` false for the
+/// entire duration of a long cross turn. Runs on `pending_providers()`
+/// (never completes) inside a spawned task so the assertion can observe
+/// shared actor state WHILE the turn is genuinely in flight.
+#[tokio::test]
+async fn handle_cross_message_marks_turn_active_before_execution() {
+    let (mut actor, _tx, _dir) =
+        make_test_actor_with_providers(pending_providers(), PipelineConfig::default());
+    let active_turn = Arc::clone(&actor.runtime.active_turn);
+
+    let envelope = CrossNousEnvelope {
+        message: CrossNousMessage::new("sender", "test-agent", "cross message content"),
+    };
+
+    let handle = tokio::spawn(async move {
+        let _ = actor.handle_cross_message(envelope).await;
+    });
+
+    let mut observed_active = false;
+    for _ in 0..200 {
+        if active_turn.load(std::sync::atomic::Ordering::Acquire) {
+            observed_active = true;
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(
+        observed_active,
+        "mark_turn_active must run before turn execution begins, so \
+         active_turn is true while a cross turn is genuinely in flight"
+    );
+
+    handle.abort();
+}
+
 #[tokio::test]
 async fn cross_nous_message_survives_pipeline_panic() {
     let (handle, join, cross_tx, _dir) = spawn_panicking_actor_with_cross();
