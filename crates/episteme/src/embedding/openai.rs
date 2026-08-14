@@ -339,7 +339,6 @@ impl EmbeddingProvider for OpenAiEmbeddingProvider {
 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
-#[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: indices asserted valid by construction"
