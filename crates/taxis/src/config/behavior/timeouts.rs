@@ -17,12 +17,24 @@ pub struct TimeoutsConfig {
     /// Requests exceeding this limit are cancelled and may trigger a retry.
     /// Valid range: 30–3600. Default: 300.
     pub llm_call_secs: u32,
+    /// Maximum wall-clock seconds a Required/Mandatory tool call waits for an
+    /// operator approval decision before defaulting to deny.
+    ///
+    /// WHY configurable (#5011): approval lifetime is part of the execution
+    /// safety contract — it controls how long an irreversible action blocks
+    /// the pipeline and what a dropped client connection does. It was
+    /// previously an unowned constant in `nous::approval`. Valid range:
+    /// 5–3600. Default: 120 (matches the desktop daily-driver UX — long
+    /// enough to read the overlay, short enough that a dropped connection
+    /// denies rather than hangs).
+    pub approval_timeout_secs: u32,
 }
 
 impl Default for TimeoutsConfig {
     fn default() -> Self {
         Self {
             llm_call_secs: koina::defaults::TIMEOUT_SECONDS,
+            approval_timeout_secs: 120,
         }
     }
 }

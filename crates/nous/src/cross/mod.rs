@@ -9,6 +9,15 @@ use koina::ulid::Ulid;
 pub mod knowledge;
 
 pub(super) const DEFAULT_REPLY_TIMEOUT: Duration = Duration::from_secs(30);
+/// Bound on how long a fire-and-forget [`CrossNousRouter::send`] waits for
+/// the target's bounded inbox to have capacity.
+///
+/// WHY(#5024): unlike `ask`, fire-and-forget messages carry no per-message
+/// timeout to derive an admission budget from. A stuck target that stops
+/// draining its cross inbox must not block the caller indefinitely; five
+/// seconds is long enough to absorb a momentary burst without making a
+/// "fire-and-forget" call read as blocking.
+pub(super) const DEFAULT_CROSS_SEND_TIMEOUT: Duration = Duration::from_secs(5);
 pub(super) const DEFAULT_MAX_LOG_ENTRIES: usize = 1000;
 const OPERATOR_SENDER_ID: &str = "operator";
 
@@ -501,6 +510,73 @@ mod tests {
             .with_reply(Duration::from_millis(10));
         let err = router.ask(msg).await.unwrap_err();
         assert!(err.to_string().contains("timed out"));
+    }
+
+    /// WHY(#5024): before the fix, `ask_inner` awaited `sender.send(envelope)`
+    /// unbounded — queue admission was not covered by `reply_timeout` at all,
+    /// so a caller against a full, undrained inbox could wait far longer
+    /// than the timeout it configured. Bounding the whole call from outside
+    /// with `tokio::time::timeout` catches that: if admission is still
+    /// unbounded, the outer timeout fires and `elapsed` is `Err`, whereas a
+    /// correctly bounded `ask()` returns its own `AskTimeout` well within it.
+    #[tokio::test]
+    async fn ask_admission_wait_is_bounded_by_reply_timeout() {
+        let router = CrossNousRouter::default();
+        let (tx, _rx) = mpsc::channel(1);
+        router.register("target", tx.clone()).await;
+        // Fill the bounded inbox and never drain it, so admission cannot
+        // proceed on its own.
+        tx.try_send(CrossNousEnvelope {
+            message: CrossNousMessage::new("filler", "target", "occupied"),
+        })
+        .unwrap();
+
+        let msg = CrossNousMessage::new("sender", "target", "question")
+            .with_reply(Duration::from_millis(50));
+
+        let outcome = tokio::time::timeout(Duration::from_millis(500), router.ask(msg)).await;
+
+        let Ok(result) = outcome else {
+            panic!(
+                "ask() did not return within 500ms against a 50ms reply_timeout \
+                 — admission wait is unbounded"
+            );
+        };
+        assert!(result.unwrap_err().to_string().contains("timed out"));
+        assert_eq!(
+            router.pending_reply_count().await,
+            0,
+            "pending reply entry must be cleaned up on admission timeout"
+        );
+    }
+
+    /// WHY(#5024): fire-and-forget `send()` had the same unbounded admission
+    /// wait, with no timeout to bound it by at all. `#[tokio::test(start_paused
+    /// = true)]` lets the assertion exercise the real `DEFAULT_CROSS_SEND_TIMEOUT`
+    /// bound without a real wall-clock wait.
+    #[tokio::test(start_paused = true)]
+    async fn send_admission_wait_is_bounded_when_inbox_stays_full() {
+        let router = CrossNousRouter::default();
+        let (tx, _rx) = mpsc::channel(1);
+        router.register("target", tx.clone()).await;
+        tx.try_send(CrossNousEnvelope {
+            message: CrossNousMessage::new("filler", "target", "occupied"),
+        })
+        .unwrap();
+
+        let msg = CrossNousMessage::new("sender", "target", "hello");
+        let err = router.send(msg).await.unwrap_err();
+        assert!(err.to_string().contains("target"));
+
+        let log = router.delivery_log.read().await;
+        let entries = log.recent(10);
+        assert!(
+            entries.iter().any(|e| matches!(
+                &e.state,
+                DeliveryState::Failed { reason } if reason.contains("admission timeout")
+            )),
+            "expected an admission-timeout delivery failure to be logged"
+        );
     }
 
     #[tokio::test]

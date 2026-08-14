@@ -15,7 +15,8 @@ use crate::error::{
 
 use super::{
     AddressMask, AskGraph, CrossNousEnvelope, CrossNousMessage, CrossNousReply,
-    DEFAULT_MAX_LOG_ENTRIES, DEFAULT_REPLY_TIMEOUT, DeliveryEntry, DeliveryLog, DeliveryState,
+    DEFAULT_CROSS_SEND_TIMEOUT, DEFAULT_MAX_LOG_ENTRIES, DEFAULT_REPLY_TIMEOUT, DeliveryEntry,
+    DeliveryLog, DeliveryState,
 };
 
 pub(super) struct RouteEntry {
@@ -258,6 +259,13 @@ impl CrossNousRouter {
     ///
     /// Not cancel-safe. If cancelled after `mpsc::send` succeeds, the message
     /// is delivered but the caller never sees the `Delivered` result.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`error::Error::NousNotFound`] if the target is not registered.
+    /// Returns [`error::Error::DeliveryFailed`] if the target inbox is closed,
+    /// or if it stays full for [`DEFAULT_CROSS_SEND_TIMEOUT`] (#5024) — a stuck
+    /// target must not block a fire-and-forget caller indefinitely.
     #[instrument(skip(self, message), fields(msg_id = %message.id, from = %message.from, to = %message.to))]
     pub async fn send(&self, message: CrossNousMessage) -> error::Result<DeliveryState> {
         let to = message.to.clone();
@@ -283,17 +291,27 @@ impl CrossNousRouter {
         let message_for_log = message.clone();
         let envelope = CrossNousEnvelope { message };
 
-        match sender.send(envelope).await {
+        match sender
+            .send_timeout(envelope, DEFAULT_CROSS_SEND_TIMEOUT)
+            .await
+        {
             Ok(()) => {
                 self.log_delivery(&message_for_log, &DeliveryState::Delivered)
                     .await;
                 Ok(DeliveryState::Delivered)
             }
-            Err(send_err) => {
+            Err(mpsc::error::SendTimeoutError::Timeout(_)) => {
+                let state = DeliveryState::Failed {
+                    reason: "admission timeout (target inbox full)".to_owned(),
+                };
+                self.log_delivery(&message_for_log, &state).await;
+                DeliveryFailedSnafu { nous_id: to }.fail()
+            }
+            Err(mpsc::error::SendTimeoutError::Closed(_)) => {
                 let state = DeliveryState::Failed {
                     reason: "inbox closed".to_owned(),
                 };
-                self.log_delivery(&send_err.0.message, &state).await;
+                self.log_delivery(&message_for_log, &state).await;
                 DeliveryFailedSnafu { nous_id: to }.fail()
             }
         }
@@ -359,6 +377,13 @@ impl CrossNousRouter {
     /// Inner ask logic. The caller owns edge and pending-reply cleanup on
     /// normal completion; this function only removes the pending reply entry
     /// on the error paths it returns directly.
+    ///
+    /// INVARIANT(#5024): `timeout_dur` bounds the whole call — queue
+    /// admission plus the reply wait — not just the reply wait. Admission
+    /// used to await the bounded inbox unconditionally, so a busy target
+    /// that stopped draining its cross inbox could make a caller wait past
+    /// its configured `reply_timeout` with no bound at all. Both phases
+    /// share one fixed deadline computed up front.
     async fn ask_inner(
         &self,
         message: &CrossNousMessage,
@@ -366,6 +391,8 @@ impl CrossNousRouter {
         timeout_dur: Duration,
         reply_rx: oneshot::Receiver<CrossNousReply>,
     ) -> error::Result<CrossNousReply> {
+        let deadline = tokio::time::Instant::now() + timeout_dur;
+
         let routes = self.routes.read().await;
         let Some(route) = routes.get(to) else {
             drop(routes);
@@ -395,43 +422,69 @@ impl CrossNousRouter {
             message: message.clone(),
         };
 
-        if sender.send(envelope).await.is_err() {
-            self.pending_replies.write().await.remove(&message.id);
-            self.log_delivery(
-                message,
-                &DeliveryState::Failed {
-                    reason: "inbox closed".to_owned(),
-                },
-            )
-            .await;
-            return DeliveryFailedSnafu {
-                nous_id: to.to_owned(),
+        let admission_budget = deadline.saturating_duration_since(tokio::time::Instant::now());
+        match sender.send_timeout(envelope, admission_budget).await {
+            Ok(()) => {}
+            Err(mpsc::error::SendTimeoutError::Timeout(_)) => {
+                self.pending_replies.write().await.remove(&message.id);
+                self.log_delivery(
+                    message,
+                    &DeliveryState::Failed {
+                        reason: "admission timeout (target inbox full)".to_owned(),
+                    },
+                )
+                .await;
+                return AskTimeoutSnafu {
+                    nous_id: to.to_owned(),
+                    timeout_secs: timeout_dur.as_secs(),
+                }
+                .fail();
             }
-            .fail();
+            Err(mpsc::error::SendTimeoutError::Closed(_)) => {
+                self.pending_replies.write().await.remove(&message.id);
+                self.log_delivery(
+                    message,
+                    &DeliveryState::Failed {
+                        reason: "inbox closed".to_owned(),
+                    },
+                )
+                .await;
+                return DeliveryFailedSnafu {
+                    nous_id: to.to_owned(),
+                }
+                .fail();
+            }
         }
 
         self.log_delivery(message, &DeliveryState::Delivered).await;
 
-        tokio::select! {
-            result = reply_rx => {
-                if let Ok(reply) = result {
-                    self.log_delivery(message, &DeliveryState::Replied).await;
-                    Ok(reply)
-                } else {
-                    self.pending_replies.write().await.remove(&message.id);
-                    self.log_delivery(message, &DeliveryState::Failed {
-                        reason: "reply channel dropped".to_owned(),
-                    }).await;
-                    DeliveryFailedSnafu { nous_id: to.to_owned() }.fail()
-                }
+        match tokio::time::timeout_at(deadline, reply_rx).await {
+            Ok(Ok(reply)) => {
+                self.log_delivery(message, &DeliveryState::Replied).await;
+                Ok(reply)
             }
-            () = tokio::time::sleep(timeout_dur) => {
+            Ok(Err(_)) => {
+                self.pending_replies.write().await.remove(&message.id);
+                self.log_delivery(
+                    message,
+                    &DeliveryState::Failed {
+                        reason: "reply channel dropped".to_owned(),
+                    },
+                )
+                .await;
+                DeliveryFailedSnafu {
+                    nous_id: to.to_owned(),
+                }
+                .fail()
+            }
+            Err(_elapsed) => {
                 self.pending_replies.write().await.remove(&message.id);
                 self.log_delivery(message, &DeliveryState::TimedOut).await;
                 AskTimeoutSnafu {
                     nous_id: to.to_owned(),
                     timeout_secs: timeout_dur.as_secs(),
-                }.fail()
+                }
+                .fail()
             }
         }
     }

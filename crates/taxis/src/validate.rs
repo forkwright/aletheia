@@ -913,6 +913,17 @@ fn validate_timeouts(value: &Value, errors: &mut Vec<String>) {
             errors.push("timeouts.llmCallSecs must not exceed 3600 seconds".to_owned());
         }
     }
+    // WHY(#5011): a sub-5s timeout would deny most approvals before an
+    // operator can read the overlay; 3600s cap matches llmCallSecs' runaway
+    // guard.
+    if let Some(val) = value.get("approvalTimeoutSecs").and_then(Value::as_u64) {
+        if val < 5 {
+            errors.push("timeouts.approvalTimeoutSecs must be at least 5 seconds".to_owned());
+        }
+        if val > 3600 {
+            errors.push("timeouts.approvalTimeoutSecs must not exceed 3600 seconds".to_owned());
+        }
+    }
 }
 
 fn validate_capacity(value: &Value, errors: &mut Vec<String>) {

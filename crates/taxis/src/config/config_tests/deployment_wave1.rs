@@ -19,6 +19,35 @@ fn timeouts_default_matches_koina_const() {
 }
 
 #[test]
+fn timeouts_approval_default_is_120_seconds() {
+    // WHY(#5011): must equal nous::approval::DEFAULT_APPROVAL_TIMEOUT so
+    // omitting [timeouts] from aletheia.toml preserves pre-#5011 behavior.
+    // nous depends on taxis (not the reverse), so the cross-crate pin lives
+    // in crates/pylon/src/handlers/sessions/streaming_tests.rs instead.
+    let config = AletheiaConfig::default();
+    assert_eq!(
+        config.timeouts.approval_timeout_secs, 120,
+        "default approval_timeout_secs must be 120 seconds"
+    );
+}
+
+#[test]
+fn timeouts_approval_override_from_json() {
+    let json = r#"{"timeouts": {"approvalTimeoutSecs": 600}}"#;
+    let config: AletheiaConfig =
+        serde_json::from_str(json).expect("parse approval timeout override");
+    assert_eq!(
+        config.timeouts.approval_timeout_secs, 600,
+        "approval_timeout_secs override from json should take effect"
+    );
+    assert_eq!(
+        config.timeouts.llm_call_secs,
+        koina::defaults::TIMEOUT_SECONDS,
+        "unrelated llm_call_secs should remain at default"
+    );
+}
+
+#[test]
 fn capacity_defaults_match_koina_consts() {
     let config = AletheiaConfig::default();
     assert_eq!(
@@ -99,6 +128,7 @@ fn retry_override_from_json() {
 fn new_sections_survive_serde_roundtrip() {
     let mut config = AletheiaConfig::default();
     config.timeouts.llm_call_secs = 120;
+    config.timeouts.approval_timeout_secs = 45;
     config.capacity.max_tool_output_bytes = 8192;
     config.retry.max_attempts = 1;
     config.retry.backoff_base_ms = 500;
@@ -110,6 +140,10 @@ fn new_sections_survive_serde_roundtrip() {
     assert_eq!(
         back.timeouts.llm_call_secs, 120,
         "llm_call_secs should survive serde roundtrip"
+    );
+    assert_eq!(
+        back.timeouts.approval_timeout_secs, 45,
+        "approval_timeout_secs should survive serde roundtrip"
     );
     assert_eq!(
         back.capacity.max_tool_output_bytes, 8192,

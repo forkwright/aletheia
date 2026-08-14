@@ -911,6 +911,21 @@ fn build_registry() -> Vec<ParameterSpec> {
             direction_hint: TuningDirection::Contextual,
         },
         ParameterSpec {
+            key: "timeouts.approvalTimeoutSecs",
+            section: "timeouts",
+            tier: ParameterTier::Deployment,
+            default: ParameterValue::Duration(120),
+            bounds: Some((5.0, 3600.0)),
+            hot_reloadable: true,
+            description: "Maximum wall-clock seconds a Required/Mandatory tool call \
+                           waits for an operator approval decision before defaulting \
+                           to deny",
+            affects: "approval_ux",
+            outcome_signal: "approval_timeout_rate",
+            evidence_required: "Approval response-time distribution vs. default-deny rate",
+            direction_hint: TuningDirection::Contextual,
+        },
+        ParameterSpec {
             key: "retry.maxAttempts",
             section: "retry",
             tier: ParameterTier::Deployment,
