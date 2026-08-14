@@ -116,6 +116,45 @@ fn daemon_output_mode(mode: DaemonRunnerOutputMode) -> DaemonOutputMode {
     }
 }
 
+/// Build the registry of external recall sources queried alongside the
+/// knowledge store.
+///
+/// SECURITY(#6444): each network-backed source is registered only after its
+/// own explicit `recall_sources.*.enabled` opt-in -- never merely because a
+/// credential env var happens to be set. A default (or any config that
+/// leaves a source unset) must not register it, so `memory_search` reaches
+/// no third party until an operator turns one on.
+#[cfg(feature = "recall")]
+fn build_recall_source_registry(
+    config: &AletheiaConfig,
+    http_client: Arc<reqwest::Client>,
+) -> crate::recall_sources::RecallSourceRegistry {
+    let mut registry = crate::recall_sources::RecallSourceRegistry::new();
+
+    if config.recall_sources.academic.enabled {
+        let api_key = RealSystem.var("SEMANTIC_SCHOLAR_API_KEY").or_else(|| {
+            tracing::warn!(
+                "recall_sources.academic.enabled = true but SEMANTIC_SCHOLAR_API_KEY not set \
+                 -- querying at the unauthenticated rate limit"
+            );
+            None
+        });
+        registry.register(Arc::new(
+            crate::recall_sources::academic::AcademicSource::new(Arc::clone(&http_client), api_key),
+        ));
+    }
+
+    registry.register(Arc::new(
+        crate::recall_sources::llm_context::LlmContextSource::from_known_models(&config.pricing),
+    ));
+
+    info!(
+        count = registry.source_count(),
+        "external recall sources registered"
+    );
+    registry
+}
+
 fn resolve_pack_paths(oikos: &Oikos, configured: &[PathBuf]) -> Vec<PathBuf> {
     configured
         .iter()
@@ -497,10 +536,19 @@ impl RuntimeBuilder {
             }
         }
 
+        // SECURITY(#4842): redirects disabled at the client level -- the
+        // executor's `send_with_safe_redirects` call follows and revalidates
+        // each hop itself. A client that auto-follows would return an
+        // already-redirected response, silently skipping that revalidation.
+        let external_tools_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .unwrap_or_else(|_| reqwest::Client::new());
         let tool_manifest = crate::external_tools::register_external_tools(
             &self.config.tools,
             &mut tool_registry,
-            &reqwest::Client::new(),
+            &external_tools_client,
+            &sandbox_config(&self.config),
         )
         .await;
         if tool_manifest.available_count() > 0 || !self.config.tools.required.is_empty() {
@@ -633,33 +681,10 @@ impl RuntimeBuilder {
         let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> = None;
 
         #[cfg(feature = "recall")]
-        let recall_source_registry = {
-            let mut registry = crate::recall_sources::RecallSourceRegistry::new();
-            let http_client = Arc::new(reqwest::Client::new());
-
-            let api_key = RealSystem.var("SEMANTIC_SCHOLAR_API_KEY").or_else(|| {
-                tracing::warn!("SEMANTIC_SCHOLAR_API_KEY not set");
-                None
-            });
-            registry.register(Arc::new(
-                crate::recall_sources::academic::AcademicSource::new(
-                    Arc::clone(&http_client),
-                    api_key,
-                ),
-            ));
-
-            registry.register(Arc::new(
-                crate::recall_sources::llm_context::LlmContextSource::from_known_models(
-                    &self.config.pricing,
-                ),
-            ));
-
-            info!(
-                count = registry.source_count(),
-                "external recall sources registered"
-            );
-            Arc::new(registry)
-        };
+        let recall_source_registry = Arc::new(build_recall_source_registry(
+            &self.config,
+            Arc::new(reqwest::Client::new()),
+        ));
 
         #[cfg(feature = "recall")]
         #[expect(
@@ -1218,11 +1243,12 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::{LazyLock, Mutex};
 
+    use taxis::config::AletheiaConfig;
     use taxis::oikos::Oikos;
     use tempfile::TempDir;
     use thesauros::loader::load_packs;
 
-    use super::{prosoche_task_def, resolve_pack_paths};
+    use super::{build_recall_source_registry, prosoche_task_def, resolve_pack_paths};
 
     static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -1365,5 +1391,58 @@ mod tests {
             ) => {}
             other => panic!("expected SelfAudit builtin, got {other:?}"),
         }
+    }
+
+    /// WHY: reqwest requires a rustls `CryptoProvider` installed process-wide
+    /// before building a `Client`. Production installs it in `main()`; tests
+    /// must do so themselves.
+    #[cfg(feature = "recall")]
+    fn ensure_crypto_provider() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
+    /// SECURITY(#6444): a default config -- no `[recall_sources]` section at
+    /// all -- must register no network-backed recall source. Before the fix,
+    /// `AcademicSource` was registered unconditionally, so this test fails
+    /// (source_count == 2) without the opt-in gate.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn default_config_registers_no_network_recall_source() {
+        ensure_crypto_provider();
+        let config = AletheiaConfig::default();
+        assert!(
+            !config.recall_sources.academic.enabled,
+            "default RecallSourcesConfig must be disabled"
+        );
+
+        let registry =
+            build_recall_source_registry(&config, std::sync::Arc::new(reqwest::Client::new()));
+
+        // llm_context is local (no network); academic is the only
+        // network-backed source and must be absent from the count.
+        assert_eq!(
+            registry.source_count(),
+            1,
+            "a default instance must register only the local llm_context source"
+        );
+    }
+
+    /// SECURITY(#6444): explicit opt-in is the only path to registering the
+    /// network-backed source.
+    #[cfg(feature = "recall")]
+    #[test]
+    fn explicit_opt_in_registers_academic_source() {
+        ensure_crypto_provider();
+        let mut config = AletheiaConfig::default();
+        config.recall_sources.academic.enabled = true;
+
+        let registry =
+            build_recall_source_registry(&config, std::sync::Arc::new(reqwest::Client::new()));
+
+        assert_eq!(
+            registry.source_count(),
+            2,
+            "an explicit opt-in must register both the local and network sources"
+        );
     }
 }

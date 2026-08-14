@@ -223,6 +223,22 @@ impl SandboxConfig {
             });
         }
 
+        // SECURITY(#5081): `egress = "allow"` is the compiled default (see
+        // `Default` below) -- an operator who never touched `[sandbox]` at
+        // all is running it. Every other guarantee gap above surfaces on
+        // startup; a wide-open subprocess network was the one silently
+        // unstated posture. This is informational rather than
+        // `broken_under_enforcing`: nothing is promised and then not kept --
+        // egress simply was never restricted.
+        if self.egress == EgressPolicy::Allow {
+            issues.push(SandboxConfigIssue {
+                message: "sandbox.egress = \"allow\" (the default): sandboxed subprocesses have \
+                          full outbound network access, unrestricted by CIDR or destination"
+                    .to_owned(),
+                broken_under_enforcing: false,
+            });
+        }
+
         issues
     }
 
@@ -444,5 +460,51 @@ mod tests {
         let json = r#"{"enabled":true,"nprocLimit":512}"#;
         let config: SandboxConfig = serde_json::from_str(json).expect("parse");
         assert_eq!(config.nproc_limit, 512);
+    }
+
+    /// SECURITY(#5081): before this fix, `validate()` flagged permissive
+    /// enforcement, a broad `allowed_root`, and a non-loopback allowlist, but
+    /// said nothing about `egress = "allow"` -- the actual compiled default,
+    /// and the widest of the four. An operator relying on `validate()`'s
+    /// output to see every guarantee gap saw three of four.
+    #[test]
+    fn validate_flags_default_open_egress() {
+        let config = SandboxConfig::default();
+        assert_eq!(
+            config.egress,
+            EgressPolicy::Allow,
+            "must be testing the default"
+        );
+
+        let issues = config.validate();
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.message.contains("egress") && issue.message.contains("allow")),
+            "validate() must flag open egress on the default config, got: {issues:?}"
+        );
+    }
+
+    /// Egress denial and a loopback-only allowlist are both genuine
+    /// restrictions; validate() must not flag either as open egress.
+    #[test]
+    fn validate_does_not_flag_restricted_egress() {
+        for (egress, allowlist) in [
+            (EgressPolicy::Deny, Vec::new()),
+            (EgressPolicy::Allowlist, vec!["127.0.0.1".to_owned()]),
+        ] {
+            let config = SandboxConfig {
+                egress,
+                egress_allowlist: allowlist,
+                ..SandboxConfig::default()
+            };
+            let issues = config.validate();
+            assert!(
+                !issues
+                    .iter()
+                    .any(|issue| issue.message.contains("egress = \"allow\"")),
+                "validate() must not flag {egress:?} as open egress, got: {issues:?}"
+            );
+        }
     }
 }

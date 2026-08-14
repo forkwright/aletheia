@@ -217,7 +217,12 @@ impl ToolExecutor for MemoryAuditExecutor {
 fn memory_search_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("memory_search"), // kanon:ignore RUST/expect
-        description: "Search long-term memory for facts, preferences, and relationships".to_owned(),
+        // WHY(#6444): local by default. Reaches a third party only when an
+        // operator has explicitly enabled a `recall_sources.*` entry.
+        description: "Search long-term memory for facts, preferences, and relationships. \
+                       Local-only unless an operator has explicitly enabled a network recall \
+                       source (recall_sources.* in config)."
+            .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
             properties: IndexMap::from([

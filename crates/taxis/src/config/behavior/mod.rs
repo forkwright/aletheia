@@ -8,6 +8,7 @@ mod knowledge;
 mod messaging;
 mod nous;
 mod provider;
+mod recall;
 mod timeouts;
 mod tools;
 mod tuning;
@@ -26,6 +27,7 @@ pub use provider::{
     AnthropicConfig, DeploymentTarget, LlmProviderConfig, OpenAiApiFamily, PromptCacheMode,
     ProviderBehaviorConfig, ProviderKind,
 };
+pub use recall::{AcademicSourceConfig, RecallSourcesConfig};
 pub use timeouts::{CapacityConfig, RetrySettings, TimeoutsConfig};
 pub use tools::ToolLimitsConfig;
 pub use tuning::TuningConfig;

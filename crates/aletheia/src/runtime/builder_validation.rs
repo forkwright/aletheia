@@ -4,8 +4,23 @@ use std::io::Write as _;
 use taxis::validate::validate_each_section;
 
 use super::RuntimeBuilder;
+use super::setup::sandbox_config;
 use super::validate::validate_jwt;
 use crate::error::Result;
+
+/// Whether `register_domain_tools` would refuse to start given `sandbox`.
+///
+/// SECURITY(#5081): mirrors `register_domain_tools`'s own gate exactly
+/// (`issue.broken_under_enforcing && enforcement == Enforcing`) so
+/// `check-config` cannot report `[warn]`/"Configuration OK" for a config the
+/// server itself refuses to boot.
+fn sandbox_issue_is_fatal(
+    issue: &organon::sandbox::SandboxConfigIssue,
+    sandbox: &organon::sandbox::SandboxConfig,
+) -> bool {
+    issue.broken_under_enforcing
+        && sandbox.enforcement == organon::sandbox::SandboxEnforcement::Enforcing
+}
 
 fn print_line(args: Arguments<'_>) {
     let mut stdout = std::io::stdout().lock();
@@ -116,6 +131,25 @@ impl RuntimeBuilder {
             ));
         }
 
+        // SECURITY(#5081): the same guarantee-gap detector `register_domain_tools`
+        // consults at startup, surfaced here too -- so an operator running
+        // `check-config` sees a permissive posture (permissive enforcement, a
+        // broad allowed_root, open egress, an unenforceable allowlist) before
+        // the server starts, not only in a startup log line they may not read.
+        // An issue `register_domain_tools` would refuse to start on (a
+        // `broken_under_enforcing` guarantee under `enforcement = "enforcing"`)
+        // is reported as [FAIL] here too, so check-config cannot say "OK" for
+        // a config the server itself will not boot.
+        let sandbox = sandbox_config(&self.config);
+        for issue in sandbox.validate() {
+            if sandbox_issue_is_fatal(&issue, &sandbox) {
+                print_line(format_args!("  [FAIL] sandbox: {}", issue.message));
+                all_ok = false;
+            } else {
+                print_line(format_args!("  [warn] sandbox: {}", issue.message));
+            }
+        }
+
         print_line(format_args!(""));
         if all_ok {
             print_line(format_args!("Configuration OK"));
@@ -123,5 +157,51 @@ impl RuntimeBuilder {
         } else {
             snafu::whatever!("Configuration has errors -- see above");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use organon::sandbox::{SandboxConfig, SandboxConfigIssue, SandboxEnforcement};
+
+    use super::sandbox_issue_is_fatal;
+
+    fn issue(broken_under_enforcing: bool) -> SandboxConfigIssue {
+        SandboxConfigIssue {
+            message: "test issue".to_owned(),
+            broken_under_enforcing,
+        }
+    }
+
+    /// SECURITY(#5081): before this fix, `check-config` did not consult
+    /// `SandboxConfig::validate()` at all, so it reported "Configuration OK"
+    /// for a config `register_domain_tools` refuses to start (an
+    /// unenforceable egress allowlist under `enforcement = "enforcing"`).
+    #[test]
+    fn fatal_only_when_broken_under_enforcing_and_enforcing() {
+        let enforcing = SandboxConfig {
+            enforcement: SandboxEnforcement::Enforcing,
+            ..SandboxConfig::default()
+        };
+        let permissive = SandboxConfig {
+            enforcement: SandboxEnforcement::Permissive,
+            ..SandboxConfig::default()
+        };
+
+        assert!(
+            sandbox_issue_is_fatal(&issue(true), &enforcing),
+            "a broken-under-enforcing guarantee under enforcement=enforcing must be fatal, \
+             matching register_domain_tools' own refusal"
+        );
+        assert!(
+            !sandbox_issue_is_fatal(&issue(true), &permissive),
+            "the same guarantee under enforcement=permissive must only warn -- \
+             register_domain_tools logs and continues there"
+        );
+        assert!(
+            !sandbox_issue_is_fatal(&issue(false), &enforcing),
+            "an issue not marked broken_under_enforcing must never be fatal, \
+             regardless of enforcement mode"
+        );
     }
 }
