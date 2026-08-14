@@ -756,10 +756,12 @@ fn parse_summary_to_flush(
     timestamp: &str,
     source_message_ids: &[String],
 ) -> MemoryFlush {
-    let mut decisions: Vec<FlushItem> = Vec::new();
-    let mut corrections: Vec<FlushItem> = Vec::new();
-    let mut facts: Vec<FlushItem> = Vec::new();
-    let mut task_state: Option<String> = None;
+    let mut flush = MemoryFlush {
+        decisions: Vec::new(),
+        corrections: Vec::new(),
+        facts: Vec::new(),
+        task_state: None,
+    };
     let mut current_section = "";
     let mut section_lines: Vec<&str> = Vec::new();
 
@@ -770,10 +772,7 @@ fn parse_summary_to_flush(
                 &section_lines,
                 timestamp,
                 source_message_ids,
-                &mut decisions,
-                &mut corrections,
-                &mut facts,
-                &mut task_state,
+                &mut flush,
             );
             current_section = heading.trim();
             section_lines.clear();
@@ -786,18 +785,10 @@ fn parse_summary_to_flush(
         &section_lines,
         timestamp,
         source_message_ids,
-        &mut decisions,
-        &mut corrections,
-        &mut facts,
-        &mut task_state,
+        &mut flush,
     );
 
-    MemoryFlush {
-        decisions,
-        corrections,
-        facts,
-        task_state,
-    }
+    flush
 }
 
 /// Extract bullet items from section content lines.
@@ -822,10 +813,7 @@ fn collect_flush_section(
     lines: &[&str],
     timestamp: &str,
     source_message_ids: &[String],
-    decisions: &mut Vec<FlushItem>,
-    corrections: &mut Vec<FlushItem>,
-    facts: &mut Vec<FlushItem>,
-    task_state: &mut Option<String>,
+    flush: &mut MemoryFlush,
 ) {
     let content: Vec<&str> = lines
         .iter()
@@ -838,7 +826,7 @@ fn collect_flush_section(
     match section {
         "Key Decisions" => {
             for text in extract_bullet_items(&content) {
-                decisions.push(FlushItem {
+                flush.decisions.push(FlushItem {
                     content: text.to_owned(),
                     timestamp: timestamp.to_owned(),
                     source: FlushSource::Extracted,
@@ -848,7 +836,7 @@ fn collect_flush_section(
         }
         "Corrections" => {
             for text in extract_bullet_items(&content) {
-                corrections.push(FlushItem {
+                flush.corrections.push(FlushItem {
                     content: text.to_owned(),
                     timestamp: timestamp.to_owned(),
                     source: FlushSource::Extracted,
@@ -857,12 +845,12 @@ fn collect_flush_section(
             }
         }
         "Task Context" => {
-            *task_state = Some(content.join("\n"));
+            flush.task_state = Some(content.join("\n"));
         }
         "Summary" => {
             // WHY: The one-sentence overview is a high-level fact for recall.
             let text = content.join(" ");
-            facts.push(FlushItem {
+            flush.facts.push(FlushItem {
                 content: format!("[Summary] {text}"),
                 timestamp: timestamp.to_owned(),
                 source: FlushSource::Extracted,
@@ -873,7 +861,7 @@ fn collect_flush_section(
             // WHY: Each completed work item becomes a fact so future sessions
             // know what was already done without re-discovering from narrative.
             for text in extract_bullet_items(&content) {
-                facts.push(FlushItem {
+                flush.facts.push(FlushItem {
                     content: format!("[Completed] {text}"),
                     timestamp: timestamp.to_owned(),
                     source: FlushSource::Extracted,
@@ -885,7 +873,7 @@ fn collect_flush_section(
             // WHY: Task status snapshot persists as a fact so future sessions
             // can resume without rediscovering where things stand.
             let text = content.join("\n");
-            facts.push(FlushItem {
+            flush.facts.push(FlushItem {
                 content: format!("[State] {text}"),
                 timestamp: timestamp.to_owned(),
                 source: FlushSource::Extracted,
@@ -896,7 +884,7 @@ fn collect_flush_section(
             // WHY: Unfinished items persist as facts so future sessions can
             // resume them instead of losing deferred work.
             for text in extract_bullet_items(&content) {
-                facts.push(FlushItem {
+                flush.facts.push(FlushItem {
                     content: format!("[Open] {text}"),
                     timestamp: timestamp.to_owned(),
                     source: FlushSource::Extracted,
