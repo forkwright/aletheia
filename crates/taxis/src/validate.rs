@@ -231,8 +231,16 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "tools" => validate_tools(value, &mut errors),
         "training" => validate_training(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
+        //
+        // WHY recallSources is here rather than getting a validator: its whole
+        // surface is one bool (`academic.enabled`) behind
+        // `#[serde(deny_unknown_fields)]`, so deserialization already rejects
+        // everything a validator could catch. A section reaching this match
+        // arm unlisted is NOT harmless -- it falls to the catch-all below and
+        // fails `check-config` with "unknown config section", which means a
+        // fresh `aletheia init` writes a config its own checker rejects.
         "packs" | "pricing" | "sandbox" | "logging" | "observability" | "mcp" | "localProvider"
-        | "anthropic" | "promptAudit" | "dispatch" | "workspace" => {}
+        | "anthropic" | "promptAudit" | "dispatch" | "workspace" | "recallSources" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 

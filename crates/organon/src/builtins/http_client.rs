@@ -77,7 +77,11 @@ const FORBIDDEN_REQUEST_HEADERS: &[&str] = &[
 ];
 
 /// Upper bound on response body size forwarded to the LLM.
-const MAX_RESPONSE_BYTES: usize = 1_000_000;
+///
+/// `pub` (SECURITY #4842): shared with `aletheia::external_tools` so a
+/// configured external HTTP tool truncates at the same bound as this crate's
+/// own `http_request`, rather than an unbounded `.text()` read.
+pub const MAX_RESPONSE_BYTES: usize = 1_000_000;
 
 const MAX_REDIRECTS: usize = 5;
 
@@ -155,15 +159,32 @@ fn redirect_method(method: &Method, status: StatusCode) -> Method {
 
 /// The request half of a redirect-following send, grouped so the policy half
 /// (`resolver`, `gate`) stays visually distinct at the call site.
-struct SafeRequest<'a> {
-    method: Method,
-    url: &'a str,
-    headers: &'a HashMap<String, String>,
-    body: Option<&'a str>,
-    timeout: std::time::Duration,
+///
+/// `pub` (SECURITY #4842): shared with `aletheia::external_tools`, which
+/// proxies to operator-configured HTTP endpoints and needs the same
+/// SSRF/redirect/egress checkpoint as this crate's own `http_request` tool
+/// rather than a second, independently-maintained copy of it.
+pub struct SafeRequest<'a> {
+    /// HTTP method for the initial request (redirects may downgrade it).
+    pub method: Method,
+    /// Target URL.
+    pub url: &'a str,
+    /// Headers to attach to every hop.
+    pub headers: &'a HashMap<String, String>,
+    /// Request body, sent only while `include_body` stays true across redirects.
+    pub body: Option<&'a str>,
+    /// Per-request timeout, reapplied on every redirect hop.
+    pub timeout: std::time::Duration,
 }
 
-async fn send_with_safe_redirects<R>(
+/// Send `request`, following redirects while revalidating every hop against
+/// `gate` and `resolver` (SECURITY #5071, #5229, #4842).
+///
+/// # Errors
+/// Returns a message when the URL is malformed, egress is denied, a redirect
+/// targets a private/internal address, the redirect limit is exceeded, or the
+/// underlying request fails.
+pub async fn send_with_safe_redirects<R>(
     client: &reqwest::Client,
     request: SafeRequest<'_>,
     resolver: &R,

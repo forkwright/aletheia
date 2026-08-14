@@ -14,6 +14,7 @@
 //! while another exposes none. This module lets operators declare available
 //! tools per-deployment without hardcoded tool assumptions.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -23,8 +24,11 @@ use indexmap::IndexMap;
 use serde::Serialize;
 use tracing::{info, warn};
 
+use koina::http::{TokioHostResolver, validate_url_not_internal};
 use koina::id::ToolName;
+use organon::builtins::http_client::{MAX_RESPONSE_BYTES, SafeRequest, send_with_safe_redirects};
 use organon::registry::{ToolExecutor, ToolRegistry};
+use organon::sandbox::{EgressGate, SandboxConfig};
 #[cfg(feature = "mcp")]
 use organon::types::ToolOrigin;
 use organon::types::{
@@ -97,25 +101,32 @@ pub(crate) struct ToolManifestEntry {
 /// - `mcp` and `http` entries with an endpoint get an [`ExternalToolExecutor`]
 ///   registered into the tool registry.
 /// - Missing endpoints produce a warning and mark the tool unavailable.
+///
+/// SECURITY(#4842): `sandbox` supplies the same egress policy first-party
+/// in-process tools (`http_request`, `web_fetch`, `web_search`) enforce
+/// through [`EgressGate`], so a configured external HTTP endpoint is not a
+/// separate, weaker trust boundary than a built-in one.
 pub(crate) async fn register_external_tools(
     config: &ExternalToolsConfig,
     registry: &mut ToolRegistry,
     http_client: &reqwest::Client,
+    sandbox: &SandboxConfig,
 ) -> ToolManifest {
     let mut manifest = ToolManifest {
         required: Vec::new(),
         optional: Vec::new(),
     };
+    let egress = EgressGate::from_config(sandbox);
 
     // WHY: process required tools first so startup warnings about missing
     // required tools appear before optional tool info.
     for (name, entry) in &config.required {
-        let result = register_single_tool(name, entry, registry, http_client).await;
+        let result = register_single_tool(name, entry, registry, http_client, &egress).await;
         manifest.required.extend(result);
     }
 
     for (name, entry) in &config.optional {
-        let result = register_single_tool(name, entry, registry, http_client).await;
+        let result = register_single_tool(name, entry, registry, http_client, &egress).await;
         manifest.optional.extend(result);
     }
 
@@ -128,6 +139,7 @@ async fn register_single_tool(
     entry: &ExternalToolEntry,
     registry: &mut ToolRegistry,
     http_client: &reqwest::Client,
+    egress: &EgressGate,
 ) -> Vec<ToolManifestEntry> {
     #[cfg(not(feature = "mcp"))]
     std::future::ready(()).await;
@@ -173,7 +185,15 @@ async fn register_single_tool(
         }];
     };
 
-    register_http_tool(name, entry, registry, http_client, description, endpoint)
+    register_http_tool(
+        name,
+        entry,
+        registry,
+        http_client,
+        egress,
+        description,
+        endpoint,
+    )
 }
 
 fn register_http_tool(
@@ -181,6 +201,7 @@ fn register_http_tool(
     entry: &ExternalToolEntry,
     registry: &mut ToolRegistry,
     http_client: &reqwest::Client,
+    egress: &EgressGate,
     description: String,
     endpoint: String,
 ) -> Vec<ToolManifestEntry> {
@@ -218,6 +239,7 @@ fn register_http_tool(
         name: name.to_owned(),
         endpoint,
         client: http_client.clone(),
+        egress: egress.clone(),
         kind: entry.kind,
         method: entry.method,
     };
@@ -718,10 +740,19 @@ fn external_tool_schema() -> InputSchema {
 ///
 /// Forwards tool calls to the configured endpoint using the configured HTTP
 /// method. The response body is returned as the tool result text.
+///
+/// SECURITY(#4842): `egress` and the redirect-revalidating send path
+/// (`send_with_safe_redirects`) apply the same private-network / egress-policy
+/// checkpoint the first-party `http_request` tool uses -- a configured
+/// external endpoint is not exempt from it just because an operator, not the
+/// LLM, chose the URL: the endpoint config can itself point at an internal
+/// service, and a compromised or misbehaving external server can still
+/// redirect the reply chain there.
 struct ExternalToolExecutor {
     name: String,
     endpoint: String,
     client: reqwest::Client,
+    egress: EgressGate,
     kind: ExternalToolKind,
     method: ExternalToolMethod,
 }
@@ -747,31 +778,66 @@ impl ToolExecutor for ExternalToolExecutor {
         _ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
+            // SECURITY(#4842): validate the configured endpoint itself before
+            // sending -- a misconfigured or compromised-at-rest entry can
+            // point at an internal service, same as any other tool target.
+            if let Err(msg) = validate_url_not_internal(&self.endpoint).await {
+                return Ok(ToolResult::error(format!(
+                    "External tool '{name}' endpoint rejected: {msg}",
+                    name = self.name
+                )));
+            }
+
             let payload = serde_json::json!({
                 "tool": self.name,
                 "kind": format!("{:?}", self.kind),
                 "arguments": input.arguments,
             });
-
-            let method = self.reqwest_method();
-            let mut builder = self
-                .client
-                .request(method, &self.endpoint)
-                .timeout(std::time::Duration::from_secs(30));
-            if matches!(
+            let body = matches!(
                 self.method,
                 ExternalToolMethod::Post | ExternalToolMethod::Put | ExternalToolMethod::Patch
-            ) {
-                builder = builder.json(&payload);
+            )
+            .then(|| payload.to_string());
+            let mut headers = HashMap::new();
+            if body.is_some() {
+                headers.insert("Content-Type".to_owned(), "application/json".to_owned());
             }
 
-            let response = builder.send().await;
+            let response = send_with_safe_redirects(
+                &self.client,
+                SafeRequest {
+                    method: self.reqwest_method(),
+                    url: &self.endpoint,
+                    headers: &headers,
+                    body: body.as_deref(),
+                    timeout: std::time::Duration::from_secs(30),
+                },
+                &TokioHostResolver,
+                &self.egress,
+            )
+            .await;
 
             match response {
                 Ok(resp) => {
                     let status = resp.status();
-                    // kanon:ignore RUST/no-result-unwrap-or-default — HTTP response body read failure is non-fatal; status code is primary signal
-                    let body = resp.text().await.unwrap_or_default();
+                    let body_bytes = match resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            return Ok(ToolResult::error(format!(
+                                "External tool '{name}' response body read failed: {e}",
+                                name = self.name
+                            )));
+                        }
+                    };
+                    // WHY: cap forwarded response size the same way the
+                    // first-party http_request tool does -- an external
+                    // endpoint is not a bounded-response guarantee.
+                    let truncated = body_bytes.len() > MAX_RESPONSE_BYTES;
+                    let capped = body_bytes.get(..MAX_RESPONSE_BYTES).unwrap_or(&body_bytes);
+                    let mut body = String::from_utf8_lossy(capped).into_owned();
+                    if truncated {
+                        body.push_str("\n...[truncated]");
+                    }
                     if status.is_success() {
                         Ok(ToolResult::text(body))
                     } else {
@@ -858,6 +924,12 @@ mod tests {
     /// production this happens in `main()`. Tests must install it themselves.
     fn ensure_crypto_provider() {
         let _ = rustls::crypto::ring::default_provider().install_default();
+    }
+
+    /// Default-policy egress gate (allow), for tests that only care about
+    /// registration wiring, not egress denial itself.
+    fn test_egress() -> EgressGate {
+        EgressGate::from_config(&SandboxConfig::default())
     }
 
     fn entry(
@@ -999,6 +1071,7 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
             &entry,
             &mut registry,
             &reqwest::Client::new(),
+            &test_egress(),
         )
         .await;
         // NOTE: builtin entry for a tool that doesn't exist in the registry
@@ -1013,8 +1086,14 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
         ensure_crypto_provider();
         let mut registry = ToolRegistry::new();
         let entry = entry(ExternalToolKind::Mcp, None, Some("missing endpoint"));
-        let result =
-            register_single_tool("bad_tool", &entry, &mut registry, &reqwest::Client::new()).await;
+        let result = register_single_tool(
+            "bad_tool",
+            &entry,
+            &mut registry,
+            &reqwest::Client::new(),
+            &test_egress(),
+        )
+        .await;
         assert_eq!(result.len(), 1);
         assert!(!result.first().expect("manifest entry").available);
     }
@@ -1033,6 +1112,7 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
             &entry,
             &mut registry,
             &reqwest::Client::new(),
+            &test_egress(),
         )
         .await;
         assert_eq!(result.len(), 1);
@@ -1066,8 +1146,14 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
         entry.groups = Some(vec![ExternalToolGroupId::Read]);
         entry.reversibility = Some(ExternalToolReversibility::FullyReversible);
 
-        let result =
-            register_single_tool("search", &entry, &mut registry, &reqwest::Client::new()).await;
+        let result = register_single_tool(
+            "search",
+            &entry,
+            &mut registry,
+            &reqwest::Client::new(),
+            &test_egress(),
+        )
+        .await;
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some_and(|entry| entry.available));
 
@@ -1081,6 +1167,115 @@ pubmed = { type = "http", endpoint = "http://localhost:3101", description = "Sea
         );
         assert!(def.tags.contains(&ToolTag::Fetch));
         assert!(!def.tags.contains(&ToolTag::Execute));
+    }
+
+    /// Minimal `ToolContext` for executing an `ExternalToolExecutor` directly;
+    /// unlike `test_ctx()` this does not require the `mcp` feature.
+    fn http_test_ctx() -> ToolContext {
+        ToolContext {
+            nous_id: koina::id::NousId::new("alice").expect("valid nous id"),
+            session_id: koina::id::SessionId::new(),
+            turn_number: 0,
+            workspace: std::env::current_dir().expect("cwd"),
+            allowed_roots: vec![std::env::current_dir().expect("cwd")],
+            services: None,
+            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
+                std::collections::HashSet::new(),
+            )),
+            tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
+        }
+    }
+
+    fn http_test_input() -> ToolInput {
+        ToolInput {
+            name: ToolName::new("probe").expect("valid tool name"),
+            tool_use_id: "call-1".to_owned(),
+            arguments: serde_json::json!({}),
+        }
+    }
+
+    /// SECURITY(#4842): before this fix `ExternalToolExecutor` sent every
+    /// configured endpoint straight to `reqwest`, so a private/internal
+    /// endpoint (misconfigured, or attacker-controlled config) would have the
+    /// process itself attempt the connection. This asserts the refusal
+    /// happens before any connection attempt, deterministically -- not "the
+    /// connection failed", which depends on what happens to be listening.
+    #[tokio::test]
+    async fn refuses_private_endpoint_without_connecting() {
+        ensure_crypto_provider();
+        let executor = ExternalToolExecutor {
+            name: "probe".to_owned(),
+            // WHY this address: the cloud-metadata IP, the canonical SSRF
+            // target -- `is_private_ip` flags it explicitly, and unlike a
+            // routable-but-closed port a refusal here cannot be confused
+            // with "nothing was listening".
+            endpoint: "http://169.254.169.254/latest/meta-data/".to_owned(),
+            client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("build client"),
+            egress: test_egress(),
+            kind: ExternalToolKind::Http,
+            method: ExternalToolMethod::Get,
+        };
+
+        let result = executor
+            .execute(&http_test_input(), &http_test_ctx())
+            .await
+            .expect("execute returns Ok(ToolResult::error(..)) on refusal, not Err");
+
+        assert!(result.is_error, "private endpoint must be refused");
+        let organon::types::ToolResultContent::Text(text) = result.content else {
+            panic!("expected text tool result");
+        };
+        assert!(
+            text.contains("rejected") || text.contains("private"),
+            "refusal message should name the reason, got: {text}"
+        );
+    }
+
+    /// SECURITY(#4842): `egress = "deny"` must block a configured external
+    /// HTTP tool exactly like it blocks `http_request`/`web_fetch` -- before
+    /// this fix the executor built its own unguarded `reqwest::Client` and
+    /// never consulted the sandbox egress policy at all.
+    #[tokio::test]
+    async fn refuses_when_egress_denied() {
+        ensure_crypto_provider();
+        let sandbox = SandboxConfig {
+            egress: organon::sandbox::EgressPolicy::Deny,
+            ..SandboxConfig::default()
+        };
+        let executor = ExternalToolExecutor {
+            name: "probe".to_owned(),
+            // WHY an IP literal from the RFC 5737 TEST-NET-3 documentation
+            // range: `is_private_ip` correctly treats it as public (it is
+            // not loopback/private/link-local), so the test exercises the
+            // egress-policy check specifically -- not the private-IP
+            // pre-flight check -- while never needing a real DNS lookup or
+            // network reachability, since the range is guaranteed unrouted.
+            endpoint: "http://203.0.113.1/".to_owned(),
+            client: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("build client"),
+            egress: EgressGate::from_config(&sandbox),
+            kind: ExternalToolKind::Http,
+            method: ExternalToolMethod::Get,
+        };
+
+        let result = executor
+            .execute(&http_test_input(), &http_test_ctx())
+            .await
+            .expect("execute returns Ok(ToolResult::error(..)) on refusal, not Err");
+
+        assert!(result.is_error, "egress = deny must refuse the request");
+        let organon::types::ToolResultContent::Text(text) = result.content else {
+            panic!("expected text tool result");
+        };
+        assert!(
+            text.to_lowercase().contains("egress") || text.to_lowercase().contains("denied"),
+            "refusal message should name the reason, got: {text}"
+        );
     }
 
     #[test]
@@ -1132,7 +1327,9 @@ no_endpoint = { type = "mcp" }
         let mut registry = ToolRegistry::new();
         let client = reqwest::Client::new();
 
-        let manifest = register_external_tools(&config, &mut registry, &client).await;
+        let manifest =
+            register_external_tools(&config, &mut registry, &client, &SandboxConfig::default())
+                .await;
 
         // NOTE: file_ops is builtin but not registered in empty registry → unavailable
         assert_eq!(manifest.required.len(), 1);
@@ -1213,8 +1410,14 @@ done
         let mut entry = entry(ExternalToolKind::Mcp, None, Some("Fake MCP"));
         entry.command = Some(script.display().to_string());
 
-        let result =
-            register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
+        let result = register_single_tool(
+            "fake",
+            &entry,
+            &mut registry,
+            &reqwest::Client::new(),
+            &test_egress(),
+        )
+        .await;
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some_and(|e| e.available));
         assert_eq!(
@@ -1266,8 +1469,14 @@ done
         let mut entry = entry(ExternalToolKind::Mcp, None, Some("Fake MCP"));
         entry.command = Some(script.display().to_string());
 
-        let result =
-            register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
+        let result = register_single_tool(
+            "fake",
+            &entry,
+            &mut registry,
+            &reqwest::Client::new(),
+            &test_egress(),
+        )
+        .await;
         assert!(result.iter().any(|entry| entry.available));
 
         let input = ToolInput {
@@ -1317,8 +1526,14 @@ done
         let mut entry = entry(ExternalToolKind::Mcp, None, Some("Fake MCP"));
         entry.command = Some(script.display().to_string());
 
-        let result =
-            register_single_tool("fake", &entry, &mut registry, &reqwest::Client::new()).await;
+        let result = register_single_tool(
+            "fake",
+            &entry,
+            &mut registry,
+            &reqwest::Client::new(),
+            &test_egress(),
+        )
+        .await;
         assert_eq!(result.len(), 1);
         assert!(result.first().is_some_and(|e| e.available));
         assert_eq!(

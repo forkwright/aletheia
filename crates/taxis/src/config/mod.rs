@@ -14,12 +14,13 @@ pub use agents::{
     RecallWeights,
 };
 pub use behavior::{
-    AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig, BookkeepingProviderKind, CapacityConfig,
-    CompactionStrategyKind, CronTaskConfig, DaemonBehaviorConfig, DaemonRunnerOutputMode,
-    DeploymentTarget, DispatchConfig, DispatchSpecConfig, ExtractionConfig, JwtSettings,
-    KnowledgeConfig, LlmProviderConfig, MessagingConfig, NousBehaviorConfig, OpenAiApiFamily,
-    PromptCacheMode, ProviderBehaviorConfig, ProviderKind, RetrySettings, TimeoutsConfig,
-    ToolLimitsConfig, TuningConfig,
+    AcademicSourceConfig, AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig,
+    BookkeepingProviderKind, CapacityConfig, CompactionStrategyKind, CronTaskConfig,
+    DaemonBehaviorConfig, DaemonRunnerOutputMode, DeploymentTarget, DispatchConfig,
+    DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig, LlmProviderConfig,
+    MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, PromptCacheMode, ProviderBehaviorConfig,
+    ProviderKind, RecallSourcesConfig, RetrySettings, TimeoutsConfig, ToolLimitsConfig,
+    TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{
@@ -173,6 +174,13 @@ pub struct AletheiaConfig {
     /// resolution aggressiveness vary by deployment use case (research vs
     /// production, single-agent vs multi-agent).
     pub knowledge: KnowledgeConfig,
+    /// Network-backed recall sources merged into the knowledge pipeline.
+    ///
+    /// WHY configurable, disabled by default (#6444): a source here reaches a
+    /// third party over the network with the operator's raw query. Only an
+    /// explicit `enabled = true` per source registers it; an absent section
+    /// or a missing credential never implies opt-in.
+    pub recall_sources: RecallSourcesConfig,
     /// Hermeneus provider timeout, concurrency, and complexity routing controls.
     ///
     /// WHY configurable: non-streaming timeouts and concurrency limits depend

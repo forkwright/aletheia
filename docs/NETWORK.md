@@ -21,8 +21,9 @@ Sorted by criticality (highest sovereignty impact first).
 | HuggingFace Hub (`hf-hub` internal endpoint) | HTTPS (via `ureq`) | Outbound | Model files: `config.json`, `tokenizer.json`, `model.safetensors` | First initialization of the `candle` embedding provider | `crates/episteme/src/embedding.rs:165` (hub API init); `crates/episteme/src/embedding.rs:173` (`config.json` download); `crates/episteme/src/embedding.rs:179` (`tokenizer.json` download); `crates/episteme/src/embedding.rs:185` (`model.safetensors` download) |
 | `api.github.com` | HTTPS | Outbound | Public issue metadata (title, state, labels, milestone) | Agent uses `issue_scan` or `issue_triage` built-in tool | `crates/organon/src/builtins/triage/mod.rs:359` (URL template); `crates/organon/src/builtins/triage/mod.rs:369` (HTTP GET) |
 | Arbitrary URLs (`web_fetch` tool) | HTTPS/HTTP | Outbound | Arbitrary web page body (HTML, markdown, etc.) | Agent uses `web_fetch` built-in tool | `crates/organon/src/builtins/research.rs:130` (protocol guard); `crates/organon/src/builtins/research.rs:77` (HTTP GET execution); `crates/organon/src/builtins/research.rs:141` (automatic redirects disabled) |
-| Operator-configured external tool endpoints | HTTPS/HTTP (config-driven) | Outbound | JSON tool body (`tool`, `kind`, `arguments`) | Agent invokes an external tool registered in `aletheia.toml` | `crates/aletheia/src/external_tools.rs:30` (config types); `crates/aletheia/src/external_tools.rs:330` (HTTP POST executor) |
+| Operator-configured external tool endpoints | HTTPS/HTTP (config-driven) | Outbound | JSON tool body (`tool`, `kind`, `arguments`) | Agent invokes an external tool registered in `aletheia.toml` | `crates/aletheia/src/external_tools.rs:40` (config types); `crates/aletheia/src/external_tools.rs:799` (SSRF-safe send) |
 | Operator-configured MCP server endpoints (streamable HTTP) | HTTPS/HTTP (config-driven) | Outbound | MCP JSON-RPC (`initialize`, `tools/list`, `tools/call`), SSE responses | Aletheia connects to an `mcp`-type external tool entry with an `endpoint` in `aletheia.toml` | `crates/diaporeia/src/client.rs:245` (`connect_streamable_http_with_auth`) |
+| `api.semanticscholar.org` (Semantic Scholar recall source) | HTTPS | Outbound | The `memory_search` query text | `memory_search` tool use, only when `recall_sources.academic.enabled = true` (default `false`) | `crates/taxis/src/config/behavior/recall.rs:17` (config, disabled by default); `crates/aletheia/src/recall_sources/academic.rs:17` (endpoint); `crates/aletheia/src/runtime/mod.rs:134` (opt-in gate) |
 | Qdrant (migration only) | HTTPS/gRPC (configurable, default `localhost:6333`) | Outbound | Vector memory records (scroll points, payloads) | One-time `aletheia migrate-memory` CLI command | `crates/aletheia/src/migrate_memory.rs:68` (client build); `crates/aletheia/src/commands/agent_io.rs:106` (CLI `--qdrant-url` arg) |
 | signal-cli daemon (`localhost:8080` by default) | HTTP (JSON-RPC) | Outbound | Signal message text, recipient IDs, JSON-RPC envelopes | Sending or receiving Signal messages when Signal channel is enabled | `crates/taxis/src/config/mod.rs:268` (default host); `crates/agora/src/semeion/client.rs:88` (URL construction); `crates/agora/src/semeion/client.rs:144` (`send` RPC); `crates/agora/src/semeion/mod.rs:170` (receive poll loop) |
 | Tailscale local status query | stdio (`tailscale status --json`) | Outbound (local-only) | Local Tailscale IPv4 address | Pylon server startup (discovery file write) | `crates/pylon/src/discovery.rs:125` (subprocess spawn) |
@@ -41,6 +42,7 @@ Sorted by criticality (highest sovereignty impact first).
   - `api.github.com` - triggered by `issue_scan` / `issue_triage` tool use.
   - Arbitrary URLs (`web_fetch`) - triggered by `web_fetch` tool use.
   - External tool endpoints - triggered by configured external tool invocations.
+  - `api.semanticscholar.org` - triggered by `memory_search` only when `recall_sources.academic.enabled = true`.
 
 - **One-time:**
   - HuggingFace Hub - first download when the `candle` embedding provider initializes; cached thereafter.
@@ -61,6 +63,7 @@ Sorted by criticality (highest sovereignty impact first).
 | Arbitrary URLs (`web_fetch`) | No (arbitrary by design) | Do not invoke `web_fetch`; SSRF guards reject blocked hostnames and URLs that resolve to internal ranges |
 | External tool endpoints | Yes (operator must explicitly declare them in `aletheia.toml`) | Remove the tool from config |
 | MCP server endpoints (streamable HTTP) | Yes (operator must explicitly declare them in `aletheia.toml`) | Remove the `mcp` tool entry from config; SSRF guard rejects blocked hostnames and endpoints that resolve to internal ranges |
+| `api.semanticscholar.org` | Yes, disabled by default | Leave `recall_sources.academic.enabled` unset or `false` (the default); no query ever leaves the process |
 | Qdrant | Yes (`--qdrant-url` or `QDRANT_URL` env) | Do not run `migrate-memory`; feature is off by default |
 | signal-cli daemon | Yes (`channels.signal.accounts.*.http_host`, `http_port`) | Disable Signal channel or set `enabled = false` |
 | Tailscale local status query | No | Do not install `tailscale` binary; discovery gracefully degrades to `localhost` |
@@ -69,9 +72,9 @@ Sorted by criticality (highest sovereignty impact first).
 
 ## Arbitrary URL SSRF guard
 
-`web_fetch` and `http_request` validate the initial URL before sending a request. They reject blocked hostnames such as `localhost` and `metadata.google.internal`, and they reject hosts whose DNS resolution returns private, loopback, link-local, or cloud metadata addresses.
+`web_fetch`, `http_request`, and operator-configured external HTTP tools validate the initial URL before sending a request. They reject blocked hostnames such as `localhost` and `metadata.google.internal`, and they reject hosts whose DNS resolution returns private, loopback, link-local, or cloud metadata addresses.
 
-Both tools disable reqwest automatic redirects. They follow redirects manually, revalidate every `Location` target with the same hostname and DNS policy before the next request, and refuse the sixth redirect in a chain. Relative redirect targets are resolved against the current URL before validation.
+All three disable reqwest automatic redirects. They follow redirects manually, revalidate every `Location` target with the same hostname and DNS policy before the next request, and refuse the sixth redirect in a chain. Relative redirect targets are resolved against the current URL before validation. An operator-configured endpoint gets the same treatment as an LLM-chosen one (#4842): the config, not the caller, decided the URL, but a compromised or misbehaving endpoint on the other end can still redirect the reply chain somewhere the operator never configured.
 
 Known limitation: DNS can change after validation and before the subsequent TCP connection. The guard reduces SSRF exposure by validating each URL the process chooses to request, but it does not pin the validated address through connect time.
 

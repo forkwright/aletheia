@@ -53,6 +53,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [retry](#retry)
 - [nousBehavior](#nousbehavior)
 - [knowledge](#knowledge)
+- [recallSources](#recallsources)
 - [providerBehavior](#providerbehavior)
 - [apiLimits](#apilimits)
 - [daemonBehavior](#daemonbehavior)
@@ -1042,6 +1043,18 @@ Provider selection for the extraction bookkeeping pass.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `provider` | "llm" \| "gliner" | "llm" | Bookkeeping provider implementation. Default: `llm`. |
+
+## recallSources
+
+Network-backed recall sources merged into the knowledge pipeline. WHY configurable, disabled by default (#6444): a source here reaches a third party over the network with the operator's raw query. Only an explicit `enabled = true` per source registers it; an absent section or a missing credential never implies opt-in.
+
+### recallSources.academic
+
+Semantic Scholar Academic Graph API (`api.semanticscholar.org`).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | false | Explicit opt-in. Default `false`: `memory_search` never reaches `api.semanticscholar.org` unless an operator sets this to `true`, with or without `SEMANTIC_SCHOLAR_API_KEY` set. |
 
 ## providerBehavior
 
