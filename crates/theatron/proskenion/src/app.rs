@@ -186,7 +186,10 @@ fn ConnectedApp() -> Element {
     // blur the window during an active turn and confirm the desktop
     // notification that would otherwise fire is suppressed/downgraded,
     // then refocus and confirm normal notification behavior resumes.
-    let window_focused = use_signal(|| true);
+    // WHY `mut`: the wry handler below calls `Signal::set`, which takes `&mut self`,
+    // and that handler is a `move` closure -- so the binding it captures must be
+    // mutable even though `Signal` is `Copy`.
+    let mut window_focused = use_signal(|| true);
     use_context_provider(|| window_focused);
     dioxus::desktop::use_wry_event_handler(move |event, _target| {
         if let dioxus::desktop::tao::event::Event::WindowEvent {
