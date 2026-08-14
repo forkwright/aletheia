@@ -115,7 +115,10 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
             #[cfg(feature = "keyring")]
             {
                 use koina::credential::CredentialProvider;
-                let keyring = symbolon::credential::KeyringCredentialProvider::new();
+                let keyring = symbolon::credential::KeyringCredentialProvider::for_instance(
+                    oikos.root(),
+                    "anthropic",
+                );
                 if let Some(cred) = keyring.get_credential() {
                     if found_any {
                         println!();
@@ -234,15 +237,24 @@ pub(crate) async fn run(action: Action, instance_root: Option<&PathBuf>) -> Resu
                 whatever!("token is empty, nothing to store");
             }
 
-            let keyring = symbolon::credential::KeyringCredentialProvider::new();
+            let keyring = symbolon::credential::KeyringCredentialProvider::for_instance(
+                oikos.root(),
+                "anthropic",
+            );
             keyring.store(&token_value).map_err(|e| {
                 crate::error::Error::msg(format!("failed to store credential in OS keyring: {e}"))
             })?;
-            println!("Token stored in OS keyring (service=aletheia, user=api-token)");
+            println!(
+                "Token stored in OS keyring, namespaced to this instance ({})",
+                display_path(oikos.root(), false, &RealSystem)
+            );
         }
         #[cfg(feature = "keyring")]
         Action::Delete => {
-            let keyring = symbolon::credential::KeyringCredentialProvider::new();
+            let keyring = symbolon::credential::KeyringCredentialProvider::for_instance(
+                oikos.root(),
+                "anthropic",
+            );
             keyring.delete().map_err(|e| {
                 crate::error::Error::msg(format!(
                     "failed to delete credential from OS keyring: {e}"

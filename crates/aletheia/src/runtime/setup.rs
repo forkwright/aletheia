@@ -229,17 +229,26 @@ fn build_anthropic_credential_chain(
         }
     }
 
-    #[cfg(feature = "keyring")]
-    {
-        use symbolon::credential::KeyringCredentialProvider;
-        chain.push(Box::new(KeyringCredentialProvider::new()));
-    }
-
+    // INVARIANT(#5250): explicit environment credentials must be checked
+    // BEFORE the OS keyring. A keyring entry can be a stale leftover from
+    // another install, account, or role sharing this machine; an operator
+    // who exports ANTHROPIC_AUTH_TOKEN/ANTHROPIC_API_KEY for this run has
+    // stated intent that a background keyring entry cannot override.
     chain.push(Box::new(EnvCredentialProvider::with_source(
         "ANTHROPIC_AUTH_TOKEN",
         CredentialSource::OAuth,
     )));
     chain.push(Box::new(EnvCredentialProvider::new("ANTHROPIC_API_KEY")));
+
+    #[cfg(feature = "keyring")]
+    {
+        use symbolon::credential::KeyringCredentialProvider;
+        warn_if_keyring_entry_is_shadowed_by_env(oikos);
+        chain.push(Box::new(KeyringCredentialProvider::for_instance(
+            oikos.root(),
+            "anthropic",
+        )));
+    }
 
     // WHY(#5252): platform-dir discovery of Claude Code's private credential store is
     // OPT-IN ONLY (cred_source = "claude-code", env var, or an explicit configured path).
@@ -257,6 +266,48 @@ fn build_anthropic_credential_chain(
     }
 
     Arc::new(CredentialChain::new(chain))
+}
+
+/// Whether an explicit `ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_API_KEY` credential
+/// is present in `env`. Pure and independent of the `keyring` feature so it
+/// can be unit tested without touching a real OS keyring backend.
+///
+/// WHY the `test` arm: its only caller is `keyring`-gated, and `cargo check`
+/// does not compile `#[cfg(test)]` code -- so without the feature this reads
+/// as dead in the bin target while the tests that exercise it are invisible.
+/// Gating on the feature alone would take the tests with it, which is the
+/// independence the doc above is claiming.
+#[cfg(any(feature = "keyring", test))]
+fn any_anthropic_env_credential_present(env: &impl koina::system::Environment) -> bool {
+    let is_set = |var: &str| env.var(var).is_some_and(|v| !v.is_empty());
+    is_set("ANTHROPIC_AUTH_TOKEN") || is_set("ANTHROPIC_API_KEY")
+}
+
+/// Warn when an explicit environment credential is about to silently take
+/// precedence over a credential already stored in this instance's keyring.
+///
+/// WHY(#5250): the chain now checks env before keyring, so once an env var
+/// is set the keyring entry is never even probed by resolution — an
+/// operator who unsets the env var later would see behavior change back to
+/// the keyring value with no record of why. This check runs ONLY when an
+/// env var is actually present, so it adds no keyring access (and no
+/// unlock-prompt / D-Bus round trip) in the common case where none is set.
+#[cfg(feature = "keyring")]
+fn warn_if_keyring_entry_is_shadowed_by_env(oikos: &Oikos) {
+    use koina::system::RealSystem;
+    use symbolon::credential::KeyringCredentialProvider;
+
+    if !any_anthropic_env_credential_present(&RealSystem) {
+        return;
+    }
+    let keyring = KeyringCredentialProvider::for_instance(oikos.root(), "anthropic");
+    if keyring.get_credential().is_some() {
+        warn!(
+            "an ANTHROPIC_AUTH_TOKEN/ANTHROPIC_API_KEY environment credential is set and \
+             takes precedence; a credential is also stored in this instance's OS keyring \
+             and is being ignored while the environment variable is set"
+        );
+    }
 }
 
 /// Build the complete provider registration plan in the exact order the
@@ -1263,13 +1314,7 @@ pub(super) fn start_inbound_dispatch(
         info!("channel listeners started");
         let (rx, _poll_handles) = listener.into_receiver();
 
-        let default_nous_id = config
-            .agents
-            .list
-            .iter()
-            .find(|a| a.default)
-            .or_else(|| config.agents.list.first())
-            .map(|a| a.id.to_string());
+        let default_nous_id = resolve_default_nous_id(&config.agents.list);
         let router = Arc::new(MessageRouter::new(config.bindings.clone(), default_nous_id));
 
         Some(crate::dispatch::spawn_dispatcher(
@@ -1283,6 +1328,20 @@ pub(super) fn start_inbound_dispatch(
     };
 
     Ok((channel_registry, handle))
+}
+
+/// Resolve the global-default nous for channel senders that miss every
+/// group, source, and channel-wildcard binding.
+///
+/// INVARIANT: only an agent the operator has explicitly marked
+/// `default = true` may catch unmatched senders. There is deliberately no
+/// "first configured agent" fallback — that fallback made an explicit
+/// source-binding allowlist unenforceable, because any sender the operator
+/// never listed still reached whichever agent happened to be declared
+/// first. Absent an explicit default, `MessageRouter` falls through to its
+/// documented "no match" state and the caller drops the message.
+fn resolve_default_nous_id(agents: &[taxis::config::NousDefinition]) -> Option<String> {
+    agents.iter().find(|a| a.default).map(|a| a.id.to_string())
 }
 
 fn register_channel_provider(
@@ -2047,6 +2106,114 @@ mod tests {
             mneme::embedding::LOADING_MODEL_NAME,
             "an uninitialized lazy provider must report the shared loading sentinel"
         );
+    }
+
+    fn nous(id: &'static str, default: bool) -> taxis::config::NousDefinition {
+        taxis::config::NousDefinition {
+            id: koina::id::NousId::from_static(id),
+            workspace: format!("/home/user/nous/{id}"),
+            default,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn unmatched_sender_fallback_requires_an_explicit_default_agent() {
+        // WHY(#6439): with no agent marked `default = true`, the first
+        // configured agent must NOT catch unmatched channel senders. Before
+        // this test existed, `.or_else(|| config.agents.list.first())`
+        // routed every sender the operator never listed to "syn" here,
+        // silently defeating an explicit source-binding allowlist.
+        let agents = vec![nous("syn", false), nous("alt", false)];
+        assert_eq!(
+            resolve_default_nous_id(&agents),
+            None,
+            "no explicit default agent must mean unmatched senders are dropped, not routed to the first-configured agent"
+        );
+    }
+
+    #[test]
+    fn empty_agent_list_has_no_default() {
+        assert_eq!(resolve_default_nous_id(&[]), None);
+    }
+
+    #[test]
+    fn explicit_default_agent_is_used_regardless_of_order() {
+        let agents = vec![nous("syn", false), nous("alt", true), nous("third", false)];
+        assert_eq!(resolve_default_nous_id(&agents), Some("alt".to_owned()));
+    }
+
+    #[derive(Default)]
+    struct TestEnv {
+        vars: std::collections::HashMap<String, String>,
+    }
+
+    impl TestEnv {
+        fn with_env(mut self, key: &str, value: &str) -> Self {
+            self.vars.insert(key.to_owned(), value.to_owned());
+            self
+        }
+    }
+
+    impl koina::system::Environment for TestEnv {
+        fn var(&self, name: &str) -> Option<String> {
+            self.vars.get(name).cloned()
+        }
+
+        fn var_os(&self, name: &str) -> Option<std::ffi::OsString> {
+            self.vars.get(name).map(Into::into)
+        }
+
+        fn vars(&self) -> Vec<(String, String)> {
+            self.vars
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        }
+
+        fn current_dir(&self) -> std::io::Result<PathBuf> {
+            Ok(PathBuf::from("/test"))
+        }
+
+        fn temp_dir(&self) -> PathBuf {
+            PathBuf::from("/tmp")
+        }
+
+        fn current_exe(&self) -> std::io::Result<PathBuf> {
+            Ok(PathBuf::from("/test/bin/aletheia"))
+        }
+
+        fn args(&self) -> Vec<String> {
+            vec!["aletheia".to_owned()]
+        }
+    }
+
+    #[test]
+    fn no_anthropic_env_credential_present_when_neither_var_set() {
+        assert!(!any_anthropic_env_credential_present(&TestEnv::default()));
+    }
+
+    #[test]
+    fn anthropic_env_credential_present_via_auth_token() {
+        // WHY(#5250): ANTHROPIC_AUTH_TOKEN (OAuth) must be detected, not
+        // only ANTHROPIC_API_KEY.
+        let env = TestEnv::default().with_env("ANTHROPIC_AUTH_TOKEN", "sk-oauth");
+        assert!(any_anthropic_env_credential_present(&env));
+    }
+
+    #[test]
+    fn anthropic_env_credential_present_via_api_key() {
+        let env = TestEnv::default().with_env("ANTHROPIC_API_KEY", "sk-static");
+        assert!(any_anthropic_env_credential_present(&env));
+    }
+
+    #[test]
+    fn empty_string_env_var_does_not_count_as_present() {
+        // WHY: an exported-but-empty var (e.g. `ANTHROPIC_API_KEY=` in a
+        // sourced shell profile) must not be treated as an explicit
+        // credential -- it would otherwise silently shadow the keyring.
+        let env = TestEnv::default().with_env("ANTHROPIC_API_KEY", "");
+        assert!(!any_anthropic_env_credential_present(&env));
     }
 }
 

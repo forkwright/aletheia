@@ -151,6 +151,18 @@ pub struct ExternalToolEntry {
     /// Optional authentication configuration for HTTP-based tools and MCP servers.
     #[serde(default)]
     pub auth: Option<ExternalToolAuth>,
+    /// Whether this MCP server's self-reported `readOnlyHint` annotation may
+    /// downgrade a discovered tool's approval requirement.
+    ///
+    /// WHY(#4631): `readOnlyHint` is asserted by the remote server being
+    /// judged, not by anything local. Default `false` so an unvetted or
+    /// compromised server cannot label a mutating tool "read-only" and
+    /// suppress its own approval prompt; only a server the operator has
+    /// explicitly reviewed and trusted may set this `true`. `reversibility`
+    /// above, when set, is an operator-pinned local policy and always takes
+    /// precedence over this flag and over the remote hint.
+    #[serde(default)]
+    pub trust_read_only_hint: bool,
 }
 
 impl Default for ExternalToolEntry {
@@ -167,6 +179,7 @@ impl Default for ExternalToolEntry {
             groups: None,
             reversibility: None,
             auth: None,
+            trust_read_only_hint: false,
         }
     }
 }
@@ -299,6 +312,29 @@ mod tests {
             !debug.contains("super-secret"),
             "debug output must not contain header value: {debug}"
         );
+    }
+
+    #[test]
+    fn mcp_entry_read_only_hint_trust_defaults_false() {
+        // WHY(#4631): the untrusted-by-default posture is a config
+        // guarantee. An operator TOML that never mentions the field must
+        // deserialize to `false`, not opt a server into hint trust by
+        // omission.
+        let json = r#"{"type":"mcp","command":"probe"}"#;
+        let entry: ExternalToolEntry =
+            serde_json::from_str(json).expect("mcp entry without trust field must deserialize");
+        assert!(
+            !entry.trust_read_only_hint,
+            "trust_read_only_hint must default to false when absent from config"
+        );
+    }
+
+    #[test]
+    fn mcp_entry_read_only_hint_trust_is_settable() {
+        let json = r#"{"type":"mcp","command":"probe","trustReadOnlyHint":true}"#;
+        let entry: ExternalToolEntry =
+            serde_json::from_str(json).expect("mcp entry with trust field must deserialize");
+        assert!(entry.trust_read_only_hint);
     }
 
     #[test]

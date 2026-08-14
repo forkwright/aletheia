@@ -1239,6 +1239,7 @@ Tools that every deployment must have. Unavailability follows `required_failure_
 | `method` | "get" \| "post" \| "put" \| "delete" \| "patch" | "post" | HTTP method for `http` tools. Defaults to POST. |
 | `groups` | ("read" \| "edit" \| "command" \| "mcp" \| "spawn_subtask" \| "plan" \| "verify")[] | unset | Tool groups that gate access to this HTTP tool. |
 | `reversibility` | "fully_reversible" \| "reversible" \| "partially_reversible" \| "irreversible" | unset | Reversibility classification used to derive approval requirements. |
+| `trustReadOnlyHint` | bool | false | Whether this MCP server's self-reported `readOnlyHint` annotation may downgrade a discovered tool's approval requirement. WHY(#4631): `readOnlyHint` is asserted by the remote server being judged, not by anything local. Default `false` so an unvetted or compromised server cannot label a mutating tool "read-only" and suppress its own approval prompt; only a server the operator has explicitly reviewed and trusted may set this `true`. `reversibility` above, when set, is an operator-pinned local policy and always takes precedence over this flag and over the remote hint. |
 
 #### tools.required.auth
 
@@ -1286,6 +1287,7 @@ Tools that are deployment-specific. Registered if available.
 | `method` | "get" \| "post" \| "put" \| "delete" \| "patch" | "post" | HTTP method for `http` tools. Defaults to POST. |
 | `groups` | ("read" \| "edit" \| "command" \| "mcp" \| "spawn_subtask" \| "plan" \| "verify")[] | unset | Tool groups that gate access to this HTTP tool. |
 | `reversibility` | "fully_reversible" \| "reversible" \| "partially_reversible" \| "irreversible" | unset | Reversibility classification used to derive approval requirements. |
+| `trustReadOnlyHint` | bool | false | Whether this MCP server's self-reported `readOnlyHint` annotation may downgrade a discovered tool's approval requirement. WHY(#4631): `readOnlyHint` is asserted by the remote server being judged, not by anything local. Default `false` so an unvetted or compromised server cannot label a mutating tool "read-only" and suppress its own approval prompt; only a server the operator has explicitly reviewed and trusted may set this `true`. `reversibility` above, when set, is an operator-pinned local policy and always takes precedence over this flag and over the remote hint. |
 
 #### tools.optional.auth
 

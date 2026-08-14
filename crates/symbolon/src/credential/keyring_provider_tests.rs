@@ -147,6 +147,87 @@ fn with_identifiers_accepts_owned_and_borrowed() {
     assert_eq!(p.username, "user-borrowed-2");
 }
 
+#[test]
+fn for_instance_namespaces_service_by_provider_name() {
+    // WHY(#5250): the keyring service must incorporate the credential
+    // provider name so two different providers on the same instance never
+    // share one entry.
+    let root = std::path::Path::new("/tmp/instance-a");
+    let anthropic = KeyringCredentialProvider::for_instance(root, "anthropic");
+    let openai = KeyringCredentialProvider::for_instance(root, "openai");
+    assert_ne!(anthropic.service, openai.service);
+    assert_eq!(anthropic.service, "aletheia:anthropic");
+    assert_eq!(anthropic.username, openai.username);
+}
+
+#[test]
+fn for_instance_namespaces_username_by_instance_root() {
+    // WHY(#5250): the keyring username must incorporate the instance's
+    // oikos root so two co-installed deployments never share one entry.
+    let a = KeyringCredentialProvider::for_instance(
+        std::path::Path::new("/home/alice/.aletheia"),
+        "anthropic",
+    );
+    let b = KeyringCredentialProvider::for_instance(
+        std::path::Path::new("/home/bob/.aletheia"),
+        "anthropic",
+    );
+    assert_ne!(a.username, b.username);
+    assert_eq!(a.service, b.service);
+}
+
+#[test]
+fn for_instance_never_collides_with_the_legacy_global_identity() {
+    // WHY(#5250): a namespaced provider must never coincidentally resolve
+    // to the exact (service, user) pair `new()` uses -- that pair is what a
+    // stale keyring entry from a pre-namespacing install occupies.
+    let namespaced =
+        KeyringCredentialProvider::for_instance(std::path::Path::new("/srv/aletheia"), "anthropic");
+    let legacy = KeyringCredentialProvider::new();
+    assert!(
+        namespaced.service != legacy.service || namespaced.username != legacy.username,
+        "a namespaced identity must not equal the legacy global (service, user) pair"
+    );
+}
+
+#[test]
+fn for_instance_isolates_two_deployments_sharing_one_machine() {
+    // WHY(#5250): before namespacing, `KeyringCredentialProvider::new()`
+    // always resolved the same (service, user) pair regardless of which
+    // instance constructed it, so instance B silently read whatever
+    // instance A (or a stale prior install) had stored. This test fails
+    // against the pre-fix constructor: replacing `for_instance` with two
+    // `new()` calls makes B observe A's token.
+    install_test_backend();
+    let instance_a = KeyringCredentialProvider::for_instance(
+        std::path::Path::new("/srv/instance-a"),
+        "anthropic",
+    );
+    let instance_b = KeyringCredentialProvider::for_instance(
+        std::path::Path::new("/srv/instance-b"),
+        "anthropic",
+    );
+
+    instance_a
+        .store("token-belongs-to-a")
+        .expect("store for instance A");
+
+    assert!(
+        instance_b.get_credential().is_none(),
+        "instance B must not see instance A's keyring-stored credential"
+    );
+    assert_eq!(
+        instance_a
+            .get_credential()
+            .expect("instance A retains its own credential")
+            .secret
+            .expose_secret(),
+        "token-belongs-to-a"
+    );
+
+    instance_a.delete().expect("cleanup instance A");
+}
+
 // ── entry() mutants ──
 
 #[test]

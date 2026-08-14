@@ -77,6 +77,7 @@ symbolon = { path = "../symbolon" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
-hermeneus = { path = "../hermeneus" }
+hermeneus = { path = "../hermeneus", features = ["test-utils"] }
+indexmap = { workspace = true }
 tempfile = { workspace = true }
 tower = { workspace = true }
