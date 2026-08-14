@@ -1490,6 +1490,9 @@ mod notes_and_cleanup;
 #[path = "fjall_store_tests_prune.rs"]
 mod prune_tests;
 
+#[path = "fjall_store_tests_schema.rs"]
+mod schema_tests;
+
 // ── Portability raw entry points (issue #4163) ─────────────────────────────
 
 #[cfg(feature = "portability")]

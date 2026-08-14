@@ -23,6 +23,7 @@ pub(crate) mod repl;
 pub(crate) mod server;
 pub(crate) mod session_create;
 pub(crate) mod session_export;
+pub(crate) mod session_store;
 pub(crate) mod tls;
 pub(crate) mod tls_self_signed;
 
@@ -118,6 +119,9 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Export(a) => agent_io::export_agent(instance_root, &a).map_err(Into::into),
         Command::SessionCreate(a) => session_create::run(instance_root, &a).map_err(Into::into),
         Command::SessionExport(a) => session_export::run(&a).await.map_err(Into::into),
+        Command::SessionStore { action } => {
+            session_store::run(action, instance_root).map_err(Into::into)
+        }
         Command::Import(a) => agent_io::import_agent(instance_root, &a).map_err(Into::into),
         Command::SeedSkills(a) => agent_io::seed_skills(instance_root, &a).map_err(Into::into),
         Command::ExportSkills(a) => agent_io::export_skills(instance_root, &a)

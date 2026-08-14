@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.36.0](https://github.com/forkwright/aletheia/compare/v0.35.0...v0.36.0) (2026-08-14)
+
+
+### Features
+
+* **ci:** run the gate-coverage-scripts checks locally ([#6700](https://github.com/forkwright/aletheia/issues/6700)) ([0da10a2](https://github.com/forkwright/aletheia/commit/0da10a20764148afa90c72e0287e8a34195f2158))
+* **daemon:** reconcile the maintenance scheduler on config reload ([#6728](https://github.com/forkwright/aletheia/issues/6728)) ([1f6ba05](https://github.com/forkwright/aletheia/commit/1f6ba05e578960f289a98f822589ede7af1f8643))
+* **graphe:** gate the session store on an on-disk schema manifest ([#6740](https://github.com/forkwright/aletheia/issues/6740)) ([1473dd9](https://github.com/forkwright/aletheia/commit/1473dd9b395a3b61b9239d29c15bb82fb2e1fb46))
+* **hermeneus:** negotiate provider capabilities before routing ([#6736](https://github.com/forkwright/aletheia/issues/6736)) ([d127e10](https://github.com/forkwright/aletheia/commit/d127e107e544b56339f892e1b84b248e2332dbdb))
+* **krites:** gate on unmeasured sovereign claims, and fix two filter defects ([#6708](https://github.com/forkwright/aletheia/issues/6708)) ([2dc8eb0](https://github.com/forkwright/aletheia/commit/2dc8eb058e770f85590c1505fe4c2209e943b32a))
+* **krites:** lift the ascii-folding EXCLUDE_SET and unpin the UCD version ([#6712](https://github.com/forkwright/aletheia/issues/6712)) ([46db738](https://github.com/forkwright/aletheia/commit/46db73858816062304bc9d20e7271e3693dd51cc))
+* **proskenion:** surface backend health as a global status signal ([#6733](https://github.com/forkwright/aletheia/issues/6733)) ([3d86cd0](https://github.com/forkwright/aletheia/commit/3d86cd0cec776095103d5b7033b6ec045dc05584))
+* **pylon:** publish the complete turn lifecycle event set ([#6735](https://github.com/forkwright/aletheia/issues/6735)) ([45bdb1d](https://github.com/forkwright/aletheia/commit/45bdb1dbea8b669402658e0912d360168db0e7cd))
+
+
+### Bug Fixes
+
+* **aletheia:** guard storage-fjall in defaults and drop the transient escape hatch ([#6725](https://github.com/forkwright/aletheia/issues/6725)) ([07a890c](https://github.com/forkwright/aletheia/commit/07a890cc520f69565e70c409f0796efcbe3055dd))
+* **ci:** make release-please actually bump proskenion's lockfile pins ([#6726](https://github.com/forkwright/aletheia/issues/6726)) ([46da29b](https://github.com/forkwright/aletheia/commit/46da29b29fd4d5f23a15ebf81d6a43c60b317336)), closes [#6713](https://github.com/forkwright/aletheia/issues/6713)
+* **episteme:** make fact correction atomic by using the primitive that existed ([#6749](https://github.com/forkwright/aletheia/issues/6749)) ([157ec01](https://github.com/forkwright/aletheia/commit/157ec018a4ab453edf341c6439a29d1498678510))
+* **episteme:** stop holding a lock across a whole batch of DB round-trips ([#6738](https://github.com/forkwright/aletheia/issues/6738)) ([6a99046](https://github.com/forkwright/aletheia/commit/6a99046c3ac55dc6913bd094b03ae3e1337d1558)), closes [#5673](https://github.com/forkwright/aletheia/issues/5673) [#5765](https://github.com/forkwright/aletheia/issues/5765)
+* five small defects across taxis, nous, aletheia, memory-mcp, proskenion ([#6717](https://github.com/forkwright/aletheia/issues/6717)) ([ee6dc93](https://github.com/forkwright/aletheia/commit/ee6dc93276ce4bf9b470517f0c877a0ee0b3f793))
+* **graphe:** scope blackboard rows to a viewer identity ([#6731](https://github.com/forkwright/aletheia/issues/6731)) ([cf1a0d5](https://github.com/forkwright/aletheia/commit/cf1a0d5c62c1ace7c5f29db19c1ab1dffcf03f86))
+* **hermeneus:** a request OpenAI cannot express is permanent, not transient ([#6720](https://github.com/forkwright/aletheia/issues/6720)) ([c30e5f2](https://github.com/forkwright/aletheia/commit/c30e5f2f8c06130b0bc2660905d0c3f66a56bbf1))
+* **hermeneus:** reject tool-bearing turns on seat-bridged providers ([#6727](https://github.com/forkwright/aletheia/issues/6727)) ([5d0ac66](https://github.com/forkwright/aletheia/commit/5d0ac66dfb69a1be56a78a4cfc5931342d06de1d)), closes [#4510](https://github.com/forkwright/aletheia/issues/4510)
+* **koilon:** stop storing the TUI bearer token as plaintext ([#6723](https://github.com/forkwright/aletheia/issues/6723)) ([8fa4fcb](https://github.com/forkwright/aletheia/commit/8fa4fcb82f45b380f623bf93ed064610791b8cca)), closes [#5321](https://github.com/forkwright/aletheia/issues/5321)
+* **krites:** fail closed when the prior ledger cannot be parsed ([#6703](https://github.com/forkwright/aletheia/issues/6703)) ([16ca988](https://github.com/forkwright/aletheia/commit/16ca9883fa697714b2a9d2a894f6ae51331866b9))
+* **krites:** fail closed when the upstream snapshot is missing ([#6699](https://github.com/forkwright/aletheia/issues/6699)) ([5b38159](https://github.com/forkwright/aletheia/commit/5b381599b50fab30dc23945e27361a7d323bb0fe))
+* **krites:** make call_sites a floor, not an equality ([#6694](https://github.com/forkwright/aletheia/issues/6694)) ([8dd94b0](https://github.com/forkwright/aletheia/commit/8dd94b02caa918bf3c1b8e8296da95264ee59323))
+* **krites:** restore the MPL notice datalog.pest had stripped ([#6709](https://github.com/forkwright/aletheia/issues/6709)) ([84e24a4](https://github.com/forkwright/aletheia/commit/84e24a40b73e62947e8ec505ffd44aca9bcc7bdd))
+* **krites:** stop a moved `dual` file from losing its soak fuse ([#6696](https://github.com/forkwright/aletheia/issues/6696)) ([27ab9c5](https://github.com/forkwright/aletheia/commit/27ab9c53ee2c2c2781d2d5e0e23eabd708007ce9))
+* **krites:** stop derived artifacts conflicting on every parallel wave ([#6710](https://github.com/forkwright/aletheia/issues/6710)) ([5db157d](https://github.com/forkwright/aletheia/commit/5db157d591b79590751e8fe4fbb9881aab5cb84c))
+* **krites:** upgrade lru past RUSTSEC-2026-0253 ([#6688](https://github.com/forkwright/aletheia/issues/6688)) ([82a4acc](https://github.com/forkwright/aletheia/commit/82a4acc86025be674cda773eb0a5e696c94641da))
+* **nous,proskenion:** finish two half-landed fixes ([#6753](https://github.com/forkwright/aletheia/issues/6753)) ([581f279](https://github.com/forkwright/aletheia/commit/581f279442263bf709b5b52653d3502fe7d80450))
+* **organon:** refuse an egress allowlist the sandbox cannot enforce ([#6744](https://github.com/forkwright/aletheia/issues/6744)) ([461deae](https://github.com/forkwright/aletheia/commit/461deaef17b93f320f8b45604ccf028dd154c99a))
+* **proskenion:** five frontend issues where the UI outran its backing ([#6761](https://github.com/forkwright/aletheia/issues/6761)) ([a91cc3d](https://github.com/forkwright/aletheia/commit/a91cc3d750dfffb95f555473d67bc910c504d738))
+* **pylon:** report real daemon task state in the system status endpoint ([#6721](https://github.com/forkwright/aletheia/issues/6721)) ([9ad7672](https://github.com/forkwright/aletheia/commit/9ad7672e09b0deb42ec6ea50a5db17206364c23d))
+* **taxis:** config-drive the disk-space monitor and re-encrypt secrets on write ([#6722](https://github.com/forkwright/aletheia/issues/6722)) ([ddeddbb](https://github.com/forkwright/aletheia/commit/ddeddbb98d603217542d117ded9f400838143e84)), closes [#5128](https://github.com/forkwright/aletheia/issues/5128) [#5349](https://github.com/forkwright/aletheia/issues/5349)
+* **taxis:** validate agent ids at config load, and make HOT-RELOAD.md true ([#6754](https://github.com/forkwright/aletheia/issues/6754)) ([d0442af](https://github.com/forkwright/aletheia/commit/d0442af491c3527a6ed4bc122cea06385cb4700c))
+* **theatron:** carry health detail through, and stop sharing a fixed temp path ([#6718](https://github.com/forkwright/aletheia/issues/6718)) ([4535f9e](https://github.com/forkwright/aletheia/commit/4535f9ec17a44b5cc6e2a09828cb6f4bcff71dc5))
+
+
+### Documentation
+
+* **ci:** record why a rename-only PR fails the SonarCloud gate ([#6697](https://github.com/forkwright/aletheia/issues/6697)) ([3c19bdf](https://github.com/forkwright/aletheia/commit/3c19bdf97311d451c74c08208f07f090fc964def))
+* **krites:** correct two claims the last three merges made false ([#6711](https://github.com/forkwright/aletheia/issues/6711)) ([e53d087](https://github.com/forkwright/aletheia/commit/e53d0875e0e6661607dce0dd52681d86f8155bb1))
+
 ## [0.35.0](https://github.com/forkwright/aletheia/compare/v0.34.0...v0.35.0) (2026-08-10)
 
 

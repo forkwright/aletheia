@@ -14,6 +14,7 @@ mod tools;
 use dioxus::prelude::*;
 
 use crate::state::metrics::MetricsTab;
+use crate::state::tool_metrics::DateRange;
 
 const TAB_BAR_STYLE: &str = "\
     display: flex; \
@@ -66,6 +67,11 @@ pub(crate) fn Metrics() -> Element {
                     onclick: move |_| active_tab.set(MetricsTab::Costs),
                     "Costs"
                 }
+                button {
+                    style: if *active_tab.read() == MetricsTab::Tools { TAB_ACTIVE_STYLE } else { TAB_INACTIVE_STYLE },
+                    onclick: move |_| active_tab.set(MetricsTab::Tools),
+                    "Tools"
+                }
             }
 
             div {
@@ -73,6 +79,7 @@ pub(crate) fn Metrics() -> Element {
                 match *active_tab.read() {
                     MetricsTab::Tokens => rsx! { tokens::Tokens {} },
                     MetricsTab::Costs => rsx! { costs::Costs {} },
+                    MetricsTab::Tools => rsx! { tools::ToolsOverview { date_range: DateRange::default() } },
                 }
             }
         }

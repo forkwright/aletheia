@@ -11,5 +11,6 @@ pub mod test_support;
 
 pub use fjall_store::{
     FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
-    FinalizeTurnResult, SessionStatusCounts, SessionStore,
+    FinalizeTurnResult, ImportSessionBundle, ImportSessionBundleResult, ImportSessionNote,
+    ImportSessionWorkingState, SchemaManifest, SessionStatusCounts, SessionStore,
 };

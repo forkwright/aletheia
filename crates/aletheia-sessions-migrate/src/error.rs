@@ -102,6 +102,14 @@ pub(crate) enum Error {
         location: snafu::Location,
     },
 
+    #[snafu(display("stamping schema manifest for {}: {source}", path.display()))]
+    SchemaManifestStamp {
+        path: PathBuf,
+        source: graphe::error::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     #[snafu(display(
         "destination '{}' is non-empty; pass --replace-existing --i-understand-this-replaces-destination to replace it. \
          Replacement writes and verifies staging first, moves the current destination to a temporary backup during publish, \

@@ -76,6 +76,70 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// The store directory holds existing data but no schema manifest file —
+    /// it predates the manifest feature, or the manifest was removed.
+    ///
+    /// WHY(#5031): an absent manifest and a corrupted one are
+    /// indistinguishable from a plain file read, and a wrong guess here is
+    /// exactly the "repair by discarding" defect this guard exists to
+    /// prevent (fjall's own keyspace recovery has separately deleted ~600
+    /// issue records when opened against an unexpected on-disk state).
+    /// Refused rather than silently stamped; run `aletheia session-store
+    /// stamp` (backed by
+    /// [`crate::store::SessionStore::stamp_legacy_schema_manifest`]) once you
+    /// have confirmed the store already matches `current`.
+    #[snafu(display(
+        "session store at {} has existing data but no schema manifest; run `aletheia \
+         session-store stamp --path {}` once you have confirmed it matches schema version \
+         {current} before opening",
+        path.display(),
+        path.display()
+    ))]
+    SchemaManifestMissing {
+        path: std::path::PathBuf,
+        current: u32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The on-disk schema manifest exists but could not be parsed as JSON.
+    #[snafu(display("session store manifest at {} is corrupt: {source}", path.display()))]
+    SchemaManifestCorrupt {
+        path: std::path::PathBuf,
+        source: serde_json::Error,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The on-disk schema version predates what this binary understands and
+    /// no migration path is registered for the gap.
+    #[snafu(display(
+        "session store at {} is schema version {found}, this binary requires {expected} and \
+         has no migration path registered for that gap; refusing to open rather than guess",
+        path.display()
+    ))]
+    SchemaVersionTooOld {
+        path: std::path::PathBuf,
+        expected: u32,
+        found: u32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// The on-disk schema version is newer than this binary understands.
+    #[snafu(display(
+        "session store at {} is schema version {found}, this binary only understands up to \
+         {expected}; upgrade aletheia before opening this store",
+        path.display()
+    ))]
+    SchemaVersionTooNew {
+        path: std::path::PathBuf,
+        expected: u32,
+        found: u32,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Engine initialization failed.
     #[cfg(feature = "mneme-engine")]
     #[snafu(display("engine initialization failed: {message}"))]

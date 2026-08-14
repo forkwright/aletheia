@@ -181,7 +181,10 @@ impl BlackboardStore for SessionBlackboardAdapter {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use mneme::types::BlackboardVisibility;
+    use mneme::store::{ImportSessionBundle, ImportSessionWorkingState};
+    use mneme::types::{
+        BlackboardVisibility, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType,
+    };
     use organon::types::NoteStore;
 
     use super::*;
@@ -343,6 +346,100 @@ mod tests {
             bob_no_session,
             vec!["shared-goal"],
             "another agent with no session context must see only Shared rows"
+        );
+    }
+
+    /// Pin aletheia#5032/#5033 against the real import path (not a
+    /// hand-seeded row): `SessionStore::import_session_bundle`'s
+    /// working-state write must classify `ws:` rows `SessionPrivate`,
+    /// scoped to the imported session. A regression that leaves the bundle
+    /// writing the default `Shared` visibility reopens the exact leak
+    /// #6731 closed — the general Nous-viewer list path used by
+    /// session-less MCP callers would surface another session's scratch.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn import_session_bundle_working_state_stays_session_private() {
+        let store = make_store();
+        let session = Session {
+            id: "ses-bundle-carol".to_owned(),
+            nous_id: "carol".to_owned(),
+            session_key: "key-ses-bundle-carol".to_owned(),
+            status: SessionStatus::Active,
+            model: Some("mock-model".to_owned()),
+            session_type: SessionType::Primary,
+            created_at: "2024-01-01T00:00:00Z".to_owned(),
+            updated_at: "2024-01-01T00:00:00Z".to_owned(),
+            metrics: SessionMetrics {
+                token_count_estimate: 0,
+                message_count: 0,
+                last_input_tokens: 0,
+                bootstrap_hash: None,
+                distillation_count: 0,
+                last_distilled_at: None,
+                computed_context_tokens: 0,
+            },
+            origin: SessionOrigin {
+                parent_session_id: None,
+                thread_id: None,
+                transport: None,
+                display_name: None,
+            },
+            artefact_meta: None,
+        };
+        let ws_key = format!("ws:carol:{}", session.id);
+        let working_state = Some(ImportSessionWorkingState {
+            key: &ws_key,
+            value: "{\"step\":1}",
+            author: "carol",
+            ttl_secs: 3600,
+        });
+
+        {
+            let s = store.lock().await;
+            s.import_session_bundle(
+                &ImportSessionBundle {
+                    session: &session,
+                    messages: &[],
+                    usage_records: &[],
+                    notes: &[],
+                    working_state,
+                },
+                false,
+            )
+            .expect("bundle import succeeds");
+        }
+
+        let adapter = SessionBlackboardAdapter(Arc::clone(&store));
+
+        // The owner, inside the imported session, sees its own working state.
+        let owner_view = BlackboardViewer::Session {
+            nous_id: "carol".to_owned(),
+            session_id: session.id.clone(),
+        };
+        let owner_keys: Vec<String> = adapter
+            .list(&owner_view)
+            .expect("list")
+            .into_iter()
+            .map(|e| e.key)
+            .collect();
+        assert!(
+            owner_keys.contains(&ws_key),
+            "owner viewer scoped to the imported session must see its own working state"
+        );
+
+        // The general, unscoped Nous viewer — the leak path #6731 closed —
+        // must never see it, even though carol authored it.
+        let nous_view = BlackboardViewer::Nous {
+            nous_id: "carol".to_owned(),
+        };
+        let nous_keys: Vec<String> = adapter
+            .list(&nous_view)
+            .expect("list")
+            .into_iter()
+            .map(|e| e.key)
+            .collect();
+        assert!(
+            !nous_keys.contains(&ws_key),
+            "imported working state must not leak through the general Nous-viewer list path"
         );
     }
 
