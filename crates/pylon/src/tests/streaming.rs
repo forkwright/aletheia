@@ -477,10 +477,19 @@ async fn sse_stream_message_complete_reports_token_counts() {
     let created = create_test_session(&router).await;
     let id = created["id"].as_str().unwrap();
 
+    // WHY(#4621): the content deliberately avoids the triage sensitivity
+    // markers (`\btoken\b` among them, `pipeline::triage::INTERNAL_MARKERS`)
+    // — this is a happy-path usage-reporting test, not a sensitivity-gating
+    // one, and a message that trips `Internal` gets refused by
+    // `execute::resolve::gate_turn_sensitivity` before it ever reaches the
+    // mock provider (the mock's `deployment_target()` defaults to `Cloud`,
+    // which only admits `Public`, and this harness configures no fallback
+    // route), turning this into a zero-usage `message_complete` instead of
+    // exercising the counts under test.
     let req = authed_request(
         "POST",
         &format!("/api/v1/sessions/{id}/messages"),
-        Some(serde_json::json!({ "content": "Token count test" })),
+        Some(serde_json::json!({ "content": "Please summarize this in one sentence" })),
     );
     let resp = router.oneshot(req).await.unwrap();
     let body = body_string(resp).await;
