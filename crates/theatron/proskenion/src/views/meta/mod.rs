@@ -277,15 +277,47 @@ struct JournalEventEntry {
 ///
 /// WARNING: no `rename_all` on the server DTO, so field names must stay
 /// verbatim-identical to pylon's Rust field names.
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Default)]
 struct JournalResponseEntry {
-    #[serde(default)]
     events: Vec<JournalEventEntry>,
     /// Non-empty when the backend has no data source for a claimed metric
     /// (currently always `["journal"]`: pylon has no persistent event
     /// journal yet). Distinguishes genuinely-empty from unimplemented.
-    #[serde(default)]
     data_unavailable: Vec<UnavailableMetricEntry>,
+}
+
+// WARNING: a plain `#[derive(serde::Deserialize)]` on an all-`#[serde(default)]`
+// struct also accepts JSON *sequences* (serde's derived struct visitor reads a
+// seq positionally, and an empty seq satisfies every trailing defaulted
+// field) -- so a bare `[]` would silently parse as an empty envelope instead
+// of failing loudly if pylon's contract ever reverted to a bare array. Route
+// through `serde_json::Value` first and reject anything that is not a JSON
+// object.
+impl<'de> serde::Deserialize<'de> for JournalResponseEntry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct Envelope {
+            #[serde(default)]
+            events: Vec<JournalEventEntry>,
+            #[serde(default)]
+            data_unavailable: Vec<UnavailableMetricEntry>,
+        }
+
+        let value = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
+        if !value.is_object() {
+            return Err(serde::de::Error::custom(
+                "expected a JSON object envelope for the journal response, not a bare sequence",
+            ));
+        }
+        let envelope: Envelope = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            events: envelope.events,
+            data_unavailable: envelope.data_unavailable,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
