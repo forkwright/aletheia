@@ -31,6 +31,7 @@ pub(super) fn assemble_meta_data(
     perf_available: bool,
     quality_available: bool,
     journal_available: bool,
+    journal_unavailable_reason: Option<String>,
 ) -> MetaData {
     // -- Performance --
     let mut scorecards = Vec::new();
@@ -387,6 +388,7 @@ pub(super) fn assemble_meta_data(
         efficiency,
         journal: journal_events,
         journal_endpoint_available: journal_available,
+        journal_unavailable_reason,
     };
 
     MetaData {
@@ -586,6 +588,7 @@ mod tests {
             perf_available,
             quality_available,
             journal_available,
+            None,
         )
     }
 

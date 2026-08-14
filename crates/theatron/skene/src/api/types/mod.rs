@@ -619,7 +619,17 @@ pub struct NousToolsResponse {
     pub tools: Vec<NousTool>,
 }
 
-/// Server health response from `GET /api/health`.
+/// Server liveness response from `GET /api/health`.
+///
+/// The unauthenticated liveness probe reports only whether the process is
+/// up; it carries none of [`HealthResponse`]'s readiness detail.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LivenessResponse {
+    /// Always `"healthy"` when the process can respond at all.
+    pub status: String,
+}
+
+/// Server health response from `GET /api/v1/system/health`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthResponse {
     /// Aggregate status: `"healthy"`, `"degraded"`, or `"unhealthy"`.

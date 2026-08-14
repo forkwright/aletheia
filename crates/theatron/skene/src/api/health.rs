@@ -4,7 +4,7 @@ use std::fmt;
 
 use reqwest::StatusCode;
 
-use super::types::HealthResponse;
+use super::types::{HealthResponse, LivenessResponse};
 
 /// Failure class for `GET /api/health`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +87,52 @@ pub async fn fetch_health_response(
     }
 }
 
+/// Parse a liveness response body using pylon's `GET /api/health` contract.
+///
+/// Distinct from [`parse_health_body`]: the liveness endpoint carries only
+/// `status`, so this must not be used to parse `/api/v1/system/health`.
+///
+/// # Errors
+///
+/// Returns [`HealthFetchError::Status`] for out-of-contract statuses and
+/// [`HealthFetchError::Malformed`] for accepted statuses with invalid JSON.
+pub fn parse_liveness_body(
+    status: StatusCode,
+    body: &str,
+) -> Result<LivenessResponse, HealthFetchError> {
+    if accepts_health_body(status) {
+        serde_json::from_str::<LivenessResponse>(body)
+            .map_err(|err| HealthFetchError::Malformed(err.to_string()))
+    } else {
+        Err(HealthFetchError::Status(status))
+    }
+}
+
+/// Fetch and parse a liveness response from a completed reqwest request.
+///
+/// # Errors
+///
+/// Returns [`HealthFetchError::Connection`] when the request or body read fails.
+/// Other failures are produced by [`parse_liveness_body`].
+pub async fn fetch_liveness_response(
+    result: Result<reqwest::Response, reqwest::Error>,
+) -> Result<LivenessResponse, HealthFetchError> {
+    match result {
+        Ok(response) => {
+            let status = response.status();
+            if is_auth_status(status) {
+                return Err(HealthFetchError::Status(status));
+            }
+            let body = response
+                .text()
+                .await
+                .map_err(|err| HealthFetchError::Connection(err.to_string()))?;
+            parse_liveness_body(status, &body)
+        }
+        Err(err) => Err(HealthFetchError::Connection(err.to_string())),
+    }
+}
+
 /// Return check names whose status is not `pass`.
 #[must_use]
 pub fn failing_check_names(response: &HealthResponse) -> Vec<String> {
@@ -102,24 +148,39 @@ pub fn failing_check_names(response: &HealthResponse) -> Vec<String> {
 mod tests {
     #![expect(clippy::expect_used, reason = "test assertions need contextual panics")]
 
+    use super::super::types::HealthCheck;
     use super::*;
 
     fn install_crypto() {
         crate::install_test_crypto_provider();
     }
 
+    /// Builds a fixture by serializing the real `HealthResponse` DTO rather
+    /// than hand-authoring JSON, so a future field change to the DTO breaks
+    /// this fixture instead of silently drifting from what the server sends.
     fn health_body(status: &str, check_status: &str) -> String {
-        serde_json::json!({
-            "status": status,
-            "version": "0.13.1",
-            "git_sha": "abc123",
-            "uptime_seconds": 300,
-            "checks": [
-                {"name": "providers", "status": check_status, "message": null}
-            ],
-            "data_dir": "/tmp/data"
+        serde_json::to_string(&HealthResponse {
+            status: status.to_string(),
+            version: "0.13.1".to_string(),
+            git_sha: "abc123".to_string().into(),
+            uptime_seconds: 300,
+            checks: vec![HealthCheck {
+                name: "providers".to_string(),
+                status: check_status.to_string(),
+                message: None,
+            }],
+            data_dir: "/tmp/data".to_string(),
         })
-        .to_string()
+        .expect("HealthResponse must serialize")
+    }
+
+    /// Builds a fixture from the real `LivenessResponse` DTO — the actual
+    /// shape `GET /api/health` returns.
+    fn liveness_body(status: &str) -> String {
+        serde_json::to_string(&LivenessResponse {
+            status: status.to_string(),
+        })
+        .expect("LivenessResponse must serialize")
     }
 
     #[test]
@@ -173,5 +234,29 @@ mod tests {
             .await
             .expect_err("closed local port must fail");
         assert!(matches!(err, HealthFetchError::Connection(_)));
+    }
+
+    #[test]
+    fn parses_genuine_liveness_body() {
+        let response = parse_liveness_body(StatusCode::OK, &liveness_body("healthy"))
+            .expect("a genuine `/api/health` liveness body must parse");
+        assert_eq!(response.status, "healthy");
+    }
+
+    #[test]
+    fn genuine_liveness_body_does_not_satisfy_the_detailed_parser() {
+        // WHY: this is the regression this module exists to prevent — a body
+        // shaped like what `/api/health` actually sends must not silently
+        // parse as the richer `/api/v1/system/health` contract.
+        let err = parse_health_body(StatusCode::OK, &liveness_body("healthy"))
+            .expect_err("a liveness-only body must not satisfy HealthResponse");
+        assert!(matches!(err, HealthFetchError::Malformed(_)));
+    }
+
+    #[test]
+    fn liveness_auth_status_is_identified_distinctly() {
+        let err = parse_liveness_body(StatusCode::UNAUTHORIZED, "{}")
+            .expect_err("401 must not be parsed as liveness");
+        assert!(matches!(err, HealthFetchError::Status(status) if is_auth_status(status)));
     }
 }

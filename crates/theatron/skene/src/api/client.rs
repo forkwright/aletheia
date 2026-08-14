@@ -165,6 +165,11 @@ impl ApiClient {
 
     /// Fetch the server's full health report.
     ///
+    /// Hits the operator-only `/api/v1/system/health` route — the
+    /// unauthenticated `/api/health` liveness probe carries only `status`
+    /// and cannot satisfy [`HealthResponse`] (see [`super::health::parse_liveness_body`]
+    /// for that contract).
+    ///
     /// Returns the parsed [`HealthResponse`] for both successful (healthy/degraded)
     /// and `503 Service Unavailable` (unhealthy) responses so callers can render
     /// the real check states. Network failures and unparseable responses are
@@ -179,7 +184,7 @@ impl ApiClient {
     pub async fn health_details(&self) -> Result<HealthResponse> {
         let resp = self
             .client
-            .get(self.url("/api/health"))
+            .get(self.url("/api/v1/system/health"))
             .send()
             .await
             .context(HttpSnafu {
@@ -1084,5 +1089,66 @@ mod tests {
             panic!("expected legacy RateLimited error");
         };
         assert_eq!(retry_after_secs, Some(7));
+    }
+
+    #[tokio::test]
+    async fn health_details_hits_the_operator_readiness_route_not_liveness() {
+        crate::install_test_crypto_provider();
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        let addr = listener.local_addr().expect("read test server addr");
+        let body = serde_json::to_string(&HealthResponse {
+            status: "healthy".to_string(),
+            version: "0.1.0".to_string(),
+            git_sha: "deadbeef".to_string().into(),
+            uptime_seconds: 42,
+            checks: vec![],
+            data_dir: "/tmp".to_string(),
+        })
+        .expect("HealthResponse must serialize");
+        let handle = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept test request");
+            stream
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("set read timeout");
+            let mut buf = [0_u8; 2048];
+            let n = stream.read(&mut buf).expect("read request");
+            // WHY get(): `n` comes from a read whose contract does not bind it
+            // to buf's length, so indexing is a panic clippy::indexing_slicing
+            // correctly refuses in a mock server a test depends on.
+            let request_line = String::from_utf8_lossy(buf.get(..n).unwrap_or(&[]))
+                .lines()
+                .next()
+                .unwrap_or_default()
+                .to_string();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nconnection: close\r\ncontent-length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("write health details test response");
+            request_line
+        });
+
+        let base_url = format!("http://{addr}");
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+        let health = client
+            .health_details()
+            .await
+            .expect("real HealthResponse body must parse");
+        assert_eq!(health.status, "healthy");
+
+        let request_line = handle.join().expect("test server thread should finish");
+        // WHY: a mock server answers any path with the same canned body, so the
+        // only way to catch a regression back to the liveness-only route is to
+        // inspect the path the client actually requested.
+        assert!(
+            request_line.contains("/api/v1/system/health"),
+            "health_details must request the operator readiness route, got: {request_line}"
+        );
+        assert!(
+            !request_line.contains("GET /api/health "),
+            "health_details must not request the liveness-only route, got: {request_line}"
+        );
     }
 }

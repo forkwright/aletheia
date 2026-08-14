@@ -48,7 +48,13 @@ mod tests {
                     .next()
                     .and_then(|line| line.split_whitespace().nth(1))
                     .unwrap_or("/");
-                let (status, reason, body) = if path == "/api/health" {
+                // WHY: `App::init` -> `connect()` fetches the operator-only
+                // detailed report via `health_details()`, which hits
+                // `/api/v1/system/health` -- not the unauthenticated
+                // `/api/health` liveness probe (`{"status"}` only, no
+                // `checks`). Routing the detailed body here mirrors what the
+                // production client actually calls.
+                let (status, reason, body) = if path == "/api/v1/system/health" {
                     (health_status, "Service Unavailable", health_body.as_str())
                 } else if path == "/api/v1/nous" {
                     (200, "OK", r#"{"nous":[]}"#)

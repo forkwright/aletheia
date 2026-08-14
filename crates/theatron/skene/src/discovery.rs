@@ -35,7 +35,7 @@ use std::time::Duration;
 use serde::Deserialize;
 use tracing::instrument;
 
-use crate::api::health::fetch_health_response;
+use crate::api::health::fetch_liveness_response;
 
 /// Environment variable for one or more comma-separated base URL candidates.
 const ENV_SERVER_URL: &str = "ALETHEIA_SERVER_URL";
@@ -407,10 +407,12 @@ fn normalize_base_url(url: &str) -> String {
     url.trim().trim_end_matches('/').to_string()
 }
 
-/// Probe a single candidate URL by hitting its health endpoint.
+/// Probe a single candidate URL by hitting its liveness endpoint.
 ///
-/// Returns `Some(base_url)` if the server returns a parseable health body within
-/// [`PROBE_TIMEOUT`], including `503` unhealthy reports.
+/// Returns `Some(base_url)` if the server returns a parseable liveness body
+/// within [`PROBE_TIMEOUT`], including `503` unhealthy reports. `/api/health`
+/// is unauthenticated liveness only (see [`super::api::health::parse_liveness_body`]);
+/// discovery needs no more than that to confirm a candidate is a live server.
 async fn probe(client: &reqwest::Client, candidate: &Candidate) -> Option<String> {
     let health_url = format!("{}/api/health", candidate.base_url);
     tracing::debug!(
@@ -419,7 +421,7 @@ async fn probe(client: &reqwest::Client, candidate: &Candidate) -> Option<String
         "probing candidate"
     );
 
-    match fetch_health_response(client.get(&health_url).send().await).await {
+    match fetch_liveness_response(client.get(&health_url).send().await).await {
         Ok(health) => {
             tracing::info!(
                 url = %candidate.base_url,
@@ -499,6 +501,7 @@ pub async fn discover_server_with_config(config: &DiscoveryConfig) -> Option<Str
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(clippy::expect_used, reason = "test fixtures panic on failure")]
 mod tests {
     use std::io::Write as _;
 
@@ -510,18 +513,14 @@ mod tests {
         file.write_all(contents.as_bytes()).unwrap();
     }
 
+    /// Builds a fixture by serializing the real `LivenessResponse` DTO — the
+    /// actual shape `GET /api/health` sends — rather than hand-authoring the
+    /// richer `/api/v1/system/health` JSON discovery does not receive.
     fn health_json_body(status: &str) -> String {
-        serde_json::json!({
-            "status": status,
-            "version": "0.13.1",
-            "git_sha": "abc123",
-            "uptime_seconds": 300,
-            "checks": [
-                {"name": "providers", "status": "fail", "message": "provider offline"}
-            ],
-            "data_dir": "/tmp/data"
+        serde_json::to_string(&crate::api::types::LivenessResponse {
+            status: status.to_string(),
         })
-        .to_string()
+        .expect("LivenessResponse must serialize")
     }
 
     async fn spawn_probe_server(status: u16, body: String) -> String {

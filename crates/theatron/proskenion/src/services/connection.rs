@@ -35,7 +35,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::api::client::{AuthenticatedClientError, build_authenticated_client};
-use crate::api::health::{HealthFetchError, parse_health_body};
+use crate::api::health::{HealthFetchError, parse_liveness_body};
 use crate::state::connection::{
     ConnectionConfig, ConnectionState, HEALTH_CHECK_INTERVAL, backoff_duration,
 };
@@ -149,6 +149,11 @@ impl PylonClient {
 
     /// Check server reachability via `GET /api/health`.
     ///
+    /// `/api/health` is unauthenticated liveness only — it reports `status`
+    /// and nothing else (see [`crate::api::health::parse_liveness_body`]).
+    /// Any richer readiness signal (subsystem checks, version) comes from
+    /// the separate `/api/v1/system/status` poll (#5315), not this probe.
+    ///
     /// Returns `Ok(PylonReadiness)` when the response is parseable 2xx or 503
     /// JSON. Transport failures and unrecognised status codes are errors.
     pub async fn health(&self) -> Result<PylonReadiness, ConnectionError> {
@@ -163,7 +168,7 @@ impl PylonClient {
         let status = resp.status();
         let body = resp.text().await.context(HealthCheckSnafu)?;
 
-        match parse_health_body(status, &body) {
+        match parse_liveness_body(status, &body) {
             Ok(response) => Ok(PylonReadiness {
                 status: response.status,
             }),
@@ -581,18 +586,14 @@ mod tests {
         assert_eq!(client.base_url(), format!("http://localhost:{port}"));
     }
 
+    /// Builds a fixture by serializing the real `LivenessResponse` DTO — the
+    /// actual shape `GET /api/health` returns — rather than hand-authoring
+    /// the richer `/api/v1/system/health` body this probe never receives.
     fn health_json_body(status: &str) -> String {
-        serde_json::json!({
-            "status": status,
-            "version": "0.13.1",
-            "git_sha": "abc123",
-            "uptime_seconds": 300,
-            "checks": [
-                {"name": "providers", "status": "pass", "message": null}
-            ],
-            "data_dir": "/tmp/data"
+        serde_json::to_string(&skene::api::types::LivenessResponse {
+            status: status.to_string(),
         })
-        .to_string()
+        .expect("LivenessResponse must serialize")
     }
 
     /// Spawns a minimal HTTP server on an ephemeral port that responds with

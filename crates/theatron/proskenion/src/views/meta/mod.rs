@@ -272,6 +272,62 @@ struct JournalEventEntry {
     message: String,
 }
 
+/// Wire envelope for `GET /api/v1/journal`
+/// (`pylon::types::insights::JournalResponse`).
+///
+/// WARNING: no `rename_all` on the server DTO, so field names must stay
+/// verbatim-identical to pylon's Rust field names.
+#[derive(Debug, Clone, Default)]
+struct JournalResponseEntry {
+    events: Vec<JournalEventEntry>,
+    /// Non-empty when the backend has no data source for a claimed metric
+    /// (currently always `["journal"]`: pylon has no persistent event
+    /// journal yet). Distinguishes genuinely-empty from unimplemented.
+    data_unavailable: Vec<UnavailableMetricEntry>,
+}
+
+// WARNING: a plain `#[derive(serde::Deserialize)]` on an all-`#[serde(default)]`
+// struct also accepts JSON *sequences* (serde's derived struct visitor reads a
+// seq positionally, and an empty seq satisfies every trailing defaulted
+// field) -- so a bare `[]` would silently parse as an empty envelope instead
+// of failing loudly if pylon's contract ever reverted to a bare array. Route
+// through `serde_json::Value` first and reject anything that is not a JSON
+// object.
+impl<'de> serde::Deserialize<'de> for JournalResponseEntry {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(serde::Deserialize)]
+        struct Envelope {
+            #[serde(default)]
+            events: Vec<JournalEventEntry>,
+            #[serde(default)]
+            data_unavailable: Vec<UnavailableMetricEntry>,
+        }
+
+        let value = <serde_json::Value as serde::Deserialize>::deserialize(deserializer)?;
+        if !value.is_object() {
+            return Err(serde::de::Error::custom(
+                "expected a JSON object envelope for the journal response, not a bare sequence",
+            ));
+        }
+        let envelope: Envelope = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+        Ok(Self {
+            events: envelope.events,
+            data_unavailable: envelope.data_unavailable,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+struct UnavailableMetricEntry {
+    #[serde(default)]
+    metric: String,
+    #[serde(default)]
+    reason: String,
+}
+
 /// Composite data fetched from multiple API endpoints.
 #[derive(Debug, Clone)]
 struct MetaData {
@@ -554,7 +610,9 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     };
     let base = cfg.server_url.trim_end_matches('/');
 
-    let health_url = format!("{base}/api/health");
+    // WHY(#6732): `/api/health` is unauthenticated liveness only (`status`
+    // only); `uptime_seconds` requires the operator-only detailed route.
+    let health_url = format!("{base}/api/v1/system/health");
     // WHY: /metrics serves Prometheus text; system totals come from the
     // JSON token/cost insights endpoints instead.
     let tokens_url = format!("{base}/api/v1/metrics/tokens");
@@ -664,8 +722,23 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let (quality, quality_available): (QualityMetricsApiResponse, bool) =
         fetch_source(quality_res, "quality").await;
 
-    let (journal, journal_available): (Vec<JournalEventEntry>, bool) =
+    // WHY(#4486): pylon's `/api/v1/journal` returns an envelope
+    // (`{events, data_unavailable}`), not a bare array, and marks itself
+    // unavailable in-band via `data_unavailable` rather than an HTTP error
+    // (no persistent event journal backs the route yet). Parsing straight
+    // into `Vec<JournalEventEntry>` would fail on every real response
+    // (map where a sequence is expected) and never surface that reason.
+    let (journal_response, journal_fetched): (JournalResponseEntry, bool) =
         fetch_source(journal_res, "journal").await;
+    let journal_available = journal_fetched && journal_response.data_unavailable.is_empty();
+    // WHY: surface pylon's own reason instead of a generic message -- the
+    // whole point of parsing the envelope (see #4486 above) was to know
+    // *why* the source is unavailable, not just that it is.
+    let journal_unavailable_reason = journal_response
+        .data_unavailable
+        .first()
+        .map(|entry| format!("{}: {}", entry.metric, entry.reason));
+    let journal = journal_response.events;
 
     let data = assemble_meta_data(
         health,
@@ -682,6 +755,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         perf_available,
         quality_available,
         journal_available,
+        journal_unavailable_reason,
     );
     FetchState::Loaded(data)
 }
@@ -834,5 +908,68 @@ fn parse_agents_response(text: &str) -> Vec<AgentEntry> {
                 Vec::new()
             }
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Mirrors `pylon::types::insights::JournalResponse`'s real wire shape:
+    /// an envelope, not a bare array. Before #4486's fix this crate parsed
+    /// the response straight into `Vec<JournalEventEntry>`, which fails on
+    /// every real `/api/v1/journal` response (a JSON object where a
+    /// sequence is expected) — so the journal was reported unavailable for
+    /// the wrong reason (a parse error) regardless of what pylon reported,
+    /// and real events would never have rendered once pylon starts sending
+    /// them.
+    #[test]
+    fn journal_envelope_with_data_unavailable_parses() {
+        let body = serde_json::json!({
+            "events": [],
+            "data_unavailable": [
+                {"metric": "journal", "reason": "no persistent event journal is available in pylon"}
+            ]
+        })
+        .to_string();
+
+        let parsed: JournalResponseEntry =
+            serde_json::from_str(&body).expect("pylon's real journal envelope must parse");
+        assert!(parsed.events.is_empty());
+        assert_eq!(parsed.data_unavailable.len(), 1);
+        assert_eq!(
+            parsed.data_unavailable.first().map(|u| u.metric.as_str()),
+            Some("journal")
+        );
+    }
+
+    /// A genuinely populated journal must still parse and report available.
+    #[test]
+    fn journal_envelope_with_events_parses_and_is_available() {
+        let body = serde_json::json!({
+            "events": [
+                {"timestamp": "2026-01-01T00:00:00Z", "event_type": "config", "message": "reloaded"}
+            ],
+            "data_unavailable": []
+        })
+        .to_string();
+
+        let parsed: JournalResponseEntry =
+            serde_json::from_str(&body).expect("a populated journal envelope must parse");
+        assert_eq!(parsed.events.len(), 1);
+        assert!(parsed.data_unavailable.is_empty());
+    }
+
+    /// The old bare-array shape must not silently pass -- if pylon's
+    /// contract ever reverts, this test should fail loudly rather than the
+    /// client quietly reporting empty-and-available.
+    #[test]
+    fn bare_array_body_does_not_satisfy_the_envelope_type() {
+        let body = serde_json::json!([]).to_string();
+        let result: Result<JournalResponseEntry, _> = serde_json::from_str(&body);
+        assert!(
+            result.is_err(),
+            "a bare array must not parse as the envelope type"
+        );
     }
 }

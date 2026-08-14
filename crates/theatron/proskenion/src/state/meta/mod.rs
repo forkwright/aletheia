@@ -557,6 +557,11 @@ pub(crate) struct SystemReflectionStore {
     pub journal: Vec<JournalEvent>,
     /// Whether the server exposes a queryable system-journal endpoint.
     pub journal_endpoint_available: bool,
+    /// Backend-supplied reason the journal is unavailable (from pylon's
+    /// `data_unavailable` envelope entry), when the server reported one.
+    /// `None` when available, or when the fetch itself failed rather than
+    /// the server marking the source unavailable in-band.
+    pub journal_unavailable_reason: Option<String>,
 }
 
 impl SystemReflectionStore {
