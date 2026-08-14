@@ -332,7 +332,15 @@ fn resolve_token(base: &Path, file_config: &mut ConfigFile) -> bool {
 
     if file_config.token_ref.is_some() {
         match secret_store::load_token(base) {
-            Ok(loaded) => file_config.token = loaded,
+            // WHY: `ConfigFile.token` is the shared bridge type for both the
+            // legacy-plaintext and resolved-from-storage paths (it is never
+            // serialized back to disk — see the field doc above); the
+            // secret-store boundary itself now hands back `SecretString`,
+            // and `Config::load` re-wraps this into `SecretString` for
+            // runtime use.
+            Ok(loaded) => {
+                file_config.token = loaded.map(|token| token.expose_secret().to_owned());
+            }
             Err(err) => {
                 tracing::warn!(error = %err, "failed to load TUI token from secret storage")
             }
@@ -499,7 +507,10 @@ mod tests {
         assert!(rewritten.contains("token_ref"));
 
         assert_eq!(
-            secret_store::load_token(base).unwrap().as_deref(),
+            secret_store::load_token(base)
+                .unwrap()
+                .as_ref()
+                .map(SecretString::expose_secret),
             Some("legacy-plaintext")
         );
     }

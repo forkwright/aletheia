@@ -275,7 +275,27 @@ impl NousActor {
         // WHY: initialize training writers once per actor so the turn hot path
         // does not pay directory creation / manifest reconciliation costs on
         // every completed turn. (#5676)
-        let training_capture = if pipeline_config.training.enabled {
+        //
+        // WHY(#5385): `training.path` is validated ahead of the TOML/CLI and
+        // HTTP config-update paths (`taxis::loader`, `taxis::validate`), but
+        // both writers below independently join it onto the instance root —
+        // checked once here, shared by both, rather than trusting that an
+        // upstream gate ran. `DpoWriter::new` takes an already-joined `dir`
+        // with no root context of its own, so its half of the guard has to
+        // live at this call site rather than inside that constructor.
+        let training_path_safe = pipeline_config.training.enabled
+            && match koina::fs::reject_path_override(&pipeline_config.training.path) {
+                Ok(()) => true,
+                Err(e) => {
+                    warn!(
+                        error = %e,
+                        "training.path escapes the instance root; training and DPO writes disabled for this actor"
+                    );
+                    false
+                }
+            };
+
+        let training_capture = if training_path_safe {
             match crate::training::TrainingCapture::new(oikos.root(), &pipeline_config.training) {
                 Ok(capture) => Some(Arc::new(std::sync::Mutex::new(capture))),
                 Err(e) => {
@@ -289,7 +309,7 @@ impl NousActor {
         } else {
             None
         };
-        let dpo_writer = if pipeline_config.training.enabled {
+        let dpo_writer = if training_path_safe {
             let dpo_dir = oikos.root().join(&pipeline_config.training.path);
             match crate::training::DpoWriter::new(&dpo_dir) {
                 Ok(writer) => Some(Arc::new(std::sync::Mutex::new(writer))),

@@ -169,6 +169,7 @@ impl AuthorProbs {
 /// bank uses surface features (length, markdown density, self-reference
 /// patterns, informal markers) that are cheap to compute and sufficient for
 /// the decontamination gate. See #3786 for evaluation results.
+#[derive(Debug)]
 pub struct Classifier {
     metadata: ArtifactMetadata,
 }

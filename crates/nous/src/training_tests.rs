@@ -58,6 +58,73 @@ fn training_config_defaults() {
     assert!(config.pii_filter_enabled);
 }
 
+// WHY(#5385): `training.path` is validated at config load
+// (`taxis::validate`), but `TrainingCapture::new` re-checks independently
+// so a caller that builds `TrainingConfig` directly — like these tests, or
+// a future non-validated call path — cannot write outside the instance
+// root just because the config-load gate did not run.
+
+#[test]
+fn new_rejects_absolute_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("/etc/aletheia-training", 50 * 1024 * 1024);
+
+    let err = TrainingCapture::new(dir.path(), &config)
+        .expect_err("absolute training.path must be rejected");
+    assert!(
+        matches!(err, TrainingCaptureError::PathEscapesRoot { .. }),
+        "expected PathEscapesRoot, got: {err:?}"
+    );
+}
+
+#[test]
+fn new_rejects_dotdot_traversal() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training/../../escape", 50 * 1024 * 1024);
+
+    let err = TrainingCapture::new(dir.path(), &config)
+        .expect_err("'..' in training.path must be rejected");
+    assert!(
+        matches!(err, TrainingCaptureError::PathEscapesRoot { .. }),
+        "expected PathEscapesRoot, got: {err:?}"
+    );
+}
+
+#[test]
+fn new_rejects_empty_path() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("", 50 * 1024 * 1024);
+
+    let err = TrainingCapture::new(dir.path(), &config)
+        .expect_err("empty training.path must be rejected");
+    assert!(
+        matches!(err, TrainingCaptureError::PathEscapesRoot { .. }),
+        "expected PathEscapesRoot, got: {err:?}"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn new_rejects_symlink_escape() {
+    // WHY: a plain relative `config.path` (e.g. "training") passes the
+    // pre-join string check, but if that name is a symlink pointing outside
+    // the instance root, only the post-creation canonicalize re-check
+    // catches it.
+    let root = tempfile::tempdir().expect("tempdir");
+    let outside = tempfile::tempdir().expect("tempdir");
+
+    std::os::unix::fs::symlink(outside.path(), root.path().join("training"))
+        .expect("create symlink");
+
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let err = TrainingCapture::new(root.path(), &config)
+        .expect_err("symlink escaping the instance root must be rejected");
+    assert!(
+        matches!(err, TrainingCaptureError::PathEscapesRoot { .. }),
+        "expected PathEscapesRoot, got: {err:?}"
+    );
+}
+
 #[test]
 fn training_capture_writes_jsonl() {
     let dir = tempfile::tempdir().expect("tempdir");

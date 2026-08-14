@@ -130,13 +130,45 @@ load_patterns() {
 # Credit-card pattern is recognised structurally so we can gate it on Luhn.
 CC_PATTERN_MARKER='4[0-9]{3}|5[1-5][0-9]{2}|3[47][0-9]{2}|6(?:011|5[0-9]{2})'
 
+# WHY(#5439): an invalid PCRE2 pattern must fail the scanner loudly, not be
+# swallowed as "zero matches" for that pattern while CI stays green.
+# Compiling against empty input is cheap (no repo walk) and exercises the
+# same PCRE2 parser rg uses on the real scan; exit 1 there just means "no
+# match against nothing" — a genuinely invalid pattern exits 2.
+validate_pattern() {
+    local pattern="$1" err rc
+    err="$(printf '' | rg --pcre2 -e "${pattern}" 2>&1 1>/dev/null)" && rc=0 || rc=$?
+    if (( rc != 0 && rc != 1 )); then
+        printf 'scan-pii: invalid PCRE2 pattern %q\n' "${pattern}" >&2
+        [[ -n "${err}" ]] && printf '  %s\n' "${err}" >&2
+        return 1
+    fi
+    return 0
+}
+
+declare -a PATTERNS
+pattern_errors=0
+while IFS= read -r pattern; do
+    [[ -z "${pattern}" ]] && continue
+    PATTERNS+=("${pattern}")
+    validate_pattern "${pattern}" || pattern_errors=$((pattern_errors + 1))
+done < <(load_patterns)
+
+if (( pattern_errors > 0 )); then
+    printf '\nscan-pii: %d invalid pattern(s) in %s, refusing to scan\n' \
+        "${pattern_errors}" "${PATTERNS_FILE}" >&2
+    exit 2
+fi
+
 findings=0
+scan_errors=0
+rg_out="$(mktemp)"
+rg_err="$(mktemp)"
+trap 'rm -f "${rg_out}" "${rg_err}"' EXIT
 
 cd "${REPO_ROOT}"
 
-while IFS= read -r pattern; do
-    [[ -z "${pattern}" ]] && continue
-
+for pattern in "${PATTERNS[@]}"; do
     is_cc=0
     if [[ "${pattern}" == *"${CC_PATTERN_MARKER}"* ]]; then
         is_cc=1
@@ -144,6 +176,26 @@ while IFS= read -r pattern; do
 
     # rg output format: path:line:col:match. We honour .gitignore (so
     # instance/ and target/ are skipped) and enable PCRE2 for lookaround.
+    # Exit 1 ("no matches") is the expected outcome for most patterns; any
+    # other exit is a scanner failure, not a clean pattern (#5439) — it must
+    # not be swallowed the way the pre-fix `2>/dev/null || true` did.
+    if rg --pcre2 --no-heading --line-number --column \
+        --color=never --with-filename \
+        --glob '!.git' --glob '!target' --glob '!node_modules' \
+        -e "${pattern}" . >"${rg_out}" 2>"${rg_err}"; then
+        rg_exit=0
+    else
+        rg_exit=$?
+    fi
+
+    if (( rg_exit != 0 && rg_exit != 1 )); then
+        printf 'scan-pii: ripgrep failed on pattern %q (exit %d)\n' \
+            "${pattern}" "${rg_exit}" >&2
+        [[ -s "${rg_err}" ]] && cat "${rg_err}" >&2
+        scan_errors=$((scan_errors + 1))
+        continue
+    fi
+
     while IFS= read -r hit; do
         [[ -z "${hit}" ]] && continue
         path="${hit%%:*}"
@@ -178,11 +230,14 @@ while IFS= read -r pattern; do
         printf 'PII: %s:%s: match=%q pattern=%q\n' \
             "${path}" "${lineno}" "${match}" "${pattern}" >&2
         findings=$((findings + 1))
-    done < <(rg --pcre2 --no-heading --line-number --column \
-        --color=never --with-filename \
-        --glob '!.git' --glob '!target' --glob '!node_modules' \
-        -e "${pattern}" . 2>/dev/null || true)
-done < <(load_patterns)
+    done < "${rg_out}"
+done
+
+if (( scan_errors > 0 )); then
+    printf '\nscan-pii: %d pattern(s) failed to run, refusing to report clean\n' \
+        "${scan_errors}" >&2
+    exit 2
+fi
 
 if (( findings > 0 )); then
     printf '\nscan-pii: %d unsuppressed finding(s)\n' "${findings}" >&2

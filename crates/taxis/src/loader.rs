@@ -156,41 +156,27 @@ fn validate_contained_relative_paths(config: &AletheiaConfig) -> Result<()> {
 /// write and commonly do not exist yet at config-load time, so an
 /// existence-requiring containment check would reject a perfectly valid
 /// fresh-instance config.
+///
+/// SSOT: the rule itself lives in [`koina::fs::reject_path_override`] —
+/// shared with `nous::training::TrainingCapture::new` (the writer, which
+/// pairs it with a post-creation canonicalize re-check for symlink escapes)
+/// and `taxis::validate::validate_training`. `prepare_reload` calls
+/// [`load_config`] before re-validating, so hot-reload already inherits
+/// this check; `taxis::validate::validate_training` earns its keep on a
+/// path that does not: `pylon::handlers::config::update_section` (`PUT
+/// /api/v1/config/training`) validates an incoming JSON body directly
+/// through `taxis::validate::validate_section`, never through this loader.
+/// This wraps the shared verdict in the field/path/reason shape this
+/// module's callers expect.
 fn validate_relative_contained(field: &'static str, raw: &str) -> Result<()> {
-    if raw.is_empty() {
-        return ConfigPathEscapesRootSnafu {
+    koina::fs::reject_path_override(raw).map_err(|source| {
+        ConfigPathEscapesRootSnafu {
             field,
             path: raw.to_owned(),
-            reason: "must not be empty",
+            reason: source.to_string(),
         }
-        .fail();
-    }
-
-    let path = std::path::Path::new(raw);
-    if path.is_absolute() {
-        return ConfigPathEscapesRootSnafu {
-            field,
-            path: raw.to_owned(),
-            reason: "must be relative to the instance root, not absolute",
-        }
-        .fail();
-    }
-
-    for component in path.components() {
-        if !matches!(component, std::path::Component::Normal(_)) {
-            return ConfigPathEscapesRootSnafu {
-                field,
-                path: raw.to_owned(),
-                reason: format!(
-                    "contains a disallowed path component ({component:?}); only plain \
-                     directory/file names are allowed"
-                ),
-            }
-            .fail();
-        }
-    }
-
-    Ok(())
+        .build()
+    })
 }
 
 fn mirror_data_retention(root: &mut JsonValue) {
@@ -610,6 +596,73 @@ mod tests {
             config.agents.defaults.model_defaults.model.primary, "claude-sonnet-4-6",
             "unset model should use default"
         );
+    }
+
+    // WHY(#5385): `validate_contained_relative_paths`/`validate_relative_contained`
+    // had no test coverage — the logic existed but nothing pinned that it
+    // actually fires through the real `load_config` cascade. These exercise
+    // the public entry point rather than calling the private fn directly, so
+    // they also prove the check is genuinely wired in, not merely present.
+
+    #[test]
+    fn load_config_rejects_absolute_training_path() {
+        let jail = EnvJail::new();
+        jail.create_file(
+            "config/aletheia.toml",
+            "[training]\npath = \"/etc/aletheia-training\"\n",
+        );
+        let oikos = Oikos::from_root(jail.directory());
+
+        let err = load_config(&oikos).expect_err("absolute training.path must be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains("training.path"),
+            "error should cite training.path: {message}"
+        );
+    }
+
+    #[test]
+    fn load_config_rejects_dotdot_training_path() {
+        let jail = EnvJail::new();
+        jail.create_file(
+            "config/aletheia.toml",
+            "[training]\npath = \"data/../../escape\"\n",
+        );
+        let oikos = Oikos::from_root(jail.directory());
+
+        let err = load_config(&oikos).expect_err("'..' in training.path must be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains("training.path"),
+            "error should cite training.path: {message}"
+        );
+    }
+
+    #[test]
+    fn load_config_rejects_empty_training_path() {
+        let jail = EnvJail::new();
+        jail.create_file("config/aletheia.toml", "[training]\npath = \"\"\n");
+        let oikos = Oikos::from_root(jail.directory());
+
+        let err = load_config(&oikos).expect_err("empty training.path must be rejected");
+        let message = err.to_string();
+        assert!(
+            message.contains("training.path"),
+            "error should cite training.path: {message}"
+        );
+    }
+
+    #[test]
+    fn load_config_accepts_plain_relative_training_path() {
+        let jail = EnvJail::new();
+        jail.create_file(
+            "config/aletheia.toml",
+            "[training]\npath = \"data/training\"\n",
+        );
+        let oikos = Oikos::from_root(jail.directory());
+
+        let config = load_config(&oikos).unwrap_or_else(|e| panic!("load: {e}"));
+        assert_eq!(config.training.path, "data/training");
     }
 
     #[test]

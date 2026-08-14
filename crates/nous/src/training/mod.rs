@@ -80,6 +80,16 @@ pub enum TrainingCaptureError {
         source: std::io::Error,
     },
 
+    /// Configured training path escapes the instance root.
+    ///
+    /// WHY(#5385): config load and the config-update API already reject
+    /// absolute/`..` paths structurally; this is the filesystem half — it
+    /// also catches a symlink placed inside the instance root that resolves
+    /// back out of it, which a string check on the config value alone
+    /// cannot see.
+    #[snafu(display("training.path escapes the instance root: {source}"))]
+    PathEscapesRoot { source: std::io::Error },
+
     /// Failed to open the JSONL output file for appending.
     #[snafu(display("failed to open training file {}: {source}", path.display()))]
     OpenFile {
@@ -502,6 +512,7 @@ impl TrainingManifest {
 /// at an authorship gate: if the user message is classified as non-user-authored
 /// with confidence >= the configured threshold, the turn is rejected and logged
 /// rather than written to training storage.
+#[derive(Debug)]
 pub struct TrainingCapture {
     /// Training data directory.
     dir: PathBuf,
@@ -548,10 +559,25 @@ impl TrainingCapture {
     /// # Errors
     ///
     /// Returns [`TrainingCaptureError::CreateDir`] if the directory cannot
-    /// be created.
+    /// be created, or [`TrainingCaptureError::PathEscapesRoot`] if
+    /// `config.path` is absolute, contains a `..` component, or (after
+    /// creation) resolves outside `instance_root` via a symlink.
     pub fn new(instance_root: &Path, config: &TrainingConfig) -> Result<Self> {
+        // WHY(#5385): reject before ever joining/creating — `taxis::loader`
+        // and `taxis::validate` already enforce this ahead of the TOML/CLI
+        // and HTTP config-update paths respectively, but a caller that
+        // builds `TrainingConfig` directly (a test, or a future
+        // non-validated path) must not have `create_dir_all` below ever
+        // touch a directory outside the instance root in the first place.
+        koina::fs::reject_path_override(&config.path).context(PathEscapesRootSnafu)?;
+
         let dir = instance_root.join(&config.path);
         fs::create_dir_all(&dir).context(CreateDirSnafu { path: &dir })?;
+
+        // WHY(#5385): re-check via canonicalization now that `dir` exists —
+        // catches a symlink placed inside the instance root that resolves
+        // back out of it, which the pre-join string check above cannot see.
+        koina::fs::validate_within_root(&dir, instance_root).context(PathEscapesRootSnafu)?;
 
         let manifest_path = dir.join("training-manifest.json");
 
