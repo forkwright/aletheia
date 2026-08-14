@@ -117,6 +117,11 @@ pub(super) fn SystemReflectionSection(store: SystemReflectionStore) -> Element {
         }
         if store.journal_endpoint_available {
             SystemJournal { events: store.journal.clone() }
+        } else if let Some(ref reason) = store.journal_unavailable_reason {
+            div {
+                style: "{MUTED_TEXT}",
+                "{reason}"
+            }
         } else {
             div {
                 style: "{MUTED_TEXT}",

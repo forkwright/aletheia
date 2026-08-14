@@ -698,8 +698,15 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     // (map where a sequence is expected) and never surface that reason.
     let (journal_response, journal_fetched): (JournalResponseEntry, bool) =
         fetch_source(journal_res, "journal").await;
-    let journal = journal_response.events;
     let journal_available = journal_fetched && journal_response.data_unavailable.is_empty();
+    // WHY: surface pylon's own reason instead of a generic message -- the
+    // whole point of parsing the envelope (see #4486 above) was to know
+    // *why* the source is unavailable, not just that it is.
+    let journal_unavailable_reason = journal_response
+        .data_unavailable
+        .first()
+        .map(|entry| format!("{}: {}", entry.metric, entry.reason));
+    let journal = journal_response.events;
 
     let data = assemble_meta_data(
         health,
@@ -716,6 +723,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         perf_available,
         quality_available,
         journal_available,
+        journal_unavailable_reason,
     );
     FetchState::Loaded(data)
 }
