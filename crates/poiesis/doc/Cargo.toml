@@ -10,24 +10,27 @@ publish = false
 
 [dependencies]
 # DOCX write backend — Apache-2.0, permissive
-docx-rs = "0.4"
+docx-rs = { version = "0.4", optional = true }
 
 # DOCX inspect backend — ZIP archive text extraction
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"], optional = true }
 
 # XML parsing for inspect
-quick-xml = "0.41"
+quick-xml = { version = "0.41", optional = true }
 
-# Document model + Typst fast-lane (B-012/B-013)
-poiesis-charts = { path = "../charts" }
 poiesis-core = { path = "../core" }
-poiesis-typst = { path = "../typst" }
+
+# Chart figure rendering for Pandoc-backed Image blocks (B-012/B-013)
+poiesis-charts = { path = "../charts", optional = true }
+
+# Typst in-process PDF fast-lane (B-012/B-013)
+poiesis-typst = { path = "../typst", optional = true }
 
 # Pure-Rust SVG rasterizer for chart figures.
-resvg = "0.45.1"
+resvg = { version = "0.45.1", optional = true }
 
 # Pandoc binary discovery for the availability probe
-which = "8"
+which = { version = "8", optional = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -35,16 +38,36 @@ snafu = { workspace = true }
 tracing = { workspace = true }
 
 # Temp file for Pandoc AST subprocess contract
-tempfile = "3"
+tempfile = { version = "3", optional = true }
 
 # Blocking child wait with timeout — replaces the busy-wait try_wait loop.
-wait-timeout = "0.2"
+wait-timeout = { version = "0.2", optional = true }
 
 # ODT backend — clean-room ZIP/XML emitter
 [dependencies.poiesis-text]
 path = "../text"
+optional = true
 default-features = false
 features = ["odt"]
+
+[features]
+default = ["docx", "inspect", "pandoc", "pdf-typst", "odt", "charts"]
+## `render_docx` — JSON descriptor -> DOCX via the `docx-rs` writer.
+docx = ["dep:docx-rs"]
+## `inspect_docx` — ZIP archive text extraction via `zip` + `quick-xml`.
+inspect = ["dep:zip", "dep:quick-xml"]
+## Pandoc subprocess dispatch (`render_{docx,html,md,latex,epub,pdf}_from_doc`,
+## `render_doc`, `render_deliverable`, `PandocProbe`, `LatexProbe`). The PDF
+## fast-lane and the figure/chart sidecar are compiled unconditionally inside
+## the pandoc dispatch, so this pulls in `pdf-typst` and `charts` too.
+pandoc = ["dep:which", "dep:tempfile", "dep:wait-timeout", "pdf-typst", "charts"]
+## Typst in-process PDF fast-lane, used by the pandoc dispatch's PDF route.
+pdf-typst = ["dep:poiesis-typst"]
+## `render_odt_from_doc` via the clean-room `poiesis-text` ODT writer.
+odt = ["dep:poiesis-text"]
+## Chart figure rendering (`poiesis-charts`) and SVG -> PNG rasterization
+## (`resvg`) for Pandoc-backed `Image` blocks.
+charts = ["dep:poiesis-charts", "dep:resvg"]
 
 [dev-dependencies]
 insta = "1"

@@ -66,14 +66,19 @@ Current slugs: `default`, `eval-report`, `graph-audit` (see `typst/src/templates
 | `xlsx` | `poiesis-sheet` | yes | Excel output via `rust_xlsxwriter` |
 | `ods` | `poiesis-sheet` | yes | ODS output via `spreadsheet-ods` |
 | `pptx` | `poiesis-slides` | yes | PPTX output via hand-rolled ZIP/XML emitter |
-| *(none)* | `poiesis-doc` | n/a | `poiesis-doc` has no `[features]` section. `docx-rs`, Pandoc probing, and all sibling poiesis deps are unconditional. |
+| `docx` | `poiesis-doc` | yes | `render_docx` DOCX write via `docx-rs` |
+| `inspect` | `poiesis-doc` | yes | `inspect_docx` ZIP/XML text extraction |
+| `pandoc` | `poiesis-doc` | yes | Pandoc subprocess dispatch (`render_*_from_doc`, `PandocProbe`, `LatexProbe`); implies `pdf-typst` + `charts` |
+| `pdf-typst` | `poiesis-doc` | yes | Typst in-process PDF fast-lane inside the Pandoc dispatch |
+| `odt` | `poiesis-doc` | yes | `render_odt_from_doc` via the clean-room `poiesis-text` backend |
+| `charts` | `poiesis-doc` | yes | Chart figure rendering + SVG rasterization for Pandoc `Image` blocks |
 
 ## Patterns
 
 - **Typst-first**: when rendering a prose-oriented report to PDF, use `poiesis-typst`. Templates and math belong there.
 - **Format-agnostic core**: `Document`, `Block`, and `RichText` are plain data types with zero format-specific code (used by non-Typst backends).
 - **Trait-based backends**: Each non-Typst subcrate implements `Renderer`; callers pass the same `Document` to any backend.
-- **Feature-gated dependencies**: Most backends are behind a Cargo feature so consumers only compile what they need. Exception: `poiesis-doc` has no feature gates — `docx-rs`, Pandoc discovery, and sibling poiesis crates are unconditional dependencies.
+- **Feature-gated dependencies**: Every backend is behind a Cargo feature so consumers only compile what they need. `poiesis-doc` defaults every feature on (`docx`, `inspect`, `pandoc`, `pdf-typst`, `odt`, `charts`) so its existing public API stays available by default; `pandoc` implies `pdf-typst` + `charts` because the Pandoc dispatch's PDF fast-lane and figure/chart sidecar compile unconditionally inside it.
 - **Plain-text fallback**: Non-Typst backends that cannot natively express a feature (images in PDF/spreadsheets, rich text in XLSX) degrade to plain text or alt text instead of failing.
 - **Pandoc dispatch**: `poiesis-doc` owns the `render_*_from_doc` matrix. DOCX/HTML/MD/LaTeX/EPUB route through Pandoc; PDF stays on Typst unless math/raw-`LaTeX` content or an explicit engine override requires the Pandoc/LaTeX path.
 - **ZIP-based packaging**: ODT, XLSX, ODS, and PPTX are all ZIP archives; tests verify the `PK` magic bytes.

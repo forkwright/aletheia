@@ -1,6 +1,11 @@
 #![deny(missing_docs)]
 //! poiesis-doc: DOCX write, inspect, and Pandoc-dispatch backend for poiesis.
 //!
+//! Every backend is behind a Cargo feature (`docx`, `inspect`, `pandoc`,
+//! `pdf-typst`, `odt`, `charts`); all are on by default. `pandoc` implies
+//! `pdf-typst` and `charts` because the PDF fast-lane and the figure/chart
+//! sidecar compile unconditionally inside the Pandoc dispatch.
+//!
 //! This crate provides:
 //!
 //! - [`render_docx`] — build a `.docx` file from a JSON descriptor.
@@ -40,32 +45,46 @@
 //! the `pandoc` Rust crate.
 
 mod error;
+#[cfg(feature = "pandoc")]
 mod latex_probe;
+#[cfg(feature = "pandoc")]
 mod pandoc_probe;
+#[cfg(feature = "pandoc")]
 mod process;
+#[cfg(feature = "charts")]
 mod raster;
 
 /// Pandoc subprocess wrapper, AST serialization, and format dispatch (B-012).
+#[cfg(feature = "pandoc")]
 pub mod pandoc;
 
 pub use error::Error;
 /// Re-export of the system `LaTeX` engine probe.
+#[cfg(feature = "pandoc")]
 pub use latex_probe::{LatexProbe, LatexProbeError};
 /// Re-export of the spec-level Pandoc dispatcher.
+#[cfg(feature = "pandoc")]
 pub use pandoc::render_deliverable;
 /// Re-export of the Pandoc dispatcher for callers that want it directly.
+#[cfg(feature = "pandoc")]
 pub use pandoc::render_doc;
+#[cfg(feature = "pandoc")]
 pub use pandoc_probe::{PandocProbe, PandocProbeError};
 
+#[cfg(feature = "odt")]
 use poiesis_core::Renderer;
+#[cfg(feature = "docx")]
 use serde_json::Value;
+#[cfg(feature = "inspect")]
 use snafu::ResultExt;
+#[cfg(any(feature = "docx", feature = "pandoc", feature = "odt"))]
 use tracing::instrument;
 
 /// Result alias for poiesis-doc operations.
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// Summary of a DOCX file produced by [`inspect_docx`].
+#[cfg(feature = "inspect")]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct DocxSummary {
@@ -73,6 +92,7 @@ pub struct DocxSummary {
     pub paragraphs: Vec<String>,
 }
 
+#[cfg(feature = "inspect")]
 impl DocxSummary {
     /// Create a new summary with the given paragraphs.
     #[must_use]
@@ -89,6 +109,7 @@ impl DocxSummary {
 ///
 /// Returns [`Error::MalformedInput`] if `data` does not match the schema,
 /// or [`Error::BuildDocx`] if the DOCX encoder fails.
+#[cfg(feature = "docx")]
 #[instrument(skip(data))]
 pub fn render_docx(data: &Value) -> Result<Vec<u8>> {
     let paragraphs = data
@@ -141,6 +162,7 @@ pub fn render_docx(data: &Value) -> Result<Vec<u8>> {
 ///
 /// Returns [`Error::ReadZip`] if the bytes are not a valid ZIP archive,
 /// or [`Error::ParseXml`] if `document.xml` cannot be parsed.
+#[cfg(feature = "inspect")]
 pub fn inspect_docx(bytes: &[u8]) -> Result<DocxSummary> {
     let cursor = std::io::Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor).context(error::ReadZipSnafu)?;
@@ -216,6 +238,7 @@ pub fn inspect_docx(bytes: &[u8]) -> Result<DocxSummary> {
 /// Returns [`Error::PdfRenderFailed`] if Typst compilation fails, or
 /// [`Error::PdfLatexEngineUnavailable`] when `LaTeX` content is present but no
 /// system engine could be probed.
+#[cfg(feature = "pandoc")]
 #[instrument(skip(doc))]
 pub fn render_pdf_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     match pandoc::render_doc(doc, &pandoc::DocOpts::default_pdf()) {
@@ -232,30 +255,35 @@ pub fn render_pdf_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
 }
 
 /// Render a [`poiesis_core::Document`] to DOCX bytes via Pandoc.
+#[cfg(feature = "pandoc")]
 #[instrument(skip(doc))]
 pub fn render_docx_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     render_pandoc_from_doc(doc, "docx", &pandoc::DocOpts::docx())
 }
 
 /// Render a [`poiesis_core::Document`] to HTML bytes via Pandoc.
+#[cfg(feature = "pandoc")]
 #[instrument(skip(doc))]
 pub fn render_html_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     render_pandoc_from_doc(doc, "html", &pandoc::DocOpts::html())
 }
 
 /// Render a [`poiesis_core::Document`] to Markdown bytes via Pandoc.
+#[cfg(feature = "pandoc")]
 #[instrument(skip(doc))]
 pub fn render_md_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     render_pandoc_from_doc(doc, "md", &pandoc::DocOpts::markdown())
 }
 
 /// Render a [`poiesis_core::Document`] to `LaTeX` bytes via Pandoc.
+#[cfg(feature = "pandoc")]
 #[instrument(skip(doc))]
 pub fn render_latex_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     render_pandoc_from_doc(doc, "latex", &pandoc::DocOpts::latex())
 }
 
 /// Render a [`poiesis_core::Document`] to EPUB bytes via Pandoc.
+#[cfg(feature = "pandoc")]
 #[instrument(skip(doc))]
 pub fn render_epub_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     render_pandoc_from_doc(doc, "epub", &pandoc::DocOpts::epub())
@@ -269,6 +297,7 @@ pub fn render_epub_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
 /// # Errors
 ///
 /// Returns [`Error::OdtRenderFailed`] if the ODT encoder fails.
+#[cfg(feature = "odt")]
 #[instrument(skip(doc))]
 pub fn render_odt_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     let renderer = poiesis_text::OdtRenderer::new();
@@ -277,6 +306,7 @@ pub fn render_odt_from_doc(doc: &poiesis_core::Document) -> Result<Vec<u8>> {
     })
 }
 
+#[cfg(feature = "pandoc")]
 fn render_pandoc_from_doc(
     doc: &poiesis_core::Document,
     format: &str,
@@ -300,6 +330,7 @@ fn render_pandoc_from_doc(
 mod tests {
     use super::*;
 
+    #[cfg(feature = "inspect")]
     fn docx_with_document_xml(document_xml: &[u8]) -> Vec<u8> {
         use std::io::Write as _;
 
@@ -315,6 +346,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "docx", feature = "inspect"))]
     fn render_docx_simple() {
         let data = serde_json::json!({
             "paragraphs": [
@@ -332,6 +364,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "docx", feature = "inspect"))]
     fn render_docx_multi_paragraph() {
         let data = serde_json::json!({
             "title": "My Report",
@@ -356,6 +389,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "docx", feature = "inspect"))]
     fn inspect_docx_extracts_text() {
         let data = serde_json::json!({
             "paragraphs": [
@@ -369,6 +403,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "inspect")]
     fn inspect_docx_preserves_space_only_run_between_words() {
         let bytes = docx_with_document_xml(
             br#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -389,6 +424,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "docx")]
     fn render_docx_malformed_json_errors() {
         let data = serde_json::json!({ "paragraphs": "not-an-array" });
         let err = render_docx(&data).expect_err("must error");
@@ -406,6 +442,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pandoc")]
     fn render_pdf_from_doc_produces_bytes() {
         use poiesis_core::{Block, Document, Metadata, RichText};
         let doc = Document {
@@ -426,10 +463,12 @@ mod tests {
         assert!(bytes.starts_with(b"%PDF"), "must be a PDF");
     }
 
+    #[cfg(feature = "pandoc")]
     fn pandoc_present() -> bool {
         PandocProbe::check().require().is_ok() && render_md_from_doc(&simple_doc()).is_ok()
     }
 
+    #[cfg(any(feature = "pandoc", feature = "odt"))]
     fn simple_doc() -> poiesis_core::Document {
         use poiesis_core::{Block, Document, Metadata, RichText};
 
@@ -449,6 +488,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "pandoc")]
     fn math_doc() -> poiesis_core::Document {
         use poiesis_core::{Block, Document, Metadata};
 
@@ -463,6 +503,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pandoc")]
     fn render_docx_from_doc_produces_bytes_when_pandoc_present() {
         if !pandoc_present() {
             return;
@@ -473,6 +514,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pandoc")]
     fn render_html_from_doc_produces_bytes_when_pandoc_present() {
         if !pandoc_present() {
             return;
@@ -483,6 +525,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pandoc")]
     fn render_md_from_doc_produces_bytes_when_pandoc_present() {
         if !pandoc_present() {
             return;
@@ -493,6 +536,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pandoc")]
     fn render_latex_from_doc_produces_bytes_when_pandoc_present() {
         if !pandoc_present() {
             return;
@@ -503,6 +547,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "pandoc")]
     fn render_epub_from_doc_produces_bytes_when_pandoc_present() {
         if !pandoc_present() {
             return;
@@ -513,12 +558,14 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "odt")]
     fn render_odt_from_doc_produces_pk_magic() {
         let bytes = render_odt_from_doc(&simple_doc()).expect("must render");
         assert!(bytes.starts_with(b"PK"), "must be an ODT ZIP archive");
     }
 
     #[test]
+    #[cfg(feature = "pandoc")]
     fn display_math_routes_to_latex_and_html_mathml_without_needing_latex() {
         if !pandoc_present() {
             return;

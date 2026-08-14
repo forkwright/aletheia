@@ -158,6 +158,13 @@ Cargo metadata cannot infer.
 | **poiesis-charts** | `default` | **yes** | *(empty)* | - |
 | **poiesis-charts** | `theme-bridge` | no | Theme bridge | `dep:poiesis-theme` |
 | **poiesis-charts** | `charts-vega` | no | Vega-Lite fallback for chart kinds the pure-Rust emitter does not own | - |
+| **poiesis-doc** | `default` | **yes** | `docx`, `inspect`, `pandoc`, `pdf-typst`, `odt`, `charts` | - |
+| **poiesis-doc** | `docx` | no | `render_docx` — JSON descriptor to DOCX via the `docx-rs` writer | `dep:docx-rs` |
+| **poiesis-doc** | `inspect` | no | `inspect_docx` — ZIP archive text extraction | `dep:zip`, `dep:quick-xml` |
+| **poiesis-doc** | `pandoc` | no | Pandoc subprocess dispatch (`render_{docx,html,md,latex,epub,pdf}_from_doc`, `render_doc`, `render_deliverable`, `PandocProbe`, `LatexProbe`) | `dep:which`, `dep:tempfile`, `dep:wait-timeout`, `pdf-typst`, `charts` |
+| **poiesis-doc** | `pdf-typst` | no | Typst in-process PDF fast-lane used by the Pandoc dispatch's PDF route | `dep:poiesis-typst` |
+| **poiesis-doc** | `odt` | no | `render_odt_from_doc` via the clean-room `poiesis-text` ODT writer | `dep:poiesis-text` |
+| **poiesis-doc** | `charts` | no | Chart figure rendering and SVG-to-PNG rasterization for Pandoc-backed `Image` blocks | `dep:poiesis-charts`, `dep:resvg` |
 | **poiesis-printer-chromium** | `default` | **yes** | `chromium` | - |
 | **poiesis-printer-chromium** | `chromium` | no | Chromium-driven printing | `dep:chromiumoxide`, `dep:tokio`, `dep:which`, `dep:futures` |
 | **poiesis-sheet** | `default` | **yes** | `xlsx`, `ods`, `workbook` | - |
@@ -170,7 +177,7 @@ Cargo metadata cannot infer.
 | **poiesis-text** | `pdf` | no | PDF backend | `dep:krilla` |
 | **poiesis-text** | `odt` | no | ODT backend | `dep:zip` |
 
-Workspace crates not listed define no feature flags: `aletheia-classify`, `aletheia-lexica`, `aletheia-memory-mcp`, `aletheia-sessions-migrate`, `theatron`, `proskenion`, `poiesis-core`, and the remaining poiesis members (`deck`, `deck-layout`, `diff`, `doc`, `inspect`, `intake`, `lint`, `scaffold`, `theme`, `typst`, `verify`).
+Workspace crates not listed define no feature flags: `aletheia-classify`, `aletheia-lexica`, `aletheia-memory-mcp`, `aletheia-sessions-migrate`, `theatron`, `proskenion`, `poiesis-core`, and the remaining poiesis members (`deck`, `deck-layout`, `diff`, `inspect`, `intake`, `lint`, `scaffold`, `theme`, `typst`, `verify`).
 
 
 ## Cross-crate feature interactions
