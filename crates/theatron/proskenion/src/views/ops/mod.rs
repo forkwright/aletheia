@@ -132,12 +132,41 @@ impl From<AgentDetailResp> for AgentCapabilities {
     }
 }
 
+/// Client-side mirror of `pylon::handlers::nous_dto::ToolSummary`.
+///
+/// WARNING: `ToolSummary` carries no `rename_all`, so these field names
+/// must stay verbatim-identical to the server's Rust field names (see the
+/// same warning on `AgentDetailResp` above).
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct ToolEntryResp {
     #[serde(default)]
     name: String,
     #[serde(default)]
     enabled: bool,
+    /// Effective policy state for this agent: `"callable"`, `"inactive"`, or `"denied"`.
+    #[serde(default)]
+    policy_state: String,
+    /// Reason the tool is unavailable under the current agent policy.
+    #[serde(default)]
+    unavailable_reason: Option<String>,
+    /// Tool source plane, e.g. `"organon_builtin"` or `"runtime_bridged_mcp"`.
+    #[serde(default)]
+    source_plane: String,
+    /// Reversibility metadata used to derive approval policy.
+    #[serde(default)]
+    reversibility: String,
+    /// Approval requirement derived from reversibility/capability metadata.
+    #[serde(default)]
+    approval: String,
+    /// Tool groups used by policy resolution.
+    #[serde(default)]
+    groups: Vec<String>,
+    /// Whether the tool's default metadata marks it as side-effecting or destructive.
+    #[serde(default)]
+    destructive: bool,
+    /// Whether the tool activates automatically without explicit configuration.
+    #[serde(default)]
+    auto_activate: bool,
 }
 
 #[derive(Debug, Clone, Default, serde::Deserialize)]
@@ -484,6 +513,14 @@ pub(crate) fn Ops() -> Element {
                         pending: false,
                         apply_state: ToggleApplyState::Synced,
                         error: None,
+                        policy_state: t.policy_state.clone(),
+                        unavailable_reason: t.unavailable_reason.clone(),
+                        source_plane: t.source_plane.clone(),
+                        reversibility: t.reversibility.clone(),
+                        approval: t.approval.clone(),
+                        groups: t.groups.clone(),
+                        destructive: t.destructive,
+                        auto_activate: t.auto_activate,
                     })
                 })
                 .collect();
@@ -837,6 +874,74 @@ mod tests {
 
         assert_eq!(detail.context_window, 0, "absent field falls back to zero");
         assert!(!detail.thinking_enabled, "absent bool falls back to false");
+    }
+
+    /// WHY(#4772): this payload is the `pylon::handlers::nous_dto::ToolSummary`
+    /// wire shape (no `rename_all`, so serde emits the Rust field names
+    /// verbatim). Before this fix `ToolEntryResp` only kept `name`+`enabled`
+    /// -- every other field here would silently vanish at the deserialize
+    /// boundary rather than fail loudly, since `#[serde(default)]` makes a
+    /// dropped field indistinguishable from an absent one.
+    const TOOL_SUMMARY_BODY: &str = r#"{
+        "name": "read_file",
+        "enabled": true,
+        "description": "Reads a file",
+        "category": "workspace",
+        "reversibility": "reversible",
+        "approval": "none",
+        "requires_approval": false,
+        "destructive": false,
+        "groups": ["workspace", "files"],
+        "source_plane": "organon_builtin",
+        "policy_state": "callable",
+        "metadata_verified": true,
+        "auto_activate": true
+    }"#;
+
+    #[test]
+    fn tool_entry_resp_matches_server_field_names() {
+        let tool: ToolEntryResp =
+            serde_json::from_str(TOOL_SUMMARY_BODY).expect("ToolSummary body must deserialize");
+
+        assert_eq!(tool.name, "read_file");
+        assert!(tool.enabled);
+        assert_eq!(tool.policy_state, "callable");
+        assert_eq!(tool.unavailable_reason, None);
+        assert_eq!(tool.source_plane, "organon_builtin");
+        assert_eq!(tool.reversibility, "reversible");
+        assert_eq!(tool.approval, "none");
+        assert_eq!(
+            tool.groups,
+            vec!["workspace".to_string(), "files".to_string()]
+        );
+        assert!(!tool.destructive);
+        assert!(tool.auto_activate);
+    }
+
+    /// The primary use case this issue asks for: a denied tool must carry
+    /// enough to explain WHY, not just that `enabled` is false.
+    #[test]
+    fn tool_entry_resp_carries_a_deny_reason_when_denied() {
+        let body = r#"{
+            "name": "shell_exec",
+            "enabled": false,
+            "policy_state": "denied",
+            "unavailable_reason": "requires operator approval group",
+            "source_plane": "runtime_bridged_mcp",
+            "reversibility": "irreversible",
+            "approval": "required",
+            "groups": [],
+            "destructive": true,
+            "auto_activate": false
+        }"#;
+        let tool: ToolEntryResp = serde_json::from_str(body).expect("must deserialize");
+
+        assert_eq!(tool.policy_state, "denied");
+        assert_eq!(
+            tool.unavailable_reason.as_deref(),
+            Some("requires operator approval group")
+        );
+        assert!(tool.destructive, "a destructive-denied tool must say so");
     }
 
     #[test]
