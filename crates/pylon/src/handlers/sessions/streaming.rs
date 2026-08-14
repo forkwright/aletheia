@@ -155,6 +155,16 @@ where
     Box::pin(stream)
 }
 
+/// Convert the configured approval-wait seconds into the [`Duration`] the
+/// nous approval gate is constructed with.
+///
+/// WHY(#5011): factored out so the config-to-gate conversion used at the
+/// real call site is directly unit-testable without standing up the full
+/// streaming handler.
+fn approval_gate_timeout(approval_timeout_secs: u32) -> Duration {
+    Duration::from_secs(u64::from(approval_timeout_secs))
+}
+
 /// Build an SSE [`KeepAlive`] using the configured gateway heartbeat interval.
 ///
 /// WHY(#5156): All SSE streams share one keepalive cadence so the gateway,
@@ -1197,9 +1207,15 @@ pub async fn stream_turn(
     // streaming task ends; the gate itself defaults-deny on timeout, so a
     // dropped client connection denies pending Required/Mandatory tool calls
     // rather than letting them block the pipeline indefinitely.
+    //
+    // WHY(#5011): the wait is bounded by the operator-owned
+    // `timeouts.approval_timeout_secs` config field, not a hardcoded nous
+    // constant, so deployments can tune approval lifetime.
+    let approval_timeout_secs = state.config.read().await.timeouts.approval_timeout_secs;
     let (approval_tx, approval_rx) = mpsc::channel::<nous::approval::ApprovalDecision>(8);
-    let approval_gate = Some(nous::approval::ApprovalGate::with_default_timeout(
+    let approval_gate = Some(nous::approval::ApprovalGate::new(
         approval_rx,
+        approval_gate_timeout(approval_timeout_secs),
     ));
     let approval_guard = state
         .approval_registry

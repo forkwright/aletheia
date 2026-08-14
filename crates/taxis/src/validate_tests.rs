@@ -47,6 +47,35 @@ fn accepts_tool_iterations_within_unrestricted_range() {
 }
 
 #[test]
+fn rejects_approval_timeout_below_five_seconds() {
+    let section = json!({ "approvalTimeoutSecs": 4 });
+    let result = validate_section("timeouts", &section);
+    assert!(
+        result.is_err(),
+        "approvalTimeoutSecs below 5 should be rejected"
+    );
+}
+
+#[test]
+fn rejects_approval_timeout_above_one_hour() {
+    let section = json!({ "approvalTimeoutSecs": 3601 });
+    let result = validate_section("timeouts", &section);
+    assert!(
+        result.is_err(),
+        "approvalTimeoutSecs above 3600 should be rejected"
+    );
+}
+
+#[test]
+fn accepts_approval_timeout_within_range() {
+    let section = json!({ "approvalTimeoutSecs": 120 });
+    assert!(
+        validate_section("timeouts", &section).is_ok(),
+        "approvalTimeoutSecs at the default 120 should be accepted"
+    );
+}
+
+#[test]
 fn rejects_invalid_port() {
     let section = json!({ "port": 0 });
     let result = validate_section("gateway", &section);

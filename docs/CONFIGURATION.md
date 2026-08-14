@@ -948,6 +948,7 @@ Deployment-tunable timeout thresholds. WHY configurable: LLM call timeouts vary 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `llmCallSecs` | integer | 300 | Maximum wall-clock seconds for a single LLM API call (Anthropic or CC provider). Requests exceeding this limit are cancelled and may trigger a retry. Valid range: 30–3600. Default: 300. |
+| `approvalTimeoutSecs` | integer | 120 | Maximum wall-clock seconds a Required/Mandatory tool call waits for an operator approval decision before defaulting to deny. WHY configurable (#5011): approval lifetime is part of the execution safety contract — it controls how long an irreversible action blocks the pipeline and what a dropped client connection does. It was previously an unowned constant in `nous::approval`. Valid range: 5–3600. Default: 120 (matches the desktop daily-driver UX — long enough to read the overlay, short enough that a dropped connection denies rather than hangs). |
 
 ## capacity
 

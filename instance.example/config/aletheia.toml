@@ -101,6 +101,7 @@ workspace = "nous/main"
 # Wall-clock timeout for a single LLM API call. Hot-reloadable.
 # [timeouts]
 # llmCallSecs = 300           # range: 30–3600
+# approvalTimeoutSecs = 120   # operator approval wait before default-deny; range: 5–3600
 
 # --- Capacity (Wave 1 — deployment-tunable) ---
 # Tool output and context window limits. Hot-reloadable.

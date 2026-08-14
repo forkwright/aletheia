@@ -807,5 +807,25 @@ async fn buffer_record_of_serialization_failure_payload_is_not_empty() {
     );
 }
 
+// ── approval_gate_timeout: config-to-gate conversion (#5011) ──
+
+#[test]
+fn approval_gate_timeout_reads_configured_seconds() {
+    assert_eq!(approval_gate_timeout(7), Duration::from_secs(7));
+}
+
+#[test]
+fn approval_gate_timeout_matches_nous_default_when_config_is_default() {
+    // WHY: `TimeoutsConfig::approval_timeout_secs` documents that its
+    // default must equal nous's built-in `DEFAULT_APPROVAL_TIMEOUT`, so
+    // omitting `[timeouts]` from aletheia.toml preserves pre-#5011
+    // behavior. This pins that cross-crate agreement.
+    let default_secs = taxis::config::TimeoutsConfig::default().approval_timeout_secs;
+    assert_eq!(
+        approval_gate_timeout(default_secs),
+        nous::approval::DEFAULT_APPROVAL_TIMEOUT
+    );
+}
+
 #[path = "streaming_reconnect_tests.rs"]
 mod reconnect_tests;
