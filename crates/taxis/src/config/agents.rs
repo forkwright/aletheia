@@ -781,6 +781,9 @@ pub struct AgentBehaviorDefaults { // kanon:ignore RUST/struct-too-many-fields â
     pub tool_max_image_bytes: u64,
     /// Maximum PDF file size in bytes for the view-file tool.
     pub tool_max_pdf_bytes: u64,
+    /// Seconds to wait for an operator decision on a Required/Mandatory
+    /// tool-approval request before it default-denies. Default: 120.0.
+    pub tool_approval_timeout_secs: f64,
 
     // --- Bootstrap ---
     /// Minimum token budget remaining before attempting section truncation.
@@ -898,6 +901,7 @@ impl Default for AgentBehaviorDefaults {
             tool_datalog_default_timeout_secs: DEFAULT_TOOL_DATALOG_DEFAULT_TIMEOUT_SECS,
             tool_max_image_bytes: DEFAULT_TOOL_MAX_IMAGE_BYTES,
             tool_max_pdf_bytes: DEFAULT_TOOL_MAX_PDF_BYTES,
+            tool_approval_timeout_secs: DEFAULT_TOOL_APPROVAL_TIMEOUT_SECS,
             // Bootstrap
             bootstrap_min_truncation_budget: 200,
             // Corrections
