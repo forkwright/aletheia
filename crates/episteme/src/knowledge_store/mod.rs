@@ -80,6 +80,11 @@ pub mod snapshot;
 
 #[cfg(feature = "mneme-engine")]
 pub use derived_rules::DerivedFreshness;
+/// Canonical scoped-visibility Datalog rule (#5284) — the single source for
+/// "which facts can this nous see", so downstream query builders never embed
+/// their own copy of a privacy-critical predicate.
+#[cfg(feature = "mneme-engine")]
+pub use marshal::scoped_visibility_rules;
 
 #[cfg(test)]
 mod tests;
