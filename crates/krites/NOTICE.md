@@ -185,10 +185,10 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | derived |
 | `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | derived |
 | `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | derived |
-| `src/runtime/hnsw/put.rs` | `runtime/hnsw.rs` | 29.4% | derived |
+| `src/runtime/hnsw/put.rs` | `runtime/hnsw.rs` | 27.5% | derived |
 | `src/runtime/hnsw/remove.rs` | `runtime/hnsw.rs` | 49.3% | derived |
 | `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 20.3% | derived |
-| `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 13.4% | derived |
+| `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 11.9% | derived |
 | `src/runtime/hnsw/visited_pool.rs` | `runtime/hnsw.rs` | 3.3% | derived |
 | `src/runtime/hnsw_sovereign/adaptive.rs` | — | 0.0% | sovereign |
 | `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | — | 0.0% | sovereign |
