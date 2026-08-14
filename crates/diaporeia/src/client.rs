@@ -249,6 +249,28 @@ impl ExternalMcpClient {
         use http::{HeaderName, HeaderValue};
         use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 
+        // SECURITY(#4842): a configured MCP endpoint can point at cloud
+        // metadata or an internal service just as easily as the generic
+        // `http_request` tool's URL argument can -- the only difference is
+        // that this one comes from config rather than agent input. Apply
+        // the same scheme + private-network guard organon's http_client
+        // uses (`koina::http`, shared by both callers) before opening any
+        // connection.
+        if !koina::http::has_http_or_https_scheme(endpoint) {
+            return Err(TransportSnafu {
+                message: format!(
+                    "streamable HTTP MCP endpoint must start with http:// or https://: {endpoint}"
+                ),
+            }
+            .build());
+        }
+        if let Err(reason) = koina::http::validate_url_not_internal(endpoint).await {
+            return Err(TransportSnafu {
+                message: format!("streamable HTTP MCP endpoint '{endpoint}' rejected: {reason}"),
+            }
+            .build());
+        }
+
         let mut custom_headers = HashMap::new();
         if let Some(auth) = auth {
             let (name, value) = auth.header()?;
@@ -269,7 +291,30 @@ impl ExternalMcpClient {
 
         let config = StreamableHttpClientTransportConfig::with_uri(endpoint.to_owned())
             .custom_headers(custom_headers);
-        let transport = StreamableHttpClientTransport::from_config(config);
+        // SECURITY(#4842): rmcp's own default client (`from_config`) follows
+        // redirects automatically with no revalidation -- a validated
+        // endpoint could still hand off the connection to a private target
+        // via a 3xx response. Build the client with auto-redirect disabled
+        // instead, mirroring `organon::types::ToolHttpClients::ssrf_safe`.
+        // The transport has no per-hop revalidation hook the way
+        // `send_with_safe_redirects` does for single-shot HTTP tool calls
+        // (rmcp owns the request lifecycle behind the `StreamableHttpClient`
+        // trait), so a redirect fails the connection here rather than being
+        // followed -- MCP servers do not need mid-session redirects.
+        // `pool_max_idle_per_host(0)` is preserved from rmcp's own default
+        // client: it avoids a Linux TCP-delayed-ACK stall when the previous
+        // SSE response body was not fully drained before pool reuse.
+        let http_client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .pool_max_idle_per_host(0)
+            .build()
+            .map_err(|e| {
+                TransportSnafu {
+                    message: format!("failed to build streamable HTTP MCP client: {e}"),
+                }
+                .build()
+            })?;
+        let transport = StreamableHttpClientTransport::with_client(http_client, config);
         let client_info = ClientInfo::new(
             ClientCapabilities::default(),
             Implementation::new("aletheia-diaporeia", env!("CARGO_PKG_VERSION")),
@@ -444,6 +489,68 @@ mod tests {
         // sandbox must not silently also cut network.
         let policy = super::stdio_sandbox_policy(None);
         assert_eq!(policy.egress, EgressPolicy::Allow);
+    }
+
+    // ── #4842: streamable HTTP MCP transport rejects unsafe endpoints ──
+    //
+    // These assert refusal happens before any connection attempt: a
+    // private/blocked target fails deterministically on the validation
+    // step, not on "connection refused" (which the pre-fix code also
+    // produced, but for the wrong reason -- nothing was listening -- and
+    // would NOT have failed if something private-but-reachable was).
+
+    #[tokio::test]
+    async fn connect_streamable_http_refuses_metadata_ip_without_connecting() {
+        let err = ExternalMcpClient::connect_streamable_http("http://169.254.169.254/mcp")
+            .await
+            .err()
+            .expect("cloud-metadata literal must be rejected");
+        let message = format!("{err}");
+        assert!(
+            message.contains("private/internal"),
+            "error should name the private/internal rejection: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_streamable_http_refuses_loopback_literal_without_connecting() {
+        let err = ExternalMcpClient::connect_streamable_http("http://127.0.0.1:1/mcp")
+            .await
+            .err()
+            .expect("loopback literal must be rejected");
+        let message = format!("{err}");
+        assert!(
+            message.contains("private/internal"),
+            "error should name the private/internal rejection: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_streamable_http_refuses_blocked_hostname() {
+        let err = ExternalMcpClient::connect_streamable_http("http://localhost:1/mcp")
+            .await
+            .err()
+            .expect("blocked hostname must be rejected");
+        let message = format!("{err}");
+        assert!(
+            message.contains("blocked hostname"),
+            "error should name the blocked-hostname rejection: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn connect_streamable_http_refuses_non_http_scheme() {
+        // WHY: the scheme guard must reject before the private-network
+        // check ever parses a host, matching organon's http_request tool.
+        let err = ExternalMcpClient::connect_streamable_http("ftp://example.com/mcp")
+            .await
+            .err()
+            .expect("non-http(s) scheme must be rejected");
+        let message = format!("{err}");
+        assert!(
+            message.contains("http:// or https://"),
+            "error should name the scheme rejection: {message}"
+        );
     }
 
     fn fake_mcp_server() -> (TempDir, StdioMcpServerConfig) {

@@ -22,6 +22,7 @@ Sorted by criticality (highest sovereignty impact first).
 | `api.github.com` | HTTPS | Outbound | Public issue metadata (title, state, labels, milestone) | Agent uses `issue_scan` or `issue_triage` built-in tool | `crates/organon/src/builtins/triage/mod.rs:359` (URL template); `crates/organon/src/builtins/triage/mod.rs:369` (HTTP GET) |
 | Arbitrary URLs (`web_fetch` tool) | HTTPS/HTTP | Outbound | Arbitrary web page body (HTML, markdown, etc.) | Agent uses `web_fetch` built-in tool | `crates/organon/src/builtins/research.rs:130` (protocol guard); `crates/organon/src/builtins/research.rs:77` (HTTP GET execution); `crates/organon/src/builtins/research.rs:141` (automatic redirects disabled) |
 | Operator-configured external tool endpoints | HTTPS/HTTP (config-driven) | Outbound | JSON tool body (`tool`, `kind`, `arguments`) | Agent invokes an external tool registered in `aletheia.toml` | `crates/aletheia/src/external_tools.rs:30` (config types); `crates/aletheia/src/external_tools.rs:330` (HTTP POST executor) |
+| Operator-configured MCP server endpoints (streamable HTTP) | HTTPS/HTTP (config-driven) | Outbound | MCP JSON-RPC (`initialize`, `tools/list`, `tools/call`), SSE responses | Aletheia connects to an `mcp`-type external tool entry with an `endpoint` in `aletheia.toml` | `crates/diaporeia/src/client.rs:245` (`connect_streamable_http_with_auth`) |
 | Qdrant (migration only) | HTTPS/gRPC (configurable, default `localhost:6333`) | Outbound | Vector memory records (scroll points, payloads) | One-time `aletheia migrate-memory` CLI command | `crates/aletheia/src/migrate_memory.rs:68` (client build); `crates/aletheia/src/commands/agent_io.rs:106` (CLI `--qdrant-url` arg) |
 | signal-cli daemon (`localhost:8080` by default) | HTTP (JSON-RPC) | Outbound | Signal message text, recipient IDs, JSON-RPC envelopes | Sending or receiving Signal messages when Signal channel is enabled | `crates/taxis/src/config/mod.rs:268` (default host); `crates/agora/src/semeion/client.rs:88` (URL construction); `crates/agora/src/semeion/client.rs:144` (`send` RPC); `crates/agora/src/semeion/mod.rs:170` (receive poll loop) |
 | Tailscale local status query | stdio (`tailscale status --json`) | Outbound (local-only) | Local Tailscale IPv4 address | Pylon server startup (discovery file write) | `crates/pylon/src/discovery.rs:125` (subprocess spawn) |
@@ -59,6 +60,7 @@ Sorted by criticality (highest sovereignty impact first).
 | `api.github.com` | No (host is hard-coded) | Do not enable or invoke `issue_scan` / `issue_triage` |
 | Arbitrary URLs (`web_fetch`) | No (arbitrary by design) | Do not invoke `web_fetch`; SSRF guards reject blocked hostnames and URLs that resolve to internal ranges |
 | External tool endpoints | Yes (operator must explicitly declare them in `aletheia.toml`) | Remove the tool from config |
+| MCP server endpoints (streamable HTTP) | Yes (operator must explicitly declare them in `aletheia.toml`) | Remove the `mcp` tool entry from config; SSRF guard rejects blocked hostnames and endpoints that resolve to internal ranges |
 | Qdrant | Yes (`--qdrant-url` or `QDRANT_URL` env) | Do not run `migrate-memory`; feature is off by default |
 | signal-cli daemon | Yes (`channels.signal.accounts.*.http_host`, `http_port`) | Disable Signal channel or set `enabled = false` |
 | Tailscale local status query | No | Do not install `tailscale` binary; discovery gracefully degrades to `localhost` |
@@ -72,6 +74,8 @@ Sorted by criticality (highest sovereignty impact first).
 Both tools disable reqwest automatic redirects. They follow redirects manually, revalidate every `Location` target with the same hostname and DNS policy before the next request, and refuse the sixth redirect in a chain. Relative redirect targets are resolved against the current URL before validation.
 
 Known limitation: DNS can change after validation and before the subsequent TCP connection. The guard reduces SSRF exposure by validating each URL the process chooses to request, but it does not pin the validated address through connect time.
+
+The streamable-HTTP MCP client (`ExternalMcpClient::connect_streamable_http_with_auth`) validates the configured endpoint with the same scheme + hostname + DNS check before connecting. It disables reqwest automatic redirects too, but does not follow-and-revalidate: the MCP session/SSE lifecycle is owned by `rmcp`'s `StreamableHttpClient` trait, which has no per-hop hook to intercept a redirect response the way a single-shot `reqwest::Response` does. A redirect from a configured MCP server therefore fails the connection rather than being silently followed. The same known limitation applies (DNS may change between validation and connect), and it applies once per connection rather than once per request, since the MCP transport holds one long-lived connection instead of issuing independent requests.
 
 ## Inbound connections
 
@@ -124,6 +128,7 @@ The only outbound connections are to services you explicitly configure (LLM prov
 - `symbolon`: OAuth token refresh/validation
 - `organon`: tool execution (`web_fetch`, `web_search` wiring, GitHub triage)
 - `nous`: pipeline HTTP calls and server-tool tracking
+- `diaporeia`: streamable-HTTP MCP client (operator-configured external MCP servers)
 - `aletheia`: binary entry point (health checks, eval runner, external tool proxy, Qdrant migration)
 - `eval` (dokimion): behavioral eval HTTP scenario runner
 - `tui`: terminal dashboard API client
