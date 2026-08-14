@@ -1,4 +1,4 @@
-use crate::{Canvas, Zone};
+use super::{Canvas, Zone};
 
 #[expect(
     clippy::as_conversions,

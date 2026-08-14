@@ -42,7 +42,6 @@ members = [
     "crates/poiesis/intake",
     "crates/poiesis/deck",
     "crates/poiesis/text",
-    "crates/poiesis/deck-layout",
     "crates/poiesis/doc",
     "crates/poiesis/printer-chromium",
     "crates/poiesis/diff",

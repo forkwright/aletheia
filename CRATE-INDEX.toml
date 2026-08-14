@@ -356,7 +356,7 @@ path = "crates/poiesis/core"
 layer = "types"
 purpose = "Format-agnostic document model and Renderer trait for poiesis"
 depends_on = []
-used_by = ["organon", "poiesis-charts", "poiesis-deck", "poiesis-deck-layout", "poiesis-doc", "poiesis-lint", "poiesis-printer-chromium", "poiesis-scaffold", "poiesis-sheet", "poiesis-slides", "poiesis-text"]
+used_by = ["organon", "poiesis-charts", "poiesis-deck", "poiesis-doc", "poiesis-lint", "poiesis-printer-chromium", "poiesis-scaffold", "poiesis-sheet", "poiesis-slides", "poiesis-text"]
 features = {}
 dev_depends_on = []
 
@@ -460,20 +460,11 @@ default = "pdf + odt"
 odt = "ODT backend via zip"
 pdf = "PDF backend via krilla"
 
-[crates.poiesis-deck-layout]
-path = "crates/poiesis/deck-layout"
-layer = "types"
-purpose = "Slide layout solver — normalized zone coordinates, pixel CSS, and OOXML EMU output"
-depends_on = ["poiesis-core"]
-used_by = ["poiesis-deck"]
-features = {}
-dev_depends_on = []
-
 [crates.poiesis-deck]
 path = "crates/poiesis/deck"
 layer = "tool"
-purpose = "HTML/CSS deck renderer — three-layer CSS compositor and minijinja slide engine"
-depends_on = ["poiesis-core", "poiesis-deck-layout"]
+purpose = "HTML/CSS deck renderer — three-layer CSS compositor and minijinja slide engine; owns its zone-layout solver as an internal module"
+depends_on = ["poiesis-core"]
 used_by = []
 dev_depends_on = []
 

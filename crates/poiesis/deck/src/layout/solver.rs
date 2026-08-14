@@ -1,6 +1,6 @@
 use poiesis_core::scalar::AspectRatio;
 
-use crate::{Canvas, SlideLayout, Zone, ZoneName};
+use super::{Canvas, SlideLayout, Zone, ZoneName};
 
 /// Resolve the default slide layout for a given aspect ratio.
 ///

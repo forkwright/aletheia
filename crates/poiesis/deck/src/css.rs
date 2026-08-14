@@ -1,8 +1,7 @@
 use std::fmt::Write;
 
-use poiesis_deck_layout::zone_to_css;
-
 use crate::SlideLayout;
+use crate::layout::zone_to_css;
 
 /// Generate the three-layer CSS stylesheet for a deck.
 #[must_use]
