@@ -24,6 +24,7 @@ prometheus-client = { workspace = true }
 rustix = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 snafu = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }

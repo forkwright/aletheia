@@ -2,6 +2,7 @@
 
 mod extraction_integration;
 mod panic;
+mod provenance;
 mod threshold_prompt;
 
 use hermeneus::test_utils::MockProvider;

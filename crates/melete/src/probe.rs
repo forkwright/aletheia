@@ -384,6 +384,7 @@ mod tests {
             content: content.to_owned(),
             timestamp: "2026-04-10T12:00:00Z".to_owned(),
             source: FlushSource::Extracted,
+            source_message_ids: vec![],
         }
     }
 

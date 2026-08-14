@@ -769,6 +769,11 @@ mod tests {
             },
             pruning_stats: None,
             contradiction_log: melete::contradiction::ContradictionLog::empty(),
+            source_message_ids: vec![],
+            input_hash: String::new(),
+            prompt_hash: String::new(),
+            model: "test-model".to_owned(),
+            config_snapshot_hash: String::new(),
         };
 
         apply_distillation(&store, "ses-1", &result, &history).expect("apply distillation");
@@ -802,6 +807,11 @@ mod tests {
             memory_flush,
             pruning_stats: None,
             contradiction_log: melete::contradiction::ContradictionLog::empty(),
+            source_message_ids: vec![],
+            input_hash: String::new(),
+            prompt_hash: String::new(),
+            model: "test-model".to_owned(),
+            config_snapshot_hash: String::new(),
         }
     }
 
@@ -827,6 +837,7 @@ mod tests {
             content: content.to_owned(),
             timestamp: jiff::Timestamp::now().to_string(),
             source: melete::flush::FlushSource::Extracted,
+            source_message_ids: vec![],
         }
     }
 

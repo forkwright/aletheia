@@ -183,7 +183,7 @@ Fixed login bug.
 ## Corrections
 - Wrong file initially.
 ";
-    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z", &[]);
     assert_eq!(
         flush.decisions.len(),
         2,
@@ -213,7 +213,7 @@ Fixed auth.
 - Wrong file at first.
 - Missed the null check.
 ";
-    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z", &[]);
     assert_eq!(
         flush.corrections.len(),
         2,
@@ -243,7 +243,7 @@ Fixing the null pointer crash.
 ## Current State
 Done.
 ";
-    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z", &[]);
     assert!(
         flush.task_state.is_some(),
         "task_state should be populated when Task Context section is present"
@@ -260,7 +260,7 @@ Done.
 #[test]
 fn parse_summary_empty_sections_produce_no_items() {
     let summary = "## Summary\nJust a summary.\n\n## Key Decisions\n\n## Corrections\n";
-    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z", &[]);
     assert!(
         flush.decisions.is_empty(),
         "empty Key Decisions section should produce no decision items"
@@ -278,7 +278,7 @@ fn parse_summary_empty_sections_produce_no_items() {
 #[test]
 fn parse_summary_flush_source_is_extracted() {
     let summary = "## Key Decisions\n- Decision: Use snafu. Reason: Standard.\n";
-    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-03-13T00:00:00Z", &[]);
     assert_eq!(
         flush.decisions.len(),
         1,
@@ -303,7 +303,7 @@ Fixed login bug in auth module.
 ## Key Decisions
 - Use null check.
 ";
-    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z", &[]);
     assert!(
         flush.facts.iter().any(|f| f.content.contains("[Summary]")),
         "Summary section should be extracted as a fact with [Summary] prefix"
@@ -324,7 +324,7 @@ Auth work.
 - Fixed null check on line 42 of src/auth/login.rs
 - Added regression test for the fix
 ";
-    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z", &[]);
     let completed_facts: Vec<_> = flush
         .facts
         .iter()
@@ -358,7 +358,7 @@ Auth work.
 ## Current State
 Bug is fixed, test passes. Awaiting code review.
 ";
-    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z", &[]);
     let state_facts: Vec<_> = flush
         .facts
         .iter()
@@ -385,7 +385,7 @@ Auth work.
 - Investigate performance regression in session handler
 - Update documentation for new auth flow
 ";
-    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z", &[]);
     let open_facts: Vec<_> = flush
         .facts
         .iter()
@@ -407,7 +407,7 @@ Auth work.
 #[test]
 fn parse_summary_extracts_all_seven_sections() {
     // WHY: End-to-end test that all 7 section types produce output.
-    let flush = parse_summary_to_flush(MOCK_SUMMARY, "2026-04-15T00:00:00Z");
+    let flush = parse_summary_to_flush(MOCK_SUMMARY, "2026-04-15T00:00:00Z", &[]);
 
     // Decisions from "Key Decisions"
     assert!(
@@ -464,7 +464,7 @@ fn parse_summary_empty_sections_produce_no_facts() {
 
 ## Open Threads
 ";
-    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z");
+    let flush = parse_summary_to_flush(summary, "2026-04-15T00:00:00Z", &[]);
     assert!(
         flush.facts.is_empty(),
         "empty sections should produce no facts"

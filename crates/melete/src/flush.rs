@@ -22,6 +22,16 @@ pub struct FlushItem {
     pub timestamp: String,
     /// How this item was discovered.
     pub source: FlushSource,
+    /// Content-hashed references (see [`crate::provenance::message_ref`])
+    /// for the messages that were in scope when this item was extracted.
+    ///
+    /// This names the message pool an item could have been drawn from, not
+    /// a single precise attribution: the distillation LLM's structured
+    /// output does not itself mark which raw message backed each
+    /// individual fact/decision/correction. Reconstructing a tighter
+    /// per-item link would require changing that output schema.
+    #[serde(default)]
+    pub source_message_ids: Vec<String>,
 }
 
 /// How a flush item was identified.
@@ -121,6 +131,7 @@ mod tests {
                 content: "Use snafu for errors".to_owned(),
                 timestamp: "2026-03-05T19:00:00Z".to_owned(),
                 source: FlushSource::Extracted,
+                source_message_ids: vec![],
             }],
             corrections: vec![],
             facts: vec![],
@@ -147,16 +158,19 @@ mod tests {
                 content: "Use snafu for errors".to_owned(),
                 timestamp: "2026-03-05T19:00:00Z".to_owned(),
                 source: FlushSource::Extracted,
+                source_message_ids: vec![],
             }],
             corrections: vec![FlushItem {
                 content: "Wrong file path corrected".to_owned(),
                 timestamp: "2026-03-05T19:01:00Z".to_owned(),
                 source: FlushSource::AgentNote,
+                source_message_ids: vec![],
             }],
             facts: vec![FlushItem {
                 content: "Config lives in taxis crate".to_owned(),
                 timestamp: "2026-03-05T19:02:00Z".to_owned(),
                 source: FlushSource::ToolPattern,
+                source_message_ids: vec![],
             }],
             task_state: Some("Implementing distillation pipeline".to_owned()),
         };
@@ -180,6 +194,7 @@ mod tests {
                 content: "Use actor model".to_owned(),
                 timestamp: "2026-03-05T19:00:00Z".to_owned(),
                 source: FlushSource::Extracted,
+                source_message_ids: vec![],
             }],
             corrections: vec![],
             facts: vec![],
