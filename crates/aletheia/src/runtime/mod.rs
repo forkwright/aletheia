@@ -127,7 +127,7 @@ fn daemon_output_mode(mode: DaemonRunnerOutputMode) -> DaemonOutputMode {
 #[cfg(feature = "recall")]
 fn build_recall_source_registry(
     config: &AletheiaConfig,
-    http_client: Arc<reqwest::Client>,
+    http_client: &Arc<reqwest::Client>,
 ) -> crate::recall_sources::RecallSourceRegistry {
     let mut registry = crate::recall_sources::RecallSourceRegistry::new();
 
@@ -140,7 +140,7 @@ fn build_recall_source_registry(
             None
         });
         registry.register(Arc::new(
-            crate::recall_sources::academic::AcademicSource::new(Arc::clone(&http_client), api_key),
+            crate::recall_sources::academic::AcademicSource::new(Arc::clone(http_client), api_key),
         ));
     }
 
@@ -683,7 +683,7 @@ impl RuntimeBuilder {
         #[cfg(feature = "recall")]
         let recall_source_registry = Arc::new(build_recall_source_registry(
             &self.config,
-            Arc::new(reqwest::Client::new()),
+            &Arc::new(reqwest::Client::new()),
         ));
 
         #[cfg(feature = "recall")]
@@ -1404,7 +1404,7 @@ mod tests {
     /// SECURITY(#6444): a default config -- no `[recall_sources]` section at
     /// all -- must register no network-backed recall source. Before the fix,
     /// `AcademicSource` was registered unconditionally, so this test fails
-    /// (source_count == 2) without the opt-in gate.
+    /// (`source_count` == 2) without the opt-in gate.
     #[cfg(feature = "recall")]
     #[test]
     fn default_config_registers_no_network_recall_source() {
@@ -1416,7 +1416,7 @@ mod tests {
         );
 
         let registry =
-            build_recall_source_registry(&config, std::sync::Arc::new(reqwest::Client::new()));
+            build_recall_source_registry(&config, &std::sync::Arc::new(reqwest::Client::new()));
 
         // llm_context is local (no network); academic is the only
         // network-backed source and must be absent from the count.
@@ -1437,7 +1437,7 @@ mod tests {
         config.recall_sources.academic.enabled = true;
 
         let registry =
-            build_recall_source_registry(&config, std::sync::Arc::new(reqwest::Client::new()));
+            build_recall_source_registry(&config, &std::sync::Arc::new(reqwest::Client::new()));
 
         assert_eq!(
             registry.source_count(),
