@@ -231,6 +231,20 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// A nous-scoped merge-review operation (approve/reject) targeted an
+    /// entity that `nous_id` does not own. `pending_merges` carries no
+    /// tenant column, so ownership is established via the
+    /// `fact_entities` -> `facts.nous_id` join at call time rather than
+    /// assumed from the caller-supplied `nous_id` (aletheia#5290).
+    #[cfg(feature = "mneme-engine")]
+    #[snafu(display("entity {entity_id} is not owned by nous {nous_id}"))]
+    EntityNotOwned {
+        entity_id: String,
+        nous_id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Result alias using episteme's [`Error`] type.

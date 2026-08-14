@@ -289,6 +289,21 @@ pub fn fts_ddl() -> &'static str {
     }"
 }
 
+/// The Datalog `visible_fact[id]` rule set defining which facts are
+/// visible to a `$requester_nous_id`: owned by the requester, or marked
+/// `shared`/`published`.
+///
+/// This is the store's one visibility policy — [`marshal::build_scoped_hybrid_query`]
+/// composes it in-crate, and it is exposed here so out-of-crate callers
+/// that build their own visibility-scoped queries against the store
+/// (rather than going through a store-owned query method) have a
+/// canonical rule set to compose too, instead of hand-copying the
+/// Datalog text into a second, driftable definition (aletheia#5284).
+#[cfg(feature = "mneme-engine")]
+pub fn scoped_visibility_rules() -> &'static str {
+    marshal::scoped_visibility_rules()
+}
+
 #[cfg(feature = "mneme-engine")]
 /// Persisted embedding metadata for the knowledge store vector schema.
 #[derive(Debug, Clone, PartialEq, Eq)]

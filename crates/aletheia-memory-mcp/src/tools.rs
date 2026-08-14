@@ -405,17 +405,6 @@ fn matches_scope_filters(
     true
 }
 
-/// Datalog rule defining facts visible to a requesting nous.
-///
-/// WHY: mirrors `episteme::knowledge_store::marshal::scoped_visibility_rules`
-/// without depending on the non-public helper. A fact is visible when it is
-/// owned by the requester, marked `shared`, or marked `published`.
-const SCOPED_VISIBILITY_RULES: &str = concat!(
-    "visible_fact[id] := *facts{id, nous_id: $requester_nous_id}\n",
-    "visible_fact[id] := *facts{id, visibility: 'shared'}\n",
-    "visible_fact[id] := *facts{id, visibility: 'published'}\n",
-);
-
 /// A visible fact row materialized for aggregation tools.
 #[derive(Debug, Clone)]
 struct ScopedFactRow {
@@ -527,7 +516,11 @@ fn run_scoped_facts_query(
     store: &KnowledgeStore,
     requester_nous_id: &str,
 ) -> crate::error::Result<Vec<ScopedFactRow>> {
-    let rules = SCOPED_VISIBILITY_RULES;
+    // WHY: pulls the store's own visibility policy (aletheia#5284) rather
+    // than a hand-copied duplicate, so search/stats/topics/neighbors and
+    // this aggregation path cannot silently disagree about what a
+    // requester can see.
+    let rules = mneme::knowledge_store::scoped_visibility_rules();
     let script = format!(
         "{}{}",
         rules,

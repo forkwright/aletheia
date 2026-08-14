@@ -614,6 +614,157 @@ fn approve_merge_drains_review_queue() {
     );
 }
 
+/// #5290 regression: `pending_merges` carries no tenant column of its
+/// own, so `get_pending_merges` must scope through the same
+/// `fact_entities` -> `facts.nous_id` join `find_duplicate_entities`
+/// uses. Pre-fix, `get_pending_merges` ignored `nous_id` entirely and
+/// returned every row in the relation to any caller.
+#[test]
+fn get_pending_merges_does_not_cross_nous_boundary() {
+    let store = make_store();
+    let mut e1 = make_entity("e1", "Acme Corporation", "organization");
+    e1.aliases = vec!["Acme".to_owned()];
+    let mut e2 = make_entity("e2", "acme corporation", "organization");
+    e2.aliases = vec!["Acme".to_owned()];
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+    link_entity_to_nous(&store, "e1", "nous-A");
+    link_entity_to_nous(&store, "e2", "nous-A");
+
+    store
+        .run_entity_dedup("nous-A")
+        .expect("nous-A dedup queues the review-tier pair");
+
+    let owner_queue = store
+        .get_pending_merges("nous-A")
+        .expect("nous-A pending merges");
+    assert_eq!(
+        owner_queue.len(),
+        1,
+        "the owning nous must see its own queued pair"
+    );
+
+    let other_queue = store
+        .get_pending_merges("nous-B")
+        .expect("nous-B pending merges");
+    assert!(
+        other_queue.is_empty(),
+        "a nous must not see another nous's queued review candidates; got {} rows",
+        other_queue.len()
+    );
+}
+
+/// #5290 regression: `approve_merge_scoped` must refuse to execute a
+/// merge whose entities are not owned by the caller-supplied `nous_id`.
+/// Pre-fix, the CLI's `dedup-approve` path called the unscoped
+/// `approve_merge` directly, so any nous's command path could execute
+/// (and thereby also drain from the queue) any other nous's pending
+/// merge just by naming its entity ids.
+#[test]
+fn approve_merge_scoped_rejects_cross_nous_entities() {
+    let store = make_store();
+    let mut e1 = make_entity("e1", "Acme Corporation", "organization");
+    e1.aliases = vec!["Acme".to_owned()];
+    let mut e2 = make_entity("e2", "acme corporation", "organization");
+    e2.aliases = vec!["Acme".to_owned()];
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+    link_entity_to_nous(&store, "e1", "nous-A");
+    link_entity_to_nous(&store, "e2", "nous-A");
+
+    store
+        .run_entity_dedup("nous-A")
+        .expect("nous-A dedup queues the review-tier pair");
+
+    let e1_id = crate::id::EntityId::new("e1").expect("valid test id");
+    let e2_id = crate::id::EntityId::new("e2").expect("valid test id");
+
+    let err = store
+        .approve_merge_scoped("nous-B", &e1_id, &e2_id)
+        .expect_err("nous-B must not be able to approve nous-A's pending merge");
+    assert!(
+        matches!(err, crate::error::Error::EntityNotOwned { .. }),
+        "expected EntityNotOwned, got: {err:?}"
+    );
+
+    // The merge must not have executed: both entities still exist, and
+    // nous-A's queue is untouched by the rejected attempt.
+    let surviving = store.list_entities().expect("list_entities");
+    assert_eq!(
+        surviving.len(),
+        2,
+        "a rejected cross-nous approval must not merge anything"
+    );
+    let owner_queue = store
+        .get_pending_merges("nous-A")
+        .expect("nous-A pending merges");
+    assert_eq!(
+        owner_queue.len(),
+        1,
+        "the rejected cross-nous attempt must not drain nous-A's queue"
+    );
+
+    // The legitimate owner can still approve.
+    let record = store
+        .approve_merge_scoped("nous-A", &e1_id, &e2_id)
+        .expect("the owning nous must be able to approve its own pending merge");
+    assert_eq!(record.canonical_entity_id, e1_id);
+}
+
+/// #5290 regression: `reject_merge` must refuse to clear a pending row
+/// on behalf of a nous that does not own the entities. Pre-fix, the
+/// CLI's `dedup-reject` path ran a raw, unscoped `pending_merges`
+/// removal directly against the store — any caller could clear any
+/// nous's review candidate given its entity ids.
+#[test]
+fn reject_merge_rejects_cross_nous_entities() {
+    let store = make_store();
+    let mut e1 = make_entity("e1", "Acme Corporation", "organization");
+    e1.aliases = vec!["Acme".to_owned()];
+    let mut e2 = make_entity("e2", "acme corporation", "organization");
+    e2.aliases = vec!["Acme".to_owned()];
+    store.insert_entity(&e1).expect("insert e1");
+    store.insert_entity(&e2).expect("insert e2");
+    link_entity_to_nous(&store, "e1", "nous-A");
+    link_entity_to_nous(&store, "e2", "nous-A");
+
+    store
+        .run_entity_dedup("nous-A")
+        .expect("nous-A dedup queues the review-tier pair");
+
+    let e1_id = crate::id::EntityId::new("e1").expect("valid test id");
+    let e2_id = crate::id::EntityId::new("e2").expect("valid test id");
+
+    let err = store
+        .reject_merge("nous-B", &e1_id, &e2_id)
+        .expect_err("nous-B must not be able to reject nous-A's pending merge");
+    assert!(
+        matches!(err, crate::error::Error::EntityNotOwned { .. }),
+        "expected EntityNotOwned, got: {err:?}"
+    );
+
+    let owner_queue = store
+        .get_pending_merges("nous-A")
+        .expect("nous-A pending merges");
+    assert_eq!(
+        owner_queue.len(),
+        1,
+        "the rejected cross-nous attempt must not drain nous-A's queue"
+    );
+
+    // The legitimate owner can still reject.
+    store
+        .reject_merge("nous-A", &e1_id, &e2_id)
+        .expect("the owning nous must be able to reject its own pending merge");
+    let owner_queue_after = store
+        .get_pending_merges("nous-A")
+        .expect("nous-A pending merges after reject");
+    assert!(
+        owner_queue_after.is_empty(),
+        "the owning nous's reject must drain the queue"
+    );
+}
+
 /// #4165 E regression: `find_duplicate_entities("nous-A")` must not see
 /// entities linked exclusively to `nous-B`. Pre-fix, `load_entity_infos`
 /// loaded every row of the `entities` relation, so dedup could merge

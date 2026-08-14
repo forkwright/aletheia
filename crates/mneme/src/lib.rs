@@ -256,7 +256,7 @@ pub mod instinct {
 #[cfg(feature = "mneme-engine")]
 pub mod knowledge_store {
     pub use episteme::knowledge_store::{
-        HybridQuery, KnowledgeConfig, KnowledgeStore, QueryResult,
+        HybridQuery, KnowledgeConfig, KnowledgeStore, QueryResult, scoped_visibility_rules,
     };
 
     /// Pre-migration verified snapshot (aletheia#5779 §8.5). Taken

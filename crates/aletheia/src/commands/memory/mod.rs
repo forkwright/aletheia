@@ -1180,13 +1180,17 @@ fn run_dedup_pending(
 
 /// Approve a queued entity merge.
 ///
-/// Executes [`approve_merge`](mneme::knowledge_store::KnowledgeStore::approve_merge)
+/// Executes [`approve_merge_scoped`](mneme::knowledge_store::KnowledgeStore::approve_merge_scoped)
 /// — redirects relationships, transfers `fact_entities`, preserves the merged
 /// name as an alias, deletes the merged entity, and removes the pending
 /// row. Operator chooses which side survives via argument order. The
 /// merge is *not* gated by the auto-merge threshold: this is the explicit
 /// approval path for review-tier candidates the auto-merge math rejects
 /// by design (#4165 Path A).
+///
+/// `--nous-id` is more than a label here: `approve_merge_scoped` verifies
+/// both entities belong to it before executing, since `pending_merges`
+/// itself carries no tenant column (aletheia#5290).
 #[cfg(feature = "recall")]
 fn run_dedup_approve(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
@@ -1200,7 +1204,7 @@ fn run_dedup_approve(
         .whatever_context("--merged-id is not a valid entity id")?;
 
     let record = store
-        .approve_merge(&canonical, &merged)
+        .approve_merge_scoped(nous_id, &canonical, &merged)
         .whatever_context("approve_merge failed")?;
 
     println!(
@@ -1216,9 +1220,11 @@ fn run_dedup_approve(
 
 /// Reject a queued entity merge by removing it from the review queue.
 ///
-/// Tries both `(a, b)` and `(b, a)` orderings since `pending_merges` may
-/// store either; the underlying call swallows the second ordering's
-/// failure as a debug log if there is nothing to remove.
+/// Executes [`reject_merge`](mneme::knowledge_store::KnowledgeStore::reject_merge),
+/// which verifies both entities belong to `nous_id` before removing —
+/// `pending_merges` carries no tenant column, so the raw removal this
+/// used to run directly here had no scoping at all: any nous's command
+/// path could clear any other nous's review candidate (aletheia#5290).
 #[cfg(feature = "recall")]
 fn run_dedup_reject(
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
@@ -1226,24 +1232,14 @@ fn run_dedup_reject(
     entity_a: &str,
     entity_b: &str,
 ) -> Result<()> {
-    use std::collections::BTreeMap;
+    let entity_a_id = mneme::id::EntityId::new(entity_a)
+        .whatever_context("--entity-a is not a valid entity id")?;
+    let entity_b_id = mneme::id::EntityId::new(entity_b)
+        .whatever_context("--entity-b is not a valid entity id")?;
 
-    use mneme::engine::DataValue;
-
-    let mut params = BTreeMap::new();
-    params.insert("entity_a".to_owned(), DataValue::Str(entity_a.into()));
-    params.insert("entity_b".to_owned(), DataValue::Str(entity_b.into()));
-    let script = r"?[entity_a, entity_b] <- [[$entity_a, $entity_b]]
-                   :rm pending_merges{entity_a, entity_b}";
-    // WHY: pending_merges may store either (a,b) or (b,a) order; swallow
-    // the second ordering's not-found error since at most one row matches.
-    let _ = store
-        .run_mut_query(script, params)
-        .whatever_context("pending_merges remove failed")?;
-    let mut params2 = BTreeMap::new();
-    params2.insert("entity_a".to_owned(), DataValue::Str(entity_b.into()));
-    params2.insert("entity_b".to_owned(), DataValue::Str(entity_a.into()));
-    let _ = store.run_mut_query(script, params2);
+    store
+        .reject_merge(nous_id, &entity_a_id, &entity_b_id)
+        .whatever_context("reject_merge failed")?;
 
     println!("Rejected pending merge for nous {nous_id}: {entity_a} <-> {entity_b}.");
     Ok(())
