@@ -323,6 +323,10 @@ impl CrossNousRouter {
     /// If Actor A is already waiting on Actor B and B tries to ask A, the
     /// cycle is detected and an error is returned immediately.
     ///
+    /// `message.reply_timeout` (or [`DEFAULT_REPLY_TIMEOUT`]) bounds the
+    /// WHOLE operation, queue admission into the target's inbox plus the
+    /// reply wait, not just the reply wait after a successful enqueue.
+    ///
     /// # Cancel safety
     ///
     /// Cancellation of the ask future (e.g. task abort or `select!`) cleans up
