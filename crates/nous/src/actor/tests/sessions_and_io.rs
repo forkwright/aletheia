@@ -603,7 +603,7 @@ fn make_auto_dream_ready_actor() -> (
     actor.stores.session_store = Some(Arc::new(tokio::sync::Mutex::new(session_store)));
     let knowledge_store =
         mneme::knowledge_store::KnowledgeStore::open_mem().expect("in-memory knowledge store");
-    actor.stores.knowledge_store = Some(Arc::new(knowledge_store));
+    actor.stores.knowledge_store = Some(knowledge_store);
 
     (actor, tx, dir)
 }
