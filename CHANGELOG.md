@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.37.0](https://github.com/forkwright/aletheia/compare/v0.36.0...v0.37.0) (2026-08-14)
+
+
+### Features
+
+* **docs:** derive CONFIGURATION.md's field reference from the schema ([#6760](https://github.com/forkwright/aletheia/issues/6760)) ([61cb3cc](https://github.com/forkwright/aletheia/commit/61cb3cc0ffc1345972ba6e5b7ca44b8355ca55ce))
+* **docs:** derive CRATE-INDEX.toml from Cargo and gate it in CI ([#6782](https://github.com/forkwright/aletheia/issues/6782)) ([32747cd](https://github.com/forkwright/aletheia/commit/32747cd6f429fd36c8af54dff5d0741a82cad275))
+* **mneme,episteme:** recover two abandoned slices whose issues are still open ([#6773](https://github.com/forkwright/aletheia/issues/6773)) ([b33e109](https://github.com/forkwright/aletheia/commit/b33e10970b721f33c2f25bf1642353c30cf391e1))
+
+
+### Bug Fixes
+
+* **daemon:** keep host paths out of the backup manifest, and exclude during the copy ([#6780](https://github.com/forkwright/aletheia/issues/6780)) ([abcbd5c](https://github.com/forkwright/aletheia/commit/abcbd5c52a9795b17fd7448ec6024d896593ab0b))
+* **proskenion:** decode pylon errors through skene instead of four local paraphrases ([#6781](https://github.com/forkwright/aletheia/issues/6781)) ([68c9d19](https://github.com/forkwright/aletheia/commit/68c9d193926c887888e2ccd63ff37ef30fee1c0f))
+* **pylon,taxis:** stop a scoped token measuring cross-agent lag, and classify auth reloads as cold ([#6777](https://github.com/forkwright/aletheia/issues/6777)) ([5823df3](https://github.com/forkwright/aletheia/commit/5823df35be1fe8ce5fcca1f90691982a50d6d706))
+* **security:** four controls that failed open or held key material ([#6762](https://github.com/forkwright/aletheia/issues/6762)) ([9aed7aa](https://github.com/forkwright/aletheia/commit/9aed7aa0441d89123a74c1ec401e0555f73b1505))
+* **security:** four controls that granted authority they could not establish ([#6768](https://github.com/forkwright/aletheia/issues/6768)) ([a1546a8](https://github.com/forkwright/aletheia/commit/a1546a8ead459a97387c34acd62d7380596ea672))
+* **skene:** call keryx's extractor instead of reimplementing it ([#6766](https://github.com/forkwright/aletheia/issues/6766)) ([ffab18e](https://github.com/forkwright/aletheia/commit/ffab18e90ee804d07d2fbd50c0482ea1d845697a))
+* **taxis,pylon,nous:** make the approval timeout operator-owned and bound cross-router waits ([#6774](https://github.com/forkwright/aletheia/issues/6774)) ([5d7b471](https://github.com/forkwright/aletheia/commit/5d7b4717e9174ddcd2c8e6bfffbb5012f6a35747))
+
 ## [0.36.0](https://github.com/forkwright/aletheia/compare/v0.35.0...v0.36.0) (2026-08-14)
 
 
