@@ -239,6 +239,14 @@ pub(super) fn build_nous_runtime_config(
         episteme_cohort: resolved.episteme_cohort,
         workspace,
         allowed_roots: resolve_allowed_roots(oikos, &resolved.workspace, &resolved.allowed_roots),
+        // WHY: this stays empty by design, not by omission. `server_tools`
+        // here is the ALWAYS-ON baseline sent on every turn regardless of
+        // `enable_tool`; `config.server_tools` (taxis) instead feeds
+        // `services.server_tool_config`, which only makes a tool available
+        // for per-session activation. Feeding the same operator toggle into
+        // both would double-declare an activated tool to the provider --
+        // `resolve_active_server_tools` concatenates the static baseline
+        // with the dynamically-activated set with no dedup (nous/src/execute/resolve.rs).
         server_tools: Vec::new(),
         cache_enabled: resolved.capabilities.cache_enabled,
         recall: resolved.recall.into(),

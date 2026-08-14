@@ -59,6 +59,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [daemonBehavior](#daemonbehavior)
 - [dispatch](#dispatch)
 - [toolLimits](#toollimits)
+- [serverTools](#servertools)
 - [messaging](#messaging)
 - [tuning](#tuning)
 - [anthropic](#anthropic)
@@ -1155,6 +1156,16 @@ Organon tool size and timeout limits. WHY configurable: filesystem write caps, s
 | `datalogDefaultTimeoutSecs` | float | 5.0 | Default query timeout in seconds for the Datalog memory tool. Default: 5.0. Also present in `AgentBehaviorDefaults::tool_datalog_default_timeout_secs`. |
 | `maxImageBytes` | integer | 20_971_520 | Maximum image file size in bytes for the view-file tool. Default: 20971520 (20 MiB). Also present in `AgentBehaviorDefaults::tool_max_image_bytes`. |
 | `maxPdfBytes` | integer | 33_554_432 | Maximum PDF file size in bytes for the view-file tool. Default: 33554432 (32 MiB). Also present in `AgentBehaviorDefaults::tool_max_pdf_bytes`. |
+
+## serverTools
+
+Anthropic server-side tool (web search, code execution) availability. WHY configurable: server tools run on the provider's infrastructure and carry cost/data-exposure tradeoffs the operator opts into per deployment; see [`ServerToolsConfig`].
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `webSearch` | bool | false | Whether web search is available for activation. |
+| `webSearchMaxUses` | integer | unset | Maximum web search uses per turn (`None` = provider default). |
+| `codeExecution` | bool | false | Whether code execution is available for activation. |
 
 ## messaging
 

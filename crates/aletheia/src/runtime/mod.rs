@@ -775,7 +775,7 @@ impl RuntimeBuilder {
             },
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
-            server_tool_config: organon::types::ServerToolConfig::default(),
+            server_tool_config: self.config.server_tools.clone().into(),
         });
         if let Some(spawn_impl) = spawn_impl.as_ref() {
             spawn_impl.set_tool_services(Arc::clone(&tool_services));

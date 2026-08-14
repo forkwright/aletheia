@@ -40,6 +40,16 @@ pub struct ServerToolConfig {
     pub code_execution: bool,
 }
 
+impl From<taxis::config::ServerToolsConfig> for ServerToolConfig {
+    fn from(config: taxis::config::ServerToolsConfig) -> Self {
+        Self {
+            web_search: config.web_search,
+            web_search_max_uses: config.web_search_max_uses,
+            code_execution: config.code_execution,
+        }
+    }
+}
+
 /// Metadata describing one server tool available for activation via `enable_tool`.
 #[derive(Debug, Clone)]
 pub(crate) struct ServerToolCatalogEntry {

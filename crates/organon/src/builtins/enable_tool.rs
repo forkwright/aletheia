@@ -313,6 +313,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn activate_server_tool_configured_via_taxis_config() {
+        // WHY: proves the taxis config -> ServerToolConfig -> enable_tool
+        // path end-to-end, not just the From conversion in isolation
+        // (see server_tool_config_from_taxis_config in types_tests).
+        let taxis_config = taxis::config::ServerToolsConfig {
+            web_search: true,
+            web_search_max_uses: Some(3),
+            code_execution: false,
+        };
+        let ctx = mock_ctx_with_catalog_and_server_tools(Vec::new(), taxis_config.into());
+
+        let executor = EnableToolExecutor;
+        let result = executor
+            .execute(&make_input("web_search"), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(
+            !result.is_error,
+            "a server tool enabled through taxis config must activate cleanly"
+        );
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("Activated 'web_search'")
+        );
+
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let active = ctx.active_tools.read().expect("lock poisoned");
+        assert!(active.contains(&ToolName::from_static("web_search")));
+    }
+
+    #[tokio::test]
+    async fn disabled_server_tools_config_no_ops_safely() {
+        // WHY: the default/disabled path (no taxis serverTools section
+        // configured) must not silently make provider server tools
+        // available -- an absent section never implies opt-in.
+        let ctx = mock_ctx_with_catalog_and_server_tools(
+            Vec::new(),
+            taxis::config::ServerToolsConfig::default().into(),
+        );
+
+        let executor = EnableToolExecutor;
+        let result = executor
+            .execute(&make_input("web_search"), &ctx)
+            .await
+            .expect("execute");
+
+        assert!(
+            result.is_error,
+            "an unconfigured server tool must not be activatable"
+        );
+
+        #[expect(
+            clippy::expect_used,
+            reason = "test assertion: poisoned lock means a test bug"
+        )]
+        let active = ctx.active_tools.read().expect("lock poisoned");
+        assert!(active.is_empty(), "nothing should have been activated");
+    }
+
+    #[tokio::test]
     async fn unknown_tool_lists_available() {
         let ctx = mock_ctx_with_catalog(vec![
             (
