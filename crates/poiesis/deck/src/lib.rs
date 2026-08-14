@@ -14,6 +14,13 @@ use poiesis_core::scalar::AspectRatio;
 pub use error::DeckError;
 /// Re-export of the layout types that appear in [`DeckRenderer`]'s public fields.
 pub use layout::{Canvas, SlideLayout, Zone, ZoneName};
+// WHY exported rather than suppressed: folding `poiesis-deck-layout` in made
+// `zone_to_emu` unreachable, since `mod layout` is private -- so dead-code
+// analysis flagged it and the two helpers it calls. It is a working, documented
+// OOXML conversion awaiting the PPTX backend named in `layout`'s module docs;
+// publishing it keeps the capability available to that consumer, where an
+// `expect(dead_code)` would only hide the fact that nothing can reach it.
+pub use layout::zone_to_emu;
 
 /// The deck renderer.
 #[derive(Debug, Clone)]
