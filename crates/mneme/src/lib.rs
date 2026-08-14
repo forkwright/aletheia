@@ -177,6 +177,14 @@ pub mod finalize;
 /// through the memory boundary (#4688).
 pub mod checkpoint;
 
+/// Run-context provenance, inspection, and redaction records for memory recall.
+///
+/// WHY: memory influence must be inspectable — which context was selected or
+/// excluded, why, its trust tier and lifecycle state, and what memory
+/// mutations a run caused — so downstream runtime and UI layers can persist
+/// and explain a run's memory use rather than leaving it opaque (#4542).
+pub mod run_context;
+
 // ── Training data types (eidos) ───────────────────────────────────────
 //
 // NOTE: training capture *logic* (the JSONL writer, quality gate, and

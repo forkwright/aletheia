@@ -718,8 +718,16 @@ pub(super) fn sanitize_fts_query(raw: &str) -> String {
         .join(" ")
 }
 
+/// Datalog rule fragment defining facts visible to a requesting nous:
+/// owned by the requester, or marked `shared`/`published`.
+///
+/// WHY: the canonical scoped-visibility policy. Callers outside this crate
+/// (e.g. `aletheia-memory-mcp`'s aggregation queries) must build their own
+/// Datalog scripts against this rule rather than embedding a private copy —
+/// duplicating a privacy-critical predicate invites drift where different
+/// surfaces silently disagree about what a requester can see (#5284).
 #[cfg(feature = "mneme-engine")]
-pub(super) fn scoped_visibility_rules() -> &'static str {
+pub fn scoped_visibility_rules() -> &'static str {
     r"
     visible_fact[id] := *facts{id, nous_id: $requester_nous_id}
     visible_fact[id] := *facts{id, visibility: 'shared'}
