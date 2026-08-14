@@ -1581,25 +1581,7 @@ impl DiaporeiaServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         require_role(self, &context, Tier::Cheap, Role::Operator, "config_get")?;
         let config = self.state.config.read().await;
-
-        let redacted = serde_json::json!({
-            "gateway": {
-                "port": config.gateway.port,
-                "bind": config.gateway.bind,
-                "auth": {
-                    "mode": config.gateway.auth.mode,
-                },
-            },
-            "agents": {
-                "count": config.agents.list.len(),
-                "ids": config.agents.list.iter().map(|a| &a.id).collect::<Vec<_>>(),
-            },
-            "embedding": {
-                "provider": config.embedding.provider,
-                "model": config.embedding.model,
-                "dimension": config.embedding.dimension,
-            },
-        });
+        let redacted = taxis::redact::redact(&config);
 
         let json = serde_json::to_string_pretty(&redacted)
             .context(SerializationSnafu {})
