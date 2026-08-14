@@ -145,6 +145,10 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         path_template: "/api/v1/knowledge/facts/{id}/confidence",
     },
     ClientRouteContract {
+        method: "PUT",
+        path_template: "/api/v1/knowledge/facts/{id}/sensitivity",
+    },
+    ClientRouteContract {
         method: "GET",
         path_template: "/api/v1/knowledge/entities",
     },
