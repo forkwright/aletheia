@@ -56,3 +56,12 @@ jobs:
 
       - name: Validate automation PR gate policy
         run: python3 scripts/check-automation-pr-gates.py
+
+      # WHY report-only: fetch-depth:0 + a short timeout + no filter is a risk
+      # SIGNATURE, not a defect -- gate-coverage-scripts carries it
+      # deliberately (#6757). This surfaces the pattern early instead of
+      # waiting for the next job to time out and read as a false gate
+      # failure, without gating on a judgment call this script cannot make.
+      - name: Report checkout filter risk (fetch-depth:0 + short timeout)
+        run: |
+          python3 scripts/check-checkout-filter-risk.py >> "$GITHUB_STEP_SUMMARY"
