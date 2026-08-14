@@ -148,6 +148,12 @@ async fn get_quality_metrics_returns_500_when_session_scan_fails() {
         br#"{"session_type":"primary"}"#,
     )
     .expect("raw corrupt session row injected");
+    // WHY: `open` now refuses a store with no schema manifest at all
+    // (that gate is this PR's feature under test elsewhere) — stamp one
+    // so the store opens cleanly and the corrupt row is reached by the
+    // scan this test is actually exercising.
+    SessionStore::stamp_legacy_schema_manifest(&store_path)
+        .expect("legacy schema manifest stamped over injected row");
     let corrupt_store = SessionStore::open(&store_path).expect("corrupt session store opens");
 
     let (state, _dir) = test_state().await;

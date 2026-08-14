@@ -14,6 +14,7 @@ use super::{
     commands::memory,
     commands::session_create::SessionCreateArgs,
     commands::session_export::ExportFormat,
+    commands::session_store,
     commands::tls,
 };
 use clap::Parser;
@@ -309,6 +310,73 @@ fn session_export_with_output_file_parses() {
             );
         }
         _ => panic!("expected SessionExport command"),
+    }
+}
+
+#[test]
+fn session_store_verify_defaults_parses() {
+    let cli = Cli::parse_from(["aletheia", "session-store", "verify"]);
+    match cli.command {
+        Some(Command::SessionStore {
+            action: session_store::Action::Verify { path },
+        }) => {
+            assert!(path.is_none(), "path should default to none");
+        }
+        _ => panic!("expected SessionStore Verify command"),
+    }
+}
+
+#[test]
+fn session_store_verify_with_path_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "session-store",
+        "verify",
+        "--path",
+        "/tmp/some-sessions.db",
+    ]);
+    match cli.command {
+        Some(Command::SessionStore {
+            action: session_store::Action::Verify { path },
+        }) => {
+            assert_eq!(path, Some(PathBuf::from("/tmp/some-sessions.db")));
+        }
+        _ => panic!("expected SessionStore Verify command"),
+    }
+}
+
+#[test]
+fn session_store_stamp_defaults_parses() {
+    let cli = Cli::parse_from(["aletheia", "session-store", "stamp"]);
+    match cli.command {
+        Some(Command::SessionStore {
+            action: session_store::Action::Stamp { path, yes },
+        }) => {
+            assert!(path.is_none(), "path should default to none");
+            assert!(!yes, "yes should default to false");
+        }
+        _ => panic!("expected SessionStore Stamp command"),
+    }
+}
+
+#[test]
+fn session_store_stamp_with_yes_parses() {
+    let cli = Cli::parse_from([
+        "aletheia",
+        "session-store",
+        "stamp",
+        "--path",
+        "/tmp/some-sessions.db",
+        "--yes",
+    ]);
+    match cli.command {
+        Some(Command::SessionStore {
+            action: session_store::Action::Stamp { path, yes },
+        }) => {
+            assert_eq!(path, Some(PathBuf::from("/tmp/some-sessions.db")));
+            assert!(yes, "yes should be set");
+        }
+        _ => panic!("expected SessionStore Stamp command"),
     }
 }
 

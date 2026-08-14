@@ -25,6 +25,7 @@ use crate::commands::prompt_audit;
 use crate::commands::repl::ReplArgs;
 use crate::commands::session_create::SessionCreateArgs;
 use crate::commands::session_export::SessionExportArgs;
+use crate::commands::session_store;
 use crate::commands::tls;
 
 #[derive(Debug, Parser)]
@@ -123,6 +124,11 @@ pub(crate) enum Command {
     SessionCreate(SessionCreateArgs),
     /// Export a session as Markdown or JSON
     SessionExport(SessionExportArgs),
+    /// Session-store schema-manifest inspection and legacy attestation
+    SessionStore {
+        #[command(subcommand)]
+        action: session_store::Action,
+    },
     /// Launch the terminal dashboard
     Tui(TuiArgs),
     /// Launch the desktop app (discovers proskenion in PATH)

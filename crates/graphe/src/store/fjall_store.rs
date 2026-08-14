@@ -33,6 +33,19 @@
 //! `YYYY-MM-DDTHH:MM:SS.sssZ`. Using local wall time with a literal `Z` would
 //! mislabel non-UTC timestamps as UTC and corrupt session ordering, blackboard
 //! TTL comparisons, and retention sweeps (issue #4742).
+//!
+//! # Schema manifest
+//!
+//! [`SessionStore::open`] is gated by a plain-file manifest
+//! (`schema_manifest.json`, a sibling of fjall's own `keyspaces/` directory
+//! inside the store path) recording [`SchemaManifest::schema_version`]. The
+//! manifest is read with a plain [`std::fs::read`] — never through fjall —
+//! so a wrong-version store is refused *before* `fjall`'s own keyspace open
+//! (with its own internal recovery/cleanup of the on-disk directory) ever
+//! runs against it. A missing manifest on a non-empty store, a corrupt
+//! manifest, or a version mismatch all refuse to open rather than guess;
+//! see [`SessionStore::stamp_legacy_schema_manifest`] for the explicit,
+//! human-attested path to bring a pre-manifest store forward (issue #5031).
 
 #![expect(
     clippy::cast_possible_wrap,
@@ -147,6 +160,206 @@ const PARTITIONS: &[&str] = &[
     "blackboard",
     "counters",
 ];
+
+// ── Schema manifest (issue #5031) ───────────────────────────────────────────
+
+/// Filename for the on-disk schema manifest, a sibling of fjall's own
+/// `keyspaces/` directory inside the store path.
+///
+/// WHY: a plain, non-fjall file readable with [`std::fs::read`] alone. It
+/// must never be moved into a fjall partition — the entire point is to
+/// decide whether this binary may open the store *before* any fjall
+/// keyspace machinery (which performs its own internal directory recovery
+/// as a side effect of opening) runs against it.
+const SCHEMA_MANIFEST_FILE: &str = "schema_manifest.json";
+
+/// Schema version this binary writes on create and requires on open.
+///
+/// WARNING: bumping this with no corresponding entry in a migration path
+/// makes every existing store refuse to open (`SchemaVersionTooOld`) until
+/// explicitly migrated — that is the guard working as intended, not a bug
+/// to route around.
+const CURRENT_SCHEMA_VERSION: u32 = 1;
+
+/// Key-layout version documented in the module-level key schema table.
+///
+/// Distinct from [`CURRENT_SCHEMA_VERSION`]: the schema version gates
+/// whether this binary opens the store at all, while the key-layout version
+/// is informational provenance recorded in the manifest for operator
+/// diagnosis and is not itself compared on open.
+const CURRENT_KEY_LAYOUT_VERSION: u32 = 1;
+
+/// Store kind recorded in the manifest, distinguishing this fjall layout
+/// from sibling fjall-backed stores elsewhere in the fleet (symbolon,
+/// daemon, energeia) that must never be cross-opened by this code.
+const STORE_KIND: &str = "graphe-session-store";
+
+/// On-disk schema manifest for the fjall session store.
+///
+/// Written once on first create and re-verified — never silently upgraded —
+/// on every [`SessionStore::open`]. Lives as a plain JSON file beside
+/// fjall's own directory structure; see the module-level "Schema manifest"
+/// doc section for why.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchemaManifest {
+    /// Identifies this store's kind, distinct from sibling fjall-backed
+    /// stores in the fleet.
+    pub store_kind: String,
+    /// Schema version this binary must match to open the store.
+    pub schema_version: u32,
+    /// Key-layout version documented in the module-level key schema table.
+    pub key_layout_version: u32,
+    /// ISO 8601 timestamp the manifest was first written.
+    pub created_at: String,
+    /// ISO 8601 timestamp the manifest was last verified compatible.
+    pub updated_at: String,
+    /// Reserved for future optional capability flags; empty today.
+    #[serde(default)]
+    pub features: Vec<String>,
+}
+
+/// Outcome of reading the on-disk manifest file, before any fjall keyspace
+/// machinery has run.
+enum ManifestProbe {
+    /// No store directory, or an existing directory with no fjall data and
+    /// no manifest — safe to stamp fresh.
+    Fresh,
+    /// A manifest is present and matches [`CURRENT_SCHEMA_VERSION`].
+    Compatible(SchemaManifest),
+    /// The directory holds existing data but no manifest file.
+    Missing,
+    /// A manifest is present but not parseable as JSON.
+    Corrupt(serde_json::Error),
+    /// A manifest is present with a schema version other than
+    /// [`CURRENT_SCHEMA_VERSION`].
+    Mismatched(SchemaManifest),
+}
+
+/// A [`ManifestProbe`] resolved to either "proceed as fresh" or "proceed
+/// with this already-compatible manifest" — the two outcomes that permit
+/// opening the fjall keyspace at all.
+enum ManifestOutcome {
+    Fresh,
+    Compatible {
+        /// Preserved so the post-open manifest refresh does not overwrite
+        /// the original creation timestamp.
+        created_at: String,
+    },
+}
+
+/// Read the manifest file directly from disk — no fjall API calls.
+fn probe_manifest(path: &Path) -> Result<ManifestProbe> {
+    let manifest_path = path.join(SCHEMA_MANIFEST_FILE);
+    let manifest_bytes = match fs::read(&manifest_path) {
+        Ok(bytes) => Some(bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            return Err(e).context(error::IoSnafu {
+                path: manifest_path,
+            });
+        }
+    };
+
+    let Some(bytes) = manifest_bytes else {
+        return Ok(if directory_has_existing_content(path)? {
+            ManifestProbe::Missing
+        } else {
+            ManifestProbe::Fresh
+        });
+    };
+
+    match serde_json::from_slice::<SchemaManifest>(&bytes) {
+        Err(source) => Ok(ManifestProbe::Corrupt(source)),
+        Ok(manifest) if manifest.schema_version == CURRENT_SCHEMA_VERSION => {
+            Ok(ManifestProbe::Compatible(manifest))
+        }
+        Ok(manifest) => Ok(ManifestProbe::Mismatched(manifest)),
+    }
+}
+
+/// Whether `path` exists and already has at least one directory entry.
+///
+/// A non-existent path and an existing-but-empty directory both count as
+/// "nothing here yet" — [`koina::fjall::FjallDb::open`] creates the
+/// directory lazily either way.
+fn directory_has_existing_content(path: &Path) -> Result<bool> {
+    match fs::read_dir(path) {
+        Ok(mut entries) => Ok(entries.next().is_some()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e).context(error::IoSnafu {
+            path: path.to_path_buf(),
+        }),
+    }
+}
+
+/// Turn a [`ManifestProbe`] into either a proceed-to-open [`ManifestOutcome`]
+/// or the actionable refusal error naming both versions.
+fn resolve_manifest_probe(path: &Path, probe: ManifestProbe) -> Result<ManifestOutcome> {
+    match probe {
+        ManifestProbe::Fresh => Ok(ManifestOutcome::Fresh),
+        ManifestProbe::Compatible(manifest) => Ok(ManifestOutcome::Compatible {
+            created_at: manifest.created_at,
+        }),
+        ManifestProbe::Missing => Err(error::SchemaManifestMissingSnafu {
+            path: path.to_path_buf(),
+            current: CURRENT_SCHEMA_VERSION,
+        }
+        .build()),
+        ManifestProbe::Corrupt(source) => Err(source).context(error::SchemaManifestCorruptSnafu {
+            path: path.to_path_buf(),
+        }),
+        ManifestProbe::Mismatched(manifest) if manifest.schema_version < CURRENT_SCHEMA_VERSION => {
+            Err(error::SchemaVersionTooOldSnafu {
+                path: path.to_path_buf(),
+                expected: CURRENT_SCHEMA_VERSION,
+                found: manifest.schema_version,
+            }
+            .build())
+        }
+        ManifestProbe::Mismatched(manifest) => Err(error::SchemaVersionTooNewSnafu {
+            path: path.to_path_buf(),
+            expected: CURRENT_SCHEMA_VERSION,
+            found: manifest.schema_version,
+        }
+        .build()),
+    }
+}
+
+/// Write (or overwrite) the manifest file at `path`.
+///
+/// A plain [`std::fs::write`] — not routed through fjall's WAL. The
+/// manifest is sidecar metadata, not session data; the durability policy
+/// that governs `ensure_durable()` does not apply to it.
+fn write_manifest(path: &Path, manifest: &SchemaManifest) -> Result<()> {
+    let manifest_path = path.join(SCHEMA_MANIFEST_FILE);
+    let data = serde_json::to_vec_pretty(manifest).context(error::StoredJsonSnafu)?;
+    fs::write(&manifest_path, &data).context(error::IoSnafu {
+        path: manifest_path,
+    })?;
+    Ok(())
+}
+
+/// Stamp and persist the manifest for a store that just finished opening
+/// successfully — a fresh store gets a new `created_at`; a compatible
+/// reopen keeps its original `created_at` and only refreshes `updated_at`.
+fn finalize_manifest(path: &Path, outcome: ManifestOutcome) -> Result<()> {
+    let now = now_iso();
+    let created_at = match outcome {
+        ManifestOutcome::Fresh => now.clone(),
+        ManifestOutcome::Compatible { created_at } => created_at,
+    };
+    write_manifest(
+        path,
+        &SchemaManifest {
+            store_kind: STORE_KIND.to_owned(),
+            schema_version: CURRENT_SCHEMA_VERSION,
+            key_layout_version: CURRENT_KEY_LAYOUT_VERSION,
+            created_at,
+            updated_at: now,
+            features: Vec::new(),
+        },
+    )
+}
 
 /// Session row counts broken down by lifecycle status.
 ///
@@ -290,7 +503,9 @@ pub struct SessionStore {
     /// Shared write mutex — see [`koina::fjall::FjallDb::write_lock`].
     write_lock: Mutex<()>,
     /// Kept alive to auto-delete the temp directory when the store is dropped.
-    _temp_dir: Option<tempfile::TempDir>,
+    /// Read (not just held) by the `Debug` impl below, so it does not carry
+    /// the leading underscore that would mark it as write-only.
+    temp_dir: Option<tempfile::TempDir>,
     /// Approximate session row counts by lifecycle status, maintained by the
     /// create, status-change, delete and import paths.
     ///
@@ -517,18 +732,132 @@ impl FindOrCreateOutcome {
 impl SessionStore {
     /// Open (or create) a persistent session store at the given path.
     ///
+    /// The on-disk schema manifest is checked *before* fjall's own keyspace
+    /// open runs — see the module-level "Schema manifest" doc section. A
+    /// fresh directory gets a new manifest; an existing one must already
+    /// carry a manifest matching [`CURRENT_SCHEMA_VERSION`].
+    ///
     /// # Errors
-    /// Returns an error if the fjall keyspace cannot be opened.
+    /// Returns an error if the schema manifest is missing on a non-empty
+    /// store, is corrupt, names an incompatible schema version, or if the
+    /// fjall keyspace cannot be opened.
     #[instrument(skip(path))]
     pub fn open(path: &Path) -> Result<Self> {
         info!(path = %path.display(), "Opening fjall session store");
+        let manifest_outcome = resolve_manifest_probe(path, probe_manifest(path)?)?;
         let fdb = koina::fjall::FjallDb::open(path, PARTITIONS).map_err(|e| {
             error::StorageSnafu {
                 message: e.to_string(),
             }
             .build()
         })?;
-        Self::from_fjall_db(fdb, path.to_path_buf())
+        let store = Self::from_fjall_db(fdb, path.to_path_buf())?;
+        finalize_manifest(path, manifest_outcome)?;
+        Ok(store)
+    }
+
+    /// Read-only schema compatibility check for `path`: does not open the
+    /// fjall keyspace and does not write anything. The dry-run/verify entry
+    /// point for operators (issue #5031).
+    ///
+    /// # Errors
+    /// Returns the same refusal errors [`Self::open`] would (missing,
+    /// corrupt, or version-mismatched manifest), or an error if `path` has
+    /// no store data yet.
+    #[instrument(skip(path))]
+    pub fn verify_schema_manifest(path: &Path) -> Result<SchemaManifest> {
+        match probe_manifest(path)? {
+            ManifestProbe::Fresh => Err(storage_error(format!(
+                "{} has no store data yet — nothing to verify",
+                path.display()
+            ))),
+            ManifestProbe::Compatible(manifest) => Ok(manifest),
+            ManifestProbe::Missing => Err(error::SchemaManifestMissingSnafu {
+                path: path.to_path_buf(),
+                current: CURRENT_SCHEMA_VERSION,
+            }
+            .build()),
+            ManifestProbe::Corrupt(source) => {
+                Err(source).context(error::SchemaManifestCorruptSnafu {
+                    path: path.to_path_buf(),
+                })
+            }
+            ManifestProbe::Mismatched(manifest)
+                if manifest.schema_version < CURRENT_SCHEMA_VERSION =>
+            {
+                Err(error::SchemaVersionTooOldSnafu {
+                    path: path.to_path_buf(),
+                    expected: CURRENT_SCHEMA_VERSION,
+                    found: manifest.schema_version,
+                }
+                .build())
+            }
+            ManifestProbe::Mismatched(manifest) => Err(error::SchemaVersionTooNewSnafu {
+                path: path.to_path_buf(),
+                expected: CURRENT_SCHEMA_VERSION,
+                found: manifest.schema_version,
+            }
+            .build()),
+        }
+    }
+
+    /// Stamp a pre-existing store — one written before the schema-manifest
+    /// feature existed — as compatible with [`CURRENT_SCHEMA_VERSION`],
+    /// without opening the fjall keyspace.
+    ///
+    /// This is an attestation, not a migration: call it only for a store you
+    /// have confirmed already matches the key layout documented in the
+    /// module-level key schema table. Refuses if a manifest is already
+    /// present (never silently overwrites a prior decision) or if the
+    /// directory has no existing data at all (use [`Self::open`] for a
+    /// genuinely fresh store).
+    ///
+    /// # Errors
+    /// Returns an error if the directory has no data, already carries a
+    /// manifest, the existing manifest is corrupt, or the new manifest
+    /// cannot be written.
+    #[instrument(skip(path))]
+    pub fn stamp_legacy_schema_manifest(path: &Path) -> Result<SchemaManifest> {
+        match probe_manifest(path)? {
+            ManifestProbe::Missing => {}
+            ManifestProbe::Fresh => {
+                return Err(storage_error(format!(
+                    "{} has no existing store data — start aletheia normally against this \
+                     path instead of stamping a legacy manifest",
+                    path.display()
+                )));
+            }
+            ManifestProbe::Compatible(_) | ManifestProbe::Mismatched(_) => {
+                return Err(storage_error(format!(
+                    "{} already has a schema manifest — refusing to overwrite an existing \
+                     decision; run `aletheia session-store verify --path {}` to inspect it",
+                    path.display(),
+                    path.display()
+                )));
+            }
+            ManifestProbe::Corrupt(source) => {
+                return Err(source).context(error::SchemaManifestCorruptSnafu {
+                    path: path.to_path_buf(),
+                });
+            }
+        }
+
+        let now = now_iso();
+        let manifest = SchemaManifest {
+            store_kind: STORE_KIND.to_owned(),
+            schema_version: CURRENT_SCHEMA_VERSION,
+            key_layout_version: CURRENT_KEY_LAYOUT_VERSION,
+            created_at: now.clone(),
+            updated_at: now,
+            features: Vec::new(),
+        };
+        write_manifest(path, &manifest)?;
+        info!(
+            path = %path.display(),
+            schema_version = CURRENT_SCHEMA_VERSION,
+            "stamped legacy session store with schema manifest"
+        );
+        Ok(manifest)
     }
 
     /// Open an ephemeral session store backed by a `TempDir` (for testing).
@@ -596,7 +925,7 @@ impl SessionStore {
             db: Arc::new(fdb.db),
             path,
             write_lock: fdb.write_lock,
-            _temp_dir: fdb._temp_dir,
+            temp_dir: fdb._temp_dir,
             session_counts,
         })
     }
@@ -2831,6 +3160,50 @@ impl SessionStore {
     // is the "intentionally ephemeral" class the critical-write policy on
     // `ensure_durable` carves out.
 
+    /// Build a [`BlackboardRow`] with `created_at`/`expires_at` derived from
+    /// one clock reading.
+    ///
+    /// WHY: shared by [`Self::blackboard_write_scoped`] (its own commit) and
+    /// the portability [`Self::import_session_bundle`] (row inserted into the
+    /// caller's existing transaction) — `created_at` and `expires_at` must
+    /// derive from the SAME clock reading in both, or the expiry drifts off
+    /// its declared TTL by the interval between two separate reads.
+    fn build_blackboard_row(
+        key: &str,
+        value: &str,
+        author: &str,
+        ttl_secs: i64,
+        visibility: BlackboardVisibility,
+        session_id: Option<&str>,
+    ) -> Result<BlackboardRow> {
+        let now_ts = jiff::Timestamp::now();
+        let now = koina::fjall::iso(now_ts);
+        let expires_at = if ttl_secs > 0 {
+            Some(koina::fjall::iso(
+                now_ts
+                    .checked_add(
+                        jiff::Span::new()
+                            .try_seconds(ttl_secs)
+                            .context(error::TtlOverflowSnafu { ttl_secs })?,
+                    )
+                    .context(error::TtlOverflowSnafu { ttl_secs })?,
+            ))
+        } else {
+            None
+        };
+
+        Ok(BlackboardRow {
+            key: key.to_owned(),
+            value: value.to_owned(),
+            author_nous_id: author.to_owned(),
+            ttl_seconds: ttl_secs,
+            created_at: now,
+            expires_at,
+            session_id: session_id.map(str::to_owned),
+            visibility,
+        })
+    }
+
     /// Write or update a blackboard entry. Upserts on key.
     ///
     /// Always `BlackboardVisibility::Shared` with no session scope — the
@@ -2874,35 +3247,7 @@ impl SessionStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let bb_part = self.partition("blackboard")?;
 
-        // WHY: `created_at` and `expires_at` derive from ONE clock reading, so
-        // the expiry is exactly `ttl_secs` after creation. Reading the clock
-        // once per field lets the TTL drift by the interval between readings.
-        let now_ts = jiff::Timestamp::now();
-        let now = koina::fjall::iso(now_ts);
-        let expires_at = if ttl_secs > 0 {
-            Some(koina::fjall::iso(
-                now_ts
-                    .checked_add(
-                        jiff::Span::new()
-                            .try_seconds(ttl_secs)
-                            .context(error::TtlOverflowSnafu { ttl_secs })?,
-                    )
-                    .context(error::TtlOverflowSnafu { ttl_secs })?,
-            ))
-        } else {
-            None
-        };
-
-        let row = BlackboardRow {
-            key: key.to_owned(),
-            value: value.to_owned(),
-            author_nous_id: author.to_owned(),
-            ttl_seconds: ttl_secs,
-            created_at: now,
-            expires_at,
-            session_id: session_id.map(str::to_owned),
-            visibility,
-        };
+        let row = Self::build_blackboard_row(key, value, author, ttl_secs, visibility, session_id)?;
         let data = serde_json::to_vec(&row).context(error::StoredJsonSnafu)?;
         let mut tx = self.db.write_tx();
         tx.insert(&bb_part, key, data.as_slice());
@@ -3217,6 +3562,93 @@ impl SessionStore {
 // distilled summaries to the LLM and wedge the `idx:nous:...:upd:...`
 // index with past timestamps.
 
+/// Outcome of writing an imported session row inside a transaction: the
+/// stamped row plus enough status history for the caller to update the O(1)
+/// session counters correctly.
+#[cfg(feature = "portability")]
+struct ImportSessionOutcome {
+    stamped: Session,
+    overwritten_status: Option<SessionStatus>,
+    displaced_status: Option<SessionStatus>,
+}
+
+/// One session's complete import payload: metadata plus every child record
+/// that must land in the same commit as the session row.
+///
+/// WHY(#5033): agent import previously wrote session, messages, usage,
+/// working state, and notes as independent commits. An interruption between
+/// any two of those commits left a session whose row claimed data
+/// (`message_count`, `token_count_estimate`) that had not actually been
+/// written, and retrying then depended on `--force` reimporting the same
+/// session from scratch rather than any typed notion of "this session's
+/// import did or did not complete." [`SessionStore::import_session_bundle`]
+/// bundles every write into one transaction, so "the session row exists"
+/// and "this session's import is complete" are the same fact.
+#[cfg(feature = "portability")]
+pub struct ImportSessionBundle<'a> {
+    /// Session metadata, exactly as [`SessionStore::import_session`] expects.
+    pub session: &'a Session,
+    /// Messages to insert at their declared `seq`, exactly as
+    /// [`SessionStore::insert_message_raw`] expects. Every message must
+    /// belong to `session.id` and no two may share a `seq`.
+    pub messages: &'a [Message],
+    /// Usage records to insert, exactly as [`SessionStore::record_usage`]
+    /// expects. Every record must belong to `session.id`.
+    pub usage_records: &'a [UsageRecord],
+    /// Notes to insert. A fresh id is always allocated: the portable export
+    /// format does not carry the original note id.
+    pub notes: &'a [ImportSessionNote<'a>],
+    /// Working-state payload to hydrate into the blackboard, when the
+    /// export carried one.
+    pub working_state: Option<ImportSessionWorkingState<'a>>,
+}
+
+/// One note within an [`ImportSessionBundle`].
+#[cfg(feature = "portability")]
+#[derive(Debug, Clone, Copy)]
+pub struct ImportSessionNote<'a> {
+    /// Note category — validated against [`SessionStore::VALID_CATEGORIES`];
+    /// an invalid category fails the whole bundle rather than being
+    /// silently substituted.
+    pub category: &'a str,
+    /// Note body text.
+    pub content: &'a str,
+    /// ISO 8601 timestamp to preserve from the export.
+    pub created_at: &'a str,
+}
+
+/// Working-state payload within an [`ImportSessionBundle`], mirroring
+/// [`SessionStore::blackboard_write`]'s inputs.
+#[cfg(feature = "portability")]
+#[derive(Debug, Clone, Copy)]
+pub struct ImportSessionWorkingState<'a> {
+    /// Fully-formed blackboard key (e.g. `ws:{nous_id}:{session_id}`).
+    pub key: &'a str,
+    /// Serialized working-state value.
+    pub value: &'a str,
+    /// Author recorded on the blackboard row.
+    pub author: &'a str,
+    /// TTL in seconds.
+    pub ttl_secs: i64,
+}
+
+/// Outcome of a successful [`SessionStore::import_session_bundle`] call.
+#[cfg(feature = "portability")]
+#[derive(Debug, Clone)]
+pub struct ImportSessionBundleResult {
+    /// The imported session row, stamped as [`SessionStore::import_session`]
+    /// would stamp it.
+    pub session: Session,
+    /// Number of messages written.
+    pub messages_imported: usize,
+    /// Number of usage records written.
+    pub usage_records_imported: usize,
+    /// Number of notes written.
+    pub notes_imported: usize,
+    /// Whether a working-state payload was written.
+    pub working_state_imported: bool,
+}
+
 #[cfg(feature = "portability")]
 impl SessionStore {
     /// Get message history including distilled messages, preserving seq order.
@@ -3277,8 +3709,6 @@ impl SessionStore {
     /// Returns an error if the session does not exist or any commit fails.
     #[instrument(skip(self, msg), fields(session_id = %msg.session_id, seq = msg.seq))]
     pub fn insert_message_raw(&self, msg: &Message) -> Result<()> {
-        use fjall::Readable;
-
         let _guard = self
             .write_lock
             .lock()
@@ -3287,11 +3717,44 @@ impl SessionStore {
         let sessions_part = self.partition("sessions")?;
         let counters_part = self.partition("counters")?;
 
+        let mut tx = self.db.write_tx();
+        Self::insert_message_raw_in_tx(
+            &mut tx,
+            &messages_part,
+            &sessions_part,
+            &counters_part,
+            msg,
+        )?;
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall insert_message_raw commit: {e}"),
+            }
+            .build()
+        })?;
+        Ok(())
+    }
+
+    /// Insert one raw message inside an existing write transaction, without
+    /// committing.
+    ///
+    /// Shared by [`Self::insert_message_raw`] (its own commit) and
+    /// [`Self::import_session_bundle`] (one commit for the whole session).
+    /// Reads through `tx` rather than a separate snapshot so a session row
+    /// written earlier in the SAME transaction — as `import_session_bundle`
+    /// does — is visible to the existence check below.
+    fn insert_message_raw_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        messages_part: &fjall::SingleWriterTxKeyspace,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+        counters_part: &fjall::SingleWriterTxKeyspace,
+        msg: &Message,
+    ) -> Result<()> {
+        use fjall::Readable;
+
         // WHY: refuse if the session does not exist — the message would be
         // orphaned and never appear in list/recall views.
-        let snap = self.db.read_tx();
-        if snap
-            .get(&sessions_part, msg.session_id.as_str())
+        if tx
+            .get(sessions_part, msg.session_id.as_str())
             .map_err(|e| storage_error(format!("fjall insert_message_raw session check: {e}")))?
             .is_none()
         {
@@ -3302,21 +3765,20 @@ impl SessionStore {
         }
 
         let next_seq_key = format!("next_seq:{}", msg.session_id);
-        let current_seq = match snap
-            .get(&messages_part, next_seq_key.as_str())
+        let current_seq = match tx
+            .get(messages_part, next_seq_key.as_str())
             .map_err(|e| storage_error(format!("fjall insert_message_raw seq read: {e}")))?
         {
             None => 0u64,
             Some(b) => try_decode_u64(&b, "next_seq")?,
         };
-        let current_msg_id = match snap
-            .get(&counters_part, "msg_id")
+        let current_msg_id = match tx
+            .get(counters_part, "msg_id")
             .map_err(|e| storage_error(format!("fjall insert_message_raw msg_id read: {e}")))?
         {
             None => 0u64,
             Some(b) => try_decode_u64(&b, "msg_id")?,
         };
-        drop(snap);
 
         let msg_seq_u64 = u64::try_from(msg.seq).map_err(|src| {
             storage_error(format!(
@@ -3333,20 +3795,13 @@ impl SessionStore {
         let msg_key = format!("{}:{}", msg.session_id, pad_u64(msg_seq_u64));
         let msg_data = serde_json::to_vec(msg).context(error::StoredJsonSnafu)?;
 
-        let mut tx = self.db.write_tx();
-        tx.insert(&messages_part, msg_key.as_str(), msg_data.as_slice());
+        tx.insert(messages_part, msg_key.as_str(), msg_data.as_slice());
         tx.insert(
-            &messages_part,
+            messages_part,
             next_seq_key.as_str(),
             encode_u64(new_next_seq),
         );
-        tx.insert(&counters_part, "msg_id", encode_u64(new_msg_id));
-        tx.commit().map_err(|e| {
-            error::StorageSnafu {
-                message: format!("fjall insert_message_raw commit: {e}"),
-            }
-            .build()
-        })?;
+        tx.insert(counters_part, "msg_id", encode_u64(new_msg_id));
         Ok(())
     }
 
@@ -3367,24 +3822,96 @@ impl SessionStore {
     /// commit failure.
     #[instrument(skip(self, session), fields(id = %session.id, nous_id = %session.nous_id))]
     pub fn import_session(&self, session: &Session, force: bool) -> Result<Session> {
-        use fjall::Readable;
-
         let _guard = self
             .write_lock
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let sessions_part = self.partition("sessions")?;
 
-        let snap = self.db.read_tx();
+        let (existing_self, existing_key_owner) =
+            Self::import_session_precheck(&self.db, &sessions_part, session)?;
+
+        let mut tx = self.db.write_tx();
+        let outcome = Self::import_session_in_tx(
+            &mut tx,
+            &sessions_part,
+            session,
+            force,
+            existing_self.as_deref(),
+            existing_key_owner.as_deref(),
+        )?;
+
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall import_session commit: {e}"),
+            }
+            .build()
+        })?;
+        self.ensure_durable()?;
+
+        // WHY: imports can overwrite or displace existing sessions; account for
+        // the true delta in session rows (issue #5662) and for the lifecycle
+        // status each of those rows carried (issue #5039). An overwrite can
+        // change the status of an existing row, which is neither an add nor a
+        // remove.
+        self.session_counts.record_import(
+            outcome.overwritten_status,
+            outcome.stamped.status,
+            outcome.displaced_status,
+        );
+
+        metrics::record_session_created(&session.nous_id, session.session_type.as_str());
+        info!(
+            id = outcome.stamped.id,
+            nous_id = outcome.stamped.nous_id,
+            status = %outcome.stamped.status,
+            "imported session"
+        );
+        Ok(outcome.stamped)
+    }
+
+    /// Read the pre-write state [`Self::import_session_in_tx`] needs: the
+    /// session's own existing row (if any) and whoever currently owns its
+    /// `(nous_id, session_key)` slot (if occupied).
+    ///
+    /// Reads a fresh snapshot rather than the write transaction — taken
+    /// before the write transaction opens, reflecting state as of just
+    /// before this call rather than mid-write.
+    fn import_session_precheck(
+        db: &SingleWriterTxDatabase,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+        session: &Session,
+    ) -> Result<(Option<Vec<u8>>, Option<String>)> {
+        use fjall::Readable;
+
+        let snap = db.read_tx();
         let existing_self = snap
-            .get(&sessions_part, session.id.as_str())
-            .map_err(|e| storage_error(format!("fjall import_session existing: {e}")))?;
+            .get(sessions_part, session.id.as_str())
+            .map_err(|e| storage_error(format!("fjall import_session existing: {e}")))?
+            .map(|s| s.to_vec());
         let key_idx = Self::session_key_index_key(&session.nous_id, &session.session_key);
         let existing_key_owner = snap
-            .get(&sessions_part, key_idx.as_str())
+            .get(sessions_part, key_idx.as_str())
             .map_err(|e| storage_error(format!("fjall import_session key idx: {e}")))?
             .map(|b| String::from_utf8_lossy(&b).into_owned());
-        drop(snap);
+        Ok((existing_self, existing_key_owner))
+    }
+
+    /// Write an imported session row — plus its secondary indexes and any
+    /// stale/displaced-index cleanup — inside an existing write transaction,
+    /// without committing.
+    ///
+    /// Shared by [`Self::import_session`] (its own commit) and
+    /// [`Self::import_session_bundle`] (one commit for session + children).
+    fn import_session_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+        session: &Session,
+        force: bool,
+        existing_self: Option<&[u8]>,
+        existing_key_owner: Option<&str>,
+    ) -> Result<ImportSessionOutcome> {
+        use fjall::Readable;
 
         if !force {
             if existing_self.is_some() {
@@ -3393,7 +3920,7 @@ impl SessionStore {
                     session.id
                 )));
             }
-            if let Some(owner) = existing_key_owner.as_deref()
+            if let Some(owner) = existing_key_owner
                 && owner != session.id.as_str()
             {
                 return Err(storage_error(format!(
@@ -3413,21 +3940,21 @@ impl SessionStore {
         //
         // - `idx:nous:{nous_id}:upd:{ts}:{id}` — orphaned when `nous_id` or
         //   `updated_at` changes; both are embedded in the key prefix.
-        let mut tx = self.db.write_tx();
+        let key_idx = Self::session_key_index_key(&session.nous_id, &session.session_key);
         let mut overwritten_status: Option<SessionStatus> = None;
         let mut displaced_status: Option<SessionStatus> = None;
-        if let Some(prev_bytes) = existing_self.as_ref() {
+        if let Some(prev_bytes) = existing_self {
             let prev: Session =
                 serde_json::from_slice(prev_bytes).context(error::StoredJsonSnafu)?;
             overwritten_status = Some(prev.status);
             if prev.nous_id != session.nous_id || prev.session_key != session.session_key {
                 let stale_key_idx = Self::session_key_index_key(&prev.nous_id, &prev.session_key);
-                tx.remove(&sessions_part, stale_key_idx.as_str());
+                tx.remove(sessions_part, stale_key_idx.as_str());
             }
             if prev.nous_id != session.nous_id || prev.updated_at != session.updated_at {
                 let stale_nous_idx =
                     Self::session_nous_index_key(&prev.nous_id, &prev.updated_at, &prev.id);
-                tx.remove(&sessions_part, stale_nous_idx.as_str());
+                tx.remove(sessions_part, stale_nous_idx.as_str());
             }
         }
 
@@ -3435,11 +3962,11 @@ impl SessionStore {
         // (nous_id, session_key) slot must also evict that displaced owner — its
         // session row and nous_idx would otherwise be orphaned, surfacing in list
         // scans while its key index now points elsewhere (#5028).
-        if let Some(displaced_id) = existing_key_owner.as_deref()
+        if let Some(displaced_id) = existing_key_owner
             && displaced_id != session.id.as_str()
         {
             let displaced_bytes = tx
-                .get(&sessions_part, displaced_id)
+                .get(sessions_part, displaced_id)
                 .map_err(|e| storage_error(format!("fjall import_session displaced get: {e}")))?;
             if let Some(bytes) = displaced_bytes {
                 let displaced: Session =
@@ -3449,8 +3976,8 @@ impl SessionStore {
                     &displaced.updated_at,
                     &displaced.id,
                 );
-                tx.remove(&sessions_part, displaced_nous_idx.as_str());
-                tx.remove(&sessions_part, displaced.id.as_str());
+                tx.remove(sessions_part, displaced_nous_idx.as_str());
+                tx.remove(sessions_part, displaced.id.as_str());
                 displaced_status = Some(displaced.status);
             }
         }
@@ -3461,38 +3988,17 @@ impl SessionStore {
         stamped.artefact_meta = Some(stamped.stamp());
         let data = serde_json::to_vec(&stamped).context(error::StoredJsonSnafu)?;
 
-        tx.insert(&sessions_part, session.id.as_str(), data.as_slice());
-        tx.insert(&sessions_part, key_idx.as_str(), session.id.as_bytes());
+        tx.insert(sessions_part, session.id.as_str(), data.as_slice());
+        tx.insert(sessions_part, key_idx.as_str(), session.id.as_bytes());
         let nous_idx =
             Self::session_nous_index_key(&session.nous_id, &session.updated_at, &session.id);
-        tx.insert(&sessions_part, nous_idx.as_str(), b"");
+        tx.insert(sessions_part, nous_idx.as_str(), b"");
 
-        tx.commit().map_err(|e| {
-            error::StorageSnafu {
-                message: format!("fjall import_session commit: {e}"),
-            }
-            .build()
-        })?;
-        self.ensure_durable()?;
-
-        // WHY: imports can overwrite or displace existing sessions; account for
-        // the true delta in session rows (issue #5662) and for the lifecycle
-        // status each of those rows carried (issue #5039). An overwrite can
-        // change the status of an existing row, which is neither an add nor a
-        // remove.
-        // NOTE: only a displaced row that actually existed was removed above; a
-        // dangling key index leaves nothing to discount.
-        self.session_counts
-            .record_import(overwritten_status, session.status, displaced_status);
-
-        metrics::record_session_created(&session.nous_id, session.session_type.as_str());
-        info!(
-            id = session.id,
-            nous_id = session.nous_id,
-            status = %session.status,
-            "imported session"
-        );
-        Ok(stamped)
+        Ok(ImportSessionOutcome {
+            stamped,
+            overwritten_status,
+            displaced_status,
+        })
     }
 
     /// Insert a note exactly as supplied, preserving its `id` and `created_at`.
@@ -3523,6 +4029,237 @@ impl SessionStore {
             },
         )?;
         Ok(())
+    }
+
+    /// Reject a bundle whose messages/usage records cannot possibly commit
+    /// cleanly, before any write is attempted.
+    ///
+    /// WHY(#5033): "validate the full bundle before writing any rows" —
+    /// a message stamped for the wrong session, or two messages sharing a
+    /// `seq`, would either orphan data or silently overwrite one row with
+    /// another inside the transaction. Catching that here means the
+    /// rejection happens before the write lock is even acquired.
+    fn validate_import_bundle(bundle: &ImportSessionBundle<'_>) -> Result<()> {
+        let mut seen_seqs = std::collections::HashSet::with_capacity(bundle.messages.len());
+        for msg in bundle.messages {
+            if msg.session_id != bundle.session.id {
+                return Err(storage_error(format!(
+                    "import_session_bundle: message seq {} belongs to session '{}', not the \
+                     bundle's session '{}'",
+                    msg.seq, msg.session_id, bundle.session.id
+                )));
+            }
+            if !seen_seqs.insert(msg.seq) {
+                return Err(storage_error(format!(
+                    "import_session_bundle: duplicate message seq {} in session '{}' — the \
+                     second copy would silently overwrite the first",
+                    msg.seq, bundle.session.id
+                )));
+            }
+        }
+        for usage in bundle.usage_records {
+            if usage.session_id != bundle.session.id {
+                return Err(storage_error(format!(
+                    "import_session_bundle: usage record turn {} belongs to session '{}', not \
+                     the bundle's session '{}'",
+                    usage.turn_seq, usage.session_id, bundle.session.id
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// Insert a bundle's messages, usage records, and notes into an existing
+    /// write transaction, without committing.
+    ///
+    /// Split out of [`Self::import_session_bundle`] to keep that function
+    /// under clippy's line-count ceiling. These three loops carry no
+    /// bundle-level policy of their own — unlike the working-state write,
+    /// which stays inline in the caller (see the `SessionPrivate` hardcoding
+    /// note there, #5032).
+    fn import_bundle_children_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        messages_part: &fjall::SingleWriterTxKeyspace,
+        usage_part: &fjall::SingleWriterTxKeyspace,
+        notes_part: &fjall::SingleWriterTxKeyspace,
+        counters_part: &fjall::SingleWriterTxKeyspace,
+        sessions_part: &fjall::SingleWriterTxKeyspace,
+        bundle: &ImportSessionBundle<'_>,
+    ) -> Result<()> {
+        for msg in bundle.messages {
+            Self::insert_message_raw_in_tx(tx, messages_part, sessions_part, counters_part, msg)?;
+        }
+
+        for usage in bundle.usage_records {
+            Self::record_usage_in_tx(tx, usage_part, sessions_part, usage)?;
+        }
+
+        for note in bundle.notes {
+            Self::put_note_in_tx(
+                tx,
+                NoteTxParts {
+                    notes: notes_part,
+                    counters: counters_part,
+                    sessions: sessions_part,
+                },
+                PutNoteSpec {
+                    session_id: bundle.session.id.as_str(),
+                    nous_id: bundle.session.nous_id.as_str(),
+                    category: note.category,
+                    content: note.content,
+                    opts: PutNoteOpts {
+                        created_at: Some(note.created_at),
+                        provided_id: None,
+                        validate_category: true,
+                    },
+                },
+            )?;
+        }
+
+        Ok(())
+    }
+
+    /// Import one session and every child record it carries — messages,
+    /// usage, notes, and working state — as a single fjall transaction.
+    ///
+    /// This is the atomic counterpart to calling [`Self::import_session`],
+    /// [`Self::insert_message_raw`], [`Self::record_usage`],
+    /// [`Self::put_note`]-equivalent note writes, and
+    /// [`Self::blackboard_write`] independently: any failure — an invalid
+    /// note category, a session-existence check that fails mid-loop, a
+    /// commit error — returns before `tx.commit()`, so fjall never observes
+    /// a partial write for this session (issue #5033). A caller that needs
+    /// tolerance for a single bad note or usage row must filter the bundle
+    /// itself before calling this; there is no partial-commit mode here by
+    /// design — see the module's fail-closed manifest guard (#5031) for the
+    /// same posture applied to store-open.
+    ///
+    /// # Errors
+    /// Returns an error if bundle validation fails, the session import
+    /// violates idempotency (see [`Self::import_session`]), any child write
+    /// fails (e.g. an invalid note category), or the commit/durability flush
+    /// fails. On any error, nothing from this call is persisted.
+    #[instrument(skip(self, bundle), fields(session_id = %bundle.session.id))]
+    pub fn import_session_bundle(
+        &self,
+        bundle: &ImportSessionBundle<'_>,
+        force: bool,
+    ) -> Result<ImportSessionBundleResult> {
+        Self::validate_import_bundle(bundle)?;
+
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+
+        let sessions_part = self.partition("sessions")?;
+        let messages_part = self.partition("messages")?;
+        let usage_part = self.partition("usage")?;
+        let notes_part = self.partition("notes")?;
+        let counters_part = self.partition("counters")?;
+        let bb_part = self.partition("blackboard")?;
+
+        let (existing_self, existing_key_owner) =
+            Self::import_session_precheck(&self.db, &sessions_part, bundle.session)?;
+
+        let mut tx = self.db.write_tx();
+
+        // WHY: everything below writes into the SAME `tx`. A failure at any
+        // step returns before `tx.commit()`, so fjall never sees a partial
+        // write for this session — matching `finalize_turn`'s "one turn,
+        // one commit" contract (#4614) applied to import.
+        let session_outcome = Self::import_session_in_tx(
+            &mut tx,
+            &sessions_part,
+            bundle.session,
+            force,
+            existing_self.as_deref(),
+            existing_key_owner.as_deref(),
+        )?;
+
+        Self::import_bundle_children_in_tx(
+            &mut tx,
+            &messages_part,
+            &usage_part,
+            &notes_part,
+            &counters_part,
+            &sessions_part,
+            bundle,
+        )?;
+
+        // WHY(#5032): a bundle's working state is, by definition, one
+        // session's `ws:` scratch row — never a caller-chosen classification
+        // — so `import_session_bundle` hardcodes `SessionPrivate` scoped to
+        // `bundle.session.id` instead of taking visibility as a field on
+        // `ImportSessionWorkingState`. Writing it `Shared` (the default a
+        // caller-supplied field could accidentally leave in place) would
+        // reopen the leak #6731 closed: the general blackboard list/read
+        // tools would surface another agent's session-private scratch.
+        let working_state_imported = if let Some(ws) = bundle.working_state.as_ref() {
+            let row = Self::build_blackboard_row(
+                ws.key,
+                ws.value,
+                ws.author,
+                ws.ttl_secs,
+                BlackboardVisibility::SessionPrivate,
+                Some(bundle.session.id.as_str()),
+            )?;
+            let data = serde_json::to_vec(&row).context(error::StoredJsonSnafu)?;
+            tx.insert(&bb_part, ws.key, data.as_slice());
+            true
+        } else {
+            false
+        };
+
+        tx.commit().map_err(|e| {
+            error::StorageSnafu {
+                message: format!("fjall import_session_bundle commit: {e}"),
+            }
+            .build()
+        })?;
+        self.ensure_durable()?;
+
+        self.session_counts.record_import(
+            session_outcome.overwritten_status,
+            session_outcome.stamped.status,
+            session_outcome.displaced_status,
+        );
+        metrics::record_session_created(
+            &bundle.session.nous_id,
+            bundle.session.session_type.as_str(),
+        );
+        info!(
+            id = session_outcome.stamped.id,
+            nous_id = session_outcome.stamped.nous_id,
+            messages = bundle.messages.len(),
+            usage_records = bundle.usage_records.len(),
+            notes = bundle.notes.len(),
+            working_state_imported,
+            "imported session bundle atomically"
+        );
+
+        Ok(ImportSessionBundleResult {
+            session: session_outcome.stamped,
+            messages_imported: bundle.messages.len(),
+            usage_records_imported: bundle.usage_records.len(),
+            notes_imported: bundle.notes.len(),
+            working_state_imported,
+        })
+    }
+}
+
+// WHY: `fjall::TxDatabase` (aliased `SingleWriterTxDatabase`) does not
+// implement `Debug`, so `#[derive(Debug)]` on `SessionStore` cannot compile.
+// Report the fields that are actually useful for diagnostics and omit the
+// db handle and write lock rather than deriving — `finish_non_exhaustive`
+// marks that omission as deliberate instead of an accidental gap.
+impl std::fmt::Debug for SessionStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionStore")
+            .field("path", &self.path)
+            .field("is_temp", &self.temp_dir.is_some())
+            .field("session_counts", &self.session_counts)
+            .finish_non_exhaustive()
     }
 }
 

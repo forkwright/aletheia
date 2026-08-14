@@ -132,7 +132,16 @@ pub mod portability {
 pub mod store {
     pub use graphe::store::{FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord};
     pub use graphe::store::{
-        FinalizeTurnRequest, FinalizeTurnResult, SessionStatusCounts, SessionStore,
+        FinalizeTurnRequest, FinalizeTurnResult, SchemaManifest, SessionStatusCounts, SessionStore,
+    };
+
+    /// Atomic per-session agent-import entry points (issue #5033). Gated on
+    /// `portability`, matching [`graphe::store::SessionStore::import_session_bundle`]
+    /// and its siblings, which only exist under that feature.
+    #[cfg(feature = "portability")]
+    pub use graphe::store::{
+        ImportSessionBundle, ImportSessionBundleResult, ImportSessionNote,
+        ImportSessionWorkingState,
     };
 
     /// Test helpers for backend-agnostic session-store fixtures.
