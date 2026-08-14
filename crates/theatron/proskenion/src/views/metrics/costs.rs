@@ -141,10 +141,8 @@ pub(crate) fn Costs() -> Element {
                     }
                 }
                 Ok(resp) => {
-                    fetch_state.set(FetchState::Error(format!(
-                        "server returned {}",
-                        resp.status()
-                    )));
+                    let message = crate::api::error::decode_error_response(resp).await;
+                    fetch_state.set(FetchState::Error(message));
                 }
                 Err(e) => {
                     fetch_state.set(FetchState::Error(format!("connection error: {e}")));

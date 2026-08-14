@@ -106,8 +106,8 @@ pub(crate) fn DiffViewer(path: String, on_back: EventHandler<()>) -> Element {
                     }
                 },
                 Ok(resp) => {
-                    let status = resp.status();
-                    diff_state.set(FetchState::Error(format!("server returned {status}")));
+                    let message = crate::api::error::decode_error_response(resp).await;
+                    diff_state.set(FetchState::Error(message));
                 }
                 Err(e) => {
                     diff_state.set(FetchState::Error(format!("connection error: {e}")));

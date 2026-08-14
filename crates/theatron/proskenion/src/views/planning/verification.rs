@@ -183,8 +183,8 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                     fetch_state.set(FetchState::NotAvailable);
                 }
                 Ok(resp) => {
-                    let status = resp.status();
-                    fetch_state.set(FetchState::Error(format!("server returned {status}")));
+                    let message = crate::api::error::decode_error_response(resp).await;
+                    fetch_state.set(FetchState::Error(message));
                 }
                 Err(e) => {
                     fetch_state.set(FetchState::Error(format!("connection error: {e}")));

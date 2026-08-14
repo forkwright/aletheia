@@ -1,6 +1,7 @@
 //! HTTP client, SSE connection, and per-message streaming for the desktop UI.
 
 pub(crate) mod client;
+pub(crate) mod error;
 pub(crate) mod health;
 pub mod sse;
 pub mod streaming;
