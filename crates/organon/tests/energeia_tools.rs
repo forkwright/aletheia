@@ -221,7 +221,29 @@ async fn all_nine_tools_return_non_error() {
         }),
     );
     let result = registry.execute(&input, &ctx).await.unwrap();
-    assert_non_error(&result, "epitropos");
+    // WHY epitropos is asserted differently from the other eight: since #4718 it
+    // drives a real GitHub REST backend and reads GITHUB_TOKEN from the
+    // environment, so it is the one tool here that cannot succeed without an
+    // external credential. Erroring when unconfigured is the established shape
+    // in this crate -- communication.rs, enable_tool.rs, planning.rs and
+    // agent.rs all return ToolResult::error("... not configured") -- so the tool
+    // is correct and this assertion is what has to narrow.
+    //
+    // WHY not simply set GITHUB_TOKEN here: a token makes the backend construct
+    // successfully, and run_once then issues real HTTP calls to api.github.com.
+    // A unit suite must not depend on network or credentials; a test that
+    // quietly starts making live API calls is a worse outcome than a narrower
+    // assertion.
+    assert!(
+        result.is_error,
+        "epitropos: expected the unconfigured-credential error, got: {:?}",
+        result.content
+    );
+    assert!(
+        result.content.text_summary().contains("GITHUB_TOKEN"),
+        "epitropos: the error must name the missing credential so a caller can act, got: {:?}",
+        result.content
+    );
 
     // ── 6. mathesis record — add_lesson ──────────────────────────────────────
     let input = make_input(
@@ -545,17 +567,31 @@ fn placeholder_tool_descriptions_match_current_side_effect_limits() {
     );
 
     let epitropos = definition_for("epitropos");
+    // WHY these assertions inverted: #4718 replaced the placeholder pass with a
+    // real GitHub-backed one, so "advertises itself as a placeholder" is no
+    // longer the property to hold -- asserting it would pin a description that
+    // lies about what the tool does.
+    //
+    // What this test is FOR still holds, and matters more now than it did: a
+    // caller must be able to read the tool's own description and learn its real
+    // side-effect envelope before invoking it. Since the tool can now merge a PR
+    // for real, that is the fact the description must not omit.
     assert!(
-        epitropos
-            .description
-            .contains("placeholder CI steward classification pass"),
-        "epitropos should advertise placeholder single-pass classification"
+        epitropos.description.contains("GITHUB_TOKEN"),
+        "epitropos must advertise that it needs a credential, so a caller knows \
+         why it refuses when unconfigured"
     );
     assert!(
         epitropos.description.contains("does not poll")
-            && epitropos.description.contains("merge PRs")
             && epitropos.description.contains("queue repair work"),
-        "epitropos must not advertise polling, merge, or repair side effects"
+        "epitropos must still disclaim polling and repair-queueing -- those \
+         remain outside its envelope"
+    );
+    assert!(
+        epitropos.description.contains("merge API for real"),
+        "epitropos MUST advertise that a non-dry_run pass can merge a PR for \
+         real: it is the one genuinely irreversible side effect this tool has, \
+         and a description that hides it is worse than one that is merely stale"
     );
     assert!(
         epitropos
@@ -618,13 +654,30 @@ async fn placeholder_tool_outputs_report_current_side_effect_limits() {
         }),
     );
     let result = registry.execute(&input, &ctx).await.unwrap();
-    assert_non_error(&result, "epitropos");
-    let output = result_json(&result);
-    assert_eq!(output["mode"], "single_placeholder_pass");
-    assert_eq!(output["polling_loop_started"], false);
-    assert_eq!(output["merge_side_effects_enabled"], false);
-    assert_eq!(output["repair_queue_side_effects_enabled"], false);
-    assert_eq!(output["classified_count"], 0);
+    // WHY this no longer inspects a placeholder payload: #4718 replaced the
+    // hardcoded empty StewardResult with a real GitHub backend, so there is no
+    // `single_placeholder_pass` mode left to report. The property this test
+    // actually guards -- that a tool invoked with once=false, dry_run=false does
+    // NOT start a polling loop or take live side effects -- now holds by failing
+    // closed on the missing credential, which is a stronger guarantee than
+    // returning a placebo result that merely claimed not to.
+    assert!(
+        result.is_error,
+        "epitropos: expected the unconfigured-credential error, got: {:?}",
+        result.content
+    );
+    assert!(
+        result.content.text_summary().contains("GITHUB_TOKEN"),
+        "epitropos: the refusal must name the missing credential, got: {:?}",
+        result.content
+    );
+    // NOTE: the three payload assertions that stood here -- merge_side_effects_
+    // enabled, repair_queue_side_effects_enabled and classified_count all false
+    // or zero -- are deliberately gone rather than relocated. epitropos now
+    // refuses before constructing a backend, so it emits no payload to inspect,
+    // and `output` above belongs to an earlier tool in this test: reading it
+    // here would silently assert against the wrong tool's result instead of
+    // failing honestly.
 }
 
 #[test]
