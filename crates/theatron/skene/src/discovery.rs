@@ -501,6 +501,7 @@ pub async fn discover_server_with_config(config: &DiscoveryConfig) -> Option<Str
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
+#[expect(clippy::expect_used, reason = "test fixtures panic on failure")]
 mod tests {
     use std::io::Write as _;
 
