@@ -271,6 +271,13 @@ fn build_anthropic_credential_chain(
 /// Whether an explicit `ANTHROPIC_AUTH_TOKEN`/`ANTHROPIC_API_KEY` credential
 /// is present in `env`. Pure and independent of the `keyring` feature so it
 /// can be unit tested without touching a real OS keyring backend.
+///
+/// WHY the `test` arm: its only caller is `keyring`-gated, and `cargo check`
+/// does not compile `#[cfg(test)]` code -- so without the feature this reads
+/// as dead in the bin target while the tests that exercise it are invisible.
+/// Gating on the feature alone would take the tests with it, which is the
+/// independence the doc above is claiming.
+#[cfg(any(feature = "keyring", test))]
 fn any_anthropic_env_credential_present(env: &impl koina::system::Environment) -> bool {
     let is_set = |var: &str| env.var(var).is_some_and(|v| !v.is_empty());
     is_set("ANTHROPIC_AUTH_TOKEN") || is_set("ANTHROPIC_API_KEY")
