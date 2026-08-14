@@ -104,6 +104,13 @@ pub struct Session {
     /// Session status (e.g. "active", "archived").
     #[serde(default)]
     pub status: Option<String>,
+    /// LLM model used for this session, mirroring
+    /// `pylon::handlers::sessions::types_dto::SessionResponse::model`.
+    /// The wire history format carries no per-message model (#4911); this
+    /// session-level field is the real source for any per-message model
+    /// badge in the UI.
+    #[serde(default)]
+    pub model: Option<String>,
     /// Number of messages in the session.
     #[serde(default)]
     pub message_count: u32,
@@ -186,9 +193,11 @@ pub struct HistoryMessage {
     /// When the message was created.
     #[serde(default)]
     pub created_at: Option<String>,
-    /// Model that generated this message (assistant messages only).
+    /// Tool call ID if this is a tool-result message, mirroring
+    /// `pylon::handlers::sessions::types_dto::HistoryMessage::tool_call_id`
+    /// (#4911).
     #[serde(default)]
-    pub model: Option<String>,
+    pub tool_call_id: Option<String>,
     /// Tool name if this is a tool-result message.
     #[serde(default)]
     pub tool_name: Option<String>,

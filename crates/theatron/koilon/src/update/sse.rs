@@ -471,6 +471,7 @@ mod tests {
                 nous_id: "syn".into(),
                 key: "main".to_string(),
                 status: None,
+                model: None,
                 message_count: 0,
                 session_type: None,
                 updated_at: None,

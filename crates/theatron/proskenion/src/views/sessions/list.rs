@@ -546,6 +546,7 @@ mod tests {
             nous_id: skene::id::NousId::from(nous),
             key: key.to_string(),
             status: Some("active".to_string()),
+            model: None,
             message_count: 1,
             session_type: None,
             updated_at: None,

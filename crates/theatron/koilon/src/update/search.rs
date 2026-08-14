@@ -95,30 +95,13 @@ pub(crate) async fn handle_select(app: &mut App) {
 
     // Switch to the target session
     app.dashboard.focused_session_id = Some(session_id.clone());
+    // WHY(#4911): the wire history format carries no per-message model;
+    // resolve it from the session (already loaded above) instead.
+    let session_model = crate::update::session_model_for(app, &session_id);
     match app.client.history(&session_id).await {
         Ok(history) => {
-            use crate::sanitize::sanitize_for_display;
-            use crate::update::extract_text_content;
-            app.dashboard.messages = history
-                .into_iter()
-                .filter_map(|m| {
-                    if m.role != "user" && m.role != "assistant" {
-                        return None;
-                    }
-                    let text = extract_text_content(&m.content)?;
-                    let text = sanitize_for_display(&text).into_owned();
-                    let text_lower = text.to_lowercase();
-                    Some(crate::state::ChatMessage {
-                        role: sanitize_for_display(&m.role).into_owned(),
-                        text,
-                        text_lower,
-                        timestamp: m.created_at.map(|t| sanitize_for_display(&t).into_owned()),
-                        model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
-                        tool_calls: Vec::new(),
-                        kind: crate::state::MessageKind::default(),
-                    })
-                })
-                .collect();
+            app.dashboard.messages =
+                crate::update::history_to_chat_messages(history, session_model.as_deref()).into();
             app.scroll_to_bottom();
         }
         Err(e) => {
@@ -268,6 +251,7 @@ mod tests {
             nous_id: "syn".into(),
             key: "main".to_string(),
             status: None,
+            model: None,
             message_count: 5,
             session_type: None,
             updated_at: None,
@@ -317,6 +301,7 @@ mod tests {
             nous_id: "syn".into(),
             key: "main".to_string(),
             status: None,
+            model: None,
             message_count: 5,
             session_type: None,
             updated_at: None,
@@ -338,6 +323,7 @@ mod tests {
             nous_id: "syn".into(),
             key: "main".to_string(),
             status: None,
+            model: None,
             message_count: 5,
             session_type: None,
             updated_at: None,

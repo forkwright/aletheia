@@ -192,6 +192,11 @@ fn detail_store_from_history(
     session: Session,
     messages: Vec<HistoryMessage>,
 ) -> SessionDetailStore {
+    // WHY(#4911): pylon's history wire format carries no per-message model
+    // (it never did -- scanning `msg.model` was a silent no-op against real
+    // data). The model is a session-level fact; take it from `session`
+    // before it moves into `detail.session` below.
+    let model = session.model.clone();
     let mut detail = SessionDetailStore {
         session: Some(session),
         ..SessionDetailStore::default()
@@ -201,19 +206,13 @@ fn detail_store_from_history(
     let mut assistant_count = 0u32;
     let mut first_ts: Option<String> = None;
     let mut last_ts: Option<String> = None;
-    let mut model: Option<String> = None;
     let mut previews = Vec::new();
 
     for msg in &messages {
         match msg.role.as_str() {
             "user" => user_count += 1,
-            "assistant" => {
-                assistant_count += 1;
-                if model.is_none() {
-                    model = msg.model.clone();
-                }
-            }
-            _ => {} // NOTE: non-assistant messages have no model to extract
+            "assistant" => assistant_count += 1,
+            _ => {}
         }
 
         if let Some(ref ts) = msg.created_at {
@@ -881,11 +880,34 @@ mod tests {
             nous_id: NousId::from("syn"),
             key: "incident-review".to_string(),
             status: Some("active".to_string()),
+            model: None,
             message_count: 4,
             session_type: None,
             updated_at: None,
             display_name: display_name.map(str::to_string),
         }
+    }
+
+    // WHY(#4911): detail.model must come from the session, not from
+    // scanning history messages -- the wire format never carried a
+    // per-message model, so that scan was always a silent no-op.
+    #[test]
+    fn detail_store_model_comes_from_session_not_messages() {
+        let mut s = session(Some("Incident Review"));
+        s.model = Some("claude-opus-4-6".to_string());
+        let messages = vec![HistoryMessage {
+            id: None,
+            seq: None,
+            role: "assistant".to_string(),
+            content: Some(serde_json::Value::String("hi".to_string())),
+            created_at: None,
+            tool_call_id: None,
+            tool_name: None,
+        }];
+
+        let detail = detail_store_from_history(s, messages);
+
+        assert_eq!(detail.model.as_deref(), Some("claude-opus-4-6"));
     }
 
     #[test]

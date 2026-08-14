@@ -20,7 +20,7 @@ pub(crate) mod view_nav;
 use crate::app::App;
 use crate::msg::Msg;
 
-pub(crate) use api::extract_text_content;
+pub(crate) use api::{extract_text_content, history_to_chat_messages, session_model_for};
 
 #[tracing::instrument(skip_all)]
 pub(crate) async fn update(app: &mut App, msg: Msg) {
@@ -281,7 +281,10 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::SessionsLoaded { nous_id, sessions } => {
             api::handle_sessions_loaded(app, nous_id, sessions)
         }
-        Msg::HistoryLoaded { messages, .. } => api::handle_history_loaded(app, messages),
+        Msg::HistoryLoaded {
+            session_id,
+            messages,
+        } => api::handle_history_loaded(app, session_id, messages),
         Msg::CostLoaded { daily_total_cents } => api::handle_cost_loaded(app, daily_total_cents),
         // NOTE: auth/API errors handled upstream, no local state update needed
         Msg::AuthResult(_) | Msg::ApiError(_) => {}

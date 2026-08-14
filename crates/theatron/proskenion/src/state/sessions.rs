@@ -526,6 +526,7 @@ mod tests {
             nous_id: "agent-1".into(),
             key: key.to_string(),
             status: Some("active".to_string()),
+            model: None,
             message_count: 10,
             session_type: None,
             updated_at: Some("2025-06-15T10:00:00Z".to_string()),
