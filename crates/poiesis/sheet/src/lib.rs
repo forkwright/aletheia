@@ -19,6 +19,9 @@ pub mod xlsx;
 pub mod ods;
 
 #[cfg(feature = "workbook")]
+mod cell_resolve;
+
+#[cfg(feature = "workbook")]
 mod format;
 
 #[cfg(feature = "workbook")]
@@ -32,6 +35,15 @@ pub mod workbook;
 
 #[cfg(feature = "workbook")]
 pub use workbook::render_workbook;
+
+#[cfg(all(feature = "workbook", feature = "ods"))]
+mod ods_sources;
+
+#[cfg(all(feature = "workbook", feature = "ods"))]
+pub mod ods_workbook;
+
+#[cfg(all(feature = "workbook", feature = "ods"))]
+pub use ods_workbook::render_ods_workbook;
 
 #[cfg(feature = "workbook")]
 pub use error::WorkbookError;
