@@ -364,9 +364,11 @@ mod tests {
         for (orig, back) in original.iter().zip(round_tripped.iter()) {
             assert_eq!(orig.id, back.id, "id must round-trip");
             assert_eq!(orig.content, back.content, "content must round-trip");
-            assert_eq!(
-                orig.provenance.confidence, back.provenance.confidence,
-                "confidence must round-trip"
+            assert!(
+                (orig.provenance.confidence - back.provenance.confidence).abs() < f64::EPSILON,
+                "confidence must round-trip: {} vs {}",
+                orig.provenance.confidence,
+                back.provenance.confidence
             );
             assert_eq!(
                 orig.provenance.tier, back.provenance.tier,

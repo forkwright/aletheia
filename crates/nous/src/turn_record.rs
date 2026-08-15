@@ -250,7 +250,7 @@ pub fn run_context_records(
             serde_json::from_str(&note.content).ok()
         })
         .collect();
-    records.sort_by(|a, b| a.recorded_at.cmp(&b.recorded_at));
+    records.sort_by_key(|record| record.recorded_at);
     Ok(records)
 }
 
