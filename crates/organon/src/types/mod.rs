@@ -809,7 +809,7 @@ pub enum RedactionPolicy {
 /// all need a mechanical field addition to compile). [`Default`] is the
 /// honest "nothing declared yet" state, not a fabricated "safe" one --
 /// `ToolRegistry::declare_capability` is how a tool owner asserts real
-/// values, and `crate::registry::registry_tests::
+/// values, and `crate::builtins::capability_governance_tests::
 /// all_irreversible_tools_declare_capability_metadata` gates that every
 /// `Reversibility::Irreversible` tool has done so.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
