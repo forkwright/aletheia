@@ -190,6 +190,82 @@ pub fn is_turn_terminal(
         .is_some_and(|r| r.status.is_terminal()))
 }
 
+/// Note category for [`mneme::run_context::RunContextRecord`] notes.
+///
+/// Deliberately distinct from [`TURN_NOTE_CATEGORY`] -- run-context
+/// provenance is sibling telemetry to the turn-attempt lifecycle, not a
+/// replacement for it, and [`turn_attempt_records`]'s category filter must
+/// not pick up these notes.
+pub(crate) const RUN_CONTEXT_NOTE_CATEGORY: &str = "run_context";
+
+/// Serialize a run-context provenance record for storage as an agent note.
+pub(crate) fn serialize_run_context(
+    record: &mneme::run_context::RunContextRecord,
+) -> error::Result<String> {
+    serde_json::to_string(record).map_err(|e| {
+        error::ContextAssemblySnafu {
+            message: format!("run context record serialization failed: {e}"),
+        }
+        .build()
+    })
+}
+
+/// Persist a run-context provenance record as a durable agent note.
+///
+/// Sibling to [`persist_turn_attempt`]: same mechanism (`SessionStore`
+/// note + `ensure_durable`), a distinct category so the two record kinds
+/// never collide. Errors are returned rather than swallowed so callers can
+/// decide whether the failure is fatal; memory-provenance telemetry must
+/// never block the response path.
+pub fn persist_run_context(
+    store: &SessionStore,
+    nous_id: &str,
+    record: &mneme::run_context::RunContextRecord,
+) -> error::Result<()> {
+    let content = serialize_run_context(record)?;
+    store
+        .add_note(
+            &record.session_id,
+            nous_id,
+            RUN_CONTEXT_NOTE_CATEGORY,
+            &content,
+        )
+        .context(error::StoreSnafu)?;
+    store.ensure_durable().context(error::StoreSnafu)?;
+    Ok(())
+}
+
+/// Read all run-context records for a session, oldest first.
+pub fn run_context_records(
+    store: &SessionStore,
+    session_id: &str,
+) -> error::Result<Vec<mneme::run_context::RunContextRecord>> {
+    let notes = store.get_notes(session_id).context(error::StoreSnafu)?;
+    let mut records: Vec<mneme::run_context::RunContextRecord> = notes
+        .into_iter()
+        .filter_map(|note| {
+            if note.category != RUN_CONTEXT_NOTE_CATEGORY {
+                return None;
+            }
+            serde_json::from_str(&note.content).ok()
+        })
+        .collect();
+    records.sort_by(|a, b| a.recorded_at.cmp(&b.recorded_at));
+    Ok(records)
+}
+
+/// Return the run-context record for a specific turn, if one was persisted.
+pub fn run_context_record_for_turn(
+    store: &SessionStore,
+    session_id: &str,
+    turn_id: &str,
+) -> error::Result<Option<mneme::run_context::RunContextRecord>> {
+    let records = run_context_records(store, session_id)?;
+    Ok(records
+        .into_iter()
+        .find(|record| record.turn_id.as_deref() == Some(turn_id)))
+}
+
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
@@ -265,5 +341,71 @@ mod tests {
         persist_turn_attempt(&store, "test-nous", &record).expect("persist");
 
         assert!(is_turn_terminal(&store, &session.id, &session.turn_id).expect("check"));
+    }
+
+    #[test]
+    fn persist_and_read_run_context_record() {
+        let (store, session) = make_store_and_session();
+        let record = mneme::run_context::RunContextRecord::new(
+            session.turn_id.to_string(),
+            session.id.clone(),
+            "test-nous",
+            jiff::Timestamp::now(),
+        )
+        .with_turn_id(session.turn_id.to_string());
+
+        persist_run_context(&store, "test-nous", &record).expect("persist run context");
+
+        let found = run_context_record_for_turn(&store, &session.id, &session.turn_id.to_string())
+            .expect("read run context")
+            .expect("record should be present");
+        assert_eq!(found.run_id, session.turn_id.to_string());
+        assert_eq!(found.session_id, session.id);
+        assert_eq!(found.turn_id.as_deref(), Some(session.turn_id.to_string().as_str()));
+    }
+
+    #[test]
+    fn run_context_notes_do_not_collide_with_turn_attempt_notes() {
+        let (store, session) = make_store_and_session();
+        let attempt = TurnAttemptRecord::new(
+            &session.turn_id,
+            &session.id,
+            "test-nous",
+            TurnAttemptStatus::Running,
+        );
+        persist_turn_attempt(&store, "test-nous", &attempt).expect("persist turn attempt");
+
+        let record = mneme::run_context::RunContextRecord::new(
+            session.turn_id.to_string(),
+            session.id.clone(),
+            "test-nous",
+            jiff::Timestamp::now(),
+        );
+        persist_run_context(&store, "test-nous", &record).expect("persist run context");
+
+        assert_eq!(
+            turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("read turn attempts")
+                .len(),
+            1,
+            "run-context note must not be picked up as a turn-attempt record"
+        );
+        assert_eq!(
+            run_context_records(&store, &session.id)
+                .expect("read run context records")
+                .len(),
+            1,
+            "turn-attempt note must not be picked up as a run-context record"
+        );
+    }
+
+    #[test]
+    fn run_context_record_for_turn_returns_none_when_absent() {
+        let (store, session) = make_store_and_session();
+        assert!(
+            run_context_record_for_turn(&store, &session.id, &session.turn_id.to_string())
+                .expect("read run context")
+                .is_none()
+        );
     }
 }

@@ -54,6 +54,21 @@ pub struct RecallStageResult {
     pub deployment_target: DeploymentTarget,
     /// Facts dropped because their sensitivity exceeded `deployment_target`.
     pub filtered_facts: Vec<RecallFilteredFact>,
+    /// Context items admitted into the recall section, with full selection
+    /// provenance (#4542). The caller that knows the run/session/turn
+    /// identity (`nous::pipeline`) wraps these into a
+    /// [`mneme::run_context::RunContextRecord`] -- this stage only knows
+    /// *what* was selected and *why*, not whose run it was.
+    pub selected_context: Vec<mneme::run_context::ContextItem>,
+    /// Context items considered but excluded (below `min_score`,
+    /// truncated by `max_results`/token budget), with exclusion provenance.
+    ///
+    /// NOTE: does not include `filtered_facts` -- those are dropped before
+    /// a full `ScoredResult` provenance can be built (the sensitivity
+    /// filter only carries the id and sensitivity, not the rest of the
+    /// candidate), so they stay in the pre-existing `filtered_facts` field
+    /// rather than being fabricated into a `ContextItem`.
+    pub excluded_context: Vec<mneme::run_context::ContextItem>,
 }
 
 /// A fact filtered out before provider dispatch.
@@ -76,6 +91,8 @@ impl RecallStageResult {
             fact_ids: Vec::new(),
             deployment_target: DeploymentTarget::Cloud,
             filtered_facts: Vec::new(),
+            selected_context: Vec::new(),
+            excluded_context: Vec::new(),
         }
     }
 }
@@ -83,6 +100,15 @@ impl RecallStageResult {
 struct SensitivityFilterResult {
     kept: Vec<ScoredResult>,
     filtered: Vec<RecallFilteredFact>,
+}
+
+/// Result of `RecallStage::filter`: survivors plus both drop reasons,
+/// distinguished so callers can attribute the correct
+/// [`mneme::run_context::ContextExclusionReason`] to each.
+struct ScoreFilterResult {
+    kept: Vec<ScoredResult>,
+    below_min_score: Vec<ScoredResult>,
+    limit_truncated: Vec<ScoredResult>,
 }
 
 /// Recall stage: scores and formats knowledge for injection into the system prompt.
@@ -690,7 +716,29 @@ impl RecallStage {
 
         let rest = self.apply_scope_quotas(rest);
 
-        let filtered = self.filter(rest);
+        let score_filter = self.filter(rest);
+        let filtered = score_filter.kept;
+
+        // WHY (#4542): candidates dropped by min_score or by the
+        // max_results cap carry a full ScoredResult (unlike the
+        // sensitivity filter above), so real provenance can be attached
+        // rather than fabricated.
+        let mut excluded_context: Vec<mneme::run_context::ContextItem> = score_filter
+            .below_min_score
+            .iter()
+            .map(|r| {
+                mneme::run_context::ContextItem::excluded(
+                    mneme::run_context::ContextItemProvenance::from_scored_result(r),
+                    vec![mneme::run_context::ContextExclusionReason::LowScore],
+                )
+            })
+            .chain(score_filter.limit_truncated.iter().map(|r| {
+                mneme::run_context::ContextItem::excluded(
+                    mneme::run_context::ContextItemProvenance::from_scored_result(r),
+                    vec![mneme::run_context::ContextExclusionReason::LimitTruncation],
+                )
+            }))
+            .collect();
 
         if pinned.is_empty() && filtered.is_empty() {
             debug!(candidates_found, "all candidates below min_score");
@@ -698,6 +746,7 @@ impl RecallStage {
                 candidates_found,
                 deployment_target: self.deployment_target,
                 filtered_facts,
+                excluded_context,
                 ..RecallStageResult::empty()
             };
         }
@@ -707,6 +756,29 @@ impl RecallStage {
         let (results_injected, section, tokens, fact_ids) =
             self.format_within_budget(&combined, budget);
         self.side_query_selector.mark_surfaced(&fact_ids);
+
+        // WHY (#4542): fact_ids is the truly-injected subset of combined --
+        // budget can drop candidates format_within_budget was handed.
+        // Every combined candidate lands in exactly one of
+        // selected_context / excluded_context (LimitTruncation for the
+        // budget-dropped remainder) so a run's full considered set is
+        // reconstructable, not just what made the final prompt.
+        let injected_ids: HashSet<&str> = fact_ids.iter().map(String::as_str).collect();
+        let mut selected_context = Vec::with_capacity(fact_ids.len());
+        for (idx, result) in combined.iter().enumerate() {
+            if injected_ids.contains(result.source_id.as_str()) {
+                selected_context.push(mneme::run_context::ContextItem::selected_from_scored_result(
+                    result,
+                    mneme::run_context::ContextItemProvenance::from_scored_result(result),
+                    idx + 1,
+                ));
+            } else {
+                excluded_context.push(mneme::run_context::ContextItem::excluded(
+                    mneme::run_context::ContextItemProvenance::from_scored_result(result),
+                    vec![mneme::run_context::ContextExclusionReason::LimitTruncation],
+                ));
+            }
+        }
 
         debug!(
             candidates_found,
@@ -727,6 +799,8 @@ impl RecallStage {
             fact_ids,
             deployment_target: self.deployment_target,
             filtered_facts,
+            selected_context,
+            excluded_context,
         }
     }
 
@@ -928,12 +1002,18 @@ impl RecallStage {
     /// # Complexity
     ///
     /// O(n) where n is the number of ranked candidates.
-    fn filter(&self, ranked: Vec<ScoredResult>) -> Vec<ScoredResult> {
-        ranked
+    fn filter(&self, ranked: Vec<ScoredResult>) -> ScoreFilterResult {
+        let (above_min, below_min_score): (Vec<ScoredResult>, Vec<ScoredResult>) = ranked
             .into_iter()
-            .filter(|r| r.score >= self.config.min_score)
-            .take(self.config.max_results)
-            .collect()
+            .partition(|r| r.score >= self.config.min_score);
+        let max_results = self.config.max_results;
+        let kept: Vec<ScoredResult> = above_min.iter().take(max_results).cloned().collect();
+        let limit_truncated: Vec<ScoredResult> = above_min.into_iter().skip(max_results).collect();
+        ScoreFilterResult {
+            kept,
+            below_min_score,
+            limit_truncated,
+        }
     }
 
     /// Format results within the token budget.

@@ -1481,6 +1481,40 @@ pub(crate) async fn run_pipeline(
         }
         stages_completed += 1;
 
+        // WHY (#4542): persist the run's memory-selection provenance as a
+        // sibling record to the turn-attempt lifecycle note, keyed by the
+        // same turn id, so `aletheia memory inspect-context <turn_id>` can
+        // show what was selected/excluded and why. `ctx.recall_result` is
+        // still in scope here (set during the recall stage, not yet
+        // consumed) and this is the earliest point turn/session/nous
+        // identity and the recall result are simultaneously available.
+        if let Some(recall_result) = ctx.recall_result.as_ref() {
+            let mut run_context_record = mneme::run_context::RunContextRecord::new(
+                input.session.turn_id.to_string(),
+                input.session.id.clone(),
+                input.session.nous_id.clone(),
+                jiff::Timestamp::now(),
+            )
+            .with_turn_id(input.session.turn_id.to_string());
+            for item in &recall_result.selected_context {
+                run_context_record.add_selected_context(item.clone());
+            }
+            for item in &recall_result.excluded_context {
+                run_context_record.add_excluded_context(item.clone());
+            }
+            if let Err(e) = crate::turn_record::persist_run_context(
+                session_store,
+                &input.session.nous_id,
+                &run_context_record,
+            ) {
+                tracing::warn!(
+                    nous_id = %config.id,
+                    error = %e,
+                    "failed to persist run-context provenance record"
+                );
+            }
+        }
+
         enforce_turn_time_budget(&time_budget, config, "reflection", emitter)?;
         run_stage_with_timeout(
             config,

@@ -118,8 +118,12 @@ pub mod training;
 // scoring functions) are set or defined but never read outside the module's
 // own `#[cfg(test)]` blocks. Stays `pub`.
 pub mod tuning;
-/// Durable turn-attempt lifecycle records and finalize idempotency.
-pub(crate) mod turn_record;
+/// Durable turn-attempt lifecycle records, finalize idempotency, and
+/// run-context provenance records (#4542). `pub` so external inspection
+/// surfaces (e.g. `aletheia memory inspect-context`) can read
+/// `RunContextRecord`s without duplicating the note-category/store
+/// mechanics.
+pub mod turn_record;
 /// Uncertainty quantification: calibration tracking for agent confidence predictions.
 // WHY(#6750): `CalibrationBin`/`OverconfidencePattern`/`CalibrationSummary`
 // are `pub` with zero real callers, only exercised by the module's own

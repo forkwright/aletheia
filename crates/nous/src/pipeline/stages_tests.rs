@@ -552,6 +552,8 @@ fn apply_recall_result_injects_into_system_prompt_by_default() {
         fact_ids: vec!["f1".to_owned()],
         deployment_target: hermeneus::provider::DeploymentTarget::Cloud,
         filtered_facts: Vec::new(),
+        selected_context: Vec::new(),
+        excluded_context: Vec::new(),
     };
     let span = tracing::info_span!("test");
     super::apply_recall_result(
@@ -588,6 +590,8 @@ fn apply_recall_result_late_inject_appends_system_message() {
         fact_ids: vec!["f1".to_owned()],
         deployment_target: hermeneus::provider::DeploymentTarget::Cloud,
         filtered_facts: Vec::new(),
+        selected_context: Vec::new(),
+        excluded_context: Vec::new(),
     };
     let span = tracing::info_span!("test");
     super::apply_recall_result(
