@@ -1145,8 +1145,9 @@ impl TrainingCapture {
         let quality_score = quality_score_components
             .as_ref()
             .map(|c| c.total_score().clamp(0.0, 1.0));
-        let quality_score_formula_version =
-            quality_score.is_some().then_some(QUALITY_SCORE_FORMULA_VERSION);
+        let quality_score_formula_version = quality_score
+            .is_some()
+            .then_some(QUALITY_SCORE_FORMULA_VERSION);
 
         // WHY apply PII redaction at write time: the filter is a
         // training-time safeguard, not a commit-time scanner. Both

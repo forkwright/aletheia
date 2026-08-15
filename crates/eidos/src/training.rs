@@ -257,7 +257,8 @@ impl QualityScoreComponents {
     /// clamping should use `TrainingRecord::quality_score` directly.
     #[must_use]
     pub fn total_score(&self) -> f32 {
-        self.tool_success_rate.map_or(0.0, |r| self.weight_tools * r)
+        self.tool_success_rate
+            .map_or(0.0, |r| self.weight_tools * r)
             + self
                 .recall_utilization_rate
                 .map_or(0.0, |r| self.weight_recall * r)

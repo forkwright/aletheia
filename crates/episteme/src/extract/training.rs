@@ -762,10 +762,7 @@ mod tests {
                 affected_files: vec!["/src/a.rs".to_owned(), "/src/b.rs".to_owned()],
                 occurrence_count: 5,
                 pr_number: None,
-                source_violation_ids: vec![
-                    "/src/a.rs:5".to_owned(),
-                    "/src/b.rs:12".to_owned(),
-                ],
+                source_violation_ids: vec!["/src/a.rs:5".to_owned(), "/src/b.rs:12".to_owned()],
             },
         ];
 

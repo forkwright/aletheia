@@ -307,7 +307,11 @@ mod tests {
         let c = cleared_content_hash("different contents");
         assert_eq!(a, b, "same content must hash identically");
         assert_ne!(a, c, "different content must hash differently");
-        assert_eq!(a.len(), CLEARED_HASH_PREFIX_BYTES * 2, "hex-encoded byte prefix");
+        assert_eq!(
+            a.len(),
+            CLEARED_HASH_PREFIX_BYTES * 2,
+            "hex-encoded byte prefix"
+        );
     }
 
     #[test]
