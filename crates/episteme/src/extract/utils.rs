@@ -34,7 +34,13 @@ pub(super) fn strip_code_fences(s: &str) -> &str {
 /// Unicode Normalization Form C is applied first so that visually identical strings
 /// with different codepoint sequences (e.g. composed vs decomposed "café") produce the
 /// same slug.
-#[cfg(any(feature = "mneme-engine", test))]
+///
+/// WHY(#4414): unconditional, not `mneme-engine`-gated — `crate::skill::export_skills_to_cc`
+/// (an ungated public function used by the CLI and the energeia bridge) and
+/// `extract::engine` both call this without a feature guard, and `unicode-normalization`
+/// is already a non-optional crate dependency, so gating cost nothing and only broke
+/// every default-feature build that omits `mneme-engine` (caught by the new episteme
+/// gliner/nuextract feature-gate CI step, the first build to exercise that combination).
 pub(crate) fn slugify(s: &str) -> String {
     use unicode_normalization::UnicodeNormalization as _;
     let normalized: String = s.nfc().collect();

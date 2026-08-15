@@ -418,7 +418,10 @@ pub fn scan_skill_dir(dir: &std::path::Path) -> Result<Vec<(String, String)>, st
 /// to one slug everywhere. This is a directory name on disk, and it is also an
 /// entity key elsewhere in the crate; two functions producing different answers
 /// for the same name is a correctness bug, not a style one.
-#[cfg(any(feature = "mneme-engine", test))]
+///
+/// WHY(#4414): unconditional, matching the definition -- `export_skills_to_cc`
+/// below is an ungated public function and needs this available regardless of
+/// `mneme-engine`.
 pub(crate) use crate::extract::utils::slugify;
 
 /// Format a [`SkillContent`] as a CC-native SKILL.md with YAML frontmatter.
