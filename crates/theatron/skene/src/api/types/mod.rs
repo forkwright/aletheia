@@ -1,5 +1,8 @@
 //! Request and response types for the Aletheia REST API.
 
+pub mod providers;
+pub use providers::{ProviderInfo, ProviderListResponse, ProviderRouteResponse};
+
 pub mod verification;
 pub use verification::{
     ProjectVerificationResult, RequirementPriority, RequirementVerification, VerificationEvidence,

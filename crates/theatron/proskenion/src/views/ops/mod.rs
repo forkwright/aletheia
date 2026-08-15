@@ -30,6 +30,7 @@ enum OpsTab {
     Dashboard,
     Tools,
     Credentials,
+    Providers,
 }
 
 // ── API response types ──
@@ -194,6 +195,8 @@ struct ToolStats {
     failed: u64,
     catalog: Vec<ToolCatalogEntry>,
     live_invocations: Vec<LiveInvocationEntry>,
+    /// Recent durable tool-call audit records, newest first (#4990).
+    history: Vec<ToolHistoryEntry>,
     history_unavailable: bool,
 }
 
@@ -211,18 +214,43 @@ struct LiveInvocationEntry {
     elapsed_ms: u64,
 }
 
+/// A recent durable tool-call audit record (#4990), mirroring
+/// `pylon::handlers::ops_dto::ToolHistoryEntry`.
+#[derive(Debug, Clone)]
+struct ToolHistoryEntry {
+    tool_name: String,
+    outcome: String,
+    duration_ms: u64,
+    created_at: String,
+}
+
 #[derive(Debug, Clone, serde::Deserialize)]
 struct OpsResponse {
     #[serde(default)]
     catalog: Vec<OpsCatalogTool>,
     #[serde(default)]
     live_invocations: Vec<OpsLiveInvocation>,
+    /// Recent durable tool-call audit records, newest first (#4990).
+    #[serde(default)]
+    history: Vec<OpsHistoryEntry>,
     #[serde(default)]
     total_calls: u64,
     #[serde(default)]
     total_errors: u64,
     #[serde(default)]
     history_unavailable: bool,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct OpsHistoryEntry {
+    #[serde(default)]
+    tool_name: String,
+    #[serde(default)]
+    outcome: String,
+    #[serde(default)]
+    duration_ms: u64,
+    #[serde(default)]
+    created_at: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -394,6 +422,10 @@ pub(crate) fn Ops() -> Element {
     // drive. Hoisting just the trigger (not the fetch itself) keeps
     // `CredentialsView` the owner of its own request/parse/error handling.
     let mut cred_refresh = use_signal(|| 0u32);
+
+    // ── Providers-tab state ──
+    let mut providers_store = use_signal(Vec::<skene::api::types::ProviderInfo>::new);
+    let mut providers_fetch = use_signal(|| FetchState::<()>::Loading);
 
     // ── Dashboard data fetch ──
     let mut refresh_dashboard = move || {
@@ -614,6 +646,16 @@ pub(crate) fn Ops() -> Element {
                                     elapsed_ms: i.elapsed_ms,
                                 })
                                 .collect(),
+                            history: data
+                                .history
+                                .into_iter()
+                                .map(|h| ToolHistoryEntry {
+                                    tool_name: h.tool_name,
+                                    outcome: h.outcome,
+                                    duration_ms: h.duration_ms,
+                                    created_at: h.created_at,
+                                })
+                                .collect(),
                             history_unavailable: data.history_unavailable,
                         });
                         tools_fetch.set(FetchState::Loaded(()));
@@ -631,6 +673,36 @@ pub(crate) fn Ops() -> Element {
         });
     };
 
+    // ── Providers data fetch ──
+    // WHY(#4890): goes through skene's typed ApiClient (matching koilon)
+    // rather than another authenticated_client()+manual-URL bypass -- see
+    // #4925 for why that pattern is disfavored.
+    let mut refresh_providers = move || {
+        let cfg = config.read().clone();
+        providers_fetch.set(FetchState::Loading);
+
+        spawn(async move {
+            let client =
+                match skene::api::client::ApiClient::new(&cfg.server_url, cfg.auth_token.clone()) {
+                    Ok(client) => client,
+                    Err(err) => {
+                        providers_fetch.set(FetchState::Error(err.to_string()));
+                        return;
+                    }
+                };
+
+            match client.providers().await {
+                Ok(resp) => {
+                    providers_store.set(resp.providers);
+                    providers_fetch.set(FetchState::Loaded(()));
+                }
+                Err(err) => {
+                    providers_fetch.set(FetchState::Error(err.to_string()));
+                }
+            }
+        });
+    };
+
     // ── Mount fetch ──
     use_effect(move || {
         refresh_dashboard();
@@ -639,10 +711,16 @@ pub(crate) fn Ops() -> Element {
 
     // ── Auto-refresh for non-SSE data ──
     // WHY: use_future is cancelled on unmount; use_effect+spawn leaks a loop.
+    // WHY(#4990): previously only refresh_dashboard() ran here, so the Tools
+    // tab (live invocations + history) never refreshed after its initial
+    // mount fetch -- an operator watching that tab saw a frozen snapshot.
     use_future(move || async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(AUTO_REFRESH_SECS)).await;
-            refresh_dashboard();
+            match *active_tab.read() {
+                OpsTab::Tools => refresh_tools(),
+                _ => refresh_dashboard(),
+            }
         }
     });
 
@@ -695,6 +773,14 @@ pub(crate) fn Ops() -> Element {
                         "Credentials"
                     }
                     button {
+                        style: if tab == OpsTab::Providers { TAB_ACTIVE } else { TAB_INACTIVE },
+                        onclick: move |_| {
+                            active_tab.set(OpsTab::Providers);
+                            refresh_providers();
+                        },
+                        "Providers"
+                    }
+                    button {
                         style: "{REFRESH_BTN}",
                         onclick: move |_| {
                             match tab {
@@ -704,6 +790,7 @@ pub(crate) fn Ops() -> Element {
                                 // its own fetch, so this only needs to bump
                                 // the shared trigger it watches.
                                 OpsTab::Credentials => cred_refresh.set(cred_refresh() + 1),
+                                OpsTab::Providers => refresh_providers(),
                             }
                         },
                         "Refresh"
@@ -809,11 +896,35 @@ pub(crate) fn Ops() -> Element {
                                 }
                             }
 
-                            if current_stats.history_unavailable {
-                                div {
-                                    style: "{SECTION_STYLE}",
-                                    div { style: "{SECTION_TITLE}", "Tool History" }
-                                    div { style: "color: var(--text-muted); font-size: var(--text-sm);", "Tool history unavailable: calls are not persisted yet" }
+                            div {
+                                style: "{SECTION_STYLE}",
+                                div { style: "{SECTION_TITLE}", "Tool History" }
+                                // WHY(#4990): the backend has persisted, typed
+                                // history since #4990's earlier landed half;
+                                // this previously rendered nothing when
+                                // `history` was populated and only showed
+                                // the unavailable message. Render the
+                                // history whenever entries are present,
+                                // regardless of `history_unavailable`.
+                                if current_stats.history.is_empty() {
+                                    if current_stats.history_unavailable {
+                                        div { style: "color: var(--text-muted); font-size: var(--text-sm);", "Tool history unavailable: calls are not persisted yet" }
+                                    } else {
+                                        div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No tool calls recorded yet" }
+                                    }
+                                } else {
+                                    for entry in &current_stats.history {
+                                        div {
+                                            style: "{ENTRY_STYLE}",
+                                            span {
+                                                style: if entry.outcome == "error" { "color: var(--status-error);" } else { "color: var(--status-success);" },
+                                                "{entry.outcome}"
+                                            }
+                                            span { style: "color: var(--text-primary); flex: 1;", "{entry.tool_name}" }
+                                            span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{entry.duration_ms}ms" }
+                                            span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{entry.created_at}" }
+                                        }
+                                    }
                                 }
                             }
                         },
@@ -822,6 +933,52 @@ pub(crate) fn Ops() -> Element {
 
                 OpsTab::Credentials => rsx! {
                     credentials::CredentialsView { refresh_trigger: cred_refresh }
+                },
+
+                // WHY(#4890): pylon's provider inventory (GET
+                // /api/v1/providers) previously had zero desktop/TUI
+                // surface calling it.
+                OpsTab::Providers => rsx! {
+                    match &*providers_fetch.read() {
+                        FetchState::Loading => rsx! {
+                            div { style: "{LOADING_PANEL_STYLE}", "Loading…" }
+                        },
+                        FetchState::Error(err) => rsx! {
+                            div { style: "color: var(--status-error); font-size: var(--text-sm);", "Error: {err}" }
+                        },
+                        FetchState::Loaded(()) => rsx! {
+                            div {
+                                style: "{SECTION_STYLE}",
+                                div { style: "{SECTION_TITLE}", "Providers" }
+                                if providers_store.read().is_empty() {
+                                    div { style: "color: var(--text-muted); font-size: var(--text-sm);", "No providers registered" }
+                                }
+                                for provider in providers_store.read().iter() {
+                                    div {
+                                        style: "{ENTRY_STYLE} flex-direction: column; align-items: flex-start; gap: var(--space-1);",
+                                        div {
+                                            style: "display: flex; align-items: center; gap: var(--space-2); width: 100%;",
+                                            span {
+                                                style: if provider.available { "color: var(--status-success);" } else { "color: var(--status-error);" },
+                                                "{provider.health}"
+                                            }
+                                            span { style: "color: var(--text-primary); font-weight: var(--weight-bold);", "{provider.name}" }
+                                            span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{provider.kind} · {provider.deployment_target}" }
+                                        }
+                                        span { style: "color: var(--text-muted); font-size: var(--text-xs);", "{provider.base_url}" }
+                                        span { style: "color: var(--text-muted); font-size: var(--text-xs);", "auth: {provider.auth_source}" }
+                                        if let Some(reason) = &provider.health_reason {
+                                            span { style: "color: var(--status-error); font-size: var(--text-xs);", "{reason}" }
+                                        }
+                                        span {
+                                            style: "color: var(--text-muted); font-size: var(--text-xs);",
+                                            "supported: {provider.supported_models.join(\", \")}"
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    }
                 },
             }
         }
@@ -1018,5 +1175,48 @@ mod tests {
 
         assert_eq!(card.health, HealthTier::Unknown);
         assert!(!card.connected);
+    }
+
+    /// WHY(#4990): before this fix, `OpsResponse` had no `history` field at
+    /// all, so pylon's real `history` array silently vanished at
+    /// deserialization (`#[serde(default)]` on a struct with no matching
+    /// field is indistinguishable from an absent one). This fails if that
+    /// field regresses.
+    #[test]
+    fn ops_response_deserializes_history_entries() {
+        let body = r#"{
+            "catalog": [],
+            "live_invocations": [],
+            "history": [{
+                "id": 1,
+                "session_id": "s1",
+                "nous_id": "syn",
+                "turn_seq": 1,
+                "tool_call_id": "tc1",
+                "tool_name": "read_file",
+                "duration_ms": 42,
+                "is_error": false,
+                "outcome": "success",
+                "result": "ok",
+                "approval": "auto",
+                "receipt_state": "present",
+                "receipt": "hmac-abc",
+                "created_at": "2026-01-01T00:00:00Z"
+            }],
+            "total_calls": 1,
+            "total_errors": 0,
+            "history_unavailable": false
+        }"#;
+        let resp: OpsResponse = serde_json::from_str(body).expect("real OpsResponse must parse");
+
+        assert_eq!(
+            resp.history.len(),
+            1,
+            "history entries must survive parsing"
+        );
+        assert_eq!(resp.history[0].tool_name, "read_file");
+        assert_eq!(resp.history[0].outcome, "success");
+        assert_eq!(resp.history[0].duration_ms, 42);
+        assert!(!resp.history_unavailable);
     }
 }

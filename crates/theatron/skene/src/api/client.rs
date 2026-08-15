@@ -15,8 +15,8 @@ use super::error::{
 use super::health::{HealthFetchError, parse_health_body};
 use super::types::{
     Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
-    NousTool, NousToolsResponse, PaginatedSessionsResponse, Session, SessionReplayResponse,
-    SessionsResponse,
+    NousTool, NousToolsResponse, PaginatedSessionsResponse, ProviderListResponse,
+    ProviderRouteResponse, Session, SessionReplayResponse, SessionsResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -335,6 +335,66 @@ impl ApiClient {
         let resp = Self::check_status(resp, "sessions paginated request").await?;
         let wrapper: PaginatedSessionsResponse = resp.json().await.context(HttpSnafu {
             operation: "sessions paginated response",
+        })?;
+        Ok(wrapper)
+    }
+
+    /// Fetch the registered LLM provider inventory and readiness.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn providers(&self) -> Result<ProviderListResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                super::routes::providers::providers_path(),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load providers",
+            })?;
+        let resp = Self::check_status(resp, "providers request").await?;
+        let wrapper: ProviderListResponse = resp.json().await.context(HttpSnafu {
+            operation: "providers response",
+        })?;
+        Ok(wrapper)
+    }
+
+    /// Resolve which provider would handle a given model.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn provider_route(&self, model: &str) -> Result<ProviderRouteResponse> {
+        let resp = self
+            .request(
+                reqwest::Method::GET,
+                &super::routes::providers::providers_route_path(model),
+            )
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load provider route",
+            })?;
+        let resp = Self::check_status(resp, "provider route request").await?;
+        let wrapper: ProviderRouteResponse = resp.json().await.context(HttpSnafu {
+            operation: "provider route response",
         })?;
         Ok(wrapper)
     }
@@ -1269,6 +1329,76 @@ mod tests {
         assert!(
             !request_line.contains("GET /api/health "),
             "health_details must not request the liveness-only route, got: {request_line}"
+        );
+    }
+
+    #[tokio::test]
+    async fn providers_gets_the_pylon_providers_route_and_parses_the_dto() {
+        // WHY(#4890): before this method existed, no client surface could call
+        // GET /api/v1/providers at all -- proskenion had no way to render
+        // provider inventory. Asserts both the wire route and that
+        // health/auth_source/available survive the round trip.
+        crate::install_test_crypto_provider();
+        let body = r#"{"providers":[{
+            "name": "anthropic-primary",
+            "kind": "anthropic",
+            "deployment_target": "cloud",
+            "base_url": "https://api.anthropic.com",
+            "supported_models": ["claude-opus-4-6"],
+            "configured_models": ["claude-opus-4-6"],
+            "health": "up",
+            "health_reason": null,
+            "auth_source": "env:ANTHROPIC_API_KEY",
+            "available": true
+        }]}"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .providers()
+            .await
+            .expect("real ProviderListResponse body must parse");
+
+        assert_eq!(resp.providers.len(), 1);
+        assert_eq!(resp.providers[0].name, "anthropic-primary");
+        assert_eq!(resp.providers[0].health, "up");
+        assert!(resp.providers[0].available);
+        assert_eq!(resp.providers[0].auth_source, "env:ANTHROPIC_API_KEY");
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/providers "),
+            "providers must GET pylon's providers route, got: {request}"
+        );
+    }
+
+    #[tokio::test]
+    async fn provider_route_gets_the_pylon_route_endpoint_with_model_query() {
+        // WHY(#4890): pins the query-param encoding for the model lookup and
+        // that the resolved provider/health/available fields round-trip.
+        crate::install_test_crypto_provider();
+        let body = r#"{
+            "model": "claude-opus-4-6",
+            "provider": "anthropic-primary",
+            "health": "up",
+            "available": true
+        }"#;
+        let (base_url, server) = serve_http_capture_once("200 OK", body);
+        let client = ApiClient::new(&base_url, None).expect("build test client");
+
+        let resp = client
+            .provider_route("claude-opus-4-6")
+            .await
+            .expect("real ProviderRouteResponse body must parse");
+
+        assert_eq!(resp.model, "claude-opus-4-6");
+        assert_eq!(resp.provider.as_deref(), Some("anthropic-primary"));
+        assert_eq!(resp.available, Some(true));
+
+        let request = server.join().expect("test server thread should finish");
+        assert!(
+            request.starts_with("GET /api/v1/providers/route?model=claude-opus-4-6 "),
+            "provider_route must GET pylon's route endpoint with the model query param, got: {request}"
         );
     }
 }
