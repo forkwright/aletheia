@@ -68,70 +68,18 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
         dispatch::dromeus_def(),
         Box::new(dispatch::DromeusExecutor { orchestrator }),
     )?;
-    registry.declare_capability(
-        ToolName::from_static("dromeus"),
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::energeia::dispatch".to_owned(),
-            stability: ENERGEIA_STABILITY,
-            rollback: RollbackSupport::Unsupported {
-                reason: "spawns and orchestrates agent sessions per prompt group; their effects \
-                         are not tracked for rollback by this tool"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
-        },
-    );
     registry.register(qa::dokimasia_def(), Box::new(qa::DokimasiaExecutor))?;
-    registry.declare_capability(
-        ToolName::from_static("dokimasia"),
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::energeia::qa".to_owned(),
-            stability: ENERGEIA_STABILITY,
-            rollback: RollbackSupport::Unsupported {
-                reason: "best-effort lesson persistence to the knowledge graph on a Pass/\
-                         NeedsReview verdict has no delete/rollback path"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
-        },
-    );
     registry.register(qa::diorthosis_def(), Box::new(qa::DiorthosisExecutor))?;
     registry.register(
         steward::epitropos_def(),
         Box::new(steward::EpitroposExecutor),
     )?;
-    registry.declare_capability(
-        ToolName::from_static("epitropos"),
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::energeia::steward".to_owned(),
-            stability: ENERGEIA_STABILITY,
-            rollback: RollbackSupport::Unsupported {
-                reason: "acts against the live GitHub REST API; effects occur on an external \
-                         system outside aletheia's control"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
-        },
-    );
     registry.register(
         observation::parateresis_def(),
         Box::new(observation::ParateresisExecutor {
             store: store.clone(),
         }),
     )?;
-    registry.declare_capability(
-        ToolName::from_static("parateresis"),
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::energeia::observation".to_owned(),
-            stability: ENERGEIA_STABILITY,
-            rollback: RollbackSupport::Unsupported {
-                reason: "appends a sentinel query-observation record to the energeia store; no \
-                         delete/rollback path exists for energeia store writes"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
-        },
-    );
     registry.register(
         observation::mathesis_def(),
         Box::new(observation::MathesisExecutor {
@@ -154,7 +102,70 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
             cron_task_names,
         }),
     )?;
+    declare_capabilities(registry);
     Ok(())
+}
+
+/// Governance metadata for the energeia tools carrying real side effects.
+///
+/// Split out of [`register`] (rather than interleaved per-tool) purely to
+/// keep that function under clippy's `too_many_lines` threshold -- these
+/// calls have no ordering dependency on the `registry.register` calls
+/// above beyond "the tool must already be registered" (`declare_capability`
+/// is a no-op on an unregistered name).
+fn declare_capabilities(registry: &mut ToolRegistry) {
+    registry.declare_capability(
+        ToolName::from_static("dromeus"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::energeia::dispatch".to_owned(),
+            stability: ENERGEIA_STABILITY,
+            rollback: RollbackSupport::Unsupported {
+                reason: "spawns and orchestrates agent sessions per prompt group; their effects \
+                         are not tracked for rollback by this tool"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
+    registry.declare_capability(
+        ToolName::from_static("dokimasia"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::energeia::qa".to_owned(),
+            stability: ENERGEIA_STABILITY,
+            rollback: RollbackSupport::Unsupported {
+                reason: "best-effort lesson persistence to the knowledge graph on a Pass/\
+                         NeedsReview verdict has no delete/rollback path"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
+    registry.declare_capability(
+        ToolName::from_static("epitropos"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::energeia::steward".to_owned(),
+            stability: ENERGEIA_STABILITY,
+            rollback: RollbackSupport::Unsupported {
+                reason: "acts against the live GitHub REST API; effects occur on an external \
+                         system outside aletheia's control"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
+    registry.declare_capability(
+        ToolName::from_static("parateresis"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::energeia::observation".to_owned(),
+            stability: ENERGEIA_STABILITY,
+            rollback: RollbackSupport::Unsupported {
+                reason: "appends a sentinel query-observation record to the energeia store; no \
+                         delete/rollback path exists for energeia store writes"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
 }
 
 #[cfg(test)]
