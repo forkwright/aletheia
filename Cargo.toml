@@ -253,6 +253,13 @@ notify = { version = "8", default-features = false, features = [
     "macos_fsevent",
 ] }
 
+# Embedded assets
+# WHY: poiesis-core ships the shipped deck component packs (crates/poiesis/
+# components/) compiled INTO the binary rather than read from a filesystem
+# path at runtime — a release build is a standalone static binary with no
+# guarantee the source tree sits alongside it.
+include_dir = "0.7"
+
 # Random number generation
 rand = "0.10"
 

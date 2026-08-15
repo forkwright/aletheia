@@ -57,6 +57,9 @@ poiesis = [
     "dep:poiesis-theme",
     "dep:poiesis-diff",
     "dep:poiesis-inspect",
+    "dep:poiesis-deck",
+    "dep:poiesis-printer-chromium",
+    "dep:tempfile",
 ]
 # Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.
 test-support = ["hermeneus/test-support", "dep:rustls"]
@@ -104,6 +107,8 @@ poiesis-charts = { path = "../poiesis/charts", optional = true, features = [
 poiesis-theme = { path = "../poiesis/theme", optional = true }
 poiesis-diff = { path = "../poiesis/diff", optional = true }
 poiesis-inspect = { path = "../poiesis/inspect", optional = true }
+poiesis-deck = { path = "../poiesis/deck", optional = true }
+poiesis-printer-chromium = { path = "../poiesis/printer-chromium", optional = true }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 base64 = { workspace = true }
@@ -125,6 +130,11 @@ tracing = { workspace = true }
 which = "8"
 zip = { version = "=8.5.1", default-features = false, features = ["deflate"] }
 z3 = { version = "0.20", optional = true, features = ["bundled"] }
+# WHY optional, not the existing dev-only tempfile: render_deck_report needs
+# a real filesystem directory to extract poiesis-core's embedded component
+# packs into at runtime (see poiesis_core::embedded) -- a test-only
+# dependency, not this one.
+tempfile = { workspace = true, optional = true }
 
 [dependencies.rustls]
 workspace = true

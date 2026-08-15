@@ -49,6 +49,9 @@ pub mod planning;
 /// render_typst_report, render_docx_report.
 #[cfg(feature = "poiesis")]
 pub mod poiesis;
+/// Deck-spec (aspect + component-driven slides) rendering to HTML or PDF.
+#[cfg(feature = "poiesis")]
+pub mod render_deck_report;
 /// DOCX report rendering tool (render_docx_report).
 #[cfg(feature = "poiesis")]
 pub mod render_docx_report;
@@ -295,6 +298,8 @@ pub(crate) fn register_domain_tools(
     #[cfg(feature = "poiesis")]
     render_pptx_report::register(registry)?;
     #[cfg(feature = "poiesis")]
+    render_deck_report::register(registry)?;
+    #[cfg(feature = "poiesis")]
     render_xlsx_report::register(registry)?;
     #[cfg(feature = "poiesis")]
     render_eval_report::register(registry)?;
@@ -424,6 +429,7 @@ mod poiesis_default_off_tests {
             "qa_gate",
             "render_docx_report",
             "render_pptx_report",
+            "render_deck_report",
             "render_xlsx_report",
             "render_eval_report",
             "render_graph_audit",
