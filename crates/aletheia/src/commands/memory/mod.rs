@@ -210,6 +210,14 @@ pub(crate) async fn run(
             // must not pre-open the shared store like the other actions.
             Action::Reembed => run_reembed(&oikos, &loaded_config),
             Action::Gc => run_gc(&oikos, &recovery_config),
+            // WHY: run-context provenance lives in the session store, not
+            // the knowledge store every other action opens -- it must not
+            // pre-open the shared knowledge store either.
+            Action::InspectContext {
+                session_id,
+                turn_id,
+                json,
+            } => run_inspect_context(&oikos, &session_id, &turn_id, json),
             store_action => {
                 let store = open_recovery_store(&knowledge_path, &recovery_config)?;
                 run_store_action(&store, store_action, &dedup_tuning)
@@ -640,6 +648,9 @@ fn run_store_action(
         Action::Reembed | Action::Gc => {
             whatever!("BUG: reembed/gc must dispatch before the shared store opens")
         }
+        Action::InspectContext { .. } => {
+            whatever!("BUG: inspect-context must dispatch before the shared store opens")
+        }
     }
 }
 
@@ -816,6 +827,47 @@ fn run_gc(oikos: &taxis::oikos::Oikos, config: &RecoveryKnowledgeConfig) -> Resu
         "Removed {total} orphaned entities across {} store(s).",
         stores.len()
     );
+    Ok(())
+}
+
+// --- inspect-context ---
+
+/// Show why memory was selected or excluded for a run (#4542).
+///
+/// Opens the session store (not the knowledge store -- run-context
+/// provenance is a session-store note, keyed by session id and turn id)
+/// and prints the persisted `RunContextRecord`'s inspection report.
+#[cfg(feature = "recall")]
+fn run_inspect_context(
+    oikos: &taxis::oikos::Oikos,
+    session_id: &str,
+    turn_id: &str,
+    json: bool,
+) -> Result<()> {
+    let db_path = oikos.sessions_db();
+    let store = mneme::store::SessionStore::open(&db_path).with_whatever_context(|_| {
+        format!("failed to open session store at {}", db_path.display())
+    })?;
+
+    let record = nous::turn_record::run_context_record_for_turn(&store, session_id, turn_id)
+        .with_whatever_context(|_| "failed to read run-context record")?;
+
+    let Some(record) = record else {
+        whatever!(
+            "no run-context provenance record found for turn '{turn_id}' in session '{session_id}'\n  \
+             Either the turn has not run yet, or it predates run-context persistence (#4542)."
+        );
+    };
+
+    let report =
+        record.inspection_report(mneme::run_context::RedactionPolicy::InternalInspection);
+    if json {
+        let rendered = serde_json::to_string_pretty(&report)
+            .with_whatever_context(|_| "failed to serialize inspection report")?;
+        println!("{rendered}");
+    } else {
+        print!("{}", report.to_markdown());
+    }
     Ok(())
 }
 
