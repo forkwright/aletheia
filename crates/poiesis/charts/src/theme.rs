@@ -11,7 +11,7 @@
 //! - `themed` — fills emit as `var(--tone-N)`. The HTML deck has a CSS
 //!   variable per palette slot, so the same SVG byte-stream recolors when
 //!   the active theme switches.
-//! - `resolved` — fills emit as literal hex (`#232E54`). PPTX bake and
+//! - `resolved` — fills emit as literal hex (`#1E293B`). PPTX bake and
 //!   document figures must not depend on a CSS variable at run time.
 //!
 //! Geometry is identical between the two; only the fill attribute differs.
@@ -53,7 +53,7 @@ pub struct ResolvedTheme {
 pub struct Tone {
     /// CSS variable name used in `Themed` mode (e.g. `series-0`).
     pub css_var: String,
-    /// Resolved hex color (e.g. `#232E54`).
+    /// Resolved hex color (e.g. `#1E293B`).
     pub hex: String,
 }
 
@@ -93,24 +93,24 @@ impl ResolvedTheme {
         }
     }
 
-    /// Minimal `summus` theme stand-in.
+    /// Minimal `protos` theme stand-in.
     ///
-    /// This mirrors the offsite-deck palette so the slide-3 golden can be
+    /// This mirrors the reference palette so the slide-3 golden can be
     /// exercised in unit tests without enabling the `theme-bridge` feature.
     ///
     /// Acceptance gate hook: the navy + teal pair below are the same colors
-    /// the B-005 acceptance contract names (`#232E54`, `#318891`).
+    /// the B-005 acceptance contract names (`#1E293B`, `#0D9488`).
     #[must_use]
-    pub fn summus_stub() -> Self {
+    pub fn protos_stub() -> Self {
         Self {
             series: vec![
                 Tone {
                     css_var: "series-0".to_owned(),
-                    hex: "#232E54".to_owned(),
+                    hex: "#1E293B".to_owned(),
                 },
                 Tone {
                     css_var: "series-1".to_owned(),
-                    hex: "#318891".to_owned(),
+                    hex: "#0D9488".to_owned(),
                 },
                 Tone {
                     css_var: "series-2".to_owned(),
@@ -118,7 +118,7 @@ impl ResolvedTheme {
                 },
             ],
             named: Vec::new(),
-            theme_name: "summus".to_owned(),
+            theme_name: "protos".to_owned(),
             font_sans: "Inter, system-ui, sans-serif".to_owned(),
             font_mono: "JetBrains Mono, monospace".to_owned(),
         }
@@ -228,15 +228,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn summus_stub_has_navy_and_teal() {
-        let t = ResolvedTheme::summus_stub();
-        assert_eq!(t.series[0].hex, "#232E54");
-        assert_eq!(t.series[1].hex, "#318891");
+    fn protos_stub_has_navy_and_teal() {
+        let t = ResolvedTheme::protos_stub();
+        assert_eq!(t.series[0].hex, "#1E293B");
+        assert_eq!(t.series[1].hex, "#0D9488");
     }
 
     #[test]
     fn fill_for_themed_emits_css_var() {
-        let t = ResolvedTheme::summus_stub();
+        let t = ResolvedTheme::protos_stub();
         let f = t
             .fill_for(&ToneRef::Indexed(0), ColorMode::Themed, 0)
             .expect("indexed 0 resolves");
@@ -245,23 +245,23 @@ mod tests {
 
     #[test]
     fn fill_for_resolved_emits_hex() {
-        let t = ResolvedTheme::summus_stub();
+        let t = ResolvedTheme::protos_stub();
         let f = t
             .fill_for(&ToneRef::Indexed(1), ColorMode::Resolved, 0)
             .expect("indexed 1 resolves");
-        assert_eq!(f, "#318891");
+        assert_eq!(f, "#0D9488");
     }
 
     #[test]
     fn out_of_bounds_tone_index_errors() {
-        let t = ResolvedTheme::summus_stub();
+        let t = ResolvedTheme::protos_stub();
         let r = t.fill_for(&ToneRef::Indexed(99), ColorMode::Resolved, 4);
         assert!(matches!(r, Err(crate::Error::UnresolvedTone { .. })));
     }
 
     #[test]
     fn fill_for_slice_cycles_past_palette_end() {
-        let t = ResolvedTheme::summus_stub();
+        let t = ResolvedTheme::protos_stub();
         // Palette has 3 slots; 5 slices should cycle through 0..2 repeatedly.
         let mut last = String::new();
         for j in 0..5 {
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn fill_for_slice_honors_base_tone() {
-        let t = ResolvedTheme::summus_stub();
+        let t = ResolvedTheme::protos_stub();
         let base_0 = t
             .fill_for_slice(&ToneRef::Indexed(0), ColorMode::Resolved, 0, 0)
             .expect("base 0");

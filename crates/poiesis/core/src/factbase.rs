@@ -88,8 +88,8 @@ pub enum Source {
 /// An arithmetic expression in a `Derived` source.
 ///
 /// Kept intentionally narrow at the v1.0.0 boundary: addition, subtraction,
-/// multiplication, division, sum, mean. Sufficient for the offsite deck
-/// claims and the workbook total rows; not a calculator.
+/// multiplication, division, sum, mean. Sufficient for slide-deck claims
+/// and workbook total rows; not a calculator.
 // kanon:ignore RUST/non-exhaustive-enum — additive evolution is the intended
 // migration path; keeping exhaustive matches keeps the gate honest.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -74,7 +74,7 @@ mod tests {
     fn rasterizes_svg_to_png() {
         let png = svg_to_png(
             r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10">
-                 <rect x="0" y="0" width="10" height="10" fill="#232E54"/>
+                 <rect x="0" y="0" width="10" height="10" fill="#1E293B"/>
                </svg>"##,
             DEFAULT_DPI,
         )

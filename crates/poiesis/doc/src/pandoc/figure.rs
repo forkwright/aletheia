@@ -51,7 +51,7 @@ pub enum FigureError {
 /// Supported figure payloads:
 /// - `image/svg+xml` or raw `<svg ...>` bytes: treated as pre-rendered SVG.
 /// - `application/json` or `application/vnd.poiesis.chart+json`: parsed as a
-///   `poiesis_charts::Chart` and rendered to SVG with the resolved `summus`
+///   `poiesis_charts::Chart` and rendered to SVG with the resolved `protos`
 ///   palette.
 ///
 /// # Errors
@@ -70,7 +70,7 @@ pub(crate) fn svg_from_image(image: &Image) -> Result<String, FigureError> {
         mime.contains("json") || mime.contains("chart") || image.data.starts_with(b"{");
     if is_chart_json {
         let chart: Chart = serde_json::from_slice(&image.data).context(JsonSnafu)?;
-        let theme = ChartResolvedTheme::summus_stub();
+        let theme = ChartResolvedTheme::protos_stub();
         return render_chart(
             &chart,
             &theme,

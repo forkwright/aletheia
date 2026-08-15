@@ -19,7 +19,7 @@ pub enum Canvas {
 
 /// Deck stage canvas: 1600×540 viewBox.
 ///
-/// The pixel choice matches the offsite slide-3 chart: 1600 wide gives crisp
+/// The pixel choice matches the sample slide-3 chart: 1600 wide gives crisp
 /// text at typical 16:9 slide rendering, 540 keeps the chart in the lower
 /// two-thirds of the slide. Inner margins reserve space for x-tick labels
 /// (bottom) and dual y-axis labels (left + right).
@@ -161,7 +161,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn deck_canvas_default_is_offsite_geometry() {
+    fn deck_canvas_default_is_sample_geometry() {
         let c = Canvas::Deck(DeckCanvas::default());
         assert_eq!(c.width(), 1600);
         assert_eq!(c.height(), 540);

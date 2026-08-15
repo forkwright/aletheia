@@ -170,26 +170,26 @@ impl Registry {
     }
 }
 
-/// Return the embedded `summus` theme resolved into renderer-facing tokens.
+/// Return the embedded `protos` theme resolved into renderer-facing tokens.
 ///
 /// WHY: deployed binaries should not depend on a filesystem-bound registry
 /// just to obtain the flagship theme. Embedding the seed theme keeps the
 /// consumer path deterministic and available in release artifacts.
 #[must_use]
-pub fn summus() -> ResolvedTheme {
+pub fn protos() -> ResolvedTheme {
     #[expect(
         clippy::expect_used,
-        reason = "embedded summus.toml is valid by construction"
+        reason = "embedded protos.toml is valid by construction"
     )]
-    fn embedded_summus() -> ResolvedTheme {
-        let theme: Theme = toml::from_str(include_str!("../themes/summus.toml"))
-            .expect("embedded summus.toml is valid by construction");
-        ResolvedTheme::from_theme(theme).expect("embedded summus.toml is valid by construction")
+    fn embedded_protos() -> ResolvedTheme {
+        let theme: Theme = toml::from_str(include_str!("../themes/protos.toml"))
+            .expect("embedded protos.toml is valid by construction");
+        ResolvedTheme::from_theme(theme).expect("embedded protos.toml is valid by construction")
     }
 
-    static SUMMUS: LazyLock<ResolvedTheme> = LazyLock::new(embedded_summus);
+    static PROTOS: LazyLock<ResolvedTheme> = LazyLock::new(embedded_protos);
 
-    SUMMUS.clone()
+    PROTOS.clone()
 }
 
 /// Parse a candidate string into a [`ThemeId`], lifting the parse error into
@@ -221,14 +221,14 @@ mod tests {
     use super::*;
     use crate::tokens::HexColor;
 
-    const MINI_SUMMUS_TOML: &str = r##"
+    const MINI_PROTOS_TOML: &str = r##"
 [meta]
-id = "summus"
-title = "Summus"
+id = "protos"
+title = "Protos"
 
 [color.role]
-navy = "#232E54"
-teal = "#318891"
+navy = "#1E293B"
+teal = "#0D9488"
 
 [color.tone]
 positive = "teal"
@@ -252,20 +252,20 @@ title = 64
     }
 
     #[test]
-    fn load_dir_discovers_summus() {
+    fn load_dir_discovers_protos() {
         let tmp = tempdir().expect("tempdir");
-        write_theme(tmp.path(), "summus", MINI_SUMMUS_TOML);
+        write_theme(tmp.path(), "protos", MINI_PROTOS_TOML);
         let registry = Registry::load_dir(tmp.path()).expect("load_dir");
         assert_eq!(registry.len(), 1);
-        let id = parse_theme_id("summus").expect("parse summus");
-        let theme = registry.get(&id).expect("get summus");
-        assert_eq!(theme.meta.id.as_str(), "summus");
+        let id = parse_theme_id("protos").expect("parse protos");
+        let theme = registry.get(&id).expect("get protos");
+        assert_eq!(theme.meta.id.as_str(), "protos");
     }
 
     #[test]
     fn load_dir_skips_non_toml() {
         let tmp = tempdir().expect("tempdir");
-        write_theme(tmp.path(), "summus", MINI_SUMMUS_TOML);
+        write_theme(tmp.path(), "protos", MINI_PROTOS_TOML);
         fs::write(tmp.path().join("README.md"), "# brands\n").expect("write README");
         let registry = Registry::load_dir(tmp.path()).expect("load_dir");
         assert_eq!(registry.len(), 1, "README must not register as a theme");
@@ -274,10 +274,10 @@ title = 64
     #[test]
     fn load_dir_skips_invalid_stem() {
         let tmp = tempdir().expect("tempdir");
-        write_theme(tmp.path(), "summus", MINI_SUMMUS_TOML);
+        write_theme(tmp.path(), "protos", MINI_PROTOS_TOML);
         fs::write(
             tmp.path().join("Bad.Name.toml"),
-            "[meta]\nid = \"summus\"\n",
+            "[meta]\nid = \"protos\"\n",
         )
         .expect("write bad stem");
         let registry = Registry::load_dir(tmp.path()).expect("load_dir");
@@ -287,7 +287,7 @@ title = 64
     #[test]
     fn load_dir_rejects_id_mismatch() {
         let tmp = tempdir().expect("tempdir");
-        write_theme(tmp.path(), "ardent", MINI_SUMMUS_TOML);
+        write_theme(tmp.path(), "ardent", MINI_PROTOS_TOML);
         let err =
             Registry::load_dir(tmp.path()).expect_err("mismatched stem + meta.id must reject");
         assert!(matches!(err, ThemeError::IdMismatch { .. }));
@@ -296,13 +296,13 @@ title = 64
     #[test]
     fn get_missing_attaches_available_list() {
         let tmp = tempdir().expect("tempdir");
-        write_theme(tmp.path(), "summus", MINI_SUMMUS_TOML);
+        write_theme(tmp.path(), "protos", MINI_PROTOS_TOML);
         let registry = Registry::load_dir(tmp.path()).expect("load_dir");
         let unknown = parse_theme_id("ardent").expect("parse ardent");
         let err = registry.get(&unknown).expect_err("missing id must reject");
         let msg = format!("{err}");
         assert!(
-            msg.contains("summus"),
+            msg.contains("protos"),
             "diagnostic must list available themes: {msg}"
         );
     }
@@ -310,13 +310,13 @@ title = 64
     #[test]
     fn resolve_returns_resolved_theme() {
         let tmp = tempdir().expect("tempdir");
-        write_theme(tmp.path(), "summus", MINI_SUMMUS_TOML);
+        write_theme(tmp.path(), "protos", MINI_PROTOS_TOML);
         let registry = Registry::load_dir(tmp.path()).expect("load_dir");
-        let id = parse_theme_id("summus").expect("parse summus");
-        let resolved = registry.resolve(&id).expect("resolve summus");
+        let id = parse_theme_id("protos").expect("parse protos");
+        let resolved = registry.resolve(&id).expect("resolve protos");
         assert_eq!(
             resolved.tone.get("positive").map(HexColor::as_str),
-            Some("#318891"),
+            Some("#0D9488"),
             "tone positive→teal must resolve through the registry"
         );
     }
@@ -336,18 +336,18 @@ title = 64
         let tmp = tempdir().expect("tempdir");
         let hostile = r##"
 [meta]
-id = "summus"
-title = "Summus"
+id = "protos"
+title = "Protos"
 
 [color.role]
-"x}: body { color: red; --y" = "#232E54"
+"x}: body { color: red; --y" = "#1E293B"
 
 [type.family]
 sans = ["Geist"]
 "##;
-        write_theme(tmp.path(), "summus", hostile);
+        write_theme(tmp.path(), "protos", hostile);
         let registry = Registry::load_dir(tmp.path()).expect("load_dir");
-        let id = parse_theme_id("summus").expect("parse summus");
+        let id = parse_theme_id("protos").expect("parse protos");
         let err = registry
             .resolve(&id)
             .expect_err("crafted CSS-breaking key must reject at resolve time");

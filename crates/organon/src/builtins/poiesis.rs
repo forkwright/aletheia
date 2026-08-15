@@ -24,8 +24,8 @@ use poiesis_lint::{LintConfig, Linter};
 use poiesis_theme::{
     Registry, ResolvedTheme, ThemeId,
     lint::{RawColorLiteralRule, RawFontLiteralRule, UnknownTokenRule},
+    protos,
     sinks::emit_typst_template,
-    summus,
 };
 use poiesis_verify::Verifier;
 use zip::write::SimpleFileOptions;
@@ -126,9 +126,9 @@ fn theme_id_from_data(data: &serde_json::Value) -> Option<String> {
 /// Resolution order:
 /// 1. Top-level `theme` argument.
 /// 2. `theme` / `theme_id` / `spec.theme` inside the parsed `data` object.
-/// 3. Embedded `summus()` fallback for backward compatibility.
+/// 3. Embedded `protos()` fallback for backward compatibility.
 ///
-/// Non-`summus` identifiers are parsed and resolved against a theme registry
+/// Non-`protos` identifiers are parsed and resolved against a theme registry
 /// loaded from `<workspace>/themes`. Errors are returned as `ToolResult::error`
 /// so executors can return them directly.
 pub(crate) fn resolve_report_theme(
@@ -142,11 +142,11 @@ pub(crate) fn resolve_report_theme(
         .filter(|s| !s.is_empty());
 
     let Some(candidate) = candidate else {
-        return Ok(summus());
+        return Ok(protos());
     };
 
-    if candidate == "summus" {
-        return Ok(summus());
+    if candidate == "protos" {
+        return Ok(protos());
     }
 
     let id = ThemeId::parse(&candidate).map_err(|e| {
@@ -945,7 +945,7 @@ fn render_typst_report_def() -> ToolDef {
                     "theme".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Theme identifier (e.g. `summus`). Overrides any theme \
+                        description: "Theme identifier (e.g. `protos`). Overrides any theme \
                                       declared inside `data`."
                             .to_owned(),
                         enum_values: None,
@@ -1078,7 +1078,7 @@ impl ToolExecutor for QaGateExecutor {
                 });
             }
 
-            let theme = summus();
+            let theme = protos();
             let color_rule = RawColorLiteralRule;
             let font_rule = RawFontLiteralRule;
             let unknown_rule = UnknownTokenRule::new(&theme);

@@ -210,29 +210,29 @@ mod tests {
     use super::*;
     use crate::registry::Registry;
 
-    fn summus() -> ResolvedTheme {
+    fn protos() -> ResolvedTheme {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let registry = Registry::load_dir(&dir).expect("load summus");
-        let id = crate::registry::parse_theme_id("summus").expect("parse summus");
-        registry.resolve(&id).expect("resolve summus")
+        let registry = Registry::load_dir(&dir).expect("load protos");
+        let id = crate::registry::parse_theme_id("protos").expect("parse protos");
+        registry.resolve(&id).expect("resolve protos")
     }
 
     #[test]
     fn css_contains_color_role_hex() {
-        let css = emit_css(&summus()).expect("emit summus css");
+        let css = emit_css(&protos()).expect("emit protos css");
         assert!(
-            css.contains("--color-navy: #232E54;"),
+            css.contains("--color-navy: #1E293B;"),
             "navy role hex must appear verbatim; got:\n{css}"
         );
         assert!(
-            css.contains("--color-teal: #318891;"),
+            css.contains("--color-teal: #0D9488;"),
             "teal role hex must appear verbatim; got:\n{css}"
         );
     }
 
     #[test]
     fn css_tone_references_role_via_var() {
-        let css = emit_css(&summus()).expect("emit summus css");
+        let css = emit_css(&protos()).expect("emit protos css");
         assert!(
             css.contains("--tone-positive: var(--color-teal);"),
             "positive tone must point at color-teal via var(): {css}"
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn css_surface_uses_resolved_hex() {
-        let css = emit_css(&summus()).expect("emit summus css");
+        let css = emit_css(&protos()).expect("emit protos css");
         assert!(
             css.contains("--surface-page: #FFFFFF;"),
             "page surface must resolve to bg hex"
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn css_emits_scale_in_pixels() {
-        let css = emit_css(&summus()).expect("emit summus css");
+        let css = emit_css(&protos()).expect("emit protos css");
         assert!(
             css.contains("--scale-title: 64px;"),
             "title scale must be 64px"
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn css_family_quotes_multiword_names() {
-        let css = emit_css(&summus()).expect("emit summus css");
+        let css = emit_css(&protos()).expect("emit protos css");
         assert!(
             css.contains("--family-mono: \"Geist Mono\", ui-monospace, monospace;"),
             "multi-word family names must be quoted: {css}"
@@ -276,14 +276,14 @@ mod tests {
 
     #[test]
     fn css_byte_stable_across_runs() {
-        let a = emit_css(&summus()).expect("first emit");
-        let b = emit_css(&summus()).expect("second emit");
+        let a = emit_css(&protos()).expect("first emit");
+        let b = emit_css(&protos()).expect("second emit");
         assert_eq!(a, b, "two emissions must match byte-for-byte");
     }
 
     #[test]
     fn css_chart_series_resolves_through_tone() {
-        let css = emit_css(&summus()).expect("emit summus css");
+        let css = emit_css(&protos()).expect("emit protos css");
         assert!(
             css.contains("--chart-series-1: var(--tone-accent);"),
             "first series should resolve through tone prefix: {css}"
@@ -296,7 +296,7 @@ mod tests {
         // role/tone/surface must not be interpolated raw into CSS — it must
         // simply not appear, exactly like an unresolved chart-series entry
         // already doesn't (see the typst/latex sinks' matching behavior).
-        let mut theme = summus();
+        let mut theme = protos();
         theme.chart.gridline = Some("x}: body { color: red; --y".to_owned());
         let css = emit_css(&theme).expect("emit must still succeed");
         assert!(
@@ -311,7 +311,7 @@ mod tests {
 
     #[test]
     fn css_skips_unresolved_table_header_fill_reference() {
-        let mut theme = summus();
+        let mut theme = protos();
         theme.table.header_fill = Some("}; * { display: none".to_owned());
         let css = emit_css(&theme).expect("emit must still succeed");
         assert!(

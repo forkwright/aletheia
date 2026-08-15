@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn single_series_emits_circles() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &scatter_chart(),
             &theme,
@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn themed_mode_emits_css_var() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &scatter_chart(),
             &theme,
@@ -278,12 +278,12 @@ mod tests {
         )
         .expect("themed mode emits");
         assert!(svg.contains("var(--tone-series-0)"));
-        assert!(!svg.contains("#232E54"));
+        assert!(!svg.contains("#1E293B"));
     }
 
     #[test]
     fn output_is_deterministic() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let a = emit(
             &scatter_chart(),
             &theme,
@@ -311,7 +311,7 @@ mod tests {
             axis: AxisSide::Left,
             style: SeriesStyle::Default,
         });
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &chart,
             &theme,

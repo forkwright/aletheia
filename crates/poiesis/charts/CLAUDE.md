@@ -2,7 +2,7 @@
 
 ## At a glance
 
-Typed chart model + deterministic SVG emitter. Implements B-005 (poiesis chart subsystem). Renders the offsite slide-3 combo chart at or above the hand-authored quality bar.
+Typed chart model + deterministic SVG emitter. Implements B-005 (poiesis chart subsystem). Renders a sample slide-3 combo chart at or above the hand-authored quality bar.
 
 ## Depth
 
@@ -47,7 +47,7 @@ Follow-up arms reuse `Scale` + `format` + `Canvas`; only the per-arm geometry di
 
 ## Theme seam
 
-`ResolvedTheme` lives in `src/theme.rs` as the chart-local theme seam. B-002 has landed, so the crate bridges through `ResolvedTheme::from_poiesis_theme()` when the `theme-bridge` feature is enabled. `ResolvedTheme::summus_stub()` is retained for the offsite acceptance test, not deleted; it still mirrors the navy + teal pair (`#232E54`, `#318891`) so B-005 acceptance test 2 ("colors come only from `theme: summus`") remains reproducible.
+`ResolvedTheme` lives in `src/theme.rs` as the chart-local theme seam. B-002 has landed, so the crate bridges through `ResolvedTheme::from_poiesis_theme()` when the `theme-bridge` feature is enabled. `ResolvedTheme::protos_stub()` is retained for the acceptance test, not deleted; it still mirrors the navy + teal pair (`#1E293B`, `#0D9488`) so B-005 acceptance test 2 ("colors come only from `theme: protos`") remains reproducible.
 
 ## Patterns
 

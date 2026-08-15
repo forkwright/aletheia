@@ -1,6 +1,6 @@
 //! Combo chart emitter: columns on `y_left`, line on `y_right`.
 //!
-//! This arm is the B-005 acceptance gate: the offsite slide-3 chart is a
+//! This arm is the B-005 acceptance gate: the sample slide-3 chart is a
 //! combo with navy columns on a 0..30 left axis and a teal line on a
 //! 0..200 right axis, across three categories.
 //!
@@ -340,7 +340,7 @@ mod tests {
     };
     use crate::render::canvas::DeckCanvas;
 
-    fn offsite_spec() -> Chart {
+    fn sample_spec() -> Chart {
         let cite = |id: &str, v: f64, u: Unit| FactCite {
             id: FactId(id.to_owned()),
             value: v,
@@ -353,7 +353,7 @@ mod tests {
         };
         Chart {
             kind: ChartKind::Combo,
-            title: Some(CiteOrText::Text("Offsite slide-3".to_owned())),
+            title: Some(CiteOrText::Text("Sample slide-3".to_owned())),
             series: vec![
                 Series {
                     name: CiteOrText::Text("Revenue".to_owned()),
@@ -386,22 +386,22 @@ mod tests {
     }
 
     #[test]
-    fn offsite_combo_emits_navy_columns_and_teal_line_in_resolved_mode() {
-        let theme = ResolvedTheme::summus_stub();
+    fn sample_combo_emits_navy_columns_and_teal_line_in_resolved_mode() {
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
-            &offsite_spec(),
+            &sample_spec(),
             &theme,
             &Canvas::Deck(DeckCanvas::default()),
             ColorMode::Resolved,
         )
-        .expect("offsite combo emits");
-        assert!(svg.contains("fill=\"#232E54\""), "navy not present");
+        .expect("sample combo emits");
+        assert!(svg.contains("fill=\"#1E293B\""), "navy not present");
         assert!(
-            svg.contains("stroke=\"#318891\""),
+            svg.contains("stroke=\"#0D9488\""),
             "teal stroke not present"
         );
         assert!(
-            svg.contains("fill=\"#318891\""),
+            svg.contains("fill=\"#0D9488\""),
             "teal marker fill not present"
         );
         assert!(svg.contains("rx=\"3\""));
@@ -410,9 +410,9 @@ mod tests {
 
     #[test]
     fn themed_mode_emits_css_var_fills() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
-            &offsite_spec(),
+            &sample_spec(),
             &theme,
             &Canvas::Deck(DeckCanvas::default()),
             ColorMode::Themed,
@@ -420,22 +420,22 @@ mod tests {
         .expect("themed mode emits");
         assert!(svg.contains("var(--tone-series-0)"));
         assert!(svg.contains("var(--tone-series-1)"));
-        assert!(!svg.contains("#232E54"));
-        assert!(!svg.contains("#318891"));
+        assert!(!svg.contains("#1E293B"));
+        assert!(!svg.contains("#0D9488"));
     }
 
     #[test]
     fn output_is_deterministic_across_two_renders() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let a = emit(
-            &offsite_spec(),
+            &sample_spec(),
             &theme,
             &Canvas::Deck(DeckCanvas::default()),
             ColorMode::Resolved,
         )
         .expect("first emit");
         let b = emit(
-            &offsite_spec(),
+            &sample_spec(),
             &theme,
             &Canvas::Deck(DeckCanvas::default()),
             ColorMode::Resolved,
@@ -446,11 +446,11 @@ mod tests {
 
     #[test]
     fn x_labels_escape_xml_reserved_characters() {
-        let mut spec = offsite_spec();
+        let mut spec = sample_spec();
         for point in &mut spec.series[0].points {
             point.label = Some(CiteOrText::Text("R&D <2024>".to_owned()));
         }
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &spec,
             &theme,
@@ -465,9 +465,9 @@ mod tests {
 
     #[test]
     fn missing_axis_side_errors() {
-        let mut spec = offsite_spec();
+        let mut spec = sample_spec();
         spec.series[1].axis = AxisSide::Left;
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let r = emit(
             &spec,
             &theme,
