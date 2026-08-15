@@ -91,13 +91,23 @@ The standard installer runs this check before building, and the release workflow
 
 ## Architecture
 
-The desktop crate depends on `skene` for the shared API client, domain types, and SSE infrastructure. It connects to a running Aletheia server over HTTP, the same as the TUI.
+The desktop crate depends on `skene` for domain types and (as of #4565) event
+parsing — `api/sse.rs` re-exports `skene::api::sse::parse_sse_event` directly,
+and `api/streaming.rs`'s decode-failure/unknown-event handling matches
+skene's own `StreamEvent::DecodeError`/`UnknownEvent` classes, though its
+connect-and-poll loop stays local to carry `CancellationToken`-based
+cancellation that skene's own `stream_message` has no equivalent for. It
+connects to a running Aletheia server over HTTP, the same as the TUI.
+
+`api/client.rs`'s own request-building is NOT yet routed through skene's
+`ApiClient` the way `koilon`'s is (`koilon::api` fully re-exports
+`skene::api`) — that consolidation remains open, tracked by #4565.
 
 ```
-skene  (shared: API client, types, SSE)
+skene  (shared: domain types, event parsing)
     ^
     |
-proskenion  (Dioxus desktop app)
+proskenion  (Dioxus desktop app; api/client.rs still locally-owned)
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the full crate dependency graph.
