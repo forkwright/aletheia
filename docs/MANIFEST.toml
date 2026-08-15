@@ -246,6 +246,12 @@ description = "Day-two operations runbook: service architecture, common operatio
 last_tested = "2026-06-28"
 
 [[doc]]
+path = "docs/RUNTIME-CONTRACTS.md"
+type = "authored"
+evergreen = true
+description = "Canonical owner per runtime contract area (lifecycle, tool metadata, SSE events, failure taxonomy, metrics, routes) so CLI/TUI/desktop/API/docs derive from or are checked against one source instead of drifting independently."
+
+[[doc]]
 path = "docs/TECHNOLOGY.md"
 type = "authored"
 evergreen = true
