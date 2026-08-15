@@ -41,8 +41,10 @@ and the `forkwright/kanon`-hosted standards docs they reference (`STANDARDS.md`,
 tooling, not a public dependency — a contributor working from this checkout
 is not expected to have it installed or to run it locally; CI enforces the
 gate independently. Required setup for the publicly-supported path above does
-not depend on private repos. The kanon-reference cleanup in `AGENTS.md` /
-`CLAUDE.md` is tracked separately in #4531.
+not depend on private repos.
+
+See [MATURITY.md](MATURITY.md) for which crates and surfaces this covers
+are Stable vs. still Experimental/Undeclared.
 
 ## 1. Configure Providers
 
