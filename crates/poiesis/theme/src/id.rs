@@ -186,7 +186,7 @@ mod tests {
     #[test]
     fn parse_rejects_uppercase_lead() {
         let err = ThemeId::parse("Protos").expect_err("uppercase lead must reject");
-        assert!(matches!(err, InvalidThemeId::Leading { found: 'S' }));
+        assert!(matches!(err, InvalidThemeId::Leading { found: 'P' }));
     }
 
     #[test]
