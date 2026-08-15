@@ -12,9 +12,9 @@
 
 use std::path::PathBuf;
 
+use poiesis_theme::protos;
 use poiesis_theme::registry::{Registry, parse_theme_id};
 use poiesis_theme::sinks::{emit_css, emit_docvars_json, emit_docvars_yaml, emit_theme_xml};
-use poiesis_theme::protos;
 use poiesis_theme::tokens::HexColor;
 
 fn protos_dir() -> PathBuf {

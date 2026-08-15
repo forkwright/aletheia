@@ -24,8 +24,8 @@ use poiesis_lint::{LintConfig, Linter};
 use poiesis_theme::{
     Registry, ResolvedTheme, ThemeId,
     lint::{RawColorLiteralRule, RawFontLiteralRule, UnknownTokenRule},
-    sinks::emit_typst_template,
     protos,
+    sinks::emit_typst_template,
 };
 use poiesis_verify::Verifier;
 use zip::write::SimpleFileOptions;
