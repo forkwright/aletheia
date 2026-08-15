@@ -985,6 +985,10 @@ impl ApiClient {
 #[cfg(test)]
 mod tests {
     #![expect(clippy::expect_used, reason = "test helper failures should panic")]
+    #![expect(
+        clippy::indexing_slicing,
+        reason = "test: each index is guarded by an asserted len on the line above"
+    )]
 
     use std::io::{Read, Write};
     use std::net::TcpListener;

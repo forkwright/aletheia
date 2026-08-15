@@ -127,7 +127,13 @@ fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessa
     Some(LegacyChatMessage {
         role,
         content: history_content_to_string(message.content.as_ref()),
-        model: message.model.clone(),
+        // WHY(#4911): pylon's history wire format carries no per-message model
+        // and never did, so the previous `message.model.clone()` read a field
+        // that was always None against real data. The model is a session-level
+        // fact; `views/sessions/mod.rs` takes it from `session.model`. This
+        // conversion has no session in scope, so it leaves the field empty
+        // rather than reintroducing a phantom per-message source.
+        model: None,
         tool_calls,
         input_tokens: 0,
         output_tokens: 0,
@@ -162,6 +168,7 @@ mod tests {
             name: Some(id.to_string()),
             model: None,
             emoji: None,
+            status: None,
         }
     }
 

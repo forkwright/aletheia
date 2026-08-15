@@ -403,7 +403,6 @@ mod tests {
 // organon's default) excludes the whole document/report-tool family, and
 // still registers everything else.
 #[cfg(all(test, not(feature = "poiesis")))]
-#[expect(clippy::expect_used, reason = "test assertions")]
 mod poiesis_default_off_tests {
     use super::*;
 

@@ -20,7 +20,7 @@ pub(crate) mod view_nav;
 use crate::app::App;
 use crate::msg::Msg;
 
-pub(crate) use api::{extract_text_content, history_to_chat_messages, session_model_for};
+pub(crate) use api::{history_to_chat_messages, session_model_for};
 
 #[tracing::instrument(skip_all)]
 pub(crate) async fn update(app: &mut App, msg: Msg) {

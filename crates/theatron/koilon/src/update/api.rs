@@ -51,7 +51,7 @@ pub(crate) fn handle_history_loaded(
     messages: Vec<HistoryMessage>,
 ) {
     let session_model = session_model_for(app, &session_id);
-    app.dashboard.messages = history_to_chat_messages(messages, session_model.as_deref());
+    app.dashboard.messages = history_to_chat_messages(messages, session_model.as_deref()).into();
     // INVARIANT: Stale streaming markdown from the previous session must not
     // bleed through when history is replaced on session switch.
     app.viewport.render.markdown_cache.clear();
