@@ -489,7 +489,7 @@ impl From<Fact> for Provenance {
 /// ([`FactAccess`](crate::knowledge::FactAccess) access counters, forgetting
 /// state) are not reconstructed here because `Provenance` never carried them
 /// in the first place -- there is nothing to round-trip.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct FactProvenanceParts {
     /// Reconstructed bi-temporal validity/recording timestamps.
     pub temporal: FactTemporal,
