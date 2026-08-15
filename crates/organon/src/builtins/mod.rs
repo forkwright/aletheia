@@ -15,6 +15,7 @@ pub mod communication;
 #[cfg(feature = "computer-use")]
 pub mod computer_use;
 /// Diff report tool: compare documents and report changes.
+#[cfg(feature = "poiesis")]
 pub mod diff_report;
 /// Dynamic tool activation meta-tool.
 pub mod enable_tool;
@@ -33,8 +34,10 @@ pub mod git_ops;
 /// Generic HTTP client (POST/PUT/DELETE/PATCH with headers + body).
 pub mod http_client;
 /// Inspect report tool: extract text from documents.
+#[cfg(feature = "poiesis")]
 pub mod inspect_report;
 /// Intake report tool: parse Slack-style text into a structured scaffold.
+#[cfg(feature = "poiesis")]
 pub mod intake_report;
 /// Knowledge graph and session memory tools (remember, recall).
 pub mod memory;
@@ -44,22 +47,30 @@ pub mod parameters;
 pub mod planning;
 /// Poiesis report tools: generate_document, lint_report, verify_report,
 /// render_typst_report, render_docx_report.
+#[cfg(feature = "poiesis")]
 pub mod poiesis;
 /// DOCX report rendering tool (render_docx_report).
+#[cfg(feature = "poiesis")]
 pub mod render_docx_report;
 /// Render a JSON eval report to PDF (render_eval_report).
+#[cfg(feature = "poiesis")]
 pub mod render_eval_report;
 /// Render a JSON graph audit to PDF (render_graph_audit).
+#[cfg(feature = "poiesis")]
 pub mod render_graph_audit;
 /// Render a JSON slide descriptor to PPTX.
+#[cfg(feature = "poiesis")]
 pub mod render_pptx_report;
 /// JSON-first XLSX report tool (`render_xlsx_report`).
+#[cfg(feature = "poiesis")]
 pub mod render_xlsx_report;
 /// Report runtime dependency doctor (Pandoc, LaTeX, Chromium, Typst).
+#[cfg(feature = "poiesis")]
 pub mod report_runtime_health;
 /// Web research tools (web_fetch).
 pub mod research;
 /// Scaffold report tool: generates a new report project from embedded templates.
+#[cfg(feature = "poiesis")]
 pub mod scaffold_report;
 /// Read a lazy-loaded skill by name from the knowledge store (skill_read).
 pub mod skill_read;
@@ -271,18 +282,29 @@ pub(crate) fn register_domain_tools(
     energeia::register(registry, energeia_services)?;
     #[cfg(feature = "bookkeeper")]
     bookkeeper::register(registry)?;
+    #[cfg(feature = "poiesis")]
     poiesis::register(registry)?;
+    #[cfg(feature = "poiesis")]
     report_runtime_health::register(registry)?;
+    #[cfg(feature = "poiesis")]
     intake_report::register(registry)?;
+    #[cfg(feature = "poiesis")]
     scaffold_report::register(registry)?;
+    #[cfg(feature = "poiesis")]
     render_docx_report::register(registry)?;
+    #[cfg(feature = "poiesis")]
     render_pptx_report::register(registry)?;
+    #[cfg(feature = "poiesis")]
     render_xlsx_report::register(registry)?;
+    #[cfg(feature = "poiesis")]
     render_eval_report::register(registry)?;
+    #[cfg(feature = "poiesis")]
     render_graph_audit::register(registry)?;
     skill_read::register(registry)?;
     working_checkpoint::register(registry)?;
+    #[cfg(feature = "poiesis")]
     diff_report::register(registry)?;
+    #[cfg(feature = "poiesis")]
     inspect_report::register(registry)?;
     Ok(())
 }
@@ -373,5 +395,55 @@ mod tests {
         };
         register_domain_tools(&mut registry, sandbox, None)
             .expect("a loopback-only allowlist is enforceable and must not be refused");
+    }
+}
+
+// WHY(#4559): 13 poiesis-* crates were unconditional dependencies with
+// unconditional registration; this pins that a plain build (poiesis off,
+// organon's default) excludes the whole document/report-tool family, and
+// still registers everything else.
+#[cfg(all(test, not(feature = "poiesis")))]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod poiesis_default_off_tests {
+    use super::*;
+
+    #[test]
+    fn default_registry_excludes_poiesis_family_tools() -> Result<()> {
+        let mut registry = ToolRegistry::new();
+        register_all(&mut registry)?;
+        let names: Vec<&str> = registry
+            .definitions()
+            .iter()
+            .map(|def| def.name.as_str())
+            .collect();
+
+        let poiesis_tool_names = [
+            "generate_document",
+            "lint_report",
+            "verify_report",
+            "render_typst_report",
+            "qa_gate",
+            "render_docx_report",
+            "render_pptx_report",
+            "render_xlsx_report",
+            "render_eval_report",
+            "render_graph_audit",
+            "report_runtime_health",
+            "scaffold_report",
+            "intake_report",
+            "diff_report",
+            "inspect_report",
+        ];
+        for tool_name in poiesis_tool_names {
+            assert!(
+                !names.contains(&tool_name),
+                "poiesis-family tool {tool_name} must not be exposed when the poiesis feature is off"
+            );
+        }
+        assert!(
+            names.contains(&"grep") || names.contains(&"read_file"),
+            "non-poiesis tools must still register when the poiesis feature is off"
+        );
+        Ok(())
     }
 }

@@ -76,7 +76,7 @@ koina = { path = "../koina", features = ["fjall"] }
 taxis = { path = "../taxis" }
 fjall = { version = "3", default-features = false, features = ["lz4"] }
 hermeneus = { path = "../hermeneus" }
-organon = { path = "../organon" }
+organon = { path = "../organon", features = ["poiesis"] }
 mneme = { path = "../mneme" }
 nous = { path = "../nous" }
 symbolon = { path = "../symbolon" }
