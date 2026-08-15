@@ -18,6 +18,7 @@ use koina::metrics::MetricsRegistry;
 use organon::types::Reversibility;
 
 use super::*;
+use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
 use crate::execute::dispatch::{ToolDispatchPolicy, dispatch_tools};
 use crate::pipeline::LoopDetector;
 
@@ -33,14 +34,24 @@ fn encode(r: &MetricsRegistry) -> String {
     buf
 }
 
-#[tokio::test]
-async fn approval_decision_metric_records_auto_approved() {
-    let registry = fresh_organon_registry();
-    let tool_name = "_test_metrics_gov_autoapprove";
-    let tools = make_registry_rev(tool_name, Reversibility::FullyReversible);
+/// WHY: every governance-metrics test wires identical tool_uses/registry/
+/// loop_detector/all_calls/policy scaffolding around one `dispatch_tools`
+/// call. What genuinely varies across tests: the tool name registered in
+/// the `ToolRegistry` vs the name actually dispatched (the unknown-tool
+/// test deliberately diverges the two so `denial_for` classifies it
+/// `ToolPolicyDenial::Unknown`), the `Reversibility`, whether an approval
+/// gate is present, and whether a receipt signer is present.
+async fn dispatch_single_tool(
+    registered_name: &str,
+    dispatched_name: &str,
+    reversibility: Reversibility,
+    approval_gate: Option<&ApprovalGate>,
+    receipt_signer: Option<&organon::receipts::ReceiptSigner>,
+) {
+    let tools = make_registry_rev(registered_name, reversibility);
     let tool_uses = vec![(
         "tool-1".to_owned(),
-        tool_name.to_owned(),
+        dispatched_name.to_owned(),
         serde_json::json!({}),
     )];
     let mut loop_detector = LoopDetector::new(3);
@@ -55,14 +66,29 @@ async fn approval_decision_metric_records_auto_approved() {
         &mut all_calls,
         1,
         None,
-        None,
+        approval_gate,
         &policy,
         0,
-        None,
+        receipt_signer,
         None,
     )
     .await
     .expect("dispatch ok");
+}
+
+#[tokio::test]
+async fn approval_decision_metric_records_auto_approved() {
+    let registry = fresh_organon_registry();
+    let tool_name = "_test_metrics_gov_autoapprove";
+
+    dispatch_single_tool(
+        tool_name,
+        tool_name,
+        Reversibility::FullyReversible,
+        None,
+        None,
+    )
+    .await;
 
     let out = encode(&registry);
     assert!(
@@ -77,11 +103,8 @@ async fn approval_decision_metric_records_auto_approved() {
 async fn approval_decision_metric_records_denied_by_gate() {
     use std::time::Duration;
 
-    use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
-
     let registry = fresh_organon_registry();
     let tool_name = "_test_metrics_gov_gatedenied";
-    let tools = make_registry_rev(tool_name, Reversibility::Irreversible);
     let (decision_tx, decision_rx) = tokio::sync::mpsc::channel::<ApprovalDecision>(4);
     let gate = ApprovalGate::new(decision_rx, Duration::from_secs(5));
     decision_tx
@@ -92,31 +115,14 @@ async fn approval_decision_metric_records_denied_by_gate() {
         .await
         .expect("send denial");
 
-    let tool_uses = vec![(
-        "tool-1".to_owned(),
-        tool_name.to_owned(),
-        serde_json::json!({}),
-    )];
-    let mut loop_detector = LoopDetector::new(3);
-    let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
-
-    dispatch_tools(
-        &tool_uses,
-        &tools,
-        &test_tool_ctx(),
-        &mut loop_detector,
-        &mut all_calls,
-        1,
-        None,
+    dispatch_single_tool(
+        tool_name,
+        tool_name,
+        Reversibility::Irreversible,
         Some(&gate),
-        &policy,
-        0,
-        None,
         None,
     )
-    .await
-    .expect("dispatch ok");
+    .await;
 
     let out = encode(&registry);
     assert!(
@@ -131,37 +137,18 @@ async fn approval_decision_metric_records_denied_by_gate() {
 async fn policy_denial_metric_records_unknown_tool() {
     let registry = fresh_organon_registry();
     let ghost_name = "_test_metrics_gov_ghost";
-    // Registry needs at least one entry; the dispatched name is deliberately
-    // absent from it so `denial_for` classifies it `ToolPolicyDenial::Unknown`.
-    let tools = make_registry_rev(
-        "_test_metrics_gov_ghost_sibling",
-        Reversibility::FullyReversible,
-    );
-    let tool_uses = vec![(
-        "tool-1".to_owned(),
-        ghost_name.to_owned(),
-        serde_json::json!({}),
-    )];
-    let mut loop_detector = LoopDetector::new(3);
-    let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
 
-    dispatch_tools(
-        &tool_uses,
-        &tools,
-        &test_tool_ctx(),
-        &mut loop_detector,
-        &mut all_calls,
-        1,
-        None,
-        None,
-        &policy,
-        0,
+    // WHY: the registry needs at least one entry; the dispatched name is
+    // deliberately absent from it so `denial_for` classifies it
+    // `ToolPolicyDenial::Unknown`.
+    dispatch_single_tool(
+        "_test_metrics_gov_ghost_sibling",
+        ghost_name,
+        Reversibility::FullyReversible,
         None,
         None,
     )
-    .await
-    .expect("dispatch ok");
+    .await;
 
     let out = encode(&registry);
     assert!(
@@ -176,33 +163,16 @@ async fn policy_denial_metric_records_unknown_tool() {
 async fn receipt_metric_records_emitted_when_signer_configured() {
     let registry = fresh_organon_registry();
     let tool_name = "_test_metrics_gov_receipt_emit";
-    let tools = make_registry_rev(tool_name, Reversibility::FullyReversible);
-    let tool_uses = vec![(
-        "tool-1".to_owned(),
-        tool_name.to_owned(),
-        serde_json::json!({}),
-    )];
-    let mut loop_detector = LoopDetector::new(3);
-    let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
     let signer = organon::receipts::ReceiptSigner::new_session();
 
-    dispatch_tools(
-        &tool_uses,
-        &tools,
-        &test_tool_ctx(),
-        &mut loop_detector,
-        &mut all_calls,
-        1,
+    dispatch_single_tool(
+        tool_name,
+        tool_name,
+        Reversibility::FullyReversible,
         None,
-        None,
-        &policy,
-        0,
         Some(&signer),
-        None,
     )
-    .await
-    .expect("dispatch ok");
+    .await;
 
     let out = encode(&registry);
     assert!(
@@ -217,32 +187,15 @@ async fn receipt_metric_records_emitted_when_signer_configured() {
 async fn receipt_metric_records_missing_when_no_signer_configured() {
     let registry = fresh_organon_registry();
     let tool_name = "_test_metrics_gov_receipt_miss";
-    let tools = make_registry_rev(tool_name, Reversibility::FullyReversible);
-    let tool_uses = vec![(
-        "tool-1".to_owned(),
-        tool_name.to_owned(),
-        serde_json::json!({}),
-    )];
-    let mut loop_detector = LoopDetector::new(3);
-    let mut all_calls = Vec::new();
-    let policy = ToolDispatchPolicy::allow_all_for_tests(&tools);
 
-    dispatch_tools(
-        &tool_uses,
-        &tools,
-        &test_tool_ctx(),
-        &mut loop_detector,
-        &mut all_calls,
-        1,
-        None,
-        None,
-        &policy,
-        0,
+    dispatch_single_tool(
+        tool_name,
+        tool_name,
+        Reversibility::FullyReversible,
         None,
         None,
     )
-    .await
-    .expect("dispatch ok");
+    .await;
 
     let out = encode(&registry);
     assert!(
