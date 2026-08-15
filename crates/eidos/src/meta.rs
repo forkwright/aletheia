@@ -27,22 +27,40 @@
 //!
 //! | `Provenance` field | Existing eidos fields |
 //! |--------------------|-----------------------|
-//! | `actor_id` | `ArtefactMeta::actor_id`, `ArchitectureFact::updated_by` |
+//! | `actor_id` | `ArtefactMeta::actor_id`, `ArchitectureFact::updated_by`, `Fact::nous_id` |
 //! | `session_id` | `ArtefactMeta::session_id`, `FactProvenance::source_session_id` |
 //! | `source_kind` | `VerificationRecord::source` |
 //! | `source_locator` | `ArtefactMeta::source_locator`, `Finding::source` |
 //! | `evidence_refs` | `ArtefactMeta::evidence_refs`, `ArchitectureFact::evidence` |
 //! | `confidence` | `ArtefactMeta::confidence`, `FactProvenance::confidence` |
+//! | `tier` | `FactProvenance::tier` |
+//! | `valid_from` / `valid_to` | `FactTemporal::valid_from`, `FactTemporal::valid_to` |
 //! | `supersedes` / `supersede_reason` | `ArtefactMeta` supersession fields |
-//! | `generated_at` | `ArtefactMeta::generated_at`, verification/edge timestamps |
+//! | `superseded_by` | `FactLifecycle::superseded_by` |
+//! | `generated_at` | `ArtefactMeta::generated_at`, verification/edge timestamps, `FactTemporal::recorded_at` |
+//!
+//! # Supersession has two directions
+//!
+//! `supersedes` and `superseded_by` are not inverses of the same field read
+//! from different ends -- they are genuinely different edges. `supersedes`
+//! is backward-looking ("the artefact this one replaces"), populated by
+//! producers like `ArtefactMeta` that only know their own predecessor.
+//! `superseded_by` is forward-looking ("the fact that replaced this one"),
+//! which is the only direction [`FactLifecycle`](crate::knowledge::FactLifecycle)
+//! tracks. A single [`Fact`](crate::knowledge::Fact) never carries its own
+//! backward pointer, so [`From<&Fact>`] leaves `supersedes` empty and
+//! populates `superseded_by` instead -- both fields exist on [`Provenance`]
+//! so no producer is forced to fabricate the direction it doesn't have.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::id::FactId;
 use crate::knowledge::{
-    CausalEdge, FactProvenance, VerificationRecord, architecture_fact::ArchitectureFact,
-    finding::Finding, format_timestamp,
+    CausalEdge, EpistemicTier, Fact, FactLifecycle, FactProvenance, FactTemporal,
+    VerificationRecord, architecture_fact::ArchitectureFact, finding::Finding, format_timestamp,
+    parse_timestamp,
 };
 
 /// Every persistable artefact carries provenance metadata.
@@ -88,6 +106,23 @@ pub struct Provenance {
     /// Human-readable reason for supersession, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supersede_reason: Option<String>,
+    /// Identifier of the artefact that replaced this one, when known.
+    ///
+    /// The forward-looking counterpart to `supersedes` -- see the
+    /// "Supersession has two directions" note above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<String>,
+    /// Epistemic confidence tier, when the source carries one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tier: Option<EpistemicTier>,
+    /// RFC 3339 timestamp of when the artefact became true/valid in the
+    /// domain (bi-temporal validity start), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_from: Option<String>,
+    /// RFC 3339 timestamp of when the artefact ceased to be true/valid in
+    /// the domain (bi-temporal validity end), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub valid_to: Option<String>,
     /// RFC 3339 timestamp for generation, update, verification, or observation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub generated_at: Option<String>,
@@ -143,6 +178,34 @@ impl Provenance {
     ) -> Self {
         self.supersedes = Some(supersedes.into());
         self.supersede_reason = Some(reason.into());
+        self
+    }
+
+    /// Set the forward-looking supersession pointer (the artefact that
+    /// replaced this one). See the "Supersession has two directions" note
+    /// on the module docs.
+    #[must_use]
+    pub fn with_superseded_by(mut self, superseded_by: impl Into<String>) -> Self {
+        self.superseded_by = Some(superseded_by.into());
+        self
+    }
+
+    /// Set the epistemic confidence tier.
+    #[must_use]
+    pub fn with_tier(mut self, tier: EpistemicTier) -> Self {
+        self.tier = Some(tier);
+        self
+    }
+
+    /// Set bi-temporal domain validity bounds.
+    #[must_use]
+    pub fn with_validity(
+        mut self,
+        valid_from: impl Into<String>,
+        valid_to: impl Into<String>,
+    ) -> Self {
+        self.valid_from = Some(valid_from.into());
+        self.valid_to = Some(valid_to.into());
         self
     }
 
@@ -358,6 +421,14 @@ impl From<&ArtefactMeta> for Provenance {
             confidence: meta.confidence.map(f64::from),
             supersedes: meta.supersedes.clone(),
             supersede_reason: meta.supersede_reason.clone(),
+            // WHY: ArtefactMeta only knows its own backward predecessor, never
+            // whether something newer has replaced it.
+            superseded_by: None,
+            // WHY: ArtefactMeta carries no epistemic tier or bi-temporal
+            // validity window -- those are eidos-fact-specific concepts.
+            tier: None,
+            valid_from: None,
+            valid_to: None,
             generated_at: Some(meta.generated_at.clone()),
         }
     }
@@ -374,6 +445,7 @@ impl From<&FactProvenance> for Provenance {
         Self {
             session_id: provenance.source_session_id.clone(),
             confidence: Some(provenance.confidence),
+            tier: Some(provenance.tier),
             ..Self::default()
         }
     }
@@ -382,6 +454,126 @@ impl From<&FactProvenance> for Provenance {
 impl From<FactProvenance> for Provenance {
     fn from(provenance: FactProvenance) -> Self {
         Self::from(&provenance)
+    }
+}
+
+impl From<&Fact> for Provenance {
+    fn from(fact: &Fact) -> Self {
+        Self {
+            actor_id: Some(fact.nous_id.clone()),
+            session_id: fact.provenance.source_session_id.clone(),
+            confidence: Some(fact.provenance.confidence),
+            tier: Some(fact.provenance.tier),
+            valid_from: Some(format_timestamp(&fact.temporal.valid_from)),
+            valid_to: Some(format_timestamp(&fact.temporal.valid_to)),
+            generated_at: Some(format_timestamp(&fact.temporal.recorded_at)),
+            // WHY: a Fact only carries the forward supersession pointer
+            // (who replaced it); it never records who it replaced. See the
+            // "Supersession has two directions" module note.
+            superseded_by: fact.lifecycle.superseded_by.as_ref().map(FactId::to_string),
+            ..Self::default()
+        }
+    }
+}
+
+impl From<Fact> for Provenance {
+    fn from(fact: Fact) -> Self {
+        Self::from(&fact)
+    }
+}
+
+/// Fact-domain provenance/temporal/lifecycle fields reconstituted from a
+/// canonical [`Provenance`] projection.
+///
+/// Deliberately narrower than [`Fact`]: fields with no provenance meaning
+/// ([`FactAccess`](crate::knowledge::FactAccess) access counters, forgetting
+/// state) are not reconstructed here because `Provenance` never carried them
+/// in the first place -- there is nothing to round-trip.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FactProvenanceParts {
+    /// Reconstructed bi-temporal validity/recording timestamps.
+    pub temporal: FactTemporal,
+    /// Reconstructed confidence/tier/session provenance.
+    pub provenance: FactProvenance,
+    /// Reconstructed supersession lifecycle (forgetting state defaults to
+    /// not-forgotten -- `Provenance` carries no forgetting signal).
+    pub lifecycle: FactLifecycle,
+}
+
+/// Error returned when a [`Provenance`] value is missing a field required to
+/// reconstitute fact-domain provenance/temporal/lifecycle data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProvenanceReconstitutionError(pub String);
+
+impl std::fmt::Display for ProvenanceReconstitutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "cannot reconstitute fact provenance: {}", self.0)
+    }
+}
+
+impl std::error::Error for ProvenanceReconstitutionError {}
+
+impl TryFrom<&Provenance> for FactProvenanceParts {
+    type Error = ProvenanceReconstitutionError;
+
+    fn try_from(provenance: &Provenance) -> Result<Self, Self::Error> {
+        let err = |field: &str| ProvenanceReconstitutionError(format!("missing `{field}`"));
+
+        let tier = provenance.tier.ok_or_else(|| err("tier"))?;
+        let confidence = provenance.confidence.ok_or_else(|| err("confidence"))?;
+        let valid_from = provenance
+            .valid_from
+            .as_deref()
+            .and_then(parse_timestamp)
+            .ok_or_else(|| err("valid_from"))?;
+        let valid_to = provenance
+            .valid_to
+            .as_deref()
+            .and_then(parse_timestamp)
+            .ok_or_else(|| err("valid_to"))?;
+        let recorded_at = provenance
+            .generated_at
+            .as_deref()
+            .and_then(parse_timestamp)
+            .ok_or_else(|| err("generated_at"))?;
+        let superseded_by = provenance
+            .superseded_by
+            .as_deref()
+            .map(FactId::try_from)
+            .transpose()
+            .map_err(|e| ProvenanceReconstitutionError(format!("invalid `superseded_by`: {e}")))?;
+
+        Ok(Self {
+            temporal: FactTemporal {
+                valid_from,
+                valid_to,
+                recorded_at,
+            },
+            provenance: FactProvenance {
+                confidence,
+                tier,
+                source_session_id: provenance.session_id.clone(),
+                // WHY: stability_hours is a decay-tuning parameter derived
+                // from FactType at extraction time, not a provenance fact --
+                // Provenance carries no fact_type to derive it from, so the
+                // tier's own multiplier is used as a tier-consistent default.
+                stability_hours: tier.stability_multiplier(),
+            },
+            lifecycle: FactLifecycle {
+                superseded_by,
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+        })
+    }
+}
+
+impl TryFrom<Provenance> for FactProvenanceParts {
+    type Error = ProvenanceReconstitutionError;
+
+    fn try_from(provenance: Provenance) -> Result<Self, Self::Error> {
+        Self::try_from(&provenance)
     }
 }
 
@@ -662,5 +854,139 @@ mod tests {
             !json.contains("supersedes"),
             "supersedes should be absent when None"
         );
+    }
+
+    use crate::knowledge::{FactAccess, FactSensitivity, Visibility, far_future};
+
+    fn verified_superseded_fact() -> Fact {
+        Fact {
+            id: FactId::new("fact-1").expect("valid id"),
+            nous_id: "nous-alpha".to_owned(),
+            fact_type: "identity".to_owned(),
+            content: "operator prefers dense PRs".to_owned(),
+            scope: None,
+            project_id: None,
+            sensitivity: FactSensitivity::default(),
+            visibility: Visibility::default(),
+            temporal: FactTemporal {
+                valid_from: "2026-01-01T00:00:00Z".parse().expect("valid timestamp"),
+                valid_to: far_future(),
+                recorded_at: "2026-01-02T00:00:00Z".parse().expect("valid timestamp"),
+            },
+            provenance: FactProvenance {
+                confidence: 0.92,
+                tier: EpistemicTier::Verified,
+                source_session_id: Some("session-77".to_owned()),
+                stability_hours: 17_520.0,
+            },
+            lifecycle: FactLifecycle {
+                superseded_by: Some(FactId::new("fact-2").expect("valid id")),
+                is_forgotten: false,
+                forgotten_at: None,
+                forget_reason: None,
+            },
+            access: FactAccess {
+                access_count: 3,
+                last_accessed_at: None,
+            },
+        }
+    }
+
+    #[test]
+    fn fact_to_provenance_carries_actor_tier_time_and_forward_supersession() {
+        let fact = verified_superseded_fact();
+        let provenance = Provenance::from(&fact);
+
+        assert_eq!(provenance.actor_id.as_deref(), Some("nous-alpha"));
+        assert_eq!(provenance.session_id.as_deref(), Some("session-77"));
+        assert_eq!(provenance.tier, Some(EpistemicTier::Verified));
+        assert_eq!(provenance.confidence, Some(0.92));
+        assert_eq!(provenance.superseded_by.as_deref(), Some("fact-2"));
+        assert!(
+            provenance.supersedes.is_none(),
+            "a single Fact never carries its own backward pointer -- \
+             only the forward superseded_by direction exists on FactLifecycle"
+        );
+        assert!(
+            provenance.evidence_refs.is_empty(),
+            "Fact carries no evidence_refs -- must not be fabricated"
+        );
+        assert_eq!(
+            provenance.valid_from.as_deref(),
+            Some(format_timestamp(&fact.temporal.valid_from)).as_deref()
+        );
+        assert_eq!(
+            provenance.valid_to.as_deref(),
+            Some(format_timestamp(&fact.temporal.valid_to)).as_deref()
+        );
+    }
+
+    #[test]
+    fn fact_provenance_round_trip_survives_actor_tier_time_and_supersession() {
+        let original = verified_superseded_fact();
+        let provenance = Provenance::from(&original);
+        let reconstituted =
+            FactProvenanceParts::try_from(&provenance).expect("all required fields present");
+
+        assert_eq!(
+            reconstituted.provenance.confidence,
+            original.provenance.confidence
+        );
+        assert_eq!(reconstituted.provenance.tier, original.provenance.tier);
+        assert_eq!(
+            reconstituted.provenance.source_session_id,
+            original.provenance.source_session_id
+        );
+        assert_eq!(
+            format_timestamp(&reconstituted.temporal.valid_from),
+            format_timestamp(&original.temporal.valid_from)
+        );
+        assert_eq!(
+            format_timestamp(&reconstituted.temporal.valid_to),
+            format_timestamp(&original.temporal.valid_to)
+        );
+        assert_eq!(
+            format_timestamp(&reconstituted.temporal.recorded_at),
+            format_timestamp(&original.temporal.recorded_at)
+        );
+        assert_eq!(
+            reconstituted.lifecycle.superseded_by,
+            original.lifecycle.superseded_by
+        );
+    }
+
+    #[test]
+    fn provenance_missing_tier_fails_reconstitution() {
+        let provenance = Provenance::new().with_confidence(0.5);
+        let err = FactProvenanceParts::try_from(&provenance)
+            .expect_err("tier is required to reconstitute FactProvenance");
+        assert!(err.0.contains("tier"));
+    }
+
+    #[test]
+    fn provenance_invalid_superseded_by_fails_reconstitution() {
+        let provenance = Provenance::new()
+            .with_tier(EpistemicTier::Verified)
+            .with_confidence(0.5)
+            .with_validity("2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z")
+            .with_generated_at("2026-01-01T00:00:00Z")
+            .with_superseded_by("");
+        let err = FactProvenanceParts::try_from(&provenance)
+            .expect_err("empty FactId must fail validation");
+        assert!(err.0.contains("superseded_by"));
+    }
+
+    #[test]
+    fn artefact_meta_conversion_does_not_fabricate_fact_only_fields() {
+        // Guards the "no manufacturing" convention documented on the
+        // Provenance module docs: a producer that doesn't carry a concept
+        // must leave it None rather than defaulting it to something that
+        // looks like real data.
+        let meta = ArtefactMeta::new("mneme@0.21.1", 1, "2026-04-22T00:00:00Z");
+        let provenance = Provenance::from(&meta);
+        assert!(provenance.tier.is_none());
+        assert!(provenance.valid_from.is_none());
+        assert!(provenance.valid_to.is_none());
+        assert!(provenance.superseded_by.is_none());
     }
 }
