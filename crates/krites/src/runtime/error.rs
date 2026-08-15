@@ -17,6 +17,8 @@ pub(crate) enum RuntimeError {
     /// A running query was cancelled (poison/timeout).
     #[snafu(display("Running query is killed before completion"))]
     QueryKilled {
+        /// Distinguishes an explicit kill from a wall-clock timeout.
+        reason: crate::runtime::db::CancellationReason,
         #[snafu(implicit)]
         location: snafu::Location,
     },

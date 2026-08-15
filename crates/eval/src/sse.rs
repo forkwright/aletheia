@@ -130,6 +130,21 @@ pub(crate) fn tool_call_count(events: &[ParsedSseEvent]) -> usize {
     events.iter().filter(|e| e.event_type == "tool_use").count()
 }
 
+/// Names of every tool the stream invoked, in call order (duplicates kept).
+///
+/// Used by `manifest::SessionScenario` to assert tool discipline: a scenario
+/// can require or forbid specific tool names without needing the full
+/// request/response body.
+#[tracing::instrument(skip_all, fields(event_count = events.len()))]
+pub(crate) fn tool_names_used(events: &[ParsedSseEvent]) -> Vec<String> {
+    events
+        .iter()
+        .filter(|e| e.event_type == "tool_use")
+        .filter_map(|e| e.data.get("name").and_then(|v| v.as_str()))
+        .map(str::to_owned)
+        .collect()
+}
+
 /// Extract usage data from the `message_complete` event.
 #[derive(Debug, Clone, Deserialize)]
 pub struct UsageData {

@@ -50,7 +50,10 @@ reach[a, c] := reach[a, b], edge[b, c]
 fn query_killed_maps_to_typed_timeout() {
     // WHY: Construct the typed Krites error directly so the test is independent
     // of the `:timeout` poison mechanism and proves the mapping contract.
-    let engine_err = crate::engine::error::QueryKilledSnafu.build();
+    let engine_err = crate::engine::error::QueryKilledSnafu {
+        reason: crate::engine::CancellationReason::Killed,
+    }
+    .build();
     let err =
         KnowledgeStore::map_engine_err(engine_err, Some(std::time::Duration::from_millis(50)));
 
@@ -62,7 +65,10 @@ fn query_killed_maps_to_typed_timeout() {
 
 #[test]
 fn query_killed_without_timeout_maps_to_zero_secs() {
-    let engine_err = crate::engine::error::QueryKilledSnafu.build();
+    let engine_err = crate::engine::error::QueryKilledSnafu {
+        reason: crate::engine::CancellationReason::Killed,
+    }
+    .build();
     let err = KnowledgeStore::map_engine_err(engine_err, None);
 
     assert!(

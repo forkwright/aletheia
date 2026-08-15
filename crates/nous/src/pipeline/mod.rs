@@ -713,6 +713,10 @@ pub struct ReflectionResult {
     pub status: ReflectionStatus,
     /// Number of facts emitted (reflected) during this stage.
     pub facts_emitted: u32,
+    /// Ids of the facts reflection wrote, in emission order (#4542). Used
+    /// to link the run's own memory writes back to its `RunContextRecord`
+    /// via `RunMemoryUpdate`.
+    pub emitted_fact_ids: Vec<String>,
 }
 
 /// Reflection stage completion status.
@@ -748,10 +752,15 @@ impl ReflectionStatus {
 impl ReflectionResult {
     /// Create a new reflection result.
     #[must_use]
-    pub fn new(status: ReflectionStatus, facts_emitted: u32) -> Self {
+    pub fn new(
+        status: ReflectionStatus,
+        facts_emitted: u32,
+        emitted_fact_ids: Vec<String>,
+    ) -> Self {
         Self {
             status,
             facts_emitted,
+            emitted_fact_ids,
         }
     }
 }
@@ -1499,6 +1508,64 @@ pub(crate) async fn run_pipeline(
         .await?;
         stages_completed += 1;
 
+        // WHY (#4542): persist the run's memory-selection provenance, and
+        // any memory writes the run itself caused, as a sibling record to
+        // the turn-attempt lifecycle note, keyed by the same turn id, so
+        // `aletheia memory inspect-context <turn_id>` can show what was
+        // selected/excluded and why, and what the run wrote back. This runs
+        // after both recall (ctx.recall_result) and reflection
+        // (ctx.reflection_result) so one record captures both -- reflection
+        // is itself a memory write caused by this run, and splitting it
+        // into a second note would let inspect-context see a stale,
+        // update-less record for any turn that reflects.
+        if let Some(recall_result) = ctx.recall_result.as_ref() {
+            let mut run_context_record = mneme::run_context::RunContextRecord::new(
+                input.session.turn_id.to_string(),
+                input.session.id.clone(),
+                input.session.nous_id.clone(),
+                jiff::Timestamp::now(),
+            )
+            .with_turn_id(input.session.turn_id.to_string());
+            for item in &recall_result.selected_context {
+                run_context_record.add_selected_context(item.clone());
+            }
+            for item in &recall_result.excluded_context {
+                run_context_record.add_excluded_context(item.clone());
+            }
+            if let Some(reflection_result) = ctx.reflection_result.as_ref() {
+                let occurred_at = jiff::Timestamp::now();
+                for fact_id in &reflection_result.emitted_fact_ids {
+                    run_context_record.add_memory_update(
+                        mneme::run_context::RunMemoryUpdate::new(
+                            input.session.turn_id.to_string(),
+                            input.session.id.clone(),
+                            fact_id.clone(),
+                            mneme::run_context::MemoryUpdateKind::Created,
+                            occurred_at,
+                        )
+                        .with_reason("reflection"),
+                    );
+                }
+            }
+            if let Some(store_mutex) = session_store {
+                let persist_result = with_session_store(store_mutex, |store| {
+                    crate::turn_record::persist_run_context(
+                        store,
+                        &input.session.nous_id,
+                        &run_context_record,
+                    )
+                })
+                .await;
+                if let Err(e) = persist_result {
+                    tracing::warn!(
+                        nous_id = %config.id,
+                        error = %e,
+                        "failed to persist run-context provenance record"
+                    );
+                }
+            }
+        }
+
         // WHY: training capture runs after finalize (and optional reflection) so only persisted, successful
         // turns enter the training corpus. Errors are logged, never propagated:
         // training capture must never block the pipeline.
@@ -1932,7 +1999,7 @@ mod stages;
 use stages::{
     FinalizeOutcome, run_context_stage, run_execute_stage, run_finalize_stage,
     run_full_compact_stage, run_guard_stage, run_history_stage, run_microcompact_stage,
-    run_recall_stage, run_reflection_stage,
+    run_recall_stage, run_reflection_stage, with_session_store,
 };
 
 #[cfg(test)]

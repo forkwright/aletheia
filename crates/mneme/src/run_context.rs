@@ -308,9 +308,19 @@ pub struct ContextItemProvenance {
     /// record outside an authorized internal inspection surface.
     pub content: String,
     /// Confidence score attached to the source memory.
+    ///
+    /// For [`Self::from_fact`] this is the fact's own stored confidence.
+    /// For [`Self::from_scored_result`] the underlying stored confidence is
+    /// not available -- this carries the recall pipeline's composite
+    /// retrieval score instead, which is a different (though related)
+    /// quantity. See that constructor's docs.
     pub confidence: f64,
-    /// Epistemic trust tier attached to the source memory.
-    pub tier: EpistemicTier,
+    /// Epistemic trust tier attached to the source memory, when known.
+    ///
+    /// `None` when built from a source (such as
+    /// [`Self::from_scored_result`]) that does not carry the underlying
+    /// record's stored tier -- never fabricated.
+    pub tier: Option<EpistemicTier>,
     /// Data-sovereignty class for provider and export policy.
     pub sensitivity: FactSensitivity,
     /// Visibility boundary for cross-agent and external surfaces.
@@ -345,13 +355,63 @@ impl ContextItemProvenance {
             source_session_id: fact.provenance.source_session_id.clone(),
             content: fact.content.clone(),
             confidence: fact.provenance.confidence,
-            tier: fact.provenance.tier,
+            tier: Some(fact.provenance.tier),
             sensitivity: fact.sensitivity,
             visibility: fact.visibility,
             scope: fact.scope,
             project_id: fact.project_id.clone(),
             lifecycle: ContextLifecycle::from_fact(fact, observed_at),
             evidence,
+        }
+    }
+
+    /// Build provenance from a recall-pipeline scored result.
+    ///
+    /// WHY this is a separate constructor from [`Self::from_fact`]: the
+    /// recall pipeline's [`ScoredResult`] is already a lossy projection of
+    /// the underlying record -- it carries no stored confidence, epistemic
+    /// tier, or bi-temporal validity data, only what recall itself computed
+    /// (content, source identity, sensitivity/visibility/scope, and the
+    /// composite retrieval score). Fabricating those missing fields would
+    /// violate the no-manufactured-provenance invariant this module exists
+    /// to uphold, so here `confidence` is the *retrieval* score (documented
+    /// on the field itself), `tier` is `None`, and every
+    /// [`ContextLifecycle`] field except `state` is `None`.
+    ///
+    /// `state` is `Active` because the recall queries that produce a
+    /// `ScoredResult` already filter to non-forgotten, non-superseded,
+    /// currently-valid records at the Datalog level (see
+    /// `crates/episteme/src/query/queries.rs`'s `BM25_RECALL` /
+    /// `SEMANTIC_SEARCH` / `full_current_facts` filters) -- that much is
+    /// genuinely known at this layer, not assumed.
+    #[must_use]
+    pub fn from_scored_result(result: &ScoredResult) -> Self {
+        Self {
+            source_type: result.source_type.clone(),
+            source_id: result.source_id.clone(),
+            nous_id: result.nous_id.clone(),
+            source_session_id: None,
+            content: result.content.clone(),
+            confidence: result.score,
+            tier: None,
+            sensitivity: result.sensitivity,
+            visibility: result.visibility,
+            scope: result.scope,
+            project_id: result.project_id.clone(),
+            lifecycle: ContextLifecycle {
+                state: MemoryLifecycleState::Active,
+                valid_from: None,
+                valid_to: None,
+                recorded_at: None,
+                updated_at: None,
+                last_accessed_at: None,
+                invalidated_at: None,
+                superseded_by: None,
+                forget_reason: None,
+                stale_after_hours: None,
+                observed_age_hours: None,
+            },
+            evidence: Vec::new(),
         }
     }
 }
@@ -881,8 +941,8 @@ pub struct InspectableContextItem {
     pub redaction_reason: Option<String>,
     /// Confidence score attached to the source memory.
     pub confidence: f64,
-    /// Epistemic trust tier attached to the source memory.
-    pub tier: EpistemicTier,
+    /// Epistemic trust tier attached to the source memory, when known.
+    pub tier: Option<EpistemicTier>,
     /// Data-sovereignty class for provider and export policy.
     pub sensitivity: FactSensitivity,
     /// Visibility boundary for cross-agent and external surfaces.
@@ -1004,7 +1064,7 @@ fn append_items(out: &mut String, items: &[InspectableContextItem]) {
             out,
             format_args!(
                 "  - trust: tier={} confidence={:.3} sensitivity={} visibility={}\n",
-                item.tier.as_str(),
+                item.tier.map_or("unknown", EpistemicTier::as_str),
                 item.confidence,
                 item.sensitivity.as_str(),
                 item.visibility.as_str()

@@ -1142,3 +1142,15 @@ dest_module = "hot_reload.rs"
 gate = "Hot-reload watcher attaches a rule directory and reloads .mnm fixed rules on change; gated behind the hot-reload feature, so the wave that owns hot_reload.rs owns this."
 call_sites = 2
 call_sites_method = "grep -rn 'attach_rule_store(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "api-cancellation-reason"
+category = "public_api"
+item = "CancellationReason"
+source = "crates/krites/src/lib.rs:38"
+dest_wave = "sovereign"
+dest_module = "runtime/db.rs (native Aletheia addition, #4511 QueryBudget/cancellation work -- not present in the CozoDB original, so there is nothing to migrate)"
+gate = "Poison::check() and Error::cancellation_reason() agree on cause: Killed only when set_killed() was the trigger, WallClock only when the timeout deadline elapsed, even across repeated check() calls after the first (crates/krites/src/runtime/db.rs poison_tests)."
+call_sites = 2
+call_sites_method = "grep -rn 'CancellationReason' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "New capability introduced in #4511; zero-or-few external call sites is expected at introduction, not a gap."

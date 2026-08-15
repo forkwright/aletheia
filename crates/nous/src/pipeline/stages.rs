@@ -176,7 +176,7 @@ fn cached_distillation_for_session(
 /// onto a blocking-aware thread with `block_in_place` + `Handle::block_on`,
 /// matching the pattern in `crate::adapters`. The current-thread runtime has no
 /// spare worker, so we acquire the lock async and run the operation inline.
-async fn with_session_store<F, T>(store: &Mutex<SessionStore>, f: F) -> T
+pub(super) async fn with_session_store<F, T>(store: &Mutex<SessionStore>, f: F) -> T
 where
     F: FnOnce(&SessionStore) -> T,
 {
@@ -1087,7 +1087,14 @@ pub(super) async fn run_reflection_stage(
             stage: "reflection",
             reason: "reflection disabled".to_owned(),
         });
-        record_reflection_outcome(config, ctx, emitter, ReflectionStatus::Disabled, 0);
+        record_reflection_outcome(
+            config,
+            ctx,
+            emitter,
+            ReflectionStatus::Disabled,
+            0,
+            Vec::new(),
+        );
         complete_reflection_stage(config, emitter, &span, &start);
         return Ok(());
     }
@@ -1099,7 +1106,14 @@ pub(super) async fn run_reflection_stage(
             stage: "reflection",
             reason: "knowledge store unavailable".to_owned(),
         });
-        record_reflection_outcome(config, ctx, emitter, ReflectionStatus::NoStore, 0);
+        record_reflection_outcome(
+            config,
+            ctx,
+            emitter,
+            ReflectionStatus::NoStore,
+            0,
+            Vec::new(),
+        );
         complete_reflection_stage(config, emitter, &span, &start);
         return Ok(());
     };
@@ -1131,7 +1145,14 @@ pub(super) async fn run_reflection_stage(
         }
         ReflectionStatus::Disabled | ReflectionStatus::NoStore => {}
     }
-    record_reflection_outcome(config, ctx, emitter, outcome.status, outcome.facts_emitted);
+    record_reflection_outcome(
+        config,
+        ctx,
+        emitter,
+        outcome.status,
+        outcome.facts_emitted,
+        outcome.emitted_fact_ids,
+    );
     complete_reflection_stage(config, emitter, &span, &start);
     Ok(())
 }
@@ -1140,30 +1161,37 @@ struct ReflectionWorkOutcome {
     status: ReflectionStatus,
     facts_emitted: u32,
     error_type: Option<&'static str>,
+    // WHY (#4542): "memory updates caused by a run are linked back to the
+    // run record" needs the actual fact ids reflection wrote, not just a
+    // count -- RunMemoryUpdate is per-fact.
+    emitted_fact_ids: Vec<String>,
 }
 
 impl ReflectionWorkOutcome {
-    const fn completed(facts_emitted: u32) -> Self {
+    fn completed(facts_emitted: u32, emitted_fact_ids: Vec<String>) -> Self {
         Self {
             status: ReflectionStatus::Completed,
             facts_emitted,
             error_type: None,
+            emitted_fact_ids,
         }
     }
 
-    const fn skipped() -> Self {
+    fn skipped() -> Self {
         Self {
             status: ReflectionStatus::Skipped,
             facts_emitted: 0,
             error_type: None,
+            emitted_fact_ids: Vec::new(),
         }
     }
 
-    const fn failed(error_type: &'static str, facts_emitted: u32) -> Self {
+    fn failed(error_type: &'static str, facts_emitted: u32, emitted_fact_ids: Vec<String>) -> Self {
         Self {
             status: ReflectionStatus::Failed,
             facts_emitted,
             error_type: Some(error_type),
+            emitted_fact_ids,
         }
     }
 }
@@ -1182,13 +1210,14 @@ async fn persist_reflected_facts(
         Ok(facts) => facts,
         Err(err) => {
             warn!(error = %err, "reflection query failed");
-            return ReflectionWorkOutcome::failed("query_failed", 0);
+            return ReflectionWorkOutcome::failed("query_failed", 0, Vec::new());
         }
     };
 
     source_facts.sort_by_key(|fact| Reverse(fact.temporal.recorded_at));
 
     let mut facts_persisted = 0_u32;
+    let mut emitted_fact_ids = Vec::new();
     for source_fact in source_facts
         .into_iter()
         .filter(is_reflection_candidate)
@@ -1198,20 +1227,30 @@ async fn persist_reflected_facts(
             Ok(reflected) => reflected,
             Err(err) => {
                 warn!(source_fact_id = %source_fact.id, error = %err, "reflection id build failed");
-                return ReflectionWorkOutcome::failed("id_build_failed", facts_persisted);
+                return ReflectionWorkOutcome::failed(
+                    "id_build_failed",
+                    facts_persisted,
+                    emitted_fact_ids,
+                );
             }
         };
+        let reflected_id = reflected.id.to_string();
         if let Err(err) = store.insert_fact_async(reflected).await {
             warn!(source_fact_id = %source_fact.id, error = %err, "reflection write failed");
-            return ReflectionWorkOutcome::failed("persistence_failed", facts_persisted);
+            return ReflectionWorkOutcome::failed(
+                "persistence_failed",
+                facts_persisted,
+                emitted_fact_ids,
+            );
         }
+        emitted_fact_ids.push(reflected_id);
         facts_persisted = facts_persisted.saturating_add(1);
     }
 
     if facts_persisted == 0 {
         ReflectionWorkOutcome::skipped()
     } else {
-        ReflectionWorkOutcome::completed(facts_persisted)
+        ReflectionWorkOutcome::completed(facts_persisted, emitted_fact_ids)
     }
 }
 
@@ -1221,8 +1260,13 @@ fn record_reflection_outcome(
     emitter: &EventEmitter,
     status: ReflectionStatus,
     facts_emitted: u32,
+    emitted_fact_ids: Vec<String>,
 ) {
-    ctx.reflection_result = Some(ReflectionResult::new(status, facts_emitted));
+    ctx.reflection_result = Some(ReflectionResult::new(
+        status,
+        facts_emitted,
+        emitted_fact_ids,
+    ));
     emitter.emit(&ReflectionOutcome {
         nous_id: config.id.to_string(),
         status: status.as_str(),

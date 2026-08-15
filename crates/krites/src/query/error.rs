@@ -71,6 +71,18 @@ pub(crate) enum QueryError {
         location: snafu::Location,
     },
 
+    /// Evaluation exceeded a configured derived-row / work-unit budget.
+    #[snafu(display(
+        "evaluation exceeded row/work-unit budget: derived_rows={derived_rows}, max_derived_rows={max_derived_rows}, stratum={stratum}"
+    ))]
+    RowLimitExceeded {
+        derived_rows: u64,
+        max_derived_rows: u64,
+        stratum: usize,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Arity mismatch between rule/relation and its application.
     #[snafu(display("arity mismatch: {message}"))]
     ArityMismatch {

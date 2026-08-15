@@ -393,7 +393,12 @@ fn append_jsonl_durable(path: &Path, records: &[EvalRecord]) -> Result<()> {
     Ok(())
 }
 
-fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
+/// Serialize `value` to pretty JSON and write it atomically (temp file +
+/// rename). `pub(crate)` so other persistence-shaped modules (e.g.
+/// `benchmarks::self_baseline`) reuse this instead of a second
+/// hand-rolled write that would have to independently avoid the
+/// crate's disallowed `std::fs::write`.
+pub(crate) fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     let json = serde_json::to_vec_pretty(value).context(error::JsonSnafu)?;
     write_bytes_atomic(path, &json)
 }

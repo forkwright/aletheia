@@ -10,7 +10,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
 - 210 files under `src/`: 142 derived, 68 sovereign, 0 dual
-- Mean verbatim match across the 142 derived files: 44.4% (unweighted average of the per-file `verbatim_pct` column below)
+- Mean verbatim match across the 142 derived files: 44.3% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -107,7 +107,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/ast.rs` | `fts/ast.rs` | 71.3% | derived |
 | `src/fts/config.rs` | `fts/mod.rs` | 34.1% | derived |
 | `src/fts/error.rs` | — | 0.0% | sovereign |
-| `src/fts/indexing.rs` | `fts/indexing.rs` | 31.8% | derived |
+| `src/fts/indexing.rs` | `fts/indexing.rs` | 31.4% | derived |
 | `src/fts/mod.rs` | `fts/mod.rs` | 30.1% | derived |
 | `src/fts/tokenizer/alphanum_only.rs` | `fts/tokenizer/alphanum_only.rs` | 67.7% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/fold_table.rs` | cf. `fts/tokenizer/ascii_folding_filter.rs` | 0.0% | sovereign |
@@ -158,7 +158,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/query/compile.rs` | `query/compile.rs` | 74.6% | derived |
 | `src/query/context.rs` | — | 0.0% | sovereign |
 | `src/query/error.rs` | — | 0.0% | sovereign |
-| `src/query/eval.rs` | `query/eval.rs` | 52.3% | derived |
+| `src/query/eval.rs` | `query/eval.rs` | 42.3% | derived |
 | `src/query/graph.rs` | `query/graph.rs` | 56.7% | derived |
 | `src/query/logical.rs` | `query/logical.rs` | 77.3% | derived |
 | `src/query/magic.rs` | `query/magic.rs` | 76.2% | derived |
@@ -179,15 +179,15 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/query/tests/reference_semantics.rs` | — | 0.0% | sovereign |
 | `src/query_cache.rs` | — | 0.0% | sovereign |
 | `src/runtime/callback.rs` | `runtime/callback.rs` | 55.3% | derived |
-| `src/runtime/db.rs` | `runtime/db.rs` | 29.8% | derived |
+| `src/runtime/db.rs` | `runtime/db.rs` | 23.7% | derived |
 | `src/runtime/error.rs` | — | 0.0% | sovereign |
-| `src/runtime/exec.rs` | `runtime/db.rs` | 67.8% | derived |
+| `src/runtime/exec.rs` | `runtime/db.rs` | 66.8% | derived |
 | `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | derived |
 | `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | derived |
 | `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | derived |
 | `src/runtime/hnsw/put.rs` | `runtime/hnsw.rs` | 27.5% | derived |
 | `src/runtime/hnsw/remove.rs` | `runtime/hnsw.rs` | 49.3% | derived |
-| `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 20.3% | derived |
+| `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 19.7% | derived |
 | `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 11.9% | derived |
 | `src/runtime/hnsw/visited_pool.rs` | `runtime/hnsw.rs` | 3.3% | derived |
 | `src/runtime/hnsw_sovereign/adaptive.rs` | — | 0.0% | sovereign |
@@ -199,7 +199,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/hnsw_sovereign/search.rs` | — | 0.0% | sovereign |
 | `src/runtime/hnsw_sovereign/types.rs` | — | 0.0% | sovereign |
 | `src/runtime/imperative.rs` | `runtime/imperative.rs` | 35.6% | derived |
-| `src/runtime/minhash_lsh.rs` | `runtime/minhash_lsh.rs` | 53.6% | derived |
+| `src/runtime/minhash_lsh.rs` | `runtime/minhash_lsh.rs` | 53.0% | derived |
 | `src/runtime/mod.rs` | `runtime/mod.rs` | 0.0% | derived |
 | `src/runtime/query_context_impl.rs` | — | 0.0% | sovereign |
 | `src/runtime/relation/extractors.rs` | `query/stored.rs` | 56.9% | derived |
@@ -217,7 +217,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/tests/indexing.rs` | `runtime/tests.rs` | 41.2% | derived |
 | `src/runtime/tests/mod.rs` | `runtime/tests.rs` | 0.0% | derived |
 | `src/runtime/tests/triggers_callbacks.rs` | `runtime/tests.rs` | 7.6% | derived |
-| `src/runtime/transact.rs` | `runtime/transact.rs` | 12.4% | derived |
+| `src/runtime/transact.rs` | `runtime/transact.rs` | 12.1% | derived |
 | `src/storage/error.rs` | — | 0.0% | sovereign |
 | `src/storage/fjall_backend.rs` | — | 0.0% | sovereign |
 | `src/storage/mem.rs` | cf. `storage/mem.rs` | 22.6% | sovereign |

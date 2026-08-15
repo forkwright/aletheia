@@ -43,6 +43,8 @@ pub mod longmemeval;
 pub mod metrics;
 /// Live benchmark runner: executes a benchmark against an aletheia instance.
 pub mod runner;
+/// Self-history baseline comparison: diff a run against its own prior run.
+pub mod self_baseline;
 /// Dataset validation primitives shared by benchmark loaders.
 pub mod validation;
 

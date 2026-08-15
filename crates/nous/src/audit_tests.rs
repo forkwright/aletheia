@@ -78,6 +78,8 @@ fn build_audit_record_includes_filtered_recall_facts() {
                 id: "fact-internal".to_owned(),
                 sensitivity: mneme::knowledge::FactSensitivity::Internal,
             }],
+            selected_context: Vec::new(),
+            excluded_context: Vec::new(),
         }),
         ..crate::pipeline::PipelineContext::default()
     };
@@ -132,6 +134,8 @@ fn build_audit_record_omits_filtered_recall_facts_when_disabled() {
                 id: "fact-internal".to_owned(),
                 sensitivity: mneme::knowledge::FactSensitivity::Internal,
             }],
+            selected_context: Vec::new(),
+            excluded_context: Vec::new(),
         }),
         ..crate::pipeline::PipelineContext::default()
     };

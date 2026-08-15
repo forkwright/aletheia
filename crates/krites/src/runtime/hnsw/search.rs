@@ -29,6 +29,13 @@ impl SessionTx<'_> {
         filter_bytecode: &Option<(Vec<Bytecode>, SourceSpan)>,
         stack: &mut Vec<DataValue>,
     ) -> Result<Vec<Tuple>> {
+        // WHY (#4511): the outer semi-naive epoch loop only observes
+        // cancellation between epochs; without this, a query killed or
+        // timed out mid-epoch still ran every HNSW search that epoch's
+        // rules called for to completion.
+        if let Some(poison) = &self.poison {
+            poison.check()?;
+        }
         if q.len() != config.manifest.vec_dim {
             return Err(InvalidOperationSnafu {
                 op: "hnsw_query",

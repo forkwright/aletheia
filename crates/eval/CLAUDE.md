@@ -60,6 +60,29 @@ Behavioral eval framework: scenario-based API testing against a live Aletheia in
   normalized-content-hash matching only when a dataset carries no evidence
   refs at all.
 
+## Eval vs. unit/integration tests
+
+- **Unit tests** (`#[cfg(test)]` inline, or `crates/eval/src/**/*_tests.rs`): pure
+  logic with no live instance -- scoring math, provenance construction,
+  manifest parsing. No network, no `EvalClient`.
+- **`crates/integration-tests/tests/eval_harness.rs`**: exercises the eval
+  harness itself (scenario registry, runner orchestration, report/coverage
+  output) against a real `aletheia` instance driven by
+  `hermeneus::test_utils::MockProvider` -- proves the harness works, not
+  that the model behaves well. `canary-*` categories are excluded from a
+  full harness run there because they exercise a real LLM and would fail
+  against the mock.
+- **`aletheia eval` (this crate's scenarios, `src/scenarios/`)**: behavioral
+  checks against a live instance. Health/auth/session-shape scenarios run
+  fine against `MockProvider`; `canary-*` and the cognitive evals need a
+  real provider to mean anything. This is where "did this agent behavior
+  improve, regress, or get more expensive" questions live -- not in
+  `cargo test`.
+
+Put a check in `cargo test` when it verifies the harness's own code. Put it
+in an eval scenario when it verifies agent or model behavior against a
+running instance.
+
 ## Common tasks
 
 | Task | Where |

@@ -189,6 +189,11 @@ impl SessionTx<'_> {
         perms: &HashPermutations,
         tokenizer: &TextAnalyzer,
     ) -> Result<Vec<Tuple>> {
+        // WHY (#4511): same rationale as hnsw_knn/fts_search -- the outer
+        // semi-naive epoch loop only observes cancellation between epochs.
+        if let Some(poison) = &self.poison {
+            poison.check()?;
+        }
         let bytes = match q {
             DataValue::Null => {
                 return Ok(vec![]);

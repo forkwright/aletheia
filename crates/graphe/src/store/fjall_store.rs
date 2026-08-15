@@ -2996,9 +2996,18 @@ impl SessionStore {
 
     // ── Agent notes ───────────────────────────────────────────────────────
 
-    /// Valid agent note categories (must match schema.rs `VALID_CATEGORIES`).
-    pub const VALID_CATEGORIES: &'static [&'static str] =
-        &["task", "decision", "preference", "correction", "context"];
+    /// Valid agent note categories. `run_context` carries memory-selection
+    /// provenance records and is deliberately distinct from `context`
+    /// (used by turn-attempt lifecycle notes) so the two note kinds never
+    /// collide under one category filter.
+    pub const VALID_CATEGORIES: &'static [&'static str] = &[
+        "task",
+        "decision",
+        "preference",
+        "correction",
+        "context",
+        "run_context",
+    ];
 
     /// Add an agent note.
     #[instrument(skip(self, content))]

@@ -540,6 +540,11 @@ impl SessionTx<'_> {
         tokenizer: &TextAnalyzer,
         stack: &mut Vec<DataValue>,
     ) -> Result<Vec<Tuple>> {
+        // WHY (#4511): same rationale as hnsw_knn's check -- the outer
+        // semi-naive epoch loop only observes cancellation between epochs.
+        if let Some(poison) = &self.poison {
+            poison.check()?;
+        }
         let ast = parse_fts_query(q)?.tokenize(tokenizer);
         if ast.is_empty() {
             return Ok(vec![]);

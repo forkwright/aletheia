@@ -205,8 +205,8 @@
       "count": 1,
       "production_count": 1,
       "test_only": false,
-      "first_evidence": "query/eval.rs:33",
-      "first_production_evidence": "query/eval.rs:33"
+      "first_evidence": "query/eval.rs:34",
+      "first_production_evidence": "query/eval.rs:34"
     },
     {
       "from": "query",
@@ -238,8 +238,8 @@
     {
       "from": "query",
       "to": "runtime",
-      "count": 26,
-      "production_count": 23,
+      "count": 30,
+      "production_count": 27,
       "test_only": false,
       "first_evidence": "query/compile.rs:30",
       "first_production_evidence": "query/compile.rs:30"
@@ -274,8 +274,8 @@
     {
       "from": "root",
       "to": "runtime",
-      "count": 19,
-      "production_count": 17,
+      "count": 21,
+      "production_count": 19,
       "test_only": false,
       "first_evidence": "async_surface.rs:32",
       "first_production_evidence": "async_surface.rs:32"
@@ -337,8 +337,8 @@
     {
       "from": "runtime",
       "to": "root",
-      "count": 32,
-      "production_count": 29,
+      "count": 33,
+      "production_count": 30,
       "test_only": false,
       "first_evidence": "runtime/db.rs:32",
       "first_production_evidence": "runtime/db.rs:32"
@@ -381,7 +381,7 @@
     }
   ],
   "file_count": 205,
-  "statement_count": 1028,
+  "statement_count": 1032,
   "required_edges_present": [
     [
       "runtime",

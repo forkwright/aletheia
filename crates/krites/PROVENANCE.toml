@@ -769,7 +769,7 @@ soak_expires_at_commit_count = 0
 path = "fts/indexing.rs"
 upstream_path = "fts/indexing.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 31.8
+verbatim_pct = 31.4
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1177,7 +1177,7 @@ soak_expires_at_commit_count = 0
 path = "query/eval.rs"
 upstream_path = "query/eval.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 52.3
+verbatim_pct = 42.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1345,7 +1345,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/db.rs"
 upstream_path = "runtime/db.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 29.8
+verbatim_pct = 23.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1361,7 +1361,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/exec.rs"
 upstream_path = "runtime/db.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 67.8
+verbatim_pct = 66.8
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1409,7 +1409,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/hnsw/search.rs"
 upstream_path = "runtime/hnsw.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 20.3
+verbatim_pct = 19.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1505,7 +1505,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/minhash_lsh.rs"
 upstream_path = "runtime/minhash_lsh.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 53.6
+verbatim_pct = 53.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1649,7 +1649,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/transact.rs"
 upstream_path = "runtime/transact.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 12.4
+verbatim_pct = 12.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
