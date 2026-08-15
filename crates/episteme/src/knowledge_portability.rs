@@ -8,22 +8,34 @@ use crate::error::Result;
 
 /// Build a `KnowledgeExport` from the knowledge store.
 ///
-/// Queries scoped facts plus only graph data reachable from those facts.
-/// Returns `None` if the store is empty or the query fails.
+/// Queries scoped facts plus only graph data reachable from those facts. See
+/// [`KnowledgeExport`](graphe::portability::KnowledgeExport) for the field
+/// coverage this export provides. Returns `None` if the store is empty or
+/// the query fails.
+///
+/// WHY: reads via [`audit_all_facts`](crate::knowledge_store::KnowledgeStore::audit_all_facts),
+/// not [`query_facts`](crate::knowledge_store::KnowledgeStore::query_facts) --
+/// the latter is a current-facts query (excludes forgotten and superseded
+/// rows), so a portability export built on it would silently lose history a
+/// caller might need to replay or audit.
 #[cfg(feature = "mneme-engine")]
 #[instrument(skip(store))]
 #[cfg_attr(
     not(test),
-    expect(dead_code, reason = "knowledge export for agent portability")
+    expect(
+        dead_code,
+        reason = "audit-correct knowledge export for agent portability; \
+                  crates/aletheia/src/commands/agent_io.rs carries an \
+                  independent export path pending unification"
+    )
 )]
 pub(crate) fn export_knowledge(
     nous_id: &str,
     store: &crate::knowledge_store::KnowledgeStore,
 ) -> Option<graphe::portability::KnowledgeExport> {
     // kanon:ignore RUST/no-result-unwrap-or-default - best-effort portability snapshot: missing data on any leg yields an empty list (then the caller short-circuits to None below) rather than blocking the export.
-    let now = crate::knowledge::format_timestamp(&jiff::Timestamp::now());
     let facts = store
-        .query_facts(nous_id, &now, 100_000)
+        .audit_all_facts(nous_id, 100_000)
         .ok()
         .unwrap_or_default();
 
@@ -76,7 +88,15 @@ pub(crate) fn export_knowledge(
 /// Returns errors if fact/entity/relationship insertion fails.
 #[cfg(feature = "mneme-engine")]
 #[instrument(skip(knowledge, store))]
-#[expect(dead_code, reason = "knowledge import for agent portability")]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "knowledge import for agent portability; \
+                  crates/aletheia/src/commands/agent_io.rs carries an \
+                  independent import path pending unification"
+    )
+)]
 pub(crate) fn import_knowledge(
     knowledge: &graphe::portability::KnowledgeExport,
     store: &crate::knowledge_store::KnowledgeStore,
@@ -147,7 +167,12 @@ mod tests {
         reason = "test assertions"
     )]
 
+    use std::collections::BTreeSet;
+
     use super::*;
+    use crate::knowledge::{
+        EpistemicTier, FactSensitivity, ForgetReason, MemoryScope, Visibility, format_timestamp,
+    };
     use crate::test_fixtures::{make_entity, make_fact, make_relationship, make_store};
 
     #[test]
@@ -237,6 +262,154 @@ mod tests {
         assert!(
             exported.relationships.is_empty(),
             "relationship to a foreign entity must not appear in scoped export"
+        );
+    }
+
+    #[test]
+    fn export_uses_audit_path_and_includes_open_ended_forgotten_and_superseded_facts() {
+        let store = make_store();
+
+        // Open-ended fact: make_fact defaults valid_to to the far-future
+        // sentinel. Regression coverage for #4548 -- a current-facts query
+        // that compares valid_to > $now with the sentinel itself as $now
+        // would exclude this row; an audit-path query must not.
+        let open_ended = make_fact("kp-open-ended", "alice", "open-ended fact");
+
+        let mut forgotten = make_fact("kp-forgotten", "alice", "forgotten fact");
+        forgotten.lifecycle.is_forgotten = true;
+        forgotten.lifecycle.forgotten_at = Some(forgotten.temporal.recorded_at);
+        forgotten.lifecycle.forget_reason = Some(ForgetReason::UserRequested);
+
+        let superseding = make_fact("kp-superseding", "alice", "superseding fact");
+        let mut superseded = make_fact("kp-superseded", "alice", "superseded fact");
+        superseded.lifecycle.superseded_by =
+            Some(crate::id::FactId::new("kp-superseding").expect("valid id"));
+        superseded.temporal.valid_to = superseded.temporal.recorded_at;
+
+        store.insert_fact(&open_ended).expect("insert open-ended");
+        store.insert_fact(&forgotten).expect("insert forgotten");
+        store.insert_fact(&superseded).expect("insert superseded");
+        store.insert_fact(&superseding).expect("insert superseding");
+
+        let exported = export_knowledge("alice", &store).expect("knowledge export");
+        let exported_ids: BTreeSet<&str> =
+            exported.facts.iter().map(|f| f.id.as_str()).collect();
+        for id in [
+            "kp-open-ended",
+            "kp-forgotten",
+            "kp-superseded",
+            "kp-superseding",
+        ] {
+            assert!(
+                exported_ids.contains(id),
+                "{id} must survive an audit-path export, which a \
+                 current-facts query would silently drop"
+            );
+        }
+    }
+
+    #[test]
+    fn export_import_round_trip_preserves_lifecycle_and_provenance_fields() {
+        let source_store = make_store();
+
+        let open_ended = make_fact("rt-open-ended", "alice", "open-ended fact");
+
+        let mut forgotten = make_fact("rt-forgotten", "alice", "forgotten fact");
+        forgotten.lifecycle.is_forgotten = true;
+        forgotten.lifecycle.forgotten_at = Some(forgotten.temporal.recorded_at);
+        forgotten.lifecycle.forget_reason = Some(ForgetReason::Outdated);
+
+        let superseding = make_fact("rt-superseding", "alice", "superseding fact");
+        let mut superseded = make_fact("rt-superseded", "alice", "superseded fact");
+        superseded.lifecycle.superseded_by =
+            Some(crate::id::FactId::new("rt-superseding").expect("valid id"));
+        superseded.temporal.valid_to = superseded.temporal.recorded_at;
+
+        let mut rich = make_fact("rt-rich", "alice", "rich provenance fact");
+        rich.provenance.confidence = 0.42;
+        rich.provenance.tier = EpistemicTier::Verified;
+        rich.provenance.source_session_id = Some("session-99".to_owned());
+        rich.visibility = Visibility::Shared;
+        rich.sensitivity = FactSensitivity::Internal;
+        rich.scope = Some(MemoryScope::Feedback);
+
+        let entity = make_entity("rt-entity", "Entity", "topic");
+
+        for fact in [&open_ended, &forgotten, &superseded, &superseding, &rich] {
+            source_store.insert_fact(fact).expect("insert fact");
+        }
+        source_store.insert_entity(&entity).expect("insert entity");
+        source_store
+            .insert_fact_entity(&rich.id, &entity.id)
+            .expect("link entity");
+
+        let exported = export_knowledge("alice", &source_store).expect("knowledge export");
+        assert_eq!(exported.facts.len(), 5, "all five facts must export");
+
+        let dest_store = make_store();
+        let counts = import_knowledge(&exported, &dest_store).expect("knowledge import");
+        assert_eq!(counts.facts_imported, 5);
+        assert_eq!(counts.entities_imported, 1);
+
+        let reimported = export_knowledge("alice", &dest_store).expect("re-export after import");
+
+        // Genuine round-trip equality: every field the acceptance criteria
+        // name (provenance, lifecycle, scope, visibility) must match the
+        // original after export -> import -> export, not merely be non-empty.
+        let mut original: Vec<_> = exported.facts.iter().collect();
+        let mut round_tripped: Vec<_> = reimported.facts.iter().collect();
+        original.sort_by(|a, b| a.id.cmp(&b.id));
+        round_tripped.sort_by(|a, b| a.id.cmp(&b.id));
+        assert_eq!(original.len(), round_tripped.len());
+
+        for (orig, back) in original.iter().zip(round_tripped.iter()) {
+            assert_eq!(orig.id, back.id, "id must round-trip");
+            assert_eq!(orig.content, back.content, "content must round-trip");
+            assert_eq!(
+                orig.provenance.confidence, back.provenance.confidence,
+                "confidence must round-trip"
+            );
+            assert_eq!(
+                orig.provenance.tier, back.provenance.tier,
+                "tier must round-trip"
+            );
+            assert_eq!(
+                orig.provenance.source_session_id, back.provenance.source_session_id,
+                "source_session_id must round-trip"
+            );
+            assert_eq!(
+                orig.lifecycle.is_forgotten, back.lifecycle.is_forgotten,
+                "is_forgotten must round-trip"
+            );
+            assert_eq!(
+                orig.lifecycle.superseded_by, back.lifecycle.superseded_by,
+                "superseded_by must round-trip"
+            );
+            assert_eq!(
+                format_timestamp(&orig.temporal.valid_to),
+                format_timestamp(&back.temporal.valid_to),
+                "valid_to must round-trip, including the far-future sentinel"
+            );
+            assert_eq!(orig.visibility, back.visibility, "visibility must round-trip");
+            assert_eq!(
+                orig.sensitivity, back.sensitivity,
+                "sensitivity must round-trip"
+            );
+            assert_eq!(orig.scope, back.scope, "scope must round-trip");
+        }
+
+        assert_eq!(
+            reimported.fact_entity_edges.len(),
+            1,
+            "fact-entity edge must round-trip"
+        );
+        assert_eq!(
+            reimported.fact_entity_edges[0].fact_id.as_str(),
+            "rt-rich"
+        );
+        assert_eq!(
+            reimported.fact_entity_edges[0].entity_id.as_str(),
+            "rt-entity"
         );
     }
 }

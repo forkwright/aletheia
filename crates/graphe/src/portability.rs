@@ -288,6 +288,24 @@ pub struct GraphData {
 }
 
 /// Knowledge graph export for backup, migration, and debugging.
+///
+/// # Field coverage
+///
+/// - **Included**: every [`Fact`](crate::knowledge::Fact) for the exporting
+///   nous regardless of temporal, forgotten, or supersession state -- an
+///   audit-all read, not a current-facts read, so history round-trips
+///   (facts that are forgotten, superseded, or open-ended via the
+///   far-future `valid_to` sentinel all export); every
+///   [`Entity`](crate::knowledge::Entity) and
+///   [`Relationship`](crate::knowledge::Relationship) reachable from those
+///   facts; the exact fact-to-entity links via `fact_entity_edges`.
+/// - **Excluded**: vector embeddings for the exported facts are never
+///   serialized here -- they are regenerated from `Fact::content` on
+///   import, so omitting them loses a derived index, not source data.
+/// - **Redacted**: nothing in this struct is redacted -- it carries no
+///   policy of its own. A caller building a public or lower-trust artifact
+///   must filter `facts` by `FactSensitivity`/`Visibility` before
+///   constructing this value.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KnowledgeExport {
