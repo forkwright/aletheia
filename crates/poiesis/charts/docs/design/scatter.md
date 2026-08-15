@@ -7,7 +7,7 @@ Scatter plot. 1+ series. Both axes linear.
 - x-scale: linear, `nice_domain(point.x.scalar())`.
 - y-scale: linear, `nice_domain(point.y.value)`, inverted range.
 - per-point marker: `<circle cx="<scale_x>" cy="<scale_y>" r="<r>" fill="<tone>"/>`.
-- size encoding (optional): `r` scaled from a per-point `size` channel against a sqrt-scale; out of scope for v1 unless an offsite spec requires it.
+- size encoding (optional): `r` scaled from a per-point `size` channel against a sqrt-scale; out of scope for v1 unless a future spec requires it.
 
 ## Source order
 

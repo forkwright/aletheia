@@ -218,46 +218,46 @@ mod tests {
     use super::*;
     use crate::registry::Registry;
 
-    fn summus() -> ResolvedTheme {
+    fn protos() -> ResolvedTheme {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let registry = Registry::load_dir(&dir).expect("load summus");
-        let id = crate::registry::parse_theme_id("summus").expect("parse summus");
-        registry.resolve(&id).expect("resolve summus")
+        let registry = Registry::load_dir(&dir).expect("load protos");
+        let id = crate::registry::parse_theme_id("protos").expect("parse protos");
+        registry.resolve(&id).expect("resolve protos")
     }
 
     #[test]
     fn json_contains_theme_id() {
-        let json = emit_docvars_json(&summus()).expect("emit json");
-        assert!(json.contains("\"theme\": \"summus\""));
+        let json = emit_docvars_json(&protos()).expect("emit json");
+        assert!(json.contains("\"theme\": \"protos\""));
     }
 
     #[test]
     fn json_carries_resolved_tone_hex() {
-        let json = emit_docvars_json(&summus()).expect("emit json");
+        let json = emit_docvars_json(&protos()).expect("emit json");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
         let positive = &parsed["color"]["tone"]["positive"];
-        assert_eq!(positive, "#318891", "positive tone must carry teal hex");
+        assert_eq!(positive, "#0D9488", "positive tone must carry teal hex");
     }
 
     #[test]
     fn json_byte_stable_across_runs() {
-        let a = emit_docvars_json(&summus()).expect("first");
-        let b = emit_docvars_json(&summus()).expect("second");
+        let a = emit_docvars_json(&protos()).expect("first");
+        let b = emit_docvars_json(&protos()).expect("second");
         assert_eq!(a, b, "two emissions must match byte-for-byte");
     }
 
     #[test]
     fn yaml_emits_resolved_hex_for_tone() {
-        let yaml = emit_docvars_yaml(&summus()).expect("emit yaml");
+        let yaml = emit_docvars_yaml(&protos()).expect("emit yaml");
         assert!(
-            yaml.contains("positive: \"#318891\""),
+            yaml.contains("positive: \"#0D9488\""),
             "positive tone must appear in yaml with the teal hex: {yaml}"
         );
     }
 
     #[test]
     fn yaml_starts_and_ends_with_doc_markers() {
-        let yaml = emit_docvars_yaml(&summus()).expect("emit yaml");
+        let yaml = emit_docvars_yaml(&protos()).expect("emit yaml");
         assert!(
             yaml.starts_with("---\n"),
             "yaml must start with document marker"

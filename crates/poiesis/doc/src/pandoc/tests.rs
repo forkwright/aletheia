@@ -489,7 +489,7 @@ fn chart_figure_renders_svg_in_html() {
 fn document_spec(doc: Document) -> DeliverableSpec {
     DeliverableSpec {
         meta: Meta::new(doc.metadata.title.clone()).expect("title"),
-        theme: ThemeId::new("summus").expect("theme id"),
+        theme: ThemeId::new("protos").expect("theme id"),
         facts: Factbase::new(),
         body: poiesis_core::Body::Document(DocumentBody::new(doc)),
     }
@@ -513,7 +513,7 @@ fn render_deliverable_routes_document_body_through_render_doc() {
 fn render_deliverable_rejects_non_document_body() {
     let spec = DeliverableSpec {
         meta: Meta::new("Pitch").expect("title"),
-        theme: ThemeId::new("summus").expect("theme id"),
+        theme: ThemeId::new("protos").expect("theme id"),
         facts: Factbase::new(),
         body: poiesis_core::Body::Deck(Deck {
             aspect: AspectRatio::WIDESCREEN_16_9,

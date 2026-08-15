@@ -45,8 +45,8 @@ impl ThemeId {
     /// ```
     /// use poiesis_theme::ThemeId;
     ///
-    /// let id = ThemeId::parse("summus").unwrap();
-    /// assert_eq!(id.as_str(), "summus");
+    /// let id = ThemeId::parse("protos").unwrap();
+    /// assert_eq!(id.as_str(), "protos");
     /// assert!(ThemeId::parse("BadName").is_err());
     /// assert!(ThemeId::parse("").is_err());
     /// ```
@@ -162,9 +162,9 @@ mod tests {
     }
 
     #[test]
-    fn parse_accepts_summus() {
-        let id = ThemeId::parse("summus").expect("seed theme name must parse");
-        assert_eq!(id.as_str(), "summus");
+    fn parse_accepts_protos() {
+        let id = ThemeId::parse("protos").expect("seed theme name must parse");
+        assert_eq!(id.as_str(), "protos");
     }
 
     #[test]
@@ -185,13 +185,13 @@ mod tests {
 
     #[test]
     fn parse_rejects_uppercase_lead() {
-        let err = ThemeId::parse("Summus").expect_err("uppercase lead must reject");
+        let err = ThemeId::parse("Protos").expect_err("uppercase lead must reject");
         assert!(matches!(err, InvalidThemeId::Leading { found: 'S' }));
     }
 
     #[test]
     fn parse_rejects_digit_lead() {
-        let err = ThemeId::parse("1summus").expect_err("digit lead must reject");
+        let err = ThemeId::parse("1protos").expect_err("digit lead must reject");
         assert!(matches!(err, InvalidThemeId::Leading { found: '1' }));
     }
 
@@ -216,14 +216,14 @@ mod tests {
 
     #[test]
     fn fromstr_matches_parse() {
-        let parsed: ThemeId = "summus".parse().expect("FromStr must accept summus");
-        assert_eq!(parsed, ThemeId::parse("summus").expect("parse must accept"));
+        let parsed: ThemeId = "protos".parse().expect("FromStr must accept protos");
+        assert_eq!(parsed, ThemeId::parse("protos").expect("parse must accept"));
     }
 
     #[test]
     fn display_round_trips() {
-        let id = ThemeId::parse("summus").expect("parse must accept");
-        assert_eq!(format!("{id}"), "summus");
+        let id = ThemeId::parse("protos").expect("parse must accept");
+        assert_eq!(format!("{id}"), "protos");
     }
 
     #[test]
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn deserialize_accepts_valid() {
         let parsed: ThemeId =
-            serde_json::from_str("\"summus\"").expect("valid id must round-trip via serde");
-        assert_eq!(parsed.as_str(), "summus");
+            serde_json::from_str("\"protos\"").expect("valid id must round-trip via serde");
+        assert_eq!(parsed.as_str(), "protos");
     }
 }

@@ -221,11 +221,11 @@ mod tests {
     #[test]
     fn describe_source_manual() {
         let (kind, detail) = describe_source(&Source::Manual {
-            note: "offsite deck".to_owned(),
+            note: "sample deck".to_owned(),
             captured_by: "operator".to_owned(),
         });
         assert_eq!(kind, "manual");
-        assert_eq!(detail, "offsite deck (by operator)");
+        assert_eq!(detail, "sample deck (by operator)");
     }
 
     #[test]
@@ -256,7 +256,7 @@ mod tests {
             },
         ));
         let mut xlsx_wb = XlsxWorkbook::new();
-        let theme = poiesis_theme::summus();
+        let theme = poiesis_theme::protos();
         append_sources_sheet(&mut xlsx_wb, &wb, &factbase, &theme).expect("appends sheet");
         // Round-trip through a buffer to assert the worksheet exists and is
         // well-formed (parts-level assertion, matching the ZIP-based-sink
@@ -281,7 +281,7 @@ mod tests {
         };
         let factbase = Factbase::new();
         let mut xlsx_wb = XlsxWorkbook::new();
-        let theme = poiesis_theme::summus();
+        let theme = poiesis_theme::protos();
         append_sources_sheet(&mut xlsx_wb, &wb, &factbase, &theme).expect("no-op ok");
     }
 
@@ -290,7 +290,7 @@ mod tests {
         let wb = workbook_citing(&["ghost"]);
         let factbase = Factbase::new();
         let mut xlsx_wb = XlsxWorkbook::new();
-        let theme = poiesis_theme::summus();
+        let theme = poiesis_theme::protos();
         let err = append_sources_sheet(&mut xlsx_wb, &wb, &factbase, &theme)
             .expect_err("unknown fact must reject");
         assert!(matches!(err, WorkbookError::UnknownFact { .. }));

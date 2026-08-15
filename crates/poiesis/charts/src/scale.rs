@@ -155,7 +155,7 @@ mod tests {
     }
 
     #[test]
-    fn nice_rounds_offsite_axis() {
+    fn nice_rounds_sample_axis() {
         let (lo, hi) = nice(0.0, 28.0);
         assert!((lo - 0.0).abs() < 1e-9);
         assert!((hi - 30.0).abs() < 1e-9);
@@ -177,15 +177,15 @@ mod tests {
     }
 
     #[test]
-    fn ticks_higher_target_recovers_offsite_5_step() {
-        // For the offsite slide-3 y_left (0..30 at step 5), target ~7 ticks:
+    fn ticks_higher_target_recovers_sample_5_step() {
+        // For the sample slide-3 y_left (0..30 at step 5), target ~7 ticks:
         // raw step = 30/7 ≈ 4.3 → nice step = 5.
         let t = ticks(0.0, 30.0, 7);
         assert_eq!(t, vec![0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0]);
     }
 
     #[test]
-    fn ticks_for_y_right_offsite_200() {
+    fn ticks_for_y_right_sample_200() {
         let t = ticks(0.0, 200.0, 5);
         assert_eq!(t, vec![0.0, 50.0, 100.0, 150.0, 200.0]);
     }

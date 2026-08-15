@@ -273,9 +273,9 @@ mod tests {
 
     #[test]
     fn theme_id_round_trips_via_serde() {
-        let id = ThemeId::new("summus").expect("canonical theme is valid");
+        let id = ThemeId::new("protos").expect("canonical theme is valid");
         let json = serde_json::to_string(&id).expect("serialize");
-        assert_eq!(json, "\"summus\"");
+        assert_eq!(json, "\"protos\"");
         let back: ThemeId = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(back, id);
     }

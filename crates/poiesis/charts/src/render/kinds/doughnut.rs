@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn two_slice_doughnut_emits_two_paths() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &doughnut_chart(&[(30.0, "a"), (70.0, "b")]),
             &theme,
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn themed_mode_emits_css_vars() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &doughnut_chart(&[(30.0, "a"), (70.0, "b")]),
             &theme,
@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn output_is_deterministic() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let a = emit(
             &doughnut_chart(&[(30.0, "a"), (70.0, "b")]),
             &theme,
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn single_slice_full_circle() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &doughnut_chart(&[(100.0, "only")]),
             &theme,
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn more_slices_than_palette_renders_without_error() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &doughnut_chart(&[
                 (10.0, "a"),

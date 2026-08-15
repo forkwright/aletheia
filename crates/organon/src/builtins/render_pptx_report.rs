@@ -142,7 +142,7 @@ fn render_pptx_report_def() -> ToolDef {
                     "theme".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::String,
-                        description: "Theme identifier (e.g. `summus`). Overrides any theme \
+                        description: "Theme identifier (e.g. `protos`). Overrides any theme \
                                       declared inside `data`."
                             .to_owned(),
                         enum_values: None,
