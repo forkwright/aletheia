@@ -14,9 +14,11 @@ use super::error::{
 };
 use super::health::{HealthFetchError, parse_health_body};
 use super::types::{
-    Agent, AgentsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
+    Agent, AgentsResponse, CostMetricsResponse, EntitiesResponse, FactDetailResponse,
+    FactsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
     NousTool, NousToolsResponse, PaginatedSessionsResponse, ProviderListResponse,
-    ProviderRouteResponse, Session, SessionReplayResponse, SessionsResponse,
+    ProviderRouteResponse, RelationshipsResponse, Session, SessionReplayResponse,
+    SessionsResponse, TimelineResponse, TokenMetricsResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -640,6 +642,9 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
+    // WHY(#4925): deliberate `Value` exception — config is a dynamic,
+    // section-defined settings bag (arbitrary keys per section, no fixed
+    // schema Skene can type without duplicating Taxis's config surface).
     pub async fn config(&self) -> Result<serde_json::Value> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/config")
@@ -695,7 +700,7 @@ impl ApiClient {
         sort: &str,
         order: &str,
         limit: u32,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<FactsResponse> {
         let resp = self
             .request(
                 reqwest::Method::GET,
@@ -719,7 +724,7 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_fact_detail(&self, fact_id: &str) -> Result<serde_json::Value> {
+    pub async fn knowledge_fact_detail(&self, fact_id: &str) -> Result<FactDetailResponse> {
         let encoded = keryx::url::encode_path_segment(fact_id);
         let resp = self
             .request(
@@ -790,7 +795,7 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_entities(&self) -> Result<serde_json::Value> {
+    pub async fn knowledge_entities(&self) -> Result<EntitiesResponse> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/knowledge/entities")
             .send()
@@ -814,7 +819,7 @@ impl ApiClient {
     pub async fn knowledge_entity_relationships(
         &self,
         entity_id: &str,
-    ) -> Result<serde_json::Value> {
+    ) -> Result<RelationshipsResponse> {
         let encoded = keryx::url::encode_path_segment(entity_id);
         let resp = self
             .request(
@@ -839,7 +844,7 @@ impl ApiClient {
         reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
     )]
     #[tracing::instrument(skip(self))]
-    pub async fn knowledge_timeline(&self) -> Result<serde_json::Value> {
+    pub async fn knowledge_timeline(&self) -> Result<TimelineResponse> {
         let resp = self
             .request(reqwest::Method::GET, "/api/v1/knowledge/timeline")
             .send()
@@ -915,6 +920,58 @@ impl ApiClient {
         Ok(())
     }
 
+    /// Fetch canonical backend-wide token usage telemetry (#4987).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn token_metrics(&self) -> Result<TokenMetricsResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/metrics/tokens")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load token metrics",
+            })?;
+        let resp = Self::check_status(resp, "token metrics request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "token metrics response",
+        })
+    }
+
+    /// Fetch canonical backend-wide cost telemetry (#4987).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Http`] if the request fails or the response cannot be decoded.
+    /// Returns [`ApiError::Server`] if the server returns a non-success status.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    #[tracing::instrument(skip(self))]
+    pub async fn cost_metrics(&self) -> Result<CostMetricsResponse> {
+        let resp = self
+            .request(reqwest::Method::GET, "/api/v1/metrics/costs")
+            .send()
+            .await
+            .context(HttpSnafu {
+                operation: "load cost metrics",
+            })?;
+        let resp = Self::check_status(resp, "cost metrics request").await?;
+        resp.json().await.context(HttpSnafu {
+            operation: "cost metrics response",
+        })
+    }
+
     /// Consumes a response, returning it unchanged if 2xx.
     ///
     /// On non-2xx:
@@ -968,9 +1025,13 @@ impl ApiClient {
     }
 
     /// The REST HTTP client, pre-configured with auth and default headers.
+    ///
+    /// WHY(#4925): crate-private — skene is the sole typed protocol boundary
+    /// for first-party clients; a public escape hatch let a consumer bypass
+    /// route/DTO/error semantics while still looking like it used the shared
+    /// client. Confirmed zero external callers before tightening visibility.
     #[must_use]
-    pub fn raw_client(&self) -> &Client {
-        // kanon:ignore RUST/pub-visibility
+    pub(crate) fn raw_client(&self) -> &Client {
         &self.client
     }
 
