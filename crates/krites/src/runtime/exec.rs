@@ -494,6 +494,12 @@ impl<'s, S: Storage<'s>> Db<S> {
         if let Some(secs) = out_opts.timeout {
             poison.set_timeout(secs)?;
         }
+        // WHY (#4511): HNSW/FTS/LSH index searches (query/ra/search.rs) run
+        // through this same `tx` and previously had no way to observe this
+        // query's kill/timeout at all. Attaching to the already-constructed
+        // `tx` here reaches every search this query runs without threading
+        // a new parameter through QueryContext and every RelAlgebra::iter().
+        tx.poison = Some(poison.clone());
         let id = self.queries_count.fetch_add(1, Ordering::AcqRel);
 
         let since_the_epoch = seconds_since_the_epoch()?;
@@ -524,8 +530,11 @@ impl<'s, S: Storage<'s>> Db<S> {
             None
         };
 
-        let budget =
+        let mut budget =
             crate::query::eval::QueryBudget::new(poison, self.config.max_evaluation_epochs);
+        if let Some(max_derived_rows) = self.config.max_derived_rows {
+            budget = budget.with_max_derived_rows(max_derived_rows);
+        }
         let (result_store, early_return) = crate::query::eval::stratified_magic_evaluate(
             tx,
             &compiled,

@@ -75,20 +75,24 @@ impl QueryLimiter {
 /// one stratified evaluation, threaded through [`stratified_magic_evaluate`]
 /// and [`semi_naive_magic_evaluate`].
 ///
-/// [`Poison`] remains the primitive every `FixedRule` impl and
-/// cancellation-unaware caller (HNSW, FTS index scans) takes directly --
-/// `QueryBudget` is the accounting layer for the code driving a full
-/// stratified Datalog evaluation. [`QueryBudget::poison`] hands out the same
-/// underlying `Poison`, so a fixed rule invoked mid-evaluation still
+/// [`Poison`] remains the primitive every `FixedRule` impl, `SessionTx`'s
+/// HNSW/FTS/LSH index-search entry points (`SessionTx::poison`), and every
+/// other cancellation-aware caller takes directly -- `QueryBudget` is the
+/// accounting layer for the code driving a full stratified Datalog
+/// evaluation. [`QueryBudget::poison`] hands out the same underlying
+/// `Poison`, so a fixed rule or index search invoked mid-evaluation still
 /// observes an explicit kill or wall-clock timeout through this budget.
 ///
-/// NOTE: HNSW, FTS index scans, and individual `FixedRule` graph algorithms
-/// are cancellation-aware via the shared `Poison` (killed/timeout), but are
-/// not yet threaded into the row/work-unit accounting this type adds --
-/// that accounting happens only at the semi-naive merge point below. Public
-/// `Db` query APIs also do not yet expose a way to configure
-/// `max_derived_rows` from outside the crate; today it is always unset
-/// (unbounded, matching pre-`QueryBudget` behavior).
+/// NOTE: HNSW, FTS, and LSH searches check `Poison` once at their own entry
+/// point (killed/timeout), but are not threaded into the row/work-unit
+/// accounting this type adds -- that accounting happens only at the
+/// semi-naive merge point below, since index searches are already bounded
+/// by their own `k`/`ef` parameters rather than facing the unbounded
+/// recursive-derivation risk `max_derived_rows` exists for.
+///
+/// `max_derived_rows` is reachable from the crate's public surface via
+/// [`DbConfig::with_max_derived_rows`](crate::runtime::db::DbConfig::with_max_derived_rows),
+/// applied to every query the configured `Db` runs.
 #[derive(Clone)]
 pub(crate) struct QueryBudget {
     poison: Poison,
@@ -113,7 +117,6 @@ impl QueryBudget {
     }
 
     /// Set a derived-row / work-unit cap for this evaluation.
-    #[cfg(test)]
     pub(crate) fn with_max_derived_rows(mut self, max_derived_rows: u64) -> Self {
         self.max_derived_rows = Some(max_derived_rows);
         self
@@ -1000,6 +1003,33 @@ reachable[a, c] := reachable[a, b], edge[b, c]
         assert_eq!(
             public.cancellation_reason(),
             Some(CancellationReason::EpochLimit)
+        );
+    }
+
+    #[test]
+    fn max_derived_rows_from_db_config_is_enforced() {
+        let mut db: DbInstance = crate::storage::mem::new_mem_db().expect("open in-memory db");
+        // Public-API path (#4511): DbConfig::with_max_derived_rows, not
+        // QueryBudget directly -- proves the row cap is reachable from the
+        // crate's public surface, not only from query::eval internals.
+        db.config = DbConfig::default().with_max_derived_rows(3);
+
+        // The base rule alone derives 5 rows (one per edge) on epoch 0,
+        // exceeding the cap before the recursive term contributes anything
+        // -- deterministic, no dependence on evaluation order.
+        let script = r"
+edge[] <- [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6]]
+reachable[a, b] := edge[a, b]
+reachable[a, c] := reachable[a, b], edge[b, c]
+?[a, c] := reachable[a, c]
+";
+        let err = db
+            .run_default(script)
+            .expect_err("a 3-row cap must be exceeded by 5 base-case rows");
+        let public = crate::convert_internal(err);
+        assert_eq!(
+            public.cancellation_reason(),
+            Some(CancellationReason::RowLimit)
         );
     }
 

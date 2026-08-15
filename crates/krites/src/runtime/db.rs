@@ -70,6 +70,11 @@ pub struct DbConfig {
     ///
     /// NOTE: This field is ignored by the in-memory backend.
     pub persist_mode: PersistMode,
+    /// Maximum derived rows a single stratum's semi-naive evaluation may
+    /// produce before failing with a row/work-unit budget error (#4511).
+    /// `None` (the default) is unbounded, matching behavior from before
+    /// this cap existed.
+    pub max_derived_rows: Option<u64>,
 }
 
 impl Default for DbConfig {
@@ -77,6 +82,7 @@ impl Default for DbConfig {
         Self {
             max_evaluation_epochs: DEFAULT_MAX_EVALUATION_EPOCHS,
             persist_mode: PersistMode::default(),
+            max_derived_rows: None,
         }
     }
 }
@@ -88,6 +94,7 @@ impl DbConfig {
         Self {
             max_evaluation_epochs,
             persist_mode: PersistMode::default(),
+            max_derived_rows: None,
         }
     }
 
@@ -95,6 +102,15 @@ impl DbConfig {
     #[must_use]
     pub fn with_persist_mode(mut self, persist_mode: PersistMode) -> Self {
         self.persist_mode = persist_mode;
+        self
+    }
+
+    /// Set a derived-row / work-unit cap for every query this database
+    /// runs. See [`QueryBudget`](crate::query::eval::QueryBudget) for the
+    /// accounting this configures.
+    #[must_use]
+    pub fn with_max_derived_rows(mut self, max_derived_rows: u64) -> Self {
+        self.max_derived_rows = Some(max_derived_rows);
         self
     }
 }

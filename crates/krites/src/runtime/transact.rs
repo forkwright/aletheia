@@ -40,6 +40,14 @@ pub struct SessionTx<'a> {
     pub(crate) tokenizers: Arc<TokenizerCache>,
     pub(crate) fts_cache: Arc<RwLock<FtsCache>>,
     pub(crate) fts_cache_invalidations: FxHashSet<(CompactString, CompactString)>,
+    /// Cooperative cancellation handle for the query this transaction is
+    /// serving, when one exists (#4511). `None` for non-query transactions
+    /// (schema mutations, relation writes, maintenance) that have no
+    /// query-level `Poison` to check -- `Db::run_query` sets this on an
+    /// already-constructed `SessionTx` right after building its `Poison`,
+    /// rather than threading a new parameter through every `QueryContext`
+    /// method and every `RelAlgebra::iter()` implementation in `query/ra/`.
+    pub(crate) poison: Option<crate::runtime::db::Poison>,
 }
 
 pub const CURRENT_STORAGE_VERSION: [u8; 1] = [0x00];
@@ -209,6 +217,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             tokenizers: self.tokenizers.clone(),
             fts_cache: self.fts_cache.clone(),
             fts_cache_invalidations: Default::default(),
+            poison: None,
         };
         Ok(ret)
     }
@@ -221,6 +230,7 @@ impl<'s, S: Storage<'s>> Db<S> {
             tokenizers: self.tokenizers.clone(),
             fts_cache: self.fts_cache.clone(),
             fts_cache_invalidations: Default::default(),
+            poison: None,
         };
         Ok(ret)
     }
