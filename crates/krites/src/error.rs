@@ -29,6 +29,8 @@ pub enum Error {
     /// A running query was cancelled via poison/timeout.
     #[snafu(display("Running query was killed before completion"))]
     QueryKilled {
+        /// Distinguishes an explicit kill from a wall-clock timeout.
+        reason: crate::runtime::db::CancellationReason,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -42,6 +44,18 @@ pub enum Error {
         max_epochs: u32,
         stratum: usize,
         rule_context: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Evaluation exceeded a configured derived-row / work-unit budget.
+    #[snafu(display(
+        "evaluation exceeded row/work-unit budget: derived_rows={derived_rows}, max_derived_rows={max_derived_rows}, stratum={stratum}"
+    ))]
+    RowLimitExceeded {
+        derived_rows: u64,
+        max_derived_rows: u64,
+        stratum: usize,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -65,6 +79,25 @@ pub enum Error {
 
 /// Result alias using the engine's public [`Error`] type.
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl Error {
+    /// Structured cancellation reason for cancellation-class errors.
+    ///
+    /// Lets a caller distinguish an explicit kill, a wall-clock timeout, an
+    /// epoch-limit exhaustion, and a row/work-unit budget exhaustion without
+    /// matching on error-variant identity, which conflates `QueryKilled`'s
+    /// two causes. Returns `None` for every non-cancellation variant.
+    #[must_use]
+    pub fn cancellation_reason(&self) -> Option<crate::runtime::db::CancellationReason> {
+        use crate::runtime::db::CancellationReason;
+        match self {
+            Self::QueryKilled { reason, .. } => Some(*reason),
+            Self::EpochLimitExceeded { .. } => Some(CancellationReason::EpochLimit),
+            Self::RowLimitExceeded { .. } => Some(CancellationReason::RowLimit),
+            _ => None,
+        }
+    }
+}
 
 /// Internal error enum composing all module error types.
 ///
@@ -182,7 +215,14 @@ impl From<crate::runtime::relation::StoredRelArityMismatch> for InternalError {
 impl From<crate::runtime::db::ProcessKilled> for InternalError {
     fn from(_: crate::runtime::db::ProcessKilled) -> Self {
         InternalError::Runtime {
-            source: crate::runtime::error::QueryKilledSnafu.build(),
+            source: crate::runtime::error::QueryKilledSnafu {
+                // WHY: ProcessKilled carries no cause of its own; every
+                // existing raise site is an explicit kill, never a
+                // wall-clock deadline (that path goes through
+                // Poison::check(), which supplies its own reason).
+                reason: crate::runtime::db::CancellationReason::Killed,
+            }
+            .build(),
         }
     }
 }

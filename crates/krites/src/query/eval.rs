@@ -17,7 +17,8 @@
 
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 
 use itertools::Itertools;
 #[cfg(not(target_arch = "wasm32"))]
@@ -70,6 +71,92 @@ impl QueryLimiter {
     }
 }
 
+/// Epoch, wall-clock/kill, and (optionally) derived-row/work-unit budget for
+/// one stratified evaluation, threaded through [`stratified_magic_evaluate`]
+/// and [`semi_naive_magic_evaluate`].
+///
+/// [`Poison`] remains the primitive every `FixedRule` impl and
+/// cancellation-unaware caller (HNSW, FTS index scans) takes directly --
+/// `QueryBudget` is the accounting layer for the code driving a full
+/// stratified Datalog evaluation. [`QueryBudget::poison`] hands out the same
+/// underlying `Poison`, so a fixed rule invoked mid-evaluation still
+/// observes an explicit kill or wall-clock timeout through this budget.
+///
+/// NOTE: HNSW, FTS index scans, and individual `FixedRule` graph algorithms
+/// are cancellation-aware via the shared `Poison` (killed/timeout), but are
+/// not yet threaded into the row/work-unit accounting this type adds --
+/// that accounting happens only at the semi-naive merge point below. Public
+/// `Db` query APIs also do not yet expose a way to configure
+/// `max_derived_rows` from outside the crate; today it is always unset
+/// (unbounded, matching pre-`QueryBudget` behavior).
+#[derive(Clone)]
+pub(crate) struct QueryBudget {
+    poison: Poison,
+    max_epochs: u32,
+    max_derived_rows: Option<u64>,
+    // WHY: Arc so every clone (one per stratum call, per rule-set fan-out)
+    // shares one running total -- accounting must span the whole
+    // evaluation, not reset per clone.
+    rows_seen: Arc<AtomicU64>,
+}
+
+impl QueryBudget {
+    /// Build a budget with no row/work-unit cap (unbounded, matching
+    /// behavior from before this cap existed).
+    pub(crate) fn new(poison: Poison, max_epochs: u32) -> Self {
+        Self {
+            poison,
+            max_epochs,
+            max_derived_rows: None,
+            rows_seen: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    /// Set a derived-row / work-unit cap for this evaluation.
+    #[cfg(test)]
+    pub(crate) fn with_max_derived_rows(mut self, max_derived_rows: u64) -> Self {
+        self.max_derived_rows = Some(max_derived_rows);
+        self
+    }
+
+    /// The cooperative kill-switch/timeout handle, cloned for handing to
+    /// code that only understands `Poison` (fixed rules, non-Datalog scans).
+    pub(crate) fn poison(&self) -> Poison {
+        self.poison.clone()
+    }
+
+    /// Maximum semi-naive evaluation epochs before `EpochLimitExceeded`.
+    pub(crate) fn max_epochs(&self) -> u32 {
+        self.max_epochs
+    }
+
+    /// Record newly-derived rows against the work-unit budget.
+    ///
+    /// A no-op (always `Ok`) when no cap is configured, so the default
+    /// (unbounded) path pays no accounting cost.
+    pub(crate) fn record_rows(&self, n: u64, stratum: usize) -> Result<()> {
+        let Some(cap) = self.max_derived_rows else {
+            return Ok(());
+        };
+        let total = self.rows_seen.fetch_add(n, Ordering::Relaxed) + n;
+        if total > cap {
+            warn!(
+                derived_rows = total,
+                max_derived_rows = cap,
+                stratum,
+                "evaluation exceeded row/work-unit budget"
+            );
+            RowLimitExceededSnafu {
+                derived_rows: total,
+                max_derived_rows: cap,
+                stratum,
+            }
+            .fail()?;
+        }
+        Ok(())
+    }
+}
+
 /// Evaluate a stratified Datalog program with magic sets optimization.
 ///
 /// # Complexity
@@ -83,8 +170,7 @@ pub(crate) fn stratified_magic_evaluate(
     store_lifetimes: BTreeMap<MagicSymbol, usize>,
     total_num_to_take: Option<usize>,
     num_to_skip: Option<usize>,
-    max_epochs: u32,
-    poison: Poison,
+    budget: QueryBudget,
 ) -> Result<(EpochStore, bool)> {
     let mut stores: BTreeMap<MagicSymbol, EpochStore> = BTreeMap::new();
     let mut early_return = false;
@@ -119,9 +205,8 @@ pub(crate) fn stratified_magic_evaluate(
             &mut stores,
             total_num_to_take,
             num_to_skip,
-            max_epochs,
             stratum,
-            poison.clone(),
+            budget.clone(),
         )?;
     }
     let entry_symbol = MagicSymbol::Muggle {
@@ -339,9 +424,8 @@ fn semi_naive_magic_evaluate(
     stores: &mut BTreeMap<MagicSymbol, EpochStore>,
     total_num_to_take: Option<usize>,
     num_to_skip: Option<usize>,
-    max_epochs: u32,
     stratum: usize,
-    poison: Poison,
+    budget: QueryBudget,
 ) -> Result<bool> {
     let limiter = QueryLimiter {
         total: total_num_to_take,
@@ -349,6 +433,7 @@ fn semi_naive_magic_evaluate(
         counter: 0.into(),
     };
     let used_limiter: AtomicBool = false.into();
+    let max_epochs = budget.max_epochs();
 
     for epoch in 0..max_epochs {
         debug!("epoch {}", epoch);
@@ -360,7 +445,7 @@ fn semi_naive_magic_evaluate(
                 borrowed_stores,
                 &limiter,
                 &used_limiter,
-                poison.clone(),
+                budget.poison(),
             )?
         } else {
             run_subsequent_epoch_rules(
@@ -370,7 +455,7 @@ fn semi_naive_magic_evaluate(
                 epoch,
                 &limiter,
                 &used_limiter,
-                poison.clone(),
+                budget.poison(),
             )?
         };
 
@@ -385,8 +470,16 @@ fn semi_naive_magic_evaluate(
                 )
             })?;
             old_store.merge_in(new_store)?;
-            trace!("delta for {}: {}", k, old_store.has_delta());
-            changed |= old_store.has_delta();
+            let has_delta = old_store.has_delta();
+            trace!("delta for {}: {}", k, has_delta);
+            // WHY: only count rows when a cap is configured -- record_rows
+            // is a no-op without one, so skip the delta_all_iter() walk
+            // entirely on the default (unbounded) path.
+            if has_delta && budget.max_derived_rows.is_some() {
+                let delta_rows = old_store.delta_all_iter().count() as u64;
+                budget.record_rows(delta_rows, stratum)?;
+            }
+            changed |= has_delta;
         }
         if !changed {
             return Ok(used_limiter.load(Ordering::Acquire));
@@ -876,4 +969,77 @@ fn incremental_rule_meet_eval(
         }
     }
     Ok(out_store)
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod query_budget_tests {
+    use super::QueryBudget;
+    use crate::DbInstance;
+    use crate::runtime::db::{CancellationReason, DbConfig, Poison};
+
+    #[test]
+    fn epoch_limit_exceeded_is_reported_with_epoch_limit_reason() {
+        let mut db: DbInstance = crate::storage::mem::new_mem_db().expect("open in-memory db");
+        // A single allowed epoch can never observe "no change", so any
+        // recursive rule that derives at least one fact on epoch 0 is
+        // guaranteed to exhaust this cap -- deterministic, no data-shape
+        // dependence beyond "the recursion produces something."
+        db.config = DbConfig::new(1);
+
+        let script = r"
+edge[] <- [[1, 2], [2, 3], [3, 4]]
+reachable[a, b] := edge[a, b]
+reachable[a, c] := reachable[a, b], edge[b, c]
+?[a, c] := reachable[a, c]
+";
+        let err = db
+            .run_default(script)
+            .expect_err("a 1-epoch cap must be exceeded by a self-recursive rule");
+        let public = crate::convert_internal(err);
+        assert_eq!(
+            public.cancellation_reason(),
+            Some(CancellationReason::EpochLimit)
+        );
+    }
+
+    #[test]
+    fn unbounded_budget_never_errors_on_record_rows() {
+        let budget = QueryBudget::new(Poison::default(), 10);
+        for _ in 0..5 {
+            budget
+                .record_rows(1_000_000, 0)
+                .expect("no cap configured -- record_rows is a no-op");
+        }
+    }
+
+    #[test]
+    fn row_cap_is_cumulative_across_calls() {
+        let budget = QueryBudget::new(Poison::default(), 10).with_max_derived_rows(5);
+        budget.record_rows(3, 0).expect("3 <= 5, under cap");
+        budget.record_rows(2, 0).expect("5 <= 5, at cap but not over");
+        let err = budget
+            .record_rows(1, 0)
+            .expect_err("6 > 5, one more row must exceed the cap");
+        let public = crate::convert_internal(err);
+        assert_eq!(
+            public.cancellation_reason(),
+            Some(CancellationReason::RowLimit)
+        );
+    }
+
+    #[test]
+    fn cloned_budget_shares_row_accounting() {
+        let budget = QueryBudget::new(Poison::default(), 10).with_max_derived_rows(2);
+        let clone = budget.clone();
+        budget.record_rows(1, 0).expect("1 <= 2, under cap");
+        let err = clone
+            .record_rows(2, 0)
+            .expect_err("1 + 2 = 3 > 2, clone must observe the original's accounting");
+        let public = crate::convert_internal(err);
+        assert_eq!(
+            public.cancellation_reason(),
+            Some(CancellationReason::RowLimit)
+        );
+    }
 }

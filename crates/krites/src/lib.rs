@@ -36,8 +36,8 @@ pub use crate::data::value::{DataValue, ValidityTs, Vector};
 pub use crate::fixed_rule::{FixedRule, FixedRuleInputRelation, FixedRulePayload};
 pub use crate::runtime::callback::CallbackOp;
 pub use crate::runtime::db::{
-    DEFAULT_MAX_EVALUATION_EPOCHS, DbConfig, NamedRows, PersistMode, ScriptMutability,
-    TransactionPayload,
+    CancellationReason, DEFAULT_MAX_EVALUATION_EPOCHS, DbConfig, NamedRows, PersistMode,
+    ScriptMutability, TransactionPayload,
 };
 #[cfg(feature = "storage-fjall")]
 pub use crate::storage::fjall_backend::FjallStorage;
@@ -76,8 +76,8 @@ fn convert_internal(e: crate::error::InternalError) -> Error {
     use crate::error::InternalError;
     match e {
         InternalError::Runtime {
-            source: crate::runtime::error::RuntimeError::QueryKilled { .. },
-        } => error::QueryKilledSnafu.build(),
+            source: crate::runtime::error::RuntimeError::QueryKilled { reason, .. },
+        } => error::QueryKilledSnafu { reason }.build(),
         InternalError::Query {
             source:
                 crate::query::error::QueryError::EpochLimitExceeded {
@@ -92,6 +92,20 @@ fn convert_internal(e: crate::error::InternalError) -> Error {
             max_epochs,
             stratum,
             rule_context,
+        }
+        .build(),
+        InternalError::Query {
+            source:
+                crate::query::error::QueryError::RowLimitExceeded {
+                    derived_rows,
+                    max_derived_rows,
+                    stratum,
+                    ..
+                },
+        } => error::RowLimitExceededSnafu {
+            derived_rows,
+            max_derived_rows,
+            stratum,
         }
         .build(),
         InternalError::Parse { source } => error::ParseSnafu.into_error(source),

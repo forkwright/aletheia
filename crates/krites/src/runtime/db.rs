@@ -551,6 +551,28 @@ impl<'s, S: Storage<'s>> Db<S> {
     }
 }
 
+/// Structured reason a query was cancelled, distinguishing exhaustion
+/// classes an operator must be able to tell apart at the point of failure
+/// rather than by matching on error-variant identity alone.
+///
+/// `Killed` and `WallClock` both surface through the same `QueryKilled`
+/// error family (a wall-clock timeout marks the query killed so subsequent
+/// `check()` calls short-circuit on the fast path) -- without this field
+/// they would be indistinguishable to a caller.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum CancellationReason {
+    /// Explicit caller-initiated termination ([`Poison::set_killed`]).
+    Killed,
+    /// The wall-clock `:timeout` deadline elapsed.
+    WallClock,
+    /// Semi-naive evaluation exceeded `max_epochs` before reaching a fixpoint.
+    EpochLimit,
+    /// A [`QueryBudget`](crate::query::eval::QueryBudget) derived-row/work-unit
+    /// cap was exceeded.
+    RowLimit,
+}
+
 /// Used for user-initiated termination of running queries.
 ///
 /// INVARIANT: `killed` and `deadline` are checked cooperatively by the query
@@ -561,6 +583,15 @@ pub struct Poison {
     pub(crate) killed: Arc<AtomicBool>,
     // WHY: parking_lot::Mutex avoids poisoned-lock failures on deadline reads.
     pub(crate) deadline: Arc<parking_lot::Mutex<Option<Instant>>>,
+    // WHY: `killed` alone can't distinguish an explicit kill from a
+    // wall-clock timeout once the timeout branch has fired and latched
+    // `killed = true` -- this flag persists the cause across later checks.
+    timed_out: Arc<AtomicBool>,
+    // WHY: debug-only accounting so a test can assert a FixedRule impl (or
+    // any evaluator loop) actually calls `check()` -- a future algorithm
+    // that omits the call today compiles silently with no signal.
+    #[cfg(debug_assertions)]
+    check_count: Arc<AtomicU64>,
 }
 
 /// Typed error for query cancellation: enables downstream matching without string parsing.
@@ -578,14 +609,26 @@ impl Poison {
     #[must_use = "caller must propagate the query-killed error"]
     #[inline(always)]
     pub fn check(&self) -> Result<()> {
+        #[cfg(debug_assertions)]
+        self.check_count.fetch_add(1, Ordering::Relaxed);
+
         if self.killed.load(Ordering::Relaxed) {
-            QueryKilledSnafu.fail()?;
+            let reason = if self.timed_out.load(Ordering::Relaxed) {
+                CancellationReason::WallClock
+            } else {
+                CancellationReason::Killed
+            };
+            QueryKilledSnafu { reason }.fail()?;
         }
         if let Some(deadline) = *self.deadline.lock()
             && Instant::now() >= deadline
         {
+            self.timed_out.store(true, Ordering::Relaxed);
             self.killed.store(true, Ordering::Relaxed);
-            QueryKilledSnafu.fail()?;
+            QueryKilledSnafu {
+                reason: CancellationReason::WallClock,
+            }
+            .fail()?;
         }
         Ok(())
     }
@@ -593,6 +636,21 @@ impl Poison {
     /// Mark the query as killed without waiting for a timeout.
     pub(crate) fn set_killed(&self) {
         self.killed.store(true, Ordering::Relaxed);
+    }
+
+    /// Whether the most recent (or any prior) cancellation was caused by the
+    /// wall-clock deadline rather than an explicit kill.
+    #[must_use]
+    pub fn timed_out(&self) -> bool {
+        self.timed_out.load(Ordering::Relaxed)
+    }
+
+    /// Number of times `check()` has been called on this handle (and every
+    /// clone -- the counter is shared). Debug builds only.
+    #[cfg(debug_assertions)]
+    #[must_use]
+    pub fn check_count(&self) -> u64 {
+        self.check_count.load(Ordering::Relaxed)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -632,4 +690,94 @@ pub(crate) fn seconds_since_the_epoch() -> Result<f64> {
 
     #[cfg(target_arch = "wasm32")]
     Ok(js_sys::Date::now())
+}
+
+#[cfg(test)]
+#[cfg(not(target_arch = "wasm32"))]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod poison_tests {
+    use super::{CancellationReason, Poison};
+    use crate::error::InternalError;
+
+    fn cancellation_reason(err: &InternalError) -> Option<CancellationReason> {
+        match err {
+            InternalError::Runtime {
+                source: crate::runtime::error::RuntimeError::QueryKilled { reason, .. },
+            } => Some(*reason),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn fresh_poison_passes_check() {
+        let poison = Poison::default();
+        assert!(poison.check().is_ok());
+        assert!(!poison.timed_out());
+    }
+
+    #[test]
+    fn explicit_kill_reports_killed_reason() {
+        let poison = Poison::default();
+        poison.set_killed();
+        let err = poison.check().expect_err("explicit kill must fail check()");
+        assert_eq!(cancellation_reason(&err), Some(CancellationReason::Killed));
+        assert!(
+            !poison.timed_out(),
+            "an explicit kill must not report as a timeout"
+        );
+    }
+
+    #[test]
+    fn wall_clock_timeout_reports_wall_clock_reason() {
+        let poison = Poison::default();
+        poison.set_timeout(0.0).expect("set zero-duration timeout");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        let err = poison
+            .check()
+            .expect_err("elapsed deadline must fail check()");
+        assert_eq!(
+            cancellation_reason(&err),
+            Some(CancellationReason::WallClock)
+        );
+        assert!(poison.timed_out());
+
+        // A second check(), after `killed` has latched true on the fast
+        // path, must still report WallClock rather than degrading to
+        // Killed -- this is the exact ambiguity CancellationReason exists
+        // to resolve.
+        let second = poison
+            .check()
+            .expect_err("latched-killed state must keep failing");
+        assert_eq!(
+            cancellation_reason(&second),
+            Some(CancellationReason::WallClock)
+        );
+    }
+
+    #[test]
+    fn clone_shares_state() {
+        let poison = Poison::default();
+        let clone = poison.clone();
+        clone.set_killed();
+        assert!(
+            poison.check().is_err(),
+            "kill on a clone must be visible through the original handle"
+        );
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    fn check_count_tracks_every_call_including_across_clones() {
+        let poison = Poison::default();
+        assert_eq!(poison.check_count(), 0);
+        poison.check().expect("fresh poison passes");
+        let clone = poison.clone();
+        clone.check().expect("clone shares the counter");
+        assert_eq!(
+            poison.check_count(),
+            2,
+            "check_count is shared state, not per-handle"
+        );
+    }
 }
