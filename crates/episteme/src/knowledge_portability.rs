@@ -292,8 +292,7 @@ mod tests {
         store.insert_fact(&superseding).expect("insert superseding");
 
         let exported = export_knowledge("alice", &store).expect("knowledge export");
-        let exported_ids: BTreeSet<&str> =
-            exported.facts.iter().map(|f| f.id.as_str()).collect();
+        let exported_ids: BTreeSet<&str> = exported.facts.iter().map(|f| f.id.as_str()).collect();
         for id in [
             "kp-open-ended",
             "kp-forgotten",
@@ -390,7 +389,10 @@ mod tests {
                 format_timestamp(&back.temporal.valid_to),
                 "valid_to must round-trip, including the far-future sentinel"
             );
-            assert_eq!(orig.visibility, back.visibility, "visibility must round-trip");
+            assert_eq!(
+                orig.visibility, back.visibility,
+                "visibility must round-trip"
+            );
             assert_eq!(
                 orig.sensitivity, back.sensitivity,
                 "sensitivity must round-trip"
@@ -403,10 +405,7 @@ mod tests {
             1,
             "fact-entity edge must round-trip"
         );
-        assert_eq!(
-            reimported.fact_entity_edges[0].fact_id.as_str(),
-            "rt-rich"
-        );
+        assert_eq!(reimported.fact_entity_edges[0].fact_id.as_str(), "rt-rich");
         assert_eq!(
             reimported.fact_entity_edges[0].entity_id.as_str(),
             "rt-entity"

@@ -859,8 +859,7 @@ fn run_inspect_context(
         );
     };
 
-    let report =
-        record.inspection_report(mneme::run_context::RedactionPolicy::InternalInspection);
+    let report = record.inspection_report(mneme::run_context::RedactionPolicy::InternalInspection);
     if json {
         let rendered = serde_json::to_string_pretty(&report)
             .with_whatever_context(|_| "failed to serialize inspection report")?;

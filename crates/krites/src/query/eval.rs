@@ -1017,7 +1017,9 @@ reachable[a, c] := reachable[a, b], edge[b, c]
     fn row_cap_is_cumulative_across_calls() {
         let budget = QueryBudget::new(Poison::default(), 10).with_max_derived_rows(5);
         budget.record_rows(3, 0).expect("3 <= 5, under cap");
-        budget.record_rows(2, 0).expect("5 <= 5, at cap but not over");
+        budget
+            .record_rows(2, 0)
+            .expect("5 <= 5, at cap but not over");
         let err = budget
             .record_rows(1, 0)
             .expect_err("6 > 5, one more row must exceed the cap");

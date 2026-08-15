@@ -361,7 +361,10 @@ mod tests {
             .expect("record should be present");
         assert_eq!(found.run_id, session.turn_id.to_string());
         assert_eq!(found.session_id, session.id);
-        assert_eq!(found.turn_id.as_deref(), Some(session.turn_id.to_string().as_str()));
+        assert_eq!(
+            found.turn_id.as_deref(),
+            Some(session.turn_id.to_string().as_str())
+        );
     }
 
     #[test]

@@ -524,7 +524,8 @@ impl<'s, S: Storage<'s>> Db<S> {
             None
         };
 
-        let budget = crate::query::eval::QueryBudget::new(poison, self.config.max_evaluation_epochs);
+        let budget =
+            crate::query::eval::QueryBudget::new(poison, self.config.max_evaluation_epochs);
         let (result_store, early_return) = crate::query::eval::stratified_magic_evaluate(
             tx,
             &compiled,

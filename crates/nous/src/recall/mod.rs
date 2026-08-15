@@ -767,11 +767,13 @@ impl RecallStage {
         let mut selected_context = Vec::with_capacity(fact_ids.len());
         for (idx, result) in combined.iter().enumerate() {
             if injected_ids.contains(result.source_id.as_str()) {
-                selected_context.push(mneme::run_context::ContextItem::selected_from_scored_result(
-                    result,
-                    mneme::run_context::ContextItemProvenance::from_scored_result(result),
-                    idx + 1,
-                ));
+                selected_context.push(
+                    mneme::run_context::ContextItem::selected_from_scored_result(
+                        result,
+                        mneme::run_context::ContextItemProvenance::from_scored_result(result),
+                        idx + 1,
+                    ),
+                );
             } else {
                 excluded_context.push(mneme::run_context::ContextItem::excluded(
                     mneme::run_context::ContextItemProvenance::from_scored_result(result),
