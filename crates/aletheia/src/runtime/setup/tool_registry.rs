@@ -90,7 +90,9 @@ pub(in crate::runtime) fn build_tool_registry(
 /// .clone()` at each call site) because callers outside this module
 /// (`runtime::mod`, `builder_validation`) read it as "the sandbox config
 /// for tool registration," which the bare field access does not convey.
-pub(in crate::runtime) fn sandbox_config(config: &AletheiaConfig) -> organon::sandbox::SandboxConfig {
+pub(in crate::runtime) fn sandbox_config(
+    config: &AletheiaConfig,
+) -> organon::sandbox::SandboxConfig {
     config.sandbox.clone()
 }
 

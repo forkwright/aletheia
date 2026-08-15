@@ -338,7 +338,10 @@ mod tests {
             .send("signal", &attributed_params("+15559999", "syn"))
             .await
             .expect("send");
-        assert!(!result.sent, "recipient outside the allowlist must be denied");
+        assert!(
+            !result.sent,
+            "recipient outside the allowlist must be denied"
+        );
         assert_eq!(
             result.error.as_deref(),
             Some("recipient not in outbound allowlist for this agent")
@@ -355,7 +358,10 @@ mod tests {
             .expect("register");
 
         let result = reg
-            .send("signal", &attributed_params("+15550100", "unconfigured-agent"))
+            .send(
+                "signal",
+                &attributed_params("+15550100", "unconfigured-agent"),
+            )
             .await
             .expect("send");
         assert!(
@@ -380,7 +386,10 @@ mod tests {
             .send("signal", &attributed_params("+15550100", "syn"))
             .await
             .expect("send");
-        assert!(result.sent, "an allowlisted (agent, recipient) pair must be sent");
+        assert!(
+            result.sent,
+            "an allowlisted (agent, recipient) pair must be sent"
+        );
     }
 
     #[tokio::test]
@@ -389,8 +398,7 @@ mod tests {
         // inbound conversation) are not agent-initiated and must not be
         // gated by the per-agent allowlist -- see the `outbound_policy`
         // field doc on ChannelRegistry.
-        let mut reg =
-            ChannelRegistry::new().with_outbound_policy(OutboundMessagePolicy::default());
+        let mut reg = ChannelRegistry::new().with_outbound_policy(OutboundMessagePolicy::default());
         reg.register(Arc::new(
             MockProvider::new("signal").with_send_result(SendResult::ok()),
         ))

@@ -154,7 +154,9 @@ mod outbound_policy_tests {
     #[test]
     fn wildcard_pattern_allows_any_recipient() {
         let mut policy = OutboundMessagePolicy::default();
-        policy.allowlist.insert("syn".to_owned(), vec!["*".to_owned()]);
+        policy
+            .allowlist
+            .insert("syn".to_owned(), vec!["*".to_owned()]);
         assert!(policy.allows(Some("syn"), "+15550100"));
         assert!(policy.allows(Some("syn"), "anything"));
     }

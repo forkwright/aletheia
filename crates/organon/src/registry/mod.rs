@@ -272,10 +272,7 @@ impl ToolRegistry {
     /// [`ToolCapabilityMetadata::default`] when nothing was declared.
     #[must_use]
     pub fn capability_metadata(&self, name: &ToolName) -> ToolCapabilityMetadata {
-        self.capabilities
-            .get(name)
-            .cloned()
-            .unwrap_or_default()
+        self.capabilities.get(name).cloned().unwrap_or_default()
     }
 
     /// Execute a tool by name.
