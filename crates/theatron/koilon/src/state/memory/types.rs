@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::api::types as skene_types;
+
 /// Temporal metadata for a memory fact (timestamps, access tracking).
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -195,4 +197,123 @@ pub(crate) struct FactDetail {
     pub(crate) relationships: Vec<MemoryRelationship>,
     #[serde(default)]
     pub(crate) similar: Vec<SimilarFact>,
+}
+
+// WHY(#4870): explicit conversions from Skene's typed knowledge DTOs (which
+// deserialize correctly against Pylon's actual wire shape) into these local
+// view models, instead of deserializing the wire JSON directly into structs
+// whose `#[serde(rename_all = "camelCase")]` never matched Pylon's snake_case
+// fields — that mismatch silently defaulted every temporal/lifecycle field
+// (timestamps always empty, `is_forgotten` always false) because every
+// affected field carries `#[serde(default)]`.
+
+impl From<skene_types::Fact> for MemoryFact {
+    fn from(fact: skene_types::Fact) -> Self {
+        Self {
+            id: fact.id,
+            nous_id: fact.nous_id,
+            content: fact.content,
+            confidence: fact.confidence,
+            tier: fact.tier.as_str().to_string(),
+            fact_type: fact.fact_type,
+            temporal: FactTemporalMeta {
+                valid_from: fact.valid_from,
+                valid_to: fact.valid_to,
+                recorded_at: fact.recorded_at,
+                access_count: fact.access_count,
+                last_accessed_at: fact.last_accessed_at.unwrap_or_default(),
+                stability_hours: fact.stability_hours,
+            },
+            lifecycle: FactLifecycleMeta {
+                superseded_by: fact.superseded_by,
+                source_session_id: fact.source_session_id,
+                is_forgotten: fact.is_forgotten,
+                forgotten_at: fact.forgotten_at,
+                forget_reason: fact.forget_reason,
+            },
+        }
+    }
+}
+
+impl From<skene_types::EntityListItem> for MemoryEntity {
+    fn from(entity: skene_types::EntityListItem) -> Self {
+        Self {
+            id: entity.id,
+            name: entity.name,
+            entity_type: entity.entity_type,
+            aliases: entity.aliases,
+            created_at: entity.created_at,
+            updated_at: entity.updated_at,
+        }
+    }
+}
+
+impl From<skene_types::Relationship> for MemoryRelationship {
+    fn from(rel: skene_types::Relationship) -> Self {
+        Self {
+            src: rel.src,
+            dst: rel.dst,
+            relation: rel.relation,
+            weight: rel.weight,
+            created_at: rel.created_at,
+        }
+    }
+}
+
+/// Reconstruct a global (src, dst) graph edge from Pylon's entity-relative
+/// relationship shape. The per-entity endpoint reports the relationship from
+/// the viewed entity's perspective (`direction` + the *other* entity's id) —
+/// not a free-standing edge — so the viewed entity id must be supplied by
+/// the caller (it already has it: it's the id used to make the request).
+pub(crate) fn relationship_from_entity_relative(
+    viewed_entity_id: &str,
+    rel: skene_types::EntityRelationship,
+) -> MemoryRelationship {
+    let (src, dst) = match rel.direction {
+        skene_types::RelationshipDirection::Outgoing => {
+            (viewed_entity_id.to_string(), rel.entity_id)
+        }
+        skene_types::RelationshipDirection::Incoming => {
+            (rel.entity_id, viewed_entity_id.to_string())
+        }
+    };
+    MemoryRelationship {
+        src,
+        dst,
+        relation: rel.relationship_type,
+        weight: rel.confidence,
+        created_at: String::new(),
+    }
+}
+
+impl From<skene_types::TimelineEvent> for MemoryTimelineEvent {
+    fn from(event: skene_types::TimelineEvent) -> Self {
+        Self {
+            timestamp: event.timestamp,
+            event_type: event.event_type,
+            description: event.description,
+            fact_id: event.fact_id,
+            confidence: event.confidence,
+        }
+    }
+}
+
+impl From<skene_types::SimilarFact> for SimilarFact {
+    fn from(similar: skene_types::SimilarFact) -> Self {
+        Self {
+            id: similar.id,
+            content: similar.content,
+            similarity: similar.similarity,
+        }
+    }
+}
+
+impl From<skene_types::FactDetailResponse> for FactDetail {
+    fn from(detail: skene_types::FactDetailResponse) -> Self {
+        Self {
+            fact: detail.fact.into(),
+            relationships: detail.relationships.into_iter().map(Into::into).collect(),
+            similar: detail.similar.into_iter().map(Into::into).collect(),
+        }
+    }
 }
