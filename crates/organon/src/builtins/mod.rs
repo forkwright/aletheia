@@ -479,7 +479,7 @@ mod capability_governance_tests {
             .filter(|def| def.reversibility == Reversibility::Irreversible)
             .map(|def| def.name.as_str())
             .filter(|name| {
-                let name = koina::id::ToolName::new(name).expect("registered name is valid");
+                let name = koina::id::ToolName::new(*name).expect("registered name is valid");
                 registry.capability_metadata(&name).owner == UNASSIGNED_TOOL_OWNER
             })
             .collect();
