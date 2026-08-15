@@ -56,7 +56,10 @@ impl ToolExecutor for SessionsSpawnExecutor {
                 timeout_secs: timeout,
             };
 
-            let spawn_context = SpawnContext::new(ctx.nous_id.as_str(), ctx.turn_cancel());
+            let mut spawn_context = SpawnContext::new(ctx.nous_id.as_str(), ctx.turn_cancel());
+            if let Some(hint) = ctx.spawn_generation_hint() {
+                spawn_context = spawn_context.with_generation_hint(hint);
+            }
             match spawn_svc.spawn_and_run(request, spawn_context).await {
                 Ok(result) => {
                     let json = serde_json::json!({
@@ -113,6 +116,11 @@ impl ToolExecutor for SessionsDispatchExecutor {
                 .unwrap_or(ctx.tool_config.agent_dispatch_timeout_secs);
             let nous_id = ctx.nous_id.as_str().to_owned();
             let parent_cancel = ctx.turn_cancel();
+            // WHY(#4746): read here, before the per-task `tokio::spawn` below —
+            // task-locals do not propagate across a spawn boundary, so this
+            // must be captured into a plain value while `ctx`'s scope is still
+            // active and moved into each spawned task explicitly.
+            let generation_hint = ctx.spawn_generation_hint();
 
             let mut join_set = tokio::task::JoinSet::new();
 
@@ -162,9 +170,13 @@ impl ToolExecutor for SessionsDispatchExecutor {
                 let svc = Arc::clone(spawn_svc);
                 let parent = nous_id.clone();
                 let cancel = parent_cancel.clone();
+                let hint = generation_hint;
                 join_set.spawn(async move {
-                    svc.spawn_and_run(request, SpawnContext::new(parent, cancel))
-                        .await
+                    let mut spawn_context = SpawnContext::new(parent, cancel);
+                    if let Some(hint) = hint {
+                        spawn_context = spawn_context.with_generation_hint(hint);
+                    }
+                    svc.spawn_and_run(request, spawn_context).await
                 });
             }
 

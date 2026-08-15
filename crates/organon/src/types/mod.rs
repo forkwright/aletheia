@@ -12,8 +12,8 @@ pub use policy::{
 pub use services::{
     BlackboardEntry, BlackboardStore, BlackboardViewer, CrossNousService, DatalogResult,
     FactSummary, KnowledgeSearchService, LessonPersistSummary, MemoryResult, MessageService,
-    NoteEntry, NoteStore, PlanningPlanInput, PlanningService, SpawnContext, SpawnRequest,
-    SpawnResult, SpawnService, WorkingCheckpoint, WorkingCheckpointStore,
+    NoteEntry, NoteStore, PlanningPlanInput, PlanningService, SpawnContext, SpawnGenerationHint,
+    SpawnRequest, SpawnResult, SpawnService, WorkingCheckpoint, WorkingCheckpointStore,
 };
 
 use indexmap::IndexMap;

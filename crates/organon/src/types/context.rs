@@ -17,11 +17,18 @@ use crate::surface::EffectiveToolSurface;
 
 use super::services::{
     BlackboardStore, CrossNousService, KnowledgeSearchService, MessageService, NoteStore,
-    PlanningService, SpawnService,
+    PlanningService, SpawnGenerationHint, SpawnService,
 };
 
 tokio::task_local! {
     static TURN_CANCEL: CancellationToken;
+    // WHY(#4746): mirrors TURN_CANCEL above — a task-local, not a `ToolContext`
+    // field, so adding it never breaks the ~40 existing `ToolContext { .. }`
+    // struct literals scattered across organon/nous test and production code.
+    // `None` (the default when unscoped) preserves prior spawn behavior
+    // exactly: `SpawnContext::parent_generation` stays `None` and the spawn
+    // service falls back to its own constants.
+    static SPAWN_GENERATION_HINT: Option<SpawnGenerationHint>;
 }
 
 /// Configuration for server-side tools that execute on the API provider's infrastructure.
@@ -274,6 +281,27 @@ impl ToolContext {
         F: Future,
     {
         TURN_CANCEL.scope(token, future).await
+    }
+
+    /// Return the current turn's spawn generation/limits hint, or `None`
+    /// outside a scoped turn or when the host never populated one (#4746).
+    #[must_use]
+    pub fn spawn_generation_hint(&self) -> Option<SpawnGenerationHint> {
+        SPAWN_GENERATION_HINT
+            .try_with(Clone::clone)
+            .unwrap_or(None)
+    }
+
+    /// Run a future with a spawn generation/limits hint visible to tool
+    /// executors (#4746). Mirrors [`scope_turn_cancel`](Self::scope_turn_cancel).
+    pub async fn scope_spawn_generation_hint<F>(
+        hint: Option<SpawnGenerationHint>,
+        future: F,
+    ) -> F::Output
+    where
+        F: Future,
+    {
+        SPAWN_GENERATION_HINT.scope(hint, future).await
     }
 
     /// Bind an effective surface for this context until the returned guard drops.
