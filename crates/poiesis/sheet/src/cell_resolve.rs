@@ -87,9 +87,12 @@ mod tests {
         };
         let (scalar, unit) = resolve_cell(&cell, &BTreeMap::new(), ScalarKind::Money)
             .expect("literal cells always resolve");
-        assert_eq!(scalar, Scalar::Money {
-            value: Money::from_micros(1_000_000)
-        });
+        assert_eq!(
+            scalar,
+            Scalar::Money {
+                value: Money::from_micros(1_000_000)
+            }
+        );
         assert_eq!(unit, Unit::Usd);
     }
 

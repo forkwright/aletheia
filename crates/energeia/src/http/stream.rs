@@ -234,7 +234,8 @@ impl EventStream {
                         );
                         self.rate_limit_exceeded = true;
                     }
-                    self.pending.push_back(SessionEvent::RateLimit { utilization });
+                    self.pending
+                        .push_back(SessionEvent::RateLimit { utilization });
                     return self.pending.pop_front();
                 }
                 WireMessage::Human { .. } | WireMessage::Unknown => {}

@@ -382,8 +382,8 @@ mod tests {
     fn render_ods_workbook_produces_valid_zip() {
         let wb = sample_workbook();
         let theme = poiesis_theme::summus();
-        let bytes = render_ods_workbook(&wb, &resolved_facts(), &theme, None)
-            .expect("ods render succeeds");
+        let bytes =
+            render_ods_workbook(&wb, &resolved_facts(), &theme, None).expect("ods render succeeds");
         assert!(bytes.starts_with(b"PK"), "ODS output should be a valid ZIP");
     }
 
