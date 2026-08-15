@@ -37,9 +37,10 @@ bookkeeper = []
 z3 = ["dep:z3"]
 # Document/report generation tools: generate_document, lint_report,
 # verify_report, render_typst_report, render_docx_report, render_pptx_report,
-# render_xlsx_report, render_eval_report, render_graph_audit,
-# report_runtime_health, scaffold_report, intake_report, diff_report,
-# inspect_report. Pulls all 13 poiesis-* crates. `aletheia`'s own dependency
+# render_deck_report, render_xlsx_report, render_eval_report,
+# render_graph_audit, report_runtime_health, scaffold_report, intake_report,
+# diff_report, inspect_report. Pulls all 15 poiesis-* crates. `aletheia`'s
+# own dependency
 # on organon enables this unconditionally (see aletheia/Cargo.toml) so the
 # deployed binary's document tools are unaffected; this feature exists so
 # other organon consumers are not forced to compile the poiesis stack.
