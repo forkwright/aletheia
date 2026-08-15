@@ -148,7 +148,7 @@
         "runtime/hnsw/search.rs:11 -> crate::data::tuple::Tuple",
         "runtime/hnsw/search.rs:12 -> crate::data::value::Vector",
         "runtime/hnsw/search.rs:16 -> crate::data::value::DataValue",
-        "runtime/hnsw/search.rs:240 -> crate::data::value::DataValue",
+        "runtime/hnsw/search.rs:247 -> crate::data::value::DataValue",
         "runtime/hnsw/types.rs:11 -> crate::data::tuple::Tuple",
         "runtime/hnsw/types.rs:12 -> crate::data::value::Vector",
         "runtime/hnsw/types.rs:9 -> crate::data::value::DataValue",
