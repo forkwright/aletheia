@@ -166,6 +166,7 @@ async fn registry_send_verifies_provider_registered() {
         to: "+15550100".to_owned(),
         text: "Test".to_owned(),
         account_id: None,
+        sender_id: None,
         thread_id: None,
         attachments: None,
     };
@@ -189,6 +190,7 @@ async fn registry_send_to_existing_channel() {
         to: "+15550100".to_owned(),
         text: "Test".to_owned(),
         account_id: None,
+        sender_id: None,
         thread_id: None,
         attachments: None,
     };
@@ -208,6 +210,7 @@ async fn registry_send_to_missing_channel_fails() {
         to: "+15550100".to_owned(),
         text: "Test".to_owned(),
         account_id: None,
+        sender_id: None,
         thread_id: None,
         attachments: None,
     };

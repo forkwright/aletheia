@@ -40,9 +40,30 @@ pub struct SendParams {
     pub to: String,
     /// Message text (markdown).
     pub text: String,
-    /// Account ID within the channel (for multi-account setups).
+    /// Account ID within the channel (for multi-account setups): selects
+    /// WHICH provider account/identity a message is sent FROM (e.g. which
+    /// registered Signal phone number, which Matrix account). `None` falls
+    /// back to the provider's configured default account.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_id: Option<String>,
+    /// Identity of the sending agent (`nous_id`), used ONLY for outbound
+    /// attribution/policy (`OutboundMessagePolicy`, checked in
+    /// `ChannelRegistry::send`) and audit records.
+    ///
+    /// SECURITY(#4788): distinct from `account_id` on purpose -- an
+    /// earlier version of this field carried the sending agent's identity
+    /// in `account_id` itself, which broke provider account routing:
+    /// `SignalProvider`/`MatrixProvider` resolve `account_id` against
+    /// their configured account keyspace (phone numbers / Matrix account
+    /// IDs), so a `nous_id` like `"syn"` landing there fails lookup
+    /// (`resolve_client`/`resolve_account` return `None`) instead of
+    /// falling through to the provider's default account. `None` here
+    /// means the send is unattributed (e.g. `dispatch::send_reply`
+    /// completing an inbound conversation), not agent-initiated, and
+    /// bypasses the outbound-recipient policy -- see
+    /// `ChannelRegistry::outbound_policy`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sender_id: Option<String>,
     /// Thread/reply context identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
@@ -160,6 +181,7 @@ mod tests {
             to: "+15550100".to_owned(),
             text: "hello world".to_owned(),
             account_id: Some("acct1".to_owned()),
+            sender_id: Some("syn".to_owned()),
             thread_id: None,
             attachments: Some(vec!["photo.jpg".to_owned()]),
         };
@@ -168,6 +190,7 @@ mod tests {
         assert_eq!(back.to, params.to);
         assert_eq!(back.text, params.text);
         assert_eq!(back.account_id, params.account_id);
+        assert_eq!(back.sender_id, params.sender_id);
         assert_eq!(back.thread_id, params.thread_id);
         assert_eq!(back.attachments, params.attachments);
     }
@@ -178,11 +201,13 @@ mod tests {
             to: "+15550100".to_owned(),
             text: "hello".to_owned(),
             account_id: None,
+            sender_id: None,
             thread_id: None,
             attachments: None,
         };
         let json = serde_json::to_string(&params).expect("serialize");
         assert!(!json.contains("account_id"));
+        assert!(!json.contains("sender_id"));
         assert!(!json.contains("thread_id"));
         assert!(!json.contains("attachments"));
     }

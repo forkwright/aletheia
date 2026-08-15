@@ -626,6 +626,7 @@ mod tests {
                 to: "!room:example.org".to_owned(),
                 text: "hello".to_owned(),
                 account_id: None,
+                sender_id: None,
                 thread_id: None,
                 attachments: None,
             })

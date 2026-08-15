@@ -30,18 +30,21 @@ pub struct ChannelRegistry {
     /// Maximum number of provider probes that may run concurrently.
     max_concurrent_probes: usize,
     /// Per-agent outbound-recipient allowlist, checked in [`Self::send`]
-    /// whenever a send carries an attributed `account_id`.
+    /// whenever a send carries an attributed `sender_id`.
     ///
-    /// SECURITY(#4788): a send with NO `account_id` (e.g. `dispatch::
+    /// SECURITY(#4788): a send with NO `sender_id` (e.g. `dispatch::
     /// send_reply` completing an inbound conversation on the channel that
     /// contacted it) is not policy-governed here -- it is bounded by a
     /// different trust boundary (replying to whoever already reached us),
     /// not by "which recipients may this agent reach." A send that DOES
-    /// carry an `account_id` is claiming to be agent-attributed, so it is
+    /// carry a `sender_id` is claiming to be agent-attributed, so it is
     /// checked against the allowlist for that agent regardless of which
     /// call path produced it -- this is defense in depth alongside the
     /// primary gate in `tool_adapters::SignalAdapter::send_message`, the
-    /// actual choke point for the `message` tool today.
+    /// actual choke point for the `message` tool today. Deliberately
+    /// `sender_id`, not `account_id`: `account_id` selects which provider
+    /// account a send goes out FROM (multi-account routing), a distinct
+    /// concept `SendParams::sender_id`'s doc explains further.
     outbound_policy: OutboundMessagePolicy,
 }
 
@@ -102,12 +105,12 @@ impl ChannelRegistry {
 
         // SECURITY(#4788): checked before the provider is ever called, so a
         // denied send never reaches the network. See the `outbound_policy`
-        // field doc for why an unattributed (`account_id: None`) send is
+        // field doc for why an unattributed (`sender_id: None`) send is
         // exempt rather than denied here.
-        if params.account_id.is_some()
+        if params.sender_id.is_some()
             && !self
                 .outbound_policy
-                .allows(params.account_id.as_deref(), &params.to)
+                .allows(params.sender_id.as_deref(), &params.to)
         {
             crate::metrics::record_channel_message(channel_id, false);
             return Ok(SendResult::err(
@@ -312,14 +315,15 @@ mod tests {
             to: to.to_owned(),
             text: "hello".to_owned(),
             account_id: None,
+            sender_id: None,
             thread_id: None,
             attachments: None,
         }
     }
 
-    fn attributed_params(to: &str, account_id: &str) -> SendParams {
+    fn attributed_params(to: &str, sender_id: &str) -> SendParams {
         SendParams {
-            account_id: Some(account_id.to_owned()),
+            sender_id: Some(sender_id.to_owned()),
             ..test_params(to)
         }
     }
@@ -393,7 +397,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn send_without_account_id_bypasses_policy() {
+    async fn send_without_sender_id_bypasses_policy() {
         // WHY: unattributed sends (dispatch::send_reply completing an
         // inbound conversation) are not agent-initiated and must not be
         // gated by the per-agent allowlist -- see the `outbound_policy`
