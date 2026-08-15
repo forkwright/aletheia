@@ -4,6 +4,15 @@
 
 Report tooling family: format-agnostic document model plus rendering backends (Typst→PDF, ODT, XLSX, ODS, PPTX, DOCX, and Pandoc-backed DOCX/HTML/MD/LaTeX/EPUB) and report-quality checks (prose lint, numeric claim verify). Sibling crates depend on each other (e.g. `poiesis-doc` depends on `poiesis-text`, `poiesis-typst`, `poiesis-core`, `poiesis-charts`). Entry points: `core/src/lib.rs` (Document, Renderer) and `typst/src/lib.rs` (`render_typst`, `render_template`).
 
+**Public import surface.** The `poiesis` facade crate (`crates/poiesis`, package `poiesis`) re-exports each `poiesis-*` backend as a feature-gated module (`poiesis::core`, `poiesis::doc`, `poiesis::sheet`, ...). `poiesis-core` is the facade's one non-optional dependency -- every other backend stays behind its own Cargo feature so a consumer compiles only what it uses. Internal package names stay `poiesis-*`; a new consumer should depend on `poiesis` with the features it needs rather than on individual backend crates directly.
+
+**Crate classification.** Every split here isolates a heavy optional dependency or a genuinely separate backend/output-format; none is a premature split (#4547 design decision):
+- **Shared model** (no output format of its own, consumed by multiple backends): `poiesis-core` (Document/Block/Renderer), `poiesis-theme` (color/font/type-scale resolution consumed by charts/sheet/deck), `poiesis-ooxml-parse` (OOXML text-extraction primitives shared by `poiesis-inspect` + `poiesis-diff`).
+- **Independent backend** (owns one output format end-to-end): `poiesis-typst` (PDF, primary), `poiesis-text` (PDF via `krilla` + ODT), `poiesis-sheet` (XLSX + ODS), `poiesis-slides` (PPTX), `poiesis-deck` (HTML/CSS deck), `poiesis-doc` (DOCX + Pandoc dispatch), `poiesis-charts` (chart model + SVG).
+- **Optional heavy-dependency adapter** (isolates a large or subprocess-based dependency so consumers who don't need it never compile it in): `poiesis-printer-chromium` (`chromiumoxide`), the `pandoc` feature of `poiesis-doc` (Pandoc subprocess), the `charts-vega` feature of `poiesis-charts` (Vega-Lite fallback).
+- **Helper module** (a focused utility, not a full backend): `poiesis-lint`, `poiesis-verify`, `poiesis-diff`, `poiesis-inspect`, `poiesis-scaffold`, `poiesis-intake` (request/brief parsing -- #4759 tracks its residual scope: arc-to-skeleton seeding, the vision loop).
+- **Candidate for consolidation**: none found. Each split above isolates either a distinct output format or a heavy/optional dependency; collapsing any pair would either pull an unwanted dependency into a consumer that doesn't need it, or merge two backends with no shared audience.
+
 **Typst is the primary renderer.** Prefer `poiesis-typst` for prose-oriented PDF output - it supports templates, math, citations, breakable blocks, cross-references, and JSON data injection, with structured compile diagnostics carrying source locations. The `text/pdf` backend (via `krilla`) remains for the document-model path where no template system or data injection is needed.
 
 ## Depth

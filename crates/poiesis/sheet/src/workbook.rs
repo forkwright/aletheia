@@ -2,13 +2,14 @@
 
 use std::collections::BTreeMap;
 
-use poiesis_core::bodies::{Sheet, Workbook, WorkbookCell};
+use poiesis_core::bodies::{Sheet, Workbook};
 use poiesis_core::factbase::{Factbase, ResolvedFact};
 use poiesis_core::ids::FactId;
-use poiesis_core::scalar::{Scalar, ScalarKind, Unit};
+use poiesis_core::scalar::Scalar;
 use poiesis_theme::resolved::ResolvedTheme;
 use rust_xlsxwriter::{Format, Workbook as XlsxWorkbook};
 
+use crate::cell_resolve::{resolve_cell, unit_for_total};
 use crate::format::{cell_format, header_format, totals_format};
 use crate::sources::append_sources_sheet;
 use crate::totals::compute_totals;
@@ -19,8 +20,8 @@ type Result<T> = std::result::Result<T, crate::error::WorkbookError>;
 /// Renders a [`Workbook`] to an XLSX byte vector.
 ///
 /// `facts` is the pre-resolved factbase (call `factbase.resolve(&registry)` before
-/// passing here). Every [`WorkbookCell::Cite`] must resolve in `facts`; an unknown
-/// fact id returns [`WorkbookError::UnknownFact`].
+/// passing here). Every [`poiesis_core::bodies::WorkbookCell::Cite`] must
+/// resolve in `facts`; an unknown fact id returns [`WorkbookError::UnknownFact`].
 ///
 /// `theme` drives header formatting via [`crate::format::header_format`] and
 /// cell number formats via [`crate::format::cell_format`].
@@ -124,39 +125,6 @@ fn render_sheet(
     Ok(())
 }
 
-/// Resolve a single cell to its scalar value and presentation unit.
-fn resolve_cell(
-    cell: &WorkbookCell,
-    facts: &BTreeMap<FactId, ResolvedFact>,
-    kind: ScalarKind,
-) -> Result<(Scalar, Unit)> {
-    match cell {
-        WorkbookCell::Lit { value } => {
-            let unit = kind_default_unit(kind);
-            Ok((value.clone(), unit))
-        }
-        WorkbookCell::Cite { fact } => match facts.get(fact) {
-            Some(resolved) => Ok((resolved.value.clone(), resolved.unit)),
-            None => Err(crate::error::WorkbookError::UnknownFact {
-                id: fact.as_str().to_owned(),
-            }),
-        },
-        &_ => Err(crate::error::WorkbookError::UnsupportedCellKind),
-    }
-}
-
-/// Return the canonical unit for a scalar kind when no factbase context is
-/// available (e.g. literal cells).
-fn kind_default_unit(kind: ScalarKind) -> Unit {
-    match kind {
-        ScalarKind::Count => Unit::Count,
-        ScalarKind::Money => Unit::Usd,
-        ScalarKind::Ratio => Unit::Ratio,
-        ScalarKind::Text => Unit::Text,
-        ScalarKind::Date => Unit::Date,
-    }
-}
-
 /// Write a [`Scalar`] into a worksheet cell with the supplied [`Format`].
 #[expect(
     clippy::as_conversions,
@@ -195,26 +163,6 @@ fn write_scalar(
         }
     }
     Ok(())
-}
-
-/// Determine the presentation unit for a totals column.
-///
-/// Walks the column looking for the first [`WorkbookCell::Cite`] and uses the
-/// associated fact's unit; falls back to the kind-default if no cite is found.
-fn unit_for_total(
-    sheet: &Sheet,
-    facts: &BTreeMap<FactId, ResolvedFact>,
-    col_idx: usize,
-    kind: ScalarKind,
-) -> Unit {
-    for row in &sheet.rows {
-        if let Some(WorkbookCell::Cite { fact }) = row.get(col_idx)
-            && let Some(resolved) = facts.get(fact)
-        {
-            return resolved.unit;
-        }
-    }
-    kind_default_unit(kind)
 }
 
 #[cfg(test)]

@@ -35,8 +35,9 @@ Aletheia is a single-binary Rust agent runtime with 48 workspace crates plus the
 | `theatron` | `crates/theatron` | Thin facade re-exporting skene types for external consumers. |
 | `skene` | `crates/theatron/skene` | Shared API client, types, SSE, and streaming infrastructure for Aletheia UIs. |
 | `koilon` | `crates/theatron/koilon` | Terminal dashboard for the Aletheia distributed cognition system. |
+| `poiesis` | `crates/poiesis` | Facade crate: one feature-gated import surface (`poiesis::{core,doc,sheet,...}`) over the `poiesis-*` backend crates below. |
 | `poiesis-charts` | `crates/poiesis/charts` | Chart rendering support for poiesis. |
-| `poiesis-core` | `crates/poiesis/core` | Format-agnostic document model and Renderer trait for poiesis. |
+| `poiesis-core` | `crates/poiesis/core` | Format-agnostic document model and Renderer trait for poiesis; the facade's one non-optional dependency. |
 | `poiesis-sheet` | `crates/poiesis/sheet` | XLSX and ODS spreadsheet rendering backends for poiesis. |
 | `poiesis-slides` | `crates/poiesis/slides` | PPTX presentation rendering backend for poiesis. |
 | `poiesis-lint` | `crates/poiesis/lint` | Report prose linting: banned words, citation checks, structure checks. |
@@ -51,6 +52,7 @@ Aletheia is a single-binary Rust agent runtime with 48 workspace crates plus the
 | `poiesis-printer-chromium` | `crates/poiesis/printer-chromium` | Chromium-based headless print backend for poiesis. |
 | `poiesis-diff` | `crates/poiesis/diff` | Cell-level diff for XLSX and PPTX documents. |
 | `poiesis-inspect` | `crates/poiesis/inspect` | Text extraction from PDF, XLSX, and PPTX documents. |
+| `poiesis-ooxml-parse` | `crates/poiesis/ooxml-parse` | Shared OOXML parsing primitives used by `poiesis-inspect` and `poiesis-diff`. |
 | `gnosis` | `crates/gnosis` | Machine-derived code-graph index for symbol-level cross-crate queries. |
 | `aletheia-sessions-migrate` | `crates/aletheia-sessions-migrate` | One-shot SQLite v32 -> fjall sessions-store migrator for legacy aletheia 0.15.x instances. |
 | `proskenion` | `crates/theatron/proskenion` | Dioxus desktop shell for Aletheia (excluded from the workspace build). |
@@ -69,7 +71,7 @@ Aletheia is a single-binary Rust agent runtime with 48 workspace crates plus the
 
 **CLI and operators.** Binary wiring, migrations, evals, and integration canaries: `aletheia`, `aletheia-sessions-migrate`, `dokimion`, `integration-tests`.
 
-**Poiesis document stack.** Report model, renderers, diff/inspect/intake/scaffold helpers: `poiesis-core`, `poiesis-charts`, `poiesis-theme`, `poiesis-sheet`, `poiesis-slides`, `poiesis-deck`, `poiesis-lint`, `poiesis-verify`, `poiesis-typst`, `poiesis-intake`, `poiesis-doc`, `poiesis-text`, `poiesis-printer-chromium`, `poiesis-diff`, `poiesis-inspect`, `poiesis-scaffold`.
+**Poiesis document stack.** Report model, renderers, diff/inspect/intake/scaffold helpers, reached as one feature-gated import surface through the `poiesis` facade: `poiesis-core`, `poiesis-charts`, `poiesis-theme`, `poiesis-sheet`, `poiesis-slides`, `poiesis-deck`, `poiesis-lint`, `poiesis-verify`, `poiesis-typst`, `poiesis-intake`, `poiesis-doc`, `poiesis-text`, `poiesis-printer-chromium`, `poiesis-diff`, `poiesis-inspect`, `poiesis-scaffold`, `poiesis-ooxml-parse`.
 
 **Presentation.** Shared UI client, TUI, facade, and excluded desktop shell: `skene`, `koilon`, `theatron`, `proskenion`.
 
@@ -90,4 +92,4 @@ Aletheia is a single-binary Rust agent runtime with 48 workspace crates plus the
 | Add maintenance task | `oikonomos` | `crates/daemon/src/maintenance/ + runner registration` |
 | Add MCP tool | `diaporeia` | `crates/diaporeia/src/tools/` |
 | Add CLI command | `aletheia` | `crates/aletheia/src/commands/` |
-| Add report backend | `poiesis-*` | `crates/poiesis/<backend>/` |
+| Add report backend | `poiesis-*` | `crates/poiesis/<backend>/`, then feature-gate the re-export in `crates/poiesis/src/lib.rs` |

@@ -53,6 +53,12 @@ pub enum WorkbookError {
         /// Human-readable error description.
         message: String,
     },
+    /// `spreadsheet-ods` returned an error while writing the ODS workbook.
+    #[snafu(display("ODS write error: {message}"))]
+    OdsWrite {
+        /// Human-readable error description.
+        message: String,
+    },
     /// A [`WorkbookCell`](poiesis_core::bodies::WorkbookCell) variant is not
     /// supported by this renderer (forward-compatibility guard for
     /// `#[non_exhaustive]` additions).
@@ -64,6 +70,15 @@ pub enum WorkbookError {
 impl From<rust_xlsxwriter::XlsxError> for WorkbookError {
     fn from(e: rust_xlsxwriter::XlsxError) -> Self {
         Self::XlsxWrite {
+            message: e.to_string(),
+        }
+    }
+}
+
+#[cfg(all(feature = "workbook", feature = "ods"))]
+impl From<spreadsheet_ods::OdsError> for WorkbookError {
+    fn from(e: spreadsheet_ods::OdsError) -> Self {
+        Self::OdsWrite {
             message: e.to_string(),
         }
     }
