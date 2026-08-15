@@ -151,6 +151,15 @@ impl RuntimeBuilder {
             }
         }
 
+        // ARCHITECTURE(#4846): shape-validated the same way as sandbox
+        // above -- informational only (a malformed version string cannot
+        // fail startup the way an unenforceable sandbox guarantee can; it
+        // just means the configured server tool will fail at the provider
+        // instead of locally), so this never sets `all_ok = false`.
+        for issue in self.config.server_tools.versions.validate() {
+            print_line(format_args!("  [warn] serverTools: {issue}"));
+        }
+
         print_line(format_args!(""));
         if all_ok {
             print_line(format_args!("Configuration OK"));

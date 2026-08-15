@@ -136,6 +136,119 @@ impl Default for ServerToolVersions {
     }
 }
 
+impl ServerToolVersions {
+    /// Check whether the configured `tool_type` strings look like real
+    /// Anthropic server-tool versions, independent of whether server tools
+    /// are actually enabled.
+    ///
+    /// ARCHITECTURE(#4846): every currently-known Anthropic server-tool
+    /// `tool_type` follows `<name>_<8-digit-date>` (e.g.
+    /// `web_search_20250305`). This cannot validate against a live
+    /// allowlist of provider-supported versions -- Anthropic revs these
+    /// independently of aletheia's release cycle, and hardcoding a
+    /// snapshot of "currently valid" values would itself drift the moment
+    /// a new one ships. What IS checkable without a network call is
+    /// shape: an operator-mistyped or stale value (empty string, missing
+    /// the date suffix, non-digit suffix) is almost certainly wrong
+    /// regardless of which specific dates are current, and this is the
+    /// class of error a config typo actually produces.
+    #[must_use]
+    pub fn validate(&self) -> Vec<String> {
+        let mut issues = Vec::new();
+        for (field, value) in [
+            ("serverTools.versions.webSearchType", &self.web_search_type),
+            (
+                "serverTools.versions.codeExecutionType",
+                &self.code_execution_type,
+            ),
+        ] {
+            if let Some(reason) = Self::shape_issue(value) {
+                issues.push(format!(
+                    "{field} = {value:?} does not look like an Anthropic server-tool version \
+                     string ({reason}); expected the form \"<name>_<8-digit-date>\", e.g. \
+                     \"web_search_20250305\""
+                ));
+            }
+        }
+        issues
+    }
+
+    /// Returns `Some(reason)` when `value` does not match the
+    /// `<name>_<8-digit-date>` shape every known Anthropic server-tool
+    /// `tool_type` follows.
+    fn shape_issue(value: &str) -> Option<&'static str> {
+        if value.is_empty() {
+            return Some("empty");
+        }
+        let Some((name, date)) = value.rsplit_once('_') else {
+            return Some("missing a `_<date>` suffix");
+        };
+        if name.is_empty() {
+            return Some("empty name before the date suffix");
+        }
+        if date.len() != 8 || !date.bytes().all(|b| b.is_ascii_digit()) {
+            return Some("date suffix is not exactly 8 digits");
+        }
+        None
+    }
+}
+
+#[cfg(test)]
+mod server_tool_versions_tests {
+    use super::ServerToolVersions;
+
+    #[test]
+    fn default_versions_pass_validation() {
+        assert!(
+            ServerToolVersions::default().validate().is_empty(),
+            "the compiled default must itself be shape-valid"
+        );
+    }
+
+    #[test]
+    fn empty_version_is_flagged() {
+        let versions = ServerToolVersions {
+            web_search_type: String::new(),
+            ..ServerToolVersions::default()
+        };
+        let issues = versions.validate();
+        assert_eq!(issues.len(), 1, "exactly the empty field must be flagged");
+        assert!(issues[0].contains("webSearchType"));
+    }
+
+    #[test]
+    fn missing_date_suffix_is_flagged() {
+        let versions = ServerToolVersions {
+            code_execution_type: "code_execution".to_owned(),
+            ..ServerToolVersions::default()
+        };
+        let issues = versions.validate();
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].contains("codeExecutionType"));
+    }
+
+    #[test]
+    fn non_digit_date_suffix_is_flagged() {
+        let versions = ServerToolVersions {
+            web_search_type: "web_search_notadate".to_owned(),
+            ..ServerToolVersions::default()
+        };
+        assert_eq!(versions.validate().len(), 1);
+    }
+
+    #[test]
+    fn well_formed_custom_version_passes() {
+        // WHY: a real future revision (e.g. Anthropic ships
+        // web_search_20260101) must validate cleanly -- this is a shape
+        // check, not an allowlist of today's known-good values.
+        let versions = ServerToolVersions {
+            web_search_type: "web_search_20260101".to_owned(),
+            ..ServerToolVersions::default()
+        };
+        assert!(versions.validate().is_empty());
+    }
+}
+
 #[cfg(test)]
 const _: () =
     assert!(DEFAULT_MAX_PATTERN_LENGTH == organon::builtins::filesystem::MAX_PATTERN_LENGTH);
