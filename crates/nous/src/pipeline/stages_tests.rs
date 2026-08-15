@@ -458,6 +458,12 @@ async fn reflection_stage_persists_reflected_facts_idempotently() {
         .expect("reflection_result should be set");
     assert_eq!(result.status, ReflectionStatus::Completed);
     assert_eq!(result.facts_emitted, 1);
+    assert_eq!(
+        result.emitted_fact_ids.len(),
+        1,
+        "emitted_fact_ids must carry one id per fact reflection actually wrote (#4542), \
+         not just a count"
+    );
 
     let query_now = mneme::knowledge::format_timestamp(&jiff::Timestamp::now());
     let facts = store
@@ -468,6 +474,11 @@ async fn reflection_stage_persists_reflected_facts_idempotently() {
         .filter(|fact| fact.provenance.tier == EpistemicTier::Reflected)
         .collect();
     assert_eq!(reflected.len(), 1, "one reflected fact should be persisted");
+    assert_eq!(
+        result.emitted_fact_ids.first().map(String::as_str),
+        Some(reflected[0].id.as_str()),
+        "emitted_fact_ids must name the actual reflected fact id, not a placeholder"
+    );
     assert_eq!(reflected[0].content, source.content);
     assert_eq!(
         reflected[0].provenance.source_session_id.as_deref(),

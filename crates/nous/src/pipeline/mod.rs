@@ -713,6 +713,10 @@ pub struct ReflectionResult {
     pub status: ReflectionStatus,
     /// Number of facts emitted (reflected) during this stage.
     pub facts_emitted: u32,
+    /// Ids of the facts reflection wrote, in emission order (#4542). Used
+    /// to link the run's own memory writes back to its `RunContextRecord`
+    /// via `RunMemoryUpdate`.
+    pub emitted_fact_ids: Vec<String>,
 }
 
 /// Reflection stage completion status.
@@ -748,10 +752,11 @@ impl ReflectionStatus {
 impl ReflectionResult {
     /// Create a new reflection result.
     #[must_use]
-    pub fn new(status: ReflectionStatus, facts_emitted: u32) -> Self {
+    pub fn new(status: ReflectionStatus, facts_emitted: u32, emitted_fact_ids: Vec<String>) -> Self {
         Self {
             status,
             facts_emitted,
+            emitted_fact_ids,
         }
     }
 }
@@ -1481,13 +1486,34 @@ pub(crate) async fn run_pipeline(
         }
         stages_completed += 1;
 
-        // WHY (#4542): persist the run's memory-selection provenance as a
-        // sibling record to the turn-attempt lifecycle note, keyed by the
-        // same turn id, so `aletheia memory inspect-context <turn_id>` can
-        // show what was selected/excluded and why. `ctx.recall_result` is
-        // still in scope here (set during the recall stage, not yet
-        // consumed) and this is the earliest point turn/session/nous
-        // identity and the recall result are simultaneously available.
+        enforce_turn_time_budget(&time_budget, config, "reflection", emitter)?;
+        run_stage_with_timeout(
+            config,
+            "reflection",
+            &mut time_budget,
+            emitter,
+            run_reflection_stage(
+                config,
+                pipeline_config,
+                &mut ctx,
+                knowledge_store,
+                Some(&input.session.id),
+                emitter,
+            ),
+        )
+        .await?;
+        stages_completed += 1;
+
+        // WHY (#4542): persist the run's memory-selection provenance, and
+        // any memory writes the run itself caused, as a sibling record to
+        // the turn-attempt lifecycle note, keyed by the same turn id, so
+        // `aletheia memory inspect-context <turn_id>` can show what was
+        // selected/excluded and why, and what the run wrote back. This runs
+        // after both recall (ctx.recall_result) and reflection
+        // (ctx.reflection_result) so one record captures both -- reflection
+        // is itself a memory write caused by this run, and splitting it
+        // into a second note would let inspect-context see a stale,
+        // update-less record for any turn that reflects.
         if let Some(recall_result) = ctx.recall_result.as_ref() {
             let mut run_context_record = mneme::run_context::RunContextRecord::new(
                 input.session.turn_id.to_string(),
@@ -1501,6 +1527,21 @@ pub(crate) async fn run_pipeline(
             }
             for item in &recall_result.excluded_context {
                 run_context_record.add_excluded_context(item.clone());
+            }
+            if let Some(reflection_result) = ctx.reflection_result.as_ref() {
+                let occurred_at = jiff::Timestamp::now();
+                for fact_id in &reflection_result.emitted_fact_ids {
+                    run_context_record.add_memory_update(
+                        mneme::run_context::RunMemoryUpdate::new(
+                            input.session.turn_id.to_string(),
+                            input.session.id.clone(),
+                            fact_id.clone(),
+                            mneme::run_context::MemoryUpdateKind::Created,
+                            occurred_at,
+                        )
+                        .with_reason("reflection"),
+                    );
+                }
             }
             if let Some(store_mutex) = session_store {
                 let persist_result = with_session_store(store_mutex, |store| {
@@ -1520,24 +1561,6 @@ pub(crate) async fn run_pipeline(
                 }
             }
         }
-
-        enforce_turn_time_budget(&time_budget, config, "reflection", emitter)?;
-        run_stage_with_timeout(
-            config,
-            "reflection",
-            &mut time_budget,
-            emitter,
-            run_reflection_stage(
-                config,
-                pipeline_config,
-                &mut ctx,
-                knowledge_store,
-                Some(&input.session.id),
-                emitter,
-            ),
-        )
-        .await?;
-        stages_completed += 1;
 
         // WHY: training capture runs after finalize (and optional reflection) so only persisted, successful
         // turns enter the training corpus. Errors are logged, never propagated:
