@@ -19,11 +19,11 @@
 #     Gate-Passed trailer and a green full-gate-build must attest the same
 #     invocations a local `kanon gate --stamp` run does.
 #   - needs_fleet_repo_token: true (fleet default false) — Cargo.toml carries
-#     a hard git dependency on forkwright/theatron.git (tag=v1.5.0). The
+#     a hard git dependency on forkwright/theatron.git (tag=v1.6.0). The
 #     dependency is public and pinned to an immutable tag, so an
 #     unauthenticated fetch resolves it today (`git ls-remote` with no
 #     credential helper and no token returns the same SHA Cargo.lock pins for
-#     refs/tags/v1.5.0) — but the input is kept true anyway as standing
+#     refs/tags/v1.6.0) — but the input is kept true anyway as standing
 #     insurance against anonymous git-fetch rate-limit flakiness on
 #     GitHub-hosted runners, the input's documented second criterion (see
 #     forkwright/.github hybrid-gate.yml). scripts/check-automation-pr-gates.py
@@ -426,14 +426,80 @@ jobs:
       - name: Aletheia gated-provider feature gate
         run: cargo check -p aletheia --features mcp,energeia,codex-provider,kimi-provider,keyring
 
+      # WHY(#4414): same class of gap as the provider-feature gate above —
+      # hybrid-gate's clippy_cmd carries no --all-features, so a feature
+      # nobody enables by default rots silently. episteme's ort/onnx-backed
+      # extraction models (gliner, nuextract) and poiesis-charts' Vega-Lite
+      # fallback (charts-vega) are the two surfaces this repo has concretely
+      # caught drifting uncaught (18 lints in nuextract.rs merged via #4410,
+      # 3 redundant_closure lints in vega.rs merged via #4412/#4413) — both
+      # gated behind non-default features with zero other lint coverage.
+      # Scoped per-crate clippy, not --workspace --all-features (z3-sys
+      # ~10-15min build): `ort`'s "download-binaries" feature fetches a
+      # prebuilt onnxruntime rather than needing a system package, so this
+      # needs no apt-get step. Blocking here (not a scheduled/nightly job)
+      # is what actually satisfies "caught pre-merge" — a nightly run only
+      # reports a break up to 24h after it already merged.
+      - name: Episteme ML-feature gate (gliner, nuextract)
+        run: cargo clippy -p episteme --features gliner,nuextract --all-targets -- -D warnings
+
+      - name: Poiesis-charts Vega-Lite feature gate
+        run: cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings
+
       - name: cargo check fuzz targets
         env:
           CARGO_TARGET_DIR: target
         run: cargo check --manifest-path fuzz/Cargo.toml --bins
 
+  # WHY(#4943): every other job above configures fleet-git-credentials, so
+  # none of them can tell "resolves because it's genuinely public" apart
+  # from "resolves because this token happened to be set" — the two look
+  # identical from a green check. A private forkwright dependency creeping
+  # into Cargo.toml would pass every check above on a maintainer PR (which
+  # always has FLEET_REPO_TOKEN available) and only surface as a broken
+  # build on an actual external contributor's fork, where GitHub does not
+  # propagate repo secrets to fork-originated PR runs. This job runs the
+  # same resolution+compile an outside fork would see by deliberately never
+  # calling fleet-git-credentials at all — no empty-token call, no step —
+  # so the workspace must resolve every git dependency anonymously or this
+  # fails. It is blocking, not advisory: the guarantee this job checks
+  # (public build, no maintainer credentials required) is exactly the thing
+  # #4943 asked to be regression-proofed, not just documented once and
+  # trusted to hold.
+  fork-portability-check:
+    name: fork-portability-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: fork-portability
+
+      - name: cargo check --workspace (no fleet credentials configured)
+        # WHY --locked: proves the exact dependency graph Cargo.lock commits
+        # to (the graph every contributor and CI job actually builds
+        # against) resolves anonymously, not merely that *some* resolution
+        # of the version/tag constraints does.
+        run: cargo check --workspace --all-targets --features test-core --locked
+
   gate:
     name: gate
-    needs: [hybrid-gate, gate-coverage-scripts, gate-coverage-compile-checks, attestation-verify]
+    needs:
+      [
+        hybrid-gate,
+        gate-coverage-scripts,
+        gate-coverage-compile-checks,
+        attestation-verify,
+        fork-portability-check,
+      ]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -443,6 +509,7 @@ jobs:
           HYBRID_GATE_RESULT: ${{ needs.hybrid-gate.result }}
           COVERAGE_SCRIPTS_RESULT: ${{ needs.gate-coverage-scripts.result }}
           COVERAGE_COMPILE_RESULT: ${{ needs.gate-coverage-compile-checks.result }}
+          FORK_PORTABILITY_RESULT: ${{ needs.fork-portability-check.result }}
           ATTESTATION_VERIFY_RESULT: ${{ needs.attestation-verify.result }}
           TRAILER_PRESENT: ${{ needs.attestation-verify.outputs.trailer_present }}
           TRAILER_VALID: ${{ needs.attestation-verify.outputs.trailer_valid }}
@@ -538,4 +605,20 @@ jobs:
               ;;
           esac
 
-          echo "All gate stages passed (hybrid gate + coverage scripts + coverage compile checks)."
+          # WHY(#4943): a failure here means the workspace no longer resolves
+          # or compiles without maintainer-only credentials — the exact
+          # regression this job exists to catch before it reaches an actual
+          # external contributor's fork build.
+          case "$FORK_PORTABILITY_RESULT" in
+            success) ;;
+            cancelled|skipped)
+              echo "CANCELLED: fork-portability-check did not run to a verdict (result: ${FORK_PORTABILITY_RESULT}). This is NOT a check failure: re-run the job. See aletheia#6701." >&2
+              exit 1
+              ;;
+            *)
+              echo "ERROR: fork-portability-check did not succeed (result: ${FORK_PORTABILITY_RESULT}) -- the workspace no longer builds without fleet credentials. See #4943." >&2
+              exit 1
+              ;;
+          esac
+
+          echo "All gate stages passed (hybrid gate + coverage scripts + coverage compile checks + fork portability)."

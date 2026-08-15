@@ -130,9 +130,9 @@ pub mod uncertainty;
 /// User-facing error formatting for display in chat responses.
 pub mod user_error;
 /// Working-memory checkpoint persistence.
-// WHY(#6750): same dead-code trap as `competence` above —
-// `FjallWorkingCheckpointStore` has zero real callers, only exercised by its
-// own test modules. Stays `pub`.
+// WHY(#4588): `pub` because `FjallWorkingCheckpointStore` is opened across
+// the crate boundary by `crates/aletheia/src/runtime/mod.rs` and
+// `crates/aletheia/src/commands/agent_io.rs`.
 pub mod working_memory;
 /// Working state management: task stack, focus context, wait state.
 pub(crate) mod working_state;

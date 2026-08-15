@@ -23,7 +23,6 @@
 | Prosoche | `prosoche.rs` | Periodic attention checks - agent surveys environment |
 | Maintenance | `maintenance/` | Trace rotation, drift detection, DB monitoring, retention, knowledge maintenance, fact-extraction persistence |
 | Coordination | `coordination.rs` | Reserved child-agent concurrency boundary; no spawn/join lifecycle is wired yet |
-| Triggers | `triggers.rs` | Reserved external trigger boundary; no file watcher or webhook dispatch is wired yet |
 | Watchdog | `watchdog.rs` | Per-task heartbeat monitor wired into `TaskRunner` when enabled |
 | State | `state.rs` | fjall persistence, workspace config, single-instance locking |
 
@@ -32,7 +31,7 @@
 - **Dispatch orchestration** - energeia handles prompt dispatch, session management, and QA
 - **Cross-project coordination** - dianoia (#2291) handles attention allocation across projects
 - **Planning** - dianoia handles plan lifecycle, phase gates, stuck detection
-- **External event triggers** - file-watcher and webhook config fields are reserved; the daemon does not listen for those events yet
+- **External event triggers** - `state::AllowedTriggers`' file-watcher and webhook config fields are reserved; the daemon does not listen for those events yet, and no general-purpose router type reserves this boundary (aletheia#6789: no committed implementation plan; #5955's `prosphora::TaskSource` is a narrower, zetesis-specific mechanism, not a substitute)
 - **Child-agent lifecycle management** - `Coordinator` stores the intended concurrency limit, but it does not spawn, join, kill, or track children yet
 
 ### Relationship to dianoia
@@ -77,9 +76,10 @@ KAIROS mode composes the daemon subsystems into continuous autonomous operation:
         └──────────┘
 ```
 
-`TriggerRouter` and `Coordinator` remain reserved API boundaries outside the
-live diagram until external event dispatch and child-agent lifecycle tracking
-are implemented.
+`Coordinator` remains a reserved API boundary outside the live diagram until
+child-agent lifecycle tracking is implemented. External event dispatch has no
+matching type at all today — `state::AllowedTriggers` reserves the config
+slot; see aletheia#6789.
 
 ### Scheduling
 
@@ -131,9 +131,12 @@ Active windows restrict execution to time ranges (e.g., `active_window: Some((8,
 
 Oikonomos is implemented. KAIROS mode is scaffolded - the subsystems exist and are tested, and maintenance now includes persistent fact extraction plus drift/knowledge maintenance wiring. The full autonomous prosoche-to-decision-to-action loop remains the boundary for KAIROS completion. Integration with dianoia for cross-project attention is planned for Phase 05e.
 
-Event-driven triggers and child-agent coordination are also still scaffolded:
-their public types and config fields reserve the future boundary, but no
-runtime path starts file watchers, listens for webhooks, or manages child-agent
-lifecycles today.
+Child-agent coordination is also still scaffolded: `Coordinator`'s public type
+reserves the future boundary, but no runtime path manages child-agent
+lifecycles today. Event-driven triggers are reserved at the config level only
+(`state::AllowedTriggers`) — the `TriggerRouter` type that once reserved a
+matching API boundary was removed (aletheia#6789: no committed implementation
+plan and no live consumer); a future general-purpose router gets a fresh type
+when someone actually designs one.
 
 See [PROSOCHE.md](PROSOCHE.md) for the attention subsystem detail.

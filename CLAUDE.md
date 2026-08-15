@@ -11,63 +11,21 @@ tightens: per-crate CLAUDE.md files under crates/*/ can narrow conventions withi
 
 Repo-level conventions for AI coding agents working on Aletheia. Key crates: aletheia, nous, pylon, mneme. Entry point: `crates/aletheia/src/main.rs`.
 
+This file is a thin pointer, not a second copy of [AGENTS.md](AGENTS.md). Build/test/lint commands, key patterns, where to add things, and common mistakes all live there — read it first. What follows is what AGENTS.md does not already cover.
+
 ## Depth
 
-Read [docs/GOLDEN-PATH.md](docs/GOLDEN-PATH.md) first to understand the public desktop-first app workflow. See also [AGENTS.md](AGENTS.md) for a cross-tool quick-reference (build commands, crate selection flowchart, common mistakes).
+Read [docs/GOLDEN-PATH.md](docs/GOLDEN-PATH.md) first for the public desktop-first app workflow, then [docs/HARNESS-LIFECYCLE.md](docs/HARNESS-LIFECYCLE.md) for the canonical nine-stage agent-work loop every crate and surface implements. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/ARCHITECTURE-GUIDE.md](docs/ARCHITECTURE-GUIDE.md) cover the crate/module map and dependency graph.
 
-## Standards
+## Layered context loading
 
-Universal: STANDARDS.md in forkwright/kanon's crates/basanos/standards/
-Rust: RUST.md in forkwright/kanon's crates/basanos/standards/
-Writing: WRITING.md in forkwright/kanon's crates/basanos/standards/
-Shell: SHELL.md in forkwright/kanon's crates/basanos/standards/
+[_llm/README.md](_llm/README.md) defines the L1-L4 on-demand reference system (workspace summary → crate summaries → API index → source) and the task-to-recipe table in `_llm/recipes.toml` — read it there; this file is consumed directly by the agent client and is not itself one of the loaded recipe sections.
 
-## Structure
-
-[docs/GOLDEN-PATH.md](docs/GOLDEN-PATH.md): first orientation read for the public app workflow and implemented/planned app surfaces.
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): crate workspace, module map, dependency graph, trait boundaries.
-[docs/ARCHITECTURE-GUIDE.md](docs/ARCHITECTURE-GUIDE.md): crate cheat sheet and walkthrough for cold-start.
-
-### Loading recipes
-
-Task-specific context selection is defined in [`_llm/recipes.toml`](_llm/recipes.toml). Bootstrap resolves recipes by name; the agent client consumes `CLAUDE.md` separately.
-
-| Task type | Recipe | Bootstrap loads | Token budget |
-|-----------|--------|-----------------|-------------|
-| Cold start / first interaction | `cold_start` | `L1-workspace.md` + `L2-crate-summaries/*.md` | ~5,700 |
-| General in-session turn | `in_session` | `L1-workspace.md` + `current_state.toml` | ~1,500 |
-| Cross-crate refactor | `cross_crate_refactor` | `L1-workspace.md` + `L2-crate-summaries/*.md` + `L3-api-index/*.md` | ~250K |
-| Single-crate edit | `edit_crate` | L2(crate) + L3(crate) + source(crate) | varies |
-| New HTTP endpoint | `add_endpoint` | `architecture.toml` + `api.toml` + L3(pylon, nous) | ~65K |
-| New built-in tool | `add_tool` | `architecture.toml` + L3(organon) + `builtins/` source | ~35K |
-| Bug fix in known crate | `fix_bug` | `architecture.toml` + L3(crate) + source(crate) | ~45K |
-
-`edit_crate`, `add_endpoint`, `add_tool`, and `fix_bug` are parameterised and
-are intended for agent on-demand tooling rather than automatic bootstrap
-selection. The `nous` crate provides [`RecipeRegistry`](crates/nous/src/recipes.rs)
-for parsing and selecting recipes by task description. L2 summaries now include
-one-line recent-change notes; use them before reading source for
-post-2026-05-08 substrate orientation.
-
-### Config
+## Config
 
 - **Rust crates:** `instance.example/config/aletheia.toml` (TOML cascade: defaults → TOML → env vars)
 
-## Commands
-
-```bash
-cargo build                            # Debug build
-cargo build --release                  # Release (LTO, stripped)
-cargo test --workspace                 # Default tests (~5,400)
-cargo test --workspace --features test-core  # + storage/engine tests (~5,435)
-cargo test --workspace --features test-full  # + ML embedding tests (~5,435)
-cargo test -p aletheia-hermeneus       # Single crate
-cargo clippy --workspace               # Lint (zero warnings)
-```
-
-Test tiers: [docs/test-tiers.md](docs/test-tiers.md)
-
-### Mutation testing
+## Mutation testing
 
 `cargo-mutants` mutates the source and re-runs the tests; a mutation that
 passes all tests is a test that does not actually test the code it claims
@@ -82,34 +40,10 @@ cargo mutants --baseline=skip --in-diff <branch>  # mutate only the diff vs <bra
 
 Baselines for critical paths live under `mutants-out/` (gitignored). Treat
 any **missed** mutation as a test gap: either strengthen the existing
-assertion or add a new test that catches the mutant. See `docs/RELEASING.md`
-for the release-time substance-audit gate that calls this tool via
-`kanon audit substance`.
-
-## Key patterns
-
-- **Errors:** `snafu` with `.context()` propagation and `Location` tracking
-- **IDs:** Newtypes for all domain IDs (`AgentId`, `SessionId`, `NousId`)
-- **Time:** `jiff` for time, `ulid` for IDs
-- **Async:** Tokio actor model (`NousActor` pattern)
-- **Config:** TOML cascade in `taxis` (owned loader, no figment)
-- **Lints:** `#[expect(lint, reason = "...")]` over `#[allow]`; every suppression justified
-- **Visibility:** `pub(crate)` by default; `pub` only for cross-crate API surface
-- **Naming:** Greek names per GNOMON.md in forkwright/kanon's crates/basanos/standards/, registry at [docs/lexicon.md](docs/lexicon.md)
-- **No barrel files**: import from the file that owns the symbol
-- **Module imports flow downward**: higher layers depend on lower, never reverse
-
-## Before submitting
-
-Install the in-tree hooks once per clone: `scripts/install-hooks.sh` (auto-run by `.envrc`/direnv). The `pre-push` hook runs CI-exact fmt + `_llm` regen (generated, not committed) + the `gate-coverage-scripts` checks + clippy so they never first-fail in CI; deliberate bypass is `git push --no-verify`. Run the coverage checks on their own at any time with `scripts/run-gate-coverage.py`; its step list is derived from the workflow, so it cannot drift from what CI runs.
-
-1. `cargo +1.94.0 fmt --all -- --check` clean — **fmt is a required CI check** and runs *first* in gate-attestation, so a fmt-only miss aborts the whole gate
-2. `cargo test -p <affected-crate>` passes
-3. `cargo clippy --workspace`: zero warnings (CI-exact: `--all-targets -- -D warnings`)
-4. `_llm` L3 index + manifest are **generated, not committed** (gitignored); materialize locally with `uv run scripts/llm-extract-l3.py` — do not `git add` them
-5. No `unwrap()` in library code
-6. New errors use snafu with context
-7. All lint suppressions use `#[expect]` with reason, not `#[allow]`
+assertion or add a new test that catches the mutant. `cargo-mutants` itself
+needs nothing beyond `cargo`; see [docs/RELEASING.md](docs/RELEASING.md)'s
+maintainer-only release substance-audit appendix for the (separate,
+`kanon`-gated) release-time invocation.
 
 ## Test data & instance boundary
 
@@ -118,46 +52,6 @@ Install the in-tree hooks once per clone: `scripts/install-hooks.sh` (auto-run b
 - Operator-specific config belongs in `instance/` (gitignored), not `shared/` or repo root
 - `instance.example/` shows the expected structure for fresh clones
 - CI PII scanner rejects commits with personal data patterns (`.github/pii-patterns.txt`)
-
-## Where to add things
-
-| Task | Location | Registration |
-|------|----------|-------------|
-| CLI subcommand | `crates/aletheia/src/commands/` | Add to clap derive in `main.rs` |
-| API endpoint | `crates/pylon/src/handlers/` | Add route in `crates/pylon/src/router.rs` |
-| Built-in tool | `crates/organon/src/builtins/` | Register in `register_all()` |
-| Config section | `crates/taxis/src/config/behavior/` or `crates/taxis/src/config/agents.rs` | Add field to `AletheiaConfig`/defaults and registry metadata |
-| Error variant | `crates/{crate}/src/error.rs` | snafu derive on the crate's Error enum |
-| Maintenance task | `crates/daemon/src/` | Register in runner |
-| Bootstrap file | `crates/nous/src/bootstrap/` | Add to section list in assembler |
-| Middleware | `crates/pylon/src/middleware/` | Add layer in `crates/pylon/src/server.rs` |
-
-Per-crate details in each crate's `CLAUDE.md`.
-
-## Adding tools
-
-Choose the correct tool plane before writing code. See `docs/MCP-SERVERS.md` for the full plane taxonomy.
-
-| Plane | Choose when | Owner |
-|-------|-------------|-------|
-| Organon built-in | In-loop capability; no external process; required at every turn | `crates/organon/src/builtins/`; `register_all()` |
-| Runtime-bridged MCP | External MCP server; aletheia connects as a client | `crates/aletheia/src/external_tools.rs`; `[tools]` in `aletheia.toml` |
-| DiaporeiaServer-exposed | Aletheia hosts the tool for an external MCP client | `crates/diaporeia/` |
-| Operator-local MCP | Third-party server; no aletheia crate change needed | Operator registers in agent client config |
-
-**Organon built-ins** implement `ToolExecutor`:
-
-```rust
-pub trait ToolExecutor: Send + Sync {
-    fn execute<'a>(
-        &'a self,
-        input: &'a ToolInput,
-        ctx: &'a ToolContext,
-    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>>;
-}
-```
-
-Register in `crates/organon/src/builtins/mod.rs` via `register_all()`.
 
 ## Scripts
 
@@ -181,6 +75,25 @@ Conventional commits: `<type>(<scope>): <description>`. Types: `feat`, `fix`, `r
 | Chore | `chore/<description>` | `chore/update-deps` |
 
 Branch from `main`. Rebase before pushing. Always squash merge.
+
+## Maintainer-only
+
+Everything below assumes access to `forkwright/kanon` (a private repo) and the maintainer's local
+`kanon` CLI/audit tooling. None of it is required to open a PR — [AGENTS.md](AGENTS.md)'s `cargo
+fmt`/`check`/`clippy`/`nextest` gate is the actual, public requirement (see
+[docs/AUTOMATION-PR-GATES.md](docs/AUTOMATION-PR-GATES.md)).
+
+### Standards
+
+Universal: STANDARDS.md in forkwright/kanon's crates/basanos/standards/
+Rust: RUST.md in forkwright/kanon's crates/basanos/standards/
+Writing: WRITING.md in forkwright/kanon's crates/basanos/standards/
+Shell: SHELL.md in forkwright/kanon's crates/basanos/standards/
+Naming: GNOMON.md in forkwright/kanon's crates/basanos/standards/, registry at [docs/lexicon.md](docs/lexicon.md)
+
+The public-visible distillation of these — error handling, ID newtypes, async pattern, lint
+suppression convention — is in AGENTS.md's Key Patterns; a contributor without kanon access is not
+missing a requirement, only the maintainer's own extended style rationale.
 
 <!-- kanon:auto-start -->
 ## Generated kanon context

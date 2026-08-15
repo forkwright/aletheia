@@ -110,7 +110,7 @@ journalctl --user -u aletheia-health --since "30 minutes ago"
 The daemon's backup maintenance task creates local whole-instance backup sets.
 Each set contains `manifest.json`, `stores/knowledge.fjall`, `stores/sessions.db`,
 present runtime stores (`stores/auth.fjall`, `stores/daemon-task-state`,
-`stores/cron-locks.fjall`), configuration, workspace directories, and optional
+`stores/cron-locks.fjall`, `stores/working_checkpoints.fjall`), configuration, workspace directories, and optional
 local audit/archive data when present. Configure it in
 `instance/config/aletheia.toml`:
 

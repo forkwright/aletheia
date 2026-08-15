@@ -37,7 +37,6 @@ use oikonomos::runner::{DaemonOutputMode, ExecutionResult, TaskOutcome, TaskRunn
 use oikonomos::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
 use oikonomos::self_prompt::{SELF_PROMPT_SESSION_KEY, SelfPromptConfig};
 use oikonomos::state::{AllowedTriggers, DaemonConfig, WorkspaceGuard};
-use oikonomos::triggers::TriggerRouter;
 
 mod common;
 use common::{make_runner, write_fixture};
@@ -110,7 +109,7 @@ fn workspace_guard_acquires_releases_and_reacquires_cleanly() {
     drop(second);
 }
 
-// ── Misc helpers: Coordinator, TriggerRouter, DaemonError ──
+// ── Misc helpers: Coordinator, DaemonError ──
 
 #[test]
 fn coordinator_preserves_max_children_limit() {
@@ -120,21 +119,6 @@ fn coordinator_preserves_max_children_limit() {
     // but does not spawn or track children yet. Verify it survives zero capacity.
     let zero = Coordinator::new(0);
     assert_eq!(zero.max_children(), 0);
-}
-
-#[test]
-fn trigger_router_default_and_new_produce_equivalent_routers() {
-    // NOTE: TriggerRouter is a reserved boundary today with no observable event
-    // dispatch state. Verify both constructors succeed and the type remains
-    // Debug-printable while it is unwired.
-    let via_new = TriggerRouter::new();
-    let via_default = TriggerRouter::default();
-    let new_debug = format!("{via_new:?}");
-    let default_debug = format!("{via_default:?}");
-    assert_eq!(
-        new_debug, default_debug,
-        "TriggerRouter::new and default must produce identical Debug output"
-    );
 }
 
 #[test]

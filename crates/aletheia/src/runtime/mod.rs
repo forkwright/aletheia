@@ -485,6 +485,22 @@ impl RuntimeBuilder {
         ));
         info!(path = %db_path.display(), "session store opened");
 
+        // WHY(#4588): default-on (`working_checkpoint_enabled`) tool +
+        // hook surfaces both read this same Option via `ToolServices`
+        // (see `nous::hooks::builtins::register_builtin_hooks` call site in
+        // `nous::actor::turn`), so opening it once here wires both.
+        let working_checkpoints_path = self.oikos.working_checkpoints_db();
+        let working_checkpoint_store: Arc<dyn organon::types::WorkingCheckpointStore> = Arc::new(
+            nous::working_memory::FjallWorkingCheckpointStore::open(&working_checkpoints_path)
+                .with_whatever_context(|_| {
+                    format!(
+                        "failed to open working checkpoint store at {}",
+                        working_checkpoints_path.display()
+                    )
+                })?,
+        );
+        info!(path = %working_checkpoints_path.display(), "working checkpoint store opened");
+
         let auth_store_path = self.oikos.data().join("auth.fjall");
         let auth_facade = AuthFacade::new(
             AuthConfig {
@@ -757,7 +773,7 @@ impl RuntimeBuilder {
             });
 
         let tool_services = Arc::new(ToolServices {
-            working_checkpoint_store: None,
+            working_checkpoint_store: Some(working_checkpoint_store),
             cross_nous,
             messenger,
             note_store,

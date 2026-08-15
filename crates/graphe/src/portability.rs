@@ -21,11 +21,18 @@ use serde::{Deserialize, Serialize};
 ///   metrics, and per-message `created_at`/`is_distilled` on import.
 /// - **v3** (#4590): binary workspace files include base64 contents, byte
 ///   count, and sha256 so import restores bytes instead of path-only entries.
+/// - **v4** (#4588): `working_state` sources from the durable
+///   working-checkpoint store (`update_working_checkpoint` tool writes) and
+///   imports back into it durably, instead of the legacy blackboard
+///   `ws:{nous_id}:{session_id}` convention that no production path ever
+///   populated. A v3-or-older `working_state` blob (the old task/focus/wait
+///   shape) does not parse as checkpoints and is skipped on import rather
+///   than rejected.
 ///
 /// The version bump declares the fidelity contract: consumers MUST reject
 /// older versions (or pipe them through a migration) so they cannot silently
 /// drop fields that the current version expects to round-trip.
-pub const AGENT_FILE_VERSION: u32 = 3;
+pub const AGENT_FILE_VERSION: u32 = 4;
 
 /// Machine-readable metadata describing the completeness of an export.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -511,7 +518,7 @@ mod tests {
 
     #[test]
     fn format_version_constant() {
-        assert_eq!(AGENT_FILE_VERSION, 3);
+        assert_eq!(AGENT_FILE_VERSION, 4);
     }
 
     #[test]

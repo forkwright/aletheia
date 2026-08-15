@@ -4,7 +4,9 @@ Cross-tool guide for AI coding agents (Claude Code, Cursor, Windsurf, Copilot, e
 
 ## Depth
 
-Read `docs/GOLDEN-PATH.md` first to understand the public desktop-first app workflow and the implemented versus planned app surfaces.
+Read `docs/GOLDEN-PATH.md` first to understand the public desktop-first app workflow and the implemented versus planned app surfaces. Read `docs/HARNESS-LIFECYCLE.md` for the canonical nine-stage agent-work loop every crate and surface implements — the map from "task enters the system" through "result is reviewed, exported, or closed" to the code that owns each stage.
+
+Run `python3 scripts/aletheia-orient.py` for a fresh, repo-sourced snapshot: crate list by layer, every feature flag, key CLI commands, and whether `CRATE-INDEX.toml`/`_llm/manifest.toml` are fresh. It reads only generated/CI-gated files (`CRATE-INDEX.toml`, `_llm/api.toml`) — no private planning, no hand-maintained status prose.
 
 ## Build / Test / Lint
 
@@ -85,10 +87,34 @@ uv run scripts/llm-extract-l3.py
 
 The pre-push hook does this automatically when Rust sources change. Do not `git add _llm/` — `_llm/L3-api-index/` and `_llm/manifest.toml` are gitignored. The `_llm freshness` CI gate verifies the extractor runs without error and its output files exist; it does not diff against a committed copy.
 
-## Gate Trailer
+## PR gate
 
-All PRs need `Gate-Passed: kanon 0.1.0` in a commit body.
-Desktop PRs: `Gate-Passed: kanon 0.1.0 desktop-only (excluded from workspace build)`.
+Every PR must pass CI's `gate` required check, which independently re-runs:
+
+```bash
+cargo fmt --all -- --check
+cargo check --workspace --all-targets --features test-core
+cargo clippy --workspace --all-targets --features test-core -- -D warnings
+cargo nextest run --profile ci --workspace --features test-core
+```
+
+That is all a contributor needs — no local tooling beyond `cargo` is required. If a commit body
+carries a `Gate-Passed: kanon <version> ...` trailer in the exact shape `kanon gate --tier full
+--stamp` emits, CI verifies it against the tip's actual tree and skips re-running the stages it
+attests; this is an optional fast-path for maintainers with local `kanon` access, not a
+requirement — a PR with no trailer at all still passes on a green `full-gate-build`. Full mechanism:
+[docs/AUTOMATION-PR-GATES.md](docs/AUTOMATION-PR-GATES.md).
+
+## `kanon:ignore` suppression comments
+
+Source may carry `// kanon:ignore NAMESPACE/rule-name [WHY: reason]` comments (e.g.
+`// kanon:ignore RUST/plain-string-secret WHY: session_key is a routing key, not a credential`).
+These suppress `kanon lint`'s own static-analysis rules — a maintainer-local tool distinct from
+`clippy`/`rustc` lints (already governed by `#[expect(lint, reason = "...")]`, see Key Patterns
+above). `NAMESPACE` groups related rules (`RUST`, `SECURITY`, `TESTING`, `TOPOLOGY`, ...); the rule
+name after the slash identifies the specific check. A contributor without `kanon` installed can
+safely ignore these comments — they document *why* a maintainer's local lint pass doesn't flag that
+line, not a runtime or CI requirement.
 
 ## Optional: LSP-powered navigation
 
