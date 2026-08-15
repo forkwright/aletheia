@@ -3,6 +3,7 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use eidos::{FailureCategory, NextAction, Recoverability};
 use snafu::Snafu;
 
 #[path = "error_dto.rs"]
@@ -126,14 +127,110 @@ pub enum ApiError {
     },
 }
 
+/// Best-effort failure-taxonomy classification from an HTTP status alone.
+///
+/// Coarser than [`ApiError::classify`] (which knows the real cause) — used
+/// only at the handful of sites that build an [`ErrorResponse`] directly
+/// (rate-limit/CSRF/fallback middleware, extractor-rejection passthrough)
+/// rather than going through an `ApiError` variant.
+pub(crate) fn classify_by_status(
+    status: StatusCode,
+) -> (FailureCategory, Recoverability, NextAction) {
+    match status {
+        StatusCode::TOO_MANY_REQUESTS => (
+            FailureCategory::Network,
+            Recoverability::Retryable,
+            NextAction::Retry,
+        ),
+        StatusCode::FORBIDDEN
+        | StatusCode::UNAUTHORIZED
+        | StatusCode::GONE
+        | StatusCode::BAD_REQUEST
+        | StatusCode::UNPROCESSABLE_ENTITY => (
+            FailureCategory::Config,
+            Recoverability::UserActionRequired,
+            NextAction::Reconfigure,
+        ),
+        s if s.is_server_error() => (
+            FailureCategory::InternalBug,
+            Recoverability::NotRecoverable,
+            NextAction::FileIssue,
+        ),
+        _ => (
+            FailureCategory::Config,
+            Recoverability::UserActionRequired,
+            NextAction::InspectTrace,
+        ),
+    }
+}
+
 impl ApiError {
     pub(crate) fn forbidden(message: &str) -> Self {
         ForbiddenSnafu { message }.build()
+    }
+
+    /// Classify this error onto the shared failure taxonomy (aletheia#4545).
+    ///
+    /// Each arm is explicit (no catch-all) so a new `ApiError` variant fails
+    /// this match at compile time rather than silently inheriting a wrong
+    /// default classification — the same "explicit arm per known variant"
+    /// discipline `impl_from_error!` below uses for HTTP status mapping.
+    fn classify(&self) -> (FailureCategory, Recoverability, NextAction) {
+        match self {
+            Self::SessionNotFound { .. } | Self::NousNotFound { .. } | Self::NotFound { .. } => {
+                (
+                    FailureCategory::Persistence,
+                    Recoverability::NotRecoverable,
+                    NextAction::None,
+                )
+            }
+            Self::BadRequest { .. } | Self::ValidationFailed { .. } => (
+                FailureCategory::Config,
+                Recoverability::UserActionRequired,
+                NextAction::Reconfigure,
+            ),
+            Self::Internal { .. } => (
+                FailureCategory::InternalBug,
+                Recoverability::NotRecoverable,
+                NextAction::FileIssue,
+            ),
+            Self::Unauthorized { .. } | Self::Forbidden { .. } => (
+                FailureCategory::Config,
+                Recoverability::UserActionRequired,
+                NextAction::Reconfigure,
+            ),
+            Self::RateLimited { .. } | Self::ServiceUnavailable { .. } => (
+                FailureCategory::Network,
+                Recoverability::Retryable,
+                NextAction::Retry,
+            ),
+            Self::Conflict { .. } | Self::StreamTurnConflict { .. } => (
+                FailureCategory::Persistence,
+                Recoverability::Retryable,
+                NextAction::InspectTrace,
+            ),
+            Self::NotImplemented { .. } => (
+                FailureCategory::InternalBug,
+                Recoverability::NotRecoverable,
+                NextAction::None,
+            ),
+            // WHY: an already-classified presentation error from a lower
+            // layer carries its own status/code but no failure-taxonomy
+            // classification yet — conservative defaults until that layer
+            // threads a category through (tracked with the rest of #4545's
+            // remaining surfaces).
+            Self::UserFacing { .. } => (
+                FailureCategory::InternalBug,
+                Recoverability::UserActionRequired,
+                NextAction::InspectTrace,
+            ),
+        }
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        let (category, recoverability, next_action) = self.classify();
         let (status, code, details) = match &self {
             Self::SessionNotFound { .. } => (StatusCode::NOT_FOUND, "session_not_found", None),
             Self::NousNotFound { .. } => (StatusCode::NOT_FOUND, "nous_not_found", None),
@@ -214,6 +311,9 @@ impl IntoResponse for ApiError {
                 message: client_message,
                 request_id: None,
                 details,
+                category,
+                recoverability,
+                next_action,
             },
         };
 
@@ -811,12 +911,99 @@ mod tests {
 
     /// Helper: extract the `message` field from an `ErrorResponse` JSON body.
     fn body_message(response: Response) -> String {
+        json_body(response)["error"]["message"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    }
+
+    /// Helper: decode an `ErrorResponse` JSON body.
+    fn json_body(response: Response) -> serde_json::Value {
         let rt = tokio::runtime::Runtime::new().unwrap();
         let body = rt
             .block_on(axum::body::to_bytes(response.into_body(), 64 * 1024))
             .unwrap();
-        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        json["error"]["message"].as_str().unwrap().to_owned()
+        serde_json::from_slice(&body).unwrap()
+    }
+
+    /// Representative failure categories (aletheia#4545): each asserts the
+    /// full `category`/`recoverability`/`next_action` triple in the wire
+    /// body, not just that the fields exist, so a `classify()` regression
+    /// that silently swaps two categories fails a test instead of shipping.
+    #[test]
+    fn failure_taxonomy_covers_representative_categories() {
+        let cases: [(ApiError, &str, &str, &str); 6] = [
+            (
+                ApiError::SessionNotFound {
+                    id: "ses-1".to_owned(),
+                    location: snafu::location!(),
+                },
+                "persistence",
+                "not_recoverable",
+                "none",
+            ),
+            (
+                ApiError::BadRequest {
+                    message: "bad".to_owned(),
+                    location: snafu::location!(),
+                },
+                "config",
+                "user_action_required",
+                "reconfigure",
+            ),
+            (
+                ApiError::Internal {
+                    message: "boom".to_owned(),
+                    location: snafu::location!(),
+                },
+                "internal_bug",
+                "not_recoverable",
+                "file_issue",
+            ),
+            (
+                ApiError::Unauthorized {
+                    location: snafu::location!(),
+                },
+                "config",
+                "user_action_required",
+                "reconfigure",
+            ),
+            (
+                ApiError::RateLimited {
+                    retry_after_secs: 1,
+                    location: snafu::location!(),
+                },
+                "network",
+                "retryable",
+                "retry",
+            ),
+            (
+                ApiError::NotImplemented {
+                    message: "later".to_owned(),
+                    location: snafu::location!(),
+                },
+                "internal_bug",
+                "not_recoverable",
+                "none",
+            ),
+        ];
+
+        for (err, category, recoverability, next_action) in cases {
+            let debug = format!("{err:?}");
+            let json = json_body(err.into_response());
+            assert_eq!(
+                json["error"]["category"], category,
+                "category mismatch for {debug}"
+            );
+            assert_eq!(
+                json["error"]["recoverability"], recoverability,
+                "recoverability mismatch for {debug}"
+            );
+            assert_eq!(
+                json["error"]["next_action"], next_action,
+                "next_action mismatch for {debug}"
+            );
+        }
     }
 
     #[test]

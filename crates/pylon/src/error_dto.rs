@@ -1,6 +1,7 @@
 // WHY: wire DTO
 //! API error response wire shapes.
 
+use eidos::{FailureCategory, NextAction, Recoverability};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -24,6 +25,17 @@ pub struct ErrorBody {
     /// Optional structured details (e.g. retry timing, validation errors).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub details: Option<serde_json::Value>,
+    /// Canonical failure category (aletheia#4545) — lets a CLI/TUI/desktop
+    /// client render consistent guidance without parsing `message`.
+    #[schema(value_type = String)]
+    pub category: FailureCategory,
+    /// Whether this specific failure can plausibly be retried, needs user
+    /// action first, or cannot be recovered from.
+    #[schema(value_type = String)]
+    pub recoverability: Recoverability,
+    /// What the client can concretely do next.
+    #[schema(value_type = String)]
+    pub next_action: NextAction,
 }
 
 /// A single field-level validation error (#3275).

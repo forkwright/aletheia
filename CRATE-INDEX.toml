@@ -124,7 +124,7 @@ path = "crates/eidos"
 layer = "types"
 purpose = "Shared knowledge types for the Aletheia memory layer"
 depends_on = ["koina"]
-used_by = ["aletheia-sessions-migrate", "energeia", "episteme", "graphe", "krites", "mneme", "organon", "taxis"]
+used_by = ["aletheia-sessions-migrate", "energeia", "episteme", "graphe", "krites", "mneme", "organon", "pylon", "taxis"]
 dev_depends_on = []
 
 [crates.eidos.features]
@@ -522,7 +522,7 @@ dev_depends_on = []
 path = "crates/pylon"
 layer = "http"
 purpose = "Axum HTTP gateway for Aletheia"
-depends_on = ["dianoia", "hermeneus", "koina", "mneme", "nous", "oikonomos", "organon", "symbolon", "taxis"]
+depends_on = ["dianoia", "eidos", "hermeneus", "koina", "mneme", "nous", "oikonomos", "organon", "symbolon", "taxis"]
 used_by = ["aletheia", "integration-tests"]
 dev_depends_on = ["skene"]
 
