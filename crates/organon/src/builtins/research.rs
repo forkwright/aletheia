@@ -19,8 +19,8 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{EgressGate, SandboxConfig, check_egress, check_egress_remote_addr};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use super::workspace::{extract_opt_u64, extract_str};
@@ -378,6 +378,21 @@ fn web_fetch_def() -> ToolDef {
 pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
     let egress = EgressGate::from_config(sandbox);
     registry.register(web_fetch_def(), Box::new(WebFetchExecutor { egress }))?;
+    registry.declare_capability(
+        ToolName::from_static("web_fetch"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::research".to_owned(),
+            stability: ToolStability::Stable,
+            // WHY Supported, unlike this tool's sibling Irreversible
+            // classifications: web_fetch is a read (GET the URL, return
+            // text) that mutates no local aletheia state. Reversibility
+            // here drives approval gating for the SSRF/egress risk of an
+            // agent-chosen URL, not an undo requirement -- there is
+            // nothing on aletheia's side to roll back.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

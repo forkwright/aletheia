@@ -8,6 +8,7 @@ use std::time::Duration;
 use agora::types::{ChannelProvider, SendParams};
 use nous::cross::{CrossNousMessage, CrossNousRouter};
 use organon::types::{CrossNousService, MessageService};
+use taxis::config::OutboundMessagePolicy;
 
 pub(crate) struct CrossNousAdapter(pub Arc<CrossNousRouter>);
 
@@ -52,23 +53,44 @@ impl CrossNousService for CrossNousAdapter {
     }
 }
 
-pub(crate) struct SignalAdapter(pub Arc<dyn ChannelProvider>);
+/// Bridges organon's `message` tool into an Agora channel provider.
+///
+/// SECURITY(#4788): this is the actual choke point every `message`-tool
+/// send passes through -- it holds the provider directly rather than
+/// going through `agora::ChannelRegistry` (that registry is used
+/// elsewhere, for dispatching replies to *inbound* conversations, a
+/// different trust boundary). `outbound_policy` is therefore enforced
+/// here, before the provider is ever called.
+pub(crate) struct SignalAdapter {
+    pub provider: Arc<dyn ChannelProvider>,
+    pub outbound_policy: OutboundMessagePolicy,
+}
 
 impl MessageService for SignalAdapter {
     fn send_message(
         &self,
         to: &str,
         text: &str,
-        _from_nous: &str,
+        from_nous: &str,
     ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+        // SECURITY(#4788): `account_id` carries the sending agent's identity
+        // into the audit record and, immediately below, into the allowlist
+        // check -- it was previously discarded (the parameter was named
+        // `_from_nous` and never read), so no attribution and no policy
+        // check were possible.
+        if !self.outbound_policy.allows(Some(from_nous), to) {
+            let denied = format!("recipient not in outbound allowlist for agent '{from_nous}'");
+            return Box::pin(async move { Err(denied) });
+        }
+
         let params = SendParams {
             to: to.to_owned(),
             text: text.to_owned(),
-            account_id: None,
+            account_id: Some(from_nous.to_owned()),
             thread_id: None,
             attachments: None,
         };
-        let provider = Arc::clone(&self.0);
+        let provider = Arc::clone(&self.provider);
         Box::pin(async move {
             let result = provider.send(&params).await;
             if result.sent {

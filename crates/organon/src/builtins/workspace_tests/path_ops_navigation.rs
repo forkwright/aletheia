@@ -6,6 +6,8 @@ use std::sync::{Arc, RwLock};
 
 use koina::id::{NousId, SessionId};
 
+use crate::sandbox::SandboxConfigExt as _;
+
 use super::super::*;
 
 fn test_ctx(dir: &Path) -> ToolContext {

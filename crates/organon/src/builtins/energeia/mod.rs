@@ -25,8 +25,16 @@ pub use shared::EnergeiaServices;
 
 use std::sync::Arc;
 
+use koina::id::ToolName;
+
 use crate::error::Result;
 use crate::registry::ToolRegistry;
+use crate::types::{RollbackSupport, ToolCapabilityMetadata, ToolStability};
+
+/// Every tool in this module is `Experimental`: the whole `energeia` module
+/// is behind `#[cfg(feature = "energeia")]` (see
+/// crates/organon/src/builtins/mod.rs) -- not compiled by default.
+const ENERGEIA_STABILITY: ToolStability = ToolStability::Experimental;
 
 // ── registration ───────────────────────────────────────────────────────────
 
@@ -60,18 +68,70 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
         dispatch::dromeus_def(),
         Box::new(dispatch::DromeusExecutor { orchestrator }),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("dromeus"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::energeia::dispatch".to_owned(),
+            stability: ENERGEIA_STABILITY,
+            rollback: RollbackSupport::Unsupported {
+                reason: "spawns and orchestrates agent sessions per prompt group; their effects \
+                         are not tracked for rollback by this tool"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(qa::dokimasia_def(), Box::new(qa::DokimasiaExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("dokimasia"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::energeia::qa".to_owned(),
+            stability: ENERGEIA_STABILITY,
+            rollback: RollbackSupport::Unsupported {
+                reason: "best-effort lesson persistence to the knowledge graph on a Pass/\
+                         NeedsReview verdict has no delete/rollback path"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(qa::diorthosis_def(), Box::new(qa::DiorthosisExecutor))?;
     registry.register(
         steward::epitropos_def(),
         Box::new(steward::EpitroposExecutor),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("epitropos"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::energeia::steward".to_owned(),
+            stability: ENERGEIA_STABILITY,
+            rollback: RollbackSupport::Unsupported {
+                reason: "acts against the live GitHub REST API; effects occur on an external \
+                         system outside aletheia's control"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(
         observation::parateresis_def(),
         Box::new(observation::ParateresisExecutor {
             store: store.clone(),
         }),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("parateresis"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::energeia::observation".to_owned(),
+            stability: ENERGEIA_STABILITY,
+            rollback: RollbackSupport::Unsupported {
+                reason: "appends a sentinel query-observation record to the energeia store; no \
+                         delete/rollback path exists for energeia store writes"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(
         observation::mathesis_def(),
         Box::new(observation::MathesisExecutor {

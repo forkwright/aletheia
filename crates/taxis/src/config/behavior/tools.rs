@@ -104,6 +104,36 @@ pub struct ServerToolsConfig {
     pub web_search_max_uses: Option<u32>,
     /// Whether code execution is available for activation.
     pub code_execution: bool,
+    /// Provider `tool_type` version strings for each server tool.
+    pub versions: ServerToolVersions,
+}
+
+/// Provider-assigned version identifiers for Anthropic server-side tools.
+///
+/// WHY configurable: Anthropic revs `tool_type` version suffixes (e.g.
+/// `web_search_20250305`) on its own schedule, independent of aletheia's
+/// release cycle. Pinning them here instead of as source literals lets an
+/// operator move to a newer or pinned-older revision without a rebuild, and
+/// gives this the single place validation checks the value against
+/// currently-supported versions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct ServerToolVersions {
+    /// `tool_type` string sent for the web-search server tool.
+    pub web_search_type: String,
+    /// `tool_type` string sent for the code-execution server tool.
+    pub code_execution_type: String,
+}
+
+impl Default for ServerToolVersions {
+    fn default() -> Self {
+        Self {
+            web_search_type: "web_search_20250305".to_owned(),
+            code_execution_type: "code_execution_20250522".to_owned(),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -11,8 +11,8 @@ use super::workspace::{extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.message_max_len`.
@@ -162,8 +162,42 @@ impl ToolExecutor for SessionsSendExecutor {
 /// Register communication tools.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(message_def(), Box::new(MessageExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("message"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::communication".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "a delivered channel message cannot be recalled from the recipient"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(sessions_ask_def(), Box::new(SessionsAskExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("sessions_ask"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::communication".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "a delivered inter-session message cannot be recalled".to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(sessions_send_def(), Box::new(SessionsSendExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("sessions_send"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::communication".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "a delivered inter-session message cannot be recalled".to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 
@@ -427,6 +461,35 @@ mod tests {
         }
     }
 
+    /// SECURITY(#4788): stands in for `aletheia::runtime::tool_adapters::
+    /// SignalAdapter`, which rejects a `message`-tool send before it ever
+    /// reaches a provider when the sender is not in the configured
+    /// outbound allowlist. Records whether it was ever called at all, so
+    /// the test below can assert the rejection happened upstream of this
+    /// mock -- i.e. that `MessageExecutor` propagates a denial as a tool
+    /// error rather than treating it as a delivered send.
+    #[derive(Default)]
+    struct DenyingMessenger {
+        send_calls: Mutex<Vec<(String, String, String)>>,
+    }
+
+    impl MessageService for DenyingMessenger {
+        fn send_message(
+            &self,
+            to: &str,
+            text: &str,
+            from_nous: &str,
+        ) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + '_>> {
+            self.send_calls.lock().unwrap().push((
+                to.to_owned(),
+                text.to_owned(),
+                from_nous.to_owned(),
+            ));
+            let denied = format!("recipient not in outbound allowlist for agent '{from_nous}'");
+            Box::pin(async move { Err(denied) })
+        }
+    }
+
     #[tokio::test]
     async fn register_communication_tools() {
         let mut reg = ToolRegistry::new();
@@ -633,6 +696,64 @@ mod tests {
         assert_eq!(
             calls[0].2, "test-agent",
             "expected calls[0].2 to equal \"test-agent\""
+        );
+    }
+
+    /// SECURITY(#4788): `message` must surface an outbound-allowlist denial
+    /// as a tool error (never as a silent success or a swallowed failure),
+    /// and the denial must be attributed to the calling agent (`from_nous`,
+    /// here `ctx.nous_id` = `"test-agent"`) in the surfaced message. The
+    /// `MessageService` boundary is where the real denial happens
+    /// (`tool_adapters::SignalAdapter::send_message`, checked against
+    /// `taxis::config::OutboundMessagePolicy` before any provider call);
+    /// this test locks in that `MessageExecutor` correctly propagates a
+    /// `Err` from that boundary rather than only handling the success path.
+    #[tokio::test]
+    async fn message_surfaces_outbound_policy_denial() {
+        install_crypto_provider();
+        let messenger = Arc::new(DenyingMessenger::default());
+        let messenger_ref = Arc::clone(&messenger);
+        let ctx = mock_ctx_with_services(ToolServices {
+            working_checkpoint_store: None,
+            cross_nous: None,
+            note_store: None,
+            blackboard_store: None,
+            spawn: None,
+            planning: None,
+            knowledge: None,
+            http_clients: ToolHttpClients::for_tests(),
+            secret_vault: hermeneus::secret::SecretVault::new(),
+            lazy_tool_catalog: vec![],
+            server_tool_config: ServerToolConfig::default(),
+            messenger: Some(messenger),
+        });
+        let mut reg = ToolRegistry::new();
+        super::register(&mut reg).expect("register");
+        let input = ToolInput {
+            name: ToolName::from_static("message"),
+            tool_use_id: "tu_1".to_owned(),
+            arguments: serde_json::json!({"to": "+15559999", "text": "hello"}),
+        };
+        let result = reg.execute(&input, &ctx).await.expect("execute");
+        assert!(
+            result.is_error,
+            "a denied send must surface as a tool error, not a success"
+        );
+        assert!(
+            result.content.text_summary().contains("allowlist"),
+            "expected the denial reason to reach the tool result, got: {}",
+            result.content.text_summary()
+        );
+
+        let calls = messenger_ref.send_calls.lock().unwrap();
+        assert_eq!(
+            calls.len(),
+            1,
+            "MessageExecutor must call the service exactly once per invocation"
+        );
+        assert_eq!(
+            calls[0].2, "test-agent",
+            "the denial must be attributed to the calling agent (ctx.nous_id)"
         );
     }
 

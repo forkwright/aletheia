@@ -31,8 +31,9 @@ Tool registry, executors, and sandbox. 16K lines. 67 built-in tools.
 | `ToolDef` | `types.rs` | Tool metadata: name, description, schema, category, tags |
 | `ToolContext` | `types.rs` | Per-execution context: nous_id, session_id, workspace, services |
 | `ToolServices` | `types.rs` | Service locator: messaging, planning, knowledge, spawn |
-| `SandboxConfig` | `sandbox/mod.rs` | Landlock + seccomp + egress policy |
+| `SandboxConfig` | `sandbox/mod.rs` | Landlock + seccomp + egress policy; a type alias to `taxis::config::SandboxSettings` (single-owned there), extended with organon-side behavior via the `SandboxConfigExt` trait |
 | `ProcessGuard` | `process_guard.rs` | RAII child process wrapper, `pub(crate)` (prevents orphans/zombies) |
+| `ToolCapabilityMetadata` | `types.rs` | Owner/stability/rollback/redaction governance for one tool, stored per-`ToolName` on `ToolRegistry` (not on `ToolDef`) via `declare_capability`/`capability_metadata` |
 
 ## Built-in tools (67)
 
@@ -70,6 +71,9 @@ Tool registry, executors, and sandbox. 16K lines. 67 built-in tools.
 - Tool receipts are HMAC-SHA256 over tool-call/result tuples with a per-session ephemeral key and in-memory ledger.
 - `working_checkpoint` is the agent-curated continuity tool; its store trait is part of `ToolServices`.
 - File-reference interpolation happens inside tool execution helpers; keep user-facing tool schemas honest about it.
+- Tool governance (owner/stability/rollback/redaction) is declared via `ToolRegistry::declare_capability`, called from each tool module's `register()` alongside `registry.register(def, executor)` -- never as fields on `ToolDef` itself, so the ~90 existing `_def()` functions never need a mechanical edit to add a new governance field. Undeclared tools read as the honest default (`owner: "unassigned"`, `RollbackSupport::Unsupported{reason: "undeclared"}`) rather than a fabricated "safe" value. `builtins::capability_governance_tests::all_irreversible_tools_declare_capability_metadata` gates that every `Reversibility::Irreversible` tool has an explicit declaration; extend that declaration (not the test's scope) when a new tool becomes Irreversible.
+- `Reversibility::supports_dry_run()` is public runtime API (not `#[cfg(test)]`-only); `ToolCallMetadata::dry_run_capable` surfaces it per recorded call, distinct from `dry_run` (whether THIS call was a simulation).
+- `RedactionPolicy` on `ToolCapabilityMetadata` declares per-tool trace-redaction INTENT; the dispatch-layer heuristic (`hermeneus::secret::redact_in_json`, called from `nous::execute::dispatch`) is what actually redacts today regardless of this field's value -- wiring the two together is open, not assume they are already connected.
 
 ## Common tasks
 
@@ -81,6 +85,7 @@ Tool registry, executors, and sandbox. 16K lines. 67 built-in tools.
 | Add tool category | `src/types.rs` (ToolCategory enum) |
 | Add tool tag | `src/types.rs` (ToolTag enum) |
 | Tag a tool | Add `tags: vec![ToolTag::...]` to the tool's `_def()` function |
+| Declare tool governance | `registry.declare_capability(name, ToolCapabilityMetadata { .. })` in the tool's `register()`, right after `registry.register(def, executor)` -- required for any `Reversibility::Irreversible` tool (gated by test) |
 
 ## Query axes
 

@@ -14,7 +14,7 @@ use std::sync::{Arc, RwLock};
 
 use koina::id::{NousId, SessionId, ToolName};
 use organon::registry::ToolRegistry;
-use organon::sandbox::{SandboxConfig, SandboxEnforcement};
+use organon::sandbox::{SandboxConfig, SandboxConfigExt as _, SandboxEnforcement};
 use organon::types::{ToolContext, ToolInput};
 
 #[expect(clippy::expect_used, reason = "test assertions")]

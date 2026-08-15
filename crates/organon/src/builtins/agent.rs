@@ -12,9 +12,9 @@ use super::workspace::{extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, SpawnContext,
-    SpawnRequest, SpawnResult, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput,
-    ToolResult, ToolTag,
+    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport,
+    SpawnContext, SpawnRequest, SpawnResult, ToolCapabilityMetadata, ToolCategory, ToolContext,
+    ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 /// Fallback default; runtime reads `ctx.tool_config.agent_dispatch_timeout_secs`.
@@ -289,7 +289,33 @@ fn truncate_reason(text: &str) -> String {
 /// Register agent coordination tools.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(sessions_spawn_def(), Box::new(SessionsSpawnExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("sessions_spawn"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::agent".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "spawned sub-agent's own actions are not tracked for rollback by this \
+                         tool"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(sessions_dispatch_def(), Box::new(SessionsDispatchExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("sessions_dispatch"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::agent".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "parallel sub-agents' own actions are not tracked for rollback by this \
+                         tool"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

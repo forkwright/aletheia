@@ -746,6 +746,7 @@ mod tests {
             web_search: true,
             web_search_max_uses: Some(5),
             code_execution: false,
+                    versions: Default::default(),
         };
         let active = HashSet::new();
         let policy = ToolGroupPolicy::AllowAll {

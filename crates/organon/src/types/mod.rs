@@ -621,11 +621,17 @@ impl std::fmt::Display for Reversibility {
     }
 }
 
-#[cfg(test)]
 impl Reversibility {
     /// Whether this tool's effects can be simulated in a dry run.
+    ///
+    /// ARCHITECTURE(#4543): promoted out of `#[cfg(test)]` -- dry-run
+    /// capability was previously only checkable in test code, so nothing
+    /// at runtime (an approval UI, a trace summary, `ToolCallMetadata`)
+    /// could tell an operator whether a given call *could* have been
+    /// simulated. [`ToolCallMetadata::dry_run_capable`] now surfaces this
+    /// on every recorded call.
     #[must_use]
-    pub(crate) fn supports_dry_run(self) -> bool {
+    pub fn supports_dry_run(self) -> bool {
         matches!(self, Self::FullyReversible | Self::Reversible)
     }
 }
@@ -694,9 +700,147 @@ pub struct ToolCallMetadata {
     pub approval: ApprovalRequirement,
     /// Whether the call was a dry-run simulation.
     pub dry_run: bool,
+    /// Whether this tool's effects CAN be simulated in a dry run, regardless
+    /// of whether this particular call was one (see `dry_run` above).
+    /// ARCHITECTURE(#4543): runtime-visible sibling of `dry_run`.
+    #[serde(default)]
+    pub dry_run_capable: bool,
+    /// Owner/stability/rollback/redaction governance metadata for this
+    /// tool, as declared via [`crate::registry::ToolRegistry::
+    /// declare_capability`] (falls back to [`ToolCapabilityMetadata::
+    /// default`] when nothing was declared).
+    #[serde(default)]
+    pub capability: ToolCapabilityMetadata,
     /// Origin metadata when the tool is externally provided.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<ToolOrigin>,
+}
+
+/// Lifecycle/maturity classification for a tool.
+///
+/// ARCHITECTURE(#4543): part of the canonical tool capability schema --
+/// distinct from [`ToolCategory`] (semantic purpose) and [`Reversibility`]
+/// (side-effect/approval class).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ToolStability {
+    /// Always compiled, no cargo feature gate, safe to depend on.
+    #[default]
+    Stable,
+    /// Behind a cargo feature gate or otherwise opt-in; interface may
+    /// still change.
+    Experimental,
+    /// Not intended for direct agent invocation (meta-tools, internal
+    /// plumbing).
+    Internal,
+    /// Retained for compatibility; new callers should avoid it.
+    Deprecated,
+    /// Declared but not yet implemented.
+    Planned,
+}
+
+/// Whether a tool's effects can be undone, and how.
+///
+/// ARCHITECTURE(#4543): distinct from [`Reversibility`], which drives
+/// approval gating -- a tool can be `Reversibility::Irreversible` (approval
+/// gate) while still having `RollbackSupport::Supported` (nothing to undo
+/// because it never mutated state, e.g. a read-only network fetch), or vice
+/// versa in principle. The `reason` on `PartialSupport`/`Unsupported` is
+/// required rather than optional so a declaration always explains itself
+/// instead of asserting a bare "no."
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RollbackSupport {
+    /// The tool's effects can be fully undone (or it has none to undo).
+    Supported,
+    /// Some but not all effects can be undone.
+    PartialSupport {
+        /// What can and cannot be undone, and why.
+        reason: String,
+    },
+    /// The tool's effects cannot be undone through this tool.
+    Unsupported {
+        /// Why rollback is not possible.
+        reason: String,
+    },
+}
+
+impl Default for RollbackSupport {
+    /// Defaults to `Unsupported` with an explicit "undeclared" reason
+    /// rather than silently claiming a capability that was never verified
+    /// -- a tool with no explicit declaration has not been reviewed, which
+    /// is not the same claim as "reviewed and found to have no rollback
+    /// path."
+    fn default() -> Self {
+        Self::Unsupported {
+            reason: "undeclared".to_owned(),
+        }
+    }
+}
+
+/// Input/output redaction policy for trace and audit surfaces.
+///
+/// ARCHITECTURE(#4543): declares INTENT for a tool's arguments/results.
+/// `None` (the default) means no per-tool override -- the call still
+/// passes through the existing content-heuristic redaction
+/// (`hermeneus::secret::redact_in_json`) applied at the dispatch layer to
+/// every tool call, regardless of this field. `Full`/`Fields` are for a
+/// tool whose normal arguments legitimately carry sensitive values the
+/// content heuristic cannot reliably distinguish from ordinary text.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RedactionPolicy {
+    /// No per-tool override; relies on the dispatch-layer content heuristic.
+    #[default]
+    None,
+    /// Redact the entire argument/result payload in trace surfaces.
+    Full,
+    /// Redact only the named argument fields.
+    Fields(Vec<String>),
+}
+
+/// Owner/stability/rollback/redaction governance metadata for one tool.
+///
+/// ARCHITECTURE(#4543): the canonical tool capability schema the issue
+/// asks for, stored per-tool in [`crate::registry::ToolRegistry`]
+/// (mirroring how [`ToolOrigin`] is stored separately from [`ToolDef`], so
+/// the ~90 existing `_def()` functions across organon's builtins do not
+/// all need a mechanical field addition to compile). [`Default`] is the
+/// honest "nothing declared yet" state, not a fabricated "safe" one --
+/// `ToolRegistry::declare_capability` is how a tool owner asserts real
+/// values, and `crate::registry::registry_tests::
+/// all_irreversible_tools_declare_capability_metadata` gates that every
+/// `Reversibility::Irreversible` tool has done so.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCapabilityMetadata {
+    /// Owning module (e.g. `"organon::builtins::workspace"`). The sentinel
+    /// `"unassigned"` marks a tool with no explicit declaration.
+    pub owner: String,
+    /// Lifecycle/maturity classification.
+    pub stability: ToolStability,
+    /// Rollback capability and, when absent, why.
+    pub rollback: RollbackSupport,
+    /// Input/output redaction policy for trace surfaces.
+    pub redaction: RedactionPolicy,
+}
+
+/// Sentinel `owner` value for a tool with no explicit capability
+/// declaration. Checked by [`crate::registry::ToolRegistry::
+/// capability_metadata`]'s callers (and its gate test) to distinguish
+/// "reviewed, no owner assigned" (which would never use this literal)
+/// from "never reviewed."
+pub const UNASSIGNED_TOOL_OWNER: &str = "unassigned";
+
+impl Default for ToolCapabilityMetadata {
+    fn default() -> Self {
+        Self {
+            owner: UNASSIGNED_TOOL_OWNER.to_owned(),
+            stability: ToolStability::default(),
+            rollback: RollbackSupport::default(),
+            redaction: RedactionPolicy::default(),
+        }
+    }
 }
 
 /// Semantic tool category: classifies tool purpose.

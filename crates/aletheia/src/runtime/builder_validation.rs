@@ -1,6 +1,7 @@
 use std::fmt::Arguments;
 use std::io::Write as _;
 
+use organon::sandbox::SandboxConfigExt as _;
 use taxis::validate::validate_each_section;
 
 use super::RuntimeBuilder;

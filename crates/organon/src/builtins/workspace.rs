@@ -15,8 +15,9 @@ use crate::error::{self, Result};
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::subprocess::{SubprocessRequest, SubprocessRunner};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolDiagnostics, ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolDiagnostics, ToolGroupId, ToolInput, ToolResult,
+    ToolStability, ToolTag,
 };
 
 use super::filesystem_policy::protected_path_class;
@@ -597,6 +598,18 @@ pub(crate) fn register(
     registry.register(write_def(), Box::new(WriteExecutor))?;
     registry.register(edit_def(), Box::new(EditExecutor))?;
     registry.register(exec_def(), Box::new(ExecExecutor { sandbox }))?;
+    registry.declare_capability(
+        ToolName::from_static("exec"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::workspace".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "arbitrary program execution; effects are not tracked for rollback"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

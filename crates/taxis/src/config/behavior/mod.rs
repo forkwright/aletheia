@@ -21,7 +21,7 @@ pub use knowledge::{
     AdmissionPolicyKind, BookkeepingProviderKind, CompactionStrategyKind, ExtractionConfig,
     KnowledgeConfig,
 };
-pub use messaging::MessagingConfig;
+pub use messaging::{MessagingConfig, OutboundMessagePolicy};
 pub use nous::NousBehaviorConfig;
 pub use provider::{
     AnthropicConfig, DeploymentTarget, LlmProviderConfig, OpenAiApiFamily, PromptCacheMode,
@@ -29,5 +29,5 @@ pub use provider::{
 };
 pub use recall::{AcademicSourceConfig, RecallSourcesConfig};
 pub use timeouts::{CapacityConfig, RetrySettings, TimeoutsConfig};
-pub use tools::{ServerToolsConfig, ToolLimitsConfig};
+pub use tools::{ServerToolVersions, ServerToolsConfig, ToolLimitsConfig};
 pub use tuning::TuningConfig;

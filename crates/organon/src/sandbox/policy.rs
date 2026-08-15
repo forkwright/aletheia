@@ -400,7 +400,12 @@ impl SandboxPolicy {
     fn apply_egress(&self) -> std::io::Result<()> {
         match self.egress {
             EgressPolicy::Allow => Ok(()),
-            EgressPolicy::Deny | EgressPolicy::Allowlist => {
+            // WHY: `_` rather than `Deny | Allowlist` -- EgressPolicy is
+            // `#[non_exhaustive]` (single-owned by taxis, ARCHITECTURE
+            // #4846); an unrecognized future variant falls into the same
+            // restrictive isolate-or-block path as Deny/Allowlist, never
+            // the permissive Allow arm above.
+            _ => {
                 // SAFETY: unshare is a single syscall that modifies only the
                 // calling thread's namespace associations. It is
                 // async-signal-safe and does not allocate.
@@ -837,6 +842,11 @@ fn egress_guarantee_status(policy: &SandboxPolicy, seccomp: GuaranteeStatus) -> 
                 GuaranteeStatus::Degraded
             }
         }
+        // WHY: EgressPolicy is `#[non_exhaustive]` (single-owned by taxis,
+        // ARCHITECTURE #4846); track Deny's conservative guarantee status
+        // for an unrecognized future variant rather than claiming Allow's
+        // Unrestricted guarantee for something never actually verified.
+        _ => seccomp,
     }
 }
 
@@ -978,6 +988,10 @@ fn warn_egress_policy(policy: &SandboxPolicy) {
             );
         }
         EgressPolicy::Allow => {}
+        // WHY: EgressPolicy is `#[non_exhaustive]` (single-owned by taxis,
+        // ARCHITECTURE #4846); nothing to log for an unrecognized future
+        // variant here since this function is purely informational.
+        _ => {}
     }
 }
 

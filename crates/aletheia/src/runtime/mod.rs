@@ -638,9 +638,10 @@ impl RuntimeBuilder {
             )]
             let messenger: Option<Arc<dyn organon::types::MessageService>> =
                 signal_provider.as_ref().map(|p| {
-                    Arc::new(tool_adapters::SignalAdapter(
-                        Arc::clone(p) as Arc<dyn ChannelProvider>
-                    )) as Arc<dyn organon::types::MessageService>
+                    Arc::new(tool_adapters::SignalAdapter {
+                        provider: Arc::clone(p) as Arc<dyn ChannelProvider>,
+                        outbound_policy: self.config.messaging.outbound.clone(),
+                    }) as Arc<dyn organon::types::MessageService>
                 });
             let note_store: Option<Arc<dyn organon::types::NoteStore>> = Some(Arc::new(
                 nous::adapters::SessionNoteAdapter(Arc::clone(&session_store)),

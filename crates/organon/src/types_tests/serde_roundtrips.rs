@@ -443,6 +443,7 @@ fn server_tool_config_serde_roundtrip() {
         web_search: true,
         web_search_max_uses: Some(5),
         code_execution: true,
+            versions: Default::default(),
     };
     let json = serde_json::to_string(&config).expect("serialize");
     let back: ServerToolConfig = serde_json::from_str(&json).expect("deserialize");
@@ -464,6 +465,7 @@ fn server_tool_config_from_taxis_config() {
         web_search: true,
         web_search_max_uses: Some(3),
         code_execution: true,
+            versions: Default::default(),
     };
     let config: ServerToolConfig = taxis_config.into();
     assert!(
@@ -492,6 +494,7 @@ fn server_tool_config_catalog_entries_web_search() {
         web_search: true,
         web_search_max_uses: None,
         code_execution: false,
+            versions: Default::default(),
     };
     let entries = config.catalog_entries();
     assert_eq!(entries.len(), 1, "expected entries.len() to equal 1");
@@ -508,6 +511,7 @@ fn server_tool_config_catalog_entries_both() {
         web_search: true,
         web_search_max_uses: Some(3),
         code_execution: true,
+            versions: Default::default(),
     };
     let entries = config.catalog_entries();
     assert_eq!(entries.len(), 2, "expected entries.len() to equal 2");
@@ -528,6 +532,7 @@ fn server_tool_config_active_definitions_empty_when_none_active() {
         web_search: true,
         web_search_max_uses: Some(5),
         code_execution: true,
+            versions: Default::default(),
     };
     let active = HashSet::new();
     let defs = config.active_definitions(&active);
@@ -540,6 +545,7 @@ fn server_tool_config_active_definitions_web_search() {
         web_search: true,
         web_search_max_uses: Some(5),
         code_execution: false,
+            versions: Default::default(),
     };
     let mut active = HashSet::new();
     active.insert(ToolName::new("web_search").expect("valid"));
@@ -566,6 +572,7 @@ fn server_tool_config_active_definitions_code_execution() {
         web_search: false,
         web_search_max_uses: None,
         code_execution: true,
+            versions: Default::default(),
     };
     let mut active = HashSet::new();
     active.insert(ToolName::new("code_execution").expect("valid"));
@@ -587,6 +594,7 @@ fn server_tool_config_active_ignores_disabled_tools() {
         web_search: false,
         web_search_max_uses: None,
         code_execution: false,
+            versions: Default::default(),
     };
     let mut active = HashSet::new();
     active.insert(ToolName::new("web_search").expect("valid"));
@@ -601,6 +609,7 @@ fn server_tool_config_active_definitions_both() {
         web_search: true,
         web_search_max_uses: None,
         code_execution: true,
+            versions: Default::default(),
     };
     let mut active = HashSet::new();
     active.insert(ToolName::new("web_search").expect("valid"));
