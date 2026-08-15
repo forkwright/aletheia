@@ -127,6 +127,9 @@ cargo bench -p aletheia-symbolon --bench jwt -- --save-baseline main
 cargo bench -p aletheia-symbolon --bench jwt -- --baseline main
 ```
 
-The CI workflow runs `cargo bench --workspace --no-run` to verify that
-all bench targets compile, but does not track regression
-thresholds. That gate is tracked in #2802 follow-up if needed.
+`.github/workflows/bench-gate.yml`'s `compile` job runs `cargo bench
+--workspace --no-run` on every PR and push to `main`, verifying that all
+bench targets compile. This covers Criterion micro-benchmarks (this
+document); the memory/eval regression gate over `aletheia benchmark` is a
+separate, scheduled tier — see
+[`docs/benchmarks/memory-benchmarks.md`](benchmarks/memory-benchmarks.md).

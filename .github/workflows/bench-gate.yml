@@ -1,0 +1,216 @@
+# WHY: the benchmark harness (crates/eval, `aletheia benchmark`) had no CI
+# coverage at all — not even a compile check — so a bench target could bitrot
+# silently and the documented regression-gate story (docs/BENCHMARKS.md,
+# docs/benchmarks/memory-benchmarks.md) stayed aspirational (#4964).
+#
+# Two tiers, deliberately distinct in cost and trigger:
+#   - `compile`: `cargo bench --workspace --no-run` on every PR/push. Makes
+#     docs/BENCHMARKS.md's existing CI claim literally true. Cheap, required.
+#   - `quality-gate`: runs a real LongMemEval smoke pass (20 fixed questions,
+#     benchmark-data/smoke-longmemeval.json) against a live aletheia instance
+#     and enforces `--fail-below` on the exact-match 95% CI lower bound.
+#     Schedule + workflow_dispatch ONLY, per this repo's CI-minute-ceiling
+#     posture (see metis-ops CLAUDE.md) — never a required PR check, since it
+#     spends real LLM API budget on every run.
+name: Bench Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/eval/**"
+      - "crates/aletheia/src/commands/benchmark.rs"
+      - "fuzz/Cargo.toml"
+      - "**/benches/**"
+      - ".github/workflows/bench-gate.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/eval/**"
+      - "crates/aletheia/src/commands/benchmark.rs"
+      - "**/benches/**"
+      - ".github/workflows/bench-gate.yml"
+  schedule:
+    # NOTE: Sunday 06:00 CST (12:00 UTC) — clear of Fuzz (Sat 04:00 CST),
+    # Security (daily 05:00 CST), CodeQL (Wed 08:00 CST), and Online Tests
+    # (Mon/Thu ~21:17 CST).
+    - cron: "0 12 * * 0"
+  workflow_dispatch:
+    inputs:
+      fail_below:
+        description: >-
+          Exact-match 95% CI lower-bound floor for the quality gate
+          (0.0..=1.0). No stored baseline exists yet (#4964) — this is a
+          conservative smoke-wiring floor, not a calibrated quality bar.
+        required: false
+        default: "0.0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  compile:
+    name: bench targets compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure git credentials for fleet deps
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
+
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: bench-gate-compile
+
+      - name: cargo bench --workspace --no-run
+        run: cargo bench --workspace --no-run
+
+  quality-gate:
+    name: LongMemEval smoke quality gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    # WHY no `secrets.ANTHROPIC_API_KEY != ''` job-level `if`: GitHub Actions
+    # evaluates job-level `if` before secrets are known to be usable in some
+    # contexts, and a job that never runs at all reads identically to "gate
+    # passed" in the Actions UI. Skipping INSIDE the job (see the "Check
+    # Anthropic credential is configured" step) fails loudly with a named
+    # reason instead, so an operator who has not yet added the secret sees
+    # exactly what is missing rather than a silently green (or silently
+    # absent) check.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check Anthropic credential is configured
+        id: creds
+        env:
+          HAS_KEY: ${{ secrets.ALETHEIA_BENCHMARK_ANTHROPIC_API_KEY != '' }}
+        run: |
+          echo "configured=${HAS_KEY}" >> "$GITHUB_OUTPUT"
+          if [ "${HAS_KEY}" != "true" ]; then
+            echo "::warning::ALETHEIA_BENCHMARK_ANTHROPIC_API_KEY is not set — skipping the live quality gate. The benchmark agent needs a real Anthropic credential to answer real questions; no mock LLM provider exists in this codebase (only embeddings have one). Add the secret to enable this job."
+          fi
+
+      - name: Configure git credentials for fleet deps
+        if: steps.creds.outputs.configured == 'true'
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
+
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        if: steps.creds.outputs.configured == 'true'
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        if: steps.creds.outputs.configured == 'true'
+        with:
+          key: bench-gate-quality
+
+      # WHY --features test-support: `[embedding] provider = "mock"` below is
+      # gated behind this feature at runtime (crates/aletheia/src/
+      # embedding_config.rs provider_support) — a default build rejects it as
+      # MissingFeature. Mock embedding keeps this tier deterministic and
+      # fast; it proves the --fail-below CLI wiring and the CI gate mechanism
+      # end-to-end, not real recall quality — a real quality bar needs real
+      # embeddings (embed-candle or an HTTP provider) and stays in
+      # scripts/benchmark.sh's manual/full-run territory, matching this
+      # issue's own "full-run mode" distinction.
+      - name: Build aletheia binary
+        if: steps.creds.outputs.configured == 'true'
+        run: cargo build -p aletheia --features test-support
+
+      - name: Provision a smoke-test instance
+        if: steps.creds.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          ./target/debug/aletheia -r "${RUNNER_TEMP}/bench-instance" init \
+            --non-interactive --yes \
+            --api-key "${ANTHROPIC_API_KEY}" \
+            --api-provider anthropic \
+            --auth-mode none
+          # WHY appended, not templated in scaffold.rs: the generated
+          # config's [embedding] block ships commented out (defaults to
+          # whatever the compiled-in default resolves to, which for this
+          # feature set is embed-candle / network + a downloaded HF model).
+          # Appending an explicit override is simpler and more robust than
+          # teaching the scaffolder a CI-only embedding mode.
+          {
+            echo ""
+            echo "[embedding]"
+            echo "provider = \"mock\""
+            echo "dimension = 384"
+          } >> "${RUNNER_TEMP}/bench-instance/config/aletheia.toml"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ALETHEIA_BENCHMARK_ANTHROPIC_API_KEY }}
+
+      - name: Start aletheia server
+        if: steps.creds.outputs.configured == 'true'
+        run: |
+          set -euo pipefail
+          ./target/debug/aletheia -r "${RUNNER_TEMP}/bench-instance" \
+            > "${RUNNER_TEMP}/aletheia-server.log" 2>&1 &
+          echo "$!" > "${RUNNER_TEMP}/aletheia-server.pid"
+
+          ready=""
+          for _ in $(seq 1 30); do
+            sleep 1
+            if curl -fsS "http://127.0.0.1:18789/api/health" >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+          done
+          if [ -z "$ready" ]; then
+            echo "::error::server did not become healthy within 30s"
+            tail -n 100 "${RUNNER_TEMP}/aletheia-server.log" || true
+            exit 1
+          fi
+
+      - name: Run LongMemEval smoke quality gate
+        if: steps.creds.outputs.configured == 'true'
+        run: |
+          ./target/debug/aletheia benchmark longmemeval \
+            --dataset benchmark-data/smoke-longmemeval.json \
+            --nous-id pronoea \
+            --max-questions 20 \
+            --output "${RUNNER_TEMP}/smoke-longmemeval-report.json" \
+            --fail-below "${FAIL_BELOW}"
+        env:
+          # WHY workflow_dispatch input over env default: a schedule trigger
+          # cannot supply `inputs.*` at all (they only exist for
+          # workflow_dispatch), so this falls through to the documented
+          # conservative floor on the weekly run.
+          FAIL_BELOW: ${{ github.event.inputs.fail_below || '0.0' }}
+
+      - name: Upload smoke benchmark report
+        if: always() && steps.creds.outputs.configured == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: smoke-longmemeval-report
+          path: ${{ runner.temp }}/smoke-longmemeval-report.json
+          if-no-files-found: ignore
+
+      - name: Stop aletheia server
+        if: always() && steps.creds.outputs.configured == 'true'
+        run: |
+          if [ -f "${RUNNER_TEMP}/aletheia-server.pid" ]; then
+            kill "$(cat "${RUNNER_TEMP}/aletheia-server.pid")" 2>/dev/null || true
+          fi
