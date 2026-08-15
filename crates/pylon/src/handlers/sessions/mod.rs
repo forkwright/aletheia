@@ -760,6 +760,8 @@ pub async fn history(
             content: m.content,
             tool_call_id: m.tool_call_id,
             tool_name: m.tool_name,
+            token_estimate: m.token_estimate,
+            is_distilled: m.is_distilled,
             created_at: m.created_at,
         })
         .collect();
