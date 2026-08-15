@@ -141,6 +141,16 @@ pub(crate) async fn process_events(
                     message,
                 };
             }
+            SessionEvent::RateLimit { utilization } => {
+                if utilization >= RATE_LIMIT_ABORT_THRESHOLD {
+                    return StreamOutcome::Error {
+                        accumulator: acc,
+                        message: "rate limit utilization exceeded 98%".to_owned(),
+                    };
+                }
+                // NOTE: Below-threshold updates are observed but don't change
+                // accumulated state, matching ToolUse/ToolResult handling above.
+            }
         }
     }
 }
@@ -182,18 +192,10 @@ pub fn extract_pr_url(text: &str) -> Option<&str> {
 
 /// The utilization threshold above which sessions should be aborted.
 ///
-/// WHY: At >98% utilization the API will start rejecting requests imminently.
-/// Aborting early avoids wasting turns on requests that will fail.
-///
-/// NOTE: Will be consumed by the session manager once `SessionEvent` gains a
-/// rate-limit variant (pending Agent SDK integration).
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "constant defined for use once SessionEvent gains rate-limit events"
-    )
-)]
+/// WHY: At >=98% utilization the API will start rejecting requests imminently.
+/// Aborting early avoids wasting turns on requests that will fail. Consumed by
+/// [`process_events`] via `SessionEvent::RateLimit`, and shared with
+/// [`crate::http::stream::EventStream`] so the abort point has one definition.
 pub(crate) const RATE_LIMIT_ABORT_THRESHOLD: f64 = 0.98;
 
 #[cfg(test)]
@@ -363,6 +365,71 @@ mod tests {
                 assert_eq!(accumulator.num_turns, 1);
             }
             other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn process_events_aborts_on_rate_limit_at_threshold() {
+        let engine = MockEngine::new(vec![MockOutcome::Success {
+            events: vec![
+                SessionEvent::TurnComplete { turn: 1 },
+                SessionEvent::RateLimit {
+                    utilization: RATE_LIMIT_ABORT_THRESHOLD,
+                },
+                SessionEvent::TextDelta {
+                    text: "should not be reached".to_owned(),
+                },
+            ],
+            result: make_result("sess-rl", false),
+        }]);
+
+        let mut handle = engine
+            .spawn_session(&make_spec(), &AgentOptions::new())
+            .await
+            .unwrap();
+
+        let outcome = process_events(&mut handle, None, None).await;
+        match outcome {
+            StreamOutcome::Error {
+                message,
+                accumulator,
+            } => {
+                assert_eq!(message, "rate limit utilization exceeded 98%");
+                assert_eq!(accumulator.num_turns, 1);
+                assert!(accumulator.text_fragments.is_empty());
+            }
+            other => panic!("expected Error, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn process_events_continues_on_rate_limit_below_threshold() {
+        let engine = MockEngine::new(vec![MockOutcome::Success {
+            events: vec![
+                SessionEvent::RateLimit { utilization: 0.5 },
+                SessionEvent::TextDelta {
+                    text: "still going".to_owned(),
+                },
+                SessionEvent::TurnComplete { turn: 1 },
+            ],
+            result: make_result("sess-rl-low", true),
+        }]);
+
+        let mut handle = engine
+            .spawn_session(&make_spec(), &AgentOptions::new())
+            .await
+            .unwrap();
+
+        let outcome = process_events(&mut handle, None, None).await;
+        match outcome {
+            StreamOutcome::Complete(acc) => {
+                assert_eq!(acc.num_turns, 1);
+                assert_eq!(
+                    acc.text_fragments.first().map(String::as_str),
+                    Some("still going")
+                );
+            }
+            other => panic!("expected Complete, got {other:?}"),
         }
     }
 

@@ -11,6 +11,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::ChildStdout;
 
 use crate::engine::SessionEvent;
+use crate::session::events::RATE_LIMIT_ABORT_THRESHOLD;
 
 /// Top-level NDJSON message from `claude --output-format stream-json`.
 #[derive(Debug, Deserialize)]
@@ -133,7 +134,7 @@ pub(crate) struct EventStream {
     pub(crate) session_id: Option<String>,
     /// Stored result message for `wait()`.
     pub(crate) wire_result: Option<ResultMessage>,
-    /// Set when rate limit utilization exceeds 98%.
+    /// Set when rate limit utilization crosses `RATE_LIMIT_ABORT_THRESHOLD`.
     pub(crate) rate_limit_exceeded: bool,
 }
 
@@ -157,6 +158,14 @@ impl EventStream {
         // Drain buffered events from multi-block assistant messages first.
         if let Some(event) = self.pending.pop_front() {
             return Some(event);
+        }
+
+        // WHY: Once rate limit utilization has crossed the abort threshold, the
+        // SessionEvent::RateLimit event for that crossing has already been
+        // yielded (below). Stop reading further subprocess output rather than
+        // risk consuming requests that the provider will reject.
+        if self.rate_limit_exceeded {
+            return None;
         }
 
         loop {
@@ -218,14 +227,15 @@ impl EventStream {
                         .rate_limit_info
                         .and_then(|info| info.utilization)
                         .unwrap_or(0.0);
-                    if utilization > 0.98 {
+                    if utilization >= RATE_LIMIT_ABORT_THRESHOLD {
                         tracing::warn!(
                             utilization,
-                            "rate limit utilization >98%, aborting session"
+                            "rate limit utilization crossed abort threshold"
                         );
                         self.rate_limit_exceeded = true;
-                        return None;
                     }
+                    self.pending.push_back(SessionEvent::RateLimit { utilization });
+                    return self.pending.pop_front();
                 }
                 WireMessage::Human { .. } | WireMessage::Unknown => {}
             }
@@ -506,8 +516,17 @@ mod tests {
         assert!(matches!(e1, Some(SessionEvent::TextDelta { ref text }) if text == "working"));
 
         let e2 = stream.next_event().await;
-        assert!(e2.is_none(), "stream should end on rate limit >98%");
+        assert!(
+            matches!(e2, Some(SessionEvent::RateLimit { utilization }) if (utilization - 0.99).abs() < f64::EPSILON),
+            "crossing the threshold yields a typed RateLimit event: {e2:?}"
+        );
         assert!(stream.rate_limit_exceeded);
+
+        let e3 = stream.next_event().await;
+        assert!(
+            e3.is_none(),
+            "stream should end after the RateLimit event, without reading further output"
+        );
     }
 
     #[tokio::test]
@@ -523,7 +542,13 @@ mod tests {
         let mut stream = event_stream_from_bytes(ndjson.as_bytes());
 
         let e1 = stream.next_event().await;
-        assert!(matches!(e1, Some(SessionEvent::TextDelta { ref text }) if text == "still going"));
+        assert!(
+            matches!(e1, Some(SessionEvent::RateLimit { utilization }) if (utilization - 0.75).abs() < f64::EPSILON)
+        );
+        assert!(!stream.rate_limit_exceeded);
+
+        let e2 = stream.next_event().await;
+        assert!(matches!(e2, Some(SessionEvent::TextDelta { ref text }) if text == "still going"));
 
         assert!(!stream.rate_limit_exceeded);
     }

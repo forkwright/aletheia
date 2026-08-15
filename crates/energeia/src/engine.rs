@@ -234,6 +234,11 @@ pub enum SessionEvent {
         /// Error description.
         message: String,
     },
+    /// Provider rate limit utilization update.
+    RateLimit {
+        /// 0.0 to 1.0 -- fraction of rate limit consumed.
+        utilization: f64,
+    },
 }
 
 /// Final result of a completed session.
