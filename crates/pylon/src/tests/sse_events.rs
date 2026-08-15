@@ -27,6 +27,7 @@ fn sse_event_type_tool_result() {
         tool_use_id: "t1".to_owned(),
         content: "result".to_owned(),
         is_error: false,
+        outcome: Some("success".to_owned()),
     };
     assert_eq!(event.event_type(), "tool_result");
 }
@@ -168,6 +169,7 @@ fn tui_event_tool_result_type() {
         result: "found".to_owned(),
         is_error: false,
         duration_ms: 42,
+        outcome: Some("success".to_owned()),
     };
     assert_eq!(event.event_type(), "tool_result");
 }

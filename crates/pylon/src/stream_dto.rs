@@ -48,6 +48,13 @@ pub(crate) enum SseEvent {
         tool_use_id: String,
         content: String,
         is_error: bool,
+        /// Stable outcome classification (#4558): `"success"` /
+        /// `"partial_success"` / `"error"`, or a denial-class string when
+        /// the call never ran. Mirrors `nous::pipeline::ToolCall::outcome_label()`.
+        /// Additive/backward-compatible: absent on legacy senders, so
+        /// clients must treat it as optional.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        outcome: Option<String>,
     },
 
     /// Turn completed: final event in the stream.
@@ -205,6 +212,11 @@ pub(crate) enum TurnStreamEvent {
         result: String,
         is_error: bool,
         duration_ms: u64,
+        /// Stable outcome classification (#4558): `"success"` /
+        /// `"partial_success"` / `"error"`, or a denial-class string when
+        /// the call never ran. Mirrors `nous::pipeline::ToolCall::outcome_label()`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        outcome: Option<String>,
     },
     /// Turn completed - mirrors `SseEvent::MessageComplete`.
     ///

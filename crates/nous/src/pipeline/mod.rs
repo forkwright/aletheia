@@ -930,11 +930,51 @@ pub struct ToolCall {
     pub is_error: bool,
     /// Execution duration in milliseconds.
     pub duration_ms: u64,
-    /// Approval outcome applied before execution, when known.
+    /// Approval/denial classification applied before execution, when known.
+    ///
+    /// WARNING: overloaded on purpose, not by accident — every value
+    /// `execute::dispatch::record_denied_call` writes here is one of that
+    /// module's own not-executed labels (denied by role/group/hook/
+    /// approval-gate, or skipped as undispatched), but the field itself
+    /// carries no type-level guarantee that a value here means "this call
+    /// never ran". Do not infer "denied" from `approval.is_some()` alone;
+    /// use `execute::is_denial_outcome` (#4558), the one place that closed
+    /// vocabulary is defined.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approval: Option<String>,
     /// HMAC-SHA256 receipt for hallucination-resistant attestation.
     pub receipt: Option<String>,
+    /// Detail from organon's rich `ToolOutcome` for a genuinely-EXECUTED
+    /// call: the failure reason (`ToolOutcome::Failure`) or the joined
+    /// partial-success reasons (`ToolOutcome::PartialSuccess`). `None` for
+    /// a fully successful execution and for calls that never ran (denial
+    /// detail lives on `approval` instead, per the WARNING above).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome_detail: Option<String>,
+}
+
+impl ToolCall {
+    /// Stable outcome classification for this call (#4558): a denial label
+    /// when `approval` carries one of `execute::is_denial_outcome`'s known
+    /// not-executed strings, otherwise `"success"` / `"partial_success"` /
+    /// `"error"` derived from `is_error`/`outcome_detail`. Every consumer
+    /// that needs a stable outcome string — persisted audit records, live
+    /// stream events — derives it from here, so the label stays consistent
+    /// across every surface instead of each one re-deriving its own
+    /// (necessarily slightly different) collapse of the same fields.
+    #[must_use]
+    pub fn outcome_label(&self) -> &str {
+        if let Some(approval) = self.approval.as_deref()
+            && crate::execute::is_denial_outcome(approval)
+        {
+            return approval;
+        }
+        match (self.is_error, self.outcome_detail.is_some()) {
+            (false, false) => "success",
+            (false, true) => "partial_success",
+            (true, _) => "error",
+        }
+    }
 }
 
 /// Token usage for a single turn.

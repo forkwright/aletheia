@@ -198,10 +198,6 @@ fn build_finalize_messages<'a>(
     messages
 }
 
-fn tool_outcome(is_error: bool) -> &'static str {
-    if is_error { "error" } else { "success" }
-}
-
 fn build_tool_audit_records(
     result: &TurnResult,
     persist_messages: bool,
@@ -220,7 +216,7 @@ fn build_tool_audit_records(
             tool_name: tc.name.as_str(),
             duration_ms: tc.duration_ms,
             is_error: tc.is_error,
-            outcome: tool_outcome(tc.is_error),
+            outcome: tc.outcome_label(),
             result: tc.result.as_deref(),
             approval: tc.approval.as_deref(),
             receipt: tc.receipt.as_deref(),
@@ -534,6 +530,7 @@ mod tests {
                 duration_ms: 42,
                 approval: None,
                 receipt: None,
+                outcome_detail: None,
             }],
             usage: TurnUsage {
                 input_tokens: 200,
@@ -695,8 +692,15 @@ mod tests {
                 result: Some("Tool error: failed".to_owned()),
                 is_error: true,
                 duration_ms: 17,
+                // WHY not a real denial class: an approval-gate note that
+                // survives on an executed-and-failed call (#4558's WARNING
+                // on `ToolCall.approval`) must NOT be misread as a policy
+                // denial — "auto_approved" is not in
+                // `execute::is_denial_outcome`'s vocabulary, so `.outcome`
+                // below stays derived from is_error/outcome_detail.
                 approval: Some("auto_approved".to_owned()),
                 receipt: None,
+                outcome_detail: Some("no such file or directory".to_owned()),
             },
             ToolCall {
                 id: "tc-approved".to_owned(),
@@ -707,6 +711,7 @@ mod tests {
                 duration_ms: 29,
                 approval: Some("approved".to_owned()),
                 receipt: None,
+                outcome_detail: None,
             },
             ToolCall {
                 id: "tc-receipt".to_owned(),
@@ -717,6 +722,29 @@ mod tests {
                 duration_ms: 31,
                 approval: Some("auto_approved".to_owned()),
                 receipt: Some("receipt-token".to_owned()),
+                outcome_detail: None,
+            },
+            ToolCall {
+                id: "tc-denied".to_owned(),
+                name: "shell_exec".to_owned(),
+                input: serde_json::json!({"cmd": "rm -rf /"}),
+                result: Some("Tool 'shell_exec' denied by group policy".to_owned()),
+                is_error: true,
+                duration_ms: 0,
+                approval: Some("denied_by_group".to_owned()),
+                receipt: None,
+                outcome_detail: None,
+            },
+            ToolCall {
+                id: "tc-partial".to_owned(),
+                name: "web_search".to_owned(),
+                input: serde_json::json!({"query": "aletheia"}),
+                result: Some("2 of 3 sources returned results".to_owned()),
+                is_error: false,
+                duration_ms: 120,
+                approval: None,
+                receipt: None,
+                outcome_detail: Some("source timeout; source rate_limited".to_owned()),
             },
         ];
         let config = FinalizeConfig::default();
@@ -726,12 +754,14 @@ mod tests {
         let audit = store
             .recent_tool_audit_records(10)
             .expect("tool audit records");
-        assert_eq!(audit.len(), 3);
+        assert_eq!(audit.len(), 5);
         let failed = audit
             .iter()
             .find(|record| record.tool_call_id == "tc-failed")
             .expect("failed call audit record");
         assert!(failed.is_error);
+        // WHY "error", not "auto_approved": a non-denial approval note on an
+        // executed-and-failed call must not masquerade as a policy denial.
         assert_eq!(failed.outcome, "error");
         assert_eq!(failed.result.as_deref(), Some("Tool error: failed"));
 
@@ -741,6 +771,7 @@ mod tests {
             .expect("approved call audit record");
         assert_eq!(approved.approval.as_deref(), Some("approved"));
         assert!(!approved.is_error);
+        assert_eq!(approved.outcome, "success");
 
         let receipt = audit
             .iter()
@@ -748,6 +779,22 @@ mod tests {
             .expect("receipt call audit record");
         assert_eq!(receipt.receipt.as_deref(), Some("receipt-token"));
         assert_eq!(receipt.outcome, "success");
+
+        // WHY this pair matters (#4558): a genuine policy denial IS a known
+        // denial-class string, so it passes through as the outcome instead
+        // of collapsing to "error" and losing which policy denied it.
+        let denied = audit
+            .iter()
+            .find(|record| record.tool_call_id == "tc-denied")
+            .expect("denied call audit record");
+        assert_eq!(denied.outcome, "denied_by_group");
+
+        let partial = audit
+            .iter()
+            .find(|record| record.tool_call_id == "tc-partial")
+            .expect("partial-success call audit record");
+        assert!(!partial.is_error);
+        assert_eq!(partial.outcome, "partial_success");
     }
 
     #[test]

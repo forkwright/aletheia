@@ -344,6 +344,31 @@ const TOOL_OUTCOME_NOT_FOUND: &str = "not_found";
 const TOOL_OUTCOME_FAILED: &str = "failed";
 const TOOL_OUTCOME_UNDISPATCHED: &str = "undispatched_loop_warning";
 
+/// Whether `outcome` is one of this module's own not-executed classification
+/// strings (denied by policy/hook/approval-gate, or skipped as undispatched).
+///
+/// WHY this exists (#4558): a caller classifying `ToolCall.outcome` cannot
+/// assume "approval is `Some`" alone means "this call never ran" —
+/// `ToolCall.approval` carries no type-level guarantee it was ever set from
+/// this module's not-executed vocabulary rather than some other approval
+/// note. Every value listed here is the exact literal `record_denied_call`
+/// receives as `DeniedToolCall::approval` (the only place this module ever
+/// sets `ToolCall.approval` to `Some`), so this list must be extended
+/// alongside any new denial class introduced at one of its call sites.
+pub(crate) fn is_denial_outcome(outcome: &str) -> bool {
+    matches!(
+        outcome,
+        TOOL_OUTCOME_DENIED_BY_ROLE
+            | TOOL_OUTCOME_DENIED_BY_GROUP
+            | TOOL_OUTCOME_DENIED_BY_HOOK
+            | TOOL_OUTCOME_DENIED_INACTIVE
+            | TOOL_OUTCOME_NOT_FOUND
+            | TOOL_OUTCOME_FAILED
+            | TOOL_OUTCOME_UNDISPATCHED
+            | APPROVAL_OUTCOME_NO_GATE_DENIED
+    )
+}
+
 /// Close out tool calls that a loop warning stopped us from dispatching.
 ///
 /// INVARIANT: the assistant message carrying this turn's `tool_use` blocks is pushed
@@ -507,7 +532,18 @@ fn record_denied_call(
         duration_ms: 0,
         approval: denied.approval.map(str::to_owned),
         receipt: None,
+        outcome_detail: None,
     });
+    // WHY read back from the just-pushed record rather than re-deriving:
+    // `outcome_label()` is the one place that classification logic lives
+    // (#4558) — a denial always resolves to `denied.approval` verbatim
+    // here since that string IS one of `is_denial_outcome`'s known classes,
+    // but reading it back keeps this call site from silently drifting from
+    // that function if the classification ever changes.
+    let outcome_label = all_tool_calls
+        .last()
+        .map_or("error", |call| call.outcome_label())
+        .to_owned();
     tool_results.push(ContentBlock::ToolResult {
         tool_use_id: denied.id.to_owned(),
         content: ToolResultContent::Text(denied.message.clone()),
@@ -520,6 +556,7 @@ fn record_denied_call(
             result: denied.message,
             is_error: true,
             duration_ms: 0,
+            outcome: outcome_label,
         })
     {
         record_stream_send_error(tool_ctx, denied.name, "denied_tool_result", &e);
@@ -544,6 +581,10 @@ fn emit_tool_start(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors TurnStreamEvent::ToolResult's own field list"
+)]
 fn emit_tool_result(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
@@ -552,6 +593,7 @@ fn emit_tool_result(
     result: String,
     is_error: bool,
     duration_ms: u64,
+    outcome: String,
 ) {
     if let Some(stream_tx) = stream_tx
         && let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
@@ -560,6 +602,7 @@ fn emit_tool_result(
             result,
             is_error,
             duration_ms,
+            outcome,
         })
     {
         record_stream_send_error(tool_ctx, tool_name, "tool_result", &e);
@@ -586,6 +629,7 @@ fn record_tool_outcome(
             result,
             call.is_error,
             call.duration_ms,
+            call.outcome_label().to_owned(),
         );
     }
     tool_results.push(outcome.result_block);
@@ -877,16 +921,33 @@ async fn dispatch_single_tool(
     )]
     let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
 
-    let (content, is_error) = match result {
+    let (content, is_error, outcome_detail) = match result {
         Ok(mut r) => {
             if let Some(ref mut d) = r.diagnostics {
                 d.duration_ms = duration_ms;
                 let diag_text = d.to_llm_text();
                 r.content = inject_diagnostics(r.content, &diag_text);
             }
-            (r.content, r.is_error)
+            // WHY the accessor methods, not a direct match: `ToolOutcome` is
+            // `#[non_exhaustive]` — matching its variants directly here would
+            // need a wildcard arm that silently swallows any future variant
+            // organon adds. `is_partial()`/`partial_reasons()`/
+            // `failure_reason()` are the crate's own forward-compatible
+            // surface for exactly this.
+            let outcome_detail = if r.outcome.is_partial() {
+                Some(r.outcome.partial_reasons().join("; "))
+            } else {
+                let reason = r.outcome.failure_reason();
+                (!reason.is_empty()).then(|| reason.to_owned())
+            };
+            (r.content, r.is_error, outcome_detail)
         }
-        Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true),
+        // WHY None, not a synthesized detail: this branch is a dispatch-level
+        // failure (the executor itself errored, e.g. tool not found in the
+        // registry) rather than an organon `ToolOutcome::Failure` — there is
+        // no `FailureInfo::reason` to carry, and `msg` (via `content`) is
+        // already the fuller human-readable message.
+        Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true, None),
     };
 
     let content = truncate_tool_result(content, max_tool_result_bytes);
@@ -952,6 +1013,7 @@ async fn dispatch_single_tool(
         duration_ms,
         approval: None,
         receipt,
+        outcome_detail,
     };
 
     let result_block = ContentBlock::ToolResult {
@@ -1121,6 +1183,7 @@ pub(super) async fn dispatch_tool_items(
                     duration_ms: 0,
                     approval: None,
                     receipt: None,
+                    outcome_detail: None,
                 },
                 result_block: ContentBlock::ToolResult {
                     tool_use_id: tool_id.clone(),
@@ -1346,6 +1409,42 @@ mod tests {
     use super::*;
     use organon::testing::MockToolExecutor;
     use organon::types::{InputSchema, Reversibility, ToolCategory, ToolDef, ToolGroupId};
+
+    #[test]
+    fn is_denial_outcome_recognizes_every_denial_class() {
+        for outcome in [
+            TOOL_OUTCOME_DENIED_BY_ROLE,
+            TOOL_OUTCOME_DENIED_BY_GROUP,
+            TOOL_OUTCOME_DENIED_BY_HOOK,
+            TOOL_OUTCOME_DENIED_INACTIVE,
+            TOOL_OUTCOME_NOT_FOUND,
+            TOOL_OUTCOME_FAILED,
+            TOOL_OUTCOME_UNDISPATCHED,
+            APPROVAL_OUTCOME_NO_GATE_DENIED,
+        ] {
+            assert!(
+                is_denial_outcome(outcome),
+                "{outcome} should be recognized as a denial class"
+            );
+        }
+    }
+
+    #[test]
+    fn is_denial_outcome_rejects_approval_grant_outcomes() {
+        // WHY: these mean the call WAS approved (and may go on to execute),
+        // the opposite of a denial — conflating them would misreport an
+        // executed-and-failed call as though policy had denied it (#4558).
+        for outcome in [
+            APPROVAL_OUTCOME_AUTO_APPROVED,
+            APPROVAL_OUTCOME_ADVISORY_AUTO,
+            "unknown_arbitrary_string",
+        ] {
+            assert!(
+                !is_denial_outcome(outcome),
+                "{outcome} should not be recognized as a denial class"
+            );
+        }
+    }
 
     fn test_tool_def(name: &str) -> ToolDef {
         ToolDef {

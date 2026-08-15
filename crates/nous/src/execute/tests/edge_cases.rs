@@ -364,6 +364,7 @@ fn classify_signals_edit_is_code_generation() {
         duration_ms: 10,
         approval: None,
         receipt: None,
+        outcome_detail: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(
@@ -383,6 +384,7 @@ fn classify_signals_web_fetch_is_research() {
         duration_ms: 10,
         approval: None,
         receipt: None,
+        outcome_detail: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(
@@ -403,6 +405,7 @@ fn classify_signals_multiple_flags() {
             duration_ms: 10,
             approval: None,
             receipt: None,
+            outcome_detail: None,
         },
         ToolCall {
             id: "2".to_owned(),
@@ -413,6 +416,7 @@ fn classify_signals_multiple_flags() {
             duration_ms: 5,
             approval: None,
             receipt: None,
+            outcome_detail: None,
         },
     ];
     let signals = classify_signals(&calls, "", false, false);

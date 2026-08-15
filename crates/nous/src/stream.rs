@@ -37,5 +37,9 @@ pub enum TurnStreamEvent {
         result: String,
         is_error: bool,
         duration_ms: u64,
+        /// Stable outcome classification (#4558) — `ToolCall::outcome_label()`
+        /// for the same call: `"success"` / `"partial_success"` / `"error"`,
+        /// or a denial-class string when the call never ran.
+        outcome: String,
     },
 }

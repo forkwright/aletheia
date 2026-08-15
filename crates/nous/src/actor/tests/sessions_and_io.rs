@@ -253,6 +253,7 @@ async fn maybe_spawn_extraction_spawns_with_tool_calls_and_reasoning() {
         duration_ms: 42,
         approval: None,
         receipt: None,
+        outcome_detail: None,
     }];
 
     actor.maybe_spawn_extraction(

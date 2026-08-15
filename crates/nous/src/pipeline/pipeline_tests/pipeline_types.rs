@@ -516,6 +516,7 @@ fn tool_call_serde_roundtrip() {
         duration_ms: 42,
         approval: None,
         receipt: None,
+        outcome_detail: Some("1 sub-operation degraded".to_owned()),
     };
     let json = serde_json::to_string(&tc).expect("serialize tool call");
     let back: ToolCall = serde_json::from_str(&json).expect("deserialize tool call");
@@ -524,6 +525,10 @@ fn tool_call_serde_roundtrip() {
     assert_eq!(
         tc.duration_ms, back.duration_ms,
         "duration_ms should roundtrip"
+    );
+    assert_eq!(
+        tc.outcome_detail, back.outcome_detail,
+        "outcome_detail should roundtrip"
     );
 }
 
@@ -538,9 +543,76 @@ fn tool_call_with_error() {
         duration_ms: 0,
         approval: None,
         receipt: None,
+        outcome_detail: Some("no such file".to_owned()),
     };
     assert!(tc.is_error, "error tool call should have is_error=true");
     assert!(tc.result.is_none(), "error tool call should have no result");
+    assert_eq!(
+        tc.outcome_detail.as_deref(),
+        Some("no such file"),
+        "failure reason should be carried on outcome_detail"
+    );
+}
+
+fn base_tool_call() -> ToolCall {
+    ToolCall {
+        id: "tc-1".to_owned(),
+        name: "exec".to_owned(),
+        input: serde_json::json!({}),
+        result: Some("ok".to_owned()),
+        is_error: false,
+        duration_ms: 0,
+        approval: None,
+        receipt: None,
+        outcome_detail: None,
+    }
+}
+
+#[test]
+fn outcome_label_success_when_no_error_and_no_detail() {
+    let tc = base_tool_call();
+    assert_eq!(tc.outcome_label(), "success");
+}
+
+#[test]
+fn outcome_label_partial_success_when_no_error_but_detail_present() {
+    let mut tc = base_tool_call();
+    tc.outcome_detail = Some("1 sub-operation degraded".to_owned());
+    assert_eq!(tc.outcome_label(), "partial_success");
+}
+
+#[test]
+fn outcome_label_error_when_is_error_regardless_of_detail() {
+    let mut tc = base_tool_call();
+    tc.is_error = true;
+    assert_eq!(tc.outcome_label(), "error");
+
+    tc.outcome_detail = Some("boom".to_owned());
+    assert_eq!(tc.outcome_label(), "error");
+}
+
+#[test]
+fn outcome_label_surfaces_a_known_denial_class() {
+    let mut tc = base_tool_call();
+    tc.is_error = true;
+    tc.approval = Some("denied_by_hook".to_owned());
+    assert_eq!(
+        tc.outcome_label(),
+        "denied_by_hook",
+        "a real denial class must surface as the outcome, not collapse to 'error'"
+    );
+}
+
+#[test]
+fn outcome_label_does_not_mistake_an_unknown_approval_note_for_a_denial() {
+    let mut tc = base_tool_call();
+    tc.is_error = true;
+    // WHY not a real denial string: an approval-gate note that happens to
+    // survive on an executed-and-failed call must not be misread as a
+    // policy denial (#4558) — only `execute::is_denial_outcome`'s closed
+    // vocabulary takes precedence over is_error/outcome_detail.
+    tc.approval = Some("auto_approved".to_owned());
+    assert_eq!(tc.outcome_label(), "error");
 }
 
 #[test]
