@@ -177,13 +177,11 @@ impl ApiError {
     /// discipline `impl_from_error!` below uses for HTTP status mapping.
     fn classify(&self) -> (FailureCategory, Recoverability, NextAction) {
         match self {
-            Self::SessionNotFound { .. } | Self::NousNotFound { .. } | Self::NotFound { .. } => {
-                (
-                    FailureCategory::Persistence,
-                    Recoverability::NotRecoverable,
-                    NextAction::None,
-                )
-            }
+            Self::SessionNotFound { .. } | Self::NousNotFound { .. } | Self::NotFound { .. } => (
+                FailureCategory::Persistence,
+                Recoverability::NotRecoverable,
+                NextAction::None,
+            ),
             Self::BadRequest { .. } | Self::ValidationFailed { .. } => (
                 FailureCategory::Config,
                 Recoverability::UserActionRequired,
