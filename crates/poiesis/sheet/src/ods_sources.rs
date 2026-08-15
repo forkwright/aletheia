@@ -198,7 +198,7 @@ mod tests {
             },
         ));
         let mut ods_wb = OdsWorkBook::new_empty();
-        let theme = poiesis_theme::summus();
+        let theme = poiesis_theme::protos();
         let styles = OdsStyles::register(&mut ods_wb, &theme);
         append_ods_sources_sheet(&mut ods_wb, &wb, &factbase, &styles).expect("appends sheet");
         let bytes = spreadsheet_ods::write_ods_buf(&mut ods_wb, Vec::new()).expect("save");
@@ -221,7 +221,7 @@ mod tests {
         };
         let factbase = Factbase::new();
         let mut ods_wb = OdsWorkBook::new_empty();
-        let theme = poiesis_theme::summus();
+        let theme = poiesis_theme::protos();
         let styles = OdsStyles::register(&mut ods_wb, &theme);
         append_ods_sources_sheet(&mut ods_wb, &wb, &factbase, &styles).expect("no-op ok");
     }
@@ -231,7 +231,7 @@ mod tests {
         let wb = workbook_citing(&["ghost"]);
         let factbase = Factbase::new();
         let mut ods_wb = OdsWorkBook::new_empty();
-        let theme = poiesis_theme::summus();
+        let theme = poiesis_theme::protos();
         let styles = OdsStyles::register(&mut ods_wb, &theme);
         let err = append_ods_sources_sheet(&mut ods_wb, &wb, &factbase, &styles)
             .expect_err("unknown fact must reject");

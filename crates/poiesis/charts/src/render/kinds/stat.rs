@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn emits_big_number_text() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &stat_chart(42.0, Unit::Number, "Users"),
             &theme,
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn themed_mode_emits_css_var() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &stat_chart(99.0, Unit::Number, "Score"),
             &theme,
@@ -234,12 +234,12 @@ mod tests {
         )
         .expect("themed mode emits");
         assert!(svg.contains("var(--tone-series-0)"));
-        assert!(!svg.contains("#232E54"));
+        assert!(!svg.contains("#1E293B"));
     }
 
     #[test]
     fn output_is_deterministic() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let a = emit(
             &stat_chart(123.0, Unit::Number, "Total"),
             &theme,
@@ -259,7 +259,7 @@ mod tests {
 
     #[test]
     fn series_name_uses_mono_font() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &stat_chart(42.0, Unit::Number, "Users"),
             &theme,
@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn money_unit_formats_as_dollars() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &stat_chart(1500.0, Unit::Money, "Revenue"),
             &theme,

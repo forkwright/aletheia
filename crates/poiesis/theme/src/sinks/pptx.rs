@@ -305,23 +305,23 @@ mod tests {
     use super::*;
     use crate::registry::Registry;
 
-    fn summus() -> ResolvedTheme {
+    fn protos() -> ResolvedTheme {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let registry = Registry::load_dir(&dir).expect("load summus");
+        let registry = Registry::load_dir(&dir).expect("load protos");
         registry
-            .resolve(&crate::registry::parse_theme_id("summus").expect("id"))
+            .resolve(&crate::registry::parse_theme_id("protos").expect("id"))
             .expect("resolve")
     }
 
     #[test]
     fn pptx_produces_non_empty_bytes() {
-        let bytes = emit_base_pptx(&summus()).expect("emit base pptx");
+        let bytes = emit_base_pptx(&protos()).expect("emit base pptx");
         assert!(!bytes.is_empty(), "rendered PPTX must not be empty");
     }
 
     #[test]
     fn pptx_is_valid_zip() {
-        let bytes = emit_base_pptx(&summus()).expect("emit base pptx");
+        let bytes = emit_base_pptx(&protos()).expect("emit base pptx");
         let cursor = std::io::Cursor::new(bytes);
         let archive = zip::ZipArchive::new(cursor).expect("valid zip archive");
         assert!(!archive.is_empty(), "archive must contain entries");
@@ -329,7 +329,7 @@ mod tests {
 
     #[test]
     fn pptx_contains_theme1_xml() {
-        let bytes = emit_base_pptx(&summus()).expect("emit base pptx");
+        let bytes = emit_base_pptx(&protos()).expect("emit base pptx");
         let cursor = std::io::Cursor::new(bytes);
         let archive = zip::ZipArchive::new(cursor).expect("valid zip archive");
         assert!(
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn pptx_theme1_xml_carries_brand_colors() {
-        let bytes = emit_base_pptx(&summus()).expect("emit base pptx");
+        let bytes = emit_base_pptx(&protos()).expect("emit base pptx");
         let cursor = std::io::Cursor::new(bytes);
         let mut archive = zip::ZipArchive::new(cursor).expect("valid zip archive");
         let mut theme1 = archive
@@ -350,15 +350,15 @@ mod tests {
         std::io::Read::read_to_string(&mut theme1, &mut contents)
             .expect("read theme1.xml as string");
         assert!(
-            contents.contains("232E54"),
-            "theme1.xml must contain summus navy hex (232E54): {contents}"
+            contents.contains("1E293B"),
+            "theme1.xml must contain protos navy hex (1E293B): {contents}"
         );
     }
 
     #[test]
     fn pptx_byte_stable_across_runs() {
-        let a = emit_base_pptx(&summus()).expect("first");
-        let b = emit_base_pptx(&summus()).expect("second");
+        let a = emit_base_pptx(&protos()).expect("first");
+        let b = emit_base_pptx(&protos()).expect("second");
         assert_eq!(a, b, "two emissions must match byte-for-byte");
     }
 
@@ -366,7 +366,7 @@ mod tests {
     fn pptx_content_types_override_part_names_resolve_to_zip_entries() {
         // WHY: ECMA-376 §13.2.2 requires each Override PartName to match the
         // actual ZIP entry path exactly; a mismatch makes the package malformed.
-        let bytes = emit_base_pptx(&summus()).expect("emit base pptx");
+        let bytes = emit_base_pptx(&protos()).expect("emit base pptx");
         let cursor = std::io::Cursor::new(bytes);
         let mut archive = zip::ZipArchive::new(cursor).expect("valid zip archive");
 

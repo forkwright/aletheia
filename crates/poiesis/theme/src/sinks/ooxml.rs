@@ -231,16 +231,16 @@ mod tests {
     use super::*;
     use crate::registry::Registry;
 
-    fn summus() -> ResolvedTheme {
+    fn protos() -> ResolvedTheme {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let registry = Registry::load_dir(&dir).expect("load summus");
-        let id = crate::registry::parse_theme_id("summus").expect("parse summus");
-        registry.resolve(&id).expect("resolve summus")
+        let registry = Registry::load_dir(&dir).expect("load protos");
+        let id = crate::registry::parse_theme_id("protos").expect("parse protos");
+        registry.resolve(&id).expect("resolve protos")
     }
 
     #[test]
     fn ooxml_emits_well_formed_root() {
-        let xml = emit_theme_xml(&summus()).expect("emit summus theme1.xml");
+        let xml = emit_theme_xml(&protos()).expect("emit protos theme1.xml");
         assert!(xml.starts_with("<?xml"), "XML prolog missing");
         let expected_open = format!(r#"<a:theme xmlns:a="{OOXML_DRAWINGML_NS}""#);
         assert!(
@@ -252,20 +252,20 @@ mod tests {
 
     #[test]
     fn ooxml_clrscheme_embeds_brand_values_without_hash() {
-        let xml = emit_theme_xml(&summus()).expect("emit summus theme1.xml");
+        let xml = emit_theme_xml(&protos()).expect("emit protos theme1.xml");
         assert!(
-            xml.contains(r#"<a:srgbClr val="232E54"/>"#),
+            xml.contains(r#"<a:srgbClr val="1E293B"/>"#),
             "navy must appear hash-less in srgbClr: {xml}"
         );
         assert!(
-            xml.contains(r#"<a:srgbClr val="318891"/>"#),
+            xml.contains(r#"<a:srgbClr val="0D9488"/>"#),
             "teal must appear hash-less in srgbClr: {xml}"
         );
     }
 
     #[test]
-    fn ooxml_fontscheme_uses_summus_typefaces() {
-        let xml = emit_theme_xml(&summus()).expect("emit summus theme1.xml");
+    fn ooxml_fontscheme_uses_protos_typefaces() {
+        let xml = emit_theme_xml(&protos()).expect("emit protos theme1.xml");
         assert!(
             xml.contains(r#"<a:latin typeface="Geist"/>"#),
             "minor (body) typeface must be Geist: {xml}"
@@ -278,17 +278,17 @@ mod tests {
 
     #[test]
     fn ooxml_carries_theme_name_attribute() {
-        let xml = emit_theme_xml(&summus()).expect("emit summus theme1.xml");
+        let xml = emit_theme_xml(&protos()).expect("emit protos theme1.xml");
         assert!(
-            xml.contains(r#"name="summus""#),
+            xml.contains(r#"name="protos""#),
             "theme + scheme name attribute must be set"
         );
     }
 
     #[test]
     fn ooxml_byte_stable_across_runs() {
-        let a = emit_theme_xml(&summus()).expect("first");
-        let b = emit_theme_xml(&summus()).expect("second");
+        let a = emit_theme_xml(&protos()).expect("first");
+        let b = emit_theme_xml(&protos()).expect("second");
         assert_eq!(a, b, "two emissions must match byte-for-byte");
     }
 
@@ -298,15 +298,15 @@ mod tests {
         // would assign bg=#FFFFFF (white) to accent3, making chart series 3
         // invisible on white slide backgrounds. chart.series[2]=neutral=navy
         // must win.
-        let xml = emit_theme_xml(&summus()).expect("emit summus theme1.xml");
-        // accent3 slot must contain navy (232E54), not bg (FFFFFF)
+        let xml = emit_theme_xml(&protos()).expect("emit protos theme1.xml");
+        // accent3 slot must contain navy (1E293B), not bg (FFFFFF)
         let accent3_pos = xml.find("<a:accent3>").expect("accent3 slot must exist");
         let accent3_block = xml
             .get(accent3_pos..accent3_pos + 80)
             .expect("accent3 block fits in xml");
         assert!(
-            accent3_block.contains("232E54"),
-            "accent3 must be navy (232E54) from chart.series[2]=neutral, not bg (FFFFFF): {accent3_block}"
+            accent3_block.contains("1E293B"),
+            "accent3 must be navy (1E293B) from chart.series[2]=neutral, not bg (FFFFFF): {accent3_block}"
         );
     }
 }

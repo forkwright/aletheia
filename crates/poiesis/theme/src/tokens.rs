@@ -262,7 +262,7 @@ pub struct ChartTokens {
 
 /// A `#rrggbb` color literal — the only place in the system where raw hex lives.
 ///
-/// Construction is the parse boundary: `HexColor::parse("#232E54")` accepts the
+/// Construction is the parse boundary: `HexColor::parse("#1E293B")` accepts the
 /// canonical seven-character form. The internal representation normalizes to
 /// uppercase so two themes that differ only by case emit byte-identical CSS.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -372,8 +372,8 @@ mod tests {
 
     #[test]
     fn hex_parses_long_form() {
-        let c = HexColor::parse("#232E54").expect("#232E54 must parse");
-        assert_eq!(c.as_str(), "#232E54");
+        let c = HexColor::parse("#1E293B").expect("#1E293B must parse");
+        assert_eq!(c.as_str(), "#1E293B");
     }
 
     #[test]
@@ -384,13 +384,13 @@ mod tests {
 
     #[test]
     fn hex_uppercases_lowercase_long_form() {
-        let c = HexColor::parse("#1a2342").expect("lowercase long form must parse");
-        assert_eq!(c.as_str(), "#1A2342");
+        let c = HexColor::parse("#0f172a").expect("lowercase long form must parse");
+        assert_eq!(c.as_str(), "#0F172A");
     }
 
     #[test]
     fn hex_rejects_missing_hash() {
-        assert!(HexColor::parse("232E54").is_err(), "missing # must reject");
+        assert!(HexColor::parse("1E293B").is_err(), "missing # must reject");
     }
 
     #[test]
@@ -406,19 +406,19 @@ mod tests {
 
     #[test]
     fn hex_body_strips_hash() {
-        let c = HexColor::parse("#318891").expect("#318891 must parse");
-        assert_eq!(c.body(), "318891");
+        let c = HexColor::parse("#0D9488").expect("#0D9488 must parse");
+        assert_eq!(c.body(), "0D9488");
     }
 
     fn theme_with_role_key(key: &str) -> Theme {
         let mut role = IndexMap::new();
         role.insert(
             key.to_owned(),
-            HexColor::parse("#232E54").expect("hex parses"),
+            HexColor::parse("#1E293B").expect("hex parses"),
         );
         Theme {
             meta: Meta {
-                id: ThemeId::parse("summus").expect("id parses"),
+                id: ThemeId::parse("protos").expect("id parses"),
                 title: None,
                 description: None,
             },

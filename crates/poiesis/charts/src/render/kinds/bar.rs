@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn single_series_emits_nonempty_svg() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &single_chart(),
             &theme,
@@ -297,7 +297,7 @@ mod tests {
 
     #[test]
     fn themed_mode_emits_css_var() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &single_chart(),
             &theme,
@@ -306,12 +306,12 @@ mod tests {
         )
         .expect("emit");
         assert!(svg.contains("var(--tone-series-0)"));
-        assert!(!svg.contains("#232E54"));
+        assert!(!svg.contains("#1E293B"));
     }
 
     #[test]
     fn output_is_deterministic() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let a = emit(
             &single_chart(),
             &theme,
@@ -335,7 +335,7 @@ mod tests {
         chart.data_labels = true;
         chart.axes.x.format = NumFormat::Money;
         chart.axes.y_left.format = NumFormat::Percent;
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &chart,
             &theme,
@@ -387,7 +387,7 @@ mod tests {
             data_labels: false,
             caption: None,
         };
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = emit(
             &chart,
             &theme,

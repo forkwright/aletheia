@@ -16,7 +16,6 @@ mechanically enforce that specs reference tokens, never raw hex or typeface
 literals.
 
 Source: planning entry `planning/poiesis-evolution/B-002` (forkwright/kanon#985).
-Locks: spec 03 of forkwright/kanon#978 (apodeixis Phase-00 bootstrap).
 
 ## Read first
 
@@ -29,7 +28,7 @@ Locks: spec 03 of forkwright/kanon#978 (apodeixis Phase-00 bootstrap).
 7. `src/sinks/ooxml.rs` — `theme1.xml` `clrScheme` + `fontScheme` emitter.
 8. `src/sinks/docvars.rs` — flat JSON + YAML doc-vars map.
 9. `src/lint.rs` — `THEME/raw-color-literal`, `THEME/raw-font-literal`, `THEME/unknown-token`.
-10. `themes/summus.toml` — the seed theme.
+10. `themes/protos.toml` — the seed theme.
 
 ## Patterns
 
@@ -67,8 +66,8 @@ not the theme integration boundary.
 | Token model               | shipped (`src/tokens.rs`)                |                   |
 | `ResolvedTheme`           | shipped (`src/resolved.rs`)              | consumed by organon at the tool boundary |
 | Registry + discovery      | shipped (`src/registry.rs`)              | `theme list/show/validate/compile` CLI verbs |
-| `summus` seed theme       | shipped (`themes/summus.toml`)           |                   |
-| CSS sink                  | shipped (`src/sinks/css.rs`)             | regression-byte test against offsite CSS |
+| `protos` seed theme       | shipped (`themes/protos.toml`)           |                   |
+| CSS sink                  | shipped (`src/sinks/css.rs`)             | regression-byte test against reference CSS |
 | OOXML `theme1.xml`        | shipped (`src/sinks/ooxml.rs`)           | full `assets/<name>-base.pptx` raw OOXML pack; this crate emits the `theme1.xml` body |
 | Pandoc doc-vars           | shipped (`src/sinks/docvars.rs`, JSON + YAML) | generate `reference.docx/odt/template.{typ,latex}` |
 | LaTeX prelude             | shipped (`src/sinks/latex.rs`)           | `\definecolor` / `\newcommand` assets for the doc backend |

@@ -600,9 +600,9 @@ mod tests {
     fn valid_brief() -> Brief {
         Brief {
             meta: BriefMeta {
-                title: "Offsite".to_owned(),
+                title: "Quarterly Review".to_owned(),
                 client: "Acme".to_owned(),
-                theme: "summus".to_owned(),
+                theme: "protos".to_owned(),
                 date: Some("2026-05-29".to_owned()),
                 confidential: true,
             },
@@ -626,7 +626,7 @@ mod tests {
                 forbid: vec!["em-dash".to_owned()],
             },
             arc: Arc {
-                opener: "What changed since the last offsite?".to_owned(),
+                opener: "What changed since the last quarterly review?".to_owned(),
                 movements: vec!["Tension".to_owned(), "Proof".to_owned()],
                 closer: "The platform is ready for focused adoption.".to_owned(),
                 emotional_beat: vec!["tension".to_owned(), "confidence".to_owned()],

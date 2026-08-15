@@ -154,15 +154,15 @@ mod tests {
 
     fn minimal_theme() -> Theme {
         let mut role = IndexMap::new();
-        role.insert("navy".to_owned(), hex("#232E54"));
-        role.insert("teal".to_owned(), hex("#318891"));
+        role.insert("navy".to_owned(), hex("#1E293B"));
+        role.insert("teal".to_owned(), hex("#0D9488"));
         let mut tone = IndexMap::new();
         tone.insert("positive".to_owned(), "teal".to_owned());
         let mut surface = IndexMap::new();
         surface.insert("page".to_owned(), "navy".to_owned());
         Theme {
             meta: Meta {
-                id: parse_id("summus"),
+                id: parse_id("protos"),
                 title: None,
                 description: None,
             },
@@ -184,7 +184,7 @@ mod tests {
         let resolved = ResolvedTheme::from_theme(minimal_theme()).expect("must resolve");
         assert_eq!(
             resolved.role.get("navy").map(HexColor::as_str),
-            Some("#232E54")
+            Some("#1E293B")
         );
     }
 
@@ -193,7 +193,7 @@ mod tests {
         let resolved = ResolvedTheme::from_theme(minimal_theme()).expect("must resolve");
         assert_eq!(
             resolved.tone.get("positive").map(HexColor::as_str),
-            Some("#318891"),
+            Some("#0D9488"),
             "tone positive→teal must resolve to the teal hex"
         );
     }
@@ -203,7 +203,7 @@ mod tests {
         let resolved = ResolvedTheme::from_theme(minimal_theme()).expect("must resolve");
         assert_eq!(
             resolved.surface.get("page").map(HexColor::as_str),
-            Some("#232E54"),
+            Some("#1E293B"),
         );
     }
 
@@ -223,17 +223,17 @@ mod tests {
         let resolved = ResolvedTheme::from_theme(minimal_theme()).expect("must resolve");
         assert_eq!(
             resolved.lookup_color("navy").map(HexColor::as_str),
-            Some("#232E54"),
+            Some("#1E293B"),
             "lookup must find role"
         );
         assert_eq!(
             resolved.lookup_color("positive").map(HexColor::as_str),
-            Some("#318891"),
+            Some("#0D9488"),
             "lookup must find tone"
         );
         assert_eq!(
             resolved.lookup_color("page").map(HexColor::as_str),
-            Some("#232E54"),
+            Some("#1E293B"),
             "lookup must find surface"
         );
         assert!(

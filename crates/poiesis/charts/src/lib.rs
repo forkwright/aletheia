@@ -51,7 +51,7 @@
 //! - IDs (markers, gradients) are content-derived or index-based, never random.
 //!
 //! See `B-005` (`poiesis-evolution/B-005-poiesis-charts.md`) for the
-//! acceptance contract and the offsite slide-3 golden the determinism rules
+//! acceptance contract and the sample slide-3 golden the determinism rules
 //! are calibrated against.
 //!
 //! # Feature flags
