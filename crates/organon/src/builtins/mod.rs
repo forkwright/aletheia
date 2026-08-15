@@ -463,6 +463,7 @@ mod poiesis_default_off_tests {
 /// calling `declare_capability` fails this test with its name, not a
 /// silent gap.
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod capability_governance_tests {
     use super::*;
     use crate::types::{Reversibility, UNASSIGNED_TOOL_OWNER};
