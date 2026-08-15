@@ -57,10 +57,22 @@ jobs:
       # releases 0.33.1 / 0.33.3.
       - name: Assert every declared extra-file actually moved
         if: steps.release.outputs.prs_created == 'true'
+        # WARNING: pass the raw output and destructure it in the script, never
+        # `fromJson(...)` in `env:`. A step's env expressions are evaluated when
+        # the template is prepared, which happens even when `if:` skips the step
+        # -- so once release-please starts UPDATING an existing PR instead of
+        # creating one, `prs_created` is false, `.pr` is the empty string, and
+        # `fromJson('')` throws as "The template is not valid". That failed every
+        # run for four consecutive merges while the guard above was doing its job.
         env:
-          HEAD_BRANCH: ${{ fromJson(steps.release.outputs.pr).headBranchName }}
+          RELEASE_PR_JSON: ${{ steps.release.outputs.pr }}
         run: |
           set -euo pipefail
+          HEAD_BRANCH="$(printf '%s' "${RELEASE_PR_JSON}" | jq -r '.headBranchName')"
+          if [ -z "${HEAD_BRANCH}" ] || [ "${HEAD_BRANCH}" = "null" ]; then
+            echo "::error::release-please reported prs_created=true but its pr output carries no headBranchName"
+            exit 1
+          fi
           # WHY the explicit refspec: actions/checkout narrows
           # `remote.origin.fetch` to the ref it checked out, so a bare
           # `git fetch origin <branch>` for any OTHER branch lands in FETCH_HEAD
