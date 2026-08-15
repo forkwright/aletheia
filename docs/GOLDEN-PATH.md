@@ -43,8 +43,8 @@ is not expected to have it installed or to run it locally; CI enforces the
 gate independently. Required setup for the publicly-supported path above does
 not depend on private repos.
 
-See [MATURITY.md](MATURITY.md) for which crates and surfaces this covers
-are Stable vs. still Experimental/Undeclared.
+See [MATURITY.md](MATURITY.md) for which of the crates involved are Stable
+versus still Experimental or Undeclared.
 
 ## 1. Configure Providers
 
