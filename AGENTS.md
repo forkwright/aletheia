@@ -6,6 +6,8 @@ Cross-tool guide for AI coding agents (Claude Code, Cursor, Windsurf, Copilot, e
 
 Read `docs/GOLDEN-PATH.md` first to understand the public desktop-first app workflow and the implemented versus planned app surfaces. Read `docs/HARNESS-LIFECYCLE.md` for the canonical nine-stage agent-work loop every crate and surface implements — the map from "task enters the system" through "result is reviewed, exported, or closed" to the code that owns each stage.
 
+Run `python3 scripts/aletheia-orient.py` for a fresh, repo-sourced snapshot: crate list by layer, every feature flag, key CLI commands, and whether `CRATE-INDEX.toml`/`_llm/manifest.toml` are fresh. It reads only generated/CI-gated files (`CRATE-INDEX.toml`, `_llm/api.toml`) — no private planning, no hand-maintained status prose.
+
 ## Build / Test / Lint
 
 ```bash

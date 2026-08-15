@@ -6,7 +6,7 @@ CLAUDE.md = instructions (always loaded, short). This directory = reference (on 
 
 ## Why this exists
 
-Agents loading cold into a 48-crate workspace burn tokens on full CLAUDE.md files when they only need a fraction of the information. This directory provides a layered representation: scan the index, drill into relevant crates, read full source only when needed.
+Agents loading cold into a large multi-crate workspace (run `python3 scripts/aletheia-orient.py` for the current count by layer, sourced from `CRATE-INDEX.toml`) burn tokens on full CLAUDE.md files when they only need a fraction of the information. This directory provides a layered representation: scan the index, drill into relevant crates, read full source only when needed.
 
 ## Level map
 

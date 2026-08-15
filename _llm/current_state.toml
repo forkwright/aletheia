@@ -10,7 +10,7 @@ source_docs = [
 
 [state]
 phase = "pre-1.0"
-version = "0.31.1"
+version = "0.37.0"
 summary = """
 Aletheia is in active pre-1.0 development. The core agent runtime, memory
 pipeline, tool registry, HTTP/SSE gateway, Signal channel, and TUI are
@@ -25,10 +25,11 @@ signal = "active"
 http_api = "active"
 desktop_app = "preview"
 
-[active_threads]
-description = """
-- Feature-flag gating and dispatch orchestration (energeia)
-- Poiesis document-generation pipeline
-- Agent-first public surface validation and doc freshness
-- Pre-1.0 crate extraction (mneme and others to forkwright/<name> repos)
-"""
+# WHY(#4527): milestones/active-thread tracking is intentionally NOT
+# duplicated here -- docs/PROJECT.md's own "Milestones" section states
+# "Planning and milestones are tracked in the internal project roadmap." A
+# hand-maintained thread list in this public file drifts from that private
+# roadmap silently (the prior version named specific in-flight work items
+# that had already gone stale) with no mechanism to catch it. `version`
+# above stays because it is mechanically checkable against
+# .release-please-manifest.json; free-text planning state is not.
