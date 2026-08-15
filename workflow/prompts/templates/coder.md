@@ -48,4 +48,9 @@ chooses the approach.]
 [If there are multiple sub-tasks, list them in priority order. The worker
 completes them in order and stops if one fails.]
 
-Commit with `Gate-Passed: kanon 0.1.0` in the commit body.
+If `kanon` is available locally, run `kanon gate --tier full --stamp` before
+the final commit — it appends a `Gate-Passed:` trailer in the exact
+version/stage/tree-sha shape CI's attestation check requires. Never hand-type
+a `Gate-Passed:` trailer: CI fails closed on one it finds present but
+malformed. With no `kanon` access, omit the trailer entirely and let CI's
+full-gate-build verify the PR.

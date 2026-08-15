@@ -110,10 +110,10 @@ Active windows restrict execution to time ranges (e.g., `active_window: Some((8,
 | SerendipityDiscovery | Cron | Opt-in (`maintenance.knowledge_maintenance_serendipity.enabled`) | Discover unexpected knowledge connections |
 | OpsFactExtraction | Cron/startup | Implemented (requires knowledge executor) | Persist operational fact-extraction results for later recall/audit |
 | EmbeddingRefresh | Cron | **Not implemented** | Re-embed stale entities — blocked on EmbeddingProvider bridge |
-| KnowledgeGc | Cron | **Not implemented** | Orphan removal, expired edge pruning — no store contract |
+| KnowledgeGc | Cron | Implemented, not scheduled | Prune `consolidation_audit` rows past a retention cutoff; broader orphan/edge sweeping remains a separate, unimplemented contract |
 | IndexMaintenance | Interval | Implemented | Rebuild gnosis code-graph index for the workspace (#5963) |
 | GraphHealthCheck | Cron | **Not implemented** | Diagnostic health check — no diagnostic contract |
-| SelfAudit | Cron | **Not implemented** | Self-assessment against quality metrics |
+| SelfAudit | Interval (6h) | Implemented, enabled by default | Self-assessment against quality metrics |
 | EvolutionSearch | Cron | Opt-in (`maintenance.cron_tasks.evolution`) | Mutate and benchmark agent configs |
 | SelfReflection | Cron | Opt-in (`maintenance.cron_tasks.reflection`) | Agent evaluates recent performance |
 

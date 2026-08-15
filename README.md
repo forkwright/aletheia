@@ -80,13 +80,14 @@ Send any of these from Signal to control the agent without starting a conversati
 | `!status` | Lifecycle and session info for this agent |
 | `!agents` | List all running agents |
 | `!whoami` | Show which agent handles this conversation |
-| `!new [label]` | Signal intent to start a fresh session |
-| `!end` | Close the current session |
 | `!sessions` | Count sessions tracked by this agent |
 | `!ping` | Round-trip liveness check |
 | `!channels` | List channel providers and health |
 | `!uptime` | Agent uptime and panic-boundary count |
 | `!model` | Show the LLM model configured for this agent |
+| `!skills` | List skills available to this agent |
+| `!blackboard` | Show recent cross-nous blackboard entries |
+| `!think` | Show extended-thinking mode and budget |
 | `!info [agent_id]` | Detail view for an agent (default: current) |
 
 Commands are intercepted before reaching the agent - they consume no LLM tokens. Unknown `!` commands return a helpful error listing the available set.

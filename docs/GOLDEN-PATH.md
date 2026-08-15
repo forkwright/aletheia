@@ -34,8 +34,9 @@ repo access and no cloud account. Start here:
   described above.
 
 `AGENTS.md` and `CLAUDE.md` additionally document a maintainer-private
-workflow layer: the `Gate-Passed: kanon 0.1.0` commit trailer and the
-`forkwright/kanon`-hosted standards docs they reference (`STANDARDS.md`,
+workflow layer: the `Gate-Passed:` commit trailer `kanon gate --tier full
+--stamp` emits (see [AGENTS.md](../AGENTS.md#pr-gate) for the exact shape)
+and the `forkwright/kanon`-hosted standards docs they reference (`STANDARDS.md`,
 `RUST.md`, `WRITING.md`, `SHELL.md`, `GNOMON.md`). `kanon` is maintainer
 tooling, not a public dependency — a contributor working from this checkout
 is not expected to have it installed or to run it locally; CI enforces the
