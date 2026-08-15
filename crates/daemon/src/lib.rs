@@ -8,8 +8,10 @@
 //!
 //! Supports KAIROS-style autonomous daemon mode with jitter-aware scheduling,
 //! single-instance locking, and systemd notify integration. Child-agent
-//! coordination and event-driven triggers are reserved API boundaries, not
-//! wired runtime capabilities yet.
+//! coordination is a reserved API boundary, not a wired runtime capability
+//! yet. `state::AllowedTriggers` reserves config-level opt-in for a future
+//! file-watch/webhook event-trigger subsystem; no dispatch path consumes it
+//! today (aletheia#6789 tracks the decision).
 
 /// Bridge trait for daemon-to-nous communication without direct dependency coupling.
 pub mod bridge;
@@ -53,8 +55,6 @@ pub mod schedule;
 pub mod self_prompt;
 /// Task-state persistence (fjall), workspace config, and single-instance locking.
 pub mod state;
-/// Reserved external trigger boundary.
-pub mod triggers;
 /// Watchdog process monitor with heartbeat tracking and auto-recovery.
 pub mod watchdog;
 
@@ -73,7 +73,6 @@ mod assertions {
         assert_send_sync::<super::watchdog::WatchdogConfig>();
         assert_send_sync::<super::state::DaemonConfig>();
         assert_send::<super::coordination::Coordinator>();
-        assert_send_sync::<super::triggers::TriggerRouter>();
         assert_send_sync::<super::self_prompt::SelfPromptConfig>();
         assert_send::<super::prosoche_audit::ProsocheAuditRunner>();
     };

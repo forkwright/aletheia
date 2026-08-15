@@ -38,7 +38,6 @@ use oikonomos::runner::{DaemonOutputMode, ExecutionResult, TaskOutcome, TaskRunn
 use oikonomos::schedule::{BuiltinTask, Schedule, TaskAction, TaskDef, TaskStatus};
 use oikonomos::self_prompt::{SELF_PROMPT_SESSION_KEY, SelfPromptConfig};
 use oikonomos::state::{AllowedTriggers, DaemonConfig, WorkspaceGuard};
-use oikonomos::triggers::TriggerRouter;
 
 mod common;
 use common::{make_runner, write_fixture};

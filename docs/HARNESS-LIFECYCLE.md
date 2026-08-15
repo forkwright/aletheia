@@ -28,11 +28,11 @@ A turn starts from one of three entry points, all converging on the same
   surface as any other client (see `crates/theatron/skene/src/api/`, the
   shared HTTP client both use)
 
-`crates/daemon/src/triggers.rs` reserves a fourth entry point — file-watch
-and webhook events feeding the task runner without an operator or API call —
-but has no handler registry or dispatch wiring. It is an intentionally
-honest reserved marker, not a partial implementation. Tracked at
-aletheia#6789.
+A fourth entry point — file-watch and webhook events feeding the task runner
+without an operator or API call — is reserved at the config level
+(`oikonomos::state::AllowedTriggers`) but has no handler registry, dispatch
+wiring, or matching router type. It has no committed implementation plan;
+tracked at aletheia#6789.
 
 ### 2. Configuration, provider, agent, and tool policy are resolved
 
@@ -164,7 +164,8 @@ extended it. Fix the client, not this table.
 
 ## Stages needing follow-up
 
-- Stage 1's general-purpose file-watch/webhook trigger boundary
-  (`TriggerRouter`) has no implementation plan. Tracked at aletheia#6789.
+- Stage 1's general-purpose file-watch/webhook trigger boundary has no
+  implementation plan and no reserved type (`AllowedTriggers` reserves the
+  config slot only). Tracked at aletheia#6789.
 - Stage 9's retry sub-behavior has no first-class primitive. Tracked at
   aletheia#6790.
