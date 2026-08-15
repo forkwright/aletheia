@@ -127,7 +127,6 @@ pub trait SandboxConfigExt: Sized {
 }
 
 impl SandboxConfigExt for SandboxConfig {
-    #[must_use]
     fn validate(&self) -> Vec<SandboxConfigIssue> {
         let mut issues = Vec::new();
         if !self.enabled {
@@ -205,7 +204,6 @@ impl SandboxConfigExt for SandboxConfig {
         issues
     }
 
-    #[must_use]
     fn disabled() -> Self {
         Self {
             enabled: false,
@@ -213,7 +211,6 @@ impl SandboxConfigExt for SandboxConfig {
         }
     }
 
-    #[must_use]
     fn build_policy(&self, workspace: &Path, allowed_roots: &[PathBuf]) -> SandboxPolicy {
         if !self.enabled {
             return SandboxPolicy {

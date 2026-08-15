@@ -263,6 +263,13 @@ impl EgressGate {
                     )))
                 }
             }
+            // WHY: EgressPolicy is `#[non_exhaustive]` (single-owned by
+            // taxis, ARCHITECTURE #4846); fail closed like Deny for an
+            // unrecognized future variant rather than silently allowing
+            // network access this function was never told is safe.
+            _ => Err(EgressDenied(
+                "egress policy is not one this build recognizes; denying by default".to_owned(),
+            )),
         }
     }
 }
