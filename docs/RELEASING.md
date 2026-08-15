@@ -56,7 +56,13 @@ scripts/check-cargo-publish-policy.py
    - Generates and attaches an SBOM (SPDX)
    - Uploads everything to the GitHub Release
 
-## Substance audit (manual checklist)
+## Substance audit (maintainer-only, manual checklist)
+
+This step is not part of a contributor's PR gate — it never runs in CI and never blocks a normal
+PR. It applies only when the maintainer merges the periodic release-please version-bump PR, and
+requires the maintainer's own `kanon` CLI (a private tool; see [CLAUDE.md](../CLAUDE.md)'s
+maintainer-only section). A contributor opening a PR does not need to read the rest of this
+section.
 
 Before merging the release-please PR, run the substance audit against the
 security-critical and execution-critical crates. This is a required manual step —

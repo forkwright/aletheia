@@ -1,5 +1,15 @@
 name: Release
 
+# WHY every `token: ${{ secrets.FLEET_REPO_TOKEN }}` below is optional, not a
+# hard requirement: Cargo.toml's only forkwright git dependency (theatron) is
+# public and pinned to an immutable tag, so an unauthenticated fetch already
+# resolves it (see `.github/actions/fleet-git-credentials/action.yml`, which
+# explicitly treats an absent token as a supported case — public deps fetch
+# anonymously). The token is kept as standing insurance against
+# anonymous git-fetch rate-limit flakiness on GitHub-hosted runners, matching
+# `gate-attestation.yml`'s `needs_fleet_repo_token` rationale. A contributor
+# tagging a release from their own fork does not need this secret set for the
+# build to succeed.
 on:
   push:
     tags: ["v*"]
