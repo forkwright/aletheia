@@ -16,6 +16,7 @@ use dokimion::benchmarks::{
 };
 use episteme::rl::{LongMemEvalReward, MemoryOutcome, RewardFn};
 
+use crate::commands::current_git_sha;
 use crate::error::Result;
 
 #[derive(Debug, Clone, Args)]
@@ -193,6 +194,19 @@ async fn run_benchmark(
         args.judge_api_key.is_some(),
     ));
     let cli_args: Vec<String> = std::env::args().collect();
+    // WHY(#4960): memory_ref identifies WHICH memory-recall workload this
+    // report's claims are about -- every BenchmarkReport (LongMemEval,
+    // LoCoMo) is a memory benchmark by construction, so this is always
+    // derivable from the benchmark name and dataset hash, never optional.
+    // provider_ref comes from the agent's actual provider selection
+    // (metadata.provider, threaded from pylon's NousStatus). prompt_ref and
+    // tool_ref stay None: a benchmark run does not customize either, so
+    // there is no real audit reference to attach yet.
+    let memory_ref = format!(
+        "{}@{}",
+        benchmark.name(),
+        metadata.dataset_hash.as_deref().unwrap_or("unhashed")
+    );
     let mut provenance = dokimion::provenance::EvalProvenance::new(
         dokimion::provenance::generate_eval_run_id(),
         args.url.clone(),
@@ -200,7 +214,13 @@ async fn run_benchmark(
     .with_redacted_args(&cli_args)
     .with_config_hash(config_hash)
     .with_target_identity(metadata.aletheia_version.clone())
-    .with_audit_refs(Some(metadata.model.clone()), None, None, None, None);
+    .with_audit_refs(
+        Some(metadata.model.clone()),
+        metadata.provider.clone(),
+        None,
+        None,
+        Some(memory_ref),
+    );
     if let Some(git_sha) = metadata.git_sha.clone() {
         provenance = provenance.with_git_sha(git_sha);
     }
@@ -389,16 +409,18 @@ async fn collect_metadata(
         .filter(|version| !version.is_empty())
         .unwrap_or_else(|| "unknown".to_owned());
 
-    let model = client
-        .get_nous(&args.nous_id)
-        .await
-        .map_or_else(|_| "unknown".to_owned(), |n| n.model);
+    let nous = client.get_nous(&args.nous_id).await.ok();
+    let model = nous
+        .as_ref()
+        .map_or_else(|| "unknown".to_owned(), |n| n.model.clone());
+    let provider = nous.and_then(|n| n.provider);
 
     BenchmarkMetadata {
         timestamp: jiff::Timestamp::now().to_string(),
         aletheia_version: version,
         nous_id: args.nous_id.clone(),
         model,
+        provider,
         benchmark: benchmark.name().to_owned(),
         total_questions: benchmark.len(),
         evaluated_questions: args.max_questions.unwrap_or(benchmark.len()),
@@ -408,26 +430,6 @@ async fn collect_metadata(
         dataset_best_effort: args.best_effort_dataset,
         dataset_validation: Some(validation),
     }
-}
-
-fn current_git_sha() -> Option<String> {
-    option_env!("GITHUB_SHA")
-        .map(str::trim)
-        .filter(|sha| !sha.is_empty())
-        .map(str::to_owned)
-        .or_else(|| {
-            let output = std::process::Command::new("git")
-                .args(["rev-parse", "HEAD"])
-                .output()
-                .ok()?;
-            if !output.status.success() {
-                return None;
-            }
-            String::from_utf8(output.stdout)
-                .ok()
-                .map(|sha| sha.trim().to_owned())
-                .filter(|sha| !sha.is_empty())
-        })
 }
 
 async fn dataset_hash(path: &Path) -> Option<String> {

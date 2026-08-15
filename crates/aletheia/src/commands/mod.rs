@@ -57,6 +57,33 @@ pub(crate) fn resolve_oikos(instance_root: Option<&PathBuf>) -> crate::error::Re
     Ok(oikos)
 }
 
+/// The git SHA of the running build, from `GITHUB_SHA` (CI builds) or a
+/// live `git rev-parse HEAD` (local builds), whichever is available.
+///
+/// Shared by every command that stamps [`dokimion::provenance::EvalProvenance`]
+/// with a build identity (#4960): a publishable eval/benchmark report needs
+/// to say which build produced it, not just which config.
+#[must_use]
+pub(crate) fn current_git_sha() -> Option<String> {
+    option_env!("GITHUB_SHA")
+        .map(str::trim)
+        .filter(|sha| !sha.is_empty())
+        .map(str::to_owned)
+        .or_else(|| {
+            let output = std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .ok()?;
+            if !output.status.success() {
+                return None;
+            }
+            String::from_utf8(output.stdout)
+                .ok()
+                .map(|sha| sha.trim().to_owned())
+                .filter(|sha| !sha.is_empty())
+        })
+}
+
 /// Route a CLI subcommand to its handler.
 ///
 /// WHY: Extracted from `main` to keep the binary entrypoint focused on process

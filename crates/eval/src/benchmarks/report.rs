@@ -411,6 +411,24 @@ impl BenchmarkReport {
                 if provenance.redacted_args.is_empty() {
                     reasons.push("missing redacted CLI provenance".to_owned());
                 }
+                // WHY(#4960): a memory-behavior claim is unauditable without
+                // knowing WHAT was tested against (target build) and WHICH
+                // model produced it; a completeness check that only verified
+                // config/dataset hashes let a report claim "this model
+                // behaves this way" with no way to confirm which model ran.
+                if provenance.target_identity.is_none() {
+                    reasons.push("missing target instance identity in provenance".to_owned());
+                }
+                if provenance.model_ref.is_none() {
+                    reasons.push("missing model audit reference in provenance".to_owned());
+                }
+                // Every `BenchmarkReport` (LongMemEval, LoCoMo) is a memory-
+                // recall benchmark by construction, so memory_ref is always
+                // required here -- there is no non-memory variant of this
+                // report type to exempt.
+                if provenance.memory_ref.is_none() {
+                    reasons.push("missing memory-system audit reference in provenance".to_owned());
+                }
             }
             None => reasons.push("missing eval provenance".to_owned()),
         }
