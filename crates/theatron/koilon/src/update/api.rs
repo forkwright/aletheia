@@ -1,9 +1,11 @@
 use crate::api::types::{Agent, HistoryMessage, Session};
 use crate::app::App;
-use crate::id::NousId;
+use crate::id::{NousId, SessionId};
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
-use crate::state::{AgentState, AgentStatus, ChatMessage, ControlMutationStatus, Overlay};
+use crate::state::{
+    AgentState, AgentStatus, BackendHealth, ChatMessage, ControlMutationStatus, Overlay,
+};
 use tracing::Instrument;
 
 #[tracing::instrument(skip_all, fields(count = agents.len()))]
@@ -20,6 +22,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
                 name_lower,
                 emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                 status: AgentStatus::Idle,
+                backend_health: BackendHealth::from_status(a.status.as_deref()),
                 active_tool: None,
                 sessions: sanitize_sessions(Vec::new()),
                 model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
@@ -40,29 +43,15 @@ pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: V
     }
 }
 
-#[tracing::instrument(skip_all, fields(count = messages.len()))]
+#[tracing::instrument(skip_all, fields(%session_id, count = messages.len()))]
 // SAFETY: sanitized at ingestion: all message content from API is sanitized here.
-pub(crate) fn handle_history_loaded(app: &mut App, messages: Vec<HistoryMessage>) {
-    app.dashboard.messages = messages
-        .into_iter()
-        .filter_map(|m| {
-            if m.role != "user" && m.role != "assistant" {
-                return None;
-            }
-            let text = extract_text_content(&m.content)?;
-            let text = sanitize_for_display(&text).into_owned();
-            let text_lower = text.to_lowercase();
-            Some(ChatMessage {
-                role: sanitize_for_display(&m.role).into_owned(),
-                text,
-                text_lower,
-                timestamp: m.created_at.map(|t| sanitize_for_display(&t).into_owned()),
-                model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
-                tool_calls: Vec::new(),
-                kind: crate::state::MessageKind::default(),
-            })
-        })
-        .collect();
+pub(crate) fn handle_history_loaded(
+    app: &mut App,
+    session_id: SessionId,
+    messages: Vec<HistoryMessage>,
+) {
+    let session_model = session_model_for(app, &session_id);
+    app.dashboard.messages = history_to_chat_messages(messages, session_model.as_deref()).into();
     // INVARIANT: Stale streaming markdown from the previous session must not
     // bleed through when history is replaced on session switch.
     app.viewport.render.markdown_cache.clear();
@@ -312,6 +301,7 @@ fn sanitize_sessions(sessions: Vec<Session>) -> Vec<Session> {
             nous_id: s.nous_id,
             key: sanitize_for_display(&s.key).into_owned(),
             status: s.status.map(|st| sanitize_for_display(&st).into_owned()),
+            model: s.model.map(|m| sanitize_for_display(&m).into_owned()),
             message_count: s.message_count,
             session_type: s
                 .session_type
@@ -332,6 +322,50 @@ fn chrono_compact_now() -> String {
         .unwrap_or_default()
         .as_secs();
     format!("{:x}", secs)
+}
+
+/// Convert session history into displayable chat messages, filtering to
+/// `user`/`assistant` roles and dropping messages with unextractable
+/// content.
+///
+/// WHY(#4911): pylon's history wire format carries no per-message model --
+/// it is a session-level fact (`Session::model`) -- so every message
+/// ingested from one history fetch shares `session_model` rather than each
+/// reading its own (nonexistent) `model` key.
+pub(crate) fn history_to_chat_messages(
+    messages: Vec<HistoryMessage>,
+    session_model: Option<&str>,
+) -> Vec<ChatMessage> {
+    messages
+        .into_iter()
+        .filter_map(|m| {
+            if m.role != "user" && m.role != "assistant" {
+                return None;
+            }
+            let text = extract_text_content(&m.content)?;
+            let text = sanitize_for_display(&text).into_owned();
+            let text_lower = text.to_lowercase();
+            Some(ChatMessage {
+                role: sanitize_for_display(&m.role).into_owned(),
+                text,
+                text_lower,
+                timestamp: m.created_at.map(|t| sanitize_for_display(&t).into_owned()),
+                model: session_model.map(|m| sanitize_for_display(m).into_owned()),
+                tool_calls: Vec::new(),
+                kind: crate::state::MessageKind::default(),
+            })
+        })
+        .collect()
+}
+
+/// Look up the model of a session already loaded into the agent roster.
+pub(crate) fn session_model_for(app: &App, session_id: &SessionId) -> Option<String> {
+    app.dashboard
+        .agents
+        .iter()
+        .flat_map(|a| a.sessions.iter())
+        .find(|s| &s.id == session_id)
+        .and_then(|s| s.model.clone())
 }
 
 pub(crate) fn extract_text_content(content: &Option<serde_json::Value>) -> Option<String> {
@@ -459,6 +493,7 @@ mod tests {
             nous_id: "syn".into(),
             key: "main".to_string(),
             status: None,
+            model: None,
             message_count: 2,
             session_type: None,
             updated_at: None,
@@ -590,11 +625,18 @@ mod tests {
             name: Some("Syn".to_string()),
             model: Some("claude-opus-4-6".to_string()),
             emoji: Some("\u{1F9E0}".to_string()),
+            status: Some("degraded".to_string()),
         }];
         handle_agents_loaded(&mut app, agents);
         assert_eq!(app.dashboard.agents.len(), 1);
         assert_eq!(app.dashboard.agents[0].name, "Syn");
         assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
+        // WHY(#4641): the backend's real lifecycle status must survive into
+        // AgentState rather than being dropped on the floor at ingestion.
+        assert_eq!(
+            app.dashboard.agents[0].backend_health,
+            BackendHealth::Degraded
+        );
     }
 
     #[test]
@@ -607,6 +649,7 @@ mod tests {
             nous_id: "syn".into(),
             key: "main".to_string(),
             status: None,
+            model: None,
             message_count: 5,
             session_type: None,
             updated_at: None,
@@ -625,6 +668,7 @@ mod tests {
             nous_id: "unknown".into(),
             key: "main".to_string(),
             status: None,
+            model: None,
             message_count: 0,
             session_type: None,
             updated_at: None,
@@ -703,7 +747,7 @@ mod tests {
         app.viewport.render.markdown_cache.text = "stale from previous session".to_string();
         app.viewport.render.markdown_cache.lines = vec![ratatui::text::Line::raw("stale")];
 
-        handle_history_loaded(&mut app, vec![]);
+        handle_history_loaded(&mut app, SessionId::from("s1"), vec![]);
 
         assert!(
             app.viewport.render.markdown_cache.text.is_empty(),
@@ -726,7 +770,7 @@ mod tests {
                 role: "user".to_string(),
                 content: Some(serde_json::Value::String("hello".to_string())),
                 created_at: None,
-                model: None,
+                tool_call_id: None,
                 tool_name: None,
             },
             HistoryMessage {
@@ -735,7 +779,7 @@ mod tests {
                 role: "system".to_string(),
                 content: Some(serde_json::Value::String("system prompt".to_string())),
                 created_at: None,
-                model: None,
+                tool_call_id: None,
                 tool_name: None,
             },
             HistoryMessage {
@@ -744,13 +788,50 @@ mod tests {
                 role: "assistant".to_string(),
                 content: Some(serde_json::Value::String("response".to_string())),
                 created_at: None,
-                model: None,
+                tool_call_id: None,
                 tool_name: None,
             },
         ];
-        handle_history_loaded(&mut app, messages);
+        handle_history_loaded(&mut app, SessionId::from("s1"), messages);
         assert_eq!(app.dashboard.messages.len(), 2);
         assert_eq!(app.dashboard.messages[0].role, "user");
         assert_eq!(app.dashboard.messages[1].role, "assistant");
+    }
+
+    // WHY(#4911): the per-message `model` field never existed on pylon's
+    // wire format; this pins that the loaded session's model (not a
+    // nonexistent per-message value) becomes each ChatMessage's model.
+    #[test]
+    fn handle_history_loaded_sources_model_from_session_not_message() {
+        use crate::app::test_helpers::*;
+        let mut app = test_app();
+        let session_id = SessionId::from("sess-with-model");
+        let mut agent = test_agent("syn", "Syn");
+        agent.sessions.push(Session {
+            id: session_id.clone(),
+            nous_id: agent.id.clone(),
+            key: "main".to_string(),
+            status: None,
+            model: Some("claude-opus-4-6".to_string()),
+            message_count: 1,
+            session_type: None,
+            updated_at: None,
+            display_name: None,
+        });
+        app.dashboard.agents.push(agent);
+        let messages = vec![HistoryMessage {
+            id: None,
+            seq: None,
+            role: "assistant".to_string(),
+            content: Some(serde_json::Value::String("hi".to_string())),
+            created_at: None,
+            tool_call_id: None,
+            tool_name: None,
+        }];
+        handle_history_loaded(&mut app, session_id, messages);
+        assert_eq!(
+            app.dashboard.messages[0].model.as_deref(),
+            Some("claude-opus-4-6")
+        );
     }
 }

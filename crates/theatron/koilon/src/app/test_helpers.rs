@@ -149,6 +149,7 @@ pub(crate) fn test_agent(id: &str, name: &str) -> AgentState {
         name_lower,
         emoji: None,
         status: AgentStatus::Idle,
+        backend_health: BackendHealth::Healthy,
         active_tool: None,
         sessions: Vec::new(),
         model: Some("test-model".to_string()),

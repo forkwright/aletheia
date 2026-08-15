@@ -435,6 +435,10 @@ pub struct NousStatus {
     // kanon:ignore RUST/primitive-for-domain-id — API response DTO; newtype would require custom Deserialize
     pub id: String,
     pub model: String,
+    /// Provider instance selected for the primary model, when configured.
+    /// Mirrors `pylon::handlers::nous_dto::NousStatus::provider` (#4960).
+    #[serde(default)]
+    pub provider: Option<String>,
     pub context_window: u32,
     pub max_output_tokens: u32,
     #[serde(default)]

@@ -376,6 +376,7 @@ mod tests {
             name_lower: "syn".into(),
             emoji: Some("🧠".into()),
             status: crate::state::AgentStatus::Idle,
+            backend_health: crate::state::BackendHealth::Healthy,
             active_tool: None,
             sessions: Vec::new(),
             model: Some("claude-opus-4-6".into()),

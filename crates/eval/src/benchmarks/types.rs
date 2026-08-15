@@ -34,6 +34,9 @@ pub struct BenchmarkMetadata {
     pub nous_id: String,
     /// Model identifier from the nous agent configuration.
     pub model: String,
+    /// Provider instance backing the model, when configured (#4960).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub provider: Option<String>,
     /// Name of the benchmark dataset.
     pub benchmark: String,
     /// Total questions in the dataset.
@@ -63,6 +66,7 @@ impl Default for BenchmarkMetadata {
             aletheia_version: "unknown".to_owned(),
             nous_id: "benchmark".to_owned(),
             model: "unknown".to_owned(),
+            provider: None,
             benchmark: "unknown".to_owned(),
             total_questions: 0,
             evaluated_questions: 0,

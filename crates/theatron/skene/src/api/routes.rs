@@ -172,6 +172,14 @@ pub const SKENE_CLIENT_ROUTE_CONTRACTS: &[ClientRouteContract] = &[
         method: "POST",
         path_template: "/api/v1/planning/projects/{project_id}/verification/refresh",
     },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/providers",
+    },
+    ClientRouteContract {
+        method: "GET",
+        path_template: "/api/v1/providers/route",
+    },
 ];
 
 /// Encoding helpers for route builders.
@@ -667,6 +675,41 @@ pub mod planning {
             base_url,
             &project_discussion_reopen_path(project_id, discussion_id),
         )
+    }
+}
+
+/// Provider inventory and route-resolution routes.
+pub mod providers {
+    use super::query_pair;
+
+    /// Template for listing registered providers.
+    pub const PROVIDERS_TEMPLATE: &str = "/api/v1/providers";
+
+    /// Template for resolving which provider handles a model.
+    pub const PROVIDERS_ROUTE_TEMPLATE: &str = "/api/v1/providers/route";
+
+    /// Build the path for listing providers.
+    #[must_use]
+    pub fn providers_path() -> &'static str {
+        PROVIDERS_TEMPLATE
+    }
+
+    /// Build the absolute URL for listing providers.
+    #[must_use]
+    pub fn providers_url(base_url: &str) -> String {
+        keryx::url::join_base_path(base_url, providers_path())
+    }
+
+    /// Build the path for resolving the provider that handles a model.
+    #[must_use]
+    pub fn providers_route_path(model: &str) -> String {
+        format!("{PROVIDERS_ROUTE_TEMPLATE}?{}", query_pair("model", model))
+    }
+
+    /// Build the absolute URL for resolving the provider that handles a model.
+    #[must_use]
+    pub fn providers_route_url(base_url: &str, model: &str) -> String {
+        keryx::url::join_base_path(base_url, &providers_route_path(model))
     }
 }
 

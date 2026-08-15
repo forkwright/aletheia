@@ -5,7 +5,7 @@ use crate::app::App;
 use crate::id::{NousId, SessionId};
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
-use crate::state::{ActiveTool, AgentState, AgentStatus, ChatMessage};
+use crate::state::{ActiveTool, AgentState, AgentStatus, BackendHealth, ChatMessage};
 
 const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -42,6 +42,7 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
                         name_lower,
                         emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                         status: AgentStatus::Idle,
+                        backend_health: BackendHealth::from_status(a.status.as_deref()),
                         active_tool: None,
                         sessions: Vec::new(),
                         model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
@@ -470,6 +471,7 @@ mod tests {
                 nous_id: "syn".into(),
                 key: "main".to_string(),
                 status: None,
+                model: None,
                 message_count: 0,
                 session_type: None,
                 updated_at: None,

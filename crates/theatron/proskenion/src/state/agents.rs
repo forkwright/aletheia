@@ -144,6 +144,7 @@ mod tests {
             name: Some(id.to_string()),
             model: None,
             emoji: None,
+            status: None,
         }
     }
 

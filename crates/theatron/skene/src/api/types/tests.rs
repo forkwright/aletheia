@@ -7,6 +7,7 @@ fn agent_display_name_uses_name_if_present() {
         name: Some("Syn".to_string()),
         model: None,
         emoji: None,
+        status: None,
     };
     assert_eq!(agent.display_name(), "Syn");
 }
@@ -18,6 +19,7 @@ fn agent_display_name_falls_back_to_id() {
         name: None,
         model: None,
         emoji: None,
+        status: None,
     };
     assert_eq!(agent.display_name(), "syn");
 }
@@ -29,6 +31,7 @@ fn agent_display_name_empty_string_uses_empty() {
         name: Some(String::new()),
         model: None,
         emoji: None,
+        status: None,
     };
     // Empty string is still Some, so display_name returns it
     assert_eq!(agent.display_name(), "");
@@ -67,6 +70,18 @@ fn session_deserialization() {
     assert_eq!(session.key, "main");
     assert_eq!(session.message_count, 5);
     assert_eq!(session.status.as_deref(), Some("active"));
+}
+
+#[test]
+fn session_deserialization_carries_model() {
+    let json = r#"{
+        "id": "sess-1",
+        "nous_id": "syn",
+        "session_key": "main",
+        "model": "claude-opus-4-6"
+    }"#;
+    let session: Session = serde_json::from_str(json).unwrap();
+    assert_eq!(session.model.as_deref(), Some("claude-opus-4-6"));
 }
 
 #[test]
@@ -121,6 +136,26 @@ fn history_message_deserializes_sequence_cursor() {
     let msg: HistoryMessage = serde_json::from_str(json).unwrap();
     assert_eq!(msg.id, Some(7));
     assert_eq!(msg.seq, Some(42));
+}
+
+// WHY(#4911): fixture shaped exactly like pylon's real
+// `sessions::types_dto::HistoryMessage` wire format -- has `tool_call_id`,
+// has no `model` key at all. Asserts `tool_call_id` round-trips through
+// skene's mirror type instead of being silently dropped.
+#[test]
+fn history_message_round_trips_pylon_tool_call_id() {
+    let json = r#"{
+        "id": 12,
+        "seq": 3,
+        "role": "tool",
+        "content": "42",
+        "tool_call_id": "call_abc123",
+        "tool_name": "calculator",
+        "created_at": "2025-01-01T00:00:00Z"
+    }"#;
+    let msg: HistoryMessage = serde_json::from_str(json).unwrap();
+    assert_eq!(msg.tool_call_id.as_deref(), Some("call_abc123"));
+    assert_eq!(msg.tool_name.as_deref(), Some("calculator"));
 }
 
 #[test]
@@ -219,6 +254,7 @@ fn make_session(key: &str) -> Session {
         nous_id: "syn".into(),
         key: key.to_string(),
         status: None,
+        model: None,
         message_count: 0,
         session_type: None,
         updated_at: None,

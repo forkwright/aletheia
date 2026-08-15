@@ -35,18 +35,19 @@ use crate::state::virtual_scroll::VirtualScroll;
     reason = "re-exported for downstream modules that import from crate::app"
 )]
 pub use crate::state::{
-    ActiveTool, AgentState, AgentStatus, ChatMessage, CommandPaletteState, ContextAction,
-    ContextActionsOverlay, ControlMutationStatus, DecisionCardOverlay, DecisionField,
-    DecisionOption, ErrorBanner, FilterState, FocusedPane, InputState, MemoryInspectorState,
-    MessageKind, NotificationStore, OpsState, Overlay, PlanApprovalOverlay, PlanStepApproval,
-    SelectionContext, SessionPickerOverlay, SlashCompleteState, StreamPhase, SubmittedDecision,
-    TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View, ViewStack,
+    ActiveTool, AgentState, AgentStatus, BackendHealth, ChatMessage, CommandPaletteState,
+    ContextAction, ContextActionsOverlay, ControlMutationStatus, DecisionCardOverlay,
+    DecisionField, DecisionOption, ErrorBanner, FilterState, FocusedPane, InputState,
+    MemoryInspectorState, MessageKind, NotificationStore, OpsState, Overlay, PlanApprovalOverlay,
+    PlanStepApproval, SelectionContext, SessionPickerOverlay, SlashCompleteState, StreamPhase,
+    SubmittedDecision, TabCompletion, Toast, ToolApprovalOverlay, ToolCallInfo, ToolSummary, View,
+    ViewStack,
 };
 #[cfg(test)]
 use crate::theme::THEME;
 use crate::theme::Theme;
 use crate::theme::ThemeMode;
-use crate::update::extract_text_content;
+use crate::update::history_to_chat_messages;
 use crate::view;
 
 /// Default terminal width used before the first resize event arrives.
@@ -421,6 +422,7 @@ impl App {
                     name_lower,
                     emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
                     status: AgentStatus::Idle,
+                    backend_health: BackendHealth::from_status(a.status.as_deref()),
                     active_tool: None,
                     sessions: Vec::new(),
                     model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
@@ -546,6 +548,11 @@ impl App {
 
         if let Some(session) = session {
             let session_id = session.id.clone();
+            // WHY(#4911): pylon's history wire format carries no per-message
+            // model; extract the session-level fact now, while `session`
+            // still borrows `self.dashboard.agents`, for use after the
+            // history fetch below.
+            let session_model = session.model.clone();
             self.dashboard.focused_session_id = Some(session_id.clone());
             // Track the last-used session for this agent so we can restore it on relaunch.
             self.dashboard
@@ -562,28 +569,8 @@ impl App {
                         return;
                     }
                     // SAFETY: sanitized at ingestion: all message fields from API.
-                    self.dashboard.messages = history
-                        .into_iter()
-                        .filter_map(|m| {
-                            if m.role != "user" && m.role != "assistant" {
-                                return None;
-                            }
-                            let text = extract_text_content(&m.content)?;
-                            let text = sanitize_for_display(&text).into_owned();
-                            let text_lower = text.to_lowercase();
-                            Some(ChatMessage {
-                                role: sanitize_for_display(&m.role).into_owned(),
-                                text,
-                                text_lower,
-                                timestamp: m
-                                    .created_at
-                                    .map(|t| sanitize_for_display(&t).into_owned()),
-                                model: m.model.map(|m| sanitize_for_display(&m).into_owned()),
-                                tool_calls: Vec::new(),
-                                kind: MessageKind::default(),
-                            })
-                        })
-                        .collect();
+                    self.dashboard.messages =
+                        history_to_chat_messages(history, session_model.as_deref()).into();
                     // Stale streaming markdown from the previous session must not
                     // bleed through when the user switches agents.
                     self.viewport.render.markdown_cache.clear();

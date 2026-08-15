@@ -130,6 +130,7 @@ Cargo metadata cannot infer.
 | **organon** | `computer-use` | no | Screen capture, Landlock sandbox (Linux 5.13+) | - |
 | **organon** | `energeia` | no | Energeia capability tools | `dep:energeia` (pre-enabled with `storage-fjall`) |
 | **organon** | `bookkeeper` | no | Bookkeeper maintenance tools | - |
+| **organon** | `poiesis` | no | Document, sheet, slide, chart and deck authoring tools | `dep:poiesis-core` plus the other 12 `poiesis-*` crates |
 | **organon** | `z3` | no | Z3 SMT solver tool | `dep:z3` |
 | **organon** | `deferred-schemas` | no | Name+description-only tool schemas; full schemas via the `tool_schema` meta-tool | - |
 | **organon** | `allow-absolute-file-refs` | no | Allow absolute paths in `{{file:...}}` interpolation | - |

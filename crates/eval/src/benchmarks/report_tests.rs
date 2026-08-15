@@ -182,6 +182,7 @@ fn report_with_metadata_roundtrips_via_json() {
         aletheia_version: "1.0.0".to_owned(),
         nous_id: "benchmark".to_owned(),
         model: "claude-opus-4".to_owned(),
+        provider: Some("anthropic-primary".to_owned()),
         benchmark: "LongMemEval".to_owned(),
         total_questions: 500,
         evaluated_questions: 50,
@@ -266,6 +267,7 @@ fn publishable_metadata() -> BenchmarkMetadata {
         aletheia_version: "1.0.0".to_owned(),
         nous_id: "benchmark".to_owned(),
         model: "claude-opus-4".to_owned(),
+        provider: Some("anthropic-primary".to_owned()),
         benchmark: "Test".to_owned(),
         total_questions: 2,
         evaluated_questions: 2,
@@ -294,6 +296,14 @@ fn publishable_provenance() -> EvalProvenance {
         .with_redacted_args(&args)
         .with_config_hash("sha256:config")
         .with_scenario_suite_hash("sha256:dataset")
+        .with_target_identity("aletheia@1.0.0")
+        .with_audit_refs(
+            Some("claude-opus-4".to_owned()),
+            Some("anthropic-primary".to_owned()),
+            None,
+            None,
+            Some("LongMemEval@sha256:dataset".to_owned()),
+        )
         .finished()
 }
 
@@ -313,6 +323,60 @@ fn standard_statistics_populates_ci_and_publishability() {
     assert!(
         publishability.publishable,
         "expected publishable report, got reasons: {:?}",
+        publishability.reasons
+    );
+}
+
+// WHY(#4960): before this fix, a report with config_hash/scenario_suite_hash/
+// redacted_args but no target_identity/model_ref/memory_ref was reported
+// publishable -- a memory-behavior claim with no way to confirm which model,
+// against which build, exercising which memory config, produced it.
+#[test]
+fn publishability_rejects_provenance_missing_audit_identity() {
+    let questions = vec![
+        result("q1", "factual", "blue", &["blue"]),
+        result("q2", "factual", "green", &["red"]),
+    ];
+    let bare_provenance = {
+        let args = vec!["aletheia".to_owned(), "benchmark".to_owned()];
+        EvalProvenance::new("er-test", "http://localhost")
+            .with_redacted_args(&args)
+            .with_config_hash("sha256:config")
+            .with_scenario_suite_hash("sha256:dataset")
+            .finished()
+    };
+
+    let report = BenchmarkReport::with_metadata("Test", questions, publishable_metadata())
+        .with_provenance(bare_provenance)
+        .with_standard_statistics();
+
+    let publishability = report.publishability.expect("publishability populated");
+    assert!(
+        !publishability.publishable,
+        "a report with no target/model/memory audit refs must not be publishable"
+    );
+    assert!(
+        publishability
+            .reasons
+            .iter()
+            .any(|r| r.contains("target instance identity")),
+        "got reasons: {:?}",
+        publishability.reasons
+    );
+    assert!(
+        publishability
+            .reasons
+            .iter()
+            .any(|r| r.contains("model audit reference")),
+        "got reasons: {:?}",
+        publishability.reasons
+    );
+    assert!(
+        publishability
+            .reasons
+            .iter()
+            .any(|r| r.contains("memory-system audit reference")),
+        "got reasons: {:?}",
         publishability.reasons
     );
 }

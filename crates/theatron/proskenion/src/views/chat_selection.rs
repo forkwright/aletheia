@@ -127,7 +127,13 @@ fn history_message_to_legacy(message: &HistoryMessage) -> Option<LegacyChatMessa
     Some(LegacyChatMessage {
         role,
         content: history_content_to_string(message.content.as_ref()),
-        model: message.model.clone(),
+        // WHY(#4911): pylon's history wire format carries no per-message model
+        // and never did, so the previous `message.model.clone()` read a field
+        // that was always None against real data. The model is a session-level
+        // fact; `views/sessions/mod.rs` takes it from `session.model`. This
+        // conversion has no session in scope, so it leaves the field empty
+        // rather than reintroducing a phantom per-message source.
+        model: None,
         tool_calls,
         input_tokens: 0,
         output_tokens: 0,
@@ -162,6 +168,7 @@ mod tests {
             name: Some(id.to_string()),
             model: None,
             emoji: None,
+            status: None,
         }
     }
 
@@ -351,9 +358,17 @@ mod tests {
         assert_eq!(chat_state.messages[0].content, "What happened?");
         assert_eq!(chat_state.messages[1].role, MessageRole::Assistant);
         assert_eq!(chat_state.messages[1].content, "Recovered the transcript.");
-        assert_eq!(
-            chat_state.messages[1].model.as_deref(),
-            Some("claude-opus-4-6")
+        // WHY(#4911): the fixture above deliberately still carries a "model"
+        // key, because a real pylon history payload never has one -- this
+        // pins that an unexpected per-message key cannot leak into the
+        // rendered model. The previous assertion required it to flow through,
+        // which is what kept the phantom field alive: the only place a
+        // per-message model ever existed was this fixture. The model is a
+        // session-level fact and views/sessions takes it from session.model.
+        assert!(
+            chat_state.messages[1].model.is_none(),
+            "a per-message model must not be sourced from history; got {:?}",
+            chat_state.messages[1].model
         );
     }
 

@@ -35,6 +35,29 @@ energeia = ["dep:energeia"]
 bookkeeper = []
 # Z3 SMT solver tool (z3_solver). Bundled so the default build doesn't pull libz3.
 z3 = ["dep:z3"]
+# Document/report generation tools: generate_document, lint_report,
+# verify_report, render_typst_report, render_docx_report, render_pptx_report,
+# render_xlsx_report, render_eval_report, render_graph_audit,
+# report_runtime_health, scaffold_report, intake_report, diff_report,
+# inspect_report. Pulls all 13 poiesis-* crates. `aletheia`'s own dependency
+# on organon enables this unconditionally (see aletheia/Cargo.toml) so the
+# deployed binary's document tools are unaffected; this feature exists so
+# other organon consumers are not forced to compile the poiesis stack.
+poiesis = [
+    "dep:poiesis-core",
+    "dep:poiesis-sheet",
+    "dep:poiesis-lint",
+    "dep:poiesis-slides",
+    "dep:poiesis-typst",
+    "dep:poiesis-scaffold",
+    "dep:poiesis-verify",
+    "dep:poiesis-intake",
+    "dep:poiesis-doc",
+    "dep:poiesis-charts",
+    "dep:poiesis-theme",
+    "dep:poiesis-diff",
+    "dep:poiesis-inspect",
+]
 # Gates MockToolExecutor, ToolExecutorSpec, and other test helpers. No test code in release binaries.
 test-support = ["hermeneus/test-support", "dep:rustls"]
 # WHY: test-core must enable energeia so `energeia_tools` runs in the blocking gate.
@@ -55,24 +78,32 @@ energeia = { path = "../energeia", optional = true, features = [
     "storage-fjall",
 ] }
 hermeneus = { path = "../hermeneus" }
-poiesis-core = { path = "../poiesis/core" }
-poiesis-sheet = { path = "../poiesis/sheet" }
-poiesis-lint = { path = "../poiesis/lint" }
-poiesis-slides = { path = "../poiesis/slides" }
-poiesis-typst = { path = "../poiesis/typst" }
-poiesis-scaffold = { path = "../poiesis/scaffold" }
-poiesis-verify = { path = "../poiesis/verify" }
-poiesis-intake = { path = "../poiesis/intake" }
-poiesis-doc = { path = "../poiesis/doc", default-features = false, features = [
+poiesis-core = { path = "../poiesis/core", optional = true }
+poiesis-sheet = { path = "../poiesis/sheet", optional = true }
+poiesis-lint = { path = "../poiesis/lint", optional = true }
+poiesis-slides = { path = "../poiesis/slides", optional = true }
+poiesis-typst = { path = "../poiesis/typst", optional = true }
+poiesis-scaffold = { path = "../poiesis/scaffold", optional = true }
+poiesis-verify = { path = "../poiesis/verify", optional = true }
+poiesis-intake = { path = "../poiesis/intake", optional = true }
+# WHY: default-features=false + explicit selection landed in #4560 (poiesis-doc
+# gates its OWN internal deps behind docx/inspect/pandoc/odt/pdf-typst/charts
+# features); optional=true landed here in #4559 (organon gates poiesis-doc
+# itself as a whole crate). Both apply: the four features select which of
+# poiesis-doc's own deps compile IF this dep is pulled in at all, and
+# optional=true is what makes pulling it in conditional in the first place.
+poiesis-doc = { path = "../poiesis/doc", optional = true, default-features = false, features = [
     "docx",
     "inspect",
     "pandoc",
     "odt",
 ] }
-poiesis-charts = { path = "../poiesis/charts", features = ["theme-bridge"] }
-poiesis-theme = { path = "../poiesis/theme" }
-poiesis-diff = { path = "../poiesis/diff" }
-poiesis-inspect = { path = "../poiesis/inspect" }
+poiesis-charts = { path = "../poiesis/charts", optional = true, features = [
+    "theme-bridge",
+] }
+poiesis-theme = { path = "../poiesis/theme", optional = true }
+poiesis-diff = { path = "../poiesis/diff", optional = true }
+poiesis-inspect = { path = "../poiesis/inspect", optional = true }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 base64 = { workspace = true }
