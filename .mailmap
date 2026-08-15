@@ -1,1 +1,28 @@
-Cody Kickertz <cody@forkwright.com> forkwright <forkwright@users.noreply.github.com>
+# Canonical commit identity.
+#
+# WHY: this repo is public and its history accumulated eight distinct author
+# identities for one person -- a personal address, an employer address, an
+# unrelated venture's address, a malformed one with no TLD, and several
+# machine-local variants. A mailmap remaps them at read time in `git log`,
+# `git shortlog`, `git blame` and GitHub's contributor views, without
+# rewriting history: the exposure is already published, so a rewrite would
+# strand every open worktree while un-publishing nothing.
+#
+# WARNING: a mailmap resolves the AUTHOR and COMMITTER identity fields. It does
+# not edit `Co-authored-by:` trailers, which live in the raw commit message and
+# are what a GitHub squash-merge writes. Checking `%ae`/`%ce` alone therefore
+# reports a clean repo while the address is still present in the body -- grep
+# the message body, not the identity fields.
+#
+# Bot and agent identities (forge-bot, github-actions, dependabot, syn@,
+# builder@) are deliberately NOT mapped: they are separate actors, not
+# alternate spellings of the maintainer.
+
+Cody Kickertz <cody@forkwright.com> <forkwright@users.noreply.github.com>
+Cody Kickertz <cody@forkwright.com> <cody.kickertz@pm.me>
+Cody Kickertz <cody@forkwright.com> <ckickertz@summusglobal.com>
+Cody Kickertz <cody@forkwright.com> <admin@forkwright>
+Cody Kickertz <cody@forkwright.com> <admin@ardentleatherworks.com>
+Cody Kickertz <cody@forkwright.com> <admin@forkwright.dev>
+Cody Kickertz <cody@forkwright.com> <admin@forkwright.io>
+Cody Kickertz <cody@forkwright.com> <ck@aletheia.dev>
