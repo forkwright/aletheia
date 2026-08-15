@@ -1,0 +1,46 @@
+# WHY: docs/RUNBOOK.md, docs/OBSERVABILITY-AUDIT.md, and
+# scripts/health-monitor.sh each hand-copy Prometheus metric names from
+# crates/hermeneus/src/metrics.rs and drifted independently (aletheia#4526):
+# a stale aletheia_llm_cost_total name and a split input/output token-count
+# pair that a single direction-labeled family replaced. This gate fails a PR
+# whose metrics.rs change (renamed family, dropped counter) left a watched
+# doc/script surface stale, the same way configuration-doc-check.yml and
+# crate-index-check.yml gate their generated/checked surfaces. No path
+# filter: a rename inside metrics.rs's register() is what invalidates the
+# docs, and a narrower trigger on doc paths alone would miss that side.
+name: Metrics doc check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: doc/script metric names match metrics.rs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): this job only reads source files to check name
+          # strings -- no build, no git history walk. blob:none fetches
+          # trees/commits eagerly and blobs on demand, enough for a
+          # working-tree read (metadata-only-job class defect, #6757).
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_metrics_doc.py'
+
+      - name: Check watched docs/scripts match registered metric names
+        run: python3 scripts/check-metrics-doc.py --check
