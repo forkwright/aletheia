@@ -405,6 +405,9 @@ fn import_session_preserves_session_type() {
                 thread_id: None,
                 transport: None,
                 display_name: None,
+                owner: None,
+                task_id: None,
+                client_turn_id: None,
             },
             artefact_meta: None,
         };
