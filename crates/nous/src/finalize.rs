@@ -245,15 +245,29 @@ fn usage_record(session: &SessionState, result: &TurnResult, turn_seq: i64) -> U
     }
 }
 
+/// Whether any tool call in this turn was denied by the approval gate or
+/// dispatch policy (#4854) — the terminal status should say so rather than
+/// reading as an ordinary `Completed` turn.
+fn has_denied_tool_call(result: &TurnResult) -> bool {
+    result
+        .tool_calls
+        .iter()
+        .any(|call| call.approval.as_deref().is_some_and(|a| a.contains("denied")))
+}
+
 fn terminal_status_for_result(result: &TurnResult) -> TurnAttemptStatus {
     match result.degraded {
         Some(
             crate::pipeline::DegradedMode::DistillationCache { .. }
             | crate::pipeline::DegradedMode::Unavailable { .. },
         ) => TurnAttemptStatus::Degraded,
-        Some(crate::pipeline::DegradedMode::TurnBudgetExceeded { .. }) | None => {
-            TurnAttemptStatus::Completed
+        // WHY(#4854): a turn budget exceeded is a timeout, not an ordinary
+        // completion — the prior mapping to `Completed` lost that distinction.
+        Some(crate::pipeline::DegradedMode::TurnBudgetExceeded { .. }) => {
+            TurnAttemptStatus::Timeout
         }
+        None if has_denied_tool_call(result) => TurnAttemptStatus::ApprovalDenied,
+        None => TurnAttemptStatus::Completed,
     }
 }
 
@@ -845,6 +859,44 @@ mod tests {
             crate::turn_record::TurnAttemptStatus::Completed
         );
         assert_eq!(records[1].model.as_deref(), Some("fallback-model"));
+    }
+
+    #[test]
+    fn finalize_records_timeout_status_on_turn_budget_exceeded() {
+        // WHY(#4854): a turn budget exceeded must record Timeout, not
+        // Completed — the prior mapping lost that distinction.
+        let (store, session) = make_store_and_session();
+        let mut result = simple_result();
+        result.degraded = Some(crate::degraded_mode::DegradedMode::TurnBudgetExceeded {
+            status_banner: "turn budget exceeded".to_owned(),
+        });
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+
+        let records =
+            crate::turn_record::turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("turn records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1].status, TurnAttemptStatus::Timeout);
+    }
+
+    #[test]
+    fn finalize_records_approval_denied_status_on_denied_tool_call() {
+        // WHY(#4854): a turn where dispatch policy denied a tool call must
+        // record ApprovalDenied, not read as an ordinary Completed turn.
+        let (store, session) = make_store_and_session();
+        let mut result = result_with_tools();
+        result.tool_calls[0].approval = Some("denied_by_role".to_owned());
+        let config = FinalizeConfig::default();
+
+        finalize(&store, &session, "Hi", &result, &config).expect("finalize");
+
+        let records =
+            crate::turn_record::turn_attempt_records(&store, &session.id, &session.turn_id)
+                .expect("turn records");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[1].status, TurnAttemptStatus::ApprovalDenied);
     }
 
     #[test]
