@@ -268,9 +268,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          toolchain: stable
 
       - name: Configure git credentials for fleet deps
         uses: ./.github/actions/fleet-git-credentials
@@ -321,6 +321,17 @@ jobs:
 
       - name: Check workspace lockfiles are tracked
         run: scripts/check-workspace-locks.py
+
+      # WHY(#4945): .github/tool-versions.toml is the SSOT for release/
+      # security/gate tool pins; this catches a bump to one call site (a
+      # workflow's `--version` flag, an install-action `tool:` value) that
+      # was not carried to the manifest, or vice versa. Pure-python, no
+      # compile, so it runs here like the other coverage checks.
+      - name: Tool-versions checker self-tests
+        run: scripts/test-check-tool-versions.py
+
+      - name: Check pinned CI tool versions match the manifest
+        run: scripts/check-tool-versions.py
 
       - name: Check for unresolved conflict markers
         run: scripts/check-conflict-markers.py
@@ -397,9 +408,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          toolchain: stable
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
@@ -475,9 +486,9 @@ jobs:
         with:
           persist-credentials: false
 
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          toolchain: stable
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:

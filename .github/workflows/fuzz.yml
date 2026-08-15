@@ -37,16 +37,20 @@ jobs:
         with:
           token: ${{ secrets.FLEET_REPO_TOKEN }}
 
+      # WHY dated, not floating `nightly`: nightly feature availability can
+      # shift by date, so an undated pin makes a scheduled fuzz run
+      # unreproducible (#4945). Bump deliberately, reviewed like any other
+      # tool pin in this file.
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # nightly
         with:
-          toolchain: nightly
+          toolchain: nightly-2026-08-15
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: fuzz
 
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: cargo install cargo-fuzz --locked --version 0.13.2
 
       - name: Run ${{ matrix.target }}
         working-directory: fuzz

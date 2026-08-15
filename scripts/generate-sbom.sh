@@ -7,14 +7,25 @@ set -euo pipefail
 # workspace root as bom.cdx.json.
 #
 # Prerequisites: cargo (Rust toolchain)
-# The script will install cargo-cyclonedx automatically if not present.
+# The script will install cargo-cyclonedx automatically if not present or
+# pinned to a different version.
 #
 # Usage: ./scripts/generate-sbom.sh
+#
+# WHY this is the SOLE source of the cargo-cyclonedx pin (#4945): release.yml
+# shells out to this script rather than repeating the version literal in its
+# own "Install cargo-cyclonedx" step — two copies of one floating fact is
+# exactly the SSOT gap this pin closes. Bump CARGO_CYCLONEDX_VERSION here and
+# both call sites pick it up.
+CARGO_CYCLONEDX_VERSION="0.5.9"
 
-# Check if cargo-cyclonedx is installed
-if ! command -v cargo-cyclonedx &>/dev/null; then
-    echo "cargo-cyclonedx not found. Installing..."
-    cargo install cargo-cyclonedx --version ^0.5 --locked
+installed_version=""
+if command -v cargo-cyclonedx &>/dev/null; then
+    installed_version=$(cargo-cyclonedx --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+fi
+if [ "$installed_version" != "$CARGO_CYCLONEDX_VERSION" ]; then
+    echo "Installing cargo-cyclonedx ${CARGO_CYCLONEDX_VERSION} (found: ${installed_version:-none})..."
+    cargo install cargo-cyclonedx --version "$CARGO_CYCLONEDX_VERSION" --locked
 fi
 
 echo "Generating CycloneDX SBOMs for all workspace crates..."

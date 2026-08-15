@@ -44,9 +44,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
-          toolchain: stable
           components: rustfmt, clippy
 
       - name: Install GTK/WebKit system dependencies
@@ -67,7 +68,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@6a1bd70eaac3c8bdf093356838d7ee09fda951cf # v2
         with:
-          tool: nextest
+          tool: nextest@0.9.143
 
       - name: Check desktop CI path filter covers proskenion path deps
         run: scripts/check-desktop-ci-paths.py
