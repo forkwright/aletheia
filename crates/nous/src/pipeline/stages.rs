@@ -1087,7 +1087,14 @@ pub(super) async fn run_reflection_stage(
             stage: "reflection",
             reason: "reflection disabled".to_owned(),
         });
-        record_reflection_outcome(config, ctx, emitter, ReflectionStatus::Disabled, 0, Vec::new());
+        record_reflection_outcome(
+            config,
+            ctx,
+            emitter,
+            ReflectionStatus::Disabled,
+            0,
+            Vec::new(),
+        );
         complete_reflection_stage(config, emitter, &span, &start);
         return Ok(());
     }
@@ -1099,7 +1106,14 @@ pub(super) async fn run_reflection_stage(
             stage: "reflection",
             reason: "knowledge store unavailable".to_owned(),
         });
-        record_reflection_outcome(config, ctx, emitter, ReflectionStatus::NoStore, 0, Vec::new());
+        record_reflection_outcome(
+            config,
+            ctx,
+            emitter,
+            ReflectionStatus::NoStore,
+            0,
+            Vec::new(),
+        );
         complete_reflection_stage(config, emitter, &span, &start);
         return Ok(());
     };
@@ -1248,7 +1262,11 @@ fn record_reflection_outcome(
     facts_emitted: u32,
     emitted_fact_ids: Vec<String>,
 ) {
-    ctx.reflection_result = Some(ReflectionResult::new(status, facts_emitted, emitted_fact_ids));
+    ctx.reflection_result = Some(ReflectionResult::new(
+        status,
+        facts_emitted,
+        emitted_fact_ids,
+    ));
     emitter.emit(&ReflectionOutcome {
         nous_id: config.id.to_string(),
         status: status.as_str(),

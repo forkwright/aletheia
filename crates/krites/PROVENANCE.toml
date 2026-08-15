@@ -1177,7 +1177,7 @@ soak_expires_at_commit_count = 0
 path = "query/eval.rs"
 upstream_path = "query/eval.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 52.3
+verbatim_pct = 43.5
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1345,7 +1345,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/db.rs"
 upstream_path = "runtime/db.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 29.8
+verbatim_pct = 24.2
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1361,7 +1361,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/exec.rs"
 upstream_path = "runtime/db.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 67.8
+verbatim_pct = 67.7
 status = "derived"
 soak_expires_at_commit_count = 0
 

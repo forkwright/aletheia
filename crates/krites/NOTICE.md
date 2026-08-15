@@ -10,7 +10,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
 - 210 files under `src/`: 142 derived, 68 sovereign, 0 dual
-- Mean verbatim match across the 142 derived files: 44.4% (unweighted average of the per-file `verbatim_pct` column below)
+- Mean verbatim match across the 142 derived files: 44.3% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -158,7 +158,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/query/compile.rs` | `query/compile.rs` | 74.6% | derived |
 | `src/query/context.rs` | — | 0.0% | sovereign |
 | `src/query/error.rs` | — | 0.0% | sovereign |
-| `src/query/eval.rs` | `query/eval.rs` | 52.3% | derived |
+| `src/query/eval.rs` | `query/eval.rs` | 43.5% | derived |
 | `src/query/graph.rs` | `query/graph.rs` | 56.7% | derived |
 | `src/query/logical.rs` | `query/logical.rs` | 77.3% | derived |
 | `src/query/magic.rs` | `query/magic.rs` | 76.2% | derived |
@@ -179,9 +179,9 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/query/tests/reference_semantics.rs` | — | 0.0% | sovereign |
 | `src/query_cache.rs` | — | 0.0% | sovereign |
 | `src/runtime/callback.rs` | `runtime/callback.rs` | 55.3% | derived |
-| `src/runtime/db.rs` | `runtime/db.rs` | 29.8% | derived |
+| `src/runtime/db.rs` | `runtime/db.rs` | 24.2% | derived |
 | `src/runtime/error.rs` | — | 0.0% | sovereign |
-| `src/runtime/exec.rs` | `runtime/db.rs` | 67.8% | derived |
+| `src/runtime/exec.rs` | `runtime/db.rs` | 67.7% | derived |
 | `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | derived |
 | `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | derived |
 | `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | derived |

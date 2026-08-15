@@ -752,7 +752,11 @@ impl ReflectionStatus {
 impl ReflectionResult {
     /// Create a new reflection result.
     #[must_use]
-    pub fn new(status: ReflectionStatus, facts_emitted: u32, emitted_fact_ids: Vec<String>) -> Self {
+    pub fn new(
+        status: ReflectionStatus,
+        facts_emitted: u32,
+        emitted_fact_ids: Vec<String>,
+    ) -> Self {
         Self {
             status,
             facts_emitted,
