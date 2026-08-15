@@ -4,6 +4,8 @@
 
 Report tooling family: format-agnostic document model plus rendering backends (Typst→PDF, ODT, XLSX, ODS, PPTX, DOCX, and Pandoc-backed DOCX/HTML/MD/LaTeX/EPUB) and report-quality checks (prose lint, numeric claim verify). Sibling crates depend on each other (e.g. `poiesis-doc` depends on `poiesis-text`, `poiesis-typst`, `poiesis-core`, `poiesis-charts`). Entry points: `core/src/lib.rs` (Document, Renderer) and `typst/src/lib.rs` (`render_typst`, `render_template`).
 
+**Public import surface.** The `poiesis` facade crate (`crates/poiesis`, package `poiesis`) re-exports each `poiesis-*` backend as a feature-gated module (`poiesis::core`, `poiesis::doc`, `poiesis::sheet`, ...). `poiesis-core` is the facade's one non-optional dependency -- every other backend stays behind its own Cargo feature so a consumer compiles only what it uses. Internal package names stay `poiesis-*`; a new consumer should depend on `poiesis` with the features it needs rather than on individual backend crates directly.
+
 **Typst is the primary renderer.** Prefer `poiesis-typst` for prose-oriented PDF output - it supports templates, math, citations, breakable blocks, cross-references, and JSON data injection, with structured compile diagnostics carrying source locations. The `text/pdf` backend (via `krilla`) remains for the document-model path where no template system or data injection is needed.
 
 ## Depth

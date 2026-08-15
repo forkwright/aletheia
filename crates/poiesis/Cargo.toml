@@ -1,0 +1,71 @@
+[package]
+name = "poiesis"
+version.workspace = true
+description = "Poiesis document subsystem facade: one import surface over the poiesis-* backend crates"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+poiesis-core = { path = "core" }
+poiesis-charts = { path = "charts", optional = true }
+poiesis-deck = { path = "deck", optional = true }
+poiesis-diff = { path = "diff", optional = true }
+poiesis-doc = { path = "doc", optional = true }
+poiesis-inspect = { path = "inspect", optional = true }
+poiesis-intake = { path = "intake", optional = true }
+poiesis-lint = { path = "lint", optional = true }
+poiesis-ooxml-parse = { path = "ooxml-parse", optional = true }
+poiesis-printer-chromium = { path = "printer-chromium", optional = true }
+poiesis-scaffold = { path = "scaffold", optional = true }
+poiesis-sheet = { path = "sheet", optional = true }
+poiesis-slides = { path = "slides", optional = true }
+poiesis-text = { path = "text", optional = true }
+poiesis-theme = { path = "theme", optional = true }
+poiesis-typst = { path = "typst", optional = true }
+poiesis-verify = { path = "verify", optional = true }
+
+[features]
+default = []
+charts = ["dep:poiesis-charts"]
+deck = ["dep:poiesis-deck"]
+diff = ["dep:poiesis-diff"]
+doc = ["dep:poiesis-doc"]
+inspect = ["dep:poiesis-inspect"]
+intake = ["dep:poiesis-intake"]
+lint = ["dep:poiesis-lint"]
+ooxml-parse = ["dep:poiesis-ooxml-parse"]
+printer-chromium = ["dep:poiesis-printer-chromium"]
+scaffold = ["dep:poiesis-scaffold"]
+sheet = ["dep:poiesis-sheet"]
+slides = ["dep:poiesis-slides"]
+text = ["dep:poiesis-text"]
+theme = ["dep:poiesis-theme"]
+typst = ["dep:poiesis-typst"]
+verify = ["dep:poiesis-verify"]
+# WHY: The union of every backend, for consumers that want the whole document
+# stack without enumerating individual crate names (matches poiesis-doc's own
+# "every feature on by default" precedent for its Pandoc/Typst/DOCX matrix).
+full = [
+    "charts",
+    "deck",
+    "diff",
+    "doc",
+    "inspect",
+    "intake",
+    "lint",
+    "ooxml-parse",
+    "printer-chromium",
+    "scaffold",
+    "sheet",
+    "slides",
+    "text",
+    "theme",
+    "typst",
+    "verify",
+]

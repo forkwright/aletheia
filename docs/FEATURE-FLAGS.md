@@ -156,6 +156,24 @@ Cargo metadata cannot infer.
 | **koilon** | `test-full` | no | - | - |
 | **skene** | `test-core` | no | - | - |
 | **skene** | `test-full` | no | - | - |
+| **poiesis** | `default` | **yes** | *(empty)* | - |
+| **poiesis** | `charts` | no | `poiesis::charts` module | `dep:poiesis-charts` |
+| **poiesis** | `deck` | no | `poiesis::deck` module (HTML/CSS deck renderer) | `dep:poiesis-deck` |
+| **poiesis** | `diff` | no | `poiesis::diff` module | `dep:poiesis-diff` |
+| **poiesis** | `doc` | no | `poiesis::doc` module (DOCX/Pandoc dispatch) | `dep:poiesis-doc` |
+| **poiesis** | `full` | no | Every backend module | `charts`, `deck`, `diff`, `doc`, `inspect`, `intake`, `lint`, `ooxml-parse`, `printer-chromium`, `scaffold`, `sheet`, `slides`, `text`, `theme`, `typst`, `verify` |
+| **poiesis** | `inspect` | no | `poiesis::inspect` module (DOCX text extraction) | `dep:poiesis-inspect` |
+| **poiesis** | `intake` | no | `poiesis::intake` module (brief intake) | `dep:poiesis-intake` |
+| **poiesis** | `lint` | no | `poiesis::lint` module (report prose linter) | `dep:poiesis-lint` |
+| **poiesis** | `ooxml-parse` | no | `poiesis::ooxml_parse` module | `dep:poiesis-ooxml-parse` |
+| **poiesis** | `printer-chromium` | no | `poiesis::printer_chromium` module | `dep:poiesis-printer-chromium` |
+| **poiesis** | `scaffold` | no | `poiesis::scaffold` module (project-template scaffolder) | `dep:poiesis-scaffold` |
+| **poiesis** | `sheet` | no | `poiesis::sheet` module (XLSX/ODS backends) | `dep:poiesis-sheet` |
+| **poiesis** | `slides` | no | `poiesis::slides` module (PPTX backend) | `dep:poiesis-slides` |
+| **poiesis** | `text` | no | `poiesis::text` module (PDF/ODT backends) | `dep:poiesis-text` |
+| **poiesis** | `theme` | no | `poiesis::theme` module | `dep:poiesis-theme` |
+| **poiesis** | `typst` | no | `poiesis::typst` module (primary PDF renderer) | `dep:poiesis-typst` |
+| **poiesis** | `verify` | no | `poiesis::verify` module (numeric-claim verifier) | `dep:poiesis-verify` |
 | **poiesis-charts** | `default` | **yes** | *(empty)* | - |
 | **poiesis-charts** | `theme-bridge` | no | Theme bridge | `dep:poiesis-theme` |
 | **poiesis-charts** | `charts-vega` | no | Vega-Lite fallback for chart kinds the pure-Rust emitter does not own | - |

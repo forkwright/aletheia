@@ -6376,6 +6376,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "poiesis"
+version = "0.37.0"
+dependencies = [
+ "poiesis-charts",
+ "poiesis-core",
+ "poiesis-deck",
+ "poiesis-diff",
+ "poiesis-doc",
+ "poiesis-inspect",
+ "poiesis-intake",
+ "poiesis-lint",
+ "poiesis-ooxml-parse",
+ "poiesis-printer-chromium",
+ "poiesis-scaffold",
+ "poiesis-sheet",
+ "poiesis-slides",
+ "poiesis-text",
+ "poiesis-theme",
+ "poiesis-typst",
+ "poiesis-verify",
+]
+
+[[package]]
 name = "poiesis-charts"
 version = "0.37.0"
 dependencies = [
