@@ -34,13 +34,13 @@ fn encode(r: &MetricsRegistry) -> String {
     buf
 }
 
-/// WHY: every governance-metrics test wires identical tool_uses/registry/
-/// loop_detector/all_calls/policy scaffolding around one `dispatch_tools`
-/// call. What genuinely varies across tests: the tool name registered in
-/// the `ToolRegistry` vs the name actually dispatched (the unknown-tool
-/// test deliberately diverges the two so `denial_for` classifies it
-/// `ToolPolicyDenial::Unknown`), the `Reversibility`, whether an approval
-/// gate is present, and whether a receipt signer is present.
+// WHY: every governance-metrics test wires identical `tool_uses` / registry /
+// `loop_detector` / `all_calls` / policy scaffolding around one
+// `dispatch_tools` call. What genuinely varies across tests: the tool name
+// registered in the `ToolRegistry` vs the name actually dispatched (the
+// unknown-tool test deliberately diverges the two so `denial_for` classifies
+// it `ToolPolicyDenial::Unknown`), the `Reversibility`, whether an approval
+// gate is present, and whether a receipt signer is present.
 async fn dispatch_single_tool(
     registered_name: &str,
     dispatched_name: &str,
