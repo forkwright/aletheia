@@ -4,7 +4,7 @@ Cross-tool guide for AI coding agents (Claude Code, Cursor, Windsurf, Copilot, e
 
 ## Depth
 
-Read `docs/GOLDEN-PATH.md` first to understand the public desktop-first app workflow and the implemented versus planned app surfaces.
+Read `docs/GOLDEN-PATH.md` first to understand the public desktop-first app workflow and the implemented versus planned app surfaces. Read `docs/HARNESS-LIFECYCLE.md` for the canonical nine-stage agent-work loop every crate and surface implements — the map from "task enters the system" through "result is reviewed, exported, or closed" to the code that owns each stage.
 
 ## Build / Test / Lint
 
