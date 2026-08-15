@@ -130,6 +130,23 @@ pub struct TrainingLesson {
     pub occurrence_count: u32,
     /// Source PR number, if from a merged PR.
     pub pr_number: Option<u32>,
+    /// Stable evidence-chain pointers back to the source `ViolationRecord`s
+    /// this lesson was derived from (#4863): `"{sha}:{file}:{line}"` when
+    /// the record carries a git SHA, else `"{file}:{line}"`. Empty for the
+    /// trend-signal lesson variant, which is derived from an aggregate
+    /// lint-summary comparison rather than individual violation records.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_violation_ids: Vec<String>,
+}
+
+/// Stable evidence-chain id for one violation record (#4863): `sha` when
+/// present (a PR-context record), else `file:line` (a repo-wide scan
+/// record, which carries no SHA).
+fn violation_id(record: &ViolationRecord) -> String {
+    record.sha.as_deref().map_or_else(
+        || format!("{}:{}", record.file, record.line),
+        |sha| format!("{sha}:{}:{}", record.file, record.line),
+    )
 }
 
 /// Classification of a lesson outcome.
@@ -395,6 +412,7 @@ impl RuleBucket {
                 affected_files: pr_files,
                 occurrence_count: u32::try_from(violations.len()).unwrap_or(u32::MAX),
                 pr_number: Some(*pr_num),
+                source_violation_ids: violations.iter().map(|v| violation_id(v)).collect(),
             });
         }
     }
@@ -440,6 +458,7 @@ impl RuleBucket {
                 affected_files,
                 occurrence_count: count,
                 pr_number: None,
+                source_violation_ids: self.unfixed.iter().map(violation_id).collect(),
             });
         }
 
@@ -457,6 +476,10 @@ impl RuleBucket {
                 affected_files: Vec::new(),
                 occurrence_count: 0,
                 pr_number: None,
+                // WHY empty: a trend is a lint-summary-count comparison
+                // across scans, not a claim about specific violation
+                // records -- there is no source_violation_ids to cite.
+                source_violation_ids: Vec::new(),
             });
         }
 
@@ -708,6 +731,7 @@ mod tests {
             affected_files: vec!["/src/lib.rs".to_owned()],
             occurrence_count: 1,
             pr_number: Some(7),
+            source_violation_ids: vec!["abc123:/src/lib.rs:10".to_owned()],
         }];
 
         let facts = lessons_to_facts(&lessons);
@@ -728,6 +752,7 @@ mod tests {
                 affected_files: vec!["/src/lib.rs".to_owned()],
                 occurrence_count: 1,
                 pr_number: Some(42),
+                source_violation_ids: vec!["def456:/src/lib.rs:20".to_owned()],
             },
             TrainingLesson {
                 rule: "RUST/pub-visibility".to_owned(),
@@ -737,6 +762,10 @@ mod tests {
                 affected_files: vec!["/src/a.rs".to_owned(), "/src/b.rs".to_owned()],
                 occurrence_count: 5,
                 pr_number: None,
+                source_violation_ids: vec![
+                    "/src/a.rs:5".to_owned(),
+                    "/src/b.rs:12".to_owned(),
+                ],
             },
         ];
 

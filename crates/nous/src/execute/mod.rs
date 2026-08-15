@@ -854,6 +854,8 @@ async fn run_execute_loop(
             content: response_content,
             stop_reason,
             usage,
+            cost_usd: response_cost_usd,
+            duration_ms: response_duration_ms,
             ..
         } = response;
 
@@ -861,6 +863,15 @@ async fn run_execute_loop(
         total_usage.output_tokens += usage.output_tokens;
         total_usage.cache_read_tokens += usage.cache_read_tokens;
         total_usage.cache_write_tokens += usage.cache_write_tokens;
+        // WHY(#4798/#4861): the provider-reported cost/duration were
+        // previously dropped via `..` above — every iteration's call
+        // still has a real dollar cost and a real round-trip time even
+        // when the provider cannot report it, so this sums what's known
+        // rather than silently discarding it.
+        if let Some(cost) = response_cost_usd {
+            total_usage.cost_usd = Some(total_usage.cost_usd.unwrap_or(0.0) + cost);
+        }
+        total_usage.provider_duration_ms += response_duration_ms.unwrap_or(0);
 
         let mut extracted = process_response_blocks(&response_content);
         used_server_web_search |= extracted.saw_server_web_search;
@@ -983,7 +994,7 @@ async fn run_execute_loop(
             approval_gate,
             &dispatch_policy,
             config.limits.max_tool_result_bytes,
-            Some(&session.receipt_signer),
+            &session.receipt_signer,
             Some(&*session.receipt_ledger),
         )
         .await?;

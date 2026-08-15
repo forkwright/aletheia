@@ -690,6 +690,17 @@ fn ingest_record(
             continue;
         }
 
+        // WHY still model-derived here (unlike the interactive path fixed
+        // in #4798/#4863 -- see `nous::actor::turn_quality::record_router_outcome`,
+        // which now uses `TurnResult::provider_used`): this ingests
+        // `energeia`'s dispatch-orchestration JSONL, and energeia's writer
+        // (`AfterActionSessionOutcome` in `energeia::pipeline::after_action`)
+        // carries only `model`, never a separate provider -- there is no
+        // provider fact upstream to thread through. Threading a real
+        // provider dimension into energeia's dispatch-worker records is a
+        // separate, larger program (energeia's `SessionOutcome` would need
+        // to record which CLI/worker family ran the session) and is out of
+        // this fix's scope.
         let provider = ProviderId::new(model.as_str());
         let category = session
             .category

@@ -206,10 +206,20 @@ impl NousActor {
         let task_category = TaskCategory::from_prompt(content);
         let interactive_outcome =
             build_interactive_outcome(turn_result, session, self.config.limits.session_token_cap);
-        let provider = ProviderId::new(turn_result.model_used.as_str());
-        // WHY: model and provider are kept distinct in the outcome to align
-        // with #4798. Today nous only records the model used; future work will
-        // thread the provider identity separately.
+        // Closes the #4798/#4863 model/provider conflation on this path:
+        // `turn_result.provider_used` is the actually-observed provider
+        // (set from `completion.provider` at execute time -- see
+        // `TurnResult::provider_used`'s docs), not derived from the model
+        // string. Falls back to the model string only for the rare turn
+        // that completed without an observed provider (e.g. a degraded
+        // turn that still produced a non-empty `model_used`), which is
+        // strictly better than a fabricated value and matches this
+        // function's own existing degraded-turn handling above.
+        let provider_str = turn_result
+            .provider_used
+            .as_deref()
+            .unwrap_or(turn_result.model_used.as_str());
+        let provider = ProviderId::new(provider_str);
         let model = Some(Arc::from(turn_result.model_used.as_str()));
         let outcome = TurnOutcome::with_interactive_outcome(
             provider,
@@ -221,7 +231,7 @@ impl NousActor {
 
         // WHY: confidence is not available at finalize time (the store was
         // queried during execute), so the decision carries only the provider.
-        let decision = RoutingDecision::new(Arc::from(turn_result.model_used.as_str()), None);
+        let decision = RoutingDecision::new(provider_str, None);
 
         if let Err(e) = self.services.router.after_action(&decision, &outcome) {
             tracing::warn!(error = %e, "empirical router after_action failed");
