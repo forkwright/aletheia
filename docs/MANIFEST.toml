@@ -170,6 +170,12 @@ evergreen = true
 description = "Living crate/module name registry with etymology and naming rationale."
 
 [[doc]]
+path = "docs/MATURITY.md"
+type = "authored"
+evergreen = true
+description = "Public feature maturity matrix: Stable/Experimental/Internal/Planned/Deprecated/Undeclared per crate, generated from each crate's own Cargo.toml [package.metadata.kanon] block."
+
+[[doc]]
 path = "docs/MCP-SERVERS.md"
 type = "authored"
 evergreen = false

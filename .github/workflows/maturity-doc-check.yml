@@ -1,0 +1,42 @@
+# WHY: docs/MATURITY.md's crate table is generated from each crate's own
+# `[package.metadata.kanon]` Cargo.toml block (aletheia#4537). This gate
+# fails a PR whose Cargo.toml maturity edit left the committed table stale,
+# the same way configuration-doc-check.yml and crate-index-check.yml gate
+# their generated/checked surfaces. No path filter: any crate's Cargo.toml
+# can carry a `[package.metadata.kanon]` edit.
+name: Maturity doc check
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: crate table matches Cargo.toml metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): this job only reads manifests to render markdown --
+          # no build, no git history walk. blob:none fetches trees/commits
+          # eagerly and blobs on demand, enough for a working-tree read
+          # (metadata-only-job class defect, #6757).
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Unit tests
+        run: python3 -m unittest discover -s scripts/tests -p 'test_generate_maturity_doc.py'
+
+      - name: Check docs/MATURITY.md matches crate Cargo.toml metadata
+        run: python3 scripts/generate-maturity-doc.py --check

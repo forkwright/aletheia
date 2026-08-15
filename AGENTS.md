@@ -67,7 +67,7 @@ Every new tool/capability issue or PR must name: the owner plane, auth/RBAC mode
 | Bootstrap file | `crates/nous/src/bootstrap/` | Section list in assembler |
 | Middleware | `crates/pylon/src/middleware/` | Layer in `crates/pylon/src/server.rs` |
 
-Crate architecture and dependency graph: `docs/ARCHITECTURE.md`.
+Crate architecture and dependency graph: `docs/ARCHITECTURE.md`. Per-crate maturity (what is safe to build on vs. still internal/experimental): `docs/MATURITY.md`.
 
 ## Common Mistakes
 
