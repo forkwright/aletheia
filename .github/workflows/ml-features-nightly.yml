@@ -1,0 +1,69 @@
+# WHY(#4414): gate-attestation's hybrid-gate only builds default + --features
+# test-core, so a feature nobody enables by default can break silently and
+# stay broken for months (#4410 shipped 18 lints against exactly this pair
+# before anyone noticed). NOT --workspace --all-features (z3-sys ~10-15min
+# build, aletheia's own stated CI-minute-ceiling constraint) — scoped to the
+# two feature surfaces this issue named as genuinely uncovered by any other
+# job: episteme's ort/onnx-backed extraction models and poiesis-charts'
+# Vega-Lite fallback. Non-blocking: this is coverage, not a merge gate, so a
+# scheduled break here does not stall PRs — it surfaces in the Actions tab
+# and (once labels exist for it) can route to an issue like any other
+# scheduled-workflow failure.
+name: ML features nightly
+
+on:
+  schedule:
+    # NOTE: Daily at 09:00 UTC (03:00 CST), distinct from Security's 11:00
+    # UTC daily, CodeQL's Wednesday 14:00 UTC, Fuzz's Saturday 10:00 UTC,
+    # Online Tests' Mon/Thu 03:17 UTC, and Stale's Sunday 12:00 UTC.
+    - cron: "0 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  episteme-ml-features:
+    name: episteme (gliner, nuextract)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure git credentials for fleet deps
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: ml-features-episteme
+      - name: cargo clippy -p episteme --features gliner,nuextract
+        run: cargo clippy -p episteme --features gliner,nuextract --all-targets -- -D warnings
+
+  poiesis-charts-vega:
+    name: poiesis-charts (charts-vega)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Configure git credentials for fleet deps
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: ml-features-poiesis-charts
+      - name: cargo clippy -p poiesis-charts --features charts-vega
+        run: cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings
