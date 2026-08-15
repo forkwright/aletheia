@@ -14,7 +14,7 @@ use tokio_util::task::TaskTracker;
 use tracing::{Instrument, error, info, warn};
 
 use agora::types::ChannelProvider;
-use aletheia_routing::{AfterActionStore, RecordingRouter};
+use aletheia_routing::{AfterActionStore, DEFAULT_ROUTING_WINDOW, EmpiricalRouter, FallthroughRouter, NoOpRouter};
 use hermeneus::provider::ProviderRegistry;
 use koina::disk_space::DiskSpaceMonitor;
 use koina::id::ToolName;
@@ -732,8 +732,21 @@ impl RuntimeBuilder {
         let after_action_store = Arc::new(AfterActionStore::new(
             self.oikos.logs().join("after-actions"),
         ));
-        let empirical_router: Arc<dyn aletheia_routing::Router> = Arc::new(RecordingRouter::new(
-            Arc::clone(&after_action_store),
+        // WHY(#3969): ripe precursor pulled forward ahead of the Q-learning
+        // router — full Q-learning stays deferred (reward signal and
+        // MetricClaim are undefined primitives), but the interactive path no
+        // longer needs to stay pure-static-plus-recording in the meantime.
+        // `EmpiricalRouter` makes a real data-driven decision over the same
+        // shared `AfterActionStore` the dispatch-side router already learns
+        // from; `FallthroughRouter` defers to the unconditionally-static
+        // `NoOpRouter` whenever that decision lacks (or falls below) real
+        // confidence, so a cold store behaves identically to the previous
+        // `RecordingRouter`-only wiring. Thresholds mirror
+        // `energeia::routing::DispatchRoutingConfig`'s own defaults
+        // (min_samples=5, 7-day window, confidence_threshold=0.1) — the two
+        // paths sharing one store benefits from sharing one policy, not just
+        // one storage backend.
+        let static_model: Arc<str> = Arc::from(
             self.config
                 .agents
                 .defaults
@@ -741,6 +754,19 @@ impl RuntimeBuilder {
                 .model
                 .primary
                 .as_str(),
+        );
+        let empirical_router: Arc<dyn aletheia_routing::Router> = Arc::new(FallthroughRouter::new(
+            Arc::new(EmpiricalRouter::new(
+                Arc::clone(&after_action_store),
+                Arc::clone(&static_model),
+                5,
+                DEFAULT_ROUTING_WINDOW,
+                0.1,
+            )),
+            Arc::new(NoOpRouter {
+                provider: Arc::clone(&static_model),
+            }),
+            0.0,
         ));
 
         let spawn_impl = if self.tool_services {

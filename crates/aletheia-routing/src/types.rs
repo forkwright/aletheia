@@ -177,7 +177,10 @@ impl From<String> for ProviderId {
 /// Ordering: `Cloud < LocalHosted < Embedded` (same as the hermeneus variant).
 /// A request with `RoutingBoundary::LocalHosted` allows providers at
 /// `LocalHosted` *or* `Embedded`, but not `Cloud`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum RoutingBoundary {
     /// External cloud provider allowed. Widest boundary; permits all providers.

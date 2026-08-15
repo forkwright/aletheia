@@ -6,11 +6,12 @@
 // Types shared with the interactive path (nous) live in the `aletheia-routing`
 // crate; this module re-exports them under the original paths.
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use aletheia_routing::types::RequestFeatures;
+use aletheia_routing::types::{RequestFeatures, RoutingBoundary};
 
 /// After-action record read-side aggregation and rolling statistics.
 ///
@@ -109,6 +110,27 @@ pub(crate) struct DispatchRoutingConfig {
     pub(crate) default_provider: String,
     /// Candidate provider/model IDs eligible for empirical routing.
     pub(crate) candidate_providers: Vec<String>,
+    /// Maximum deployment boundary this dispatch instance may route to.
+    ///
+    /// WHY(#3969): the sovereignty half of the Q-learning router's two
+    /// pulled-forward precursors — `RequestFeatures::deployment_target`
+    /// (and the `candidate_allowed_by_boundary` filtering it drives inside
+    /// `AffinityRouter`/`EmpiricalRouter`'s `route()`) already existed, but
+    /// nothing on this — the one live production `route()` consumer —
+    /// call path ever set it to anything but the always-permissive default.
+    /// Defaults to [`RoutingBoundary::Cloud`] so existing operator configs
+    /// are unaffected until this is explicitly tightened.
+    pub(crate) sovereignty_boundary: RoutingBoundary,
+    /// Per-candidate deployment boundary overrides, keyed by provider/model
+    /// ID (matching `candidate_providers`/`default_provider`).
+    ///
+    /// A candidate absent from this map is treated as
+    /// [`RoutingBoundary::Cloud`] by
+    /// [`RequestFeatures::candidate_allowed_by_boundary`] — i.e. unknown
+    /// candidates stay eligible rather than being silently excluded, so an
+    /// operator who sets `sovereignty_boundary` without also populating
+    /// this map does not lose every candidate at once.
+    pub(crate) candidate_deployment_targets: HashMap<String, RoutingBoundary>,
 }
 
 impl Default for DispatchRoutingConfig {
@@ -121,6 +143,8 @@ impl Default for DispatchRoutingConfig {
             affinity_threshold: 0.15,
             default_provider: DEFAULT_PROVIDER_ID.to_owned(),
             candidate_providers: Vec::new(),
+            sovereignty_boundary: RoutingBoundary::default(),
+            candidate_deployment_targets: HashMap::new(),
         }
     }
 }
@@ -182,11 +206,15 @@ impl DispatchRoutingConfig {
         let persona = persona::PersonaRouter::new(empirical);
         let affinity =
             affinity::AffinityRouter::new(persona, store, window, self.affinity_threshold);
-        let features = RequestFeatures::new(
+        let mut features = RequestFeatures::new(
             self.candidates(),
             Some(category),
             Some(Arc::<str>::from(prompt_text)),
-        );
+        )
+        .with_deployment_target(self.sovereignty_boundary);
+        for (provider, boundary) in &self.candidate_deployment_targets {
+            features = features.with_candidate_deployment_target(provider.as_str(), *boundary);
+        }
 
         let decision = affinity.route_with_affinity(&features, None).await;
         ProviderId::new(decision.base.provider)
@@ -299,5 +327,123 @@ mod tests {
         let id = ProviderId::new("kimi");
         assert_eq!(&*id, "kimi");
         assert_eq!(id.to_string(), "kimi");
+    }
+
+    #[test]
+    fn dispatch_routing_config_sovereignty_defaults_to_cloud() {
+        let cfg = DispatchRoutingConfig::default();
+        assert_eq!(cfg.sovereignty_boundary, RoutingBoundary::Cloud);
+        assert!(cfg.candidate_deployment_targets.is_empty());
+    }
+
+    #[test]
+    fn dispatch_routing_config_deserializes_without_sovereignty_fields() {
+        // WHY(#3969): #[serde(default)] must hold for every existing operator
+        // config written before these fields existed.
+        let cfg: DispatchRoutingConfig = serde_yaml::from_str(
+            "mode: static\n\
+             default_provider: claude\n",
+        )
+        .expect("config without sovereignty fields must still deserialize");
+        assert_eq!(cfg.sovereignty_boundary, RoutingBoundary::Cloud);
+    }
+
+    fn write_session_line(
+        dir: &std::path::Path,
+        filename: &str,
+        model: &str,
+        status: &str,
+        category: &str,
+    ) {
+        use std::io::Write as _;
+        let path = dir.join(filename);
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+            .unwrap();
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({
+                "dispatch_id": "test",
+                "ts_start": "2026-04-17T00:00:00Z",
+                "ts_end": "2026-04-17T00:01:00Z",
+                "duration_ms": 60000,
+                "session_outcomes": [{"model": model, "status": status, "category": category}],
+                "cost_total_cents": 5,
+                "turns_total": 10,
+                "stage_latencies_ms": {},
+                "qa_verdict": "pass",
+                "prompt_hash": "sha256:abc"
+            })
+        )
+        .unwrap();
+    }
+
+    /// WHY(#3969): proves the sovereignty boundary is enforced on the one
+    /// live production `route()` consumer (`empirical_model_for_prompt`),
+    /// not merely at the lower-level `RequestFeatures`/`EmpiricalRouter`
+    /// unit tests already covering the filtering primitive itself. A
+    /// cloud-only candidate with a dominant success rate must never win when
+    /// the configured boundary excludes it.
+    #[tokio::test]
+    async fn empirical_model_for_prompt_excludes_cloud_candidate_under_local_boundary() {
+        let tmp = tempfile::tempdir().unwrap();
+        for _ in 0..10 {
+            write_session_line(
+                tmp.path(),
+                "2026-04-17.jsonl",
+                "cloud-model",
+                "success",
+                "feature",
+            );
+        }
+        for _ in 0..6 {
+            write_session_line(
+                tmp.path(),
+                "2026-04-17.jsonl",
+                "local-model",
+                "success",
+                "feature",
+            );
+        }
+        for _ in 0..4 {
+            write_session_line(
+                tmp.path(),
+                "2026-04-17.jsonl",
+                "local-model",
+                "failed",
+                "feature",
+            );
+        }
+
+        let mut candidate_deployment_targets = HashMap::new();
+        candidate_deployment_targets.insert("cloud-model".to_owned(), RoutingBoundary::Cloud);
+        candidate_deployment_targets.insert("local-model".to_owned(), RoutingBoundary::LocalHosted);
+
+        let cfg = DispatchRoutingConfig {
+            mode: RoutingMode::Empirical,
+            min_samples: 5,
+            default_provider: "local-model".to_owned(),
+            candidate_providers: vec!["cloud-model".to_owned(), "local-model".to_owned()],
+            sovereignty_boundary: RoutingBoundary::LocalHosted,
+            candidate_deployment_targets,
+            ..DispatchRoutingConfig::default()
+        };
+
+        let chosen = cfg
+            .model_for_prompt("implement a feature", Some(tmp.path()))
+            .await;
+
+        // WHY: `model_for_prompt` returns `None` when the chosen provider is
+        // the crate's DEFAULT_PROVIDER_ID sentinel; a real, non-sentinel
+        // model choice is what proves routing happened at all.
+        assert_ne!(
+            chosen.as_deref(),
+            Some("cloud-model"),
+            "sovereignty boundary must exclude the cloud-only candidate even \
+             though it has the dominant success rate"
+        );
     }
 }

@@ -21,6 +21,15 @@
 //!    `energeia` empirical router with a richer signal set. Persistence is
 //!    durable, not merely in-memory-until-the-next-refresh (#4519): see
 //!    the module docs on [`store`] for the exact semantics.
+//!
+//! The interactive actor is wired with a real [`EmpiricalRouter`] wrapped in
+//! a [`FallthroughRouter`] over a static default (#3969), so `route()` now
+//! computes a genuine data-driven decision from the same store — but no
+//! interactive call site consults that decision for model selection yet;
+//! today it is exercised only via `after_action` recording and its own
+//! tests. Wiring `route()`'s output into turn model selection (alongside the
+//! complexity router above) is separate, still-open follow-up work, not a
+//! claim this module makes.
 
 #![deny(missing_docs)]
 
@@ -31,10 +40,12 @@ pub mod types;
 pub use router::{BoxFuture, Router};
 pub use store::{AfterActionStore, DEFAULT_ROUTING_WINDOW};
 pub use types::{
-    InteractiveOutcome, RequestFeatures, RouterError, RoutingBoundary, RoutingDecision, TurnOutcome,
+    InteractiveOutcome, ProviderId, RequestFeatures, RouterError, RoutingBoundary, RoutingDecision,
+    TurnOutcome,
 };
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
@@ -134,21 +145,153 @@ impl Router for RecordingRouter {
     }
 }
 
+/// A router that selects the empirically best-performing candidate from a
+/// shared [`AfterActionStore`], falling back to a static provider when data
+/// is absent, insufficient, or not a confident win.
+///
+/// WHY(#3969): the interactive-runtime counterpart to
+/// `energeia::routing::empirical::EmpiricalRouter` — both delegate to
+/// [`AfterActionStore::pick_winner`] so "confident enough to switch" is
+/// defined in exactly one place regardless of which path is asking. Unlike
+/// [`RecordingRouter`] (which always returns the static provider), `route()`
+/// here makes a real empirical decision.
+pub struct EmpiricalRouter {
+    /// Shared success-rate store, read for the decision and written by
+    /// `after_action`.
+    store: Arc<AfterActionStore>,
+    /// Provider returned when data is absent, thin, or not a confident win.
+    static_choice: types::ProviderId,
+    /// Minimum rolling-window record count before a candidate can win.
+    min_samples: u64,
+    /// Rolling window for record queries.
+    window: Duration,
+    /// Minimum success-rate gap (winner − static) required to switch away
+    /// from `static_choice`.
+    confidence_threshold: f64,
+    /// Sender to the background outcome-drain task.
+    outcome_tx: mpsc::UnboundedSender<TurnOutcome>,
+    /// Background task handle kept alive for the router lifetime (see
+    /// [`RecordingRouter::_outcome_drain`] for why this must be owned).
+    _outcome_drain: JoinHandle<()>,
+}
+
+impl EmpiricalRouter {
+    /// Create a new empirical router over `store`.
+    #[must_use]
+    pub fn new(
+        store: Arc<AfterActionStore>,
+        static_choice: impl Into<Arc<str>>,
+        min_samples: u64,
+        window: Duration,
+        confidence_threshold: f64,
+    ) -> Self {
+        let static_choice = types::ProviderId::new(static_choice.into());
+        // WHY: mirrors RecordingRouter's drain task — see its constructor.
+        let (outcome_tx, mut outcome_rx) = mpsc::unbounded_channel::<TurnOutcome>();
+        let drain_store = Arc::clone(&store);
+        let outcome_drain = tokio::spawn(async move {
+            while let Some(outcome) = outcome_rx.recv().await {
+                drain_store.record_outcome(&outcome).await;
+            }
+        });
+
+        Self {
+            store,
+            static_choice,
+            min_samples,
+            window,
+            confidence_threshold,
+            outcome_tx,
+            _outcome_drain: outcome_drain,
+        }
+    }
+}
+
+impl Router for EmpiricalRouter {
+    fn route<'a>(&'a self, features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
+        Box::pin(async move {
+            let category = features.effective_category();
+            let candidates = features
+                .candidates
+                .iter()
+                .filter(|provider| features.candidate_allowed_by_boundary(provider))
+                .cloned()
+                .collect::<Vec<_>>();
+            let static_allowed = features.candidate_allowed_by_boundary(&self.static_choice);
+
+            let chosen = match self
+                .store
+                .pick_winner(
+                    &category,
+                    &candidates,
+                    &self.static_choice,
+                    self.min_samples,
+                    self.window,
+                    self.confidence_threshold,
+                    static_allowed,
+                )
+                .await
+            {
+                Ok(chosen) => chosen,
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        category = %category,
+                        "empirical router unavailable, using static fallback"
+                    );
+                    self.static_choice.clone()
+                }
+            };
+
+            let confidence = match self.store.rolling_stats(&chosen, &category, self.window).await
+            {
+                Ok(stats) => stats.and_then(|s| s.success_rate()),
+                Err(error) => {
+                    tracing::error!(
+                        error = %error,
+                        provider = %chosen,
+                        category = %category,
+                        "empirical routing confidence unavailable"
+                    );
+                    None
+                }
+            };
+
+            RoutingDecision::new(chosen.0, confidence)
+        })
+    }
+
+    fn after_action(
+        &self,
+        _decision: &RoutingDecision,
+        outcome: &TurnOutcome,
+    ) -> Result<(), RouterError> {
+        self.outcome_tx
+            .send(outcome.clone())
+            .map_err(|_closed| RouterError::AfterActionWrite {
+                message: "after-action outcome channel closed (drain task panicked \
+                    or runtime shutting down)"
+                    .to_string(),
+            })?;
+        Ok(())
+    }
+}
+
 /// A router combinator that falls through to a secondary router when the
 /// primary router's confidence is below a threshold.
 ///
-/// WHY(#3969): the Q-learner (and any learned router) needs a way to defer to
-/// a static or rule-based fallback when it has insufficient data to make a
+/// WHY(#3969): a learned or empirical router needs a way to defer to a
+/// static or rule-based fallback when it has insufficient data to make a
 /// high-confidence decision. `FallthroughRouter` is that combinator: it runs
 /// the primary router first, and if `confidence < threshold` (or the primary
-/// returns `None` confidence), delegates to the secondary.
+/// returns `None` confidence), delegates to the secondary. Production use:
+/// [`crate::EmpiricalRouter`] wrapped as primary over a static fallback on
+/// the interactive nous actor path (see `aletheia::runtime` wiring).
 ///
 /// Both `after_action` calls are forwarded to the primary router only. The
 /// secondary is a read-only fallback; recording against it would corrupt the
 /// primary's training signal.
-///
-#[cfg(test)]
-pub(crate) struct FallthroughRouter {
+pub struct FallthroughRouter {
     /// Primary router — queried first on every `route` call.
     primary: Arc<dyn Router>,
     /// Fallback router — used when primary confidence is below threshold.
@@ -160,13 +303,12 @@ pub(crate) struct FallthroughRouter {
     threshold: f64,
 }
 
-#[cfg(test)]
 impl FallthroughRouter {
     /// Create a new `FallthroughRouter`.
     ///
     /// `threshold` is clamped to `[0.0, 1.0]`.
     #[must_use]
-    pub(crate) fn new(primary: Arc<dyn Router>, fallback: Arc<dyn Router>, threshold: f64) -> Self {
+    pub fn new(primary: Arc<dyn Router>, fallback: Arc<dyn Router>, threshold: f64) -> Self {
         Self {
             primary,
             fallback,
@@ -176,12 +318,11 @@ impl FallthroughRouter {
 
     /// Configured fallthrough confidence threshold.
     #[must_use]
-    pub(crate) fn threshold(&self) -> f64 {
+    pub fn threshold(&self) -> f64 {
         self.threshold
     }
 }
 
-#[cfg(test)]
 impl Router for FallthroughRouter {
     fn route<'a>(&'a self, features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
         Box::pin(async move {
@@ -449,5 +590,166 @@ mod tests {
         let router = FallthroughRouter::new(primary, fallback, 2.0);
 
         assert!((router.threshold() - 1.0).abs() < f64::EPSILON);
+    }
+
+    // WHY(#3969): EmpiricalRouter is the interactive-runtime counterpart to
+    // energeia's dispatch-side EmpiricalRouter — these tests mirror
+    // energeia's own `router_trait_route_returns_winner_with_confidence` /
+    // `router_falls_through_when_below_min_samples` /
+    // `route_excludes_cloud_candidate_for_local_hosted_boundary` coverage to
+    // prove the shared `AfterActionStore::pick_winner` policy behaves
+    // identically from this side.
+
+    #[tokio::test]
+    async fn empirical_router_picks_winner_with_confidence() {
+        let store = Arc::new(AfterActionStore::in_memory());
+        let winner = ProviderId::new("winner");
+        let loser = ProviderId::new("loser");
+        for i in 0..10u32 {
+            store
+                .record_outcome(&TurnOutcome::new(
+                    winner.clone(),
+                    TaskCategory::Feature,
+                    i != 0,
+                    true,
+                ))
+                .await;
+        }
+        for i in 0..10u32 {
+            store
+                .record_outcome(&TurnOutcome::new(
+                    loser.clone(),
+                    TaskCategory::Feature,
+                    i < 2,
+                    true,
+                ))
+                .await;
+        }
+
+        let router = EmpiricalRouter::new(Arc::clone(&store), "loser", 5, Duration::from_hours(168), 0.1);
+        let features = RequestFeatures::new(
+            vec![winner.clone(), loser.clone()],
+            Some(TaskCategory::Feature),
+            None,
+        );
+        let decision = router.route(&features).await;
+
+        assert_eq!(decision.provider.as_ref(), "winner");
+        assert!(
+            decision.confidence.is_some_and(|c| c > 0.8),
+            "expected high confidence for the empirical winner, got {:?}",
+            decision.confidence
+        );
+    }
+
+    #[tokio::test]
+    async fn empirical_router_falls_back_to_static_when_no_data() {
+        let store = Arc::new(AfterActionStore::in_memory());
+        let router = EmpiricalRouter::new(Arc::clone(&store), "default", 5, Duration::from_hours(168), 0.1);
+        let features = RequestFeatures::new(
+            vec![ProviderId::new("some-candidate")],
+            Some(TaskCategory::Feature),
+            None,
+        );
+        let decision = router.route(&features).await;
+
+        assert_eq!(decision.provider.as_ref(), "default");
+    }
+
+    #[tokio::test]
+    async fn empirical_router_excludes_cloud_candidate_for_local_hosted_boundary() {
+        let store = Arc::new(AfterActionStore::in_memory());
+        let cloud_only = ProviderId::new("cloud-only");
+        let local = ProviderId::new("local");
+        for _ in 0..10u32 {
+            store
+                .record_outcome(&TurnOutcome::new(
+                    cloud_only.clone(),
+                    TaskCategory::Feature,
+                    true,
+                    true,
+                ))
+                .await;
+        }
+        for i in 0..10u32 {
+            store
+                .record_outcome(&TurnOutcome::new(
+                    local.clone(),
+                    TaskCategory::Feature,
+                    i < 6,
+                    true,
+                ))
+                .await;
+        }
+
+        let router = EmpiricalRouter::new(
+            Arc::clone(&store),
+            "cloud-only",
+            5,
+            Duration::from_hours(168),
+            0.1,
+        );
+        let features = RequestFeatures::new(
+            vec![cloud_only.clone(), local.clone()],
+            Some(TaskCategory::Feature),
+            None,
+        )
+        .with_deployment_target(RoutingBoundary::LocalHosted)
+        .with_candidate_deployment_target("cloud-only", RoutingBoundary::Cloud)
+        .with_candidate_deployment_target("local", RoutingBoundary::LocalHosted);
+
+        let decision = router.route(&features).await;
+
+        assert_eq!(decision.provider.as_ref(), "local");
+    }
+
+    /// WHY(#3969): proves the exact production wiring shape used by the
+    /// interactive nous actor path (`aletheia::runtime`) — a
+    /// `FallthroughRouter` over `EmpiricalRouter` primary and a static
+    /// `NoOpRouter` secondary — degrades to the static provider on a cold
+    /// store and picks the empirical winner once data exists, with a single
+    /// `.route()` call site exercising both routers together.
+    #[tokio::test]
+    async fn fallthrough_over_empirical_and_static_matches_production_wiring() {
+        let store = Arc::new(AfterActionStore::in_memory());
+        let static_provider = "static-default";
+        let router = FallthroughRouter::new(
+            Arc::new(EmpiricalRouter::new(
+                Arc::clone(&store),
+                static_provider,
+                5,
+                Duration::from_hours(168),
+                0.1,
+            )),
+            Arc::new(NoOpRouter {
+                provider: Arc::from(static_provider),
+            }),
+            0.0,
+        );
+        let features = RequestFeatures::new(
+            vec![ProviderId::new("learned-winner"), ProviderId::new(static_provider)],
+            Some(TaskCategory::Feature),
+            None,
+        );
+
+        // Cold store: no data anywhere, so both the empirical primary and the
+        // static secondary agree on the same provider.
+        let cold_decision = router.route(&features).await;
+        assert_eq!(cold_decision.provider.as_ref(), static_provider);
+
+        // Seed a clear winner, then reroute the same request.
+        let winner = ProviderId::new("learned-winner");
+        for i in 0..10u32 {
+            store
+                .record_outcome(&TurnOutcome::new(
+                    winner.clone(),
+                    TaskCategory::Feature,
+                    i != 0,
+                    true,
+                ))
+                .await;
+        }
+        let warm_decision = router.route(&features).await;
+        assert_eq!(warm_decision.provider.as_ref(), "learned-winner");
     }
 }
