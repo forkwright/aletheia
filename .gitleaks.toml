@@ -65,4 +65,29 @@ paths = [
   '''infrastructure/runtime/''',
   # WHY: prosoche config examples demonstrate operator configuration with fake values.
   '''infrastructure/prosoche/''',
+  # WHY: training-pipeline tests build synthetic preference/record fixtures whose
+  # generated content is high-entropy enough to trip generic-api-key. The sibling
+  # training/pii.rs is already allowlisted for the same reason.
+  '''crates/nous/src/training/mod\.rs''',
+  '''crates/nous/src/training/dpo\.rs''',
+  # WHY: idempotency tests post synthetic request bodies (literally "synthetic
+  # contents") and a fixed bearer token, matching the already-allowlisted
+  # crates/pylon/src/tests/credentials.rs.
+  '''crates/pylon/src/tests/idempotency\.rs''',
+  # WHY: Signal account tests use +15551234567 -- the NANP-reserved 555 range,
+  # already carrying `pii-allow:` markers at every site. The phone-number rule
+  # above cannot distinguish a reserved test number from a real one.
+  '''crates/taxis/src/config/config_tests/basics\.rs''',
+  '''crates/aletheia/src/runtime/setup\.rs''',
+  # WHY: both files were deleted from the tree in the clean-room rewrite
+  # (9387f016c) and survive only in history, which gitleaks scans in full.
+  # mcporter.json:36 held a Todoist API token committed in the 2026-02-05
+  # bootstrap; that credential has been REVOKED and no longer verifies -- see
+  # the trufflehog job, which passes on the same history because it only fails
+  # on live credentials. Rewriting history would not un-expose a token already
+  # published from a public repo, so the credential was killed at the source
+  # instead. These entries keep a permanently-unfixable historical match from
+  # holding the scan red, which is how a genuinely new leak would get ignored.
+  '''shared/config/mcporter\.json''',
+  '''shared/bin/nous-health''',
 ]
