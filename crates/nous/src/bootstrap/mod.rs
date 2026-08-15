@@ -1537,8 +1537,19 @@ impl<'a> BootstrapAssembler<'a> {
         let (l3_priority, l3_truncatable) = Self::priority_for_recipe_level(recipe, "L3");
 
         // --- L1: workspace manifest files at _llm/ root ---
-        if let Ok(mut entries) = tokio::fs::read_dir(llm_root).await {
-            while let Ok(Some(entry)) = entries.next_entry().await {
+        if let Ok(mut dir) = tokio::fs::read_dir(llm_root).await {
+            let mut entries = Vec::new();
+            while let Ok(Some(entry)) = dir.next_entry().await {
+                entries.push(entry);
+            }
+            // WHY sort (#4796): `read_dir` order is filesystem-dependent
+            // and unspecified — without this, two otherwise-identical runs
+            // could assemble `_llm/` sections in a different order and
+            // produce a different prompt hash for the same inputs, exactly
+            // as `expand_recipe_directory`'s existing `out.sort_by(...)`
+            // below already guards against for the manifest-driven path.
+            entries.sort_by_key(tokio::fs::DirEntry::file_name);
+            for entry in entries {
                 let path = entry.path();
                 let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
                     continue;
@@ -1603,9 +1614,17 @@ impl<'a> BootstrapAssembler<'a> {
         if let Some(l3_level) = manifest.levels.get("L3") {
             let l3_dir = llm_root.join(&l3_level.path);
             if l3_dir.is_dir()
-                && let Ok(mut entries) = tokio::fs::read_dir(&l3_dir).await
+                && let Ok(mut dir) = tokio::fs::read_dir(&l3_dir).await
             {
-                while let Ok(Some(entry)) = entries.next_entry().await {
+                let mut entries = Vec::new();
+                while let Ok(Some(entry)) = dir.next_entry().await {
+                    entries.push(entry);
+                }
+                // WHY sort: see the L1 sweep above (#4796) — same
+                // unspecified-`read_dir`-order risk to prompt-hash
+                // determinism.
+                entries.sort_by_key(tokio::fs::DirEntry::file_name);
+                for entry in entries {
                     let path = entry.path();
                     if !path.is_file() {
                         continue;
