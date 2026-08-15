@@ -11,6 +11,9 @@ pub(crate) mod cognitive;
 pub mod coverage;
 /// Eval-specific error types and result alias.
 pub mod error;
+/// Versioned JSON manifest format for the simplest (fixture-free,
+/// single-GET, substring/pattern-assertion) scenario shape.
+pub mod manifest;
 /// JSONL persistence for evaluation results as training data.
 pub mod persistence;
 /// Durable provenance envelope shared by eval runs and benchmark reports.
