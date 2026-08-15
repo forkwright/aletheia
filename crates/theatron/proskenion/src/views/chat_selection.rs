@@ -358,9 +358,17 @@ mod tests {
         assert_eq!(chat_state.messages[0].content, "What happened?");
         assert_eq!(chat_state.messages[1].role, MessageRole::Assistant);
         assert_eq!(chat_state.messages[1].content, "Recovered the transcript.");
-        assert_eq!(
-            chat_state.messages[1].model.as_deref(),
-            Some("claude-opus-4-6")
+        // WHY(#4911): the fixture above deliberately still carries a "model"
+        // key, because a real pylon history payload never has one -- this
+        // pins that an unexpected per-message key cannot leak into the
+        // rendered model. The previous assertion required it to flow through,
+        // which is what kept the phantom field alive: the only place a
+        // per-message model ever existed was this fixture. The model is a
+        // session-level fact and views/sessions takes it from session.model.
+        assert!(
+            chat_state.messages[1].model.is_none(),
+            "a per-message model must not be sourced from history; got {:?}",
+            chat_state.messages[1].model
         );
     }
 

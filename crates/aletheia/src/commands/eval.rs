@@ -94,6 +94,50 @@ fn validate_args(args: &EvalArgs) -> Result<()> {
     Ok(())
 }
 
+// WHY(#4960): mirrors the benchmark path's provenance envelope
+// (benchmark.rs::collect_metadata). git_sha and target_identity are the
+// build and target-instance facts a publishable report needs, and neither was
+// ever attached on this path. Borrows rather than consumes: `scenario` and
+// `token` are both moved into RunConfig immediately after this returns.
+//
+// NOTE: the token contributes only its presence to the hash, never its value,
+// because the hash is published in a provenance record -- but whether one was
+// configured does change what the run could reach.
+async fn build_eval_provenance(
+    url: &str,
+    token: Option<&String>,
+    scenario: Option<&str>,
+    json_output: bool,
+    timeout: u64,
+    coverage_policy: &CoveragePolicy,
+    publishable: bool,
+) -> dokimion::provenance::EvalProvenance {
+    let config_hash = dokimion::provenance::sha256_hex_str(&format!(
+        "url={url}\nscenario={scenario:?}\njson_output={json_output}\ntimeout={timeout}\ntoken_present={}\ncoverage_policy={coverage_policy}\npublishable={publishable}",
+        token.is_some(),
+    ));
+    let cli_args: Vec<String> = std::env::args().collect();
+    let target_identity = EvalClient::new(url.to_owned(), token.cloned())
+        .health()
+        .await
+        .ok()
+        .and_then(|h| h.version)
+        .filter(|version| !version.is_empty());
+    let mut provenance = dokimion::provenance::EvalProvenance::new(
+        dokimion::provenance::generate_eval_run_id(),
+        url.to_owned(),
+    )
+    .with_redacted_args(&cli_args)
+    .with_config_hash(config_hash);
+    if let Some(git_sha) = current_git_sha() {
+        provenance = provenance.with_git_sha(git_sha);
+    }
+    if let Some(identity) = target_identity {
+        provenance = provenance.with_target_identity(identity);
+    }
+    provenance
+}
+
 pub(crate) async fn run(args: EvalArgs) -> Result<()> {
     validate_args(&args)?;
     let EvalArgs {
@@ -122,33 +166,16 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         return Ok(());
     }
 
-    let config_hash = dokimion::provenance::sha256_hex_str(&format!(
-        "url={url}\nscenario={scenario:?}\njson_output={json_output}\ntimeout={timeout}\ntoken_present={}\ncoverage_policy={coverage_policy}\npublishable={publishable}",
-        token.is_some(),
-    ));
-    let cli_args: Vec<String> = std::env::args().collect();
-    // WHY(#4960): mirrors the benchmark path (aletheia/src/commands/
-    // benchmark.rs::collect_metadata) -- git_sha and target_identity are the
-    // build/target-instance facts a publishable report needs, and neither
-    // was ever attached here.
-    let target_identity = EvalClient::new(url.clone(), token.clone())
-        .health()
-        .await
-        .ok()
-        .and_then(|h| h.version)
-        .filter(|version| !version.is_empty());
-    let mut provenance = dokimion::provenance::EvalProvenance::new(
-        dokimion::provenance::generate_eval_run_id(),
-        url.clone(),
+    let provenance = build_eval_provenance(
+        &url,
+        token.as_ref(),
+        scenario.as_deref(),
+        json_output,
+        timeout,
+        &coverage_policy,
+        publishable,
     )
-    .with_redacted_args(&cli_args)
-    .with_config_hash(config_hash);
-    if let Some(git_sha) = current_git_sha() {
-        provenance = provenance.with_git_sha(git_sha);
-    }
-    if let Some(identity) = target_identity {
-        provenance = provenance.with_target_identity(identity);
-    }
+    .await;
 
     let config = dokimion::runner::RunConfig {
         base_url: url.clone(),

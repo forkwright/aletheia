@@ -167,16 +167,13 @@ fn validation_options(args: &RunArgs) -> BenchmarkValidationOptions {
     }
 }
 
-async fn run_benchmark(
-    benchmark: &dyn MemoryBenchmark,
-    args: &RunArgs,
-    validation: BenchmarkValidationReport,
-) -> Result<()> {
-    let client = EvalClient::new(&args.url, args.token.clone());
-
-    // Collect system metadata before running.
-    let metadata = collect_metadata(&client, benchmark, args, validation).await;
-    let config_hash = dokimion::provenance::sha256_hex_str(&format!(
+// WHY: the hash covers every argument that can change what a run measures, so
+// two reports sharing a config_hash were produced under the same configuration.
+// Secrets are recorded as presence (`judge_api_key_present`) rather than value:
+// the hash is published in a provenance record, so a key must never reach it,
+// while whether one was configured does change the result.
+fn benchmark_config_hash(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> String {
+    dokimion::provenance::sha256_hex_str(&format!(
         "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\nbest_effort_dataset={}\nbaseline_report={:?}\npublishable={}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
         benchmark.name(),
         args.dataset.display(),
@@ -192,7 +189,19 @@ async fn run_benchmark(
         args.judge_endpoint.is_some(),
         args.judge_model,
         args.judge_api_key.is_some(),
-    ));
+    ))
+}
+
+async fn run_benchmark(
+    benchmark: &dyn MemoryBenchmark,
+    args: &RunArgs,
+    validation: BenchmarkValidationReport,
+) -> Result<()> {
+    let client = EvalClient::new(&args.url, args.token.clone());
+
+    // Collect system metadata before running.
+    let metadata = collect_metadata(&client, benchmark, args, validation).await;
+    let config_hash = benchmark_config_hash(benchmark, args);
     let cli_args: Vec<String> = std::env::args().collect();
     // WHY(#4960): memory_ref identifies WHICH memory-recall workload this
     // report's claims are about -- every BenchmarkReport (LongMemEval,
