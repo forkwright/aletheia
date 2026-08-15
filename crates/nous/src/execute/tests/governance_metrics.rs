@@ -183,10 +183,18 @@ async fn receipt_metric_records_emitted_when_signer_configured() {
     );
 }
 
+/// Closes #4835's "make it a runtime invariant" ask: this test used to
+/// assert the OPPOSITE (a `"missing"` receipt status when no signer was
+/// explicitly passed) -- that was exactly the optional-wrapper-behavior
+/// bug the issue named. Receipt issuance is no longer a caller
+/// convention on the nous-routed dispatch path: `dispatch_tool_items`
+/// takes a non-optional signer, and this test's `None` now exercises
+/// `dispatch_tools`' fallback-signer resolution, not a "no receipt" path
+/// (which no longer exists here).
 #[tokio::test]
-async fn receipt_metric_records_missing_when_no_signer_configured() {
+async fn receipt_always_emitted_on_nous_routed_dispatch_even_with_no_signer_passed() {
     let registry = fresh_organon_registry();
-    let tool_name = "_test_metrics_gov_receipt_miss";
+    let tool_name = "_test_metrics_gov_receipt_always";
 
     dispatch_single_tool(
         tool_name,
@@ -200,8 +208,14 @@ async fn receipt_metric_records_missing_when_no_signer_configured() {
     let out = encode(&registry);
     assert!(
         out.contains(&format!(
-            "aletheia_receipts_total{{tool_name=\"{tool_name}\",status=\"missing\"}} 1"
+            "aletheia_receipts_total{{tool_name=\"{tool_name}\",status=\"emitted\"}} 1"
         )),
-        "got: {out}"
+        "nous-routed dispatch must always emit a receipt now, got: {out}"
+    );
+    assert!(
+        !out.contains(&format!(
+            "aletheia_receipts_total{{tool_name=\"{tool_name}\",status=\"missing\"}}"
+        )),
+        "the missing-receipt path is unreachable from this dispatch boundary now, got: {out}"
     );
 }
