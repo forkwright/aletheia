@@ -5,6 +5,8 @@ use std::future::Future;
 #[cfg(feature = "storage-fjall")]
 use std::pin::Pin;
 #[cfg(feature = "storage-fjall")]
+use std::sync::Arc;
+#[cfg(feature = "storage-fjall")]
 use tokio_util::sync::CancellationToken;
 
 #[cfg(feature = "storage-fjall")]
@@ -20,7 +22,7 @@ use crate::metrics::status::StatusDashboard;
 #[cfg(feature = "storage-fjall")]
 use crate::prompt::PromptSpec;
 #[cfg(feature = "storage-fjall")]
-use crate::steward::StewardResult;
+use crate::steward::{StewardBackend, StewardResult};
 #[cfg(feature = "storage-fjall")]
 use crate::types::{DispatchResult, DispatchSpec};
 
@@ -33,6 +35,9 @@ use crate::types::{DispatchResult, DispatchSpec};
 pub struct EnergeiaBackend {
     pub(crate) orchestrator: crate::orchestrator::Orchestrator,
     pub(crate) steward_config: crate::steward::StewardConfig,
+    /// External-interaction boundary the steward pass runs its fetch/merge
+    /// calls through -- see [`crate::steward::StewardBackend`].
+    pub(crate) steward_backend: Arc<dyn StewardBackend>,
     pub(crate) metrics: crate::metrics::MetricsService,
 }
 
@@ -43,11 +48,13 @@ impl EnergeiaBackend {
     pub fn new(
         orchestrator: crate::orchestrator::Orchestrator,
         steward_config: crate::steward::StewardConfig,
+        steward_backend: Arc<dyn StewardBackend>,
         metrics: crate::metrics::MetricsService,
     ) -> Self {
         Self {
             orchestrator,
             steward_config,
+            steward_backend,
             metrics,
         }
     }
@@ -80,7 +87,7 @@ impl DispatchBackend for EnergeiaBackend {
             let mut config = self.steward_config.clone();
             config.project = project.to_owned();
             config.once = true;
-            Ok(crate::steward::run_once(&config).await)
+            Ok(crate::steward::run_once(&config, self.steward_backend.as_ref()).await)
         })
     }
 

@@ -1,15 +1,15 @@
 //! Steward tool (epitropos — ἐπίτροπος, steward).
 //!
-//! CI steward tool surface.
-//!
-//! The current tool executor runs one placeholder steward classification pass.
-//! It does not start the polling loop, merge PRs, or queue repair work.
+//! CI steward tool surface. Runs one real steward classification-and-decide
+//! pass against the `GitHub` REST API (authenticated via `GITHUB_TOKEN` in
+//! the process environment). It does not start the polling loop.
 
 use std::future::Future;
 use std::pin::Pin;
 
 use indexmap::IndexMap;
 
+use energeia::steward::GithubStewardBackend;
 use energeia::steward::service::{StewardConfig, run_once};
 use koina::id::ToolName;
 
@@ -27,9 +27,13 @@ use super::shared::{opt_bool, require_str, to_json_text};
 pub(super) fn epitropos_def() -> ToolDef {
     ToolDef {
         name: ToolName::from_static("epitropos"),
-        description: "Run one placeholder CI steward classification pass. The tool \
-            does not poll, merge PRs, or queue repair work until the steward backend \
-            is wired."
+        description: "Run one CI steward classification-and-decide pass against GitHub \
+            (requires GITHUB_TOKEN in the environment). Merge/hold decisions are \
+            conservative -- every PR currently routes through needs-review rather than \
+            auto-merging, since blast-radius/merge-safety classification needs a diff \
+            this tool does not yet fetch. The tool does not poll or queue repair work; \
+            when dry_run is false and a PR would tier into auto-merge, it calls the \
+            GitHub merge API for real."
             .to_owned(),
         extended_description: None,
         input_schema: InputSchema {
@@ -60,8 +64,12 @@ pub(super) fn epitropos_def() -> ToolDef {
                     "dry_run".to_owned(),
                     PropertyDef {
                         property_type: PropertyType::Boolean,
-                        description: "Accepted for compatibility; the placeholder pass has no \
-                            merge or repair side effects"
+                        description: "When true, classify and decide but never call the GitHub \
+                            merge API. When false (the default), a PR that tiers into \
+                            auto-merge is actually merged -- given today's conservative \
+                            blast-radius classification (see the tool description), that tier \
+                            is not currently reachable, but do not rely on that: pass true \
+                            explicitly for a side-effect-free pass"
                             .to_owned(),
                         enum_values: None,
                         default: Some(serde_json::json!(false)),
@@ -97,6 +105,23 @@ impl ToolExecutor for EpitroposExecutor {
             let once = opt_bool(args, "once").unwrap_or(false);
             let dry_run = opt_bool(args, "dry_run").unwrap_or(false);
 
+            // WHY: GITHUB_TOKEN (the `gh` CLI's own convention) rather than
+            // threading credential lookup through ToolServices/SecretVault --
+            // that vault resolves `{{secret:name}}` placeholders in tool
+            // ARGUMENTS at dispatch time, not internal backend construction,
+            // and this tool has no argument carrying the token.
+            let token = match std::env::var("GITHUB_TOKEN") {
+                Ok(t) if !t.is_empty() => t,
+                _ => {
+                    return Ok(ToolResult::error(
+                        "epitropos: GITHUB_TOKEN is not set in the environment; the steward \
+                         backend needs it to authenticate against the GitHub REST API"
+                            .to_owned(),
+                    ));
+                }
+            };
+            let backend = GithubStewardBackend::new(token);
+
             let mut config = StewardConfig::new(project.to_owned());
             config.once = once;
             config.dry_run = dry_run;
@@ -104,22 +129,22 @@ impl ToolExecutor for EpitroposExecutor {
             // WHY: Always use run_once in tool context — a polling loop would block
             // the tool executor indefinitely. Callers that need the polling loop
             // should schedule a recurring trigger instead.
-            let result = run_once(&config).await;
+            let result = run_once(&config, &backend).await;
 
             let output = serde_json::json!({
                 "project": project,
                 "dry_run": dry_run,
-                "mode": "single_placeholder_pass",
+                "mode": "single_pass",
                 "polling_loop_started": false,
-                "merge_side_effects_enabled": false,
-                "repair_queue_side_effects_enabled": false,
                 "classified_count": result.classified.len(),
                 "merged_count": result.merged.len(),
                 "needs_fix_count": result.needs_fix.len(),
                 "blocked_count": result.blocked.len(),
                 "main_ci_status": format!("{:?}", result.main_ci_status),
                 "main_fix_attempted": result.main_fix_attempted,
-                "note": "run_once currently returns placeholder classification data.",
+                "note": "merge/blast-radius classification is conservative until a diff-fetching \
+                    backend capability lands: every PR routes through needs-review rather than \
+                    auto-merging on an unverified blast-radius/merge-safety signal.",
             });
 
             Ok(to_json_text(&output))

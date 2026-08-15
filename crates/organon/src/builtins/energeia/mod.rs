@@ -4,7 +4,9 @@
 //! - dromeus → Orchestrator::dispatch / dry_run
 //! - dokimasia → qa::run_qa mechanical checks on caller-provided diffs
 //! - diorthosis → qa::corrective::generate_corrective
-//! - epitropos → steward::service::run_once placeholder classification
+//! - epitropos → steward::service::run_once against GithubStewardBackend
+//!   (conservative until a diff-fetching backend capability lands -- see
+//!   steward::service's classify_pr doc comment)
 //! - parateresis → EnergeiaStore observation pipeline
 //! - mathesis → EnergeiaStore::query_lessons / add_lesson
 //! - prographe → prompt template rendering, not queue allocation or file writes

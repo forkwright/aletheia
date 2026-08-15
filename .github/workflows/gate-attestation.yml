@@ -325,6 +325,17 @@ jobs:
       - name: Check for unresolved conflict markers
         run: scripts/check-conflict-markers.py
 
+      # WHY: cargo silently ignores a .rs file under a crate's src/ tree
+      # that no `mod` declaration reaches -- it does not compile in, so a
+      # file `git mv`'d without its `mod` line following it (or one that
+      # never had a `mod` line added) rots invisibly with no build failure
+      # to surface it. Pure-python, no compile, so it runs here.
+      - name: Test check-orphaned-modules.py
+        run: scripts/test-check-orphaned-modules.py
+
+      - name: Check for orphaned modules
+        run: scripts/check-orphaned-modules.py
+
       # WHY(PLAN.md §0.2/wave-0.2): the mechanically-derived module DAG is
       # the SSOT the plan's §7 parallelism map must match — pure-python, no
       # compile, so it runs here like the other coverage checks. Drift means

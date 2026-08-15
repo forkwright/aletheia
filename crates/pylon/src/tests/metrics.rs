@@ -1,7 +1,3 @@
-#![expect(
-    clippy::indexing_slicing,
-    reason = "test: vec/JSON indices valid after asserting len or known structure"
-)]
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -28,11 +24,16 @@ async fn app_with_metrics_mode(
 }
 
 #[tokio::test]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "current_thread executor; no deadlock risk — GAUGE_TESTS is never acquired inside the awaited request path"
+)]
 async fn metrics_local_only_allows_loopback() {
     let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::LocalOnly, false).await;
     let mut req = Request::get("/metrics").body(Body::empty()).unwrap();
-    req.extensions_mut().insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))));
+    req.extensions_mut()
+        .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 1234))));
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
@@ -55,6 +56,10 @@ async fn metrics_local_only_denies_remote() {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "current_thread executor; no deadlock risk — GAUGE_TESTS is never acquired inside the awaited request path"
+)]
 async fn metrics_public_allows_unauthenticated_remote() {
     let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::Public, false).await;
@@ -76,13 +81,14 @@ async fn metrics_bearer_requires_authentication() {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "current_thread executor; no deadlock risk — GAUGE_TESTS is never acquired inside the awaited request path"
+)]
 async fn metrics_bearer_accepts_valid_token() {
     let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::Bearer, false).await;
-    let resp = app
-        .oneshot(authed_get("/metrics"))
-        .await
-        .unwrap();
+    let resp = app.oneshot(authed_get("/metrics")).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
@@ -97,6 +103,10 @@ async fn metrics_disabled_returns_not_found() {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "current_thread executor; no deadlock risk — GAUGE_TESTS is never acquired inside the awaited request path"
+)]
 async fn metrics_redacts_sensitive_labels_by_default() {
     let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::Public, false).await;
@@ -121,6 +131,10 @@ async fn metrics_redacts_sensitive_labels_by_default() {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::await_holding_lock,
+    reason = "current_thread executor; no deadlock risk — GAUGE_TESTS is never acquired inside the awaited request path"
+)]
 async fn metrics_detailed_preserves_sensitive_labels() {
     let _guard = crate::metrics::gauge_lock();
     let (app, _dir) = app_with_metrics_mode(taxis::config::MetricsMode::Public, true).await;

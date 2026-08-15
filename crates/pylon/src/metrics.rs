@@ -64,6 +64,18 @@ static SESSIONS_BY_STATUS: LazyLock<Family<SessionStatusLabels, Gauge>> =
 static SESSIONS_TOTAL: LazyLock<Gauge> = LazyLock::new(Gauge::default);
 static UPTIME_SECONDS: LazyLock<Gauge<f64, AtomicU64>> = LazyLock::new(Gauge::default);
 
+// WHY(#4694): server-side counterparts of the memory-health components
+// theatron/proskenion computes client-side (`state/meta/mod.rs`'s
+// `MemoryHealthStore`). Computed in
+// `handlers::knowledge::health_metrics::compute_memory_health_metrics` and
+// recorded here via `update_memory_health_gauges` so the trend is visible
+// to a Prometheus scraper without opening the TUI. See
+// `docs/OBSERVABILITY.md`'s Memory Health SLO section for thresholds.
+static MEMORY_HEALTH_SCORE: LazyLock<Gauge<f64, AtomicU64>> = LazyLock::new(Gauge::default);
+static MEMORY_AVG_CONFIDENCE: LazyLock<Gauge<f64, AtomicU64>> = LazyLock::new(Gauge::default);
+static MEMORY_ORPHAN_RATIO: LazyLock<Gauge<f64, AtomicU64>> = LazyLock::new(Gauge::default);
+static MEMORY_STALENESS_RATIO: LazyLock<Gauge<f64, AtomicU64>> = LazyLock::new(Gauge::default);
+
 #[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
 pub(crate) struct EventBusDropLabels {
     pub(crate) topic: String,
@@ -112,6 +124,26 @@ pub fn register(registry: &mut Registry) {
         "aletheia_event_bus_drops",
         "Total domain events dropped due to no active subscribers",
         EVENT_BUS_DROPS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_memory_health_score",
+        "Composite memory health score (0.0-1.0), server-computed",
+        MEMORY_HEALTH_SCORE.clone(),
+    );
+    registry.register(
+        "aletheia_memory_avg_confidence",
+        "Average confidence across active (non-forgotten, non-superseded) facts",
+        MEMORY_AVG_CONFIDENCE.clone(),
+    );
+    registry.register(
+        "aletheia_memory_orphan_ratio",
+        "Fraction of entities with no relationship and no fact link",
+        MEMORY_ORPHAN_RATIO.clone(),
+    );
+    registry.register(
+        "aletheia_memory_staleness_ratio",
+        "Fraction of active facts unreviewed past the staleness threshold",
+        MEMORY_STALENESS_RATIO.clone(),
     );
 }
 
@@ -178,6 +210,23 @@ pub(crate) fn update_system_gauges(uptime_secs: f64, sessions: &SessionStatusCou
 /// NOTE: session counts fit in i64; saturate on theoretical overflow.
 fn saturating_gauge(n: usize) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
+}
+
+/// Update the memory-health gauges from a server-computed snapshot.
+///
+/// WHY not computed here: the knowledge-store query lives in
+/// `handlers::knowledge::health_metrics` (feature-gated on
+/// `knowledge-store`) so this crate's metrics module stays free of a
+/// direct `mneme`/query-engine dependency; this function only records
+/// the already-computed result.
+#[cfg(feature = "knowledge-store")]
+pub(crate) fn update_memory_health_gauges(
+    metrics: crate::handlers::knowledge::MemoryHealthMetrics,
+) {
+    MEMORY_HEALTH_SCORE.set(metrics.health_score);
+    MEMORY_AVG_CONFIDENCE.set(metrics.avg_confidence);
+    MEMORY_ORPHAN_RATIO.set(metrics.orphan_ratio);
+    MEMORY_STALENESS_RATIO.set(metrics.staleness_ratio);
 }
 
 /// Normalize a URL path by replacing dynamic segments with `{id}`.
@@ -346,5 +395,42 @@ mod tests {
                 "expected `{expected}` in: {buffer}"
             );
         }
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    #[test]
+    #[expect(
+        clippy::expect_used,
+        reason = "test: encoding metrics into a String buffer is infallible"
+    )]
+    fn memory_health_gauges_record_the_computed_snapshot() {
+        let _guard = gauge_lock();
+        let registry = MetricsRegistry::new();
+        init(&registry);
+        update_memory_health_gauges(crate::handlers::knowledge::MemoryHealthMetrics {
+            avg_confidence: 0.8,
+            orphan_ratio: 0.1,
+            staleness_ratio: 0.2,
+            health_score: 0.71,
+        });
+
+        let mut buffer = String::new();
+        registry.encode(&mut buffer).expect("encode");
+        assert!(
+            buffer.contains("aletheia_memory_health_score 0.71"),
+            "got: {buffer}"
+        );
+        assert!(
+            buffer.contains("aletheia_memory_avg_confidence 0.8"),
+            "got: {buffer}"
+        );
+        assert!(
+            buffer.contains("aletheia_memory_orphan_ratio 0.1"),
+            "got: {buffer}"
+        );
+        assert!(
+            buffer.contains("aletheia_memory_staleness_ratio 0.2"),
+            "got: {buffer}"
+        );
     }
 }

@@ -205,4 +205,5 @@ mod approval;
 mod core;
 mod deferred_schemas;
 mod edge_cases;
+mod governance_metrics;
 mod streaming;

@@ -298,8 +298,11 @@ impl SubprocessRunner {
         isolate_process_group(&mut cmd);
 
         if let Some(policy) = self.policy_for_request(ctx, &request) {
+            crate::metrics::record_sandbox_mode(policy.enforcement, policy.egress);
             crate::sandbox::apply_sandbox(&mut cmd, policy)
                 .map_err(SubprocessError::SandboxSetup)?;
+        } else {
+            crate::metrics::record_sandbox_unconfigured();
         }
 
         let child = cmd.spawn().map_err(SubprocessError::Spawn)?;

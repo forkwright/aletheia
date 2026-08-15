@@ -562,6 +562,14 @@ impl ToolExecutor for ExecExecutor {
                 output.truncate(end);
                 output.push_str("\n[output truncated]");
             }
+            // WHY: catches both this combined-output truncation just above AND
+            // subprocess.rs's independent per-stream truncation (stdout/stderr
+            // bounded separately before concatenation) -- either embeds the same
+            // marker text, so checking the final string after both have had a
+            // chance to run sees either source without needing two separate flags.
+            if output.contains("[output truncated]") {
+                crate::metrics::record_output_truncation(input.name.as_str());
+            }
 
             let stderr_diag = if stderr.is_empty() {
                 None

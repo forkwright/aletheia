@@ -104,3 +104,35 @@ groups:
         annotations:
           summary: "Streaming events are being dropped"
           runbook_url: "../docs/OBSERVABILITY.md#streameventsdropped"
+
+      # WHY the thresholds: 0.4 mirrors the client-side "unhealthy" band
+      # theatron/proskenion's health_score_color already uses (score < 0.4
+      # renders var(--status-error)); this is the same score computed
+      # server-side (koina::memory_health::compute_health_score), so the
+      # alert threshold and the UI's own red band agree by construction.
+      - alert: MemoryHealthScoreLow
+        expr: aletheia_memory_health_score < 0.4
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Composite memory health score has been below 0.4 for 30 minutes"
+          runbook_url: "../docs/OBSERVABILITY.md#memoryhealthscorelow"
+
+      - alert: MemoryOrphanRatioHigh
+        expr: aletheia_memory_orphan_ratio > 0.2
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Over 20% of entities have no relationship and no fact link"
+          runbook_url: "../docs/OBSERVABILITY.md#memoryorphanratiohigh"
+
+      - alert: MemoryStalenessRatioHigh
+        expr: aletheia_memory_staleness_ratio > 0.15
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Over 15% of active facts are stale (unreviewed past the staleness threshold)"
+          runbook_url: "../docs/OBSERVABILITY.md#memorystalenessratiohigh"

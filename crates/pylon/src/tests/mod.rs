@@ -25,6 +25,7 @@ mod idempotency;
 mod insights;
 mod knowledge;
 mod message;
+mod metrics;
 mod middleware;
 mod nous;
 mod ops;
