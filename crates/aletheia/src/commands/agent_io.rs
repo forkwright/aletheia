@@ -8,9 +8,17 @@ use std::path::PathBuf;
 
 use clap::Args;
 use mneme::types::parse_session_or_agent_id;
+use organon::types::WorkingCheckpointStore as _;
 use snafu::prelude::*;
 
 use crate::error::Result;
+
+/// Maximum working checkpoints read per session on export.
+///
+/// WHY(#4588): mirrors `FjallWorkingCheckpointStore`'s own `CHECKPOINT_KEEP_N`
+/// retention cap (`nous::working_memory::store`) — the store never holds more
+/// than this per session, so export never asks for more than it could return.
+const WORKING_CHECKPOINT_EXPORT_LIMIT: usize = 20;
 
 fn validate_nous_id(nous_id: &str) -> Result<()> {
     if nous_id.trim().is_empty() {
@@ -640,6 +648,21 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         format!("failed to open session store at {}", sessions_db.display())
     })?;
 
+    // WHY(#4588): working_state now sources from the durable working-checkpoint
+    // store (agent-curated key_info, written by the `update_working_checkpoint`
+    // tool) rather than the blackboard `ws:{nous_id}:{session_id}` convention —
+    // nothing in production runtime ever writes that blackboard key
+    // (`WorkingState::persist_key` is dead outside tests), so it exported empty
+    // in practice. See AGENT_FILE_VERSION v4 note in `graphe::portability`.
+    let checkpoints_db = oikos.working_checkpoints_db();
+    let checkpoint_store = nous::working_memory::FjallWorkingCheckpointStore::open(&checkpoints_db)
+        .with_whatever_context(|_| {
+            format!(
+                "failed to open working checkpoint store at {}",
+                checkpoints_db.display()
+            )
+        })?;
+
     let limit = if args.max_messages == 0 {
         None
     } else {
@@ -713,18 +736,22 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             })
             .collect();
 
-        // WHY(#4163): working_state comes from the live blackboard. The key
-        // convention `ws:{nous_id}:{session_id}` mirrors
-        // `nous::working_state::WorkingState::persist_key`. `distillation_priming`
-        // has a schema slot for forward compatibility but no live producer
-        // today; left `None` until that store materialises.
-        let ws_key = format!("ws:{}:{}", args.nous_id, session.id);
-        let working_state = match store
-            .blackboard_read(&ws_key)
-            .with_whatever_context(|_| format!("failed to read working_state for {}", session.id))?
-        {
-            Some(row) => serde_json::from_str::<serde_json::Value>(&row.value).ok(),
-            None => None,
+        // WHY(#4588): working_state is the session's recent working-checkpoint
+        // history (agent-curated `<key_info>`), read from the durable
+        // FjallWorkingCheckpointStore. `WORKING_CHECKPOINT_EXPORT_LIMIT` mirrors
+        // the store's own retention cap, so export never asks for more entries
+        // than the store could ever hold. `distillation_priming` has a schema
+        // slot for forward compatibility but no live producer today; left
+        // `None` until that store materialises.
+        let checkpoints = checkpoint_store
+            .read_recent(&session.id, WORKING_CHECKPOINT_EXPORT_LIMIT)
+            .with_whatever_context(|_| {
+                format!("failed to read working checkpoints for {}", session.id)
+            })?;
+        let working_state = if checkpoints.is_empty() {
+            None
+        } else {
+            serde_json::to_value(&checkpoints).ok()
         };
 
         sessions.push(ExportedSession {
@@ -1600,6 +1627,15 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         let store = mneme::store::SessionStore::open(&sessions_db).with_whatever_context(|_| {
             format!("failed to open session store at {}", sessions_db.display())
         })?;
+        let checkpoints_db = oikos.working_checkpoints_db();
+        let checkpoint_store =
+            nous::working_memory::FjallWorkingCheckpointStore::open(&checkpoints_db)
+                .with_whatever_context(|_| {
+                    format!(
+                        "failed to open working checkpoint store at {}",
+                        checkpoints_db.display()
+                    )
+                })?;
 
         for session in &agent_file.sessions {
             parse_session_or_agent_id(&session.id).with_whatever_context(|_| {
@@ -1709,30 +1745,10 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                 })
                 .collect();
 
-            let working_state_value = session
-                .working_state
-                .as_ref()
-                .map(|ws| {
-                    serde_json::to_string(ws).with_whatever_context(|_| {
-                        format!("failed to serialize working_state for {}", session.id)
-                    })
-                })
-                .transpose()?;
-            let ws_key = format!("ws:{nous_id}:{}", session.id);
-            let working_state = working_state_value.as_deref().map(|value| {
-                mneme::store::ImportSessionWorkingState {
-                    key: &ws_key,
-                    value,
-                    author: &nous_id,
-                    ttl_secs: 86_400,
-                }
-            });
-
-            // WHY: session row, messages, usage, notes, and working state
-            // land in one fjall transaction — an interruption anywhere in
-            // this call leaves the store exactly as it was before it,
-            // never a session whose row claims data that was not actually
-            // written (#5033).
+            // WHY(#4588): working_state no longer round-trips through the
+            // blackboard (so it is out of scope for #5033's single-transaction
+            // guarantee; the checkpoint store is a separate durable fjall
+            // database by construction, written just below instead).
             store
                 .import_session_bundle(
                     &mneme::store::ImportSessionBundle {
@@ -1740,11 +1756,35 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                         messages: &messages,
                         usage_records: &usage_records,
                         notes: &notes,
-                        working_state,
+                        working_state: None,
                     },
                     import_force,
                 )
                 .with_whatever_context(|_| format!("failed to import session {}", session.id))?;
+
+            // WHY(#4588): checkpoints import durably (no TTL — the store never
+            // expires entries) instead of the old 24h blackboard TTL. Older
+            // exports carry a different (`WorkingState` task/focus/wait) shape
+            // under this same untyped slot; that shape does not deserialize as
+            // `Vec<WorkingCheckpoint>` and is skipped rather than rejecting the
+            // whole import, matching this file's existing older-version
+            // upgrade philosophy (unrecognized content defaults away instead
+            // of erroring).
+            if let Some(checkpoints) = session.working_state.as_ref().and_then(|ws| {
+                serde_json::from_value::<Vec<organon::types::WorkingCheckpoint>>(ws.clone()).ok()
+            }) {
+                for checkpoint in &checkpoints {
+                    checkpoint_store
+                        .write_checkpoint(
+                            &session_record.id,
+                            checkpoint.turn_number,
+                            &checkpoint.content,
+                        )
+                        .with_whatever_context(|_| {
+                            format!("failed to import working checkpoint for {}", session.id)
+                        })?;
+                }
+            }
 
             summary.sessions += 1;
         }
@@ -3241,12 +3281,12 @@ workspace = "nous/{agent_id}"
         );
     }
 
-    /// WHY(#4163): regression — `export_agent` reads the per-session working
-    /// state from the blackboard at `ws:{nous_id}:{session_id}` and serializes
-    /// it into the `workingState` slot; a hardcoded `None` here silently drops
-    /// task stack / focus state on round-trip.
+    /// WHY(#4588): regression — `export_agent` reads the per-session working
+    /// state from the durable `FjallWorkingCheckpointStore` and serializes it
+    /// into the `workingState` slot; a hardcoded `None` here silently drops
+    /// agent-curated `<key_info>` checkpoints on round-trip.
     #[test]
-    fn export_preserves_working_state_4163_b() {
+    fn export_preserves_working_state_4588() {
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -3256,16 +3296,16 @@ workspace = "nous/{agent_id}"
         let session = source_store
             .create_session("ses-ws", "alice", "main", None, Some("mock-model"))
             .unwrap();
-        let ws_value = serde_json::json!({
-            "task_stack": [{"description": "ship #4163", "started_at": "2026-05-29T00:00:00Z"}],
-            "focus": {"file": "agent_io.rs"},
-            "updated_at": "2026-05-29T00:00:00Z"
-        });
-        let ws_key = format!("ws:alice:{}", session.id);
-        source_store
-            .blackboard_write(&ws_key, &ws_value.to_string(), "alice", 86_400)
-            .unwrap();
         drop(source_store);
+
+        let checkpoint_store = nous::working_memory::FjallWorkingCheckpointStore::open(
+            &source_oikos.working_checkpoints_db(),
+        )
+        .unwrap();
+        checkpoint_store
+            .write_checkpoint(&session.id, 1, "shipped #4588 wiring")
+            .unwrap();
+        drop(checkpoint_store);
 
         let export_path = source.path().join("alice.agent.json");
         export_agent(
@@ -3288,18 +3328,18 @@ workspace = "nous/{agent_id}"
         let ws = exported.sessions[0].working_state.as_ref();
         assert!(
             ws.is_some(),
-            "working_state should be populated from blackboard"
+            "working_state should be populated from the checkpoint store"
         );
-        let ws = ws.unwrap();
+        let checkpoints = ws
+            .unwrap()
+            .as_array()
+            .expect("working_state is a checkpoint array");
+        assert_eq!(checkpoints.len(), 1);
         assert_eq!(
-            ws.get("focus").and_then(|f| f.get("file")),
-            Some(&serde_json::Value::String("agent_io.rs".to_owned()))
-        );
-        assert_eq!(
-            ws.get("task_stack")
-                .and_then(serde_json::Value::as_array)
-                .map(Vec::len),
-            Some(1)
+            checkpoints[0].get("content"),
+            Some(&serde_json::Value::String(
+                "shipped #4588 wiring".to_owned()
+            ))
         );
     }
 
@@ -4149,17 +4189,17 @@ workspace = "nous/{agent_id}"
             .update_session_status(&archived_session.id, SessionStatus::Archived)
             .unwrap();
 
-        // Working state for active session.
-        let ws_value = serde_json::json!({
-            "task_stack": [{"description": "ship #4163", "started_at": "2026-05-29T00:00:00Z"}],
-            "focus": {"file": "agent_io.rs"}
-        });
-        let ws_key = format!("ws:alice:{}", active_session.id);
-        source_store
-            .blackboard_write(&ws_key, &ws_value.to_string(), "alice", 86_400)
-            .unwrap();
-
         drop(source_store);
+
+        // Working checkpoint for active session.
+        let source_checkpoint_store = nous::working_memory::FjallWorkingCheckpointStore::open(
+            &source_oikos.working_checkpoints_db(),
+        )
+        .unwrap();
+        source_checkpoint_store
+            .write_checkpoint(&active_session.id, 1, "ship #4163")
+            .unwrap();
+        drop(source_checkpoint_store);
 
         let export1 = source.path().join("export1.agent.json");
         export_agent(
@@ -4215,12 +4255,41 @@ workspace = "nous/{agent_id}"
         let mut v2: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&export2).unwrap()).unwrap();
 
+        // WHY(#4588): a checkpoint's `created_at` is stamped fresh by the
+        // store at write time (`FjallWorkingCheckpointStore::write_checkpoint`
+        // has no "preserve the original timestamp" input), so import
+        // necessarily re-stamps it — strip before the byte-stability
+        // comparison, same treatment as the export's own `exportedAt`.
+        fn strip_checkpoint_timestamps(v: &mut serde_json::Value) {
+            let Some(sessions) = v
+                .get_mut("sessions")
+                .and_then(serde_json::Value::as_array_mut)
+            else {
+                return;
+            };
+            for session in sessions {
+                let Some(checkpoints) = session
+                    .get_mut("workingState")
+                    .and_then(serde_json::Value::as_array_mut)
+                else {
+                    continue;
+                };
+                for checkpoint in checkpoints {
+                    if let Some(obj) = checkpoint.as_object_mut() {
+                        obj.remove("created_at");
+                    }
+                }
+            }
+        }
+
         let obj1 = v1.as_object_mut().unwrap();
         obj1.remove("exportedAt");
         obj1.remove("generator");
         let obj2 = v2.as_object_mut().unwrap();
         obj2.remove("exportedAt");
         obj2.remove("generator");
+        strip_checkpoint_timestamps(&mut v1);
+        strip_checkpoint_timestamps(&mut v2);
 
         assert_eq!(v1, v2, "second export must be identical to first");
     }

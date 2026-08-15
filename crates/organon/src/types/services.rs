@@ -530,7 +530,7 @@ pub trait WorkingCheckpointStore: Send + Sync {
 }
 
 /// A single agent-curated working checkpoint.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkingCheckpoint {
     /// Session identifier.
     pub session_id: String,

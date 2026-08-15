@@ -144,6 +144,31 @@ fn overwrite_checkpoint_same_turn_updates_content() {
 }
 
 #[test]
+fn checkpoint_survives_store_reopen_at_same_path() {
+    // WHY(#4588): proves the durability half of the acceptance criteria —
+    // `open_in_memory` above is ephemeral by design and cannot catch a
+    // regression where a checkpoint only survives within one process
+    // lifetime. This opens against a real on-disk path, drops the store
+    // (simulating process exit), then reopens fresh at the same path
+    // (simulating restart) and reads back.
+    let dir = tempfile::tempdir().expect("tempdir");
+    {
+        let store = FjallWorkingCheckpointStore::open(dir.path()).expect("open store");
+        store
+            .write_checkpoint("session-1", 1, "before restart")
+            .expect("write checkpoint");
+    } // store dropped here — nothing kept alive across the "restart"
+
+    let reopened = FjallWorkingCheckpointStore::open(dir.path()).expect("reopen store");
+    let latest = reopened
+        .read_latest("session-1")
+        .expect("read latest")
+        .expect("checkpoint survived reopen");
+    assert_eq!(latest.turn_number, 1);
+    assert_eq!(latest.content, "before restart");
+}
+
+#[test]
 fn write_checkpoint_prunes_old_entries() {
     let store = FjallWorkingCheckpointStore::open_in_memory().expect("open store");
     for i in 1..=25 {
