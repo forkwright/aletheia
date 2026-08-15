@@ -3,8 +3,22 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
-use crate::api::types::HealthResponse;
+use crate::api::types::{CostMetricsResponse, HealthResponse, TokenMetricsResponse};
 use crate::id::NousId;
+
+/// Canonical backend-wide token/cost telemetry, fetched independently of the
+/// process-local turn accumulator below (#4987). `None` fields mean that
+/// source failed on the last fetch; the view renders "unavailable" rather
+/// than a silent zero for whichever half is missing.
+#[derive(Debug, Clone)]
+pub(crate) struct BackendMetricsSnapshot {
+    /// Canonical token telemetry, or the error from the last fetch attempt.
+    pub(crate) tokens: Result<TokenMetricsResponse, String>,
+    /// Canonical cost telemetry, or the error from the last fetch attempt.
+    pub(crate) costs: Result<CostMetricsResponse, String>,
+    /// When this snapshot was fetched, for staleness display.
+    pub(crate) fetched_at: Instant,
+}
 
 /// Maximum number of recent turns tracked for the sparkline.
 const SPARKLINE_CAPACITY: usize = 30;
@@ -57,7 +71,14 @@ pub struct MetricsState {
     pub(crate) scroll_offset: usize,
     /// Selected agent row index in the per-agent table.
     pub(crate) selected_agent: usize,
+    /// Canonical backend-wide telemetry (#4987). `None` until the first
+    /// fetch completes (view opened or periodic refresh).
+    pub(crate) backend: Option<BackendMetricsSnapshot>,
 }
+
+/// How stale a backend snapshot may be before the view marks it stale
+/// rather than fresh.
+const BACKEND_STALE_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
 
 impl MetricsState {
     pub(crate) fn new() -> Self {
@@ -74,7 +95,15 @@ impl MetricsState {
             health_error: None,
             scroll_offset: 0,
             selected_agent: 0,
+            backend: None,
         }
+    }
+
+    /// Whether the last backend snapshot is old enough to render as stale.
+    pub(crate) fn backend_is_stale(&self) -> bool {
+        self.backend
+            .as_ref()
+            .is_some_and(|b| b.fetched_at.elapsed() > BACKEND_STALE_AFTER)
     }
 
     /// Record token usage from a completed turn and update the sparkline.

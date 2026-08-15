@@ -285,7 +285,9 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
             session_id,
             messages,
         } => api::handle_history_loaded(app, session_id, messages),
-        Msg::CostLoaded { daily_total_cents } => api::handle_cost_loaded(app, daily_total_cents),
+        Msg::BackendMetricsLoaded { tokens, costs } => {
+            metrics::handle_backend_metrics_loaded(app, tokens, costs);
+        }
         // NOTE: auth/API errors handled upstream, no local state update needed
         Msg::AuthResult(_) | Msg::ApiError(_) => {}
         Msg::NewSession => api::handle_new_session(app),

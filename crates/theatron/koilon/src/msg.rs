@@ -283,9 +283,12 @@ pub enum Msg {
         session_id: SessionId,
         messages: Vec<HistoryMessage>,
     },
-    #[expect(dead_code, reason = "planned TUI feature")]
-    CostLoaded {
-        daily_total_cents: u32,
+    /// Canonical backend-wide token/cost telemetry (#4987), fetched
+    /// independently — a failed fetch does not drop the other's data, so the
+    /// metrics view can render whichever source is actually available.
+    BackendMetricsLoaded {
+        tokens: Result<TokenMetricsResponse, String>,
+        costs: Result<CostMetricsResponse, String>,
     },
     #[expect(dead_code, reason = "planned TUI feature")]
     AuthResult(AuthOutcome),

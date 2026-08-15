@@ -59,11 +59,6 @@ pub(crate) fn handle_history_loaded(
     app.scroll_to_bottom();
 }
 
-#[tracing::instrument(skip_all, fields(daily_total_cents))]
-pub(crate) fn handle_cost_loaded(app: &mut App, daily_total_cents: u32) {
-    app.dashboard.daily_cost_cents = daily_total_cents;
-}
-
 #[tracing::instrument(skip_all)]
 pub(crate) fn handle_new_session(app: &mut App) {
     if app.dashboard.new_session_status.is_pending() {
@@ -265,6 +260,7 @@ pub(crate) fn handle_tick(app: &mut App) {
     super::sse::check_sse_reconnect_timeout(app);
     super::sse::check_distill_auto_dismiss(app);
     check_stream_stall(app);
+    super::metrics::maybe_refresh_backend_metrics(app);
 }
 
 fn check_stream_stall(app: &mut App) {
@@ -679,14 +675,6 @@ mod tests {
     }
 
     #[test]
-    fn handle_cost_loaded_updates() {
-        use crate::app::test_helpers::*;
-        let mut app = test_app();
-        handle_cost_loaded(&mut app, 1234);
-        assert_eq!(app.dashboard.daily_cost_cents, 1234);
-    }
-
-    #[test]
     fn handle_show_error_sets_toast() {
         use crate::app::test_helpers::*;
         let mut app = test_app();
@@ -772,6 +760,8 @@ mod tests {
                 created_at: None,
                 tool_call_id: None,
                 tool_name: None,
+                token_estimate: 0,
+                is_distilled: false,
             },
             HistoryMessage {
                 id: None,
@@ -781,6 +771,8 @@ mod tests {
                 created_at: None,
                 tool_call_id: None,
                 tool_name: None,
+                token_estimate: 0,
+                is_distilled: false,
             },
             HistoryMessage {
                 id: None,
@@ -790,6 +782,8 @@ mod tests {
                 created_at: None,
                 tool_call_id: None,
                 tool_name: None,
+                token_estimate: 0,
+                is_distilled: false,
             },
         ];
         handle_history_loaded(&mut app, SessionId::from("s1"), messages);
@@ -827,6 +821,8 @@ mod tests {
             created_at: None,
             tool_call_id: None,
             tool_name: None,
+            token_estimate: 0,
+            is_distilled: false,
         }];
         handle_history_loaded(&mut app, session_id, messages);
         assert_eq!(
