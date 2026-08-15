@@ -1502,16 +1502,22 @@ pub(crate) async fn run_pipeline(
             for item in &recall_result.excluded_context {
                 run_context_record.add_excluded_context(item.clone());
             }
-            if let Err(e) = crate::turn_record::persist_run_context(
-                session_store,
-                &input.session.nous_id,
-                &run_context_record,
-            ) {
-                tracing::warn!(
-                    nous_id = %config.id,
-                    error = %e,
-                    "failed to persist run-context provenance record"
-                );
+            if let Some(store_mutex) = session_store {
+                let persist_result = with_session_store(store_mutex, |store| {
+                    crate::turn_record::persist_run_context(
+                        store,
+                        &input.session.nous_id,
+                        &run_context_record,
+                    )
+                })
+                .await;
+                if let Err(e) = persist_result {
+                    tracing::warn!(
+                        nous_id = %config.id,
+                        error = %e,
+                        "failed to persist run-context provenance record"
+                    );
+                }
             }
         }
 
@@ -1966,7 +1972,7 @@ mod stages;
 use stages::{
     FinalizeOutcome, run_context_stage, run_execute_stage, run_finalize_stage,
     run_full_compact_stage, run_guard_stage, run_history_stage, run_microcompact_stage,
-    run_recall_stage, run_reflection_stage,
+    run_recall_stage, run_reflection_stage, with_session_store,
 };
 
 #[cfg(test)]

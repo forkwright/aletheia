@@ -176,7 +176,7 @@ fn cached_distillation_for_session(
 /// onto a blocking-aware thread with `block_in_place` + `Handle::block_on`,
 /// matching the pattern in `crate::adapters`. The current-thread runtime has no
 /// spare worker, so we acquire the lock async and run the operation inline.
-async fn with_session_store<F, T>(store: &Mutex<SessionStore>, f: F) -> T
+pub(super) async fn with_session_store<F, T>(store: &Mutex<SessionStore>, f: F) -> T
 where
     F: FnOnce(&SessionStore) -> T,
 {

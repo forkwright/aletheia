@@ -46,8 +46,10 @@ pub fn load_prior_report(path: impl AsRef<Path>) -> Result<Option<BenchmarkRepor
 /// Returns an error if the report cannot be serialized or the file cannot
 /// be written.
 pub fn save_report(path: impl AsRef<Path>, report: &BenchmarkReport) -> Result<()> {
-    let json = serde_json::to_vec_pretty(report).context(error::JsonSnafu)?;
-    std::fs::write(path.as_ref(), json).context(error::IoSnafu)
+    // WHY: bare std::fs::write is disallowed in this crate (clippy.toml) --
+    // reuse persistence.rs's atomic (temp-file + rename) writer instead of
+    // hand-rolling a second one.
+    crate::persistence::write_json_atomic(path.as_ref(), report)
 }
 
 /// Attach self-history comparisons to `report` against the prior run

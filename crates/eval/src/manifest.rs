@@ -154,7 +154,7 @@ pub fn scenarios_from_manifest(manifest: ScenarioManifest) -> Vec<Box<dyn Scenar
     manifest
         .scenarios
         .into_iter()
-        .map(|def| Box::new(ManifestScenario::from_def(def)) as Box<dyn Scenario>)
+        .map(|def| -> Box<dyn Scenario> { Box::new(ManifestScenario::from_def(def)) })
         .collect()
 }
 
@@ -193,7 +193,10 @@ mod tests {
         let manifest = parse_manifest(HEALTH_MANIFEST_JSON).expect("valid manifest JSON");
         assert_eq!(manifest.schema_version, MANIFEST_SCHEMA_VERSION);
         assert_eq!(manifest.scenarios.len(), 1);
-        let def = &manifest.scenarios[0];
+        let def = manifest
+            .scenarios
+            .first()
+            .expect("HEALTH_MANIFEST_JSON declares exactly one scenario");
         assert_eq!(def.id, "health-ok-manifest");
         assert_eq!(def.path, "/api/health");
         assert_eq!(def.expected_contains.as_deref(), Some("healthy"));
@@ -205,7 +208,10 @@ mod tests {
         let manifest = parse_manifest(HEALTH_MANIFEST_JSON).expect("valid manifest JSON");
         let scenarios = scenarios_from_manifest(manifest);
         assert_eq!(scenarios.len(), 1);
-        let meta = scenarios[0].meta();
+        let meta = scenarios
+            .first()
+            .expect("HEALTH_MANIFEST_JSON declares exactly one scenario")
+            .meta();
         assert_eq!(meta.id, "health-ok-manifest");
         assert_eq!(meta.category, "health");
         assert_eq!(meta.expected_contains, Some("healthy"));
@@ -227,7 +233,11 @@ mod tests {
         let scenarios = scenarios_from_manifest(manifest);
         let client = EvalClient::new(server.uri(), None);
 
-        let outcome = scenarios[0].run(&client).await;
+        let outcome = scenarios
+            .first()
+            .expect("HEALTH_MANIFEST_JSON declares exactly one scenario")
+            .run(&client)
+            .await;
         assert!(
             outcome.result.is_ok(),
             "manifest scenario should pass when the response contains the expected substring: {:?}",
@@ -249,7 +259,11 @@ mod tests {
         let scenarios = scenarios_from_manifest(manifest);
         let client = EvalClient::new(server.uri(), None);
 
-        let outcome = scenarios[0].run(&client).await;
+        let outcome = scenarios
+            .first()
+            .expect("HEALTH_MANIFEST_JSON declares exactly one scenario")
+            .run(&client)
+            .await;
         assert!(
             outcome.result.is_err(),
             "manifest scenario must fail a response that lacks the expected substring"

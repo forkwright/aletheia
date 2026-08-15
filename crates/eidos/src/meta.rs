@@ -928,7 +928,10 @@ mod tests {
         let reconstituted =
             FactProvenanceParts::try_from(&provenance).expect("all required fields present");
 
-        assert_eq!(
+        assert!(
+            (reconstituted.provenance.confidence - original.provenance.confidence).abs()
+                < f64::EPSILON,
+            "confidence must round-trip: {} vs {}",
             reconstituted.provenance.confidence,
             original.provenance.confidence
         );
