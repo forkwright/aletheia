@@ -27,6 +27,7 @@ fn turn_usage_total() {
         cache_read_tokens: 800,
         cache_write_tokens: 200,
         llm_calls: 3,
+        ..TurnUsage::default()
     };
     assert_eq!(usage.total_tokens(), 1500, "total should be input + output");
 }
@@ -39,6 +40,7 @@ fn turn_usage_budgeted_tokens_includes_cache() {
         cache_read_tokens: 800,
         cache_write_tokens: 200,
         llm_calls: 3,
+        ..TurnUsage::default()
     };
     assert_eq!(
         usage.budgeted_tokens(),
@@ -170,6 +172,7 @@ fn turn_usage_serde_roundtrip() {
         cache_read_tokens: 80,
         cache_write_tokens: 20,
         llm_calls: 2,
+        ..TurnUsage::default()
     };
     let json = serde_json::to_string(&usage).expect("serialize usage");
     let back: TurnUsage = serde_json::from_str(&json).expect("deserialize usage");
@@ -572,6 +575,7 @@ fn turn_usage_cache_tokens_not_counted_in_total() {
         cache_read_tokens: 80,
         cache_write_tokens: 20,
         llm_calls: 1,
+        ..TurnUsage::default()
     };
     assert_eq!(
         usage.total_tokens(),

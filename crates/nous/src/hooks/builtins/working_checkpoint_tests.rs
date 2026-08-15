@@ -22,6 +22,7 @@ fn test_turn_result() -> TurnResult {
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             llm_calls: 1,
+            ..TurnUsage::default()
         },
         signals: Vec::new(),
         stop_reason: "end_turn".to_owned(),

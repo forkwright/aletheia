@@ -822,6 +822,7 @@ fn make_turn_result(
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             llm_calls: 1,
+            ..crate::pipeline::TurnUsage::default()
         },
         signals: vec![],
         stop_reason: "end_turn".to_owned(),
