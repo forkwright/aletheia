@@ -35,6 +35,8 @@ pub(super) struct StreamingTurnRequest {
     pub session_key: String,
     pub session_id: Option<String>,
     pub turn_id: Option<Ulid>,
+    /// Canonical HTTP request ID from Pylon's gateway middleware (#4853).
+    pub request_id: Option<String>,
     pub content: String,
     pub stream_tx: mpsc::Sender<TurnStreamEvent>,
     /// Operator approval gate for reversibility-class tool calls (#3958).
@@ -199,6 +201,7 @@ impl NousActor {
             session_key,
             session_id,
             turn_id,
+            request_id,
             content,
             stream_tx,
             approval_gate,
@@ -218,6 +221,7 @@ impl NousActor {
                 &session_key,
                 session_id.as_deref(),
                 turn_id,
+                request_id,
                 &content,
                 &stream_tx,
                 approval_gate,
@@ -258,6 +262,7 @@ impl NousActor {
                 session_key,
                 session_id,
                 None,
+                None,
                 content,
                 None,
                 None,
@@ -273,11 +278,16 @@ impl NousActor {
         clippy::too_many_arguments,
         reason = "streaming turn entrypoint plumbs session, content, stream, gate, span, and cancel; splitting hides the call shape"
     )]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "streaming turn setup plumbs session, turn/request ids, content, stream, gate, span, and cancel; splitting hides the call shape"
+    )]
     async fn execute_streaming_turn_with_panic_boundary(
         &mut self,
         session_key: &str,
         session_id: Option<&str>,
         turn_id: Option<Ulid>,
+        request_id: Option<String>,
         content: &str,
         stream_tx: &mpsc::Sender<TurnStreamEvent>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -289,6 +299,7 @@ impl NousActor {
                 session_key,
                 session_id,
                 turn_id,
+                request_id,
                 content,
                 Some(stream_tx.clone()),
                 approval_gate,
@@ -324,6 +335,7 @@ impl NousActor {
         session_key: &str,
         db_session_id: Option<&str>,
         turn_id: Option<Ulid>,
+        request_id: Option<String>,
         content: &str,
         stream_tx: Option<mpsc::Sender<TurnStreamEvent>>,
         approval_gate: Option<crate::approval::ApprovalGate>,
@@ -342,6 +354,10 @@ impl NousActor {
             });
 
         session.next_turn_with_id(turn_id);
+        // WHY(#4853): canonical HTTP request ID from Pylon's gateway
+        // middleware, threaded through so the execute stage's prompt-audit
+        // records key off the real gateway request.
+        session.request_id = request_id;
 
         // WHY: surprise is episodic — advance the running session prior with
         // this turn's content here, on the authoritative SessionState, so the
@@ -583,6 +599,26 @@ impl NousActor {
                 // as unobserved for this turn.
                 pipeline_task.abort();
                 let _ = pipeline_task.await;
+                // WHY(#4854): a cancelled turn otherwise leaves zero durable
+                // lifecycle record -- the turn simply vanishes from run
+                // inspection. Persist a Cancelled record before reverting the
+                // in-memory counter below, using the turn identity the
+                // aborted pipeline was running under.
+                if let Some(session) = self.sessions.get(session_key)
+                    && let Some(store) = self.stores.session_store.as_ref()
+                {
+                    let mut record = crate::turn_record::TurnAttemptRecord::new(
+                        &session.turn_id,
+                        &session.id,
+                        &session.nous_id,
+                        crate::turn_record::TurnAttemptStatus::Cancelled,
+                    );
+                    record.error_message = Some("request cancelled".to_owned());
+                    let guard = store.lock().await;
+                    if let Err(e) = crate::turn_record::persist_turn_attempt(&guard, &self.id, &record) {
+                        warn!(error = %e, "failed to persist Cancelled turn-attempt record");
+                    }
+                }
                 // WHY: the turn counter was advanced before the pipeline task
                 // was spawned. Since the task never completed, revert the
                 // in-memory increment so the next successful turn does not

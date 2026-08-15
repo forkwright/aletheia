@@ -35,6 +35,11 @@ pub(crate) enum NousMessage {
         session_id: Option<String>,
         /// Canonical turn ULID supplied by the gateway for idempotent streams.
         turn_id: Option<koina::ulid::Ulid>,
+        /// Canonical HTTP request ID from Pylon's `inject_request_id`
+        /// middleware (#4853), threaded onto `SessionState::request_id` so
+        /// prompt-audit records key off the real gateway request rather than
+        /// a locally-minted, disconnected ID.
+        request_id: Option<String>,
         content: String,
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         /// Operator approval gate for reversibility-class tool calls (#3958, ADR-005).

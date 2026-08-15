@@ -36,6 +36,10 @@ pub struct SessionState {
     /// Generated fresh on every [`next_turn`](Self::next_turn) call.
     /// Used by the finalize stage as a globally unique dedup key.
     pub turn_id: Ulid,
+    /// Canonical HTTP request ID from Pylon's gateway middleware, when this
+    /// turn originated from an HTTP request (#4853). `None` for turns with
+    /// no originating HTTP request (internal/cross-nous/test turns).
+    pub request_id: Option<String>,
     pub token_estimate: i64,
     pub cumulative_tokens: u64,
     // NOTE(#6527): the distillation count deliberately does not live here. The
@@ -94,6 +98,7 @@ impl SessionState {
             model: config.generation.model.clone(),
             turn: 0,
             turn_id: Ulid::new(),
+            request_id: None,
             token_estimate: 0,
             thinking_enabled: config.generation.thinking_enabled,
             thinking_budget: config.generation.thinking_budget,
@@ -274,6 +279,10 @@ mod tests {
         assert_eq!(state.nous_id, "syn");
         assert_eq!(state.turn, 0);
         assert_eq!(state.token_estimate, 0);
+        assert_eq!(
+            state.request_id, None,
+            "no HTTP request originated this session yet"
+        );
     }
 
     #[test]

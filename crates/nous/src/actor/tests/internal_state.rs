@@ -573,6 +573,7 @@ async fn cancelled_turn_reverts_turn_counter() {
             session_key,
             None,
             None,
+            None,
             "hello",
             None,
             None,
@@ -594,6 +595,50 @@ async fn cancelled_turn_reverts_turn_counter() {
     assert_eq!(
         session.turn, 0,
         "turn counter should not advance when turn is cancelled"
+    );
+}
+
+#[tokio::test]
+async fn spawn_pipeline_task_threads_request_id_onto_session() {
+    // WHY(#4853): spawn_pipeline_task must set SessionState::request_id
+    // before the pipeline task runs, so the execute stage's prompt-audit
+    // records key off the real gateway request rather than a locally-minted
+    // ID. Verified via the cancellation path since it still creates the
+    // session entry and sets request_id before the pipeline observes the
+    // cancellation.
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    Arc::get_mut(&mut actor.services.providers)
+        .expect("exclusive Arc reference expected in test")
+        .register(Box::new(HangingProvider));
+
+    let session_key = "request-id-test";
+    let turn_cancel = CancellationToken::new();
+    turn_cancel.cancel();
+
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        actor.spawn_pipeline_task(
+            session_key,
+            None,
+            None,
+            Some("req-canonical-123".to_owned()),
+            "hello",
+            None,
+            None,
+            tracing::Span::current(),
+            turn_cancel,
+        ),
+    )
+    .await;
+
+    let session = actor
+        .sessions
+        .get(session_key)
+        .expect("session should exist after spawn_pipeline_task");
+    assert_eq!(
+        session.request_id.as_deref(),
+        Some("req-canonical-123"),
+        "request_id must be threaded onto SessionState"
     );
 }
 #[test]
