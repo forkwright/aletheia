@@ -34,8 +34,9 @@ impl InstanceBackup {
     /// - `manifest.json` describing every covered store.
     /// - `stores/knowledge.fjall/` (required).
     /// - `stores/sessions.db/` (required).
-    /// - `stores/auth.fjall/`, `stores/daemon-task-state/`, and
-    ///   `stores/cron-locks.fjall/` if present.
+    /// - `stores/auth.fjall/`, `stores/daemon-task-state/`,
+    ///   `stores/cron-locks.fjall/`, and `stores/working_checkpoints.fjall/`
+    ///   if present.
     /// - `config/` copy of `instance/config/`.
     /// - `workspace/nous/`, `workspace/shared/`, `workspace/theke/` if present.
     /// - `workspace/configured/<agent>/` for configured agent workspaces inside the instance root.
@@ -291,6 +292,16 @@ impl InstanceBackup {
                 "cron-locks.fjall",
                 "data/cron-locks.fjall",
                 "stores/cron-locks.fjall",
+            ),
+            // WHY(#4588): working_checkpoints.fjall is opened unconditionally by
+            // RuntimeBuilder (crates/aletheia/src/runtime/mod.rs), same as
+            // auth.fjall above -- agent-curated <key_info> continuity has no
+            // other durable copy, so an instance backup that omits it silently
+            // drops that state on restore.
+            (
+                "working_checkpoints.fjall",
+                "data/working_checkpoints.fjall",
+                "stores/working_checkpoints.fjall",
             ),
         ] {
             let src = self.config.instance_root.join(source_rel);

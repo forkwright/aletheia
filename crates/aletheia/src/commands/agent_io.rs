@@ -4135,6 +4135,33 @@ workspace = "nous/{agent_id}"
     )]
     #[test]
     fn roundtrip_is_byte_stable_4163() {
+        // WHY(#4588): a checkpoint's `created_at` is stamped fresh by the
+        // store at write time (`FjallWorkingCheckpointStore::write_checkpoint`
+        // has no "preserve the original timestamp" input), so import
+        // necessarily re-stamps it — strip before the byte-stability
+        // comparison, same treatment as the export's own `exportedAt`.
+        fn strip_checkpoint_timestamps(v: &mut serde_json::Value) {
+            let Some(sessions) = v
+                .get_mut("sessions")
+                .and_then(serde_json::Value::as_array_mut)
+            else {
+                return;
+            };
+            for session in sessions {
+                let Some(checkpoints) = session
+                    .get_mut("workingState")
+                    .and_then(serde_json::Value::as_array_mut)
+                else {
+                    continue;
+                };
+                for checkpoint in checkpoints {
+                    if let Some(obj) = checkpoint.as_object_mut() {
+                        obj.remove("created_at");
+                    }
+                }
+            }
+        }
+
         let source = tempfile::tempdir().unwrap();
         let source_oikos = Oikos::from_root(source.path());
         write_agent_config(source.path(), "alice", "Alice");
@@ -4254,33 +4281,6 @@ workspace = "nous/{agent_id}"
             serde_json::from_str(&std::fs::read_to_string(&export1).unwrap()).unwrap();
         let mut v2: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&export2).unwrap()).unwrap();
-
-        // WHY(#4588): a checkpoint's `created_at` is stamped fresh by the
-        // store at write time (`FjallWorkingCheckpointStore::write_checkpoint`
-        // has no "preserve the original timestamp" input), so import
-        // necessarily re-stamps it — strip before the byte-stability
-        // comparison, same treatment as the export's own `exportedAt`.
-        fn strip_checkpoint_timestamps(v: &mut serde_json::Value) {
-            let Some(sessions) = v
-                .get_mut("sessions")
-                .and_then(serde_json::Value::as_array_mut)
-            else {
-                return;
-            };
-            for session in sessions {
-                let Some(checkpoints) = session
-                    .get_mut("workingState")
-                    .and_then(serde_json::Value::as_array_mut)
-                else {
-                    continue;
-                };
-                for checkpoint in checkpoints {
-                    if let Some(obj) = checkpoint.as_object_mut() {
-                        obj.remove("created_at");
-                    }
-                }
-            }
-        }
 
         let obj1 = v1.as_object_mut().unwrap();
         obj1.remove("exportedAt");

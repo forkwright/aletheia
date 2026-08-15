@@ -7,6 +7,7 @@ What Aletheia stores, where it lives, and how to control it.
 | Data | Location | Format | Description |
 |------|----------|--------|-------------|
 | Sessions & messages | `instance/data/sessions.db` | fjall LSM-tree | Conversation history, usage stats, agent notes (path name is historical) |
+| Working checkpoints | `instance/data/working_checkpoints.fjall` | fjall LSM-tree | Durable agent-curated `<key_info>` continuity, written by the `update_working_checkpoint` tool and reinjected each turn; survives compaction and process restart |
 | Knowledge graph | `instance/data/engine/` | Embedded Datalog engine | Entities, relationships, facts, embeddings |
 | Workspace files | `instance/nous/{id}/` | Mixed | Per-agent identity, memory, tools, hooks |
 | Shared resources | `instance/shared/` | Mixed | Cross-agent tools, skills, coordination |
@@ -28,6 +29,7 @@ instance/
 ├── config/credentials/      # API keys
 ├── data/
 │   ├── sessions.db          # Session store (fjall LSM-tree; .db suffix is historical)
+│   ├── working_checkpoints.fjall  # Durable agent-curated <key_info> checkpoints
 │   ├── engine/              # Knowledge graph (embedded Datalog engine)
 │   ├── backups/instance/    # Whole-instance backup sets
 │   └── archive/sessions/    # Archived session JSON files
@@ -103,8 +105,9 @@ aletheia backup
 Creates a local whole-instance backup set at `instance/data/backups/instance/{timestamp}/`.
 Each set includes `manifest.json`, all knowledge cohorts under
 `stores/knowledge.fjall`, `stores/sessions.db`, and present runtime stores such
-as `stores/auth.fjall`, `stores/daemon-task-state`, and
-`stores/cron-locks.fjall`. It also includes `config/` and present workspace
+as `stores/auth.fjall`, `stores/daemon-task-state`,
+`stores/cron-locks.fjall`, and `stores/working_checkpoints.fjall` (durable
+agent-curated `<key_info>` continuity). It also includes `config/` and present workspace
 directories (`workspace/nous`, `workspace/shared`, `workspace/theke`). Optional
 local data such as archives and prompt/prosoche audit logs is copied when
 present. The command does not upload data to cloud storage.

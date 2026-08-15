@@ -102,6 +102,17 @@ aletheia health
 > Backup sets remain local under `instance/data/backups/instance/`. Use your
 > own restic/ZFS/NAS process if you need off-machine copies.
 
+### Working-checkpoint continuity loss
+
+`working_checkpoints.fjall` (durable agent-curated `<key_info>` continuity,
+see [DATA.md](DATA.md)) is included in the whole-instance backup set under
+`stores/working_checkpoints.fjall` and restores with the full manifest above.
+To restore only that store:
+
+```bash
+aletheia backup restore "$BACKUP" --include working_checkpoints.fjall
+```
+
 ---
 
 ## Scenario 3: Machine loss → reinstall + restore from NAS backup (restic)

@@ -233,6 +233,7 @@ fn create_backup_copies_runtime_stores_and_knowledge_cohorts() {
             .join("alice"),
     );
     make_fjall_store(&instance_root.join("data").join("cron-locks.fjall"));
+    make_fjall_store(&instance_root.join("data").join("working_checkpoints.fjall"));
 
     let backup_dir = tmp.path().join("backups");
     let manager = InstanceBackup::new(InstanceBackupConfig {
@@ -251,11 +252,17 @@ fn create_backup_copies_runtime_stores_and_knowledge_cohorts() {
     assert_fjall_marker(&backup_path, &["stores", "auth.fjall"]);
     assert_fjall_marker(&backup_path, &["stores", "daemon-task-state", "system"]);
     assert_fjall_marker(&backup_path, &["stores", "cron-locks.fjall"]);
+    assert_fjall_marker(&backup_path, &["stores", "working_checkpoints.fjall"]);
 
     let manifest: BackupManifest =
         serde_json::from_str(&fs::read_to_string(backup_path.join("manifest.json")).unwrap())
             .unwrap();
-    for name in ["auth.fjall", "daemon-task-state", "cron-locks.fjall"] {
+    for name in [
+        "auth.fjall",
+        "daemon-task-state",
+        "cron-locks.fjall",
+        "working_checkpoints.fjall",
+    ] {
         assert_optional_store(&manifest, name);
     }
 
@@ -275,6 +282,7 @@ fn create_backup_copies_runtime_stores_and_knowledge_cohorts() {
             "daemon-task-state/system",
             "daemon-task-state/alice",
             "cron-locks.fjall",
+            "working_checkpoints.fjall",
         ],
     );
 }
