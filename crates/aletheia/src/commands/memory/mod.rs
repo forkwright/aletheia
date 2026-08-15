@@ -106,6 +106,24 @@ pub(crate) enum Action {
     Reembed,
     /// Remove orphaned entities with no relationships and no fact links.
     Gc,
+    /// Show why memory was selected or excluded for a run (#4542).
+    ///
+    /// Reads the `RunContextRecord` persisted alongside the turn's
+    /// lifecycle note: selected and excluded context with selection/
+    /// exclusion reasons, staleness/supersession state, and any memory
+    /// updates the run caused. Requires the session store, not the
+    /// knowledge store -- the record is a session-store note, keyed by
+    /// session id and turn id.
+    InspectContext {
+        /// Session the turn belongs to.
+        #[arg(long)]
+        session_id: String,
+        /// Turn identifier (ULID) to inspect.
+        turn_id: String,
+        /// Output as JSON instead of markdown.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -287,6 +305,19 @@ fn validate_action(action: &Action) -> Result<()> {
             }
             if entity_a.trim() == entity_b.trim() {
                 whatever!("--entity-a and --entity-b must differ");
+            }
+            Ok(())
+        }
+        Action::InspectContext {
+            session_id,
+            turn_id,
+            ..
+        } => {
+            if session_id.trim().is_empty() {
+                whatever!("--session-id cannot be empty or whitespace");
+            }
+            if turn_id.trim().is_empty() {
+                whatever!("turn_id cannot be empty or whitespace");
             }
             Ok(())
         }
