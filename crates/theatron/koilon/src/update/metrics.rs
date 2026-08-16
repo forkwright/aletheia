@@ -53,7 +53,11 @@ pub(crate) fn maybe_refresh_backend_metrics(app: &mut App) {
     if app.layout.view_stack.current() != &View::Metrics {
         return;
     }
-    if app.viewport.tick_count % BACKEND_METRICS_REFRESH_TICKS != 0 {
+    if !app
+        .viewport
+        .tick_count
+        .is_multiple_of(BACKEND_METRICS_REFRESH_TICKS)
+    {
         return;
     }
     fetch_backend_metrics(app);
@@ -129,6 +133,7 @@ pub(crate) fn handle_health_loaded(app: &mut App, healthy: bool) {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions may panic on failure")]
 mod tests {
     use super::*;
     use crate::app::test_helpers::test_app;

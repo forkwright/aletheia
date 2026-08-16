@@ -1424,7 +1424,13 @@ async fn execute_stage_writes_one_audit_record_per_outbound_request() {
         )
         .expect("register echo tool");
 
-    let session = SessionState::new("audit-session".to_owned(), "main".to_owned(), &config);
+    let mut session = SessionState::new("audit-session".to_owned(), "main".to_owned(), &config);
+    // WHY(#4853): the audit record's request_id now threads from
+    // `session.request_id` (the canonical HTTP request id Pylon's gateway
+    // middleware sets) rather than minting a disconnected local ULID --
+    // setting it explicitly here proves the *same* id survives into the
+    // audit record, not merely that some id is present.
+    session.request_id = Some("req-audit-test".to_owned());
     let pipeline_config = PipelineConfig::default();
     let input = execute_stage_pipeline_input(session, &pipeline_config);
     let ctx = PipelineContext {
@@ -1474,9 +1480,10 @@ async fn execute_stage_writes_one_audit_record_per_outbound_request() {
         first.tool_names.contains(&"echo".to_owned()),
         "first record includes effective tool"
     );
-    assert!(
-        first.request_id.is_some(),
-        "first record has generated request id"
+    assert_eq!(
+        first.request_id.as_deref(),
+        Some("req-audit-test"),
+        "first record threads the canonical session request id"
     );
 
     let second = &records[1];
@@ -1488,9 +1495,10 @@ async fn execute_stage_writes_one_audit_record_per_outbound_request() {
         second.provider, "audit-mock",
         "second record uses actual provider"
     );
-    assert!(
-        second.request_id.is_some(),
-        "second record has generated request id"
+    assert_eq!(
+        second.request_id.as_deref(),
+        Some("req-audit-test"),
+        "second record threads the same canonical session request id"
     );
 }
 
@@ -1603,7 +1611,11 @@ async fn execute_stage_audit_records_fallback_model_when_used() {
     ));
 
     let tools = ToolRegistry::new();
-    let session = SessionState::new("fallback-session".to_owned(), "main".to_owned(), &config);
+    let mut session = SessionState::new("fallback-session".to_owned(), "main".to_owned(), &config);
+    // WHY(#4853): see the audit-per-request test above -- proving the
+    // canonical session request id survives the fallback path too, not
+    // merely that some id is present.
+    session.request_id = Some("req-fallback-test".to_owned());
     let pipeline_config = PipelineConfig::default();
     let input = execute_stage_pipeline_input(session, &pipeline_config);
     let ctx = PipelineContext {
@@ -1650,8 +1662,9 @@ async fn execute_stage_audit_records_fallback_model_when_used() {
         record.provider, "fallback-provider",
         "audit record uses actual fallback provider"
     );
-    assert!(
-        record.request_id.is_some(),
-        "record has generated request id"
+    assert_eq!(
+        record.request_id.as_deref(),
+        Some("req-fallback-test"),
+        "record threads the canonical session request id through the fallback path"
     );
 }
