@@ -947,7 +947,11 @@ async fn dispatch_single_tool(
         // registry) rather than an organon `ToolOutcome::Failure` — there is
         // no `FailureInfo::reason` to carry, and `msg` (via `content`) is
         // already the fuller human-readable message.
-        Err(e) => (ToolResultContent::text(format!("Tool error: {e}")), true, None),
+        Err(e) => (
+            ToolResultContent::text(format!("Tool error: {e}")),
+            true,
+            None,
+        ),
     };
 
     let content = truncate_tool_result(content, max_tool_result_bytes);

@@ -60,8 +60,7 @@ mod tests {
         // WHY this exact id: `title` is one of the shipped packs
         // (crates/poiesis/components/title/) and a stable, unlikely-to-be-
         // renamed anchor for "did discovery actually find real packs".
-        let title_id =
-            crate::ids::ComponentId::new("title").expect("valid component id");
+        let title_id = crate::ids::ComponentId::new("title").expect("valid component id");
         assert!(
             registry.get(&title_id).is_some(),
             "expected the shipped 'title' component pack to be discovered"

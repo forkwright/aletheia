@@ -88,66 +88,15 @@ impl ToolExecutor for RenderDeckReportExecutor {
                 Err(e) => return Ok(ToolResult::error(format!("invalid title: {e}"))),
             };
 
-            // WHY a fresh temp directory per call, not a cached registry:
-            // `Deck` rendering reads each component's template FILE by path
-            // again at render time (poiesis_deck::render reads def.html via
-            // std::fs::read_to_string), not just at discovery time, so the
-            // extracted directory must outlive the render() call below —
-            // simplest correct lifetime is "lives exactly as long as this
-            // tool call".
-            let tempdir = match tempfile::tempdir() {
-                Ok(dir) => dir,
-                Err(e) => {
-                    return Ok(ToolResult::error(format!(
-                        "failed to create a temp directory for component packs: {e}"
-                    )));
-                }
-            };
-            let registry = match poiesis_core::embedded::extract_to(tempdir.path()) {
-                Ok(registry) => registry,
-                Err(e) => {
-                    return Ok(ToolResult::error(format!(
-                        "failed to materialize component packs: {e}"
-                    )));
-                }
-            };
-
-            let renderer = DeckRenderer::new(registry, &deck.aspect);
-            let html = match renderer.render(&deck, &meta) {
-                Ok(html) => html,
-                Err(e) => return Ok(ToolResult::error(format!("deck render failed: {e}"))),
-            };
-
-            let (bytes, effective_format) = if format == "pdf" {
-                let disable_sandbox = args
-                    .get("disable_sandbox")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(false);
-                let mut opts = poiesis_printer_chromium::PrintOptions::from_aspect(&deck.aspect);
-                opts.disable_sandbox = disable_sandbox;
-                // WHY awaited directly, not `spawn_blocking`: unlike
-                // poiesis_doc's pandoc/typst renderers (genuinely
-                // blocking subprocess calls), `print_to_pdf` is already
-                // `async fn` — it drives chromiumoxide's CDP connection on
-                // the tokio runtime itself, and `opts.timeout` (from
-                // `PrintOptions`) already bounds the whole operation.
-                // Wrapping an async fn in `spawn_blocking` would need a
-                // nested `block_on`, which is the anti-pattern this
-                // avoids.
-                match poiesis_printer_chromium::print_to_pdf(&html, &opts).await {
-                    Ok(pdf_bytes) => (pdf_bytes, "pdf"),
-                    Err(e) => return Ok(ToolResult::error(format!("PDF render failed: {e}"))),
-                }
-            } else {
-                (html.into_bytes(), "html")
-            };
-            // WHY `tempdir` still in scope here: it must outlive both the
-            // HTML render above AND, for the pdf path, chromium's own
-            // navigation to a `data:` URL built from that HTML — dropping
-            // it early would risk the renderer re-reading a template file
-            // out from under a still-in-flight operation. It is dropped
-            // (and cleaned up) at the end of this block, after every use.
-            drop(tempdir);
+            let disable_sandbox = args
+                .get("disable_sandbox")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            let (bytes, effective_format) =
+                match render_deck_to_bytes(&deck, &meta, format, disable_sandbox).await {
+                    Ok(v) => v,
+                    Err(err) => return Ok(err),
+                };
 
             if let Some(out_path) = args.get("out_path").and_then(serde_json::Value::as_str) {
                 let validated = match validate_path(out_path, ctx, &input.name) {
@@ -186,6 +135,62 @@ impl ToolExecutor for RenderDeckReportExecutor {
             ]))
         })
     }
+}
+
+/// Materializes the embedded component packs into a scratch directory,
+/// renders `deck` through them via [`DeckRenderer`], and converts the
+/// result to the requested output format's bytes -- an HTML pass-through,
+/// or a PDF via a headless Chromium subprocess.
+async fn render_deck_to_bytes(
+    deck: &Deck,
+    meta: &Meta,
+    format: &str,
+    disable_sandbox: bool,
+) -> std::result::Result<(Vec<u8>, &'static str), ToolResult> {
+    // WHY a fresh temp directory per call, not a cached registry: `Deck`
+    // rendering reads each component's template FILE by path again at
+    // render time (poiesis_deck::render reads def.html via
+    // std::fs::read_to_string), not just at discovery time, so the
+    // extracted directory must outlive the render() call below —
+    // simplest correct lifetime is "lives exactly as long as this render".
+    let tempdir = tempfile::tempdir().map_err(|e| {
+        ToolResult::error(format!(
+            "failed to create a temp directory for component packs: {e}"
+        ))
+    })?;
+    let registry = poiesis_core::embedded::extract_to(tempdir.path())
+        .map_err(|e| ToolResult::error(format!("failed to materialize component packs: {e}")))?;
+
+    let renderer = DeckRenderer::new(registry, &deck.aspect);
+    let html = renderer
+        .render(deck, meta)
+        .map_err(|e| ToolResult::error(format!("deck render failed: {e}")))?;
+
+    let result = if format == "pdf" {
+        let mut opts = poiesis_printer_chromium::PrintOptions::from_aspect(&deck.aspect);
+        opts.disable_sandbox = disable_sandbox;
+        // WHY awaited directly, not `spawn_blocking`: unlike poiesis_doc's
+        // pandoc/typst renderers (genuinely blocking subprocess calls),
+        // `print_to_pdf` is already `async fn` — it drives chromiumoxide's
+        // CDP connection on the tokio runtime itself, and `opts.timeout`
+        // (from `PrintOptions`) already bounds the whole operation.
+        // Wrapping an async fn in `spawn_blocking` would need a nested
+        // `block_on`, which is the anti-pattern this avoids.
+        match poiesis_printer_chromium::print_to_pdf(&html, &opts).await {
+            Ok(pdf_bytes) => (pdf_bytes, "pdf"),
+            Err(e) => return Err(ToolResult::error(format!("PDF render failed: {e}"))),
+        }
+    } else {
+        (html.into_bytes(), "html")
+    };
+    // WHY `tempdir` still in scope here: it must outlive both the HTML
+    // render above AND, for the pdf path, chromium's own navigation to a
+    // `data:` URL built from that HTML — dropping it early would risk the
+    // renderer re-reading a template file out from under a still-in-flight
+    // operation. It is dropped (and cleaned up) at the end of this
+    // function, after every use.
+    drop(tempdir);
+    Ok(result)
 }
 
 fn render_deck_report_def() -> ToolDef {
@@ -268,15 +273,15 @@ fn render_deck_report_def() -> ToolDef {
     }
 }
 
-/// WHY keyed on `out_path`, not `format`: this mirrors every sibling report
-/// tool's capability rule (`render_pptx_report_capability_rule`,
-/// `generate_document`'s out_path handling) — presence of a filesystem
-/// write is the axis the capability-rule system is built to classify on.
-/// Known simplification: a `format: "pdf"` call with no `out_path` still
-/// spawns a real Chromium subprocess (a lesser but non-zero risk vs a
-/// disk write) at the lower capability level; `ToolCallCapabilityRule`
-/// only supports single-argument classification today, and adding a
-/// compound rule kind is a larger, separate change.
+// WHY keyed on `out_path`, not `format`: this mirrors every sibling report
+// tool's capability rule (`render_pptx_report_capability_rule`,
+// `generate_document`'s out_path handling) — presence of a filesystem
+// write is the axis the capability-rule system is built to classify on.
+// Known simplification: a `format: "pdf"` call with no `out_path` still
+// spawns a real Chromium subprocess (a lesser but non-zero risk vs a
+// disk write) at the lower capability level; `ToolCallCapabilityRule`
+// only supports single-argument classification today, and adding a
+// compound rule kind is a larger, separate change.
 fn render_deck_report_capability_rule() -> ToolCallCapabilityRule {
     ToolCallCapabilityRule::argument_presence(
         "out_path",

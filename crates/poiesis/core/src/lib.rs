@@ -38,12 +38,12 @@ pub mod bodies;
 /// Open component registry: discovery, schema-validated
 /// [`components::ComponentDef`]s.
 pub mod components;
-/// The deliverable envelope: typed metadata, theme reference, factbase,
-/// body.
-pub mod envelope;
 /// The shipped component packs, compiled into the binary at build time so a
 /// release binary carries them without depending on the source tree.
 pub mod embedded;
+/// The deliverable envelope: typed metadata, theme reference, factbase,
+/// body.
+pub mod envelope;
 /// Error types raised at every parse-don't-validate boundary.
 pub mod error;
 /// The factbase: typed facts, sources, claims, and the DAG resolver.
