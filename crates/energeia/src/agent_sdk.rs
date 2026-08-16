@@ -139,7 +139,7 @@ fn validate_oauth_token(token: &str) -> Result<()> {
         .fail();
     }
 
-    if token.contains(|c: char| c == '\n' || c == '\r') {
+    if token.contains(['\n', '\r']) {
         return error::InvalidOAuthTokenSnafu {
             detail: "token contains a newline; a real OAuth token is a single line",
         }
@@ -385,6 +385,7 @@ impl DispatchEngine for AgentSdkEngine {
 #[expect(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::unwrap_used,
     reason = "test assertions and helpers"
 )]
 mod tests {
@@ -492,20 +493,25 @@ mod tests {
     #[test]
     fn new_rejects_empty_oauth_token() {
         let err = AgentSdkEngine::new(engine_config(Some(String::new()))).unwrap_err();
-        assert!(err.to_string().contains("empty or contains only whitespace"));
+        assert!(
+            err.to_string()
+                .contains("empty or contains only whitespace")
+        );
     }
 
     #[test]
     fn new_rejects_whitespace_only_oauth_token() {
         let err = AgentSdkEngine::new(engine_config(Some("   \t  ".to_owned()))).unwrap_err();
-        assert!(err.to_string().contains("empty or contains only whitespace"));
+        assert!(
+            err.to_string()
+                .contains("empty or contains only whitespace")
+        );
     }
 
     #[test]
     fn new_rejects_oauth_token_with_leading_or_trailing_whitespace() {
-        let err =
-            AgentSdkEngine::new(engine_config(Some(" sk-ant-oat01-token ".to_owned())))
-                .unwrap_err();
+        let err = AgentSdkEngine::new(engine_config(Some(" sk-ant-oat01-token ".to_owned())))
+            .unwrap_err();
         assert!(err.to_string().contains("leading or trailing whitespace"));
     }
 
