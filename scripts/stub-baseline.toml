@@ -1,0 +1,1141 @@
+# Explicit, enumerated ledger of stub-shaped sites that predate
+# aletheia#4530's accountability gate (scripts/check-stub-accountability.py).
+# Regenerate with: python3 scripts/check-stub-accountability.py --write-baseline
+# A new site belongs HERE only if it cannot instead carry a TODO(#NNNN)/
+# FIXME(#NNNN), a reason="..." naming a tracking issue, or a
+# CLASSIFICATION_SURFACES entry -- those need no edit to this file.
+
+[[site]]
+file = "crates/agora/src/semeion/client.rs"
+item = "id"
+count = 1
+
+[[site]]
+file = "crates/agora/src/semeion/client.rs"
+item = "jsonrpc"
+count = 1
+
+[[site]]
+file = "crates/agora/src/semeion/client.rs"
+item = "rpc_url"
+count = 1
+
+[[site]]
+file = "crates/agora/src/semeion/connection.rs"
+item = "enqueued_at"
+count = 1
+
+[[site]]
+file = "crates/aletheia-classify/src/classifier.rs"
+item = "load"
+count = 1
+
+[[site]]
+file = "crates/aletheia/src/runtime/mod.rs"
+item = "minimal"
+count = 1
+
+[[site]]
+file = "crates/aletheia/src/runtime/mod.rs"
+item = "nous_manager"
+count = 1
+
+[[site]]
+file = "crates/aletheia/src/runtime/mod.rs"
+item = "with_credentials"
+count = 1
+
+[[site]]
+file = "crates/aletheia/src/runtime/mod.rs"
+item = "with_daemons"
+count = 1
+
+[[site]]
+file = "crates/aletheia/src/runtime/mod.rs"
+item = "with_domain_packs"
+count = 1
+
+[[site]]
+file = "crates/aletheia/src/runtime/mod.rs"
+item = "with_embedding"
+count = 1
+
+[[site]]
+file = "crates/aletheia/src/runtime/mod.rs"
+item = "with_tool_services"
+count = 1
+
+[[site]]
+file = "crates/aletheia/src/runtime/setup.rs"
+item = "is_initialized"
+count = 1
+
+[[site]]
+file = "crates/aletheia/src/runtime/setup.rs"
+item = "is_ready"
+count = 1
+
+[[site]]
+file = "crates/daemon/src/prosoche.rs"
+item = "category_label"
+count = 1
+
+[[site]]
+file = "crates/daemon/src/runner/persistence.rs"
+item = "set_last_run"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/handoff.rs"
+item = "clear"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/handoff.rs"
+item = "detect_orphaned"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/handoff.rs"
+item = "exists"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/handoff.rs"
+item = "write"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/phase.rs"
+item = "completion_percentage"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/plan.rs"
+item = "is_ready"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/plan.rs"
+item = "mark_stuck"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/plan.rs"
+item = "record_iteration"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/state.rs"
+item = "is_active"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/state.rs"
+item = "valid_transitions"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/verify.rs"
+item = "override_result"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/workspace.rs"
+item = "read_blockers"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/workspace.rs"
+item = "root"
+count = 1
+
+[[site]]
+file = "crates/dianoia/src/workspace.rs"
+item = "write_blocker"
+count = 1
+
+[[site]]
+file = "crates/diaporeia/src/repomix.rs"
+item = "Full"
+count = 1
+
+[[site]]
+file = "crates/diaporeia/src/server.rs"
+item = "tool_router"
+count = 1
+
+[[site]]
+file = "crates/eidos/src/knowledge/fact.rs"
+item = "is_far_future"
+count = 1
+
+[[site]]
+file = "crates/energeia/src/http/stream.rs"
+item = "session_id"
+count = 1
+
+[[site]]
+file = "crates/energeia/src/qa/mechanical.rs"
+item = "<unresolved:line22>"
+count = 1
+
+[[site]]
+file = "crates/energeia/src/routing/empirical.rs"
+item = "success_rate"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/conflict.rs"
+item = "detect_conflicts"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/consolidation/engine.rs"
+item = "init_consolidation_audit"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/consolidation/engine.rs"
+item = "init_fact_multiplicity"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/consolidation/mod.rs"
+item = "SourceFact"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/dedup.rs"
+item = "cosine_similarity"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/derived_rules.rs"
+item = "CAUSAL_CHAIN_MATERIALIZATION"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/derived_rules.rs"
+item = "DEFEASIBLE_MATERIALIZATION"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/derived_rules.rs"
+item = "DEFEASIBLE_SCOPED_MATERIALIZATION"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/derived_rules.rs"
+item = "IS_A_BASE"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/derived_rules.rs"
+item = "IS_A_TRANSITIVE"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/derived_rules.rs"
+item = "ONTOLOGICAL_MATERIALIZATION"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/extract/engine.rs"
+item = "config"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/extract/refinement.rs"
+item = "filter_batch"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/extract/training.rs"
+item = "LintSummaryRecord"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/extract/training.rs"
+item = "ViolationRecord"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/graph_intelligence.rs"
+item = "BFS_PROXIMITY_MAX_HOPS"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/graph_intelligence.rs"
+item = "GRAPH_SCORES_DDL"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/graph_intelligence.rs"
+item = "LOAD_GRAPH_SCORES"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/graph_intelligence.rs"
+item = "RECOMPUTE_GRAPH_SCORES"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/graph_intelligence.rs"
+item = "SUPERSESSION_CHAIN_LENGTHS"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/instinct.rs"
+item = "from_stored_string"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/instinct.rs"
+item = "from_str_lossy"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/instinct.rs"
+item = "promote_cross_project_patterns"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_portability.rs"
+item = "export_knowledge"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_portability.rs"
+item = "import_knowledge"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_store/causal.rs"
+item = "list_causal_edges"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_store/causal.rs"
+item = "propagate_confidence"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_store/causal.rs"
+item = "query_causes"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_store/causal.rs"
+item = "remove_causal_edge"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_store/entity_dedup.rs"
+item = "get_merge_history"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_store/facts.rs"
+item = "query_facts_at"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_store/skills.rs"
+item = "find_skills_by_domain"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/knowledge_store/skills.rs"
+item = "skill_quality_metrics"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/query/builders.rs"
+item = "bind_to"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/query/builders.rs"
+item = "build"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/query/builders.rs"
+item = "param"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/query/builders.rs"
+item = "raw"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/query/queries.rs"
+item = "SEARCH_ENTITIES"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/query/queries.rs"
+item = "current_facts"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/query_rewrite.rs"
+item = "rrf_merge"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/recall/mod.rs"
+item = "refresh_stability_hours"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/recall/mod.rs"
+item = "score_access_with_evolution"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/recall/mod.rs"
+item = "score_epistemic_tier_with_importance"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/recall/mod.rs"
+item = "score_relationship_proximity"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/recall/mod.rs"
+item = "score_relationship_proximity_with_cluster"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/recall/mod.rs"
+item = "with_max_access_count"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/serendipity/mod.rs"
+item = "use"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/skills/candidate.rs"
+item = "from_json"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/skills/candidate.rs"
+item = "is_empty"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/skills/candidate.rs"
+item = "promoted_for"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/skills/candidate.rs"
+item = "to_json"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/skills/extract.rs"
+item = "is_approved"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/skills/extract.rs"
+item = "is_pending"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/skills/signature.rs"
+item = "is_empty"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/succession.rs"
+item = "ENTITY_VOLATILITY_METRICS"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/succession.rs"
+item = "NOUS_ACTIVE_FACT_STATS"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/succession.rs"
+item = "NOUS_KNOWLEDGE_PROFILE"
+count = 1
+
+[[site]]
+file = "crates/episteme/src/succession.rs"
+item = "STORE_VOLATILITY_SCORE"
+count = 1
+
+[[site]]
+file = "crates/eval/src/cognitive/adversarial.rs"
+item = "BoundaryTest"
+count = 1
+
+[[site]]
+file = "crates/eval/src/cognitive/adversarial.rs"
+item = "ConsistencyAttack"
+count = 1
+
+[[site]]
+file = "crates/eval/src/cognitive/adversarial.rs"
+item = "category"
+count = 1
+
+[[site]]
+file = "crates/eval/src/cognitive/adversarial.rs"
+item = "description"
+count = 1
+
+[[site]]
+file = "crates/eval/src/sse.rs"
+item = "extract_usage"
+count = 1
+
+[[site]]
+file = "crates/eval/src/sse.rs"
+item = "has_error"
+count = 1
+
+[[site]]
+file = "crates/eval/src/sse.rs"
+item = "tool_call_count"
+count = 1
+
+[[site]]
+file = "crates/hermeneus/src/anthropic/cc_profile.rs"
+item = "with_context_1m"
+count = 1
+
+[[site]]
+file = "crates/hermeneus/src/cc/parse.rs"
+item = "message_type"
+count = 1
+
+[[site]]
+file = "crates/hermeneus/src/cc/parse.rs"
+item = "subtype"
+count = 1
+
+[[site]]
+file = "crates/hermeneus/src/cc/process.rs"
+item = "CcOutput"
+count = 1
+
+[[site]]
+file = "crates/hermeneus/src/kimi/process.rs"
+item = "KimiOutput"
+count = 1
+
+[[site]]
+file = "crates/hermeneus/src/openai/error.rs"
+item = "error_type"
+count = 1
+
+[[site]]
+file = "crates/hermeneus/src/openai/wire/response.rs"
+item = "call_type"
+count = 1
+
+[[site]]
+file = "crates/hermeneus/src/openai/wire/response.rs"
+item = "kind"
+count = 1
+
+[[site]]
+file = "crates/koina/build.rs"
+item = "CacheSeed"
+count = 1
+
+[[site]]
+file = "crates/koina/build.rs"
+item = "ModelEntry"
+count = 1
+
+[[site]]
+file = "crates/koina/build.rs"
+item = "ModelSeed"
+count = 1
+
+[[site]]
+file = "crates/koina/build.rs"
+item = "TaskRoleSeed"
+count = 1
+
+[[site]]
+file = "crates/koina/build.rs"
+item = "TierSeed"
+count = 1
+
+[[site]]
+file = "crates/krites/src/data/expr/expr_impl.rs"
+item = "get_variables"
+count = 1
+
+[[site]]
+file = "crates/krites/src/data/expr/op.rs"
+item = "CustomOp"
+count = 1
+
+[[site]]
+file = "crates/krites/src/data/program/fixed_rule.rs"
+item = "relation_with_min_len"
+count = 1
+
+[[site]]
+file = "crates/krites/src/data/program/fixed_rule.rs"
+item = "span"
+count = 2
+
+[[site]]
+file = "crates/krites/src/runtime/hnsw/adaptive.rs"
+item = "use"
+count = 1
+
+[[site]]
+file = "crates/krites/src/runtime/hnsw/put.rs"
+item = "hnsw_check_consistency"
+count = 1
+
+[[site]]
+file = "crates/krites/src/runtime/hnsw_sovereign/adaptive.rs"
+item = "use"
+count = 1
+
+[[site]]
+file = "crates/krites/src/runtime/hnsw_sovereign/put.rs"
+item = "<unresolved:line477>"
+count = 1
+
+[[site]]
+file = "crates/krites/src/runtime/hnsw_sovereign/put.rs"
+item = "hnsw_check_consistency"
+count = 1
+
+[[site]]
+file = "crates/krites/src/runtime/mod.rs"
+item = "db"
+count = 1
+
+[[site]]
+file = "crates/krites/src/runtime/mod.rs"
+item = "exec"
+count = 1
+
+[[site]]
+file = "crates/krites/src/storage/mod.rs"
+item = "Storage"
+count = 1
+
+[[site]]
+file = "crates/krites/upstream-snapshot/cozo-core-src/data/expr.rs"
+item = "binding_indices"
+count = 1
+
+[[site]]
+file = "crates/krites/upstream-snapshot/cozo-core-src/data/expr.rs"
+item = "do_binding_indices"
+count = 1
+
+[[site]]
+file = "crates/krites/upstream-snapshot/cozo-core-src/data/program.rs"
+item = "bindings"
+count = 1
+
+[[site]]
+file = "crates/krites/upstream-snapshot/cozo-core-src/data/program.rs"
+item = "relation_with_min_len"
+count = 1
+
+[[site]]
+file = "crates/krites/upstream-snapshot/cozo-core-src/data/program.rs"
+item = "span"
+count = 1
+
+[[site]]
+file = "crates/krites/upstream-snapshot/cozo-core-src/query/eval.rs"
+item = "is_stopped"
+count = 1
+
+[[site]]
+file = "crates/krites/upstream-snapshot/cozo-core-src/runtime/callback.rs"
+item = "CallbackDeclaration"
+count = 1
+
+[[site]]
+file = "crates/krites/upstream-snapshot/cozo-core-src/runtime/callback.rs"
+item = "EventCallbackRegistry"
+count = 1
+
+[[site]]
+file = "crates/krites/upstream-snapshot/cozo-core-src/runtime/relation.rs"
+item = "amend_key_prefix"
+count = 1
+
+[[site]]
+file = "crates/nous/src/bootstrap/mod.rs"
+item = "generator"
+count = 1
+
+[[site]]
+file = "crates/nous/src/bootstrap/mod.rs"
+item = "l3_token_estimate"
+count = 1
+
+[[site]]
+file = "crates/nous/src/bootstrap/mod.rs"
+item = "source_hash_algorithm"
+count = 1
+
+[[site]]
+file = "crates/nous/src/bootstrap/mod.rs"
+item = "source_hash_version"
+count = 1
+
+[[site]]
+file = "crates/nous/src/bootstrap/mod.rs"
+item = "version"
+count = 1
+
+[[site]]
+file = "crates/nous/src/budget.rs"
+item = "Skipped"
+count = 1
+
+[[site]]
+file = "crates/nous/src/budget.rs"
+item = "StageTimingRecord"
+count = 1
+
+[[site]]
+file = "crates/nous/src/budget.rs"
+item = "current_stage_elapsed"
+count = 1
+
+[[site]]
+file = "crates/nous/src/budget.rs"
+item = "summary"
+count = 1
+
+[[site]]
+file = "crates/nous/src/compact/full.rs"
+item = "critical_files_restored"
+count = 1
+
+[[site]]
+file = "crates/nous/src/compact/micro.rs"
+item = "is_cleared"
+count = 1
+
+[[site]]
+file = "crates/nous/src/compact/mod.rs"
+item = "touch_all_compact_reasons"
+count = 1
+
+[[site]]
+file = "crates/nous/src/cross/delivery.rs"
+item = "DeliveryEntry"
+count = 1
+
+[[site]]
+file = "crates/nous/src/cross/delivery.rs"
+item = "for_nous"
+count = 1
+
+[[site]]
+file = "crates/nous/src/cross/delivery.rs"
+item = "recent"
+count = 1
+
+[[site]]
+file = "crates/nous/src/hooks/builtins/correction.rs"
+item = "dismiss_correction"
+count = 1
+
+[[site]]
+file = "crates/nous/src/hooks/builtins/correction.rs"
+item = "review_corrections"
+count = 1
+
+[[site]]
+file = "crates/nous/src/hooks/builtins/correction.rs"
+item = "workspace"
+count = 1
+
+[[site]]
+file = "crates/nous/src/hooks/mod.rs"
+item = "AfterCompactionContext"
+count = 1
+
+[[site]]
+file = "crates/nous/src/hooks/mod.rs"
+item = "AfterToolContext"
+count = 1
+
+[[site]]
+file = "crates/nous/src/hooks/mod.rs"
+item = "BeforeCompactionContext"
+count = 1
+
+[[site]]
+file = "crates/nous/src/hooks/mod.rs"
+item = "SessionStartContext"
+count = 1
+
+[[site]]
+file = "crates/nous/src/hooks/mod.rs"
+item = "all"
+count = 1
+
+[[site]]
+file = "crates/nous/src/hooks/mod.rs"
+item = "name"
+count = 1
+
+[[site]]
+file = "crates/nous/src/recipes.rs"
+item = "RecipesFile"
+count = 1
+
+[[site]]
+file = "crates/nous/src/recipes.rs"
+item = "RecipesMeta"
+count = 1
+
+[[site]]
+file = "crates/nous/src/roles/mod.rs"
+item = "is_allowed"
+count = 1
+
+[[site]]
+file = "crates/nous/src/uncertainty.rs"
+item = "brier_score"
+count = 1
+
+[[site]]
+file = "crates/nous/src/uncertainty.rs"
+item = "calibration_curve"
+count = 1
+
+[[site]]
+file = "crates/nous/src/uncertainty.rs"
+item = "open_in_memory"
+count = 1
+
+[[site]]
+file = "crates/nous/src/uncertainty.rs"
+item = "record"
+count = 1
+
+[[site]]
+file = "crates/nous/src/uncertainty.rs"
+item = "summary"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "CacheSafeParams"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "clear_focus"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "clear_wait"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "clone_for_fork"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "from_json"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "new"
+count = 2
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "persist_key"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "pop_task"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "push_task"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "set_cache_params"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "set_focus"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "set_wait"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "to_bootstrap_section"
+count = 1
+
+[[site]]
+file = "crates/nous/src/working_state.rs"
+item = "to_json"
+count = 1
+
+[[site]]
+file = "crates/organon/src/builtins/energeia/qa.rs"
+item = "<unresolved:line564>"
+count = 1
+
+[[site]]
+file = "crates/organon/src/sandbox/policy.rs"
+item = "apply_egress"
+count = 1
+
+[[site]]
+file = "crates/organon/src/sandbox/policy.rs"
+item = "apply_landlock"
+count = 1
+
+[[site]]
+file = "crates/organon/src/sandbox/policy.rs"
+item = "apply_seccomp"
+count = 1
+
+[[site]]
+file = "crates/organon/src/sandbox/policy.rs"
+item = "use"
+count = 1
+
+[[site]]
+file = "crates/pylon/src/handlers/health.rs"
+item = "assert_health_state_fields"
+count = 1
+
+[[site]]
+file = "crates/pylon/src/idempotency.rs"
+item = "status"
+count = 1
+
+[[site]]
+file = "crates/symbolon/src/credential/file_ops.rs"
+item = "lock_path"
+count = 1
+
+[[site]]
+file = "crates/symbolon/src/credential/oauth_types.rs"
+item = "token_type"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/mapping/keyboard.rs"
+item = "map_selection_key"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/mapping/keyboard.rs"
+item = "map_session_search_key"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/chat.rs"
+item = "Compacting"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/chat.rs"
+item = "DistillationMarker"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/chat.rs"
+item = "ThinkingStatusLine"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/chat.rs"
+item = "ToolStatusLine"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/chat.rs"
+item = "TopicBoundary"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/command.rs"
+item = "SelectionContext"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/filter.rs"
+item = "Agents"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/input.rs"
+item = "mime_type"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/notification.rs"
+item = "created_at"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/notification.rs"
+item = "id"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/notification.rs"
+item = "mark_read_for"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/notification.rs"
+item = "unread_count_for"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/overlay.rs"
+item = "submitted_at"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/settings.rs"
+item = "Success"
+count = 1
+
+[[site]]
+file = "crates/theatron/koilon/src/state/settings.rs"
+item = "Text"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/components/chart.rs"
+item = "TOOLTIP_STYLE"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/services/notification_dispatch.rs"
+item = "dispatch_with_grouping"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/services/notification_dispatch.rs"
+item = "on_tool_failed"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/memory.rs"
+item = "active_filter_count"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/memory.rs"
+item = "color"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/meta/mod.rs"
+item = "new"
+count = 4
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+item = "body"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+item = "category"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+item = "sent_at"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/notifications.rs"
+item = "title"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/ops.rs"
+item = "set_last_activity"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/sessions.rs"
+item = "created_at"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/tool_metrics.rs"
+item = "percentile_nearest_rank"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/tool_metrics.rs"
+item = "trend_arrow"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/state/view_preservation.rs"
+item = "secondary_scroll"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/views/meta/mod.rs"
+item = "agent_id"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/views/planning/project_detail.rs"
+item = "FetchState"
+count = 1
+
+[[site]]
+file = "crates/theatron/proskenion/src/views/planning/requirements.rs"
+item = "FetchState"
+count = 1
+
+[[site]]
+file = "crates/theatron/skene/src/api/client.rs"
+item = "base_url"
+count = 1
+
+[[site]]
+file = "crates/theatron/skene/src/api/client.rs"
+item = "set_token"
+count = 1
