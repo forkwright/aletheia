@@ -141,12 +141,12 @@ fn validate_args(args: &RunArgs) -> Result<()> {
     if let Err(e) = reqwest::Url::parse(&args.url) {
         whatever!("--url is not a valid URL: {e} (got {:?})", args.url);
     }
-    if let Some(threshold) = args.fail_below {
-        if !(0.0..=1.0).contains(&threshold) {
-            whatever!(
-                "--fail-below must be within 0.0..=1.0 (got {threshold}; it compares against an exact-match rate)"
-            );
-        }
+    if let Some(threshold) = args.fail_below
+        && !(0.0..=1.0).contains(&threshold)
+    {
+        whatever!(
+            "--fail-below must be within 0.0..=1.0 (got {threshold}; it compares against an exact-match rate)"
+        );
     }
     Ok(())
 }
