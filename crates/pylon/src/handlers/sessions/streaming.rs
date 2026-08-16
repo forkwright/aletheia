@@ -1348,12 +1348,14 @@ pub async fn stream_turn(
                                 result,
                                 is_error,
                                 duration_ms,
+                                outcome,
                             } => PylonTurnStreamEvent::ToolResult {
                                 tool_name,
                                 tool_id,
                                 result,
                                 is_error,
                                 duration_ms,
+                                outcome: Some(outcome),
                             },
                             _ => PylonTurnStreamEvent::ProviderUnsupportedEvent {
                                 event_type: "unknown_turn_stream_event".to_owned(),
@@ -2135,6 +2137,7 @@ async fn emit_turn_result_events_buffered(
                 tool_use_id: tc.id.clone(),
                 content: result_content.clone(),
                 is_error: tc.is_error,
+                outcome: Some(tc.outcome_label().to_owned()),
             };
             if let Some(recorded) = record_sse_event(buf, &event).await {
                 let _ = tx.send(recorded).await;

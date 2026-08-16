@@ -890,6 +890,7 @@ fn make_tool_call_with_result(
         duration_ms: 10,
         approval: None,
         receipt: None,
+        outcome_detail: None,
     }
 }
 

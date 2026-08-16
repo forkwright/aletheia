@@ -555,7 +555,10 @@ pub struct FinalizeToolAuditRecord<'a> {
     pub duration_ms: u64,
     /// Whether the call produced an error result.
     pub is_error: bool,
-    /// Stable outcome label, currently `"success"` or `"error"`.
+    /// Stable outcome label (#4558): `"success"`, `"partial_success"`,
+    /// `"error"`, or a denial-class string when the call never ran. See
+    /// `nous::pipeline::ToolCall::outcome_label()`, the sole place this
+    /// classification is derived.
     pub outcome: &'a str,
     /// Bounded tool result text captured from the execution path.
     pub result: Option<&'a str>,

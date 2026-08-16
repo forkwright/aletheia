@@ -60,9 +60,9 @@ jobs:
           echo "free disk after reclaim:"
           df -h / | tail -1
 
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          toolchain: stable
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
@@ -84,7 +84,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2
         with:
-          tool: nextest
+          tool: nextest@0.9.143
 
       - name: Document online test contract
         run: |
@@ -199,9 +199,9 @@ jobs:
           echo "free disk after reclaim:"
           df -h / | tail -1
 
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
-        with:
-          toolchain: stable
 
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
@@ -223,7 +223,7 @@ jobs:
       - name: Install cargo-nextest
         uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2
         with:
-          tool: nextest
+          tool: nextest@0.9.143
 
       - name: Document quarantine policy
         run: |

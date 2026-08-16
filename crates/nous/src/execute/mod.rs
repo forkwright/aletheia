@@ -32,6 +32,12 @@ use self::dispatch::{
     DispatchResult, ToolDispatchItem, ToolDispatchPolicy, build_messages, classify_signals,
     dispatch_tool_items,
 };
+// WHY re-exported, not just `use`d here (#4558): `finalize` needs the same
+// not-executed classification `dispatch` uses internally, to tell a policy
+// denial apart from an executed-and-failed call when populating
+// `ToolAuditRecord.outcome`. `dispatch` stays a private submodule; this is
+// the one function of its internals crate::execute intentionally surfaces.
+pub(crate) use self::dispatch::is_denial_outcome;
 use self::resolve::{
     gate_turn_sensitivity, process_response_blocks, resolve_active_server_tools,
     resolve_provider_checked, resolve_turn_model, resolve_turn_route, route_admits_sensitivity,

@@ -281,12 +281,24 @@ fn u32_field(json: &serde_json::Value, field: &str, event_type: &str) -> Option<
         })
 }
 
+// WHY DecodeError/UnknownEvent, not None (#4565): a JSON parse failure or an
+// event type this client does not recognize used to vanish silently,
+// discarding exactly the evidence protocol drift would show up in. Mirrors
+// `skene::api::streaming::parse_stream_event_envelope`'s two same-shaped
+// paths (skene/src/api/streaming.rs) — the desktop client and the TUI/
+// server-shared client now agree here, even though desktop's own
+// connect-and-poll loop keeps its cancellation-token handling, which skene's
+// `stream_message` has no equivalent for.
 fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
     let json: serde_json::Value = match serde_json::from_str(data) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(event_type, error = %e, "failed to parse stream event JSON");
-            return None;
+            return Some(StreamEvent::DecodeError {
+                event_type: event_type.to_string(),
+                raw_data: data.to_string(),
+                error: e.to_string(),
+            });
         }
     };
 
@@ -423,13 +435,18 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
             ),
             status: str_field(&json, "status", event_type)?.to_string(),
         }),
+        // WHY intentionally silent, matching skene: a server-side
+        // housekeeping event with no semantic meaning for UI consumers.
         "queue_drained" => {
             tracing::debug!("queue drained: {json}");
             None
         }
         other => {
             tracing::debug!("unknown stream event: {other}");
-            None
+            Some(StreamEvent::UnknownEvent {
+                event_type: other.to_string(),
+                raw_data: data.to_string(),
+            })
         }
     }
 }
@@ -788,24 +805,52 @@ mod tests {
         }
     }
 
+    // WHY these two changed from `_returns_none` to asserting a typed
+    // variant (#4565): the old behavior silently discarded exactly the
+    // evidence protocol drift would show up in. Mirrors
+    // skene::api::streaming::parse_stream_event_envelope's DecodeError/
+    // UnknownEvent handling for the same two cases.
     #[test]
-    fn parse_invalid_json_returns_none() {
+    fn parse_invalid_json_yields_decode_error() {
         let result = parse_stream_event("text_delta", "{broken");
-        assert!(result.is_none());
+        if let Some(StreamEvent::DecodeError {
+            event_type,
+            raw_data,
+            error,
+        }) = result
+        {
+            assert_eq!(event_type, "text_delta");
+            assert_eq!(raw_data, "{broken");
+            assert!(!error.is_empty());
+        } else {
+            panic!("expected DecodeError, got: {result:?}");
+        }
     }
 
     #[test]
     fn parse_queue_drained_returns_none() {
         let data = r#"{"count":0}"#;
         let result = parse_stream_event("queue_drained", data);
-        assert!(result.is_none());
+        assert!(
+            result.is_none(),
+            "queue_drained is intentionally silent, matching skene"
+        );
     }
 
     #[test]
-    fn parse_unknown_event_returns_none() {
+    fn parse_unknown_event_yields_unknown_event() {
         let data = r#"{"foo":"bar"}"#;
         let result = parse_stream_event("custom:event", data);
-        assert!(result.is_none());
+        if let Some(StreamEvent::UnknownEvent {
+            event_type,
+            raw_data,
+        }) = result
+        {
+            assert_eq!(event_type, "custom:event");
+            assert_eq!(raw_data, data);
+        } else {
+            panic!("expected UnknownEvent, got: {result:?}");
+        }
     }
 
     #[tokio::test]

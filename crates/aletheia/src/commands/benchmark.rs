@@ -76,6 +76,11 @@ pub(crate) struct RunArgs {
     /// Require publishable statistical context and complete provenance
     #[arg(long)]
     pub publishable: bool,
+    /// Fail (nonzero exit) when the exact-match 95% CI lower bound drops
+    /// below this threshold (0.0..=1.0). Wires the benchmark run into a CI
+    /// regression gate: see `.github/workflows/bench-gate.yml`.
+    #[arg(long)]
+    pub fail_below: Option<f64>,
     /// Query the knowledge store after ingestion and compute Recall@k / NDCG@k
     #[arg(long)]
     pub retrieval_k: Option<usize>,
@@ -136,6 +141,13 @@ fn validate_args(args: &RunArgs) -> Result<()> {
     if let Err(e) = reqwest::Url::parse(&args.url) {
         whatever!("--url is not a valid URL: {e} (got {:?})", args.url);
     }
+    if let Some(threshold) = args.fail_below
+        && !(0.0..=1.0).contains(&threshold)
+    {
+        whatever!(
+            "--fail-below must be within 0.0..=1.0 (got {threshold}; it compares against an exact-match rate)"
+        );
+    }
     Ok(())
 }
 
@@ -174,7 +186,7 @@ fn validation_options(args: &RunArgs) -> BenchmarkValidationOptions {
 // while whether one was configured does change the result.
 fn benchmark_config_hash(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> String {
     dokimion::provenance::sha256_hex_str(&format!(
-        "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\nbest_effort_dataset={}\nbaseline_report={:?}\npublishable={}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
+        "benchmark={}\ndataset={}\nurl={}\nnous_id={}\nmax_questions={:?}\ntimeout={}\njson={}\nretrieval_k={:?}\nbest_effort_dataset={}\nbaseline_report={:?}\npublishable={}\nfail_below={:?}\njudge_endpoint_present={}\njudge_model={}\njudge_api_key_present={}",
         benchmark.name(),
         args.dataset.display(),
         args.url,
@@ -186,6 +198,7 @@ fn benchmark_config_hash(benchmark: &dyn MemoryBenchmark, args: &RunArgs) -> Str
         args.best_effort_dataset,
         args.baseline_report.as_deref(),
         args.publishable,
+        args.fail_below,
         args.judge_endpoint.is_some(),
         args.judge_model,
         args.judge_api_key.is_some(),
@@ -286,6 +299,15 @@ async fn run_benchmark(
         require_publishable_report(&report)?;
     }
 
+    // WHY after --output but before baseline_out/print: a CI regression gate
+    // that fails here has already written the full JSON report for
+    // debugging (if --output was passed), so a caller can inspect exactly
+    // which questions dragged the CI lower bound below threshold instead of
+    // only seeing a nonzero exit code.
+    if let Some(threshold) = args.fail_below {
+        check_fail_below(&report, threshold)?;
+    }
+
     if let Some(ref path) = args.baseline_out {
         let summary = BenchmarkBaselineSummary::from_report(&report);
         let json = serde_json::to_string_pretty(&summary)
@@ -331,6 +353,32 @@ fn require_publishable_report(report: &BenchmarkReport) -> Result<()> {
         "--publishable requires statistical summaries and complete provenance; report is not publishable:\n- {}",
         assessment.reasons.join("\n- ")
     );
+}
+
+/// Enforce `--fail-below`: reads the CONSERVATIVE bound (`em_ci_low`), not
+/// the point estimate, so a regression gate cannot pass purely on a lucky
+/// bootstrap draw. Requires bootstrap statistics to be present — a run that
+/// scored fewer than `MIN_PUBLISHABLE_SCORED_QUESTIONS` questions cannot be
+/// gated at all, and reporting that as a pass would hide the real problem
+/// (too few scored questions) behind a green check.
+fn check_fail_below(report: &BenchmarkReport, threshold: f64) -> Result<()> {
+    let Some(statistics) = report.statistics.as_ref() else {
+        whatever!(
+            "--fail-below requires bootstrap statistics, but none were computed \
+             (fewer than {} questions scored)",
+            dokimion::benchmarks::MIN_PUBLISHABLE_SCORED_QUESTIONS
+        );
+    };
+    if statistics.em_ci_low < threshold {
+        whatever!(
+            "--fail-below breached: exact-match 95% CI lower bound {:.4} is below threshold {:.4} (95% CI: [{:.4}, {:.4}])",
+            statistics.em_ci_low,
+            threshold,
+            statistics.em_ci_low,
+            statistics.em_ci_high
+        );
+    }
+    Ok(())
 }
 
 #[derive(Debug, Serialize)]
@@ -739,6 +787,7 @@ mod tests {
             baseline_in: None,
             baseline_report: None,
             publishable: false,
+            fail_below: None,
             retrieval_k: None,
             best_effort_dataset: false,
             judge_endpoint: None,
@@ -809,6 +858,28 @@ mod tests {
         a.max_questions = Some(5);
         a.retrieval_k = Some(10);
         a.timeout = 1;
+        validate_args(&a).unwrap();
+    }
+
+    #[test]
+    fn validate_rejects_fail_below_out_of_range() {
+        let mut a = base_args();
+        a.fail_below = Some(1.5);
+        let err = validate_args(&a).unwrap_err();
+        assert!(err.to_string().contains("--fail-below"), "got: {err}");
+
+        let mut a = base_args();
+        a.fail_below = Some(-0.1);
+        let err = validate_args(&a).unwrap_err();
+        assert!(err.to_string().contains("--fail-below"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_accepts_fail_below_boundary_values() {
+        let mut a = base_args();
+        a.fail_below = Some(0.0);
+        validate_args(&a).unwrap();
+        a.fail_below = Some(1.0);
         validate_args(&a).unwrap();
     }
 
@@ -897,6 +968,38 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("missing bootstrap confidence intervals"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn fail_below_rejects_report_with_no_statistics() {
+        // sample_report() has no `.with_standard_statistics()` applied, so
+        // report.statistics is None.
+        let report = sample_report();
+        let err = check_fail_below(&report, 0.5).unwrap_err();
+        assert!(
+            err.to_string().contains("requires bootstrap statistics"),
+            "got: {err}"
+        );
+    }
+
+    #[test]
+    fn fail_below_passes_when_ci_low_at_or_above_threshold() {
+        // sample_report(): 1 EM hit of 2 -> point estimate 0.5, so a
+        // bootstrap CI lower bound is well below the point estimate but a
+        // sufficiently low threshold must still pass.
+        let report = sample_report().with_standard_statistics();
+        assert!(report.statistics.is_some(), "expected stats to populate");
+        check_fail_below(&report, 0.0).unwrap();
+    }
+
+    #[test]
+    fn fail_below_fails_when_ci_low_under_threshold() {
+        let report = sample_report().with_standard_statistics();
+        let err = check_fail_below(&report, 1.0).unwrap_err();
+        assert!(
+            err.to_string().contains("--fail-below breached"),
             "got: {err}"
         );
     }

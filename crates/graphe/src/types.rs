@@ -352,7 +352,12 @@ pub struct ToolAuditRecord {
     pub duration_ms: u64,
     /// Whether the tool result was an error.
     pub is_error: bool,
-    /// Stable outcome label, currently `"success"` or `"error"`.
+    /// Stable outcome label (#4558): `"success"`, `"partial_success"`,
+    /// `"error"`, or a denial-class string (`"denied_by_group"`,
+    /// `"denied_by_hook"`, `"not_found"`, ...) when the call never ran.
+    /// Derived from `nous::pipeline::ToolCall::outcome_label()` at
+    /// finalize time; open-ended, not a fixed enum, so new classes need no
+    /// schema migration here.
     pub outcome: String,
     /// Bounded tool result text captured from the execution path.
     pub result: Option<String>,

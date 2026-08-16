@@ -1395,6 +1395,7 @@ fn signal_classification_code() {
         duration_ms: 10,
         approval: None,
         receipt: None,
+        outcome_detail: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(
@@ -1418,6 +1419,7 @@ fn signal_classification_research() {
         duration_ms: 10,
         approval: None,
         receipt: None,
+        outcome_detail: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(
@@ -1441,6 +1443,7 @@ fn signal_classification_error_recovery() {
         duration_ms: 10,
         approval: None,
         receipt: None,
+        outcome_detail: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(
@@ -1609,6 +1612,7 @@ fn classify_signals_includes_error_recovery() {
         duration_ms: 5,
         approval: None,
         receipt: None,
+        outcome_detail: None,
     }];
     let signals = classify_signals(&calls, "", false, false);
     assert!(

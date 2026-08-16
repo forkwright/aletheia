@@ -71,6 +71,7 @@ fn turn_result_with_tool_calls() {
             duration_ms: 42,
             approval: None,
             receipt: None,
+            outcome_detail: None,
         }],
         // WHY the spread: this fixture asserts on token totals only, and an
         // exhaustive literal breaks on every field `TurnUsage` gains -- which is

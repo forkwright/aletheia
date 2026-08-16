@@ -1,0 +1,486 @@
+[
+  {
+    "question_id": "smoke-ssu-001",
+    "question_type": "single-session-user",
+    "question": "What is my favorite color?",
+    "answer": "blue",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "My favorite color is blue, I picked it for my new bike."
+        },
+        {
+          "role": "assistant",
+          "content": "Blue is a great choice for a bike."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ssu-002",
+    "question_type": "single-session-user",
+    "question": "What city did I say I grew up in?",
+    "answer": "Denver",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "I grew up in Denver before moving out for college."
+        },
+        {
+          "role": "assistant",
+          "content": "Denver has beautiful mountain views."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ssu-003",
+    "question_type": "single-session-user",
+    "question": "What pet do I have?",
+    "answer": "a cat named Whiskers",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "My cat Whiskers just turned three years old."
+        },
+        {
+          "role": "assistant",
+          "content": "Happy birthday to Whiskers!"
+        }
+      ]
+    ],
+    "answer_alternatives": [
+      "Whiskers",
+      "a cat"
+    ]
+  },
+  {
+    "question_id": "smoke-ssu-004",
+    "question_type": "single-session-user",
+    "question": "What language am I learning?",
+    "answer": "Spanish",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "I've been learning Spanish for six months now."
+        },
+        {
+          "role": "assistant",
+          "content": "That's a great language to learn."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ssa-001",
+    "question_type": "single-session-assistant",
+    "question": "What restaurant did the assistant recommend?",
+    "answer": "Acme Corp Bistro",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Can you recommend somewhere to eat near acme.corp?"
+        },
+        {
+          "role": "assistant",
+          "content": "I recommend Acme Corp Bistro, it's close by and well reviewed."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ssa-002",
+    "question_type": "single-session-assistant",
+    "question": "What did the assistant say the deadline was?",
+    "answer": "Friday",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "When is the acme.corp report due?"
+        },
+        {
+          "role": "assistant",
+          "content": "The report is due Friday according to the acme.corp schedule."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ssa-003",
+    "question_type": "single-session-assistant",
+    "question": "What book did the assistant suggest?",
+    "answer": "Deep Work",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Any book suggestions for focus?"
+        },
+        {
+          "role": "assistant",
+          "content": "I'd suggest Deep Work, it covers focused productivity habits."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ssa-004",
+    "question_type": "single-session-assistant",
+    "question": "What tool did the assistant recommend for tracking tasks?",
+    "answer": "a kanban board",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "How should I track my daily tasks?"
+        },
+        {
+          "role": "assistant",
+          "content": "A kanban board works well for tracking daily tasks."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ms-001",
+    "question_type": "multi-session",
+    "question": "Who is bob's manager at acme.corp?",
+    "answer": "alice",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Bob just joined acme.corp on the engineering team."
+        },
+        {
+          "role": "assistant",
+          "content": "Welcome to Bob at acme.corp."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Alice is now bob's manager at acme.corp."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it, alice manages bob."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ms-002",
+    "question_type": "multi-session",
+    "question": "What project is bob working on?",
+    "answer": "the memory pipeline",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Bob joined the acme.corp engineering team."
+        },
+        {
+          "role": "assistant",
+          "content": "Good to know."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Bob is now working on the memory pipeline project."
+        },
+        {
+          "role": "assistant",
+          "content": "The memory pipeline is an important project."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ms-003",
+    "question_type": "multi-session",
+    "question": "What city did alice move to?",
+    "answer": "Austin",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Alice used to live in Denver."
+        },
+        {
+          "role": "assistant",
+          "content": "Denver is a nice city."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Alice just moved to Austin for a new job at acme.corp."
+        },
+        {
+          "role": "assistant",
+          "content": "Austin is a great tech hub."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ms-004",
+    "question_type": "multi-session",
+    "question": "What did alice and bob decide to name their project?",
+    "answer": "Project Aletheia",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Alice and bob are starting a new project at acme.corp."
+        },
+        {
+          "role": "assistant",
+          "content": "Exciting, what will it be called?"
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "They named it Project Aletheia."
+        },
+        {
+          "role": "assistant",
+          "content": "Project Aletheia is a memorable name."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-tr-001",
+    "question_type": "temporal-reasoning",
+    "question": "How many years after joining acme.corp did bob get promoted?",
+    "answer": "two years",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Bob joined acme.corp in 2020."
+        },
+        {
+          "role": "assistant",
+          "content": "Noted, bob joined in 2020."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Bob was promoted to senior engineer in 2022, two years after joining."
+        },
+        {
+          "role": "assistant",
+          "content": "Congratulations to bob on the promotion."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-tr-002",
+    "question_type": "temporal-reasoning",
+    "question": "Did alice move to Austin before or after bob joined acme.corp?",
+    "answer": "after",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Bob joined acme.corp in 2020."
+        },
+        {
+          "role": "assistant",
+          "content": "Noted."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Alice moved to Austin in 2021, after bob had already joined acme.corp."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it, alice's move came after bob joined."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-tr-003",
+    "question_type": "temporal-reasoning",
+    "question": "What was alice's favorite color before she changed it to blue?",
+    "answer": "green",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "My favorite color used to be green."
+        },
+        {
+          "role": "assistant",
+          "content": "Green is a calming color."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "I've since changed my favorite color to blue."
+        },
+        {
+          "role": "assistant",
+          "content": "Blue is a nice change."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-tr-004",
+    "question_type": "temporal-reasoning",
+    "question": "How long had bob been learning Spanish when he passed the exam?",
+    "answer": "six months",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Bob started learning Spanish in January."
+        },
+        {
+          "role": "assistant",
+          "content": "Great goal for the new year."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Bob passed his Spanish exam in July, six months after he started."
+        },
+        {
+          "role": "assistant",
+          "content": "Congratulations to bob."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ku-001",
+    "question_type": "knowledge-update",
+    "question": "What is my current favorite color?",
+    "answer": "blue",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "My favorite color is green."
+        },
+        {
+          "role": "assistant",
+          "content": "Green is nice."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Actually, my favorite color is now blue, I changed my mind."
+        },
+        {
+          "role": "assistant",
+          "content": "Blue it is then."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ku-002",
+    "question_type": "knowledge-update",
+    "question": "Where does alice currently work?",
+    "answer": "acme.corp",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Alice used to work at a startup called Zenith."
+        },
+        {
+          "role": "assistant",
+          "content": "Noted, alice worked at Zenith."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Alice now works at acme.corp instead."
+        },
+        {
+          "role": "assistant",
+          "content": "Got it, alice moved to acme.corp."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ku-003",
+    "question_type": "knowledge-update",
+    "question": "What is bob's current role at acme.corp?",
+    "answer": "senior engineer",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Bob started as a junior engineer at acme.corp."
+        },
+        {
+          "role": "assistant",
+          "content": "A good starting point."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Bob was promoted, he's now a senior engineer at acme.corp."
+        },
+        {
+          "role": "assistant",
+          "content": "Congratulations to bob on the promotion."
+        }
+      ]
+    ]
+  },
+  {
+    "question_id": "smoke-ku-004",
+    "question_type": "knowledge-update",
+    "question": "What language is alice currently learning?",
+    "answer": "French",
+    "haystack_sessions": [
+      [
+        {
+          "role": "user",
+          "content": "Alice was learning Spanish."
+        },
+        {
+          "role": "assistant",
+          "content": "Spanish is useful."
+        }
+      ],
+      [
+        {
+          "role": "user",
+          "content": "Alice switched to learning French instead."
+        },
+        {
+          "role": "assistant",
+          "content": "French is a great choice too."
+        }
+      ]
+    ]
+  }
+]

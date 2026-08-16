@@ -329,7 +329,7 @@ test-full = "full test tier fixtures"
 path = "crates/organon"
 layer = "tool"
 purpose = "Tool registry, definitions, and built-in tool executors"
-depends_on = ["eidos", "energeia", "gnosis", "graphe", "hermeneus", "koina", "poiesis-charts", "poiesis-core", "poiesis-diff", "poiesis-doc", "poiesis-inspect", "poiesis-intake", "poiesis-lint", "poiesis-scaffold", "poiesis-sheet", "poiesis-slides", "poiesis-theme", "poiesis-typst", "poiesis-verify", "taxis"]
+depends_on = ["eidos", "energeia", "gnosis", "graphe", "hermeneus", "koina", "poiesis-charts", "poiesis-core", "poiesis-deck", "poiesis-diff", "poiesis-doc", "poiesis-inspect", "poiesis-intake", "poiesis-lint", "poiesis-printer-chromium", "poiesis-scaffold", "poiesis-sheet", "poiesis-slides", "poiesis-theme", "poiesis-typst", "poiesis-verify", "taxis"]
 used_by = ["aletheia", "diaporeia", "integration-tests", "nous", "pylon", "thesauros"]
 dev_depends_on = []
 
@@ -474,7 +474,7 @@ path = "crates/poiesis/deck"
 layer = "tool"
 purpose = "HTML/CSS deck renderer — three-layer CSS compositor and minijinja slide engine; owns its zone-layout solver as an internal module"
 depends_on = ["poiesis-core"]
-used_by = ["poiesis"]
+used_by = ["organon", "poiesis"]
 dev_depends_on = []
 
 [crates.poiesis-deck.features]
@@ -485,7 +485,7 @@ path = "crates/poiesis/printer-chromium"
 layer = "tool"
 purpose = "Chromium CDP wrapper — converts HTML strings to PDF bytes via headless browser"
 depends_on = ["poiesis-core"]
-used_by = ["poiesis"]
+used_by = ["organon", "poiesis"]
 dev_depends_on = []
 
 [crates.poiesis-printer-chromium.features]

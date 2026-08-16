@@ -38,7 +38,7 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
         with:
-          version: "latest"
+          version: "0.12.5"
 
       # WHY: gate on the extractor's own fixture test so a broken extractor
       # (which would silently drop pub items) can't produce a false-positive

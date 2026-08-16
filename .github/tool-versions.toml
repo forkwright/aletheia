@@ -1,0 +1,43 @@
+# SSOT for release/security/gate CI tool versions (#4945). The Rust toolchain
+# itself is pinned separately in rust-toolchain.toml, not here — a workflow
+# step that needs the compiler version falls through to that file rather than
+# duplicating it in this manifest.
+#
+# scripts/check-tool-versions.py reads this file and greps every workflow /
+# script named below for a matching pinned literal; drift between this file
+# and a live call site fails CI. Bump a version here AND at its call site(s)
+# together — the checker has no write path, only a `--check` verdict.
+
+[tools.nextest]
+version = "0.9.143"
+sites = [
+    ".github/workflows/desktop.yml",
+    ".github/workflows/online-tests.yml",
+]
+
+[tools.cargo-audit]
+version = "0.22.2"
+sites = [".github/workflows/security.yml"]
+
+[tools.cargo-fuzz]
+version = "0.13.2"
+sites = [".github/workflows/fuzz.yml"]
+
+[tools.cross]
+version = "0.2.5"
+sites = [".github/workflows/release.yml"]
+
+[tools.cargo-cyclonedx]
+version = "0.5.9"
+sites = ["scripts/generate-sbom.sh"]
+
+[tools.uv]
+version = "0.12.5"
+sites = [".github/workflows/llm-freshness.yml"]
+
+[fuzz]
+# WHY dated, not a floating `nightly` channel: nightly feature availability
+# can shift by date, so an undated pin makes a scheduled fuzz run
+# unreproducible. Update alongside a green Fuzz workflow run on the new date.
+nightly_date = "2026-08-15"
+sites = [".github/workflows/fuzz.yml"]

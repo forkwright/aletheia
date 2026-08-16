@@ -416,10 +416,20 @@ When results land, compare against the [Published SOTA baselines](#published-sot
   bridging cross-session dependencies
 
 **Regression gate:**
-Once a baseline run is recorded, add a CI check that runs `--max-questions 20`
-and asserts `em_rate >= baseline - 0.05`. The wiremock-based integration
-tests already validate the scoring pipeline; this would validate the live
-memory pipeline.
+`.github/workflows/bench-gate.yml`'s `quality-gate` job runs
+`aletheia benchmark longmemeval --max-questions 20` against a live instance
+with `--fail-below <threshold>` (schedule + `workflow_dispatch` only — never
+a required PR check, since it spends real LLM API budget). The threshold
+gates the exact-match 95% bootstrap CI **lower bound**
+(`BenchmarkStatistics::em_ci_low`), not the point estimate, so a pass cannot
+happen purely on a lucky bootstrap draw. It starts at a conservative
+smoke-wiring floor rather than a calibrated `baseline - 0.05` bound: no
+recorded baseline exists yet, and fabricating one from a run this document
+never performed would misrepresent measured quality. `--baseline-report`
+already supports comparing two full `BenchmarkReport`s once a real baseline
+is recorded from an actual scheduled run. The wiremock-based integration
+tests validate the scoring pipeline in isolation; this validates the live
+memory pipeline end-to-end.
 
 ---
 

@@ -120,6 +120,7 @@ mod tests {
             duration_ms: 42,
             approval: None,
             receipt: None,
+            outcome_detail: None,
         }
     }
 
