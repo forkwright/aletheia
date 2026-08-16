@@ -322,6 +322,15 @@ jobs:
       - name: Check workspace lockfiles are tracked
         run: scripts/check-workspace-locks.py
 
+      # WHY(aletheia#4530): stops a NEW public stub/scaffolding surface from
+      # landing with no tracking issue or status marker -- pure-python, no
+      # compile, so it runs here with the other coverage checks.
+      - name: Test check-stub-accountability.py
+        run: scripts/test-check-stub-accountability.py
+
+      - name: Check stub-shaped sites carry accountability
+        run: scripts/check-stub-accountability.py
+
       - name: Check for unresolved conflict markers
         run: scripts/check-conflict-markers.py
 
