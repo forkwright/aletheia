@@ -243,7 +243,10 @@ impl Router for EmpiricalRouter {
                 }
             };
 
-            let confidence = match self.store.rolling_stats(&chosen, &category, self.window).await
+            let confidence = match self
+                .store
+                .rolling_stats(&chosen, &category, self.window)
+                .await
             {
                 Ok(stats) => stats.and_then(|s| s.success_rate()),
                 Err(error) => {
@@ -626,7 +629,13 @@ mod tests {
                 .await;
         }
 
-        let router = EmpiricalRouter::new(Arc::clone(&store), "loser", 5, Duration::from_hours(168), 0.1);
+        let router = EmpiricalRouter::new(
+            Arc::clone(&store),
+            "loser",
+            5,
+            Duration::from_hours(168),
+            0.1,
+        );
         let features = RequestFeatures::new(
             vec![winner.clone(), loser.clone()],
             Some(TaskCategory::Feature),
@@ -645,7 +654,13 @@ mod tests {
     #[tokio::test]
     async fn empirical_router_falls_back_to_static_when_no_data() {
         let store = Arc::new(AfterActionStore::in_memory());
-        let router = EmpiricalRouter::new(Arc::clone(&store), "default", 5, Duration::from_hours(168), 0.1);
+        let router = EmpiricalRouter::new(
+            Arc::clone(&store),
+            "default",
+            5,
+            Duration::from_hours(168),
+            0.1,
+        );
         let features = RequestFeatures::new(
             vec![ProviderId::new("some-candidate")],
             Some(TaskCategory::Feature),
@@ -727,7 +742,10 @@ mod tests {
             0.0,
         );
         let features = RequestFeatures::new(
-            vec![ProviderId::new("learned-winner"), ProviderId::new(static_provider)],
+            vec![
+                ProviderId::new("learned-winner"),
+                ProviderId::new(static_provider),
+            ],
             Some(TaskCategory::Feature),
             None,
         );

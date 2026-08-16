@@ -14,7 +14,9 @@ use tokio_util::task::TaskTracker;
 use tracing::{Instrument, error, info, warn};
 
 use agora::types::ChannelProvider;
-use aletheia_routing::{AfterActionStore, DEFAULT_ROUTING_WINDOW, EmpiricalRouter, FallthroughRouter, NoOpRouter};
+use aletheia_routing::{
+    AfterActionStore, DEFAULT_ROUTING_WINDOW, EmpiricalRouter, FallthroughRouter, NoOpRouter,
+};
 use hermeneus::provider::ProviderRegistry;
 use koina::disk_space::DiskSpaceMonitor;
 use koina::id::ToolName;

@@ -514,9 +514,7 @@ impl NousActor {
             async move {
                 Box::pin(ToolContext::scope_spawn_generation_hint(
                     Some(spawn_generation_hint),
-                    ToolContext::scope_turn_cancel(
-                    scoped_turn_cancel,
-                    async move {
+                    ToolContext::scope_turn_cancel(scoped_turn_cancel, async move {
                         #[cfg(feature = "knowledge-store")]
                         let text_search_ref: Option<
                             &dyn crate::recall::TextSearch,
@@ -580,8 +578,8 @@ impl NousActor {
                                 .await
                             }
                         }
-                    },
-                )))
+                    }),
+                ))
                 .await
             }
             .instrument(caller_span),

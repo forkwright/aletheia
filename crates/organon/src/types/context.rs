@@ -287,9 +287,7 @@ impl ToolContext {
     /// outside a scoped turn or when the host never populated one (#4746).
     #[must_use]
     pub fn spawn_generation_hint(&self) -> Option<SpawnGenerationHint> {
-        SPAWN_GENERATION_HINT
-            .try_with(Clone::clone)
-            .unwrap_or(None)
+        SPAWN_GENERATION_HINT.try_with(Clone::clone).unwrap_or(None)
     }
 
     /// Run a future with a spawn generation/limits hint visible to tool

@@ -315,7 +315,8 @@ impl SpawnServiceImpl {
         // existing test constructing `SpawnContext::detached`/`::new`
         // directly) preserves prior behavior exactly.
         let context_window = parent_generation.map_or(CONTEXT_TOKENS, |h| h.context_window);
-        let max_output_tokens = parent_generation.map_or(MAX_OUTPUT_TOKENS, |h| h.max_output_tokens);
+        let max_output_tokens =
+            parent_generation.map_or(MAX_OUTPUT_TOKENS, |h| h.max_output_tokens);
         let bootstrap_max_tokens =
             parent_generation.map_or(BOOTSTRAP_MAX_TOKENS, |h| h.bootstrap_max_tokens);
         let chars_per_token = parent_generation.map_or(CHARS_PER_TOKEN, |h| h.chars_per_token);

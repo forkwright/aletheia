@@ -178,7 +178,16 @@ impl From<String> for ProviderId {
 /// A request with `RoutingBoundary::LocalHosted` allows providers at
 /// `LocalHosted` *or* `Embedded`, but not `Cloud`.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Default,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
