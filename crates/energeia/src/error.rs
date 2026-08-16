@@ -169,6 +169,14 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// Invalid `OAuth` token supplied for API authentication.
+    #[snafu(display("invalid OAuth token: {detail}"))]
+    InvalidOAuthToken {
+        detail: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for results with [`Error`].
