@@ -93,7 +93,7 @@ jobs:
         # WHY SHA-pinned: this downloads a binary from the network inside the REQUIRED
         # `cargo audit` job, and a mutable tag can be repointed. Every other action in this
         # repo is SHA-pinned; this was the sole exception.
-        uses: taiki-e/install-action@6a1bd70eaac3c8bdf093356838d7ee09fda951cf # v2.85.5
+        uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2.85.13
         with:
           tool: cargo-audit
       - name: cargo audit
@@ -105,7 +105,7 @@ jobs:
 
   osv-scanner:
     name: osv scanner
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@8deb546fdb875b9996d27d4950be7312dac076a1
     permissions:
       actions: read
       contents: read
@@ -137,7 +137,7 @@ jobs:
       # Excluding one detector this repo has no use for beats renaming a test
       # to dodge a length coincidence, which only defers the next one.
       - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@6c05c4a00b91aa542267d8e32a8254774799d68d # v3.93.8
+        uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
         with:
           extra_args: --only-verified --exclude-detectors=Lob
 
