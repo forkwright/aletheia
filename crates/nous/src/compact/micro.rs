@@ -19,6 +19,46 @@ use super::CompactConfig;
 /// Marker prefix for cleared tool results.
 const CLEARED_MARKER_PREFIX: &str = "[Cleared: ";
 
+/// Bytes of the SHA-256 digest kept in a cleared-result marker (#4797):
+/// enough to catch accidental divergence between two "cleared" receipts
+/// (64 bits) without bloating every marker with the full 32-byte digest.
+const CLEARED_HASH_PREFIX_BYTES: usize = 8;
+
+/// A receipt of what a cleared tool result's content was (#4797): the text
+/// itself is gone (replaced by the marker), but its hash survives so a run
+/// record can prove two clears removed the same or different content.
+fn cleared_content_hash(content: &str) -> String {
+    use sha2::{Digest as _, Sha256};
+    use std::fmt::Write as _;
+    let digest = Sha256::digest(content.as_bytes());
+    let mut out = String::with_capacity(CLEARED_HASH_PREFIX_BYTES * 2);
+    for byte in digest.iter().take(CLEARED_HASH_PREFIX_BYTES) {
+        // kanon:ignore RUST/no-silent-result-swallow — write! on String is infallible
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
+/// Strip the `[tool:<name>@<timestamp>] ` metadata prefix `format_tool_result`
+/// adds, returning the real tool-result content underneath.
+///
+/// WHY: the cleared-result hash (#4797) exists to prove two clears removed
+/// the *same content*. Hashing the raw `msg.content` instead would fold the
+/// per-call timestamp into the digest, so two calls that read the identical
+/// file at different times would hash differently -- defeating the receipt's
+/// purpose. Falls back to the full string when no prefix is present (should
+/// not happen for a message that reached the clearing loop, which only
+/// clears entries `parse_tool_result_metadata` already accepted).
+fn strip_tool_result_prefix(content: &str) -> &str {
+    if !content.starts_with("[tool:") {
+        return content;
+    }
+    content
+        .find(']')
+        .and_then(|end_bracket| content.get(end_bracket + 2..))
+        .unwrap_or(content)
+}
+
 /// Run microcompaction on pipeline messages, replacing expired tool results.
 ///
 /// Returns updated messages and compaction metrics. Messages that are not
@@ -102,7 +142,14 @@ pub(crate) fn run_microcompaction(
             };
             let age = now.duration_since(created_at);
             let age_display = format!("{}s", age.as_secs());
-            let marker = format!("{CLEARED_MARKER_PREFIX}{tool_type:?}, age {age_display}]");
+            // WHY hash before overwrite (#4797): this is the only point
+            // the original content is still readable -- once `msg.content`
+            // below is replaced, the text is gone, so the receipt of what
+            // was cleared has to be computed from the pre-clear value.
+            let content_hash = cleared_content_hash(strip_tool_result_prefix(&msg.content));
+            let marker = format!(
+                "{CLEARED_MARKER_PREFIX}{tool_type:?}, age {age_display}, sha256:{content_hash}]"
+            );
 
             #[expect(
                 clippy::as_conversions,
@@ -260,6 +307,30 @@ mod tests {
         assert!(
             metrics.tokens_reclaimed() > 0,
             "should reclaim tokens FROM cleared result"
+        );
+        // Closes #4797's cleared-result-hash gap: the original content is
+        // gone, but a receipt of it survives in the marker.
+        let expected_hash = cleared_content_hash("contents of main.rs");
+        assert!(
+            messages[0]
+                .content
+                .contains(&format!("sha256:{expected_hash}]")),
+            "cleared marker must carry a receipt hash of the original content, got: {}",
+            messages[0].content
+        );
+    }
+
+    #[test]
+    fn cleared_content_hash_is_deterministic_and_content_sensitive() {
+        let a = cleared_content_hash("contents of main.rs");
+        let b = cleared_content_hash("contents of main.rs");
+        let c = cleared_content_hash("different contents");
+        assert_eq!(a, b, "same content must hash identically");
+        assert_ne!(a, c, "different content must hash differently");
+        assert_eq!(
+            a.len(),
+            CLEARED_HASH_PREFIX_BYTES * 2,
+            "hex-encoded byte prefix"
         );
     }
 

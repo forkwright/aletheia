@@ -44,6 +44,41 @@ fn resolve_role(role_str: &str) -> Option<Role> {
     Role::parse(role_str)
 }
 
+/// Generation and tool-limit values for a spawned sub-agent, resolved from
+/// the parent's live hint when a spawning host provided one, falling back to
+/// this module's fixed constants otherwise.
+///
+/// WHY(#4746): a spawning host (nous's own `agent` tool builtin) may forward
+/// the parent's *actual* live generation/limits values through
+/// `SpawnContext::parent_generation`, so a child derives from what the
+/// parent is really running with instead of always these fixed constants.
+/// `None` (no host populated it -- e.g. every existing test constructing
+/// `SpawnContext::detached`/`::new` directly) preserves prior behavior
+/// exactly.
+struct ResolvedGeneration {
+    context_window: u32,
+    max_output_tokens: u32,
+    bootstrap_max_tokens: u32,
+    chars_per_token: u32,
+    max_tool_iterations: u32,
+    session_token_cap: u64,
+    max_tool_result_bytes: u32,
+}
+
+impl ResolvedGeneration {
+    fn from_hint(hint: Option<organon::types::SpawnGenerationHint>) -> Self {
+        Self {
+            context_window: hint.map_or(CONTEXT_TOKENS, |h| h.context_window),
+            max_output_tokens: hint.map_or(MAX_OUTPUT_TOKENS, |h| h.max_output_tokens),
+            bootstrap_max_tokens: hint.map_or(BOOTSTRAP_MAX_TOKENS, |h| h.bootstrap_max_tokens),
+            chars_per_token: hint.map_or(CHARS_PER_TOKEN, |h| h.chars_per_token),
+            max_tool_iterations: hint.map_or(MAX_TOOL_ITERATIONS, |h| h.max_tool_iterations),
+            session_token_cap: hint.map_or(500_000, |h| h.session_token_cap),
+            max_tool_result_bytes: hint.map_or(MAX_TOOL_RESULT_BYTES, |h| h.max_tool_result_bytes),
+        }
+    }
+}
+
 /// Compose an ephemeral sub-agent's system-prompt content from its role
 /// template and (if present) role contract.
 ///
@@ -208,10 +243,17 @@ impl SpawnServiceImpl {
     /// WHY(#5555): keep config construction deterministic and testable so the
     /// spawned `allowed_roots` can be asserted independently of the actor
     /// lifecycle.
+    // NOTE: sequential field-by-field config derivation (model, tool policy,
+    // spawn policy, workspace, generation limits) -- already extracted the
+    // largest cohesive slice into `ResolvedGeneration`; what remains is each
+    // `NousConfig`/`NousLimits` field's own independent derivation rule and
+    // splitting further would fragment one config into scattered pieces.
+    #[expect(clippy::too_many_lines, reason = "sequential config-field derivation")]
     fn build_spawn_config(
         &self,
         request: &SpawnRequest,
         parent_nous_id: &str,
+        parent_generation: Option<organon::types::SpawnGenerationHint>,
     ) -> (String, NousConfig, String) {
         let spawn_id = format!(
             "spawn-{}-{}",
@@ -306,6 +348,9 @@ impl SpawnServiceImpl {
         // and is created before the actor starts.
         let allowed_roots = vec![workspace.clone()];
 
+        // WHY(#4746): see `ResolvedGeneration`'s docs for the fallback contract.
+        let resolved = ResolvedGeneration::from_hint(parent_generation);
+
         let config = NousConfig {
             id: Arc::from(spawn_id.as_str()),
             name: None,
@@ -315,12 +360,12 @@ impl SpawnServiceImpl {
                 fallback_models: Vec::new(),
                 fallback_providers: Vec::new(),
                 retries_before_fallback: 2,
-                context_window: CONTEXT_TOKENS,
-                max_output_tokens: MAX_OUTPUT_TOKENS,
-                bootstrap_max_tokens: BOOTSTRAP_MAX_TOKENS,
+                context_window: resolved.context_window,
+                max_output_tokens: resolved.max_output_tokens,
+                bootstrap_max_tokens: resolved.bootstrap_max_tokens,
                 thinking_enabled: false,
                 thinking_budget: 0,
-                chars_per_token: CHARS_PER_TOKEN,
+                chars_per_token: resolved.chars_per_token,
                 prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
                     .to_owned(),
                 complexity: hermeneus::complexity::ComplexityConfig::default(),
@@ -328,12 +373,12 @@ impl SpawnServiceImpl {
                 distillation_model: None,
             },
             limits: crate::config::NousLimits {
-                max_tool_iterations: MAX_TOOL_ITERATIONS,
+                max_tool_iterations: resolved.max_tool_iterations,
                 loop_detection_threshold: 3,
                 consecutive_error_threshold: 4,
                 loop_max_warnings: 2,
-                session_token_cap: 500_000,
-                max_tool_result_bytes: MAX_TOOL_RESULT_BYTES,
+                session_token_cap: resolved.session_token_cap,
+                max_tool_result_bytes: resolved.max_tool_result_bytes,
                 max_consecutive_tool_only_iterations: 3,
                 consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
                 loop_detection_window: 50,
@@ -376,7 +421,8 @@ impl SpawnService for SpawnServiceImpl {
     ) -> Pin<Box<dyn Future<Output = Result<SpawnResult, String>> + Send + '_>> {
         let parent_nous_id = context.parent_nous_id.clone();
         let parent_cancel = context.parent_cancel.clone();
-        let (spawn_id, config, session_key) = self.build_spawn_config(&request, &parent_nous_id);
+        let (spawn_id, config, session_key) =
+            self.build_spawn_config(&request, &parent_nous_id, context.parent_generation);
         let timeout = Duration::from_secs(request.timeout_secs);
         let task = request.task.clone();
         let workspace = config.workspace.clone();
@@ -611,7 +657,15 @@ mod tests {
         };
         let mut providers = ProviderRegistry::new();
         providers.register(Box::new(
-            MockProvider::with_responses(vec![response]).models(&SUPPORTED_MOCK_MODELS),
+            // WHY .named: `record_router_outcome` keys the empirical store on
+            // the actually-observed provider identity (`provider.name()`),
+            // not the model string (#4798/#4863 model/provider conflation
+            // fix). Without this, the mock's default provider name ("mock")
+            // diverges from `koina::defaults::DEFAULT_MODEL`, the identity
+            // this fixture's `RecordingRouter`/assertions are built around.
+            MockProvider::with_responses(vec![response])
+                .models(&SUPPORTED_MOCK_MODELS)
+                .named(koina::defaults::DEFAULT_MODEL),
         ));
         Arc::new(providers)
     }
@@ -659,6 +713,7 @@ mod tests {
                 timeout_secs: 30,
             },
             "test-parent",
+            None,
         );
 
         assert!(
@@ -674,6 +729,78 @@ mod tests {
             !config.allowed_roots.contains(&oikos.root().to_path_buf()),
             "spawned agent must not inherit the entire oikos root"
         );
+    }
+
+    // WHY(#4746): `parent_generation` must genuinely override the hardcoded
+    // constants, not merely compile through unused — a spawning host with an
+    // operator-tuned `NousGenerationConfig`/`NousLimits` (larger context
+    // window, tighter session cap, etc.) needs the child to inherit those
+    // real values, not silently fall back to defaults that ignore the
+    // operator's configuration.
+    #[test]
+    fn spawn_config_derives_generation_and_limits_from_parent_hint_when_present() {
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let hint = organon::types::SpawnGenerationHint {
+            context_window: 999_000,
+            max_output_tokens: 12_345,
+            bootstrap_max_tokens: 6_789,
+            chars_per_token: 5,
+            max_tool_iterations: 77,
+            session_token_cap: 111_111,
+            max_tool_result_bytes: 22_222,
+        };
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            Some(hint),
+        );
+
+        assert_eq!(config.generation.context_window, 999_000);
+        assert_eq!(config.generation.max_output_tokens, 12_345);
+        assert_eq!(config.generation.bootstrap_max_tokens, 6_789);
+        assert_eq!(config.generation.chars_per_token, 5);
+        assert_eq!(config.limits.max_tool_iterations, 77);
+        assert_eq!(config.limits.session_token_cap, 111_111);
+        assert_eq!(config.limits.max_tool_result_bytes, 22_222);
+    }
+
+    // WHY(#4746): the absent-hint path (every call site that does not
+    // populate `SpawnContext::parent_generation`, including every other test
+    // in this module) must reproduce prior behavior exactly — the constants,
+    // unchanged.
+    #[test]
+    fn spawn_config_falls_back_to_constants_when_no_parent_hint() {
+        let (_dir, oikos) = make_oikos();
+        let svc = make_spawn_service(Arc::clone(&oikos));
+
+        let (_, config, _) = svc.build_spawn_config(
+            &SpawnRequest {
+                role: "coder".to_owned(),
+                task: "Test task".to_owned(),
+                model: None,
+                allowed_tools: None,
+                timeout_secs: 30,
+            },
+            "test-parent",
+            None,
+        );
+
+        assert_eq!(config.generation.context_window, CONTEXT_TOKENS);
+        assert_eq!(config.generation.max_output_tokens, MAX_OUTPUT_TOKENS);
+        assert_eq!(config.generation.bootstrap_max_tokens, BOOTSTRAP_MAX_TOKENS);
+        assert_eq!(config.generation.chars_per_token, CHARS_PER_TOKEN);
+        assert_eq!(config.limits.max_tool_iterations, MAX_TOOL_ITERATIONS);
+        assert_eq!(config.limits.session_token_cap, 500_000);
+        assert_eq!(config.limits.max_tool_result_bytes, MAX_TOOL_RESULT_BYTES);
     }
 
     // WHY(#5823): a hand-set `ComplexityInput.depth` only proves the scorer
@@ -698,6 +825,7 @@ mod tests {
                 timeout_secs: 30,
             },
             "test-parent",
+            None,
         );
         assert!(
             config.spawn_depth > 0,
@@ -758,6 +886,7 @@ tool_groups = ["read"]
                 timeout_secs: 30,
             },
             "test-parent",
+            None,
         );
 
         assert_eq!(
@@ -796,6 +925,7 @@ domains = ["medical"]
                 timeout_secs: 30,
             },
             "test-parent",
+            None,
         );
 
         assert_eq!(&*config.episteme_cohort, "isolated");
@@ -822,6 +952,7 @@ domains = ["medical"]
                 timeout_secs: 30,
             },
             "test-parent",
+            None,
         );
 
         assert_eq!(
@@ -857,6 +988,7 @@ domains = ["medical"]
                 timeout_secs: 30,
             },
             "test-parent",
+            None,
         );
 
         assert_eq!(
@@ -1265,6 +1397,7 @@ domains = ["medical"]
                 timeout_secs: 30,
             },
             "test-parent",
+            None,
         );
 
         // Group policy must be Read-only, not DenyAll.

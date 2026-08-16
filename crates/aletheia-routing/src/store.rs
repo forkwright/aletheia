@@ -42,6 +42,7 @@ use jiff::Timestamp;
 use snafu::{ResultExt as _, Snafu};
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::sync::RwLock;
+use tokio::time::timeout;
 
 use crate::types::{InteractiveOutcome, ProviderId, TaskCategory, TurnOutcome};
 
@@ -284,6 +285,164 @@ impl AfterActionStore {
 
         let cache = self.cache.read().await;
         Ok(cache.get(&(provider.clone(), *cat)).cloned())
+    }
+
+    /// Query [`rolling_stats`](Self::rolling_stats) with a bounded timeout.
+    ///
+    /// WHY: the differing-window fallback path in `rolling_stats` can trigger
+    /// a full JSONL directory re-scan. A slow disk or large log directory
+    /// must not stall a routing decision unbounded; on timeout the lookup is
+    /// treated as absent so the caller falls back to its static choice.
+    async fn rolling_stats_with_timeout(
+        &self,
+        provider: &ProviderId,
+        task_category: &TaskCategory,
+        window: Duration,
+    ) -> Result<Option<RollingStats>, AfterActionStoreError> {
+        if let Ok(result) = timeout(
+            Duration::from_millis(500),
+            self.rolling_stats(provider, task_category, window),
+        )
+        .await
+        {
+            result
+        } else {
+            tracing::warn!(
+                provider = %provider,
+                category = %task_category,
+                "empirical routing stats lookup timed out; falling back"
+            );
+            Ok(None)
+        }
+    }
+
+    /// Select the best candidate provider for `task_category` by rolling
+    /// success rate, falling back to `static_choice` when data is absent,
+    /// insufficient, or not a confident win.
+    ///
+    /// WHY(#3969): the canonical "confident enough to switch away from the
+    /// static choice" policy. Previously this decision existed in exactly one
+    /// place — privately, inside energeia's dispatch-only `EmpiricalRouter`
+    /// (`crates/energeia/src/routing/empirical.rs`) — with no way for the
+    /// interactive path to consult it short of a second, independently
+    /// drifting copy. Both `energeia::routing::empirical::EmpiricalRouter`
+    /// (dispatch) and [`crate::EmpiricalRouter`] (interactive) now delegate
+    /// here, so "is this candidate confident enough to win" is defined once
+    /// regardless of which path is asking.
+    ///
+    /// `candidates` is assumed already filtered by the caller's own
+    /// [`RequestFeatures::candidate_allowed_by_boundary`](crate::types::RequestFeatures::candidate_allowed_by_boundary)
+    /// check; `static_allowed` carries whether `static_choice` itself passed
+    /// that same check. A disallowed static choice cannot veto an eligible
+    /// empirical winner (it is skipped from the gap comparison and from the
+    /// no-winner fallback, which then returns `candidates.first()` instead of
+    /// the disallowed static choice) — otherwise a cloud default could leak
+    /// through a caller's local-only boundary.
+    pub async fn pick_winner(
+        &self,
+        task_category: &TaskCategory,
+        candidates: &[ProviderId],
+        static_choice: &ProviderId,
+        min_samples: u64,
+        window: Duration,
+        confidence_threshold: f64,
+        static_allowed: bool,
+    ) -> Result<ProviderId, AfterActionStoreError> {
+        if candidates.is_empty() {
+            return Ok(static_choice.clone());
+        }
+
+        let mut best_provider: Option<&ProviderId> = None;
+        let mut best_rate: f64 = -1.0;
+
+        for provider in candidates {
+            let Some(stats) = self
+                .rolling_stats_with_timeout(provider, task_category, window)
+                .await
+                .inspect_err(|error| {
+                    tracing::error!(
+                        error = %error,
+                        provider = %provider,
+                        category = %task_category,
+                        "empirical routing stats store unavailable"
+                    );
+                })?
+            else {
+                continue;
+            };
+
+            if stats.total < min_samples {
+                tracing::debug!(
+                    provider = %provider,
+                    category = %task_category,
+                    total = stats.total,
+                    min_samples,
+                    "insufficient samples, skipping empirical candidate"
+                );
+                continue;
+            }
+
+            let Some(rate) = stats.success_rate() else {
+                continue;
+            };
+
+            if rate > best_rate {
+                best_rate = rate;
+                best_provider = Some(provider);
+            }
+        }
+
+        let Some(winner) = best_provider else {
+            return if static_allowed {
+                Ok(static_choice.clone())
+            } else {
+                Ok(candidates
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| static_choice.clone()))
+            };
+        };
+
+        let static_rate = if static_allowed {
+            self.rolling_stats_with_timeout(static_choice, task_category, window)
+                .await
+                .inspect_err(|error| {
+                    tracing::error!(
+                        error = %error,
+                        provider = %static_choice,
+                        category = %task_category,
+                        "empirical routing stats store unavailable for static provider"
+                    );
+                })?
+                .and_then(|s| s.success_rate())
+                .unwrap_or(0.0)
+        } else {
+            0.0
+        };
+
+        let gap = best_rate - static_rate;
+        if !static_allowed || gap >= confidence_threshold {
+            tracing::info!(
+                empirical_winner = %winner,
+                static_choice = %static_choice,
+                category = %task_category,
+                winner_rate = best_rate,
+                static_rate,
+                gap,
+                "empirical router overriding static choice"
+            );
+            Ok(winner.clone())
+        } else {
+            tracing::debug!(
+                empirical_winner = %winner,
+                static_choice = %static_choice,
+                category = %task_category,
+                gap,
+                confidence_threshold,
+                "confidence gap below threshold, using static choice"
+            );
+            Ok(static_choice.clone())
+        }
     }
 
     /// Directly record the outcome of an interactive turn.
@@ -690,6 +849,17 @@ fn ingest_record(
             continue;
         }
 
+        // WHY still model-derived here (unlike the interactive path fixed
+        // in #4798/#4863 -- see `nous::actor::turn_quality::record_router_outcome`,
+        // which now uses `TurnResult::provider_used`): this ingests
+        // `energeia`'s dispatch-orchestration JSONL, and energeia's writer
+        // (`AfterActionSessionOutcome` in `energeia::pipeline::after_action`)
+        // carries only `model`, never a separate provider -- there is no
+        // provider fact upstream to thread through. Threading a real
+        // provider dimension into energeia's dispatch-worker records is a
+        // separate, larger program (energeia's `SessionOutcome` would need
+        // to record which CLI/worker family ran the session) and is out of
+        // this fix's scope.
         let provider = ProviderId::new(model.as_str());
         let category = session
             .category

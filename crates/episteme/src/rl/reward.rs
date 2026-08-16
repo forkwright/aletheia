@@ -23,10 +23,39 @@ pub trait RewardFn {
 }
 
 /// Reward function that scores improvement over a `LongMemEval` baseline.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+///
+/// Closes #4863 (reward-baseline slice): a scalar `baseline_exact_match_rate`
+/// alone cannot explain *which* baseline artifact produced it or how much
+/// data backed it, so a learned reward signal was not traceable to source
+/// evidence. The provenance fields below are all populated from the same
+/// JSON blob `from_json_file` already parses -- no new I/O.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LongMemEvalReward {
     /// Baseline exact-match rate to improve on.
     pub baseline_exact_match_rate: f64,
+    /// Dataset identity, when the baseline file names one (`dataset_id` or
+    /// falling back to `benchmark`, e.g. `"LongMemEval"`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataset_id: Option<String>,
+    /// Dataset content hash, when the baseline file carries one directly.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dataset_hash: Option<String>,
+    /// SHA-256 hex digest of the exact baseline report bytes this reward
+    /// was built from -- computed locally, not read from the file, so it
+    /// is always present and cannot drift from the source it describes.
+    pub report_hash: String,
+    /// Baseline benchmark run identifier, when the file names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    /// Number of scored questions the baseline rate was computed over,
+    /// when the file carries a `questions` array or an explicit
+    /// `sample_size`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample_size: Option<u64>,
+    /// Confidence interval on `baseline_exact_match_rate`, when the file
+    /// reports one (`ci: [lower, upper]` or `ci: {"lower":..,"upper":..}`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ci: Option<(f64, f64)>,
 }
 
 impl LongMemEvalReward {
@@ -43,6 +72,12 @@ impl LongMemEvalReward {
         })?;
         Ok(Self {
             baseline_exact_match_rate: exact_match_rate,
+            dataset_id: extract_dataset_id(&value),
+            dataset_hash: extract_str_field(&value, "dataset_hash"),
+            report_hash: sha256_hex(&text),
+            run_id: extract_str_field(&value, "run_id"),
+            sample_size: extract_sample_size(&value),
+            ci: extract_ci(&value),
         })
     }
 }
@@ -58,6 +93,58 @@ fn extract_exact_match_rate(value: &serde_json::Value) -> Option<f64> {
         .get("exact_match_rate")
         .and_then(serde_json::Value::as_f64)
         .or_else(|| exact_match_rate_from_questions(value))
+}
+
+fn extract_str_field(value: &serde_json::Value, field: &str) -> Option<String> {
+    value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .map(ToOwned::to_owned)
+}
+
+/// `dataset_id` if present, else the `benchmark` name (baseline files in
+/// this codebase use `"benchmark": "LongMemEval"` rather than a distinct
+/// `dataset_id` key -- see the module tests).
+fn extract_dataset_id(value: &serde_json::Value) -> Option<String> {
+    extract_str_field(value, "dataset_id").or_else(|| extract_str_field(value, "benchmark"))
+}
+
+#[expect(
+    clippy::as_conversions,
+    reason = "usize→u64: question counts fit u64 for any realistic benchmark file"
+)]
+fn extract_sample_size(value: &serde_json::Value) -> Option<u64> {
+    value
+        .get("questions")
+        .and_then(serde_json::Value::as_array)
+        .map(|q| q.len() as u64) // kanon:ignore RUST/as-cast
+        .or_else(|| value.get("sample_size").and_then(serde_json::Value::as_u64))
+}
+
+fn extract_ci(value: &serde_json::Value) -> Option<(f64, f64)> {
+    let ci = value.get("ci")?;
+    if let Some(arr) = ci.as_array() {
+        let lo = arr.first()?.as_f64()?;
+        let hi = arr.get(1)?.as_f64()?;
+        return Some((lo, hi));
+    }
+    let lo = ci.get("lower")?.as_f64()?;
+    let hi = ci.get("upper")?.as_f64()?;
+    Some((lo, hi))
+}
+
+fn sha256_hex(content: impl AsRef<[u8]>) -> String {
+    use sha2::Digest as _;
+    use std::fmt::Write as _;
+
+    let digest = sha2::Sha256::digest(content.as_ref());
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        // WHY discard the Result: writing hex digits into a String never
+        // fails, and `expect_used` is denied crate-wide.
+        let _ = write!(hex, "{byte:02x}");
+    }
+    hex
 }
 
 #[expect(
@@ -127,6 +214,12 @@ mod tests {
     fn reward_is_delta_over_baseline() {
         let reward = LongMemEvalReward {
             baseline_exact_match_rate: 0.35,
+            dataset_id: None,
+            dataset_hash: None,
+            report_hash: "test-hash".to_owned(),
+            run_id: None,
+            sample_size: None,
+            ci: None,
         };
         let outcome = MemoryOutcome {
             exact_match_rate: 0.50,
@@ -159,5 +252,36 @@ mod tests {
         };
 
         assert!((reward.reward(&outcome) - 0.15).abs() < f64::EPSILON);
+        assert_eq!(reward.dataset_id.as_deref(), Some("LongMemEval"));
+        assert!(!reward.report_hash.is_empty());
+    }
+
+    #[test]
+    fn provenance_fields_populate_from_full_report() {
+        let tempdir = tempdir().unwrap();
+        let path = tempdir.path().join("baseline.json");
+        let mut file = fs::File::create(&path).unwrap();
+        file.write_all(
+            serde_json::json!({
+                "dataset_id": "longmemeval-s",
+                "dataset_hash": "sha256:deadbeef",
+                "run_id": "run-2026-08-14",
+                "ci": [0.30, 0.40],
+                "questions": [
+                    { "score": { "exact_match": true } },
+                    { "score": { "exact_match": false } }
+                ]
+            })
+            .to_string()
+            .as_bytes(),
+        )
+        .unwrap();
+
+        let reward = LongMemEvalReward::from_json_file(&path).unwrap();
+        assert_eq!(reward.dataset_id.as_deref(), Some("longmemeval-s"));
+        assert_eq!(reward.dataset_hash.as_deref(), Some("sha256:deadbeef"));
+        assert_eq!(reward.run_id.as_deref(), Some("run-2026-08-14"));
+        assert_eq!(reward.sample_size, Some(2));
+        assert_eq!(reward.ci, Some((0.30, 0.40)));
     }
 }
