@@ -1718,6 +1718,9 @@ mod tests {
                 thread_id: None,
                 transport: Some("test".to_owned()),
                 display_name: None,
+                owner: None,
+                task_id: None,
+                client_turn_id: None,
             },
             artefact_meta: None,
         }

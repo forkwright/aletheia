@@ -172,6 +172,9 @@ fn import_session_record(id: &str, status: SessionStatus, updated_at: &str) -> S
             thread_id: None,
             transport: Some("signal".to_owned()),
             display_name: Some("Archived Run".to_owned()),
+            owner: None,
+            task_id: None,
+            client_turn_id: None,
         },
         artefact_meta: None,
     }

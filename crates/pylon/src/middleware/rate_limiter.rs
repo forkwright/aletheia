@@ -11,7 +11,7 @@ use axum::response::{IntoResponse, Response};
 
 use tracing::Instrument;
 
-use crate::error::{ErrorBody, ErrorResponse};
+use crate::error::{ErrorBody, ErrorResponse, classify_by_status};
 
 /// Per-IP sliding-window rate limiter for anonymous HTTP requests.
 pub struct RateLimiter {
@@ -222,6 +222,8 @@ pub async fn rate_limit(request: Request, next: Next) -> Response {
 
     let client = extract_client_key(&request, limiter.trust_proxy);
     if let Some(retry_after_secs) = limiter.check(&client) {
+        let (category, recoverability, next_action) =
+            classify_by_status(StatusCode::TOO_MANY_REQUESTS);
         let mut response = (
             StatusCode::TOO_MANY_REQUESTS,
             axum::Json(ErrorResponse {
@@ -230,6 +232,9 @@ pub async fn rate_limit(request: Request, next: Next) -> Response {
                     message: format!("rate limited, retry after {retry_after_secs}s"),
                     request_id: None,
                     details: Some(serde_json::json!({ "retry_after_secs": retry_after_secs })),
+                    category,
+                    recoverability,
+                    next_action,
                 },
             }),
         )

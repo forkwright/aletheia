@@ -92,7 +92,7 @@ if [[ -f "$ALETHEIA_CREDS" ]]; then
 fi
 
 # 4. Cost tracking (from metrics)
-if cost=$(curl -sf --max-time 5 "$METRICS_URL" 2>/dev/null | grep "aletheia_llm_cost_total{" | awk '{print $2}'); then
+if cost=$(curl -sf --max-time 5 "$METRICS_URL" 2>/dev/null | grep "aletheia_llm_cost_usd_total{" | awk '{print $2}'); then
     if [[ -n "$cost" ]]; then
         log_ok "LLM cost today: \$$cost"
     fi

@@ -7013,6 +7013,7 @@ dependencies = [
  "axum-server",
  "bathron",
  "dianoia",
+ "eidos",
  "futures",
  "hermeneus",
  "http-body-util",

@@ -13,7 +13,7 @@ use tracing::warn;
 use koina::http::CONTENT_TYPE_JSON;
 use koina::secret::SecretString;
 
-use crate::error::{ApiError, ErrorBody, ErrorResponse};
+use crate::error::{ApiError, ErrorBody, ErrorResponse, classify_by_status};
 use crate::extract::Claims;
 use crate::state::AppState;
 
@@ -97,6 +97,7 @@ fn is_safe_method(method: &Method) -> bool {
 
 /// Build the standard 403 response for a failed CSRF header check.
 fn csrf_rejected_response() -> Response {
+    let (category, recoverability, next_action) = classify_by_status(StatusCode::FORBIDDEN);
     (
         StatusCode::FORBIDDEN,
         axum::Json(ErrorResponse {
@@ -105,6 +106,9 @@ fn csrf_rejected_response() -> Response {
                 message: "missing or invalid CSRF header".to_owned(),
                 request_id: None,
                 details: None,
+                category,
+                recoverability,
+                next_action,
             },
         }),
     )
@@ -113,6 +117,7 @@ fn csrf_rejected_response() -> Response {
 
 /// Build the standard 403 response for a cross-origin mutating request.
 fn cross_origin_rejected_response() -> Response {
+    let (category, recoverability, next_action) = classify_by_status(StatusCode::FORBIDDEN);
     (
         StatusCode::FORBIDDEN,
         axum::Json(ErrorResponse {
@@ -121,6 +126,9 @@ fn cross_origin_rejected_response() -> Response {
                 message: "cross-origin mutating request rejected".to_owned(),
                 request_id: None,
                 details: None,
+                category,
+                recoverability,
+                next_action,
             },
         }),
     )
@@ -276,12 +284,16 @@ pub async fn enrich_error_response(request: Request, next: Next) -> Response {
     if !is_json {
         let text_body = String::from_utf8_lossy(&bytes);
         let code = error_code_from_status(parts.status);
+        let (category, recoverability, next_action) = classify_by_status(parts.status);
         let envelope = ErrorResponse {
             error: ErrorBody {
                 code: code.to_owned(),
                 message: text_body.into_owned(),
                 request_id: Some(rid),
                 details: None,
+                category,
+                recoverability,
+                next_action,
             },
         };
         let new_bytes = serde_json::to_vec(&envelope).unwrap_or_else(|e| {

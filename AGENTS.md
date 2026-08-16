@@ -4,7 +4,7 @@ Cross-tool guide for AI coding agents (Claude Code, Cursor, Windsurf, Copilot, e
 
 ## Depth
 
-Read `docs/GOLDEN-PATH.md` first to understand the public desktop-first app workflow and the implemented versus planned app surfaces. Read `docs/HARNESS-LIFECYCLE.md` for the canonical nine-stage agent-work loop every crate and surface implements — the map from "task enters the system" through "result is reviewed, exported, or closed" to the code that owns each stage.
+Read `docs/GOLDEN-PATH.md` first to understand the public desktop-first app workflow and the implemented versus planned app surfaces. Read `docs/HARNESS-LIFECYCLE.md` for the canonical nine-stage agent-work loop every crate and surface implements — the map from "task enters the system" through "result is reviewed, exported, or closed" to the code that owns each stage. Read `docs/UX-STATE-INVENTORY.md` for the state-by-state (empty/loading/error/approval/resume/accessibility) breakdown per surface across TUI/desktop/API, with blocking/important/polish severity and file:line evidence.
 
 Run `python3 scripts/aletheia-orient.py` for a fresh, repo-sourced snapshot: crate list by layer, every feature flag, key CLI commands, and whether `CRATE-INDEX.toml`/`_llm/manifest.toml` are fresh. It reads only generated/CI-gated files (`CRATE-INDEX.toml`, `_llm/api.toml`) — no private planning, no hand-maintained status prose.
 
@@ -67,7 +67,7 @@ Every new tool/capability issue or PR must name: the owner plane, auth/RBAC mode
 | Bootstrap file | `crates/nous/src/bootstrap/` | Section list in assembler |
 | Middleware | `crates/pylon/src/middleware/` | Layer in `crates/pylon/src/server.rs` |
 
-Crate architecture and dependency graph: `docs/ARCHITECTURE.md`.
+Crate architecture and dependency graph: `docs/ARCHITECTURE.md`. Per-crate maturity (what is safe to build on vs. still internal/experimental): `docs/MATURITY.md`.
 
 ## Common Mistakes
 
