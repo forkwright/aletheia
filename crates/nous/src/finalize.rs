@@ -249,10 +249,11 @@ fn usage_record(session: &SessionState, result: &TurnResult, turn_seq: i64) -> U
 /// dispatch policy (#4854) — the terminal status should say so rather than
 /// reading as an ordinary `Completed` turn.
 fn has_denied_tool_call(result: &TurnResult) -> bool {
-    result
-        .tool_calls
-        .iter()
-        .any(|call| call.approval.as_deref().is_some_and(|a| a.contains("denied")))
+    result.tool_calls.iter().any(|call| {
+        call.approval
+            .as_deref()
+            .is_some_and(|a| a.contains("denied"))
+    })
 }
 
 fn terminal_status_for_result(result: &TurnResult) -> TurnAttemptStatus {

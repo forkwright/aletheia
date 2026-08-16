@@ -78,7 +78,9 @@ pub(crate) fn handle_backend_metrics_loaded(
             clippy::cast_sign_loss,
             reason = "display cents from a USD f64; clamped to u32 range for a dashboard figure"
         )]
-        let cents = (costs.today_cost * 100.0).round().clamp(0.0, f64::from(u32::MAX)) as u32;
+        let cents = (costs.today_cost * 100.0)
+            .round()
+            .clamp(0.0, f64::from(u32::MAX)) as u32;
         app.dashboard.daily_cost_cents = cents;
     }
     app.layout.metrics.backend = Some(BackendMetricsSnapshot {
@@ -209,7 +211,10 @@ mod tests {
             Err("costs endpoint unreachable".to_string()),
         );
         let backend = app.layout.metrics.backend.as_ref().expect("snapshot set");
-        assert!(backend.tokens.is_ok(), "tokens half must survive a costs failure");
+        assert!(
+            backend.tokens.is_ok(),
+            "tokens half must survive a costs failure"
+        );
         assert!(backend.costs.is_err());
         // WHY: a failed costs fetch must not silently reset the display to
         // zero cents — it should leave the last-known value alone.
@@ -226,7 +231,10 @@ mod tests {
         );
         let backend = app.layout.metrics.backend.as_ref().expect("snapshot set");
         assert!(backend.tokens.is_err());
-        assert!(backend.costs.is_ok(), "costs half must survive a tokens failure");
+        assert!(
+            backend.costs.is_ok(),
+            "costs half must survive a tokens failure"
+        );
         assert_eq!(app.dashboard.daily_cost_cents, 456);
     }
 

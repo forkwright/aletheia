@@ -15,10 +15,10 @@ use super::error::{
 use super::health::{HealthFetchError, parse_health_body};
 use super::types::{
     Agent, AgentsResponse, CostMetricsResponse, EntitiesResponse, FactDetailResponse,
-    FactsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest,
-    NousTool, NousToolsResponse, PaginatedSessionsResponse, ProviderListResponse,
-    ProviderRouteResponse, RelationshipsResponse, Session, SessionReplayResponse,
-    SessionsResponse, TimelineResponse, TokenMetricsResponse,
+    FactsResponse, HealthResponse, HistoryMessage, HistoryResponse, ListSessionsRequest, NousTool,
+    NousToolsResponse, PaginatedSessionsResponse, ProviderListResponse, ProviderRouteResponse,
+    RelationshipsResponse, Session, SessionReplayResponse, SessionsResponse, TimelineResponse,
+    TokenMetricsResponse,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -1030,6 +1030,12 @@ impl ApiClient {
     /// for first-party clients; a public escape hatch let a consumer bypass
     /// route/DTO/error semantics while still looking like it used the shared
     /// client. Confirmed zero external callers before tightening visibility.
+    ///
+    /// WHY test-only: narrowing the visibility left the tests as its sole
+    /// caller, so a lib build reports it dead -- an error under `-D warnings`.
+    /// Gating on `test` states that honestly rather than re-widening the
+    /// boundary this method was narrowed to enforce.
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn raw_client(&self) -> &Client {
         &self.client
