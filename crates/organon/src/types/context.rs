@@ -38,6 +38,10 @@ pub struct ServerToolConfig {
     /// Whether code execution is available for activation.
     #[serde(default)]
     pub code_execution: bool,
+    /// Provider `tool_type` version strings, single-owned by taxis config
+    /// (`taxis::config::ServerToolVersions`) rather than hardcoded here.
+    #[serde(default)]
+    pub versions: taxis::config::ServerToolVersions,
 }
 
 impl From<taxis::config::ServerToolsConfig> for ServerToolConfig {
@@ -46,6 +50,7 @@ impl From<taxis::config::ServerToolsConfig> for ServerToolConfig {
             web_search: config.web_search,
             web_search_max_uses: config.web_search_max_uses,
             code_execution: config.code_execution,
+            versions: config.versions,
         }
     }
 }
@@ -115,7 +120,7 @@ impl ServerToolConfig {
 
         if self.web_search && active.contains(&web_search_name) {
             defs.push(hermeneus::types::ServerToolDefinition {
-                tool_type: "web_search_20250305".to_owned(),
+                tool_type: self.versions.web_search_type.clone(),
                 name: "web_search".to_owned(),
                 max_uses: self.web_search_max_uses,
                 allowed_domains: None,
@@ -125,7 +130,7 @@ impl ServerToolConfig {
         }
         if self.code_execution && active.contains(&code_exec_name) {
             defs.push(hermeneus::types::ServerToolDefinition {
-                tool_type: "code_execution_20250522".to_owned(),
+                tool_type: self.versions.code_execution_type.clone(),
                 name: "code_execution".to_owned(),
                 max_uses: None,
                 allowed_domains: None,

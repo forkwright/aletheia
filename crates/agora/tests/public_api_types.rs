@@ -78,6 +78,7 @@ fn send_params_construction_and_field_access() {
         to: "+15550100".to_owned(),
         text: "Hello, world!".to_owned(),
         account_id: Some("acct123".to_owned()),
+        sender_id: Some("syn".to_owned()),
         thread_id: Some("thread456".to_owned()),
         attachments: Some(vec!["/tmp/photo.jpg".to_owned()]),
     };
@@ -85,6 +86,7 @@ fn send_params_construction_and_field_access() {
     assert_eq!(params.to, "+15550100");
     assert_eq!(params.text, "Hello, world!");
     assert_eq!(params.account_id.as_deref(), Some("acct123"));
+    assert_eq!(params.sender_id.as_deref(), Some("syn"));
     assert_eq!(params.thread_id.as_deref(), Some("thread456"));
     assert_eq!(params.attachments.as_ref().map_or(0, std::vec::Vec::len), 1);
 }
@@ -95,12 +97,14 @@ fn send_params_serde_skips_none_fields() {
         to: "+15550100".to_owned(),
         text: "minimal".to_owned(),
         account_id: None,
+        sender_id: None,
         thread_id: None,
         attachments: None,
     };
 
     let json = serde_json::to_string(&params).expect("serialize");
     assert!(!json.contains("account_id"));
+    assert!(!json.contains("sender_id"));
     assert!(!json.contains("thread_id"));
     assert!(!json.contains("attachments"));
     assert!(json.contains("\"to\":"));
@@ -113,6 +117,7 @@ fn send_params_serde_roundtrip() {
         to: "group:abc123".to_owned(),
         text: "Group message".to_owned(),
         account_id: Some("+1111111111".to_owned()),
+        sender_id: Some("syn".to_owned()),
         thread_id: Some("reply-to-123".to_owned()),
         attachments: Some(vec!["file1.jpg".to_owned(), "file2.pdf".to_owned()]),
     };
