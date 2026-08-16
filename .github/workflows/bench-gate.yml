@@ -59,7 +59,14 @@ jobs:
   compile:
     name: bench targets compile
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # WARNING: 60, not 20. This compiles every bench target in a 48-crate
+    # workspace, and on a COLD `rust-cache` that does not fit in 20 minutes --
+    # the job's first ever run was cancelled at 20m16s, which reports as a
+    # build failure rather than as a timeout and reads as broken code.
+    # Warm runs finish far inside this; the limit exists to cover the cold one,
+    # which recurs whenever the cache key rotates. 60 matches what this repo
+    # already allows a full workspace build (`release.yml` build and test).
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
