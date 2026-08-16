@@ -856,6 +856,33 @@ fn dpo_admits_turn(is_correction: bool, training_capture_accepted: Option<bool>)
     is_correction || training_capture_accepted.unwrap_or(false)
 }
 
+/// Heuristic "did the model actually use this recalled fact" check
+/// (closes #3418) for [`crate::training::RecalledFact::was_referenced`].
+///
+/// WHY substring, not embedding similarity: this feeds a training-quality
+/// signal (`compute_quality_score`'s recall-utilization term), not a
+/// correctness gate -- a cheap, deterministic excerpt match is enough to
+/// distinguish "the model plausibly drew on this fact" from "this fact sat
+/// unused in context", and avoids adding an embedding call to every
+/// finalized turn just to label a training row.
+const RECALLED_FACT_EXCERPT_CHARS: usize = 40;
+const RECALLED_FACT_EXCERPT_MIN_CHARS: usize = 12;
+
+fn recalled_fact_was_referenced(fact_content: &str, assistant_response: &str) -> bool {
+    let excerpt: String = fact_content
+        .trim()
+        .chars()
+        .take(RECALLED_FACT_EXCERPT_CHARS)
+        .collect();
+    if excerpt.chars().count() < RECALLED_FACT_EXCERPT_MIN_CHARS {
+        // Too short to match without a high false-positive rate.
+        return false;
+    }
+    assistant_response
+        .to_lowercase()
+        .contains(&excerpt.to_lowercase())
+}
+
 #[cfg(test)]
 mod corpus_admission_tests {
     use super::*;
@@ -912,6 +939,32 @@ mod corpus_admission_tests {
     fn non_correction_turn_with_unknown_capture_verdict_fails_closed() {
         assert!(!dpo_admits_turn(false, None));
     }
+
+    #[test]
+    fn recalled_fact_referenced_when_excerpt_appears_in_response() {
+        assert!(recalled_fact_was_referenced(
+            "The deploy target for confidential-fact tasks must stay local-only.",
+            "As noted, the deploy target for confidential-fact tasks must stay local-only in this build.",
+        ));
+    }
+
+    #[test]
+    fn recalled_fact_not_referenced_when_excerpt_absent() {
+        assert!(!recalled_fact_was_referenced(
+            "The deploy target for confidential-fact tasks must stay local-only.",
+            "I don't have any information about that.",
+        ));
+    }
+
+    #[test]
+    fn recalled_fact_short_content_never_matches() {
+        // WHY: excerpts under RECALLED_FACT_EXCERPT_MIN_CHARS are too
+        // short to match without false positives, so they fail closed.
+        assert!(!recalled_fact_was_referenced(
+            "short",
+            "this response contains the word short in it",
+        ));
+    }
 }
 
 /// A tool call made during a turn.
@@ -950,6 +1003,19 @@ pub struct TurnUsage {
     pub cache_write_tokens: u64,
     /// Number of LLM calls in this turn (1 + tool iterations).
     pub llm_calls: u32,
+    /// Sum of each `CompletionResponse::cost_usd` observed this turn.
+    ///
+    /// `None` when no completion in the turn reported a cost (the
+    /// provider does not compute one) rather than fabricating `0.0`,
+    /// which would read as "free" instead of "unknown".
+    #[serde(default)]
+    pub cost_usd: Option<f64>,
+    /// Sum of each `CompletionResponse::duration_ms` observed this turn.
+    ///
+    /// Provider round-trip time, not pipeline wall-clock (see the
+    /// separate `duration_ms` on `TurnResult` for that).
+    #[serde(default)]
+    pub provider_duration_ms: u64,
 }
 
 impl TurnUsage {
@@ -1585,6 +1651,7 @@ pub(crate) async fn run_pipeline(
                     mneme::extract::refinement::CorrectionSignal {
                         is_correction: false,
                         confidence_boost: 0.0,
+                        matched_pattern: None,
                     },
                     mneme::extract::refinement::FactType::Observation,
                 )
@@ -1639,17 +1706,31 @@ pub(crate) async fn run_pipeline(
                 )
             };
 
-            // WHY(#3418): per-fact entries are left empty because the
-            // injected `recall_section` is not structured at the
-            // pipeline boundary today.
+            // Closes #3418: per-fact entries are now populated from the
+            // recall stage's own selection provenance (`selected_context`),
+            // which is already computed for the sibling `RunContextRecord`
+            // above -- this reuses it rather than re-deriving recall state.
             let recall_signals = ctx.recall_result.as_ref().map(|r| {
                 let candidates_found = u32::try_from(r.candidates_found).unwrap_or(u32::MAX);
                 let results_injected = u32::try_from(r.results_injected).unwrap_or(u32::MAX);
+                let facts = r
+                    .selected_context
+                    .iter()
+                    .map(|item| crate::training::RecalledFact {
+                        source_id: item.provenance.source_id.clone(),
+                        source_type: item.provenance.source_type.clone(),
+                        score: item.score.unwrap_or(item.provenance.confidence),
+                        was_referenced: recalled_fact_was_referenced(
+                            &item.provenance.content,
+                            &result.content,
+                        ),
+                    })
+                    .collect();
                 crate::training::RecallSignals {
                     candidates_found,
                     results_injected,
                     tokens_consumed: r.tokens_consumed,
-                    facts: Vec::new(),
+                    facts,
                 }
             });
 
@@ -1659,7 +1740,10 @@ pub(crate) async fn run_pipeline(
             let user_message = input.content.clone();
             let assistant_response = result.content.clone();
             let model = result.model_used.clone();
+            let provider = result.provider_used.clone();
             let tokens = result.usage.total_tokens();
+            let cost_usd = result.usage.cost_usd;
+            let provider_duration_ms = result.usage.provider_duration_ms;
             let stop_reason = crate::training::CaptureStopReason::parse(&result.stop_reason);
             let has_tool_calls = !result.tool_calls.is_empty();
             let tool_surface_hashes = result.tool_surface_hashes.clone();
@@ -1676,13 +1760,16 @@ pub(crate) async fn run_pipeline(
                 let mut guard = capture_arc
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                guard.maybe_capture(crate::training::CaptureInput {
+                guard.maybe_capture(&crate::training::CaptureInput {
                     session_id: session_id.as_str(),
                     nous_id: nous_id.as_ref(),
                     user_message: user_message.as_str(),
                     assistant_response: assistant_response.as_str(),
                     model: model.as_str(),
+                    provider: provider.as_deref(),
                     tokens,
+                    cost_usd,
+                    provider_duration_ms,
                     stop_reason,
                     has_tool_calls,
                     turn_type: Some(turn_classification.to_string()),
@@ -1738,6 +1825,15 @@ pub(crate) async fn run_pipeline(
                 let assistant_response = result.content.clone();
                 let is_correction = correction_signal.is_correction;
                 let pii_filter_enabled = pipeline_config.training.pii_filter_enabled;
+                // WHY(#4863): causal provenance for the pair this may
+                // produce -- which pattern flagged the correction, and
+                // which model/provider served the chosen (corrected)
+                // response. `prompt_audit_ref` stays `None`: TurnResult
+                // carries no audit row key today (the remaining gap in
+                // #4861's broader provenance-envelope ask).
+                let dpo_correction_reason = correction_signal.matched_pattern.map(str::to_owned);
+                let dpo_model = result.model_used.clone();
+                let dpo_provider = result.provider_used.clone();
 
                 // WHY: DpoWriter::process_and_write reads/writes the durable
                 // extractor state and appends to a JSONL file with
@@ -1750,12 +1846,20 @@ pub(crate) async fn run_pipeline(
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     guard.process_and_write(
-                        &session_id,
-                        turn_number,
-                        &user_message,
-                        &assistant_response,
-                        is_correction,
-                        pii_filter_enabled,
+                        crate::training::TurnCapture {
+                            session_id: &session_id,
+                            turn_number,
+                            user_message: &user_message,
+                            assistant_response: &assistant_response,
+                            is_correction,
+                            pii_filter_enabled,
+                        },
+                        crate::training::DpoPairProvenance {
+                            correction_reason: dpo_correction_reason.as_deref(),
+                            prompt_audit_ref: None,
+                            model: Some(dpo_model.as_str()),
+                            provider: dpo_provider.as_deref(),
+                        },
                     )
                 })
                 .await

@@ -459,6 +459,37 @@ pub struct SpawnRequest {
     pub timeout_secs: u64,
 }
 
+/// Generation and execution-limit knobs a spawning host may pass through to
+/// an ephemeral sub-agent, so the child derives from the parent's actual
+/// resolved runtime configuration instead of a fixed set of constants.
+///
+/// WHY(#4746): plain scalars, not a host-specific config type. Whichever
+/// `SpawnService` implementer constructs the parent-side `ToolContext` (nous,
+/// or any future host) already holds its own live per-agent configuration in
+/// whatever shape it defines; organon must not depend on that shape (nous
+/// already depends on organon, so the reverse edge would be circular). This
+/// mirrors `taxis::config::ToolLimitsConfig`'s existing precedent — carried
+/// opaquely through [`ToolContext`](super::context::ToolContext) as
+/// `tool_config` — of a value organon transports without needing to
+/// interpret it beyond passing it along.
+#[derive(Debug, Clone, Copy)]
+pub struct SpawnGenerationHint {
+    /// Maximum context window tokens.
+    pub context_window: u32,
+    /// Maximum output tokens per turn.
+    pub max_output_tokens: u32,
+    /// Maximum tokens allocated to bootstrap context.
+    pub bootstrap_max_tokens: u32,
+    /// Characters per token for conservative token-budget estimation.
+    pub chars_per_token: u32,
+    /// Maximum tool execution iterations per turn.
+    pub max_tool_iterations: u32,
+    /// Maximum cumulative tokens (input + output) allowed per session.
+    pub session_token_cap: u64,
+    /// Maximum size in bytes for a single tool result before truncation.
+    pub max_tool_result_bytes: u32,
+}
+
 /// Runtime context for an ephemeral sub-agent spawn.
 #[derive(Debug, Clone)]
 pub struct SpawnContext {
@@ -466,6 +497,10 @@ pub struct SpawnContext {
     pub parent_nous_id: String,
     /// Parent turn cancellation token propagated into spawned work.
     pub parent_cancel: CancellationToken,
+    /// Parent's live generation/limits values, when the spawning host
+    /// populated them (#4746). `None` preserves prior behavior: the spawn
+    /// service falls back to its own constants.
+    pub parent_generation: Option<SpawnGenerationHint>,
 }
 
 impl SpawnContext {
@@ -474,12 +509,20 @@ impl SpawnContext {
         Self {
             parent_nous_id: parent_nous_id.into(),
             parent_cancel,
+            parent_generation: None,
         }
     }
 
     /// Create a spawn context for intentionally detached background work.
     pub fn detached(parent_nous_id: impl Into<String>) -> Self {
         Self::new(parent_nous_id, CancellationToken::new())
+    }
+
+    /// Attach the parent's live generation/limits hint (builder-style).
+    #[must_use]
+    pub fn with_generation_hint(mut self, hint: SpawnGenerationHint) -> Self {
+        self.parent_generation = Some(hint);
+        self
     }
 }
 

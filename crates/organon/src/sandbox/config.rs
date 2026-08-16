@@ -8,32 +8,20 @@
 use std::path::{Path, PathBuf};
 
 use koina::system::{Environment, RealSystem};
-use serde::{Deserialize, Serialize};
 
 /// Sandbox enforcement level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum SandboxEnforcement {
-    /// Sandbox violations cause the operation to fail.
-    Enforcing,
-    /// Sandbox violations are logged but allowed to proceed.
-    Permissive,
-}
+///
+/// Single-owned by `taxis::config::SandboxEnforcementMode` (ARCHITECTURE
+/// #4846): organon previously defined its own copy of this enum, field-
+/// and-variant-identical to taxis's, hand-mapped between the two at
+/// runtime. Aliasing here means there is exactly one type to keep in sync.
+pub type SandboxEnforcement = taxis::config::SandboxEnforcementMode;
 
 /// Network egress policy for child processes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum EgressPolicy {
-    /// Block all outbound network from child processes.
-    Deny,
-    /// No egress filtering; child processes have full network access.
-    #[default]
-    Allow,
-    /// Permit only connections to listed destinations.
-    Allowlist,
-}
+///
+/// Single-owned by `taxis::config::EgressPolicy` (ARCHITECTURE #4846); see
+/// [`SandboxEnforcement`].
+pub type EgressPolicy = taxis::config::EgressPolicy;
 
 /// Expand a leading `~` to the HOME environment variable.
 ///
@@ -52,69 +40,22 @@ pub(crate) fn expand_tilde(path: &Path) -> PathBuf {
 }
 
 /// Configuration for the execution sandbox.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-pub struct SandboxConfig {
-    /// Whether sandbox restrictions are applied to tool execution.
-    pub enabled: bool,
-    /// Enforcement level: `enforcing` blocks violations, `permissive` logs them.
-    pub enforcement: SandboxEnforcement,
-    /// Additional filesystem root granted read access, beyond the
-    /// workspace and each agent's own `allowed_roots`.
-    ///
-    /// SECURITY(#5064): empty by default. Read authority is derived from
-    /// the resolved agent workspace and its `allowed_roots` (see
-    /// [`build_policy`](Self::build_policy)) -- not a blanket grant. Set
-    /// this to `~` (or any path) to explicitly opt an agent's sandboxed
-    /// subprocesses into reading beyond their own roots; `~` expands to
-    /// the HOME environment variable at policy-build time. This is an
-    /// explicit widening an operator chooses, not an implicit default, and
-    /// [`validate`](Self::validate) flags it when set.
-    pub allowed_root: PathBuf,
-    /// Additional filesystem paths granted read access.
-    pub extra_read_paths: Vec<PathBuf>,
-    /// Additional filesystem paths granted read+write access.
-    pub extra_write_paths: Vec<PathBuf>,
-    /// Additional filesystem paths granted execute access.
-    ///
-    /// Values may begin with `~` which is expanded to the HOME environment
-    /// variable at policy-build time.
-    pub extra_exec_paths: Vec<PathBuf>,
-    /// Network egress policy for child processes.
-    pub egress: EgressPolicy,
-    /// Addresses or CIDR ranges permitted when `egress = "allowlist"`.
-    ///
-    /// Entries are parsed as IP addresses or CIDR notation (e.g.
-    /// `"127.0.0.1"`, `"::1"`, `"10.0.0.0/8"`). Only loopback
-    /// destinations can be enforced without root privileges; non-loopback
-    /// entries log a warning.
-    pub egress_allowlist: Vec<String>,
-    /// Maximum number of processes (`RLIMIT_NPROC`) for exec child processes.
-    ///
-    /// WHY: `RLIMIT_NPROC` counts ALL processes for the user, not just sandbox
-    /// children. The previous default of 64 caused EAGAIN failures on systems
-    /// running dispatch agents or other background processes. Default: 256.
-    pub nproc_limit: u32,
-}
-
-impl Default for SandboxConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            enforcement: SandboxEnforcement::Permissive,
-            // SECURITY(#5064): no implicit HOME-wide read grant. See the
-            // field doc for how to opt back in explicitly.
-            allowed_root: PathBuf::new(),
-            extra_read_paths: Vec::new(),
-            extra_write_paths: Vec::new(),
-            extra_exec_paths: Vec::new(),
-            egress: EgressPolicy::default(),
-            egress_allowlist: Vec::new(),
-            nproc_limit: 256,
-        }
-    }
-}
+///
+/// Single-owned by `taxis::config::SandboxSettings` (ARCHITECTURE #4846):
+/// organon previously defined a field-for-field duplicate of this struct
+/// (same nine fields, same defaults, hand-mapped between the two at
+/// runtime by `tool_registry::sandbox_config`). Aliasing here collapses
+/// that to one struct with one `Default` impl, so the two can no longer
+/// drift. Field access (`config.enabled`, `config.egress`, ...) and
+/// struct-literal / struct-update syntax (`SandboxConfig { enabled: ...,
+/// ..SandboxConfig::default() }`) both keep working unchanged since this
+/// is a type alias, not a wrapper.
+///
+/// Runtime behavior specific to organon (validation diagnostics, resolving
+/// a config into a [`SandboxPolicy`]) lives on [`SandboxConfigExt`] rather
+/// than as inherent methods, since Rust's orphan rules forbid an inherent
+/// `impl` on a type alias to another crate's type.
+pub type SandboxConfig = taxis::config::SandboxSettings;
 
 /// Runtime sandbox policy with resolved paths.
 #[derive(Debug, Clone)]
@@ -151,7 +92,16 @@ pub struct SandboxConfigIssue {
     pub broken_under_enforcing: bool,
 }
 
-impl SandboxConfig {
+/// Organon-side behavior for [`SandboxConfig`]: validation diagnostics and
+/// resolving a config into a [`SandboxPolicy`].
+///
+/// A trait rather than an inherent `impl` because [`SandboxConfig`] is a
+/// type alias to `taxis::config::SandboxSettings` -- Rust's orphan rules
+/// forbid organon from adding inherent methods to another crate's type,
+/// even under an alias. Import this trait alongside [`SandboxConfig`]
+/// wherever `.validate()`, `.build_policy()`, or `SandboxConfig::disabled()`
+/// is called.
+pub trait SandboxConfigExt: Sized {
     /// Check for configuration combinations that make this config's stated
     /// guarantees misleading, independent of any single tool invocation.
     ///
@@ -165,7 +115,19 @@ impl SandboxConfig {
     /// issue with `broken_under_enforcing` set refuses registration outright
     /// under `enforcement = "enforcing"` rather than only logging it.
     #[must_use]
-    pub fn validate(&self) -> Vec<SandboxConfigIssue> {
+    fn validate(&self) -> Vec<SandboxConfigIssue>;
+
+    /// Create a disabled sandbox config (no restrictions applied).
+    #[must_use]
+    fn disabled() -> Self;
+
+    /// Build a resolved [`SandboxPolicy`] from this config for the given workspace.
+    #[must_use]
+    fn build_policy(&self, workspace: &Path, allowed_roots: &[PathBuf]) -> SandboxPolicy;
+}
+
+impl SandboxConfigExt for SandboxConfig {
+    fn validate(&self) -> Vec<SandboxConfigIssue> {
         let mut issues = Vec::new();
         if !self.enabled {
             // WHY: an explicitly disabled sandbox has no guarantees to be
@@ -242,25 +204,14 @@ impl SandboxConfig {
         issues
     }
 
-    /// Create a disabled sandbox config (no restrictions applied).
-    #[must_use]
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "sandbox bypass for test and no-restriction configurations"
-        )
-    )]
-    pub(crate) fn disabled() -> Self {
+    fn disabled() -> Self {
         Self {
             enabled: false,
             ..Self::default()
         }
     }
 
-    /// Build a resolved [`SandboxPolicy`] from this config for the given workspace.
-    #[must_use]
-    pub fn build_policy(&self, workspace: &Path, allowed_roots: &[PathBuf]) -> SandboxPolicy {
+    fn build_policy(&self, workspace: &Path, allowed_roots: &[PathBuf]) -> SandboxPolicy {
         if !self.enabled {
             return SandboxPolicy {
                 enabled: false,

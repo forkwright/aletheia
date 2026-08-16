@@ -17,11 +17,18 @@ use crate::surface::EffectiveToolSurface;
 
 use super::services::{
     BlackboardStore, CrossNousService, KnowledgeSearchService, MessageService, NoteStore,
-    PlanningService, SpawnService,
+    PlanningService, SpawnGenerationHint, SpawnService,
 };
 
 tokio::task_local! {
     static TURN_CANCEL: CancellationToken;
+    // WHY(#4746): mirrors TURN_CANCEL above — a task-local, not a `ToolContext`
+    // field, so adding it never breaks the ~40 existing `ToolContext { .. }`
+    // struct literals scattered across organon/nous test and production code.
+    // `None` (the default when unscoped) preserves prior spawn behavior
+    // exactly: `SpawnContext::parent_generation` stays `None` and the spawn
+    // service falls back to its own constants.
+    static SPAWN_GENERATION_HINT: Option<SpawnGenerationHint>;
 }
 
 /// Configuration for server-side tools that execute on the API provider's infrastructure.
@@ -38,6 +45,10 @@ pub struct ServerToolConfig {
     /// Whether code execution is available for activation.
     #[serde(default)]
     pub code_execution: bool,
+    /// Provider `tool_type` version strings, single-owned by taxis config
+    /// (`taxis::config::ServerToolVersions`) rather than hardcoded here.
+    #[serde(default)]
+    pub versions: taxis::config::ServerToolVersions,
 }
 
 impl From<taxis::config::ServerToolsConfig> for ServerToolConfig {
@@ -46,6 +57,7 @@ impl From<taxis::config::ServerToolsConfig> for ServerToolConfig {
             web_search: config.web_search,
             web_search_max_uses: config.web_search_max_uses,
             code_execution: config.code_execution,
+            versions: config.versions,
         }
     }
 }
@@ -115,7 +127,7 @@ impl ServerToolConfig {
 
         if self.web_search && active.contains(&web_search_name) {
             defs.push(hermeneus::types::ServerToolDefinition {
-                tool_type: "web_search_20250305".to_owned(),
+                tool_type: self.versions.web_search_type.clone(),
                 name: "web_search".to_owned(),
                 max_uses: self.web_search_max_uses,
                 allowed_domains: None,
@@ -125,7 +137,7 @@ impl ServerToolConfig {
         }
         if self.code_execution && active.contains(&code_exec_name) {
             defs.push(hermeneus::types::ServerToolDefinition {
-                tool_type: "code_execution_20250522".to_owned(),
+                tool_type: self.versions.code_execution_type.clone(),
                 name: "code_execution".to_owned(),
                 max_uses: None,
                 allowed_domains: None,
@@ -269,6 +281,25 @@ impl ToolContext {
         F: Future,
     {
         TURN_CANCEL.scope(token, future).await
+    }
+
+    /// Return the current turn's spawn generation/limits hint, or `None`
+    /// outside a scoped turn or when the host never populated one (#4746).
+    #[must_use]
+    pub fn spawn_generation_hint(&self) -> Option<SpawnGenerationHint> {
+        SPAWN_GENERATION_HINT.try_with(Clone::clone).unwrap_or(None)
+    }
+
+    /// Run a future with a spawn generation/limits hint visible to tool
+    /// executors (#4746). Mirrors [`scope_turn_cancel`](Self::scope_turn_cancel).
+    pub async fn scope_spawn_generation_hint<F>(
+        hint: Option<SpawnGenerationHint>,
+        future: F,
+    ) -> F::Output
+    where
+        F: Future,
+    {
+        SPAWN_GENERATION_HINT.scope(hint, future).await
     }
 
     /// Bind an effective surface for this context until the returned guard drops.

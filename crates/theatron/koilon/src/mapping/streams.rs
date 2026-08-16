@@ -145,6 +145,58 @@ impl App {
                     duration_secs: if restart_required { 10 } else { 5 },
                 }
             }
+            // WHY(aletheia#4544): FactCreated/CheckpointCreated/CheckpointUpdated/
+            // DecodeError/UnknownEvent previously fell through the catch-all
+            // below and were silently dropped as `Msg::Tick` -- the exact
+            // failure mode #6357 already fixed once for NousLifecycle. A
+            // runtime contract test (`mapping::tests::every_sse_event_variant_is_handled`)
+            // now pins that every variant maps to something other than
+            // `Msg::Tick` (except the genuine no-op `Ping`), so this class of
+            // drift fails a test instead of shipping silently again.
+            SseEvent::FactCreated {
+                fact_id: _,
+                nous_id,
+                content_preview,
+            } => Msg::ToastPush {
+                message: format!("fact recorded by {nous_id}: {content_preview}"),
+                kind: NotificationKind::Info,
+                duration_secs: 5,
+            },
+            SseEvent::CheckpointCreated {
+                project_id,
+                checkpoint_id,
+            } => Msg::ToastPush {
+                message: format!("checkpoint created for {project_id}: {checkpoint_id}"),
+                kind: NotificationKind::Info,
+                duration_secs: 5,
+            },
+            SseEvent::CheckpointUpdated {
+                project_id,
+                checkpoint_id,
+                status,
+            } => Msg::ToastPush {
+                message: format!("checkpoint {checkpoint_id} ({project_id}): {status}"),
+                kind: NotificationKind::Info,
+                duration_secs: 5,
+            },
+            // WHY: a decode failure is a protocol-level problem, the same
+            // persistent-condition class as `SseEvent::Error` above -- route
+            // to the banner, not an auto-dismissing toast.
+            SseEvent::DecodeError {
+                event_type,
+                raw_data: _,
+                error,
+            } => Msg::ErrorBannerSet(format!("SSE decode error on '{event_type}': {error}")),
+            SseEvent::UnknownEvent {
+                event_type,
+                raw_data: _,
+            } => Msg::ToastPush {
+                message: format!(
+                    "unrecognized SSE event '{event_type}' (client may be out of date)"
+                ),
+                kind: NotificationKind::Info,
+                duration_secs: 5,
+            },
             _ => Msg::Tick,
         }
     }

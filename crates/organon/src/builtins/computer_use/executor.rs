@@ -11,8 +11,8 @@ use crate::error::{self, Result};
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{SandboxConfig, SandboxEnforcement};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use super::sandbox::{ComputerUseSessionConfig, execute_sandboxed_action};
@@ -279,5 +279,19 @@ pub fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<
         computer_use_def(),
         Box::new(ComputerUseExecutor::new(session_config)),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("computer_use"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::computer_use".to_owned(),
+            // WHY Experimental: behind `#[cfg(feature = "computer-use")]`
+            // (see crates/organon/src/builtins/mod.rs) -- not compiled by
+            // default.
+            stability: ToolStability::Experimental,
+            rollback: RollbackSupport::Unsupported {
+                reason: "GUI actions such as clicks and keystrokes have no undo path".to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }

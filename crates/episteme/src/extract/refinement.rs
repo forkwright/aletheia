@@ -98,8 +98,10 @@ pub fn classify_turn(content: &str) -> TurnType {
     TurnType::Discussion
 }
 
-/// Check for correction patterns in lowercased content.
-fn has_correction_patterns(lower: &str) -> bool {
+/// Check for correction patterns in lowercased content, returning the
+/// first pattern matched (used by `detect_correction`'s `matched_pattern`
+/// provenance field, #4863) or `None`.
+fn matched_correction_pattern(lower: &str) -> Option<&'static str> {
     const PATTERNS: &[&str] = &[
         "actually, it's",
         "actually it's",
@@ -117,7 +119,12 @@ fn has_correction_patterns(lower: &str) -> bool {
         "that's incorrect",
         "that was incorrect",
     ];
-    PATTERNS.iter().any(|p| lower.contains(p))
+    PATTERNS.iter().find(|p| lower.contains(*p)).copied()
+}
+
+/// Check for correction patterns in lowercased content.
+fn has_correction_patterns(lower: &str) -> bool {
+    matched_correction_pattern(lower).is_some()
 }
 
 /// Check if tool output dominates the content (> 60%).
@@ -406,16 +413,22 @@ pub struct CorrectionSignal {
     pub is_correction: bool,
     /// Confidence boost to apply (0.2 for corrections, 0.0 otherwise).
     pub confidence_boost: f64,
+    /// The specific pattern that flagged this content as a correction
+    /// (#4863 causal provenance for downstream DPO pairs) -- `None` when
+    /// `is_correction` is `false`.
+    pub matched_pattern: Option<&'static str>,
 }
 
 /// Detect whether content contains an explicit correction.
 #[must_use]
 pub fn detect_correction(content: &str) -> CorrectionSignal {
     let lower = content.to_lowercase();
-    let is_correction = has_correction_patterns(&lower);
+    let matched_pattern = matched_correction_pattern(&lower);
+    let is_correction = matched_pattern.is_some();
     CorrectionSignal {
         is_correction,
         confidence_boost: if is_correction { 0.2 } else { 0.0 },
+        matched_pattern,
     }
 }
 

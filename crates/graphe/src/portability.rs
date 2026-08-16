@@ -183,6 +183,15 @@ pub struct ExportedSession {
     pub transport: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub display_name: Option<String>,
+    // NOTE(aletheia#4795): principal/task/client-turn identity added after
+    // v1/v2; guarded by serde(default) the same way the v1->v2 identity
+    // fields above are, so files written before this field existed still load.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub owner: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub task_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub client_turn_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub last_input_tokens: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none", default)]
@@ -414,6 +423,9 @@ mod tests {
                 thread_id: Some("thread-9".to_owned()),
                 transport: Some("stdio".to_owned()),
                 display_name: Some("Main Session".to_owned()),
+                owner: Some("user-alice".to_owned()),
+                task_id: Some("task-42".to_owned()),
+                client_turn_id: Some("turn-7".to_owned()),
                 last_input_tokens: Some(64),
                 bootstrap_hash: Some("abc123".to_owned()),
                 last_distilled_at: Some("2026-03-05T10:45:00Z".to_owned()),

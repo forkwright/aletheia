@@ -639,7 +639,17 @@ async fn compact_with_llm(
     providers: &ProviderRegistry,
     request_text: String,
 ) -> error::Result<String> {
-    let model = &config.generation.model;
+    // WHY distillation_model, not generation.model (#4797): full
+    // compaction is exactly the "fast tier" summarization workload
+    // `distillation_model`'s own doc comment names (see
+    // `NousGenerationConfig::distillation_model`) -- falling back to the
+    // turn model when unset preserves existing behaviour for configs that
+    // never opted in.
+    let model = config
+        .generation
+        .distillation_model
+        .as_ref()
+        .unwrap_or(&config.generation.model);
     let Some(provider) = providers.find_provider(model) else {
         return Err(hermeneus::error::UnsupportedModelSnafu {
             model: model.clone(),

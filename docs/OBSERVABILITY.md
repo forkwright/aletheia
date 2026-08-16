@@ -10,6 +10,8 @@ For setup and deployment, see [DEPLOYMENT.md](DEPLOYMENT.md). For day-to-day ope
 
 The `/metrics` endpoint exposes counters, gauges, and histograms from the workspace crates. Metric names use the `aletheia_` prefix.
 
+Canonical source per crate: each crate's own `src/metrics.rs` `register()` function. For the LLM-provider metrics below (`aletheia_llm_tokens_total` and siblings), that is `crates/hermeneus/src/metrics.rs`; its `register_exposes_all_metric_families` test asserts the exposed names against real encoder output, and `scripts/check-metrics-doc.py --check` (wired into CI as `metrics-doc-check.yml`) fails a PR if `docs/RUNBOOK.md`, `docs/OBSERVABILITY-AUDIT.md`, or `scripts/health-monitor.sh` cite a name that no longer matches it.
+
 ### HTTP gateway
 
 | Metric | Type | Labels | Description |

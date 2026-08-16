@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn heatmap_spec_has_rect_mark() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let spec = build_spec(
             &heatmap_chart(),
             &theme,
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn spec_includes_theme_colors() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let spec = build_spec(
             &heatmap_chart(),
             &theme,
@@ -288,12 +288,12 @@ mod tests {
             .and_then(serde_json::Value::as_array)
             .expect("category range");
         assert_eq!(colors.len(), 3);
-        assert_eq!(colors[0].as_str(), Some("#232E54"));
+        assert_eq!(colors[0].as_str(), Some("#1E293B"));
     }
 
     #[test]
     fn heatmap_data_has_x_y_value_fields() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let spec = build_spec(
             &heatmap_chart(),
             &theme,
@@ -344,7 +344,7 @@ mod tests {
             data_labels: false,
             caption: None,
         };
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let spec = build_spec(&chart, &theme, &Canvas::Deck(DeckCanvas::default()));
         let mark = spec.get("mark").expect("mark present");
         assert_eq!(
@@ -355,7 +355,7 @@ mod tests {
 
     #[test]
     fn spec_uses_plot_box_dimensions() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let spec = build_spec(
             &heatmap_chart(),
             &theme,
@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn spec_includes_chart_title() {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let spec = build_spec(
             &heatmap_chart(),
             &theme,
@@ -422,7 +422,7 @@ mod tests {
             data_labels: false,
             caption: None,
         };
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let spec = build_spec(&chart, &theme, &Canvas::Deck(DeckCanvas::default()));
         let mark = spec.get("mark").expect("mark present");
         assert_eq!(
@@ -456,7 +456,7 @@ mod tests {
             data_labels: false,
             caption: None,
         };
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let spec = build_spec(&chart, &theme, &Canvas::Deck(DeckCanvas::default()));
         let mark = spec.get("mark").expect("mark present");
         assert_eq!(

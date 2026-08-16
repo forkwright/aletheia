@@ -230,7 +230,7 @@ Use the HTTP API (`GET /api/v1/sessions`) or `aletheia status`.
 
 ### Token usage by model over the last 7 days
 
-No CLI equivalent exists since the SQLite-to-fjall migration (#3446). Scrape Prometheus metrics (`aletheia_llm_input_tokens_total`, `aletheia_llm_output_tokens_total`) or query the store after stopping the service.
+No CLI equivalent exists since the SQLite-to-fjall migration (#3446). Scrape Prometheus metrics (`aletheia_llm_tokens_total{direction="input"}`, `aletheia_llm_tokens_total{direction="output"}`) or query the store after stopping the service.
 
 ### Large sessions (over 50k tokens)
 
@@ -330,8 +330,8 @@ curl -sf http://localhost:18789/metrics | grep aletheia
 Key metrics:
 - `aletheia_llm_request_duration_seconds` - LLM latency distribution
 - `aletheia_llm_ttft_seconds` - time-to-first-token
-- `aletheia_llm_input_tokens_total` / `aletheia_llm_output_tokens_total` - throughput
-- `aletheia_llm_cache_tokens_total{type="read"}` - prompt cache hit rate
+- `aletheia_llm_tokens_total{direction="input"|"output"}` - throughput
+- `aletheia_llm_cache_tokens_total{direction="read"}` - prompt cache hit rate
 
 ## Maintenance task status
 

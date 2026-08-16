@@ -41,8 +41,10 @@ and the `forkwright/kanon`-hosted standards docs they reference (`STANDARDS.md`,
 tooling, not a public dependency — a contributor working from this checkout
 is not expected to have it installed or to run it locally; CI enforces the
 gate independently. Required setup for the publicly-supported path above does
-not depend on private repos. The kanon-reference cleanup in `AGENTS.md` /
-`CLAUDE.md` is tracked separately in #4531.
+not depend on private repos.
+
+See [MATURITY.md](MATURITY.md) for which of the crates involved are Stable
+versus still Experimental or Undeclared.
 
 ## 1. Configure Providers
 
@@ -235,5 +237,7 @@ its trace and memory evidence.
 Use the TUI for current public first-run, headless hosts, SSH-only work, or
 Wayland remote-launch limitations. The TUI is a ratatui client over the same
 server API and SSE events. It supports chat, planning, memory, metrics, ops,
-session focus, agent focus, and setup wizard flows. The desktop remains the
+session focus, and agent focus. First-run setup is `aletheia init`, a
+separate command that shares the TUI crate's wizard implementation but is not
+a flow reachable from inside `aletheia tui` itself. The desktop remains the
 v1.0 target app surface once the release path ships matching desktop artifacts.

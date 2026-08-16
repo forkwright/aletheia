@@ -8,6 +8,8 @@ use futures::stream::StreamExt;
 use indexmap::IndexMap;
 use snafu::ensure;
 
+use taxis::config::OutboundMessagePolicy;
+
 use crate::error::{self, Result};
 use crate::types::{ChannelProvider, ProbeResult, SendParams, SendResult};
 
@@ -27,6 +29,23 @@ pub struct ChannelRegistry {
     probe_timeout: Duration,
     /// Maximum number of provider probes that may run concurrently.
     max_concurrent_probes: usize,
+    /// Per-agent outbound-recipient allowlist, checked in [`Self::send`]
+    /// whenever a send carries an attributed `sender_id`.
+    ///
+    /// SECURITY(#4788): a send with NO `sender_id` (e.g. `dispatch::
+    /// send_reply` completing an inbound conversation on the channel that
+    /// contacted it) is not policy-governed here -- it is bounded by a
+    /// different trust boundary (replying to whoever already reached us),
+    /// not by "which recipients may this agent reach." A send that DOES
+    /// carry a `sender_id` is claiming to be agent-attributed, so it is
+    /// checked against the allowlist for that agent regardless of which
+    /// call path produced it -- this is defense in depth alongside the
+    /// primary gate in `tool_adapters::SignalAdapter::send_message`, the
+    /// actual choke point for the `message` tool today. Deliberately
+    /// `sender_id`, not `account_id`: `account_id` selects which provider
+    /// account a send goes out FROM (multi-account routing), a distinct
+    /// concept `SendParams::sender_id`'s doc explains further.
+    outbound_policy: OutboundMessagePolicy,
 }
 
 impl Default for ChannelRegistry {
@@ -43,7 +62,15 @@ impl ChannelRegistry {
             providers: IndexMap::new(),
             probe_timeout: DEFAULT_PROBE_TIMEOUT,
             max_concurrent_probes: DEFAULT_MAX_CONCURRENT_PROBES,
+            outbound_policy: OutboundMessagePolicy::default(),
         }
+    }
+
+    /// Set the outbound-recipient allowlist policy for attributed sends.
+    #[must_use]
+    pub fn with_outbound_policy(mut self, policy: OutboundMessagePolicy) -> Self {
+        self.outbound_policy = policy;
+        self
     }
 
     /// Register a channel provider. Fails if a provider with the same ID exists.
@@ -75,6 +102,22 @@ impl ChannelRegistry {
             }
             .build()
         })?;
+
+        // SECURITY(#4788): checked before the provider is ever called, so a
+        // denied send never reaches the network. See the `outbound_policy`
+        // field doc for why an unattributed (`sender_id: None`) send is
+        // exempt rather than denied here.
+        if params.sender_id.is_some()
+            && !self
+                .outbound_policy
+                .allows(params.sender_id.as_deref(), &params.to)
+        {
+            crate::metrics::record_channel_message(channel_id, false);
+            return Ok(SendResult::err(
+                "recipient not in outbound allowlist for this agent",
+            ));
+        }
+
         let result = provider.send(params).await;
         crate::metrics::record_channel_message(channel_id, result.sent);
         Ok(result)
@@ -272,9 +315,104 @@ mod tests {
             to: to.to_owned(),
             text: "hello".to_owned(),
             account_id: None,
+            sender_id: None,
             thread_id: None,
             attachments: None,
         }
+    }
+
+    fn attributed_params(to: &str, sender_id: &str) -> SendParams {
+        SendParams {
+            sender_id: Some(sender_id.to_owned()),
+            ..test_params(to)
+        }
+    }
+
+    #[tokio::test]
+    async fn send_denies_recipient_outside_allowlist() {
+        let mut policy = OutboundMessagePolicy::default();
+        policy
+            .allowlist
+            .insert("syn".to_owned(), vec!["+15550100".to_owned()]);
+        let mut reg = ChannelRegistry::new().with_outbound_policy(policy);
+        reg.register(Arc::new(MockProvider::new("signal")))
+            .expect("register");
+
+        let result = reg
+            .send("signal", &attributed_params("+15559999", "syn"))
+            .await
+            .expect("send");
+        assert!(
+            !result.sent,
+            "recipient outside the allowlist must be denied"
+        );
+        assert_eq!(
+            result.error.as_deref(),
+            Some("recipient not in outbound allowlist for this agent")
+        );
+    }
+
+    #[tokio::test]
+    async fn send_denies_agent_with_no_allowlist_entry_by_default() {
+        // WHY: default_deny=true is OutboundMessagePolicy's default, so an
+        // agent with no configured entry at all is refused, not silently
+        // allowed through.
+        let mut reg = ChannelRegistry::new().with_outbound_policy(OutboundMessagePolicy::default());
+        reg.register(Arc::new(MockProvider::new("signal")))
+            .expect("register");
+
+        let result = reg
+            .send(
+                "signal",
+                &attributed_params("+15550100", "unconfigured-agent"),
+            )
+            .await
+            .expect("send");
+        assert!(
+            !result.sent,
+            "an agent with no allowlist entry must be denied under default_deny"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_allows_attributed_recipient_in_allowlist() {
+        let mut policy = OutboundMessagePolicy::default();
+        policy
+            .allowlist
+            .insert("syn".to_owned(), vec!["+15550100".to_owned()]);
+        let mut reg = ChannelRegistry::new().with_outbound_policy(policy);
+        reg.register(Arc::new(
+            MockProvider::new("signal").with_send_result(SendResult::ok()),
+        ))
+        .expect("register");
+
+        let result = reg
+            .send("signal", &attributed_params("+15550100", "syn"))
+            .await
+            .expect("send");
+        assert!(
+            result.sent,
+            "an allowlisted (agent, recipient) pair must be sent"
+        );
+    }
+
+    #[tokio::test]
+    async fn send_without_sender_id_bypasses_policy() {
+        // WHY: unattributed sends (dispatch::send_reply completing an
+        // inbound conversation) are not agent-initiated and must not be
+        // gated by the per-agent allowlist -- see the `outbound_policy`
+        // field doc on ChannelRegistry.
+        let mut reg = ChannelRegistry::new().with_outbound_policy(OutboundMessagePolicy::default());
+        reg.register(Arc::new(
+            MockProvider::new("signal").with_send_result(SendResult::ok()),
+        ))
+        .expect("register");
+
+        let result = reg.send("signal", &test_params("+15550100")).await;
+        assert!(
+            result.expect("send").sent,
+            "an unattributed send must bypass the outbound policy, not be denied by it"
+        );
     }
 
     #[tokio::test]

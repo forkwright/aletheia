@@ -198,6 +198,32 @@ pub struct SessionOrigin {
     pub transport: Option<String>,
     /// Human-readable display name set by the user.
     pub display_name: Option<String>,
+    /// Principal/owner that started this run (e.g. a Signal sender ID, an
+    /// authenticated HTTP principal, or an MCP caller identity), distinct
+    /// from `nous_id` (the agent acting, not who asked it to).
+    ///
+    /// `None` for sessions created before this field existed (additive
+    /// field; existing JSON deserializes with `None` and is not broken) and
+    /// for entrypoints that have not yet threaded a principal through
+    /// (aletheia#4795 tracks wiring each remaining entrypoint).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    /// External task/job identifier this session was created under (e.g. a
+    /// Diaporeia MCP task id or a dispatch worker slug), distinct from
+    /// `thread_id` (a conversational thread, not a unit of work).
+    ///
+    /// `None` for sessions created before this field existed or from an
+    /// entrypoint that has no task concept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task_id: Option<String>,
+    /// Client-generated idempotency key for the turn that created or
+    /// resumed this session, threaded from a caller-supplied token so a
+    /// retried request cannot double-create a session.
+    ///
+    /// `None` for sessions created before this field existed or from an
+    /// entrypoint that has no client-turn concept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_turn_id: Option<String>,
 }
 
 /// A session record persisted in the store.
@@ -463,6 +489,9 @@ mod tests {
                 thread_id: None,
                 transport: Some("signal".to_owned()),
                 display_name: Some("My Session".to_owned()),
+                owner: None,
+                task_id: None,
+                client_turn_id: None,
             },
             artefact_meta: None,
         };
@@ -498,6 +527,9 @@ mod tests {
                 thread_id: None,
                 transport: None,
                 display_name: None,
+                owner: None,
+                task_id: None,
+                client_turn_id: None,
             },
             artefact_meta: None,
         }

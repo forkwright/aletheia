@@ -321,6 +321,7 @@ mod tests {
             web_search: true,
             web_search_max_uses: Some(3),
             code_execution: false,
+            versions: taxis::config::ServerToolVersions::default(),
         };
         let ctx = mock_ctx_with_catalog_and_server_tools(Vec::new(), taxis_config.into());
 
@@ -442,6 +443,7 @@ mod tests {
                 web_search: true,
                 web_search_max_uses: Some(5),
                 code_execution: false,
+                versions: taxis::config::ServerToolVersions::default(),
             },
         );
 
@@ -506,6 +508,7 @@ mod tests {
             web_search: true,
             web_search_max_uses: Some(5),
             code_execution: false,
+            versions: taxis::config::ServerToolVersions::default(),
         });
 
         let executor = EnableToolExecutor;
@@ -539,6 +542,7 @@ mod tests {
             web_search: true,
             web_search_max_uses: Some(5),
             code_execution: false,
+            versions: taxis::config::ServerToolVersions::default(),
         });
         let active = HashSet::new();
         let policy = ToolGroupPolicy::AllowAll {
@@ -576,6 +580,7 @@ mod tests {
             web_search: true,
             web_search_max_uses: Some(5),
             code_execution: false,
+            versions: taxis::config::ServerToolVersions::default(),
         });
         let active = HashSet::new();
         let policy = ToolGroupPolicy::AllowAll {
@@ -649,6 +654,7 @@ mod tests {
             web_search: true,
             web_search_max_uses: None,
             code_execution: true,
+            versions: taxis::config::ServerToolVersions::default(),
         });
 
         let executor = EnableToolExecutor;
@@ -726,6 +732,7 @@ mod tests {
             web_search: false,
             web_search_max_uses: None,
             code_execution: true,
+            versions: taxis::config::ServerToolVersions::default(),
         });
 
         let executor = EnableToolExecutor;

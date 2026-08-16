@@ -304,7 +304,7 @@ mod tests {
     fn deliverable_workbook_validates_with_empty_factbase() {
         let spec = DeliverableSpec {
             meta: Meta::new("Q1 receipts").unwrap(),
-            theme: ThemeId::new("summus").unwrap(),
+            theme: ThemeId::new("protos").unwrap(),
             facts: empty_factbase(),
             body: Body::Workbook(Workbook { sheets: Vec::new() }),
         };
@@ -322,7 +322,7 @@ mod tests {
         );
         let spec = DeliverableSpec {
             meta: Meta::new("Q1 receipts").unwrap(),
-            theme: ThemeId::new("summus").unwrap(),
+            theme: ThemeId::new("protos").unwrap(),
             facts: empty_factbase(),
             body: Body::Workbook(Workbook {
                 sheets: vec![sheet],
@@ -365,7 +365,7 @@ mod tests {
         }]];
         let spec = DeliverableSpec {
             meta: Meta::new("Q1 receipts").unwrap(),
-            theme: ThemeId::new("summus").unwrap(),
+            theme: ThemeId::new("protos").unwrap(),
             facts: empty_factbase(),
             body: Body::Workbook(Workbook {
                 sheets: vec![sheet],
@@ -402,7 +402,7 @@ mod tests {
         );
         let spec = DeliverableSpec {
             meta: Meta::new("Q1 receipts").unwrap(),
-            theme: ThemeId::new("summus").unwrap(),
+            theme: ThemeId::new("protos").unwrap(),
             facts: empty_factbase(),
             body: Body::Workbook(Workbook {
                 sheets: vec![sheet],
@@ -422,7 +422,7 @@ mod tests {
                 "Untitled",
             ))),
         };
-        let known = vec![ThemeId::new("summus").unwrap()];
+        let known = vec![ThemeId::new("protos").unwrap()];
         let err = spec
             .validate(&ComponentRegistry::new(), &known)
             .expect_err("unknown theme rejects");
@@ -440,7 +440,7 @@ mod tests {
     fn deliverable_deck_with_unknown_component_rejects() {
         let spec = DeliverableSpec {
             meta: Meta::new("Pitch").unwrap(),
-            theme: ThemeId::new("summus").unwrap(),
+            theme: ThemeId::new("protos").unwrap(),
             facts: empty_factbase(),
             body: Body::Deck(Deck {
                 aspect: AspectRatio::WIDESCREEN_16_9,
@@ -487,7 +487,7 @@ mod tests {
         });
         let spec = DeliverableSpec {
             meta: Meta::new("cycle test").unwrap(),
-            theme: ThemeId::new("summus").unwrap(),
+            theme: ThemeId::new("protos").unwrap(),
             facts,
             body: Body::Workbook(Workbook { sheets: Vec::new() }),
         };
@@ -506,7 +506,7 @@ mod tests {
     fn round_trip_via_serde_preserves_envelope() {
         let spec = DeliverableSpec {
             meta: Meta::new("Roundtrip").unwrap(),
-            theme: ThemeId::new("summus").unwrap(),
+            theme: ThemeId::new("protos").unwrap(),
             facts: empty_factbase(),
             body: Body::Workbook(Workbook { sheets: Vec::new() }),
         };
@@ -519,7 +519,7 @@ mod tests {
     fn referenced_components_lists_used_ids_sorted_and_deduped() {
         let spec = DeliverableSpec {
             meta: Meta::new("Pitch").unwrap(),
-            theme: ThemeId::new("summus").unwrap(),
+            theme: ThemeId::new("protos").unwrap(),
             facts: empty_factbase(),
             body: Body::Deck(Deck {
                 aspect: AspectRatio::WIDESCREEN_16_9,

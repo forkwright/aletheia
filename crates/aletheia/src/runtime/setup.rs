@@ -1272,7 +1272,8 @@ pub(super) fn start_inbound_dispatch(
     matrix_provider: Option<&Arc<MatrixProvider>>,
     shutdown_token: &CancellationToken,
 ) -> Result<(Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>)> {
-    let mut channel_registry = ChannelRegistry::new();
+    let mut channel_registry =
+        ChannelRegistry::new().with_outbound_policy(config.messaging.outbound.clone());
     let mut listen_providers: Vec<&dyn ChannelProvider> = Vec::new();
 
     if let Some(provider) = signal_provider {

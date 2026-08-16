@@ -200,6 +200,76 @@ pub struct RecallSignals {
     pub facts: Vec<RecalledFact>,
 }
 
+/// Current version of `compute_quality_score`'s weighted-sum formula
+/// (#4863: version every reward/quality formula). Bump when a weight, a
+/// component's definition, or the saturation constant changes, so
+/// downstream corpus consumers can tell which formula produced a given
+/// row's `quality_score`.
+pub const QUALITY_SCORE_FORMULA_VERSION: u32 = 1;
+
+/// Component breakdown behind a `TrainingRecord`'s scalar `quality_score`
+/// (#4863: preserve component scores/weights, not only the scalar sum).
+///
+/// Each `Some` rate is the raw signal `compute_quality_score` weighted and
+/// summed; `None` means that signal did not fire for this turn (e.g. no
+/// tool calls were made), matching `compute_quality_score`'s own
+/// have-any-signal gating. The `weight_*` fields are recorded per-row
+/// (rather than only in the formula-version doc comment) so a row remains
+/// self-explaining even if the constants are re-tuned later.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct QualityScoreComponents {
+    /// Tool-call success rate (successes / total), when tool calls were made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_success_rate: Option<f32>,
+    /// Recall-utilization rate (referenced / injected facts), when recall
+    /// injected at least one fact with per-fact provenance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recall_utilization_rate: Option<f32>,
+    /// Response-substance rate, saturating at the formula's char threshold.
+    /// Always computed (a short response is still a valid signal input).
+    pub response_substance_rate: f32,
+    /// Whether the stop reason was a clean end (`EndTurn`/`StopSequence`).
+    pub stop_reason_ok: bool,
+    /// Correction-penalty factor applied (`0.0` if this turn was itself a
+    /// correction, `1.0` otherwise), when correction status was known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction_penalty_factor: Option<f32>,
+    /// Weight applied to `tool_success_rate`.
+    pub weight_tools: f32,
+    /// Weight applied to `recall_utilization_rate`.
+    pub weight_recall: f32,
+    /// Weight applied to `response_substance_rate`.
+    pub weight_substance: f32,
+    /// Weight applied to the stop-reason term.
+    pub weight_stop: f32,
+    /// Weight applied to `correction_penalty_factor`.
+    pub weight_correction: f32,
+}
+
+impl QualityScoreComponents {
+    /// Recompute the scalar quality score from these components.
+    ///
+    /// A component whose rate is `None` contributes `0.0`, not
+    /// `weight * default` -- matching `compute_quality_score`'s original
+    /// have-any-signal semantics (a signal that never fired should not be
+    /// scored as if it had fired at its worst value). Not clamped to
+    /// `[0.0, 1.0]`: callers that need the persisted scalar's exact
+    /// clamping should use `TrainingRecord::quality_score` directly.
+    #[must_use]
+    pub fn total_score(&self) -> f32 {
+        self.tool_success_rate
+            .map_or(0.0, |r| self.weight_tools * r)
+            + self
+                .recall_utilization_rate
+                .map_or(0.0, |r| self.weight_recall * r)
+            + self.weight_substance * self.response_substance_rate
+            + self.weight_stop * f32::from(self.stop_reason_ok)
+            + self
+                .correction_penalty_factor
+                .map_or(0.0, |f| self.weight_correction * f)
+    }
+}
+
 /// A single training record representing one conversation turn.
 ///
 /// Serialized as one JSON line in the output JSONL file. Fields match
@@ -222,8 +292,25 @@ pub struct TrainingRecord {
     pub assistant_response: String,
     /// LLM model used for generation.
     pub model: String,
+    /// Provider that actually served the turn (e.g. `anthropic`, `kimi`).
+    ///
+    /// A separate dimension from `model` (#4798, #4863) — do not derive
+    /// one from the other; `None` for rows captured before this field
+    /// existed or where the observed provider was unavailable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
     /// Total tokens consumed (input + output).
     pub tokens: u64,
+    /// Sum of provider-reported cost in USD across the turn's completions.
+    ///
+    /// `None` when no completion in the turn reported a cost, distinct
+    /// from `Some(0.0)` which would claim a verified free turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
+    /// Sum of provider round-trip duration in milliseconds across the
+    /// turn's completions.
+    #[serde(default)]
+    pub provider_duration_ms: u64,
     /// When the turn was captured.
     pub timestamp: Timestamp,
 
@@ -240,6 +327,14 @@ pub struct TrainingRecord {
     /// Quality score for DPO/ORPO signal (0.0--1.0).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quality_score: Option<f32>,
+    /// [`QUALITY_SCORE_FORMULA_VERSION`] at the time `quality_score` was
+    /// computed (#4863). `None` for rows written before this field
+    /// existed or when `quality_score` itself is `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality_score_formula_version: Option<u32>,
+    /// Component breakdown behind `quality_score` (#4863).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality_score_components: Option<QualityScoreComponents>,
 
     // NOTE: Behavioural signals (v3) covers `tool_outcomes`.
     /// Outcomes of tool calls made during the turn, in invocation order.
@@ -371,12 +466,28 @@ mod tests {
             user_message: "test input".to_owned(),
             assistant_response: "test output".to_owned(),
             model: "claude-opus-4-20250514".to_owned(),
+            provider: Some("anthropic".to_owned()),
             tokens: 200,
+            cost_usd: Some(0.0123),
+            provider_duration_ms: 850,
             timestamp: Timestamp::UNIX_EPOCH,
             turn_type: Some("discussion".to_owned()),
             is_correction: Some(false),
             fact_types: Some(vec!["preference".to_owned()]),
             quality_score: Some(0.85),
+            quality_score_formula_version: Some(QUALITY_SCORE_FORMULA_VERSION),
+            quality_score_components: Some(QualityScoreComponents {
+                tool_success_rate: Some(1.0),
+                recall_utilization_rate: Some(0.5),
+                response_substance_rate: 0.3,
+                stop_reason_ok: true,
+                correction_penalty_factor: Some(1.0),
+                weight_tools: 0.40,
+                weight_recall: 0.20,
+                weight_substance: 0.20,
+                weight_stop: 0.10,
+                weight_correction: 0.10,
+            }),
             tool_outcomes: Some(vec![ToolOutcome {
                 name: "file_read".to_owned(),
                 success: true,
@@ -432,12 +543,17 @@ mod tests {
             user_message: "test input".to_owned(),
             assistant_response: "test output".to_owned(),
             model: "test-model".to_owned(),
+            provider: None,
             tokens: 100,
+            cost_usd: None,
+            provider_duration_ms: 0,
             timestamp: Timestamp::UNIX_EPOCH,
             turn_type: None,
             is_correction: None,
             fact_types: None,
             quality_score: None,
+            quality_score_formula_version: None,
+            quality_score_components: None,
             tool_outcomes: None,
             recall_signals: None,
             tool_surface_hashes: Vec::new(),

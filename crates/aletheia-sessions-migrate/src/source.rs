@@ -170,6 +170,12 @@ fn map_session(row: &Row<'_>) -> Result<SessionRow> {
                 thread_id: session_column(row, "thread_id")?,
                 transport: session_column(row, "transport")?,
                 display_name: session_column(row, "display_name")?,
+                // WHY(aletheia#4795): the legacy sqlite schema this migration
+                // reads from predates owner/task_id/client_turn_id -- no
+                // column exists to source them from.
+                owner: None,
+                task_id: None,
+                client_turn_id: None,
             },
             artefact_meta: None,
         },

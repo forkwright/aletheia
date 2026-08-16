@@ -1379,6 +1379,12 @@ impl SessionStore {
                 thread_id: None,
                 transport: None,
                 display_name: None,
+                // WHY(aletheia#4795): wire schema established; no caller of
+                // find_or_create_session yet threads a principal/task/turn
+                // context through to populate these.
+                owner: None,
+                task_id: None,
+                client_turn_id: None,
             },
             artefact_meta: None,
         };
@@ -1596,6 +1602,9 @@ impl SessionStore {
                 thread_id: None,
                 transport: None,
                 display_name: None,
+                owner: None,
+                task_id: None,
+                client_turn_id: None,
             },
             artefact_meta: None,
         };

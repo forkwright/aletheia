@@ -136,7 +136,7 @@ mod tests {
     #[test]
     fn combo_renders_to_nonempty_svg() {
         let spec = combo_spec();
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = render_chart(
             &spec,
             &theme,
@@ -352,7 +352,7 @@ mod tests {
             max: 100.0,
         };
         spec.axes.x.ticks = Ticks::Explicit(vec![25.0, 50.0, 75.0]);
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = render_chart(
             &spec,
             &theme,
@@ -387,7 +387,7 @@ mod tests {
                 Span::Bold("caption text".to_owned()),
             ],
         });
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = render_chart(
             &spec,
             &theme,
@@ -425,7 +425,7 @@ mod tests {
             data_labels: false,
             caption: None,
         };
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = render_chart(
             &spec,
             &theme,
@@ -439,7 +439,7 @@ mod tests {
     }
 
     fn assert_kind_svg(spec: &Chart, markers: &[&str]) {
-        let theme = ResolvedTheme::summus_stub();
+        let theme = ResolvedTheme::protos_stub();
         let svg = render_chart(
             spec,
             &theme,

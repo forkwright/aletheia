@@ -13,7 +13,7 @@ use std::sync::{Arc, RwLock};
 use base64::Engine as _;
 use koina::id::{NousId, SessionId, ToolName};
 use poiesis_core::{Block, Document, Metadata, RichText};
-use poiesis_theme::summus;
+use poiesis_theme::protos;
 use zip::ZipArchive;
 
 use super::*;
@@ -734,7 +734,7 @@ async fn render_xlsx_report_missing_data_is_error() {
 }
 
 #[tokio::test]
-async fn render_pptx_report_applies_summus_theme() {
+async fn render_pptx_report_applies_protos_theme() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
 
@@ -771,13 +771,13 @@ async fn render_pptx_report_applies_summus_theme() {
         .read_to_string(&mut theme_xml)
         .expect("read theme1.xml");
     assert!(
-        theme_xml.contains("232E54"),
-        "theme1.xml must carry the summus navy color: {theme_xml}"
+        theme_xml.contains("1E293B"),
+        "theme1.xml must carry the protos navy color: {theme_xml}"
     );
 }
 
 #[tokio::test]
-async fn render_docx_report_applies_summus_reference() {
+async fn render_docx_report_applies_protos_reference() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
 
@@ -811,15 +811,15 @@ async fn render_docx_report_applies_summus_reference() {
         .expect("read styles.xml");
     assert!(
         styles_xml.contains("Geist"),
-        "styles.xml must carry the summus sans family: {styles_xml}"
+        "styles.xml must carry the protos sans family: {styles_xml}"
     );
 }
 
 #[test]
-fn chart_theme_adapter_maps_summus() {
-    let theme = summus();
+fn chart_theme_adapter_maps_protos() {
+    let theme = protos();
     let chart_theme = poiesis_charts::ResolvedTheme::from_poiesis_theme(&theme);
-    assert_eq!(chart_theme.theme_name, "summus");
+    assert_eq!(chart_theme.theme_name, "protos");
     assert_eq!(
         chart_theme.series[0].hex,
         theme
@@ -1080,8 +1080,8 @@ id = "custom"
 title = "Custom"
 
 [color.role]
-navy = "#232E54"
-teal = "#318891"
+navy = "#1E293B"
+teal = "#0D9488"
 
 [color.tone]
 positive = "teal"
@@ -1103,13 +1103,13 @@ fn write_theme_toml(themes_dir: &std::path::Path, name: &str, body: &str) -> std
 }
 
 #[test]
-fn resolve_report_theme_defaults_to_summus() {
+fn resolve_report_theme_defaults_to_protos() {
     let dir = tempfile::tempdir().expect("tmpdir");
     let ctx = test_ctx(dir.path());
 
     let theme = resolve_report_theme(&serde_json::json!({}), &serde_json::json!({}), &ctx)
         .expect("default theme resolves");
-    assert_eq!(theme.id.as_str(), "summus");
+    assert_eq!(theme.id.as_str(), "protos");
 }
 
 #[test]
@@ -1120,7 +1120,7 @@ fn resolve_report_theme_top_level_arg_wins() {
 
     let theme = resolve_report_theme(
         &serde_json::json!({ "theme": "custom" }),
-        &serde_json::json!({ "theme": "summus" }),
+        &serde_json::json!({ "theme": "protos" }),
         &ctx,
     )
     .expect("top-level theme wins");

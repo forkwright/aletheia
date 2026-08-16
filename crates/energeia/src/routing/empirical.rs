@@ -137,6 +137,12 @@ impl EmpiricalRouter {
             .await
     }
 
+    // WHY(#3969): the decision algorithm itself now lives in
+    // `AfterActionStore::pick_winner` — the shared crate both this
+    // (dispatch-side) router and `aletheia_routing::EmpiricalRouter`
+    // (interactive-side) delegate to, so "confident enough to switch" is
+    // defined in exactly one place. This wrapper only supplies the
+    // dispatch-specific static fallback.
     async fn pick_with_static_boundary(
         &self,
         task_category: &TaskCategory,
@@ -144,107 +150,17 @@ impl EmpiricalRouter {
         static_allowed: bool,
     ) -> Result<ProviderId, AfterActionStoreError> {
         let static_choice = self.fallback.pick(*task_category);
-
-        if candidates.is_empty() {
-            return Ok(static_choice.clone());
-        }
-
-        let mut best_provider: Option<&ProviderId> = None;
-        let mut best_rate: f64 = -1.0;
-
-        for provider in candidates {
-            let stats = self
-                .rolling_stats_with_timeout(provider, task_category)
-                .await
-                .inspect_err(|error| {
-                    tracing::error!(
-                        error = %error,
-                        provider = %provider,
-                        category = %task_category,
-                        "empirical routing stats store unavailable"
-                    );
-                })?;
-
-            let Some(stats) = stats else {
-                continue;
-            };
-
-            if stats.total < self.min_samples {
-                tracing::debug!(
-                    provider = %provider,
-                    category = %task_category,
-                    total = stats.total,
-                    min_samples = self.min_samples,
-                    "insufficient samples, skipping empirical candidate"
-                );
-                continue;
-            }
-
-            let Some(rate) = stats.success_rate() else {
-                continue;
-            };
-
-            if rate > best_rate {
-                best_rate = rate;
-                best_provider = Some(provider);
-            }
-        }
-
-        let Some(winner) = best_provider else {
-            return if static_allowed {
-                Ok(static_choice.clone())
-            } else {
-                Ok(candidates
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| static_choice.clone()))
-            };
-        };
-
-        // WHY: a disallowed static choice cannot veto an eligible empirical
-        // winner; otherwise a cloud default could leak through a local boundary.
-        // When the static choice is allowed, preserve the existing confidence
-        // threshold before switching away from it.
-        let static_rate = if static_allowed {
-            self.rolling_stats_with_timeout(static_choice, task_category)
-                .await
-                .inspect_err(|error| {
-                    tracing::error!(
-                        error = %error,
-                        provider = %static_choice,
-                        category = %task_category,
-                        "empirical routing stats store unavailable for static provider"
-                    );
-                })?
-                .and_then(|s| s.success_rate())
-                .unwrap_or(0.0)
-        } else {
-            0.0
-        };
-
-        let gap = best_rate - static_rate;
-        if !static_allowed || gap >= self.confidence_threshold {
-            tracing::info!(
-                empirical_winner = %winner,
-                static_choice = %static_choice,
-                category = %task_category,
-                winner_rate = best_rate,
-                static_rate,
-                gap,
-                "empirical router overriding static choice"
-            );
-            Ok(winner.clone())
-        } else {
-            tracing::debug!(
-                empirical_winner = %winner,
-                static_choice = %static_choice,
-                category = %task_category,
-                gap,
-                threshold = self.confidence_threshold,
-                "confidence gap below threshold, using static choice"
-            );
-            Ok(static_choice.clone())
-        }
+        self.store
+            .pick_winner(
+                task_category,
+                candidates,
+                static_choice,
+                self.min_samples,
+                self.window,
+                self.confidence_threshold,
+                static_allowed,
+            )
+            .await
     }
 
     /// Return the success rate for a specific (provider, category) pair.

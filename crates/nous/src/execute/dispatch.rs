@@ -854,7 +854,7 @@ struct SingleToolOutcome {
 /// bookkeeping is handled by the caller.
 #[expect(
     clippy::too_many_arguments,
-    reason = "dispatch needs tool id, name, input, registry, context, limits, and receipt infra"
+    reason = "dispatch needs tool id, name, input, registry, context, limits, receipt infra, and approval outcome"
 )]
 async fn dispatch_single_tool(
     tool_id: &str,
@@ -864,8 +864,24 @@ async fn dispatch_single_tool(
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
     max_tool_result_bytes: u32,
-    receipt_signer: Option<&organon::receipts::ReceiptSigner>,
+    // WHY non-optional (#4835): every production caller of this function
+    // already has a signer -- `SessionState::receipt_signer` is
+    // constructed unconditionally per session (never `Option`), so the
+    // one real call site (`execute/mod.rs`) has always passed
+    // `Some(&session.receipt_signer)`. Making the parameter itself
+    // non-optional turns "receipts are conventionally always emitted on
+    // this path" into "a future caller cannot pass no signer and
+    // silently skip receipt issuance" -- a compile-time invariant instead
+    // of a runtime convention. The `#[cfg(test)]`-only `dispatch_tools`
+    // wrapper still accepts `Option` for its ~20 existing test call
+    // sites and resolves a throwaway signer when `None`.
+    receipt_signer: &organon::receipts::ReceiptSigner,
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
+    // WHY plain &str not Option (#4835): the one real caller
+    // (`dispatch_tool_items`) always has an already-resolved approval
+    // outcome by this point in the loop -- every branch of its approval
+    // match assigns one before calling this function.
+    approval_outcome: &str,
 ) -> error::Result<SingleToolOutcome> {
     let start = std::time::Instant::now();
     let result = tools.execute(execution_input, tool_ctx).await;
@@ -906,11 +922,15 @@ async fn dispatch_single_tool(
         debug!(tool = tool_name, duration_ms, "tool executed");
     }
 
-    let (content, receipt) = if let Some(signer) = receipt_signer {
+    // WHY unconditional (#4835): receipt issuance is a runtime invariant
+    // on this path now that `receipt_signer` is non-optional -- see this
+    // function's parameter docs.
+    let (content, receipt) = {
         organon::metrics::record_receipt(tool_name, "emitted");
         let ts = jiff::Timestamp::now();
         let result_text = content.text_summary();
-        let receipt_str = signer.sign(tool_name, &persisted_input.to_string(), &result_text, ts);
+        let receipt_str =
+            receipt_signer.sign(tool_name, &persisted_input.to_string(), &result_text, ts);
         if let Some(ledger) = receipt_ledger {
             let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
                 tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
@@ -922,6 +942,7 @@ async fn dispatch_single_tool(
                 persisted_input.to_string(),
                 result_text.clone(),
                 ts,
+                Some(approval_outcome.to_owned()),
             );
         }
         let tagged = match content {
@@ -938,9 +959,6 @@ async fn dispatch_single_tool(
             other => other,
         };
         (tagged, Some(receipt_str))
-    } else {
-        organon::metrics::record_receipt(tool_name, "missing");
-        (content, None)
     };
 
     let call = ToolCall {
@@ -996,6 +1014,19 @@ pub(super) async fn dispatch_tools(
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<DispatchResult> {
     let items: Vec<ToolDispatchItem> = tool_uses.iter().cloned().map(Into::into).collect();
+    // WHY resolve a throwaway signer on `None` (#4835): this test-only
+    // adapter keeps its `Option` parameter so its ~20 existing call sites
+    // (most passing `None` -- receipt behavior isn't what they're
+    // testing) don't all need a real signer threaded through, while
+    // `dispatch_tool_items` itself gets the non-optional, always-signs
+    // guarantee real callers rely on.
+    let owned_signer;
+    let signer = if let Some(s) = receipt_signer {
+        s
+    } else {
+        owned_signer = organon::receipts::ReceiptSigner::new_session();
+        &owned_signer
+    };
     dispatch_tool_items(
         &items,
         tools,
@@ -1007,7 +1038,7 @@ pub(super) async fn dispatch_tools(
         approval_gate,
         policy,
         max_tool_result_bytes,
-        receipt_signer,
+        signer,
         receipt_ledger,
     )
     .await
@@ -1032,7 +1063,8 @@ pub(super) async fn dispatch_tool_items(
     approval_gate: Option<&ApprovalGate>,
     policy: &ToolDispatchPolicy,
     max_tool_result_bytes: u32,
-    receipt_signer: Option<&organon::receipts::ReceiptSigner>,
+    // WHY non-optional: see `dispatch_single_tool`'s parameter docs (#4835).
+    receipt_signer: &organon::receipts::ReceiptSigner,
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<DispatchResult> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
@@ -1293,6 +1325,7 @@ pub(super) async fn dispatch_tool_items(
             max_tool_result_bytes,
             receipt_signer,
             receipt_ledger,
+            approval_outcome,
         )
         .await?;
         outcome.call.approval = Some(approval_outcome.to_owned());

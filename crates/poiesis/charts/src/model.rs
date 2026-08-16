@@ -45,7 +45,7 @@ pub enum ChartKind {
     Area,
     /// Combo (columns + line on dual y-axes); exactly two series.
     ///
-    /// `combo` is first-class because the offsite slide-3 chart is the
+    /// `combo` is first-class because the sample slide-3 chart is the
     /// acceptance gate. It is the one curated multi-axis composition the
     /// Rust emitter owns; further compositions route to Vega-Lite.
     Combo,

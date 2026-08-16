@@ -6,7 +6,7 @@
 use super::{Finding, FindingKind};
 
 /// Markers that indicate a table or data display in the document.
-const TABLE_MARKERS: &[&str] = &["#summus-table(", "| --- |", "| :--- |", "| ---: |", "|---|"];
+const TABLE_MARKERS: &[&str] = &["#protos-table(", "| --- |", "| :--- |", "| ---: |", "|---|"];
 
 /// Markers that indicate a citation or source declaration.
 const CITATION_MARKERS: &[&str] = &["#source[", "Source:", "#bibliography(", "cite(", "[^"];
@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn table_without_citation_flagged() {
         let lines: Vec<(usize, &str)> = vec![
-            (1, "#summus-table((1fr,), (\"Col\",), (\"Val\",))"),
+            (1, "#protos-table((1fr,), (\"Col\",), (\"Val\",))"),
             (2, "Some prose."),
             (3, "More prose."),
         ];
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn table_with_citation_passes() {
         let lines: Vec<(usize, &str)> = vec![
-            (1, "#summus-table((1fr,), (\"Col\",), (\"Val\",))"),
+            (1, "#protos-table((1fr,), (\"Col\",), (\"Val\",))"),
             (2, "#source[Internal database query, 2026-04-01]"),
         ];
         let findings = check(&lines, 10);

@@ -329,6 +329,119 @@ mod tests {
         ));
     }
 
+    // WHY(aletheia#4544): contract test mirroring the SSE-event-name
+    // assertions `crates/integration-tests/tests/proskenion_contract.rs`
+    // makes for the desktop client, scoped to what koilon can actually
+    // reach -- `map_sse`/`map_event` are crate-private (koilon has no own
+    // wire-parsing code; it consumes `skene::api::types::SseEvent`
+    // verbatim), so an external `tests/pylon_contract.rs` integration test
+    // cannot see this surface. This in-crate test is the equivalent
+    // guarantee: every currently-known `SseEvent` variant must map to a
+    // real `Msg`, not the `_ => Msg::Tick` catch-all `#[non_exhaustive]`
+    // forces this match to carry. `Ping` is the one legitimate exception.
+    // FactCreated/CheckpointCreated/CheckpointUpdated/DecodeError/
+    // UnknownEvent were silently falling through this exact catch-all
+    // before this change -- the same failure mode #6357 already fixed once
+    // for NousLifecycle.
+    #[test]
+    fn every_sse_event_variant_is_handled() {
+        let app = test_app();
+        let events = [
+            SseEvent::Connected,
+            SseEvent::Disconnected,
+            SseEvent::Init {
+                active_turns: Vec::new(),
+            },
+            SseEvent::TurnBefore {
+                nous_id: "syn".into(),
+                session_id: "ses-1".into(),
+                turn_id: "turn-1".into(),
+            },
+            SseEvent::TurnAfter {
+                nous_id: "syn".into(),
+                session_id: "ses-1".into(),
+            },
+            SseEvent::TurnComplete {
+                nous_id: "syn".into(),
+                session_id: "ses-1".into(),
+                turn_id: "turn-1".into(),
+                input_tokens: 10,
+                output_tokens: 20,
+            },
+            SseEvent::FactCreated {
+                fact_id: "fact-1".to_string(),
+                nous_id: "syn".into(),
+                content_preview: "preview".to_string(),
+            },
+            SseEvent::NousLifecycle {
+                nous_id: "syn".into(),
+                event: "created".to_string(),
+                restart_required: false,
+            },
+            SseEvent::ToolCalled {
+                nous_id: "syn".into(),
+                tool_name: "read_file".to_string(),
+            },
+            SseEvent::ToolFailed {
+                nous_id: "syn".into(),
+                tool_name: "read_file".to_string(),
+                error: "denied".to_string(),
+            },
+            SseEvent::StatusUpdate {
+                nous_id: "syn".into(),
+                status: "idle".to_string(),
+            },
+            SseEvent::SessionCreated {
+                nous_id: "syn".into(),
+                session_id: "ses-2".into(),
+            },
+            SseEvent::SessionArchived {
+                nous_id: "syn".into(),
+                session_id: "ses-2".into(),
+            },
+            SseEvent::DistillBefore {
+                nous_id: "syn".into(),
+            },
+            SseEvent::DistillStage {
+                nous_id: "syn".into(),
+                stage: "summarizing".to_string(),
+            },
+            SseEvent::DistillAfter {
+                nous_id: "syn".into(),
+            },
+            SseEvent::CheckpointCreated {
+                project_id: "proj-1".to_string(),
+                checkpoint_id: "chk-1".to_string(),
+            },
+            SseEvent::CheckpointUpdated {
+                project_id: "proj-1".to_string(),
+                checkpoint_id: "chk-1".to_string(),
+                status: "approved".to_string(),
+            },
+            SseEvent::StreamLagged { dropped: 3 },
+            SseEvent::Error {
+                message: "gateway unreachable".to_string(),
+            },
+            SseEvent::DecodeError {
+                event_type: "weird.event".to_string(),
+                raw_data: "{}".to_string(),
+                error: "missing field".to_string(),
+            },
+            SseEvent::UnknownEvent {
+                event_type: "future.event".to_string(),
+                raw_data: "{}".to_string(),
+            },
+        ];
+        for event in events {
+            let debug = format!("{event:?}");
+            let msg = app.map_event(Event::Sse(event));
+            assert!(
+                !matches!(msg, Some(Msg::Tick)),
+                "{debug} silently dropped to Msg::Tick -- add an explicit arm in map_sse"
+            );
+        }
+    }
+
     #[test]
     fn sse_nous_lifecycle_no_restart_maps_to_info_toast() {
         let app = test_app();

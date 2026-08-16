@@ -83,30 +83,17 @@ pub(in crate::runtime) fn build_tool_registry(
     })
 }
 
+/// `organon::sandbox::SandboxConfig` is single-owned by
+/// `taxis::config::SandboxSettings` (ARCHITECTURE #4846) -- both names
+/// refer to the identical type, so this is a clone, not a field-by-field
+/// mapping. Kept as a named function (rather than inlining `config.sandbox
+/// .clone()` at each call site) because callers outside this module
+/// (`runtime::mod`, `builder_validation`) read it as "the sandbox config
+/// for tool registration," which the bare field access does not convey.
 pub(in crate::runtime) fn sandbox_config(
     config: &AletheiaConfig,
 ) -> organon::sandbox::SandboxConfig {
-    let sandbox_settings = &config.sandbox;
-    organon::sandbox::SandboxConfig {
-        enabled: sandbox_settings.enabled,
-        enforcement: match sandbox_settings.enforcement {
-            taxis::config::SandboxEnforcementMode::Enforcing => {
-                organon::sandbox::SandboxEnforcement::Enforcing
-            }
-            _ => organon::sandbox::SandboxEnforcement::Permissive,
-        },
-        allowed_root: sandbox_settings.allowed_root.clone(),
-        extra_read_paths: sandbox_settings.extra_read_paths.clone(),
-        extra_write_paths: sandbox_settings.extra_write_paths.clone(),
-        extra_exec_paths: sandbox_settings.extra_exec_paths.clone(),
-        egress: match sandbox_settings.egress {
-            taxis::config::EgressPolicy::Deny => organon::sandbox::EgressPolicy::Deny,
-            taxis::config::EgressPolicy::Allowlist => organon::sandbox::EgressPolicy::Allowlist,
-            _ => organon::sandbox::EgressPolicy::Allow,
-        },
-        egress_allowlist: sandbox_settings.egress_allowlist.clone(),
-        nproc_limit: sandbox_settings.nproc_limit,
-    }
+    config.sandbox.clone()
 }
 
 #[cfg(feature = "energeia")]

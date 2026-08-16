@@ -219,44 +219,44 @@ mod tests {
 
     use super::*;
 
-    fn summus() -> ResolvedTheme {
+    fn protos() -> ResolvedTheme {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
         let registry = crate::registry::Registry::load_dir(&dir).expect("load");
         registry
-            .resolve(&crate::registry::parse_theme_id("summus").expect("id"))
+            .resolve(&crate::registry::parse_theme_id("protos").expect("id"))
             .expect("resolve")
     }
 
     #[test]
     fn latex_starts_with_header_comment() {
-        let latex = emit_latex_template(&summus()).expect("emit summus latex");
+        let latex = emit_latex_template(&protos()).expect("emit protos latex");
         assert!(
-            latex.starts_with("%% poiesis-theme: summus"),
+            latex.starts_with("%% poiesis-theme: protos"),
             "output must start with theme header; got:\n{latex}"
         );
     }
 
     #[test]
     fn latex_emits_navy_role() {
-        let latex = emit_latex_template(&summus()).expect("emit summus latex");
+        let latex = emit_latex_template(&protos()).expect("emit protos latex");
         assert!(
-            latex.contains("\\definecolor{color-navy}{HTML}{232E54}"),
+            latex.contains("\\definecolor{color-navy}{HTML}{1E293B}"),
             "navy role must appear verbatim; got:\n{latex}"
         );
     }
 
     #[test]
     fn latex_emits_positive_tone() {
-        let latex = emit_latex_template(&summus()).expect("emit summus latex");
+        let latex = emit_latex_template(&protos()).expect("emit protos latex");
         assert!(
-            latex.contains("\\definecolor{tone-positive}{HTML}{318891}"),
+            latex.contains("\\definecolor{tone-positive}{HTML}{0D9488}"),
             "positive tone must resolve to teal hex; got:\n{latex}"
         );
     }
 
     #[test]
     fn latex_family_command_uses_first_element() {
-        let latex = emit_latex_template(&summus()).expect("emit summus latex");
+        let latex = emit_latex_template(&protos()).expect("emit protos latex");
         assert!(
             latex.contains("\\newcommand{\\typeFamilySans}{Geist}"),
             "sans family command must use first stack element; got:\n{latex}"
@@ -265,8 +265,8 @@ mod tests {
 
     #[test]
     fn latex_byte_stable_across_runs() {
-        let a = emit_latex_template(&summus()).expect("first emit");
-        let b = emit_latex_template(&summus()).expect("second emit");
+        let a = emit_latex_template(&protos()).expect("first emit");
+        let b = emit_latex_template(&protos()).expect("second emit");
         assert_eq!(a, b, "two emissions must match byte-for-byte");
     }
 }

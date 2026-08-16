@@ -7,6 +7,8 @@
 
 /// Shared bookkeeping provider contracts and extraction DTOs.
 pub mod bookkeeping;
+/// Canonical failure taxonomy shared across every user-facing surface.
+pub mod failure;
 /// Newtype wrappers for knowledge-domain identifiers.
 pub mod id;
 /// Knowledge graph domain types: facts, entities, relationships, embeddings.
@@ -20,6 +22,8 @@ pub use bookkeeping::{
     ExtractedEntity, ExtractedFact, ExtractedRelationship, ExtractedToolCall, Extraction,
     ExtractionSchema, Intent,
 };
+/// Re-export the failure taxonomy at crate root.
+pub use failure::{FailureCategory, NextAction, Recoverability};
 /// Re-export architecture-fact types at crate root.
 pub use knowledge::architecture_fact::{ArchitectureFact, FactError, FactScope, FactStore};
 /// Re-export canonical finding types at crate root.

@@ -263,6 +263,13 @@ impl EgressGate {
                     )))
                 }
             }
+            // WHY: EgressPolicy is `#[non_exhaustive]` (single-owned by
+            // taxis, ARCHITECTURE #4846); fail closed like Deny for an
+            // unrecognized future variant rather than silently allowing
+            // network access this function was never told is safe.
+            _ => Err(EgressDenied(
+                "egress policy is not one this build recognizes; denying by default".to_owned(),
+            )),
         }
     }
 }
@@ -398,37 +405,43 @@ impl SandboxPolicy {
     /// path to reach it changes nothing observable.
     #[cfg(target_os = "linux")]
     fn apply_egress(&self) -> std::io::Result<()> {
-        match self.egress {
-            EgressPolicy::Allow => Ok(()),
-            EgressPolicy::Deny | EgressPolicy::Allowlist => {
-                // SAFETY: unshare is a single syscall that modifies only the
-                // calling thread's namespace associations. It is
-                // async-signal-safe and does not allocate.
-                // SAFETY: we only pass NEWUSER | NEWNET which do not involve
-                // FILES table splitting, so the unsafety concern around
-                // UnshareFlags::FILES does not apply here.
-                #[expect(
-                    unsafe_code,
-                    reason = "unshare syscall required to create network namespace for egress filtering"
-                )]
-                if unsafe {
-                    rustix::thread::unshare_unsafe(
-                        rustix::thread::UnshareFlags::NEWUSER
-                            | rustix::thread::UnshareFlags::NEWNET,
-                    )
-                }
-                .is_ok()
-                {
-                    return Ok(());
-                }
-
-                // WHY: Some kernels disable unprivileged user namespaces
-                // (sysctl kernel.unprivileged_userns_clone=0 or Debian
-                // hardening). Fall back to seccomp-based socket blocking.
-                let errno = std::io::Error::last_os_error();
-                Self::apply_egress_seccomp_fallback(&errno)
-            }
+        // WHY: `!=` rather than matching `Deny | Allowlist` explicitly --
+        // EgressPolicy is `#[non_exhaustive]` (single-owned by taxis,
+        // ARCHITECTURE #4846); an unrecognized future variant falls into
+        // the same restrictive isolate-or-block path below as
+        // Deny/Allowlist, never the permissive Allow return above. (Also
+        // sidesteps clippy::single_match_else, which a two-armed
+        // `match self.egress { Allow => .., _ => <long block> }` here
+        // triggered.)
+        if self.egress == EgressPolicy::Allow {
+            return Ok(());
         }
+
+        // SAFETY: unshare is a single syscall that modifies only the
+        // calling thread's namespace associations. It is
+        // async-signal-safe and does not allocate.
+        // SAFETY: we only pass NEWUSER | NEWNET which do not involve
+        // FILES table splitting, so the unsafety concern around
+        // UnshareFlags::FILES does not apply here.
+        #[expect(
+            unsafe_code,
+            reason = "unshare syscall required to create network namespace for egress filtering"
+        )]
+        if unsafe {
+            rustix::thread::unshare_unsafe(
+                rustix::thread::UnshareFlags::NEWUSER | rustix::thread::UnshareFlags::NEWNET,
+            )
+        }
+        .is_ok()
+        {
+            return Ok(());
+        }
+
+        // WHY: Some kernels disable unprivileged user namespaces
+        // (sysctl kernel.unprivileged_userns_clone=0 or Debian
+        // hardening). Fall back to seccomp-based socket blocking.
+        let errno = std::io::Error::last_os_error();
+        Self::apply_egress_seccomp_fallback(&errno)
     }
 
     /// Seccomp fallback for egress filtering when network namespaces are
@@ -827,7 +840,6 @@ fn seccomp_guarantee_status(policy: &SandboxPolicy) -> GuaranteeStatus {
 fn egress_guarantee_status(policy: &SandboxPolicy, seccomp: GuaranteeStatus) -> GuaranteeStatus {
     match policy.egress {
         EgressPolicy::Allow => GuaranteeStatus::Unrestricted,
-        EgressPolicy::Deny => seccomp,
         EgressPolicy::Allowlist => {
             if allowlist_is_loopback_only(&policy.egress_allowlist) {
                 seccomp
@@ -837,6 +849,15 @@ fn egress_guarantee_status(policy: &SandboxPolicy, seccomp: GuaranteeStatus) -> 
                 GuaranteeStatus::Degraded
             }
         }
+        // WHY: covers both `Deny` and any unrecognized future variant --
+        // a separate `EgressPolicy::Deny => seccomp` arm is identical to
+        // this one and clippy::match_same_arms rejects it. EgressPolicy
+        // is `#[non_exhaustive]` (single-owned by taxis, ARCHITECTURE
+        // #4846), so an unrecognized future variant gets the same
+        // conservative `seccomp` guarantee status `Deny` does, rather
+        // than claiming `Allow`'s `Unrestricted` guarantee for something
+        // never actually verified.
+        _ => seccomp,
     }
 }
 
@@ -977,7 +998,13 @@ fn warn_egress_policy(policy: &SandboxPolicy) {
                 "egress filtering: allowlist mode"
             );
         }
-        EgressPolicy::Allow => {}
+        // WHY: covers both `Allow` and any unrecognized future variant --
+        // a separate `EgressPolicy::Allow => {}` arm is identical to this
+        // one and clippy::match_same_arms rejects it. EgressPolicy is
+        // `#[non_exhaustive]` (single-owned by taxis, ARCHITECTURE
+        // #4846); nothing to log for either case since this function is
+        // purely informational.
+        _ => {}
     }
 }
 

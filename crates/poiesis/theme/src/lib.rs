@@ -14,7 +14,7 @@
 //! - Typst prelude for the PDF report path (see [`sinks::typst`]).
 //!
 //! Components reference tokens (e.g. `color.tone.positive`, `type.role.title`),
-//! never literal hex or typeface strings. Swapping `theme: summus → ardent`
+//! never literal hex or typeface strings. Swapping `theme: protos → ardent`
 //! therefore restyles every component with zero spec edits. The
 //! [`THEME/raw-color-literal`](lint::RAW_COLOR_LITERAL_RULE_ID),
 //! [`THEME/raw-font-literal`](lint::RAW_FONT_LITERAL_RULE_ID), and
@@ -39,6 +39,6 @@ pub mod tokens;
 
 pub use error::ThemeError;
 pub use id::ThemeId;
-pub use registry::{Registry, summus};
+pub use registry::{Registry, protos};
 pub use resolved::ResolvedTheme;
 pub use tokens::Theme;

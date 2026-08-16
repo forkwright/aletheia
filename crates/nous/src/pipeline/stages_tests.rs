@@ -295,6 +295,45 @@ async fn full_compaction_uses_llm_summary() {
     );
 }
 
+/// Closes #4797's distillation-model slice: full compaction is a
+/// summarization workload, so it must route through
+/// `generation.distillation_model` when set, not the general turn model.
+#[tokio::test]
+async fn full_compaction_uses_distillation_model_when_set() {
+    let mut config = NousConfig::default();
+    config.generation.model = "turn-model".to_owned();
+    config.generation.distillation_model = Some("distill-model".to_owned());
+    config.generation.context_window = 100;
+    let mut providers = ProviderRegistry::new();
+    // WHY only "distill-model" is registered: if compaction fell back to
+    // "turn-model" it would find no provider and error, so a successful
+    // compaction here proves the distillation model was actually used.
+    providers.register(Box::new(
+        MockProvider::new("distilled summary").models(&["distill-model"]),
+    ));
+    let mut ctx = PipelineContext {
+        messages: vec![
+            PipelineMessage::text("user", "old context", 90),
+            PipelineMessage::text("assistant", "recent", 1),
+        ],
+        ..PipelineContext::default()
+    };
+    let (emitter, _captured) = capturing_emitter();
+
+    run_full_compact_stage(&config, &mut ctx, &providers, &emitter)
+        .await
+        .expect("full compaction should route to the distillation model");
+
+    assert!(
+        ctx.messages
+            .first()
+            .expect("summary message should exist")
+            .content
+            .contains("distilled summary"),
+        "full compaction should use the distillation-model provider's summary"
+    );
+}
+
 #[tokio::test]
 async fn full_compaction_falls_back_when_llm_unavailable() {
     let mut config = NousConfig::default();

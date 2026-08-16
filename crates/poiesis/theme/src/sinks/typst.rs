@@ -157,44 +157,44 @@ mod tests {
 
     use super::*;
 
-    fn summus() -> ResolvedTheme {
+    fn protos() -> ResolvedTheme {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
         let registry = crate::registry::Registry::load_dir(&dir).expect("load");
         registry
-            .resolve(&crate::registry::parse_theme_id("summus").expect("id"))
+            .resolve(&crate::registry::parse_theme_id("protos").expect("id"))
             .expect("resolve")
     }
 
     #[test]
     fn typst_starts_with_header_comment() {
-        let typst = emit_typst_template(&summus()).expect("emit summus typst");
+        let typst = emit_typst_template(&protos()).expect("emit protos typst");
         assert!(
-            typst.starts_with("// poiesis-theme: summus"),
+            typst.starts_with("// poiesis-theme: protos"),
             "output must start with theme header comment; got:\n{typst}"
         );
     }
 
     #[test]
     fn typst_emits_navy_role() {
-        let typst = emit_typst_template(&summus()).expect("emit summus typst");
+        let typst = emit_typst_template(&protos()).expect("emit protos typst");
         assert!(
-            typst.contains("#let color-navy = rgb(\"#232E54\")"),
+            typst.contains("#let color-navy = rgb(\"#1E293B\")"),
             "navy role must appear verbatim; got:\n{typst}"
         );
     }
 
     #[test]
     fn typst_emits_positive_tone() {
-        let typst = emit_typst_template(&summus()).expect("emit summus typst");
+        let typst = emit_typst_template(&protos()).expect("emit protos typst");
         assert!(
-            typst.contains("#let tone-positive = rgb(\"#318891\")"),
+            typst.contains("#let tone-positive = rgb(\"#0D9488\")"),
             "positive tone must appear with resolved teal hex; got:\n{typst}"
         );
     }
 
     #[test]
     fn typst_family_is_array_literal() {
-        let typst = emit_typst_template(&summus()).expect("emit summus typst");
+        let typst = emit_typst_template(&protos()).expect("emit protos typst");
         assert!(
             typst.contains("(\"Geist\""),
             "sans family must open as a Typst array literal; got:\n{typst}"
@@ -203,8 +203,8 @@ mod tests {
 
     #[test]
     fn typst_byte_stable_across_runs() {
-        let a = emit_typst_template(&summus()).expect("first emit");
-        let b = emit_typst_template(&summus()).expect("second emit");
+        let a = emit_typst_template(&protos()).expect("first emit");
+        let b = emit_typst_template(&protos()).expect("second emit");
         assert_eq!(a, b, "two emissions must match byte-for-byte");
     }
 }

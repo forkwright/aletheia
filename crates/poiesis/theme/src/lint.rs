@@ -263,11 +263,11 @@ mod tests {
     use super::*;
     use crate::registry::Registry;
 
-    fn summus() -> ResolvedTheme {
+    fn protos() -> ResolvedTheme {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let registry = Registry::load_dir(&dir).expect("load summus");
-        let id = crate::registry::parse_theme_id("summus").expect("parse summus");
-        registry.resolve(&id).expect("resolve summus")
+        let registry = Registry::load_dir(&dir).expect("load protos");
+        let id = crate::registry::parse_theme_id("protos").expect("parse protos");
+        registry.resolve(&id).expect("resolve protos")
     }
 
     // ── THEME/raw-color-literal ──────────────────────────────────────────────
@@ -357,53 +357,53 @@ mod tests {
 
     #[test]
     fn unknown_token_rule_accepts_known_role() {
-        let theme = summus();
+        let theme = protos();
         let rule = UnknownTokenRule::new(&theme);
         assert!(rule.check("/p", "color.role.navy").is_none());
     }
 
     #[test]
     fn unknown_token_rule_accepts_known_tone() {
-        let theme = summus();
+        let theme = protos();
         let rule = UnknownTokenRule::new(&theme);
         assert!(rule.check("/p", "color.tone.positive").is_none());
     }
 
     #[test]
     fn unknown_token_rule_accepts_known_scale() {
-        let theme = summus();
+        let theme = protos();
         let rule = UnknownTokenRule::new(&theme);
         assert!(rule.check("/p", "type.scale.title").is_none());
     }
 
     #[test]
     fn unknown_token_rule_rejects_unknown_role() {
-        let theme = summus();
+        let theme = protos();
         let rule = UnknownTokenRule::new(&theme);
         let v = rule.check("/p", "color.role.fuchsia");
         assert!(v.is_some());
         let vio = v.expect("violation");
         assert_eq!(vio.rule_id, UNKNOWN_TOKEN_RULE_ID);
-        assert!(vio.message.contains("summus"));
+        assert!(vio.message.contains("protos"));
     }
 
     #[test]
     fn unknown_token_rule_rejects_unstructured_reference() {
-        let theme = summus();
+        let theme = protos();
         let rule = UnknownTokenRule::new(&theme);
         assert!(rule.check("/p", "navy").is_some(), "bare names must reject");
     }
 
     #[test]
     fn unknown_token_rule_accepts_chart_series_index() {
-        let theme = summus();
+        let theme = protos();
         let rule = UnknownTokenRule::new(&theme);
         assert!(rule.check("/p", "chart.series.1").is_none());
     }
 
     #[test]
     fn unknown_token_rule_rejects_oob_chart_series_index() {
-        let theme = summus();
+        let theme = protos();
         let rule = UnknownTokenRule::new(&theme);
         let series_len = theme.chart.series.len();
         let oob = series_len + 5;

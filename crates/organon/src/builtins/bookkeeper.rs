@@ -17,8 +17,8 @@ use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::SandboxConfig;
 use crate::subprocess::SubprocessRunner;
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 /// Stub executor for deferred bookkeeper tools.
@@ -448,6 +448,22 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         }),
     )?;
     registry.register(katharos_def(), Box::new(KatharosExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("katharos"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::bookkeeper".to_owned(),
+            // WHY Experimental: this module is behind `#[cfg(feature =
+            // "bookkeeper")]` (see crates/organon/src/builtins/mod.rs) --
+            // not compiled by default.
+            stability: ToolStability::Experimental,
+            rollback: RollbackSupport::Unsupported {
+                reason: "removes worktree directories; uncommitted changes in a removed \
+                         worktree are not recoverable through this tool"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 
