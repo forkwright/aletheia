@@ -182,7 +182,10 @@ impl ApiError {
                 Recoverability::NotRecoverable,
                 NextAction::None,
             ),
-            Self::BadRequest { .. } | Self::ValidationFailed { .. } => (
+            Self::BadRequest { .. }
+            | Self::ValidationFailed { .. }
+            | Self::Unauthorized { .. }
+            | Self::Forbidden { .. } => (
                 FailureCategory::Config,
                 Recoverability::UserActionRequired,
                 NextAction::Reconfigure,
@@ -191,11 +194,6 @@ impl ApiError {
                 FailureCategory::InternalBug,
                 Recoverability::NotRecoverable,
                 NextAction::FileIssue,
-            ),
-            Self::Unauthorized { .. } | Self::Forbidden { .. } => (
-                FailureCategory::Config,
-                Recoverability::UserActionRequired,
-                NextAction::Reconfigure,
             ),
             Self::RateLimited { .. } | Self::ServiceUnavailable { .. } => (
                 FailureCategory::Network,
