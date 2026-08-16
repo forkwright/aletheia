@@ -19,8 +19,8 @@ use crate::surface::{
 };
 use crate::types::{
     ApprovalRequirement, Reversibility, ToolCallCapability, ToolCallCapabilityRule,
-    ToolCallMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolGroupPolicy, ToolInput,
-    ToolOrigin, ToolOutcome, ToolResult, ToolTag,
+    ToolCallMetadata, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId,
+    ToolGroupPolicy, ToolInput, ToolOrigin, ToolOutcome, ToolResult, ToolTag,
 };
 
 /// Shared, mutable snapshot used by the `tool_schema` meta-tool.
@@ -102,6 +102,11 @@ pub struct ToolRegistry {
     /// tool planes can still publish server/remote provenance for diagnostics
     /// and approval display.
     origins: HashMap<ToolName, ToolOrigin>,
+    /// Owner/stability/rollback/redaction governance metadata, keyed by
+    /// tool name. Absent entries fall back to [`ToolCapabilityMetadata::
+    /// default`] via [`Self::capability_metadata`] -- see that method's
+    /// doc for why this is stored separately from [`ToolDef`].
+    capabilities: HashMap<ToolName, ToolCapabilityMetadata>,
     /// Snapshot state for the `tool_schema` meta-tool.  `None` until
     /// `tool_schema` is registered.
     tool_schema_snapshot: Option<ToolSchemaSnapshot>,
@@ -121,6 +126,7 @@ impl ToolRegistry {
         Self {
             tools: IndexMap::new(),
             origins: HashMap::new(),
+            capabilities: HashMap::new(),
             tool_schema_snapshot: None,
         }
     }
@@ -243,6 +249,30 @@ impl ToolRegistry {
     pub fn origin(&self, name: &ToolName) -> Option<&ToolOrigin> {
         // kanon:ignore RUST/pub-visibility
         self.origins.get(name)
+    }
+
+    /// Declare owner/stability/rollback/redaction governance metadata for
+    /// an already-registered tool.
+    ///
+    /// ARCHITECTURE(#4543): stored separately from [`ToolDef`], mirroring
+    /// [`Self::set_origin`] -- the ~90 existing `_def()` functions across
+    /// organon's builtins do not need a mechanical field addition for this
+    /// registry to exist; a tool owner opts in by calling this after
+    /// [`Self::register`]. Tools with no declaration read as
+    /// [`ToolCapabilityMetadata::default`] (owner `"unassigned"`) via
+    /// [`Self::capability_metadata`], which is an honest "not yet
+    /// reviewed," not a fabricated "safe."
+    pub fn declare_capability(&mut self, name: ToolName, metadata: ToolCapabilityMetadata) {
+        if self.tools.contains_key(&name) {
+            self.capabilities.insert(name, metadata);
+        }
+    }
+
+    /// Look up governance metadata for a tool by name, falling back to
+    /// [`ToolCapabilityMetadata::default`] when nothing was declared.
+    #[must_use]
+    pub fn capability_metadata(&self, name: &ToolName) -> ToolCapabilityMetadata {
+        self.capabilities.get(name).cloned().unwrap_or_default()
     }
 
     /// Execute a tool by name.
@@ -812,6 +842,8 @@ impl ToolRegistry {
             reversibility: t.def.reversibility,
             approval: ApprovalRequirement::from(t.def.reversibility),
             dry_run,
+            dry_run_capable: t.def.reversibility.supports_dry_run(),
+            capability: self.capability_metadata(name),
             origin: self.origins.get(name).cloned(),
         })
     }
@@ -831,6 +863,8 @@ impl ToolRegistry {
             reversibility: call_capability.reversibility,
             approval: ApprovalRequirement::from(call_capability.reversibility),
             dry_run,
+            dry_run_capable: call_capability.reversibility.supports_dry_run(),
+            capability: self.capability_metadata(&input.name),
             origin: self.origins.get(&input.name).cloned(),
         })
     }

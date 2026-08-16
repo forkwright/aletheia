@@ -140,6 +140,12 @@ description = "Point-in-time audit of abstractions with a single creation path (
 decided = "2026-04-17"
 
 [[doc]]
+path = "docs/HARNESS-LIFECYCLE.md"
+type = "authored"
+evergreen = true
+description = "Canonical nine-stage agent run loop every surface (CLI/TUI/desktop/HTTP) implements, per-stage status, and the wire vocabulary map."
+
+[[doc]]
 path = "docs/HOT-RELOAD.md"
 type = "authored"
 evergreen = true
@@ -168,6 +174,12 @@ path = "docs/lexicon.md"
 type = "authored"
 evergreen = true
 description = "Living crate/module name registry with etymology and naming rationale."
+
+[[doc]]
+path = "docs/MATURITY.md"
+type = "authored"
+evergreen = true
+description = "Public feature maturity matrix: Stable/Experimental/Internal/Planned/Deprecated/Undeclared per crate, generated from each crate's own Cargo.toml [package.metadata.kanon] block."
 
 [[doc]]
 path = "docs/MCP-SERVERS.md"
@@ -246,6 +258,12 @@ description = "Day-two operations runbook: service architecture, common operatio
 last_tested = "2026-06-28"
 
 [[doc]]
+path = "docs/RUNTIME-CONTRACTS.md"
+type = "authored"
+evergreen = true
+description = "Canonical owner per runtime contract area (lifecycle, tool metadata, SSE events, failure taxonomy, metrics, routes) so CLI/TUI/desktop/API/docs derive from or are checked against one source instead of drifting independently."
+
+[[doc]]
 path = "docs/TECHNOLOGY.md"
 type = "authored"
 evergreen = true
@@ -265,11 +283,23 @@ description = "Boundary analysis of six component boundaries where internal stat
 decided = "2026-04-17"
 
 [[doc]]
+path = "docs/TUI-CONTRACT.md"
+type = "authored"
+evergreen = true
+description = "koilon dead_code classification (stable/experimental/planned) for Msg scaffolding fields, and the contract for adding a new one."
+
+[[doc]]
 path = "docs/UPGRADING.md"
 type = "operational"
 evergreen = true
 description = "Upgrade process for an existing installation: version check, backup, migration steps."
 last_tested = "2026-06-28"
+
+[[doc]]
+path = "docs/UX-STATE-INVENTORY.md"
+type = "authored"
+evergreen = true
+description = "Surface-by-surface UX-state inventory across TUI/desktop/API: empty/loading/error/approval/resume coverage, blocking/important/polish classification."
 
 [[doc]]
 path = "docs/WORKSPACE_FILES.md"

@@ -119,7 +119,8 @@ pub type Result<T> = std::result::Result<T, DpoError>;
 /// A single DPO preference pair extracted from a correction sequence.
 ///
 /// Serialized as one JSON line in the output JSONL file.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+// WHY not Eq: `similarity: Option<f64>` (#4863) has no total order.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct DpoPair {
     /// Schema version that produced this pair.
     ///
@@ -165,6 +166,85 @@ pub struct DpoPair {
     /// secret redactor ran, and for rows written before the field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pii_policy_ref: Option<String>,
+
+    // NOTE: causal provenance (#4863) groups the six fields below. Unlike
+    // the fields above, these are not knowable inside
+    // `DpoExtractor::process_turn` (a session-scoped correction-sequence
+    // state machine with no view of the completion that produced the
+    // pair) -- `DpoWriter::process_and_write` populates them on the
+    // returned pair before it is written.
+    /// Jaccard word-set similarity between the rejected and chosen
+    /// prompts, from [`DpoExtractor::validate_semantic_match`].
+    ///
+    /// `None` when the pair was admitted via the continuation/reaction
+    /// bypass (no similarity was computed) or for rows written before
+    /// the field existed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub similarity: Option<f64>,
+    /// The correction pattern that flagged the rejected turn's successor
+    /// as a correction (see `episteme::extract::refinement::detect_correction`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub correction_reason: Option<String>,
+    /// Reference into the prompt-audit log for the turn that produced
+    /// `chosen`, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_audit_ref: Option<String>,
+    /// Stable identifiers of the source turns this pair was derived from
+    /// (`"{session_id}:{turn_number}"` for the rejected and chosen turns).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_message_ids: Vec<String>,
+    /// Model that produced the chosen (corrected) response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Provider that served the chosen (corrected) response.
+    ///
+    /// A separate dimension from `model` (#4798, #4863) -- do not derive
+    /// one from the other.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+}
+
+/// Per-completion provenance for [`DpoWriter::process_and_write`] to graft
+/// onto a captured [`DpoPair`] (#4863) -- borrowed inputs, mirroring
+/// [`crate::training::CaptureInput`]'s pattern for the same reason: the
+/// caller already owns these strings for the turn, so this borrows rather
+/// than forcing an allocation per field on every processed turn (including
+/// the common case where no pair results).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct DpoPairProvenance<'a> {
+    /// The correction pattern that flagged the rejected turn's successor
+    /// as a correction, from `CorrectionSignal::matched_pattern`.
+    pub correction_reason: Option<&'a str>,
+    /// Reference into the prompt-audit log for the chosen turn.
+    pub prompt_audit_ref: Option<&'a str>,
+    /// Model that produced the chosen (corrected) response.
+    pub model: Option<&'a str>,
+    /// Provider that served the chosen (corrected) response.
+    pub provider: Option<&'a str>,
+}
+
+/// Identity and content of one completed turn to run through the durable
+/// correction-sequence extractor, for [`DpoWriter::process_and_write`].
+///
+/// WHY bundled (#4863): mirrors [`DpoExtractor::process_turn`]'s own six
+/// parameters exactly -- `process_and_write` forwards every field unchanged.
+/// Bundling keeps the wrapper under the workspace's `too_many_arguments`
+/// threshold now that `DpoPairProvenance` is also a parameter, without
+/// changing what either function does.
+#[derive(Debug, Clone, Copy)]
+pub struct TurnCapture<'a> {
+    /// Session identifier the turn belongs to.
+    pub session_id: &'a str,
+    /// Turn number within the session.
+    pub turn_number: u64,
+    /// Raw user message for this turn.
+    pub user_message: &'a str,
+    /// Final assistant response for this turn.
+    pub assistant_response: &'a str,
+    /// Whether this turn is itself a correction of the prior turn.
+    pub is_correction: bool,
+    /// Whether the PII filter is enabled for redaction before matching.
+    pub pii_filter_enabled: bool,
 }
 
 /// Current schema version for [`DpoPair`].
@@ -570,6 +650,7 @@ impl DpoExtractor {
                     chosen_turn = turn_number,
                     "dpo.pair_captured"
                 );
+                let similarity = Self::semantic_similarity_score(&pending.prompt, &user_message);
                 Some(DpoPair {
                     schema_version: DPO_PAIR_SCHEMA_VERSION,
                     pair_id: compute_pair_id(session_id, pending.rejected_turn, turn_number),
@@ -582,6 +663,17 @@ impl DpoExtractor {
                     validator_version: Some(DPO_VALIDATOR_VERSION.to_owned()),
                     pii_policy_ref: pii_filter_enabled
                         .then(|| crate::training::pii::POLICY_REF.to_owned()),
+                    similarity,
+                    // WHY None here: correction_reason/prompt_audit_ref/model/
+                    // provider are not knowable inside this session-scoped
+                    // state machine -- `DpoWriter::process_and_write`
+                    // populates them (and source_message_ids) on the pair
+                    // this returns.
+                    correction_reason: None,
+                    prompt_audit_ref: None,
+                    source_message_ids: Vec::new(),
+                    model: None,
+                    provider: None,
                 })
             } else {
                 debug!(
@@ -688,6 +780,42 @@ impl DpoExtractor {
         let similarity = f64::from(i_u32) / f64::from(u_u32);
         similarity >= SEMANTIC_SIMILARITY_THRESHOLD
     }
+
+    /// The raw Jaccard similarity score behind [`Self::validate_semantic_match`]'s
+    /// admit/reject decision (closes the `similarity` provenance gap in
+    /// #4863).
+    ///
+    /// A sibling function rather than changing `validate_semantic_match`'s
+    /// return type: that function has direct boolean assertions in tests
+    /// below, and admission logic should not have to unpack a score it
+    /// doesn't need. `None` when the pair was admitted via the
+    /// continuation/reaction bypass (no comparison was made) or when
+    /// either message tokenized to no words.
+    fn semantic_similarity_score(original_prompt: &str, chosen_prompt: &str) -> Option<f64> {
+        let chosen_trimmed = chosen_prompt.trim();
+        if Self::is_continuation_bypass(chosen_trimmed) {
+            return None;
+        }
+
+        let tokenize = |s: &str| -> HashSet<String> {
+            s.to_lowercase()
+                .split_whitespace()
+                .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_owned())
+                .filter(|w| !w.is_empty())
+                .collect()
+        };
+        let original_words = tokenize(original_prompt);
+        let chosen_words = tokenize(chosen_trimmed);
+        if original_words.is_empty() || chosen_words.is_empty() {
+            return None;
+        }
+
+        let intersection: HashSet<&String> = original_words.intersection(&chosen_words).collect();
+        let union: HashSet<&String> = original_words.union(&chosen_words).collect();
+        let i_u32 = u32::try_from(intersection.len()).unwrap_or(u32::MAX);
+        let u_u32 = u32::try_from(union.len()).unwrap_or(u32::MAX);
+        Some(f64::from(i_u32) / f64::from(u_u32))
+    }
 }
 
 /// Writer for DPO preference pairs to a dated JSONL file.
@@ -766,24 +894,33 @@ impl DpoWriter {
     /// written, or if a resulting pair cannot be serialized or appended.
     pub fn process_and_write(
         &self,
-        session_id: &str,
-        turn_number: u64,
-        user_message: &str,
-        assistant_response: &str,
-        is_correction: bool,
-        pii_filter_enabled: bool,
+        turn: TurnCapture<'_>,
+        provenance: DpoPairProvenance<'_>,
     ) -> Result<bool> {
-        let Some(pair) = self.extractor.process_turn(
-            session_id,
-            turn_number,
-            user_message,
-            assistant_response,
-            is_correction,
-            pii_filter_enabled,
+        let Some(mut pair) = self.extractor.process_turn(
+            turn.session_id,
+            turn.turn_number,
+            turn.user_message,
+            turn.assistant_response,
+            turn.is_correction,
+            turn.pii_filter_enabled,
         )?
         else {
             return Ok(false);
         };
+        // WHY populated here, not inside `process_turn`: these are per-
+        // completion facts (which model/provider served the chosen turn,
+        // why the pending turn was flagged a correction, the prompt-audit
+        // row for the chosen turn) that the session-scoped correction
+        // extractor has no view of (#4863).
+        pair.correction_reason = provenance.correction_reason.map(ToOwned::to_owned);
+        pair.prompt_audit_ref = provenance.prompt_audit_ref.map(ToOwned::to_owned);
+        pair.model = provenance.model.map(ToOwned::to_owned);
+        pair.provider = provenance.provider.map(ToOwned::to_owned);
+        pair.source_message_ids = vec![
+            format!("{}:{}", turn.session_id, pair.rejected_turn),
+            format!("{}:{}", turn.session_id, pair.chosen_turn),
+        ];
         self.write_pair(&pair)
     }
 
@@ -1437,6 +1574,15 @@ mod tests {
             chosen_turn,
             validator_version: Some(DPO_VALIDATOR_VERSION.to_owned()),
             pii_policy_ref: Some(crate::training::pii::POLICY_REF.to_owned()),
+            similarity: Some(1.0),
+            correction_reason: Some("actually,".to_owned()),
+            prompt_audit_ref: Some("audit-ref-1".to_owned()),
+            source_message_ids: vec![
+                format!("{session_id}:{rejected_turn}"),
+                format!("{session_id}:{chosen_turn}"),
+            ],
+            model: Some("claude-opus-4-20250514".to_owned()),
+            provider: Some("anthropic".to_owned()),
         }
     }
 
@@ -1584,36 +1730,50 @@ mod tests {
 
         let wrote1 = writer
             .process_and_write(
-                "ses-1",
-                1,
-                "What is the capital of France?",
-                "London",
-                false,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 1,
+                    user_message: "What is the capital of France?",
+                    assistant_response: "London",
+                    is_correction: false,
+                    pii_filter_enabled: false,
+                },
+                DpoPairProvenance::default(),
             )
             .expect("process turn 1");
         assert!(!wrote1, "single normal turn should not write a pair");
 
         let wrote2 = writer
             .process_and_write(
-                "ses-1",
-                2,
-                "Actually, the capital of France is Paris.",
-                "You are right.",
-                true,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 2,
+                    user_message: "Actually, the capital of France is Paris.",
+                    assistant_response: "You are right.",
+                    is_correction: true,
+                    pii_filter_enabled: false,
+                },
+                DpoPairProvenance::default(),
             )
             .expect("process turn 2");
         assert!(!wrote2, "correction turn should not write a pair");
 
         let wrote3 = writer
             .process_and_write(
-                "ses-1",
-                3,
-                "What is the capital of France?",
-                "Paris",
-                false,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 3,
+                    user_message: "What is the capital of France?",
+                    assistant_response: "Paris",
+                    is_correction: false,
+                    pii_filter_enabled: false,
+                },
+                DpoPairProvenance {
+                    correction_reason: Some("actually,"),
+                    prompt_audit_ref: Some("audit-ref-3"),
+                    model: Some("test-model"),
+                    provider: Some("test-provider"),
+                },
             )
             .expect("process turn 3");
         assert!(wrote3, "chosen turn should write a pair");
@@ -1623,6 +1783,13 @@ mod tests {
         let parsed: DpoPair =
             serde_json::from_str(content.lines().next().expect("one line")).expect("parse");
         assert_eq!(parsed.chosen, "Paris");
+        assert_eq!(parsed.correction_reason.as_deref(), Some("actually,"));
+        assert_eq!(parsed.model.as_deref(), Some("test-model"));
+        assert_eq!(parsed.provider.as_deref(), Some("test-provider"));
+        assert_eq!(
+            parsed.source_message_ids,
+            vec!["ses-1:1".to_owned(), "ses-1:3".to_owned()]
+        );
     }
 
     #[test]
@@ -1643,20 +1810,43 @@ mod tests {
             .expect("pre-seed existing pair");
 
         let _ = writer
-            .process_and_write("ses-1", 1, "What is 2+2?", "5", false, false)
+            .process_and_write(
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 1,
+                    user_message: "What is 2+2?",
+                    assistant_response: "5",
+                    is_correction: false,
+                    pii_filter_enabled: false,
+                },
+                DpoPairProvenance::default(),
+            )
             .expect("process turn 1");
         let _ = writer
             .process_and_write(
-                "ses-1",
-                2,
-                "Actually, 2+2 is 4.",
-                "You are right.",
-                true,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 2,
+                    user_message: "Actually, 2+2 is 4.",
+                    assistant_response: "You are right.",
+                    is_correction: true,
+                    pii_filter_enabled: false,
+                },
+                DpoPairProvenance::default(),
             )
             .expect("process turn 2 (correction)");
         let wrote = writer
-            .process_and_write("ses-1", 3, "What is 2+2?", "4", false, false)
+            .process_and_write(
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 3,
+                    user_message: "What is 2+2?",
+                    assistant_response: "4",
+                    is_correction: false,
+                    pii_filter_enabled: false,
+                },
+                DpoPairProvenance::default(),
+            )
             .expect("process turn 3");
 
         assert!(

@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn render_ods_workbook_produces_valid_zip() {
         let wb = sample_workbook();
-        let theme = poiesis_theme::summus();
+        let theme = poiesis_theme::protos();
         let bytes =
             render_ods_workbook(&wb, &resolved_facts(), &theme, None).expect("ods render succeeds");
         assert!(bytes.starts_with(b"PK"), "ODS output should be a valid ZIP");
@@ -399,7 +399,7 @@ mod tests {
                 column_types: vec![ScalarKind::Money],
             }],
         };
-        let theme = poiesis_theme::summus();
+        let theme = poiesis_theme::protos();
         let err = render_ods_workbook(&wb, &BTreeMap::new(), &theme, None)
             .expect_err("unknown fact must reject");
         assert!(matches!(err, WorkbookError::UnknownFact { .. }));
@@ -422,7 +422,7 @@ mod tests {
         let fact: Fact = serde_json::from_value(json).expect("deserialize fact");
         factbase.add_fact(fact);
 
-        let theme = poiesis_theme::summus();
+        let theme = poiesis_theme::protos();
         let bytes = render_ods_workbook(&wb, &resolved_facts(), &theme, Some(&factbase))
             .expect("ods render with provenance succeeds");
         assert!(bytes.starts_with(b"PK"), "ODS output should be a valid ZIP");

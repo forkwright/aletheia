@@ -495,11 +495,26 @@ impl NousActor {
         let training_capture = self.services.training_capture.clone();
         let dpo_writer = self.services.dpo_writer.clone();
         let scoped_turn_cancel = turn_cancel.clone();
+        // WHY(#4746): this agent's own live generation/limits values,
+        // forwarded to any child the `agent` tool builtin spawns during this
+        // turn, so the child derives from what the parent is actually
+        // running with instead of a fixed set of constants. Read from
+        // `config` (already cloned above) rather than `self`, which is not
+        // available inside the moved-into-spawn async block.
+        let spawn_generation_hint = organon::types::SpawnGenerationHint {
+            context_window: config.generation.context_window,
+            max_output_tokens: config.generation.max_output_tokens,
+            bootstrap_max_tokens: config.generation.bootstrap_max_tokens,
+            chars_per_token: config.generation.chars_per_token,
+            max_tool_iterations: config.limits.max_tool_iterations,
+            session_token_cap: config.limits.session_token_cap,
+            max_tool_result_bytes: config.limits.max_tool_result_bytes,
+        };
         let mut pipeline_task = tokio::spawn(
             async move {
-                Box::pin(ToolContext::scope_turn_cancel(
-                    scoped_turn_cancel,
-                    async move {
+                Box::pin(ToolContext::scope_spawn_generation_hint(
+                    Some(spawn_generation_hint),
+                    ToolContext::scope_turn_cancel(scoped_turn_cancel, async move {
                         #[cfg(feature = "knowledge-store")]
                         let text_search_ref: Option<
                             &dyn crate::recall::TextSearch,
@@ -563,7 +578,7 @@ impl NousActor {
                                 .await
                             }
                         }
-                    },
+                    }),
                 ))
                 .await
             }

@@ -73,12 +73,17 @@ fn turn_result_with_tool_calls() {
             receipt: None,
             outcome_detail: None,
         }],
+        // WHY the spread: this fixture asserts on token totals only, and an
+        // exhaustive literal breaks on every field `TurnUsage` gains -- which is
+        // how `cost_usd` and `provider_duration_ms` failed CI from a crate the
+        // change never touched.
         usage: TurnUsage {
             input_tokens: 200,
             output_tokens: 50,
             cache_read_tokens: 150,
             cache_write_tokens: 50,
             llm_calls: 2,
+            ..TurnUsage::default()
         },
         reasoning: String::new(),
         signals: vec![InteractionSignal::ToolExecution],

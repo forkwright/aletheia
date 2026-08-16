@@ -17,7 +17,7 @@ use tracing::info_span;
 use koina::http::{API_HEALTH, API_V1};
 use taxis::config::MetricsMode;
 
-use crate::error::{ApiError, ErrorBody, ErrorResponse};
+use crate::error::{ApiError, ErrorBody, ErrorResponse, classify_by_status};
 use crate::handlers::{
     config, credentials, events, health, insights, knowledge, metrics, nous, ops, planning,
     providers, sessions, workspace,
@@ -375,6 +375,7 @@ async fn fallback_handler(uri: axum::http::Uri) -> Response {
 
     if path.starts_with("/api/nous") {
         let suggestion = path.replacen("/api/", "/api/v1/", 1);
+        let (category, recoverability, next_action) = classify_by_status(StatusCode::GONE);
         return (
             StatusCode::GONE,
             axum::Json(ErrorResponse {
@@ -383,6 +384,9 @@ async fn fallback_handler(uri: axum::http::Uri) -> Response {
                     message: format!("This endpoint has moved. Use {suggestion} instead."),
                     request_id: None,
                     details: None,
+                    category,
+                    recoverability,
+                    next_action,
                 },
             }),
         )

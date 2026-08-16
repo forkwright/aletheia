@@ -23,8 +23,9 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{EgressGate, SandboxConfig, check_egress, check_egress_remote_addr};
 use crate::types::{
-    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory,
-    ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
+    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport,
+    ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolStability, ToolTag,
 };
 
 use super::workspace::{extract_opt_str, extract_opt_u64, extract_str};
@@ -405,6 +406,19 @@ impl ToolExecutor for HttpRequestExecutor {
 pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
     let egress = EgressGate::from_config(sandbox);
     registry.register(http_request_def(), Box::new(HttpRequestExecutor { egress }))?;
+    registry.declare_capability(
+        ToolName::from_static("http_request"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::http_client".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "arbitrary POST/PUT/DELETE/PATCH requests to operator-configured URLs; \
+                         effects occur on an external system outside aletheia's control"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

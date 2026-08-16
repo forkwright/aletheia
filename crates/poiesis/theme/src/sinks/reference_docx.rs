@@ -216,23 +216,23 @@ mod tests {
 
     use super::*;
 
-    fn summus() -> ResolvedTheme {
+    fn protos() -> ResolvedTheme {
         let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
         let registry = crate::registry::Registry::load_dir(&dir).expect("load");
         registry
-            .resolve(&crate::registry::parse_theme_id("summus").expect("id"))
+            .resolve(&crate::registry::parse_theme_id("protos").expect("id"))
             .expect("resolve")
     }
 
     #[test]
     fn docx_produces_non_empty_bytes() {
-        let bytes = emit_reference_docx(&summus()).expect("emit");
+        let bytes = emit_reference_docx(&protos()).expect("emit");
         assert!(!bytes.is_empty(), "reference.docx must not be empty");
     }
 
     #[test]
     fn docx_is_valid_zip() {
-        let bytes = emit_reference_docx(&summus()).expect("emit");
+        let bytes = emit_reference_docx(&protos()).expect("emit");
         assert_eq!(
             bytes.get(..2),
             Some(b"PK".as_slice()),
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn docx_contains_styles_xml() {
-        let bytes = emit_reference_docx(&summus()).expect("emit");
+        let bytes = emit_reference_docx(&protos()).expect("emit");
         let cursor = Cursor::new(&bytes);
         let archive = ZipArchive::new(cursor).expect("valid zip");
         let names: Vec<String> = archive.file_names().map(String::from).collect();
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn docx_styles_xml_carries_body_font() {
-        let bytes = emit_reference_docx(&summus()).expect("emit");
+        let bytes = emit_reference_docx(&protos()).expect("emit");
         let cursor = Cursor::new(&bytes);
         let mut archive = ZipArchive::new(cursor).expect("valid zip");
         let mut styles = String::new();
@@ -263,7 +263,7 @@ mod tests {
             .expect("styles.xml entry")
             .read_to_string(&mut styles)
             .expect("read styles");
-        let sans = summus()
+        let sans = protos()
             .lookup_family("sans")
             .and_then(|family| family.first())
             .cloned()
@@ -276,8 +276,8 @@ mod tests {
 
     #[test]
     fn docx_byte_stable_across_runs() {
-        let a = emit_reference_docx(&summus()).expect("first");
-        let b = emit_reference_docx(&summus()).expect("second");
+        let a = emit_reference_docx(&protos()).expect("first");
+        let b = emit_reference_docx(&protos()).expect("second");
         assert_eq!(a, b, "two emissions must match byte-for-byte");
     }
 }

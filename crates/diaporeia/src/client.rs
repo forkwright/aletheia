@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use organon::sandbox::SandboxConfigExt as _;
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientCapabilities, ClientInfo, Implementation, Tool,
 };

@@ -523,6 +523,7 @@ fn make_turn_result_with_content(
             cache_read_tokens: 0,
             cache_write_tokens: 0,
             llm_calls: 1,
+            ..crate::pipeline::TurnUsage::default()
         },
         signals: vec![],
         stop_reason: "end_turn".to_owned(),
@@ -707,4 +708,61 @@ async fn poor_interactive_outcome_does_not_increase_success_rate() {
     }
 
     panic!("poor interactive turn was not recorded as a failure");
+}
+
+/// Closes the #4798/#4863 model/provider conflation on the interactive
+/// router-outcome path: a turn with a distinct observed provider must be
+/// keyed in the empirical router by that provider, not by the model
+/// string.
+#[tokio::test]
+async fn record_router_outcome_keys_on_observed_provider_not_model() {
+    let store = Arc::new(AfterActionStore::in_memory());
+    let router: Arc<dyn aletheia_routing::Router> =
+        Arc::new(RecordingRouter::new(Arc::clone(&store), "test-model"));
+
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.services.router = router;
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+
+    let mut turn = make_turn_result(50, vec![make_tool_call("read_file", false)]);
+    turn.provider_used = Some("anthropic".to_owned());
+    actor.record_router_outcome("s", "build a feature", &turn);
+
+    let observed_provider = ProviderId::new("anthropic");
+    let model_as_provider = ProviderId::new("test-model");
+    for _ in 0..20 {
+        if let Some(stats) = store
+            .rolling_stats(
+                &observed_provider,
+                &TaskCategory::Feature,
+                Duration::from_hours(168),
+            )
+            .await
+            .expect("rolling stats query")
+        {
+            assert_eq!(
+                stats.successes, 1,
+                "turn must be keyed under the observed provider"
+            );
+            assert!(
+                store
+                    .rolling_stats(
+                        &model_as_provider,
+                        &TaskCategory::Feature,
+                        Duration::from_hours(168)
+                    )
+                    .await
+                    .expect("rolling stats query")
+                    .is_none(),
+                "turn must NOT also be keyed under the raw model string"
+            );
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+
+    panic!("turn was not recorded under the observed provider");
 }

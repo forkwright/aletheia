@@ -23,8 +23,8 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use super::filesystem_policy::protected_path_class;
@@ -459,6 +459,19 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(mv_def(), Box::new(MvExecutor))?;
     registry.register(cp_def(), Box::new(CpExecutor))?;
     registry.register(rm_def(), Box::new(RmExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("rm"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::fs_ops".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "no built-in backup step; removed files/directories are not recoverable \
+                         through this tool"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

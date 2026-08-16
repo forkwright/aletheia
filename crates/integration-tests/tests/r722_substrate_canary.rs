@@ -1207,6 +1207,7 @@ fn tool_receipt_round_trip_verifies_correctly() {
         r#"{"path":"/tmp/a"}"#.to_owned(),
         "hello".to_owned(),
         ts,
+        None,
     );
 
     let msg = format!("I used the tool earlier [receipt:{token}].");
@@ -1248,6 +1249,7 @@ fn tool_receipt_tampered_args_are_detected() {
         "tampered_args".to_owned(),
         "tampered_result".to_owned(),
         ts,
+        None,
     );
 
     let msg = format!("I used the tool earlier [receipt:{token}].");

@@ -538,6 +538,7 @@ mod tests {
                 cache_read_tokens: 50,
                 cache_write_tokens: 10,
                 llm_calls: 2,
+                ..TurnUsage::default()
             },
             stop_reason: "end_turn".to_owned(),
             signals: vec![],

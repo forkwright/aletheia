@@ -54,11 +54,11 @@ use std::sync::Arc;
 use aletheia_classify::Classifier;
 use jiff::Timestamp;
 pub use mneme::training::{
-    DecontaminationPolicy, RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION,
-    ToolOutcome, TrainingConfig, TrainingRecord,
+    DecontaminationPolicy, QUALITY_SCORE_FORMULA_VERSION, QualityScoreComponents, RecallSignals,
+    RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig, TrainingRecord,
 };
 
-use self::decontamination::{DecontaminationGate, Disposition};
+use self::decontamination::{DecontaminationGate, Disposition, Verdict};
 use serde::{Deserialize, Serialize};
 use snafu::{ResultExt, Snafu};
 use tracing::{debug, warn};
@@ -231,8 +231,22 @@ pub struct CaptureInput<'a> {
     pub assistant_response: &'a str,
     /// Model identifier used for this turn (e.g. `claude-sonnet-4-20250514`).
     pub model: &'a str,
+    /// Provider that actually served the turn (e.g. `anthropic`, `kimi`).
+    ///
+    /// WHY a separate field from `model`: a provider id derived from the
+    /// model string conflates the two dimensions (#4798, #4863) — a model
+    /// name does not uniquely determine which provider served it. `None`
+    /// when the observed provider was not captured for this turn.
+    pub provider: Option<&'a str>,
     /// Total tokens consumed by the turn (prompt + completion).
     pub tokens: u64,
+    /// Sum of provider-reported cost in USD across the turn's completions.
+    ///
+    /// `None` when no completion in the turn reported a cost.
+    pub cost_usd: Option<f64>,
+    /// Sum of provider round-trip duration in milliseconds across the
+    /// turn's completions.
+    pub provider_duration_ms: u64,
     /// Stop reason reported by the provider.
     pub stop_reason: CaptureStopReason,
     /// Whether the turn included any tool calls.
@@ -349,8 +363,39 @@ impl CaptureInput<'_> {
     /// high-confidence label.
     #[must_use]
     pub fn compute_quality_score(&self) -> Option<f32> {
+        self.compute_quality_score_components()
+            .map(|c| c.total_score().clamp(0.0, 1.0))
+    }
+
+    /// WHY: extracted from `maybe_capture` to keep that function under the
+    /// line limit, and to give a persist path that wants both the scalar and
+    /// the breakdown (#4863) one call instead of two independent derivations
+    /// that could drift apart. Returns `(score, components)`; `score` is
+    /// `None` under the same have-any-signal gate `compute_quality_score`
+    /// documents.
+    #[must_use]
+    pub fn compute_quality_score_with_components(
+        &self,
+    ) -> (Option<f32>, Option<QualityScoreComponents>) {
+        let components = self.compute_quality_score_components();
+        let score = components.as_ref().map(|c| c.total_score().clamp(0.0, 1.0));
+        (score, components)
+    }
+
+    /// Compute the component breakdown behind [`Self::compute_quality_score`]
+    /// (#4863: preserve component scores/weights, not only the final sum).
+    ///
+    /// Returns `None` under the exact same have-any-signal gate
+    /// `compute_quality_score` uses (see its docs): a turn with no tool
+    /// calls, no recall facts, and unknown correction status carries no
+    /// components worth persisting.
+    #[must_use]
+    pub fn compute_quality_score_components(&self) -> Option<QualityScoreComponents> {
         // WHY constants: clearly named weights make the formula auditable
         // and easy to re-tune once RL training produces ground truth.
+        // Bump QUALITY_SCORE_FORMULA_VERSION (eidos::training) if any of
+        // these, the saturation constant, or a component's definition
+        // changes.
         const W_TOOLS: f32 = 0.40;
         const W_RECALL: f32 = 0.20;
         const W_SUBSTANCE: f32 = 0.20;
@@ -358,13 +403,13 @@ impl CaptureInput<'_> {
         const W_CORRECTION: f32 = 0.10;
         const SUBSTANCE_SATURATE_CHARS: f32 = 400.0;
 
-        let mut score = 0.0_f32;
         let mut have_any_signal = false;
 
         // Tool success rate.
-        if let Some(outcomes) = self.tool_outcomes.as_ref()
-            && !outcomes.is_empty()
-        {
+        let tool_success_rate = self.tool_outcomes.as_ref().and_then(|outcomes| {
+            if outcomes.is_empty() {
+                return None;
+            }
             have_any_signal = true;
             let successes = outcomes.iter().filter(|o| o.success).count();
             // WHY f32 cast: 0..=count fits, division is bounded.
@@ -374,8 +419,8 @@ impl CaptureInput<'_> {
                 reason = "usize→f32: counts fit in f32 precision for realistic turn sizes"
             )]
             let rate = successes as f32 / outcomes.len() as f32; // kanon:ignore RUST/as-cast
-            score += W_TOOLS * rate;
-        }
+            Some(rate)
+        });
 
         // Recall utilization rate: referenced / injected.
         // WHY: gated on `!facts.is_empty()`, not `results_injected > 0`
@@ -384,10 +429,10 @@ impl CaptureInput<'_> {
         // (#3418), `results_injected > 0` would still flip have_any_signal
         // on top of a rate that is structurally always 0, reporting a
         // signal that was never actually observed.
-        if let Some(recall) = self.recall_signals.as_ref()
-            && recall.results_injected > 0
-            && !recall.facts.is_empty()
-        {
+        let recall_utilization_rate = self.recall_signals.as_ref().and_then(|recall| {
+            if recall.results_injected == 0 || recall.facts.is_empty() {
+                return None;
+            }
             have_any_signal = true;
             let referenced =
                 u32::try_from(recall.facts.iter().filter(|f| f.was_referenced).count())
@@ -401,40 +446,48 @@ impl CaptureInput<'_> {
                 reason = "u32→f32: recall counts are small"
             )]
             let rate = (referenced.min(denom) as f32) / (denom as f32); // kanon:ignore RUST/as-cast
-            score += W_RECALL * rate;
-        }
+            Some(rate)
+        });
 
-        // Response substance, saturating.
-        {
-            #[expect(
-                clippy::cast_precision_loss,
-                clippy::as_conversions,
-                reason = "usize→f32: char counts fit in f32 for any realistic response"
-            )]
-            let len = self.assistant_response.chars().count() as f32; // kanon:ignore RUST/as-cast
-            let substance = (len / SUBSTANCE_SATURATE_CHARS).min(1.0);
-            score += W_SUBSTANCE * substance;
-            // WHY: substance alone is not a "signal" — a short response can
-            // still be valid, so have_any_signal is intentionally NOT set here.
-        }
+        // Response substance, saturating. WHY: substance alone is not a
+        // "signal" — a short response can still be valid, so
+        // have_any_signal is intentionally not set here.
+        #[expect(
+            clippy::cast_precision_loss,
+            clippy::as_conversions,
+            reason = "usize→f32: char counts fit in f32 for any realistic response"
+        )]
+        let len = self.assistant_response.chars().count() as f32; // kanon:ignore RUST/as-cast
+        let response_substance_rate = (len / SUBSTANCE_SATURATE_CHARS).min(1.0);
 
         // Stop reason.
-        let stop_ok = matches!(
+        let stop_reason_ok = matches!(
             self.stop_reason,
             CaptureStopReason::EndTurn | CaptureStopReason::StopSequence
         );
-        score += W_STOP * if stop_ok { 1.0 } else { 0.0 };
 
         // Correction penalty.
-        if let Some(is_corr) = self.is_correction {
+        let correction_penalty_factor = self.is_correction.map(|is_corr| {
             have_any_signal = true;
-            score += W_CORRECTION * if is_corr { 0.0 } else { 1.0 };
-        }
+            if is_corr { 0.0 } else { 1.0 }
+        });
 
         if !have_any_signal {
             return None;
         }
-        Some(score.clamp(0.0, 1.0))
+
+        Some(QualityScoreComponents {
+            tool_success_rate,
+            recall_utilization_rate,
+            response_substance_rate,
+            stop_reason_ok,
+            correction_penalty_factor,
+            weight_tools: W_TOOLS,
+            weight_recall: W_RECALL,
+            weight_substance: W_SUBSTANCE,
+            weight_stop: W_STOP,
+            weight_correction: W_CORRECTION,
+        })
     }
 }
 
@@ -1038,6 +1091,55 @@ impl TrainingCapture {
         false
     }
 
+    /// WHY: extracted from `maybe_capture` to keep that function under the
+    /// line limit. Assembles the persisted record from redacted content, the
+    /// decontamination verdict, and the quality-score outputs; derives
+    /// `quality_score_formula_version` from `quality_score`'s presence so
+    /// the two can never independently drift (a formula-version stamp with
+    /// no corresponding score, or vice versa, would be silently wrong
+    /// provenance).
+    fn build_record(
+        &self,
+        input: &CaptureInput<'_>,
+        pii: PiiScreeningResult,
+        verdict: &Verdict,
+        quality_score: Option<f32>,
+        quality_score_components: Option<QualityScoreComponents>,
+    ) -> TrainingRecord {
+        let quality_score_formula_version = quality_score
+            .is_some()
+            .then_some(QUALITY_SCORE_FORMULA_VERSION);
+        TrainingRecord {
+            schema_version: TRAINING_RECORD_SCHEMA_VERSION,
+            session_id: input.session_id.to_owned(),
+            nous_id: input.nous_id.to_owned(),
+            user_message: pii.user_message,
+            assistant_response: pii.assistant_response,
+            model: input.model.to_owned(),
+            provider: input.provider.map(ToOwned::to_owned),
+            tokens: input.tokens,
+            cost_usd: input.cost_usd,
+            provider_duration_ms: input.provider_duration_ms,
+            timestamp: Timestamp::now(),
+            turn_type: input.turn_type.clone(),
+            is_correction: input.is_correction,
+            fact_types: input.fact_types.clone(),
+            quality_score,
+            quality_score_formula_version,
+            quality_score_components,
+            tool_outcomes: input.tool_outcomes.clone(),
+            recall_signals: input.recall_signals.clone(),
+            tool_surface_hashes: input.tool_surface_hashes.to_vec(),
+            pii_redacted: pii.pii_redacted,
+            pii_filter_applied: pii.pii_filter_applied,
+            pii_redaction_count: pii.pii_redaction_count,
+            pii_policy_ref: pii.pii_policy_ref,
+            decontamination_policy: Some(self.gate.policy()),
+            decontamination_verdict: Some(verdict.label.to_owned()),
+            classifier_version: verdict.classifier_version.clone(),
+        }
+    }
+
     /// Capture a conversation turn if it passes the quality gate.
     ///
     /// Quality gate criteria:
@@ -1050,8 +1152,8 @@ impl TrainingCapture {
     /// record returns `false`: it is persisted, but not as corpus. I/O errors
     /// are logged as warnings and do not propagate: training capture must
     /// never block the pipeline.
-    pub fn maybe_capture(&mut self, input: CaptureInput<'_>) -> bool {
-        if Self::content_gate_blocks(&input) {
+    pub fn maybe_capture(&mut self, input: &CaptureInput<'_>) -> bool {
+        if Self::content_gate_blocks(input) {
             return false;
         }
 
@@ -1093,49 +1195,31 @@ impl TrainingCapture {
             return false;
         }
 
-        if self.durable_gate_blocks(&input) {
+        if self.durable_gate_blocks(input) {
             return false;
         }
 
         // WHY compute quality before PII filtering: quality_score is
         // derived from signals (tool outcomes, recall, stop reason,
         // correction flag) not from text content, so redaction order
-        // is irrelevant. Computing it here keeps the borrow of
-        // `input` lifetimes clean before we move fields into the
-        // record below.
-        let quality_score = input.compute_quality_score();
+        // is irrelevant.
+        let (quality_score, quality_score_components) =
+            input.compute_quality_score_with_components();
 
         // WHY apply PII redaction at write time: the filter is a
         // training-time safeguard, not a commit-time scanner. Both
         // `user_message` and `assistant_response` are scrubbed because
         // either can contain pasted secrets — e.g. a user sharing a
         // key for debugging, or the assistant echoing a key back.
-        let pii = self.screen_pii(&input);
+        let pii = self.screen_pii(input);
 
-        let record = TrainingRecord {
-            schema_version: TRAINING_RECORD_SCHEMA_VERSION,
-            session_id: input.session_id.to_owned(),
-            nous_id: input.nous_id.to_owned(),
-            user_message: pii.user_message,
-            assistant_response: pii.assistant_response,
-            model: input.model.to_owned(),
-            tokens: input.tokens,
-            timestamp: Timestamp::now(),
-            turn_type: input.turn_type,
-            is_correction: input.is_correction,
-            fact_types: input.fact_types,
+        let record = self.build_record(
+            input,
+            pii,
+            &verdict,
             quality_score,
-            tool_outcomes: input.tool_outcomes,
-            recall_signals: input.recall_signals,
-            tool_surface_hashes: input.tool_surface_hashes.to_vec(),
-            pii_redacted: pii.pii_redacted,
-            pii_filter_applied: pii.pii_filter_applied,
-            pii_redaction_count: pii.pii_redaction_count,
-            pii_policy_ref: pii.pii_policy_ref,
-            decontamination_policy: Some(self.gate.policy()),
-            decontamination_verdict: Some(verdict.label.to_owned()),
-            classifier_version: verdict.classifier_version.clone(),
-        };
+            quality_score_components,
+        );
 
         let enriched = EnrichedTrainingRecord {
             base: &record,
@@ -1224,7 +1308,7 @@ pub(crate) mod decontamination;
 pub mod dpo;
 pub mod pii;
 
-pub use dpo::{DpoExtractor, DpoPair, DpoWriter};
+pub use dpo::{DpoExtractor, DpoPair, DpoPairProvenance, DpoWriter, TurnCapture};
 pub use pii::redact as redact_pii;
 
 #[cfg(test)]
@@ -1261,7 +1345,10 @@ mod pii_filter_disabled_regression {
             user_message: user_message.as_str(),
             assistant_response: "bob confirmed the key was received",
             model: "test-model",
+            provider: None,
             tokens: 50,
+            cost_usd: None,
+            provider_duration_ms: 0,
             stop_reason: CaptureStopReason::EndTurn,
             has_tool_calls: false,
             turn_type: None,

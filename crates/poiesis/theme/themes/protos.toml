@@ -1,33 +1,33 @@
-# summus — the seed/flagship theme.
+# protos — the seed/flagship theme.
 #
-# Seed values come from the apodeixis Phase-00 spec 03 (forkwright/kanon#978):
-# the brand palette and typography that drove the offsite deck. Every later
-# theme — brand variants, dark modes, partner themes — adds a sibling
-# `<name>.toml` here; no code change is required.
+# A deliberately generic default: a consumer is expected to override the
+# palette and typography with their own. Every later theme — brand variants,
+# dark modes, partner themes — adds a sibling `<name>.toml` here; no code
+# change is required.
 #
 # Rule: a tone or surface references a role NAME. The only place raw hex
 # lives is in [color.role]. Roles → tones/surfaces drop-in remap freely.
 
 [meta]
-id = "summus"
-title = "Summus"
-description = "Flagship theme: navy + teal + accent rose, Geist sans / Newsreader serif."
+id = "protos"
+title = "Protos"
+description = "Seed theme: navy + teal + accent rose, Geist sans / Newsreader serif."
 
 [color.role]
-navy = "#232E54"
-navy_2 = "#1A2342"
-navy_3 = "#354068"
-teal = "#318891"
-teal_2 = "#2A7680"
-mint = "#6BD2A4"
-rose = "#B87264"
-gray = "#4A4A4A"
-ink = "#1A1F36"
-mute = "#6B7280"
-rule = "#E5E7EB"
-bg = "#FFFFFF"
-bg_soft = "#FAFAF8"
-canvas_dark = "#0E1117"
+navy = "#1e293b"
+navy_2 = "#334155"
+navy_3 = "#475569"
+teal = "#0d9488"
+teal_2 = "#14b8a6"
+mint = "#5eead4"
+rose = "#e11d48"
+gray = "#94a3b8"
+ink = "#0f172a"
+mute = "#64748b"
+rule = "#e2e8f0"
+bg = "#ffffff"
+bg_soft = "#f8fafc"
+canvas_dark = "#0f172a"
 
 [color.tone]
 positive = "teal"

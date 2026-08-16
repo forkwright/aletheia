@@ -100,7 +100,7 @@ pub mod z3_solver;
 
 use crate::error::Result;
 use crate::registry::ToolRegistry;
-use crate::sandbox::SandboxConfig;
+use crate::sandbox::{SandboxConfig, SandboxConfigExt as _};
 
 /// Register all built-in tool executors with default sandbox config.
 ///
@@ -448,6 +448,52 @@ mod poiesis_default_off_tests {
         assert!(
             names.contains(&"grep") || names.contains(&"read_file"),
             "non-poiesis tools must still register when the poiesis feature is off"
+        );
+        Ok(())
+    }
+}
+
+/// ARCHITECTURE(#4543): the gate the issue's acceptance criteria ask for --
+/// "add a check or review rule that new public tools must declare
+/// capability/governance metadata." Unconditionally compiled (unlike the
+/// two feature-narrow test modules above) so it runs under whatever
+/// feature combination is active, always covering at minimum the always-on
+/// tools and, when the relevant `--features` flags are set, the
+/// feature-gated ones too.
+///
+/// Scoped to `Reversibility::Irreversible` tools rather than every
+/// registered tool: that is the side-effect class where "was rollback ever
+/// reviewed" matters most, and it is the bounded, currently-classified set
+/// (see the `declare_capability` calls alongside each of these tools'
+/// `register()` call). A tool newly marked `Irreversible` without also
+/// calling `declare_capability` fails this test with its name, not a
+/// silent gap.
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod capability_governance_tests {
+    use super::*;
+    use crate::types::{Reversibility, UNASSIGNED_TOOL_OWNER};
+
+    #[test]
+    fn all_irreversible_tools_declare_capability_metadata() -> Result<()> {
+        let mut registry = ToolRegistry::new();
+        register_all(&mut registry)?;
+
+        let undeclared: Vec<&str> = registry
+            .definitions()
+            .iter()
+            .filter(|def| def.reversibility == Reversibility::Irreversible)
+            .map(|def| def.name.as_str())
+            .filter(|name| {
+                let name = koina::id::ToolName::new(*name).expect("registered name is valid");
+                registry.capability_metadata(&name).owner == UNASSIGNED_TOOL_OWNER
+            })
+            .collect();
+
+        assert!(
+            undeclared.is_empty(),
+            "every Irreversible tool must call ToolRegistry::declare_capability \
+             (see the `register()` function for each tool's module); missing: {undeclared:?}"
         );
         Ok(())
     }

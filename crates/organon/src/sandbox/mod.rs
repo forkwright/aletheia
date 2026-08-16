@@ -11,7 +11,8 @@ mod policy;
 mod tests;
 
 pub use config::{
-    EgressPolicy, SandboxConfig, SandboxConfigIssue, SandboxEnforcement, SandboxPolicy,
+    EgressPolicy, SandboxConfig, SandboxConfigExt, SandboxConfigIssue, SandboxEnforcement,
+    SandboxPolicy,
 };
 pub use policy::{
     EgressDenied, EgressGate, apply_sandbox, check_egress, check_egress_remote_addr,

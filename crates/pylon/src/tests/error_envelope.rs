@@ -9,8 +9,14 @@ use tower::ServiceExt;
 
 use super::helpers::*;
 
-/// Verify that an error JSON body has the required `{error: {code, message}}`
+/// Verify that an error JSON body has the required
+/// `{error: {code, message, category, recoverability, next_action}}`
 /// envelope and optionally matches expected code and status.
+///
+/// WHY(aletheia#4545): every route this app can reach goes through this one
+/// assertion, so it is the cheapest place to pin that the failure-taxonomy
+/// fields are present on every error surface, not just the ones with a
+/// dedicated taxonomy test in `error.rs`.
 fn assert_error_envelope(body: &serde_json::Value, expected_code: &str) {
     assert!(body["error"].is_object(), "response must have error object");
     assert!(
@@ -20,6 +26,18 @@ fn assert_error_envelope(body: &serde_json::Value, expected_code: &str) {
     assert!(
         body["error"]["message"].is_string(),
         "error must have string message"
+    );
+    assert!(
+        body["error"]["category"].is_string(),
+        "error must have string category (aletheia#4545)"
+    );
+    assert!(
+        body["error"]["recoverability"].is_string(),
+        "error must have string recoverability (aletheia#4545)"
+    );
+    assert!(
+        body["error"]["next_action"].is_string(),
+        "error must have string next_action (aletheia#4545)"
     );
     assert_eq!(
         body["error"]["code"], expected_code,

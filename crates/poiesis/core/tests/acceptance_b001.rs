@@ -33,8 +33,8 @@ use serde_json::json;
 #[test]
 fn acceptance_round_trip_deck_spec() {
     let spec = DeliverableSpec {
-        meta: Meta::new("offsite-2026-q1").expect("title"),
-        theme: ThemeId::new("summus").expect("theme id"),
+        meta: Meta::new("sample-2026-q1").expect("title"),
+        theme: ThemeId::new("protos").expect("theme id"),
         facts: empty_factbase(),
         body: Body::Deck(Deck {
             aspect: AspectRatio::WIDESCREEN_16_9,
@@ -54,7 +54,7 @@ fn acceptance_round_trip_deck_spec() {
 fn acceptance_round_trip_workbook_spec() {
     let spec = DeliverableSpec {
         meta: Meta::new("Q1 ledger").expect("title"),
-        theme: ThemeId::new("summus").expect("theme id"),
+        theme: ThemeId::new("protos").expect("theme id"),
         facts: empty_factbase(),
         body: Body::Workbook(Workbook {
             sheets: vec![Sheet {
@@ -85,7 +85,7 @@ fn acceptance_round_trip_workbook_spec() {
 fn acceptance_round_trip_document_spec() {
     let spec = DeliverableSpec {
         meta: Meta::new("README").expect("title"),
-        theme: ThemeId::new("summus").expect("theme id"),
+        theme: ThemeId::new("protos").expect("theme id"),
         facts: empty_factbase(),
         body: Body::Document(DocumentBody::new(Document::new("README"))),
     };
@@ -116,7 +116,7 @@ fn acceptance_reject_missing_required_meta_field() {
 fn acceptance_reject_unknown_component_in_deck() {
     let spec = DeliverableSpec {
         meta: Meta::new("pitch").expect("title"),
-        theme: ThemeId::new("summus").expect("theme id"),
+        theme: ThemeId::new("protos").expect("theme id"),
         facts: empty_factbase(),
         body: Body::Deck(Deck {
             aspect: AspectRatio::WIDESCREEN_16_9,
@@ -151,7 +151,7 @@ fn acceptance_reject_bad_slot_type_with_json_pointer() {
     registry.discover(tmp.path()).expect("discover");
     let spec = DeliverableSpec {
         meta: Meta::new("pitch").expect("title"),
-        theme: ThemeId::new("summus").expect("theme id"),
+        theme: ThemeId::new("protos").expect("theme id"),
         facts: empty_factbase(),
         body: Body::Deck(Deck {
             aspect: AspectRatio::WIDESCREEN_16_9,
@@ -184,7 +184,7 @@ fn acceptance_reject_unknown_theme_when_registry_supplied() {
         facts: empty_factbase(),
         body: Body::Document(DocumentBody::new(Document::new("x"))),
     };
-    let known = vec![ThemeId::new("summus").expect("theme id")];
+    let known = vec![ThemeId::new("protos").expect("theme id")];
     let err = spec
         .validate(&ComponentRegistry::new(), &known)
         .expect_err("unknown theme rejects");
@@ -219,7 +219,7 @@ fn acceptance_reject_citation_cycle_with_path() {
     });
     let spec = DeliverableSpec {
         meta: Meta::new("cycle").expect("title"),
-        theme: ThemeId::new("summus").expect("theme id"),
+        theme: ThemeId::new("protos").expect("theme id"),
         facts,
         body: Body::Workbook(Workbook { sheets: Vec::new() }),
     };

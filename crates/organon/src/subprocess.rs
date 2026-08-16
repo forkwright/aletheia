@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use koina::defaults::MAX_OUTPUT_BYTES;
 
 use crate::process_guard::ProcessGuard;
-use crate::sandbox::{SandboxConfig, SandboxPolicy};
+use crate::sandbox::{SandboxConfig, SandboxConfigExt as _, SandboxPolicy};
 use crate::types::ToolContext;
 
 /// Environment variables allowed to cross from Aletheia into child processes.

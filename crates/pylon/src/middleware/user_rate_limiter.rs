@@ -13,7 +13,7 @@ use tracing::{Instrument, debug};
 use koina::http::BEARER_PREFIX;
 use taxis::config::PerUserRateLimitConfig;
 
-use crate::error::{ErrorBody, ErrorResponse};
+use crate::error::{ErrorBody, ErrorResponse, classify_by_status};
 use crate::extract::Claims;
 use crate::state::AppState;
 
@@ -507,6 +507,8 @@ pub(crate) fn inject_rate_limit_headers(
 
 /// Build a 429 Too Many Requests response with `Retry-After` header.
 fn rate_limit_response(retry_after_secs: u64, category: EndpointCategory) -> Response {
+    let (failure_category, recoverability, next_action) =
+        classify_by_status(StatusCode::TOO_MANY_REQUESTS);
     let mut response = (
         StatusCode::TOO_MANY_REQUESTS,
         axum::Json(ErrorResponse {
@@ -518,6 +520,9 @@ fn rate_limit_response(retry_after_secs: u64, category: EndpointCategory) -> Res
                     "retry_after_secs": retry_after_secs,
                     "category": format!("{category:?}").to_lowercase(),
                 })),
+                category: failure_category,
+                recoverability,
+                next_action,
             },
         }),
     )

@@ -275,6 +275,9 @@ fn enforcement_str(enforcement: SandboxEnforcement) -> &'static str {
     match enforcement {
         SandboxEnforcement::Enforcing => "enforcing",
         SandboxEnforcement::Permissive => "permissive",
+        // WHY: SandboxEnforcement is `#[non_exhaustive]` (single-owned by
+        // taxis, ARCHITECTURE #4846).
+        _ => "unknown",
     }
 }
 
@@ -283,6 +286,9 @@ fn egress_str(egress: EgressPolicy) -> &'static str {
         EgressPolicy::Deny => "deny",
         EgressPolicy::Allow => "allow",
         EgressPolicy::Allowlist => "allowlist",
+        // WHY: EgressPolicy is `#[non_exhaustive]` (single-owned by taxis,
+        // ARCHITECTURE #4846).
+        _ => "unknown",
     }
 }
 

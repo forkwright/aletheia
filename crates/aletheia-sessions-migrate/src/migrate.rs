@@ -709,6 +709,9 @@ fn synthesise_orphan_session(session_id: &str, msg_count: usize) -> SessionRow {
                 display_name: Some(format!(
                     "Recovered orphan session {session_id} ({msg_count} message(s))"
                 )),
+                owner: None,
+                task_id: None,
+                client_turn_id: None,
             },
             artefact_meta: None,
         },

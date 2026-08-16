@@ -39,7 +39,7 @@
 |-------|-------------|-------------------|
 | **pylon** | `src/metrics.rs` | `aletheia_http_requests_total` (counter, labels: method/path/status), `aletheia_http_request_duration_seconds` (histogram), `aletheia_active_sessions` (gauge), `aletheia_uptime_seconds` (gauge) |
 | **nous** | `src/metrics.rs` | `aletheia_pipeline_turns_total`, `aletheia_pipeline_stage_duration_seconds`, `aletheia_pipeline_errors_total`, `aletheia_cache_read_tokens_total`, `aletheia_cache_creation_tokens_total`, `aletheia_background_task_failures_total`, `aletheia_tool_failures_total`, `aletheia_stream_events_dropped_total`, `aletheia_nous_inbox_saturation_total` |
-| **hermeneus** | `src/metrics.rs` | `aletheia_llm_tokens_total`, `aletheia_llm_cost_total`, `aletheia_llm_requests_total`, `aletheia_llm_cache_tokens_total`, `aletheia_llm_request_duration_seconds`, `aletheia_llm_ttft_seconds`, `aletheia_llm_circuit_breaker_transitions_total`, `aletheia_llm_concurrency_limit`, `aletheia_llm_concurrency_latency_ewma_seconds`, `aletheia_llm_concurrency_in_flight` |
+| **hermeneus** | `src/metrics.rs` | `aletheia_llm_tokens_total`, `aletheia_llm_cost_usd_total`, `aletheia_llm_requests_total`, `aletheia_llm_cache_tokens_total`, `aletheia_llm_request_duration_seconds`, `aletheia_llm_ttft_seconds`, `aletheia_llm_circuit_breaker_transitions_total`, `aletheia_llm_concurrency_limit`, `aletheia_llm_concurrency_latency_ewma_seconds`, `aletheia_llm_concurrency_in_flight` |
 | **organon** | `src/metrics.rs` | `aletheia_tool_invocations_total` (counter, labels: tool_name/status), `aletheia_tool_duration_seconds` (histogram) |
 | daemon | `src/metrics.rs` | (not audited above - see §5) |
 | dianoia | `src/metrics.rs` | (not audited above - see §5) |

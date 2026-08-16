@@ -117,6 +117,18 @@ pub struct EmittedReceipt {
     pub result: String,
     /// Timestamp used for signing.
     pub ts: jiff::Timestamp,
+    /// The approval-policy outcome that admitted this call (#4835), e.g.
+    /// `auto_approved`, `advisory_auto`, or the wire string of a real
+    /// approval-gate decision. `None` for legacy entries recorded before
+    /// this field existed.
+    ///
+    /// WHY only this one of the four fields the issue names: `policy_decision`,
+    /// `sandbox_mode`, and `executor_identity` are not currently surfaced
+    /// back to the dispatch boundary by `organon::subprocess`/`ToolResult`
+    /// -- adding always-`None` fields for those would be schema noise, not
+    /// provenance, so they are left as a named remainder rather than
+    /// fabricated.
+    pub approval_outcome: Option<String>,
 }
 
 impl EmittedReceipt {
@@ -128,6 +140,7 @@ impl EmittedReceipt {
         args_json: String,
         result: String,
         ts: jiff::Timestamp,
+        approval_outcome: Option<String>,
     ) -> Self {
         Self {
             receipt,
@@ -135,6 +148,7 @@ impl EmittedReceipt {
             args_json,
             result,
             ts,
+            approval_outcome,
         }
     }
 }
@@ -164,8 +178,16 @@ impl ReceiptLedger {
         args_json: String,
         result: String,
         ts: jiff::Timestamp,
+        approval_outcome: Option<String>,
     ) {
-        let entry = EmittedReceipt::new(receipt.clone(), tool_name, args_json, result, ts);
+        let entry = EmittedReceipt::new(
+            receipt.clone(),
+            tool_name,
+            args_json,
+            result,
+            ts,
+            approval_outcome,
+        );
 
         // WHY: receipt tokens are unique; replacing an existing entry must not
         // create a duplicate FIFO slot.
@@ -399,6 +421,7 @@ mod tests {
             "args".to_owned(),
             "result".to_owned(),
             ts,
+            None,
         );
         let msg = format!("I used the tool earlier [receipt:{token}].");
         assert!(scan_and_verify(&signer, &ledger, &msg).is_ok());
@@ -429,6 +452,7 @@ mod tests {
             "tampered_args".to_owned(),
             "tampered_result".to_owned(),
             ts,
+            None,
         );
         let msg = format!("I used the tool earlier [receipt:{token}].");
         let err = scan_and_verify(&signer, &ledger, &msg).unwrap_err();
@@ -450,6 +474,7 @@ mod tests {
             "args".to_owned(),
             "result".to_owned(),
             ts,
+            None,
         );
 
         // Ledger B does not have the receipt
@@ -482,6 +507,7 @@ mod tests {
                 format!("args-{i}"),
                 "result".to_owned(),
                 ts,
+                None,
             );
         }
 

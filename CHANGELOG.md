@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.38.0](https://github.com/forkwright/aletheia/compare/v0.37.1...v0.38.0) (2026-08-16)
+
+
+### Features
+
+* **nous,aletheia-routing,energeia,episteme:** turn-level provenance + Q-router precursors ([#3969](https://github.com/forkwright/aletheia/issues/3969)) ([#6827](https://github.com/forkwright/aletheia/issues/6827)) ([9662c23](https://github.com/forkwright/aletheia/commit/9662c235675e3e0dd769391bc727bd74c48cf44a))
+
+
+### Bug Fixes
+
+* **deps:** cover the excluded resolve roots in dependabot, and gate it ([#6828](https://github.com/forkwright/aletheia/issues/6828)) ([5476072](https://github.com/forkwright/aletheia/commit/54760726120ad6a9ed7126346a110028db81e800))
+
+## [0.37.1](https://github.com/forkwright/aletheia/compare/v0.37.0...v0.37.1) (2026-08-15)
+
+
+### Bug Fixes
+
+* 6-issue dense batch — orphaned-module lint, governance metrics, steward backend, config redact parity, memory-health export ([#6787](https://github.com/forkwright/aletheia/issues/6787)) ([7441607](https://github.com/forkwright/aletheia/commit/74416070521d10d2fa1d4c7c4d80ad0198996419))
+* **ci:** give the release extra-file guard a repo to assert against ([#6783](https://github.com/forkwright/aletheia/issues/6783)) ([0d7fa26](https://github.com/forkwright/aletheia/commit/0d7fa26ff99ffa5af701bd98ef5ddca22d91dfc0))
+* **ci:** stop release-please failing once it updates rather than creates a PR ([#6795](https://github.com/forkwright/aletheia/issues/6795)) ([cf7ce8c](https://github.com/forkwright/aletheia/commit/cf7ce8c68fec0cd9f1028e2d67f9b79d050c6def))
+* **episteme:** scope pending entity-merge review by nous ([#6775](https://github.com/forkwright/aletheia/issues/6775)) ([830edcd](https://github.com/forkwright/aletheia/commit/830edcd1e62abab8c1383edbea70a854656a73f0))
+* **krites:** enumerate HNSW vectors at the levels that hold them ([#6779](https://github.com/forkwright/aletheia/issues/6779)) ([f5cfefb](https://github.com/forkwright/aletheia/commit/f5cfefbb904534e001cd07551854e209a93d0245))
+* **nous:** carry sensitivity across the boundaries that were dropping it ([#6771](https://github.com/forkwright/aletheia/issues/6771)) ([404a715](https://github.com/forkwright/aletheia/commit/404a71519f245b44f3c8450243804c434321997d))
+* **repo:** collapse the stale commit identities to one canonical author ([#6798](https://github.com/forkwright/aletheia/issues/6798)) ([739d706](https://github.com/forkwright/aletheia/commit/739d7069c3bf56512d361942d280a08eb3785fe9))
+* **security:** allowlist the synthetic and history-only gitleaks matches ([#6796](https://github.com/forkwright/aletheia/issues/6796)) ([9e38bea](https://github.com/forkwright/aletheia/commit/9e38bea54dda77ad530a1ee2664ddfa350815f51))
+* **skene,proskenion:** parse /api/health as what it actually returns ([#6772](https://github.com/forkwright/aletheia/issues/6772)) ([b2bb799](https://github.com/forkwright/aletheia/commit/b2bb7992d352740d905a296f14bba4f8e82f1fc6))
+
+
+### Documentation
+
+* correct five stale claims about implemented behaviour ([#6801](https://github.com/forkwright/aletheia/issues/6801)) ([d2bed96](https://github.com/forkwright/aletheia/commit/d2bed960dc2aa67948f42e889c62e1dd2631f7ea))
+
 ## [0.37.0](https://github.com/forkwright/aletheia/compare/v0.36.0...v0.37.0) (2026-08-14)
 
 

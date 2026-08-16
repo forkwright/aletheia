@@ -195,8 +195,9 @@ pub mod run_context;
 /// Training data types re-exported from eidos.
 pub mod training {
     pub use eidos::training::{
-        DecontaminationPolicy, RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION,
-        ToolOutcome, TrainingConfig, TrainingRecord,
+        DecontaminationPolicy, QUALITY_SCORE_FORMULA_VERSION, QualityScoreComponents,
+        RecallSignals, RecalledFact, TRAINING_RECORD_SCHEMA_VERSION, ToolOutcome, TrainingConfig,
+        TrainingRecord,
     };
 }
 
