@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-classify"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "jiff",
  "serde",
@@ -81,11 +81,11 @@ dependencies = [
 
 [[package]]
 name = "aletheia-lexica"
-version = "0.37.1"
+version = "0.38.0"
 
 [[package]]
 name = "aletheia-routing"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "futures",
  "jiff",
@@ -584,7 +584,7 @@ dependencies = [
 
 [[package]]
 name = "dianoia"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "jiff",
  "koina",
@@ -635,7 +635,7 @@ checksum = "4c3cf4824e2d5f025c7b531afcb2325364084a16806f6d47fbc1f5fbd9960590"
 
 [[package]]
 name = "eidos"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "jiff",
  "koina",
@@ -687,7 +687,7 @@ dependencies = [
 
 [[package]]
 name = "episteme"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "eidos",
  "graphe",
@@ -932,7 +932,7 @@ dependencies = [
 
 [[package]]
 name = "gnosis"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "cargo_metadata",
  "fjall",
@@ -948,7 +948,7 @@ dependencies = [
 
 [[package]]
 name = "graphe"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "eidos",
  "fjall",
@@ -1008,7 +1008,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermeneus"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "jiff",
  "koina",
@@ -1440,7 +1440,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "fjall",
  "jiff",
@@ -1482,7 +1482,7 @@ dependencies = [
 
 [[package]]
 name = "krites"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "aho-corasick",
  "arc-swap",
@@ -1639,7 +1639,7 @@ dependencies = [
 
 [[package]]
 name = "melete"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "aletheia-lexica",
  "futures",
@@ -1687,7 +1687,7 @@ dependencies = [
 
 [[package]]
 name = "mneme"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "eidos",
  "episteme",
@@ -1743,7 +1743,7 @@ dependencies = [
 
 [[package]]
 name = "nous"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "aletheia-classify",
  "aletheia-lexica",
@@ -1836,7 +1836,7 @@ dependencies = [
 
 [[package]]
 name = "organon"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "base64",
  "eidos",
@@ -1909,9 +1909,9 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "pest"
-version = "2.8.8"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7df728be843c7070fab6ab7c328c4e9e9d78e23bf749c0669c86ee7ebfa050a2"
+checksum = "5a07a60cc7a4d00c91f95c685609d1d2f79050e6804b70ebedd7650f0b839bcf"
 dependencies = [
  "memchr",
  "ucd-trie",
@@ -1919,9 +1919,9 @@ dependencies = [
 
 [[package]]
 name = "pest_derive"
-version = "2.8.8"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e2dd6fc3b26b3462ee188aac870f5a41d398f1cd5e2408d16531bd71c9591fd"
+checksum = "b3a83744a5c8455b8b3e0dc5031362780a347c878bdd11584d1a8984228cc88d"
 dependencies = [
  "pest",
  "pest_generator",
@@ -1929,9 +1929,9 @@ dependencies = [
 
 [[package]]
 name = "pest_generator"
-version = "2.8.8"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a7a9205cfb6f596a9e8b689c0a15f9ceb7a1aafae7aaf788150ac65b29975b6"
+checksum = "e0cd3451aa3de60d4b9a1e736885e4dea6b31617598026f12256ad566d63304a"
 dependencies = [
  "pest",
  "pest_meta",
@@ -1942,9 +1942,9 @@ dependencies = [
 
 [[package]]
 name = "pest_meta"
-version = "2.8.8"
+version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85abd351c0de1e8384fc791a0737111a350394937e92b956b743dac12429f57c"
+checksum = "e04d3a0849e241d7dfce834c83b1c5edc8622009e8dd51a12ba1927c32f05496"
 dependencies = [
  "pest",
 ]
@@ -2139,9 +2139,9 @@ dependencies = [
 
 [[package]]
 name = "regex"
-version = "1.12.3"
+version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e10754a14b9137dd7b1e3e5b0493cc9171fdd105e0ab477f51b72e7f3ac0e276"
+checksum = "f020237b6c8eed93db2e2cb53c00c60a8e1bc73da7d073199a1180401450218d"
 dependencies = [
  "aho-corasick",
  "memchr",
@@ -2651,7 +2651,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "symbolon"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2720,7 +2720,7 @@ dependencies = [
 
 [[package]]
 name = "taxis"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "chacha20poly1305",
  "dianoia",
@@ -2753,7 +2753,7 @@ dependencies = [
 
 [[package]]
 name = "thesauros"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "indexmap",
  "koina",
