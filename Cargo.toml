@@ -310,7 +310,7 @@ default-features = false
 features = ["derive", "std"]
 
 [workspace.dependencies.p256]
-version = "0.13"
+version = "0.14"
 default-features = false
 features = ["ecdsa", "pem"]
 
