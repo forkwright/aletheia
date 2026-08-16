@@ -223,6 +223,30 @@ pub struct DpoPairProvenance<'a> {
     pub provider: Option<&'a str>,
 }
 
+/// Identity and content of one completed turn to run through the durable
+/// correction-sequence extractor, for [`DpoWriter::process_and_write`].
+///
+/// WHY bundled (#4863): mirrors [`DpoExtractor::process_turn`]'s own six
+/// parameters exactly -- `process_and_write` forwards every field unchanged.
+/// Bundling keeps the wrapper under the workspace's `too_many_arguments`
+/// threshold now that `DpoPairProvenance` is also a parameter, without
+/// changing what either function does.
+#[derive(Debug, Clone, Copy)]
+pub struct TurnCapture<'a> {
+    /// Session identifier the turn belongs to.
+    pub session_id: &'a str,
+    /// Turn number within the session.
+    pub turn_number: u64,
+    /// Raw user message for this turn.
+    pub user_message: &'a str,
+    /// Final assistant response for this turn.
+    pub assistant_response: &'a str,
+    /// Whether this turn is itself a correction of the prior turn.
+    pub is_correction: bool,
+    /// Whether the PII filter is enabled for redaction before matching.
+    pub pii_filter_enabled: bool,
+}
+
 /// Current schema version for [`DpoPair`].
 pub const DPO_PAIR_SCHEMA_VERSION: u32 = 1;
 
@@ -870,21 +894,16 @@ impl DpoWriter {
     /// written, or if a resulting pair cannot be serialized or appended.
     pub fn process_and_write(
         &self,
-        session_id: &str,
-        turn_number: u64,
-        user_message: &str,
-        assistant_response: &str,
-        is_correction: bool,
-        pii_filter_enabled: bool,
+        turn: TurnCapture<'_>,
         provenance: DpoPairProvenance<'_>,
     ) -> Result<bool> {
         let Some(mut pair) = self.extractor.process_turn(
-            session_id,
-            turn_number,
-            user_message,
-            assistant_response,
-            is_correction,
-            pii_filter_enabled,
+            turn.session_id,
+            turn.turn_number,
+            turn.user_message,
+            turn.assistant_response,
+            turn.is_correction,
+            turn.pii_filter_enabled,
         )?
         else {
             return Ok(false);
@@ -899,8 +918,8 @@ impl DpoWriter {
         pair.model = provenance.model.map(ToOwned::to_owned);
         pair.provider = provenance.provider.map(ToOwned::to_owned);
         pair.source_message_ids = vec![
-            format!("{session_id}:{}", pair.rejected_turn),
-            format!("{session_id}:{}", pair.chosen_turn),
+            format!("{}:{}", turn.session_id, pair.rejected_turn),
+            format!("{}:{}", turn.session_id, pair.chosen_turn),
         ];
         self.write_pair(&pair)
     }
@@ -1711,12 +1730,14 @@ mod tests {
 
         let wrote1 = writer
             .process_and_write(
-                "ses-1",
-                1,
-                "What is the capital of France?",
-                "London",
-                false,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 1,
+                    user_message: "What is the capital of France?",
+                    assistant_response: "London",
+                    is_correction: false,
+                    pii_filter_enabled: false,
+                },
                 DpoPairProvenance::default(),
             )
             .expect("process turn 1");
@@ -1724,12 +1745,14 @@ mod tests {
 
         let wrote2 = writer
             .process_and_write(
-                "ses-1",
-                2,
-                "Actually, the capital of France is Paris.",
-                "You are right.",
-                true,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 2,
+                    user_message: "Actually, the capital of France is Paris.",
+                    assistant_response: "You are right.",
+                    is_correction: true,
+                    pii_filter_enabled: false,
+                },
                 DpoPairProvenance::default(),
             )
             .expect("process turn 2");
@@ -1737,12 +1760,14 @@ mod tests {
 
         let wrote3 = writer
             .process_and_write(
-                "ses-1",
-                3,
-                "What is the capital of France?",
-                "Paris",
-                false,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 3,
+                    user_message: "What is the capital of France?",
+                    assistant_response: "Paris",
+                    is_correction: false,
+                    pii_filter_enabled: false,
+                },
                 DpoPairProvenance {
                     correction_reason: Some("actually,"),
                     prompt_audit_ref: Some("audit-ref-3"),
@@ -1786,34 +1811,40 @@ mod tests {
 
         let _ = writer
             .process_and_write(
-                "ses-1",
-                1,
-                "What is 2+2?",
-                "5",
-                false,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 1,
+                    user_message: "What is 2+2?",
+                    assistant_response: "5",
+                    is_correction: false,
+                    pii_filter_enabled: false,
+                },
                 DpoPairProvenance::default(),
             )
             .expect("process turn 1");
         let _ = writer
             .process_and_write(
-                "ses-1",
-                2,
-                "Actually, 2+2 is 4.",
-                "You are right.",
-                true,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 2,
+                    user_message: "Actually, 2+2 is 4.",
+                    assistant_response: "You are right.",
+                    is_correction: true,
+                    pii_filter_enabled: false,
+                },
                 DpoPairProvenance::default(),
             )
             .expect("process turn 2 (correction)");
         let wrote = writer
             .process_and_write(
-                "ses-1",
-                3,
-                "What is 2+2?",
-                "4",
-                false,
-                false,
+                TurnCapture {
+                    session_id: "ses-1",
+                    turn_number: 3,
+                    user_message: "What is 2+2?",
+                    assistant_response: "4",
+                    is_correction: false,
+                    pii_filter_enabled: false,
+                },
                 DpoPairProvenance::default(),
             )
             .expect("process turn 3");

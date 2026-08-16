@@ -335,7 +335,7 @@ fn manifest_persisted_atomically() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    capture.maybe_capture(good_input());
+    capture.maybe_capture(&good_input());
 
     let manifest_path = dir.path().join("training").join("training-manifest.json");
     assert!(manifest_path.exists(), "manifest file should exist");
@@ -353,7 +353,7 @@ fn quality_gate_rejects_empty_response() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         assistant_response: "",
         ..good_input()
     });
@@ -367,7 +367,7 @@ fn quality_gate_rejects_whitespace_only_response() {
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     for ws in ["  ", "\n", "\t\n  ", "   \n\n   "] {
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             assistant_response: ws,
             ..good_input()
         });
@@ -386,7 +386,7 @@ fn quality_gate_rejects_max_tokens_stop_reason() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         stop_reason: CaptureStopReason::MaxTokens,
         ..good_input()
     });
@@ -399,7 +399,7 @@ fn quality_gate_rejects_degraded_stop_reason() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         stop_reason: CaptureStopReason::Degraded,
         ..good_input()
     });
@@ -412,7 +412,7 @@ fn quality_gate_rejects_unknown_stop_reason() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         stop_reason: CaptureStopReason::Unknown,
         ..good_input()
     });
@@ -425,7 +425,7 @@ fn quality_gate_rejects_content_filtered_stop_reason() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         stop_reason: CaptureStopReason::ContentFiltered,
         ..good_input()
     });
@@ -443,7 +443,7 @@ fn quality_gate_rejects_tool_use_only_turn() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         assistant_response: "Let me check that.",
         stop_reason: CaptureStopReason::ToolUse,
         has_tool_calls: true,
@@ -461,7 +461,7 @@ fn quality_gate_accepts_tool_use_with_end_turn() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         assistant_response: "Based on the file contents, here is the answer.",
         stop_reason: CaptureStopReason::EndTurn,
         has_tool_calls: true,
@@ -479,7 +479,7 @@ fn quality_gate_rejects_correction_turn() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         user_message: "Actually that's incorrect, the value is 42.",
         assistant_response: "You are right, I apologize for the error.",
         is_correction: Some(true),
@@ -498,7 +498,7 @@ fn quality_gate_accepts_non_correction_turn() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         is_correction: Some(false),
         ..good_input()
     });
@@ -518,11 +518,11 @@ fn correction_turn_writes_no_record_to_disk() {
     // WHY capture an ordinary turn first: it proves the corpus file exists and
     // the writer is live, so the absence of the correction record below cannot be
     // an artifact of nothing having been written at all.
-    capture.maybe_capture(CaptureInput {
+    capture.maybe_capture(&CaptureInput {
         assistant_response: "The value is 41.",
         ..good_input()
     });
-    capture.maybe_capture(CaptureInput {
+    capture.maybe_capture(&CaptureInput {
         user_message: "No, that's wrong.",
         assistant_response: "You are right, I apologize.",
         is_correction: Some(true),
@@ -551,7 +551,7 @@ fn quality_gate_accepts_good_response() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(good_input());
+    let captured = capture.maybe_capture(&good_input());
     assert!(captured);
 
     let content = std::fs::read_to_string(capture.file_path()).expect("read");
@@ -564,7 +564,7 @@ fn quality_gate_accepts_stop_sequence() {
     let config = test_config_no_pii("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         stop_reason: CaptureStopReason::StopSequence,
         ..good_input()
     });
@@ -583,7 +583,7 @@ fn capture_preserves_episteme_labels() {
     // and correction turns are rejected outright by the quality gate (#5822), so
     // they can never reach the corpus to have their labels checked. `Some(false)`
     // still supplies the is_correction signal the quality score needs.
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         turn_type: Some("fact_capture".to_owned()),
         is_correction: Some(false),
         fact_types: Some(vec!["preference".to_owned(), "identity".to_owned()]),
@@ -782,7 +782,7 @@ fn pii_filter_redacts_user_message_when_enabled() {
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         user_message: "my email is leaky@example.com please help",
         assistant_response: "Sure, I'll help.",
         ..good_input()
@@ -813,7 +813,7 @@ fn pii_filter_preserves_clean_content_with_screening_provenance() {
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         user_message: "tell me a joke",
         assistant_response: "Why did the Rust compiler cross the road? To borrow check.",
         ..good_input()
@@ -843,7 +843,7 @@ fn pii_filter_disabled_passes_through() {
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         user_message: "contact: risky@example.com",
         ..good_input()
     });
@@ -872,7 +872,7 @@ fn pii_policy_ref_serializes_when_filter_applied() {
     };
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         user_message: "plain text",
         assistant_response: "plain response",
         ..good_input()
@@ -986,7 +986,7 @@ fn authorship_gate_rejects_agent_text() {
     let config = test_config_with_classifier("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         user_message: "As an AI language model, I don't have personal experiences.",
         assistant_response: "Understood.",
         ..good_input()
@@ -1003,7 +1003,7 @@ fn authorship_gate_accepts_human_text() {
     let config = test_config_with_classifier("training", 50 * 1024 * 1024);
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         user_message: "lol thanks for the help! can you check this?",
         assistant_response: "Sure, I'll take a look.",
         ..good_input()
@@ -1024,7 +1024,7 @@ fn authorship_gate_disabled_is_noop() {
     let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
     // Even agent-looking text is captured when the gate is disabled.
-    let captured = capture.maybe_capture(CaptureInput {
+    let captured = capture.maybe_capture(&CaptureInput {
         user_message: "As an AI language model, I don't have personal experiences.",
         assistant_response: "Understood.",
         ..good_input()
@@ -1061,7 +1061,7 @@ mod audit_separation_tests {
             ("tool_use_only", CaptureStopReason::ToolUse, true),
         ] {
             let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
-            let captured = capture.maybe_capture(CaptureInput {
+            let captured = capture.maybe_capture(&CaptureInput {
                 stop_reason,
                 has_tool_calls,
                 assistant_response: if has_tool_calls {
@@ -1097,7 +1097,7 @@ mod audit_separation_tests {
         let config = test_config_no_pii("training", 50 * 1024 * 1024);
         let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        assert!(capture.maybe_capture(CaptureInput {
+        assert!(capture.maybe_capture(&CaptureInput {
             turn_id: Some("turn-final-001"),
             turn_seq: 5,
             finalization_status: Some("finalized"),
@@ -1118,7 +1118,7 @@ mod audit_separation_tests {
         let config = test_config_no_pii("training", 50 * 1024 * 1024);
         let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             finalization_status: Some("pending"),
             ..good_input()
         });
@@ -1134,12 +1134,12 @@ mod audit_separation_tests {
         let config = test_config_no_pii("training", 50 * 1024 * 1024);
         let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
 
-        assert!(capture.maybe_capture(CaptureInput {
+        assert!(capture.maybe_capture(&CaptureInput {
             turn_id: Some("turn-dup-001"),
             ..good_input()
         }));
         assert!(
-            !capture.maybe_capture(CaptureInput {
+            !capture.maybe_capture(&CaptureInput {
                 turn_id: Some("turn-dup-001"),
                 ..good_input()
             }),
@@ -1198,7 +1198,7 @@ mod decontamination_policy {
             TrainingCapture::new(dir.path(), &config_with(DecontaminationPolicy::FailClosed))
                 .expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             user_message: long.as_str(),
             turn_id: Some("turn-fc-001"),
             ..good_input()
@@ -1221,7 +1221,7 @@ mod decontamination_policy {
             TrainingCapture::new(dir.path(), &config_with(DecontaminationPolicy::Quarantine))
                 .expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             user_message: long.as_str(),
             turn_id: Some("turn-q-001"),
             ..good_input()
@@ -1244,7 +1244,7 @@ mod decontamination_policy {
             TrainingCapture::new(dir.path(), &config_with(DecontaminationPolicy::Warn))
                 .expect("new");
 
-        let captured = capture.maybe_capture(CaptureInput {
+        let captured = capture.maybe_capture(&CaptureInput {
             user_message: long.as_str(),
             turn_id: Some("turn-w-001"),
             ..good_input()
@@ -1266,7 +1266,7 @@ mod decontamination_policy {
             TrainingCapture::new(dir.path(), &config_with(DecontaminationPolicy::Disabled))
                 .expect("new");
 
-        assert!(capture.maybe_capture(CaptureInput {
+        assert!(capture.maybe_capture(&CaptureInput {
             turn_id: Some("turn-d-001"),
             ..good_input()
         }));

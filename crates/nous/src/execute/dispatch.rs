@@ -1021,12 +1021,11 @@ pub(super) async fn dispatch_tools(
     // `dispatch_tool_items` itself gets the non-optional, always-signs
     // guarantee real callers rely on.
     let owned_signer;
-    let signer = match receipt_signer {
-        Some(s) => s,
-        None => {
-            owned_signer = organon::receipts::ReceiptSigner::new_session();
-            &owned_signer
-        }
+    let signer = if let Some(s) = receipt_signer {
+        s
+    } else {
+        owned_signer = organon::receipts::ReceiptSigner::new_session();
+        &owned_signer
     };
     dispatch_tool_items(
         &items,

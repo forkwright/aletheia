@@ -1760,7 +1760,7 @@ pub(crate) async fn run_pipeline(
                 let mut guard = capture_arc
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                guard.maybe_capture(crate::training::CaptureInput {
+                guard.maybe_capture(&crate::training::CaptureInput {
                     session_id: session_id.as_str(),
                     nous_id: nous_id.as_ref(),
                     user_message: user_message.as_str(),
@@ -1846,12 +1846,14 @@ pub(crate) async fn run_pipeline(
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     guard.process_and_write(
-                        &session_id,
-                        turn_number,
-                        &user_message,
-                        &assistant_response,
-                        is_correction,
-                        pii_filter_enabled,
+                        crate::training::TurnCapture {
+                            session_id: &session_id,
+                            turn_number,
+                            user_message: &user_message,
+                            assistant_response: &assistant_response,
+                            is_correction,
+                            pii_filter_enabled,
+                        },
                         crate::training::DpoPairProvenance {
                             correction_reason: dpo_correction_reason.as_deref(),
                             prompt_audit_ref: None,

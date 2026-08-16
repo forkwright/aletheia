@@ -135,9 +135,10 @@ fn extract_ci(value: &serde_json::Value) -> Option<(f64, f64)> {
 
 fn sha256_hex(content: impl AsRef<[u8]>) -> String {
     use sha2::Digest as _;
+    use std::fmt::Write as _;
+
     let digest = sha2::Sha256::digest(content.as_ref());
     let mut hex = String::with_capacity(digest.len() * 2);
-    use std::fmt::Write as _;
     for byte in digest {
         // WHY discard the Result: writing hex digits into a String never
         // fails, and `expect_used` is denied crate-wide.
