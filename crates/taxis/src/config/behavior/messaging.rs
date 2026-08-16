@@ -126,6 +126,35 @@ impl OutboundMessagePolicy {
 }
 
 #[cfg(test)]
+const _: () =
+    assert!(DEFAULT_POLL_INTERVAL_MS == agora::semeion::DEFAULT_POLL_INTERVAL.as_secs() * 1_000);
+#[cfg(test)]
+const _: () = assert!(DEFAULT_BUFFER_CAPACITY == agora::semeion::DEFAULT_BUFFER_CAPACITY);
+#[cfg(test)]
+const _: () =
+    assert!(DEFAULT_CIRCUIT_BREAKER_THRESHOLD == agora::semeion::CIRCUIT_BREAKER_THRESHOLD);
+#[cfg(test)]
+const _: () = assert!(
+    DEFAULT_HALTED_HEALTH_CHECK_INTERVAL_SECS
+        == agora::semeion::HALTED_HEALTH_CHECK_INTERVAL.as_secs()
+);
+#[cfg(test)]
+const _: () = assert!(DEFAULT_RPC_TIMEOUT_SECS == agora::semeion::client::RPC_TIMEOUT.as_secs());
+#[cfg(test)]
+const _: () =
+    assert!(DEFAULT_HEALTH_TIMEOUT_SECS == agora::semeion::client::HEALTH_TIMEOUT.as_secs());
+#[cfg(test)]
+const _: () =
+    assert!(DEFAULT_RECEIVE_TIMEOUT_SECS == agora::semeion::client::RECEIVE_TIMEOUT.as_secs());
+#[cfg(test)]
+const _: () =
+    assert!(DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS == organon::builtins::agent::DEFAULT_TIMEOUT_SECS);
+
+// WHY this module is last: clippy::items_after_test_module forbids any item
+// (including the const _: () assertions above, which predate this module)
+// appearing textually after a #[cfg(test)] mod -- so the test module must
+// be the final item in the file.
+#[cfg(test)]
 mod outbound_policy_tests {
     use super::OutboundMessagePolicy;
 
@@ -173,28 +202,3 @@ mod outbound_policy_tests {
         assert!(!policy.allows(None, "+15550100"));
     }
 }
-
-#[cfg(test)]
-const _: () =
-    assert!(DEFAULT_POLL_INTERVAL_MS == agora::semeion::DEFAULT_POLL_INTERVAL.as_secs() * 1_000);
-#[cfg(test)]
-const _: () = assert!(DEFAULT_BUFFER_CAPACITY == agora::semeion::DEFAULT_BUFFER_CAPACITY);
-#[cfg(test)]
-const _: () =
-    assert!(DEFAULT_CIRCUIT_BREAKER_THRESHOLD == agora::semeion::CIRCUIT_BREAKER_THRESHOLD);
-#[cfg(test)]
-const _: () = assert!(
-    DEFAULT_HALTED_HEALTH_CHECK_INTERVAL_SECS
-        == agora::semeion::HALTED_HEALTH_CHECK_INTERVAL.as_secs()
-);
-#[cfg(test)]
-const _: () = assert!(DEFAULT_RPC_TIMEOUT_SECS == agora::semeion::client::RPC_TIMEOUT.as_secs());
-#[cfg(test)]
-const _: () =
-    assert!(DEFAULT_HEALTH_TIMEOUT_SECS == agora::semeion::client::HEALTH_TIMEOUT.as_secs());
-#[cfg(test)]
-const _: () =
-    assert!(DEFAULT_RECEIVE_TIMEOUT_SECS == agora::semeion::client::RECEIVE_TIMEOUT.as_secs());
-#[cfg(test)]
-const _: () =
-    assert!(DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS == organon::builtins::agent::DEFAULT_TIMEOUT_SECS);

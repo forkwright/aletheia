@@ -148,10 +148,18 @@ mod tests {
     }
 
     impl ChannelProvider for CapturingProvider {
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait signature requires &str"
+        )]
         fn id(&self) -> &str {
             "signal"
         }
 
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait signature requires &str"
+        )]
         fn name(&self) -> &str {
             "Signal"
         }
@@ -164,7 +172,10 @@ mod tests {
             &'a self,
             params: &'a agora::types::SendParams,
         ) -> Pin<Box<dyn Future<Output = SendResult> + Send + 'a>> {
-            self.captured.lock().unwrap().push(params.clone());
+            self.captured
+                .lock()
+                .expect("mutex not poisoned in test")
+                .push(params.clone());
             Box::pin(async { SendResult::ok() })
         }
 
@@ -196,8 +207,13 @@ mod tests {
             .allowlist
             .insert("syn".to_owned(), vec!["+15550100".to_owned()]);
         let provider = Arc::new(CapturingProvider::default());
+        // WHY a typed binding rather than `as Arc<dyn ChannelProvider>`:
+        // both perform the identical unsized coercion, but clippy::
+        // as_conversions pattern-matches the `as` keyword itself, so this
+        // form does the same thing without tripping it.
+        let dyn_provider: Arc<dyn ChannelProvider> = Arc::clone(&provider);
         let adapter = SignalAdapter {
-            provider: Arc::clone(&provider) as Arc<dyn ChannelProvider>,
+            provider: dyn_provider,
             outbound_policy: policy,
         };
 
@@ -206,16 +222,20 @@ mod tests {
             .await
             .expect("allowlisted send must succeed");
 
-        let captured = provider.captured.lock().unwrap();
+        let captured = provider
+            .captured
+            .lock()
+            .expect("mutex not poisoned in test");
         assert_eq!(captured.len(), 1);
+        let sent = captured.first().expect("length asserted above");
         assert_eq!(
-            captured[0].account_id, None,
+            sent.account_id, None,
             "account_id must stay None so the provider falls back to its \
              configured default account -- putting the sender here breaks \
              multi-account routing"
         );
         assert_eq!(
-            captured[0].sender_id.as_deref(),
+            sent.sender_id.as_deref(),
             Some("syn"),
             "sender_id must carry the attributed sending agent"
         );
@@ -225,8 +245,9 @@ mod tests {
     async fn send_message_denies_recipient_outside_allowlist_before_provider_call() {
         let policy = OutboundMessagePolicy::default(); // default_deny = true, empty allowlist
         let provider = Arc::new(CapturingProvider::default());
+        let dyn_provider: Arc<dyn ChannelProvider> = Arc::clone(&provider);
         let adapter = SignalAdapter {
-            provider: Arc::clone(&provider) as Arc<dyn ChannelProvider>,
+            provider: dyn_provider,
             outbound_policy: policy,
         };
 
@@ -236,7 +257,11 @@ mod tests {
             .expect_err("unconfigured sender must be denied");
         assert!(err.contains("allowlist"));
         assert!(
-            provider.captured.lock().unwrap().is_empty(),
+            provider
+                .captured
+                .lock()
+                .expect("mutex not poisoned in test")
+                .is_empty(),
             "a denied send must never reach the provider"
         );
     }

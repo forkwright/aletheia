@@ -194,62 +194,6 @@ impl ServerToolVersions {
 }
 
 #[cfg(test)]
-mod server_tool_versions_tests {
-    use super::ServerToolVersions;
-
-    #[test]
-    fn default_versions_pass_validation() {
-        assert!(
-            ServerToolVersions::default().validate().is_empty(),
-            "the compiled default must itself be shape-valid"
-        );
-    }
-
-    #[test]
-    fn empty_version_is_flagged() {
-        let versions = ServerToolVersions {
-            web_search_type: String::new(),
-            ..ServerToolVersions::default()
-        };
-        let issues = versions.validate();
-        assert_eq!(issues.len(), 1, "exactly the empty field must be flagged");
-        assert!(issues[0].contains("webSearchType"));
-    }
-
-    #[test]
-    fn missing_date_suffix_is_flagged() {
-        let versions = ServerToolVersions {
-            code_execution_type: "code_execution".to_owned(),
-            ..ServerToolVersions::default()
-        };
-        let issues = versions.validate();
-        assert_eq!(issues.len(), 1);
-        assert!(issues[0].contains("codeExecutionType"));
-    }
-
-    #[test]
-    fn non_digit_date_suffix_is_flagged() {
-        let versions = ServerToolVersions {
-            web_search_type: "web_search_notadate".to_owned(),
-            ..ServerToolVersions::default()
-        };
-        assert_eq!(versions.validate().len(), 1);
-    }
-
-    #[test]
-    fn well_formed_custom_version_passes() {
-        // WHY: a real future revision (e.g. Anthropic ships
-        // web_search_20260101) must validate cleanly -- this is a shape
-        // check, not an allowlist of today's known-good values.
-        let versions = ServerToolVersions {
-            web_search_type: "web_search_20260101".to_owned(),
-            ..ServerToolVersions::default()
-        };
-        assert!(versions.validate().is_empty());
-    }
-}
-
-#[cfg(test)]
 const _: () =
     assert!(DEFAULT_MAX_PATTERN_LENGTH == organon::builtins::filesystem::MAX_PATTERN_LENGTH);
 #[cfg(test)]
@@ -275,3 +219,74 @@ const _: () = assert!(
     DEFAULT_INTER_SESSION_MAX_TIMEOUT_SECS
         == organon::builtins::communication::INTER_SESSION_MAX_TIMEOUT_SECS
 );
+
+// WHY this module is last: clippy::items_after_test_module forbids any item
+// (including the const _: () assertions above, which predate this module)
+// appearing textually after a #[cfg(test)] mod -- so the test module must
+// be the final item in the file.
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod server_tool_versions_tests {
+    use super::ServerToolVersions;
+
+    #[test]
+    fn default_versions_pass_validation() {
+        assert!(
+            ServerToolVersions::default().validate().is_empty(),
+            "the compiled default must itself be shape-valid"
+        );
+    }
+
+    #[test]
+    fn empty_version_is_flagged() {
+        let versions = ServerToolVersions {
+            web_search_type: String::new(),
+            ..ServerToolVersions::default()
+        };
+        let issues = versions.validate();
+        assert_eq!(issues.len(), 1, "exactly the empty field must be flagged");
+        assert!(
+            issues
+                .first()
+                .expect("length asserted above")
+                .contains("webSearchType")
+        );
+    }
+
+    #[test]
+    fn missing_date_suffix_is_flagged() {
+        let versions = ServerToolVersions {
+            code_execution_type: "code_execution".to_owned(),
+            ..ServerToolVersions::default()
+        };
+        let issues = versions.validate();
+        assert_eq!(issues.len(), 1);
+        assert!(
+            issues
+                .first()
+                .expect("length asserted above")
+                .contains("codeExecutionType")
+        );
+    }
+
+    #[test]
+    fn non_digit_date_suffix_is_flagged() {
+        let versions = ServerToolVersions {
+            web_search_type: "web_search_notadate".to_owned(),
+            ..ServerToolVersions::default()
+        };
+        assert_eq!(versions.validate().len(), 1);
+    }
+
+    #[test]
+    fn well_formed_custom_version_passes() {
+        // WHY: a real future revision (e.g. Anthropic ships
+        // web_search_20260101) must validate cleanly -- this is a shape
+        // check, not an allowlist of today's known-good values.
+        let versions = ServerToolVersions {
+            web_search_type: "web_search_20260101".to_owned(),
+            ..ServerToolVersions::default()
+        };
+        assert!(versions.validate().is_empty());
+    }
+}
