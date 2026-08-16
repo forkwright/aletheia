@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.38.0](https://github.com/forkwright/aletheia/compare/v0.37.1...v0.38.0) (2026-08-16)
+
+
+### Features
+
+* **nous,aletheia-routing,energeia,episteme:** turn-level provenance + Q-router precursors ([#3969](https://github.com/forkwright/aletheia/issues/3969)) ([#6827](https://github.com/forkwright/aletheia/issues/6827)) ([9662c23](https://github.com/forkwright/aletheia/commit/9662c235675e3e0dd769391bc727bd74c48cf44a))
+
+
+### Bug Fixes
+
+* **deps:** cover the excluded resolve roots in dependabot, and gate it ([#6828](https://github.com/forkwright/aletheia/issues/6828)) ([5476072](https://github.com/forkwright/aletheia/commit/54760726120ad6a9ed7126346a110028db81e800))
+
 ## [0.37.1](https://github.com/forkwright/aletheia/compare/v0.37.0...v0.37.1) (2026-08-15)
 
 
