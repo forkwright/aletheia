@@ -2,8 +2,20 @@ version: 2
 
 updates:
   # Rust crates (the core system)
+  #
+  # WARNING: `directories`, not `directory`. Two manifests here are EXCLUDED
+  # from the root workspace and carry their own `Cargo.lock`, so a scan rooted
+  # at `/` resolves neither and their dependencies are never updated:
+  #   - crates/theatron/proskenion  (excluded for GTK3/webkit2gtk; see Cargo.toml)
+  #   - fuzz                        (own workspace by cargo-fuzz convention)
+  # proskenion is the shipped desktop frontend, so the surface this omitted is
+  # the one that reaches users. A new excluded workspace needs a row here --
+  # nothing fails when one is missing, which is why both went unnoticed.
   - package-ecosystem: cargo
-    directory: /
+    directories:
+      - /
+      - /crates/theatron/proskenion
+      - /fuzz
     schedule:
       interval: weekly
       day: monday
