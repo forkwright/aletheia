@@ -140,6 +140,12 @@ description = "Point-in-time audit of abstractions with a single creation path (
 decided = "2026-04-17"
 
 [[doc]]
+path = "docs/HARNESS-LIFECYCLE.md"
+type = "authored"
+evergreen = true
+description = "Canonical nine-stage agent run loop every surface (CLI/TUI/desktop/HTTP) implements, per-stage status, and the wire vocabulary map."
+
+[[doc]]
 path = "docs/HOT-RELOAD.md"
 type = "authored"
 evergreen = true
@@ -277,11 +283,23 @@ description = "Boundary analysis of six component boundaries where internal stat
 decided = "2026-04-17"
 
 [[doc]]
+path = "docs/TUI-CONTRACT.md"
+type = "authored"
+evergreen = true
+description = "koilon dead_code classification (stable/experimental/planned) for Msg scaffolding fields, and the contract for adding a new one."
+
+[[doc]]
 path = "docs/UPGRADING.md"
 type = "operational"
 evergreen = true
 description = "Upgrade process for an existing installation: version check, backup, migration steps."
 last_tested = "2026-06-28"
+
+[[doc]]
+path = "docs/UX-STATE-INVENTORY.md"
+type = "authored"
+evergreen = true
+description = "Surface-by-surface UX-state inventory across TUI/desktop/API: empty/loading/error/approval/resume coverage, blocking/important/polish classification."
 
 [[doc]]
 path = "docs/WORKSPACE_FILES.md"

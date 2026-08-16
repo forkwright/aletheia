@@ -10,7 +10,7 @@ Current first run: start the server and use the TUI. The desktop app is the
 v1.0 target surface and can be installed as a preview from a source checkout,
 but it is not the default public onboarding path yet.
 
-[Golden Path](docs/GOLDEN-PATH.md) · [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md) · [Harness Lifecycle](docs/HARNESS-LIFECYCLE.md) · [Maturity](docs/MATURITY.md) · [Demo](demo/README.md) · [Docs index](docs/MANIFEST.toml)
+[Golden Path](docs/GOLDEN-PATH.md) · [Quickstart](docs/QUICKSTART.md) · [Configuration](docs/CONFIGURATION.md) · [Deployment](docs/DEPLOYMENT.md) · [Architecture](docs/ARCHITECTURE.md) · [Harness Lifecycle](docs/HARNESS-LIFECYCLE.md) · [UX State Inventory](docs/UX-STATE-INVENTORY.md) · [Maturity](docs/MATURITY.md) · [Demo](demo/README.md) · [Docs index](docs/MANIFEST.toml)
 
 ---
 

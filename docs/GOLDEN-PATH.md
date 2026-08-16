@@ -237,5 +237,7 @@ its trace and memory evidence.
 Use the TUI for current public first-run, headless hosts, SSH-only work, or
 Wayland remote-launch limitations. The TUI is a ratatui client over the same
 server API and SSE events. It supports chat, planning, memory, metrics, ops,
-session focus, agent focus, and setup wizard flows. The desktop remains the
+session focus, and agent focus. First-run setup is `aletheia init`, a
+separate command that shares the TUI crate's wizard implementation but is not
+a flow reachable from inside `aletheia tui` itself. The desktop remains the
 v1.0 target app surface once the release path ships matching desktop artifacts.
