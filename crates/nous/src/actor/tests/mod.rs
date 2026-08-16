@@ -69,7 +69,15 @@ fn test_oikos() -> (tempfile::TempDir, Arc<Oikos>) {
 fn test_providers() -> Arc<ProviderRegistry> {
     let mut providers = ProviderRegistry::new();
     providers.register(Box::new(
-        MockProvider::new("Hello from actor!").models(&["test-model"]),
+        // WHY .named: `record_router_outcome` now keys the empirical store
+        // on the actually-observed provider identity (`provider.name()`),
+        // not the model string (#4798/#4863 model/provider conflation fix).
+        // Without this, the mock's default provider name ("mock") diverges
+        // from the "test-model" identity this fixture's callers construct
+        // their `RecordingRouter`/assertions against.
+        MockProvider::new("Hello from actor!")
+            .models(&["test-model"])
+            .named("test-model"),
     ));
     Arc::new(providers)
 }

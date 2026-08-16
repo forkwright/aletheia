@@ -39,6 +39,26 @@ fn cleared_content_hash(content: &str) -> String {
     out
 }
 
+/// Strip the `[tool:<name>@<timestamp>] ` metadata prefix `format_tool_result`
+/// adds, returning the real tool-result content underneath.
+///
+/// WHY: the cleared-result hash (#4797) exists to prove two clears removed
+/// the *same content*. Hashing the raw `msg.content` instead would fold the
+/// per-call timestamp into the digest, so two calls that read the identical
+/// file at different times would hash differently -- defeating the receipt's
+/// purpose. Falls back to the full string when no prefix is present (should
+/// not happen for a message that reached the clearing loop, which only
+/// clears entries `parse_tool_result_metadata` already accepted).
+fn strip_tool_result_prefix(content: &str) -> &str {
+    if !content.starts_with("[tool:") {
+        return content;
+    }
+    content
+        .find(']')
+        .and_then(|end_bracket| content.get(end_bracket + 2..))
+        .unwrap_or(content)
+}
+
 /// Run microcompaction on pipeline messages, replacing expired tool results.
 ///
 /// Returns updated messages and compaction metrics. Messages that are not
@@ -126,7 +146,7 @@ pub(crate) fn run_microcompaction(
             // the original content is still readable -- once `msg.content`
             // below is replaced, the text is gone, so the receipt of what
             // was cleared has to be computed from the pre-clear value.
-            let content_hash = cleared_content_hash(&msg.content);
+            let content_hash = cleared_content_hash(strip_tool_result_prefix(&msg.content));
             let marker = format!(
                 "{CLEARED_MARKER_PREFIX}{tool_type:?}, age {age_display}, sha256:{content_hash}]"
             );

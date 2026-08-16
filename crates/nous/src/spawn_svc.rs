@@ -44,6 +44,41 @@ fn resolve_role(role_str: &str) -> Option<Role> {
     Role::parse(role_str)
 }
 
+/// Generation and tool-limit values for a spawned sub-agent, resolved from
+/// the parent's live hint when a spawning host provided one, falling back to
+/// this module's fixed constants otherwise.
+///
+/// WHY(#4746): a spawning host (nous's own `agent` tool builtin) may forward
+/// the parent's *actual* live generation/limits values through
+/// `SpawnContext::parent_generation`, so a child derives from what the
+/// parent is really running with instead of always these fixed constants.
+/// `None` (no host populated it -- e.g. every existing test constructing
+/// `SpawnContext::detached`/`::new` directly) preserves prior behavior
+/// exactly.
+struct ResolvedGeneration {
+    context_window: u32,
+    max_output_tokens: u32,
+    bootstrap_max_tokens: u32,
+    chars_per_token: u32,
+    max_tool_iterations: u32,
+    session_token_cap: u64,
+    max_tool_result_bytes: u32,
+}
+
+impl ResolvedGeneration {
+    fn from_hint(hint: Option<organon::types::SpawnGenerationHint>) -> Self {
+        Self {
+            context_window: hint.map_or(CONTEXT_TOKENS, |h| h.context_window),
+            max_output_tokens: hint.map_or(MAX_OUTPUT_TOKENS, |h| h.max_output_tokens),
+            bootstrap_max_tokens: hint.map_or(BOOTSTRAP_MAX_TOKENS, |h| h.bootstrap_max_tokens),
+            chars_per_token: hint.map_or(CHARS_PER_TOKEN, |h| h.chars_per_token),
+            max_tool_iterations: hint.map_or(MAX_TOOL_ITERATIONS, |h| h.max_tool_iterations),
+            session_token_cap: hint.map_or(500_000, |h| h.session_token_cap),
+            max_tool_result_bytes: hint.map_or(MAX_TOOL_RESULT_BYTES, |h| h.max_tool_result_bytes),
+        }
+    }
+}
+
 /// Compose an ephemeral sub-agent's system-prompt content from its role
 /// template and (if present) role contract.
 ///
@@ -208,6 +243,12 @@ impl SpawnServiceImpl {
     /// WHY(#5555): keep config construction deterministic and testable so the
     /// spawned `allowed_roots` can be asserted independently of the actor
     /// lifecycle.
+    // NOTE: sequential field-by-field config derivation (model, tool policy,
+    // spawn policy, workspace, generation limits) -- already extracted the
+    // largest cohesive slice into `ResolvedGeneration`; what remains is each
+    // `NousConfig`/`NousLimits` field's own independent derivation rule and
+    // splitting further would fragment one config into scattered pieces.
+    #[expect(clippy::too_many_lines, reason = "sequential config-field derivation")]
     fn build_spawn_config(
         &self,
         request: &SpawnRequest,
@@ -307,24 +348,8 @@ impl SpawnServiceImpl {
         // and is created before the actor starts.
         let allowed_roots = vec![workspace.clone()];
 
-        // WHY(#4746): a spawning host (nous's own `agent` tool builtin) may
-        // forward the parent's *actual* live generation/limits values
-        // through `SpawnContext::parent_generation`, so a child derives from
-        // what the parent is really running with instead of always this
-        // fixed set of constants. `None` (no host populated it — e.g. every
-        // existing test constructing `SpawnContext::detached`/`::new`
-        // directly) preserves prior behavior exactly.
-        let context_window = parent_generation.map_or(CONTEXT_TOKENS, |h| h.context_window);
-        let max_output_tokens =
-            parent_generation.map_or(MAX_OUTPUT_TOKENS, |h| h.max_output_tokens);
-        let bootstrap_max_tokens =
-            parent_generation.map_or(BOOTSTRAP_MAX_TOKENS, |h| h.bootstrap_max_tokens);
-        let chars_per_token = parent_generation.map_or(CHARS_PER_TOKEN, |h| h.chars_per_token);
-        let max_tool_iterations =
-            parent_generation.map_or(MAX_TOOL_ITERATIONS, |h| h.max_tool_iterations);
-        let session_token_cap = parent_generation.map_or(500_000, |h| h.session_token_cap);
-        let max_tool_result_bytes =
-            parent_generation.map_or(MAX_TOOL_RESULT_BYTES, |h| h.max_tool_result_bytes);
+        // WHY(#4746): see `ResolvedGeneration`'s docs for the fallback contract.
+        let resolved = ResolvedGeneration::from_hint(parent_generation);
 
         let config = NousConfig {
             id: Arc::from(spawn_id.as_str()),
@@ -335,12 +360,12 @@ impl SpawnServiceImpl {
                 fallback_models: Vec::new(),
                 fallback_providers: Vec::new(),
                 retries_before_fallback: 2,
-                context_window,
-                max_output_tokens,
-                bootstrap_max_tokens,
+                context_window: resolved.context_window,
+                max_output_tokens: resolved.max_output_tokens,
+                bootstrap_max_tokens: resolved.bootstrap_max_tokens,
                 thinking_enabled: false,
                 thinking_budget: 0,
-                chars_per_token,
+                chars_per_token: resolved.chars_per_token,
                 prosoche_model: koina::models::task_role_default(koina::models::TaskRole::Prosoche)
                     .to_owned(),
                 complexity: hermeneus::complexity::ComplexityConfig::default(),
@@ -348,12 +373,12 @@ impl SpawnServiceImpl {
                 distillation_model: None,
             },
             limits: crate::config::NousLimits {
-                max_tool_iterations,
+                max_tool_iterations: resolved.max_tool_iterations,
                 loop_detection_threshold: 3,
                 consecutive_error_threshold: 4,
                 loop_max_warnings: 2,
-                session_token_cap,
-                max_tool_result_bytes,
+                session_token_cap: resolved.session_token_cap,
+                max_tool_result_bytes: resolved.max_tool_result_bytes,
                 max_consecutive_tool_only_iterations: 3,
                 consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
                 loop_detection_window: 50,
@@ -632,7 +657,15 @@ mod tests {
         };
         let mut providers = ProviderRegistry::new();
         providers.register(Box::new(
-            MockProvider::with_responses(vec![response]).models(&SUPPORTED_MOCK_MODELS),
+            // WHY .named: `record_router_outcome` keys the empirical store on
+            // the actually-observed provider identity (`provider.name()`),
+            // not the model string (#4798/#4863 model/provider conflation
+            // fix). Without this, the mock's default provider name ("mock")
+            // diverges from `koina::defaults::DEFAULT_MODEL`, the identity
+            // this fixture's `RecordingRouter`/assertions are built around.
+            MockProvider::with_responses(vec![response])
+                .models(&SUPPORTED_MOCK_MODELS)
+                .named(koina::defaults::DEFAULT_MODEL),
         ));
         Arc::new(providers)
     }
