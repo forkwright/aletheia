@@ -79,7 +79,7 @@ features = ["arc_lock"]
 # WHY: krites has a manual Sync boundary around fjall 3.1.6 transaction wrappers.
 # Re-check storage/fjall_backend.rs before changing this version.
 [dependencies.fjall]
-version = "=3.1.6"
+version = "=3.1.8"
 default-features = false
 features = ["lz4"]
 optional = true
