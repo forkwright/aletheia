@@ -207,13 +207,19 @@ mod tests {
             .allowlist
             .insert("syn".to_owned(), vec!["+15550100".to_owned()]);
         let provider = Arc::new(CapturingProvider::default());
-        // WHY a typed binding rather than `as Arc<dyn ChannelProvider>`:
-        // both perform the identical unsized coercion, but clippy::
-        // as_conversions pattern-matches the `as` keyword itself, so this
-        // form does the same thing without tripping it.
-        let dyn_provider: Arc<dyn ChannelProvider> = Arc::clone(&provider);
+        // WHY the `as` cast (not a plain typed `let`): `Arc::clone`'s
+        // `Self` is inferred from the expected return type here, which
+        // then fails to unify with `&Arc<CapturingProvider>` as the
+        // argument -- unlike a bare value expression, a generic method
+        // call is not a coercion site for its argument. `as` forces the
+        // coercion explicitly, same as every other dyn-trait construction
+        // in this codebase (runtime/mod.rs, runtime/setup.rs).
+        #[expect(
+            clippy::as_conversions,
+            reason = "coercion to dyn ChannelProvider trait object: required by SignalAdapter's field type"
+        )]
         let adapter = SignalAdapter {
-            provider: dyn_provider,
+            provider: Arc::clone(&provider) as Arc<dyn ChannelProvider>,
             outbound_policy: policy,
         };
 
@@ -245,9 +251,12 @@ mod tests {
     async fn send_message_denies_recipient_outside_allowlist_before_provider_call() {
         let policy = OutboundMessagePolicy::default(); // default_deny = true, empty allowlist
         let provider = Arc::new(CapturingProvider::default());
-        let dyn_provider: Arc<dyn ChannelProvider> = Arc::clone(&provider);
+        #[expect(
+            clippy::as_conversions,
+            reason = "coercion to dyn ChannelProvider trait object: required by SignalAdapter's field type"
+        )]
         let adapter = SignalAdapter {
-            provider: dyn_provider,
+            provider: Arc::clone(&provider) as Arc<dyn ChannelProvider>,
             outbound_policy: policy,
         };
 
