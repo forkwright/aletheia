@@ -903,6 +903,8 @@ mod tests {
             created_at: None,
             tool_call_id: None,
             tool_name: None,
+            token_estimate: 0,
+            is_distilled: false,
         }];
 
         let detail = detail_store_from_history(s, messages);

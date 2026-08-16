@@ -240,14 +240,6 @@ fn auth_mode_deserialization() {
     assert_eq!(mode.mode, "token");
 }
 
-#[test]
-fn daily_entry_deserialization() {
-    let json = r#"{"date": "2025-01-01", "cost": 1.50, "tokens": 1000, "turns": 5}"#;
-    let entry: DailyEntry = serde_json::from_str(json).unwrap();
-    assert_eq!(entry.date, "2025-01-01");
-    assert!((entry.cost - 1.50).abs() < f64::EPSILON);
-}
-
 fn make_session(key: &str) -> Session {
     Session {
         id: "s1".into(),

@@ -61,7 +61,8 @@ fn render_summary(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let cache_rate = format!("{:.0}%", metrics.cache_hit_rate() * 100.0);
     let cache_abs = MetricsState::format_tokens(metrics.total_cache_read_tokens);
 
-    let cost_str = format!("${:.2}", f64::from(app.dashboard.daily_cost_cents) / 100.0);
+    let (cost_str, cost_style) = backend_cost_display(metrics, theme);
+    let (tokens_str, tokens_style) = backend_tokens_display(metrics, theme);
 
     let wide = area.width >= HEADER_MIN_WIDTH;
 
@@ -74,18 +75,23 @@ fn render_summary(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             Span::styled("Uptime  ", theme.style_dim()),
             Span::styled(uptime, theme.style_fg()),
             Span::raw("    "),
-            Span::styled("In  ", theme.style_dim()),
+            // WHY(#4987): labeled "(session)" — these are process-local
+            // accumulators (reset on TUI restart, see only this process's
+            // turns), not canonical backend telemetry. "Today" below is.
+            Span::styled("In (session)  ", theme.style_dim()),
             Span::styled(input, theme.style_accent()),
             Span::raw("  "),
-            Span::styled("Out  ", theme.style_dim()),
+            Span::styled("Out (session)  ", theme.style_dim()),
             Span::styled(output, theme.style_accent()),
             Span::raw("    "),
-            Span::styled("Cache  ", theme.style_dim()),
+            Span::styled("Cache (session)  ", theme.style_dim()),
             Span::styled(cache_rate, theme.style_success()),
             Span::styled(format!(" ({cache_abs})"), theme.style_muted()),
             Span::raw("    "),
             Span::styled("Today  ", theme.style_dim()),
-            Span::styled(cost_str, theme.style_warning()),
+            Span::styled(cost_str, cost_style),
+            Span::raw("  "),
+            Span::styled(tokens_str, tokens_style),
         ]));
     } else {
         lines.push(Line::from(vec![
@@ -105,13 +111,63 @@ fn render_summary(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
             Span::styled(cache_rate, theme.style_success()),
             Span::raw("  "),
             Span::styled("Today: ", theme.style_dim()),
-            Span::styled(cost_str, theme.style_warning()),
+            Span::styled(cost_str, cost_style),
+            Span::raw("  "),
+            Span::styled(tokens_str, tokens_style),
         ]));
     }
 
     let block = Block::default().borders(Borders::NONE);
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
+}
+
+/// Render the "Today" cost figure from canonical backend telemetry
+/// (#4987), distinguishing loading / stale / unavailable states instead of
+/// silently showing a zero when the backend source has not answered.
+fn backend_cost_display(metrics: &MetricsState, theme: &Theme) -> (String, ratatui::style::Style) {
+    let Some(backend) = &metrics.backend else {
+        return ("loading…".to_string(), theme.style_muted());
+    };
+    match &backend.costs {
+        Ok(costs) => {
+            let text = format!("${:.2}", costs.today_cost);
+            if metrics.backend_is_stale() {
+                (format!("{text} (stale)"), theme.style_warning())
+            } else {
+                (text, theme.style_warning())
+            }
+        }
+        Err(_) => ("unavailable".to_string(), theme.style_error()),
+    }
+}
+
+/// Render the backend-wide "Today" token figure from canonical backend
+/// telemetry (#4987), the counterpart to `backend_cost_display` above.
+/// `metrics.backend.tokens` is fetched alongside `costs` but had no
+/// display consumer; this is that consumer.
+fn backend_tokens_display(
+    metrics: &MetricsState,
+    theme: &Theme,
+) -> (String, ratatui::style::Style) {
+    let Some(backend) = &metrics.backend else {
+        return ("Tokens today  loading…".to_string(), theme.style_muted());
+    };
+    match &backend.tokens {
+        Ok(tokens) => {
+            let text = format!(
+                "Tokens today  {} in / {} out",
+                MetricsState::format_tokens(tokens.today_input),
+                MetricsState::format_tokens(tokens.today_output)
+            );
+            if metrics.backend_is_stale() {
+                (format!("{text} (stale)"), theme.style_warning())
+            } else {
+                (text, theme.style_dim())
+            }
+        }
+        Err(_) => ("Tokens today  unavailable".to_string(), theme.style_error()),
+    }
 }
 
 fn render_health(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {

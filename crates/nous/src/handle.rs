@@ -207,6 +207,7 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             turn_id: None,
+            request_id: None,
             content: content.into(),
             stream_tx,
             approval_gate: None,
@@ -242,6 +243,7 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             turn_id: None,
+            request_id: None,
             content: content.into(),
             stream_tx,
             approval_gate: None,
@@ -288,6 +290,7 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             turn_id: None,
+            request_id: None,
             content: content.into(),
             stream_tx,
             approval_gate,
@@ -318,7 +321,7 @@ impl NousHandle {
     /// [`send_turn_streaming_with_approval`](Self::send_turn_streaming_with_approval).
     #[expect(
         clippy::too_many_arguments,
-        reason = "WHY(#4793): gateway must supply canonical turn id alongside existing streaming turn inputs"
+        reason = "WHY(#4793, #4853): gateway must supply canonical turn id and request id alongside existing streaming turn inputs"
     )]
     pub async fn send_turn_streaming_with_approval_and_turn_id(
         &self,
@@ -328,6 +331,7 @@ impl NousHandle {
         stream_tx: mpsc::Sender<TurnStreamEvent>,
         approval_gate: Option<crate::approval::ApprovalGate>,
         turn_id: koina::ulid::Ulid,
+        request_id: Option<String>,
         timeout: Duration,
         turn_cancel: CancellationToken,
     ) -> error::Result<TurnResult> {
@@ -336,6 +340,7 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             turn_id: Some(turn_id),
+            request_id,
             content: content.into(),
             stream_tx,
             approval_gate,

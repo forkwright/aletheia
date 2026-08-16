@@ -828,7 +828,10 @@ async fn run_execute_loop(
                                 config.generation.chars_per_token.max(1),
                             )
                             .unwrap_or(4),
-                            request_id: Some(koina::ulid::Ulid::new().to_string()),
+                            // WHY(#4853): use the canonical HTTP request ID
+                            // threaded from Pylon's gateway middleware
+                            // instead of minting a disconnected local ID.
+                            request_id: session.request_id.clone(),
                         },
                     );
                     if let Err(e) = log.log_request(&record) {

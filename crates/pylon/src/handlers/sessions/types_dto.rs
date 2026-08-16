@@ -141,6 +141,10 @@ pub struct HistoryMessage {
     pub tool_call_id: Option<String>,
     /// Tool name if this is a tool result message.
     pub tool_name: Option<String>,
+    /// Estimated token count for this message (#4864).
+    pub token_estimate: i64,
+    /// Whether this message was produced by distillation (#4864).
+    pub is_distilled: bool,
     /// ISO 8601 creation timestamp.
     pub created_at: String,
 }

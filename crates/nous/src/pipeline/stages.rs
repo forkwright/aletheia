@@ -1040,6 +1040,27 @@ pub(super) async fn run_finalize_stage(
                         stage: "finalize",
                         error_type: "persistence_failed".to_owned(),
                     });
+                    // WHY(#4854): a finalize write failure otherwise leaves
+                    // the FinalizePending marker as the last durable record
+                    // -- indistinguishable from a turn still mid-write. This
+                    // persists a distinguishable terminal record so run
+                    // inspection can tell "stuck" from "resolved failure".
+                    let mut record = crate::turn_record::TurnAttemptRecord::new(
+                        &input.session.turn_id,
+                        &input.session.id,
+                        &input.session.nous_id,
+                        crate::turn_record::TurnAttemptStatus::FinalizeFailed,
+                    );
+                    record.stage = Some("finalize".to_owned());
+                    record.error_message = Some(e.to_string());
+                    if let Err(persist_err) =
+                        crate::turn_record::persist_turn_attempt(store, &config.id, &record)
+                    {
+                        warn!(
+                            error = %persist_err,
+                            "failed to persist FinalizeFailed turn-attempt record"
+                        );
+                    }
                     FinalizeOutcome::Failed
                 }
             }

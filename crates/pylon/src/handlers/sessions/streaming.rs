@@ -1402,6 +1402,10 @@ pub async fn stream_turn(
                 nous_tx,
                 approval_gate,
                 turn_ulid,
+                // WHY(#4853): thread Pylon's canonical request ID through to Nous
+                // so prompt-audit records key off the real gateway request
+                // instead of a locally-minted, disconnected ID.
+                Some(stream_request_id.clone()),
                 nous::handle::DEFAULT_SEND_TIMEOUT,
                 turn_cancel_task.clone(),
             );

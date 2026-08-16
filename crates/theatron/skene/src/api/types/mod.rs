@@ -3,6 +3,19 @@
 pub mod providers;
 pub use providers::{ProviderInfo, ProviderListResponse, ProviderRouteResponse};
 
+pub mod knowledge;
+pub use knowledge::{
+    EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship, EpistemicTier, Fact,
+    FactDetailResponse, FactSensitivity, FactVisibility, FactsResponse, Relationship,
+    RelationshipDirection, RelationshipsResponse, SimilarFact, TimelineEvent, TimelineResponse,
+};
+
+pub mod insights;
+pub use insights::{
+    AgentCostRow, AgentTokenRow, CostMetricsResponse, CostSeriesPoint, ModelTokenRow,
+    TokenMetricsResponse, TokenSeriesPoint, UnavailableMetric,
+};
+
 pub mod verification;
 pub use verification::{
     ProjectVerificationResult, RequirementPriority, RequirementVerification, VerificationEvidence,
@@ -204,6 +217,12 @@ pub struct HistoryMessage {
     /// Tool name if this is a tool-result message.
     #[serde(default)]
     pub tool_name: Option<String>,
+    /// Estimated token count for this message (#4864).
+    #[serde(default)]
+    pub token_estimate: i64,
+    /// Whether this message was produced by distillation (#4864).
+    #[serde(default)]
+    pub is_distilled: bool,
 }
 
 /// Wrapper for the history endpoint response.
@@ -686,53 +705,6 @@ impl std::fmt::Debug for LoginResponse {
             .field("token", &self.token)
             .finish()
     }
-}
-
-/// Cost summary across agents.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CostSummary {
-    /// Total cost across all agents.
-    #[serde(rename = "totalCost", default)]
-    pub total_cost: f64,
-    /// Per-agent cost breakdown.
-    #[serde(default)]
-    pub agents: Vec<AgentCost>,
-}
-
-/// Cost for a single agent.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AgentCost {
-    /// Agent identifier.
-    #[serde(rename = "agentId")]
-    pub agent_id: NousId,
-    /// Total cost for this agent.
-    #[serde(rename = "totalCost", default)]
-    pub total_cost: f64,
-    /// Number of turns processed.
-    #[serde(default)]
-    pub turns: u32,
-}
-
-/// Response from the daily costs endpoint.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DailyResponse {
-    /// Daily cost entries.
-    pub daily: Vec<DailyEntry>,
-}
-
-/// A single day's cost and usage.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DailyEntry {
-    /// Date string (YYYY-MM-DD).
-    pub date: String,
-    /// Cost in dollars.
-    pub cost: f64,
-    /// Total tokens consumed.
-    #[serde(default)]
-    pub tokens: u64,
-    /// Number of turns.
-    #[serde(default)]
-    pub turns: u32,
 }
 
 /// Wrapper for the agents list endpoint.
