@@ -1,10 +1,15 @@
 //! HTTP/SSE dispatch engine module.
 //!
-//! Implements [`DispatchEngine`](crate::engine::DispatchEngine) targeting the
-//! Anthropic Agent SDK. The current transport is a subprocess wrapper around
-//! the Claude CLI (`claude --output-format stream-json`), parsing NDJSON from
-//! stdout. The trait boundary insulates callers from this detail; when the
-//! Agent SDK HTTP endpoints are publicly available, only this module changes.
+//! WHY the name doesn't match the transport: [`HttpEngine`] is a subprocess
+//! wrapper around the Claude CLI (`claude --output-format stream-json`),
+//! parsing NDJSON from stdout — not an HTTP/SSE client. There is no
+//! Anthropic-hosted "Agent SDK" HTTP/SSE endpoint to migrate to: the Claude
+//! Agent SDK is Claude Code packaged as a library, itself a locally-run
+//! harness, not a server product (see `crate::agent_sdk` for the full
+//! reasoning). The [`DispatchEngine`](crate::engine::DispatchEngine) trait
+//! boundary still insulates callers from this detail, so a genuinely
+//! different transport — should one exist someday — would still only
+//! change this module.
 //!
 //! # Module layout
 //!

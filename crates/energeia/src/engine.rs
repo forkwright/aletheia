@@ -1,7 +1,10 @@
 //! Dispatch engine trait: abstraction over session execution backends.
 //!
-//! The [`DispatchEngine`] trait targets the Anthropic Agent SDK HTTP/SSE API.
-//! Implementations: `HttpEngine` (production), `MockEngine` (tests).
+//! [`DispatchEngine`] abstracts over how a coding-agent session is spawned,
+//! resumed, and streamed. The only production implementation, `HttpEngine`
+//! (in `crate::http`), is a Claude CLI subprocess wrapper — there is no
+//! Anthropic-hosted "Agent SDK" HTTP/SSE endpoint to target instead (see
+//! `crate::agent_sdk` for why). `MockEngine` exists for tests.
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -14,8 +17,9 @@ use crate::error::Result;
 
 /// Core abstraction over session execution backends.
 ///
-/// Targets the Anthropic Agent SDK HTTP/SSE API. Production implementations
-/// use HTTP+SSE streaming; test implementations return canned responses.
+/// Every current implementation is a Claude CLI subprocess wrapper, not an
+/// HTTP+SSE client (see the module doc above for why); test implementations
+/// return canned responses.
 #[expect(
     clippy::type_complexity,
     reason = "async trait methods returning boxed trait objects require nested generics"

@@ -1,8 +1,15 @@
 //! Experimental Claude CLI subprocess engine with OAuth token injection.
 //!
-//! WHY: This engine uses the `claude` CLI transport while preserving the
-//! dispatch-engine boundary for future native SDK integration. It is not a
-//! native HTTP/SSE Agent SDK client yet.
+//! WHY: This engine uses the `claude` CLI transport. A native replacement is
+//! blocked at the premise, not just unbuilt: the Claude Agent SDK is Claude
+//! Code packaged as a library — a harness the caller hosts and runs locally,
+//! not a server product — so there is no independent, Anthropic-hosted
+//! "Agent SDK" HTTP/SSE endpoint for a Rust client to speak to directly. The
+//! raw Messages API is a real hosted HTTP/SSE surface, but it carries no
+//! session/tool-orchestration semantics of its own; targeting it directly
+//! means reimplementing the whole agent loop (tool execution, permissions,
+//! MCP, subagents) this module currently gets from the CLI, not swapping a
+//! transport underneath unchanged behavior.
 
 use std::collections::{BTreeMap, HashMap};
 use std::future::Future;
@@ -87,13 +94,59 @@ struct McpServerEntry {
 /// Experimental Claude CLI dispatch engine.
 ///
 /// WHY: Provides CLI subprocess integration with `OAuth` token injection,
-/// permissions, and MCP configuration fields while the native SDK path remains
-/// unwired. The public type name is kept for compatibility with existing
-/// configuration code, but the current transport is a `claude` CLI subprocess,
-/// not a native Agent SDK client.
+/// permissions, and MCP configuration fields. There is no native SDK path
+/// left unwired — no Anthropic-hosted "Agent SDK" HTTP/SSE endpoint exists
+/// to wire to (see the module doc above). The public type name is kept for
+/// compatibility with existing configuration code; the transport is, and
+/// will remain, a `claude` CLI subprocess unless a genuinely different
+/// hosted surface is adopted (e.g. Anthropic's Managed Agents — a distinct
+/// product with its own session/event model, not a drop-in replacement).
 pub struct AgentSdkEngine {
     config: AgentSdkConfig,
     binary: String,
+}
+
+/// Validate an `OAuth` token before it can reach the CLI subprocess environment.
+///
+/// WHY: `Command::env` accepts a token unconditionally; a malformed one
+/// (blank, padded with copy-paste whitespace, or carrying a stray control
+/// byte) is not rejected there — it is silently handed to the `claude`
+/// subprocess, which then fails authentication against the Anthropic API.
+/// That failure surfaces minutes later, deep inside a session run, and reads
+/// as a server-side auth problem rather than the local formatting defect it
+/// actually is. Catching it here, at construction, names the defect at the
+/// point it was introduced.
+fn validate_oauth_token(token: &str) -> Result<()> {
+    if token.trim().is_empty() {
+        return error::InvalidOAuthTokenSnafu {
+            detail: "token is empty or contains only whitespace",
+        }
+        .fail();
+    }
+
+    if token != token.trim() {
+        return error::InvalidOAuthTokenSnafu {
+            detail: "token has leading or trailing whitespace (copy-paste artifact?)",
+        }
+        .fail();
+    }
+
+    if token.contains('\0') {
+        return error::InvalidOAuthTokenSnafu {
+            detail: "token contains a NUL byte, which cannot survive as a subprocess \
+                     environment-variable value",
+        }
+        .fail();
+    }
+
+    if token.contains(['\n', '\r']) {
+        return error::InvalidOAuthTokenSnafu {
+            detail: "token contains a newline; a real OAuth token is a single line",
+        }
+        .fail();
+    }
+
+    Ok(())
 }
 
 impl AgentSdkEngine {
@@ -101,17 +154,21 @@ impl AgentSdkEngine {
     ///
     /// # Errors
     ///
-    /// Returns an error if the engine cannot be initialized.
-    ///
-    /// Current validation is intentionally narrow: only the default model ID is
-    /// checked here. `OAuth` token validation, MCP plugin wiring, permission
-    /// enforcement, and native SDK availability checks remain future work.
+    /// Returns an error if the engine cannot be initialized: an empty default
+    /// model ID, or an `OAuth` token that is blank, whitespace-padded, or
+    /// carries a byte that cannot survive as a subprocess environment-variable
+    /// value. MCP plugin wiring and permission enforcement remain unvalidated
+    /// at construction.
     pub fn new(config: AgentSdkConfig) -> Result<Self> {
         if config.default_model.is_empty() {
             return error::InvalidModelSnafu {
                 model: "(empty)".to_string(),
             }
             .fail();
+        }
+
+        if let Some(ref token) = config.oauth_token {
+            validate_oauth_token(token)?;
         }
 
         Ok(Self {
@@ -328,6 +385,7 @@ impl DispatchEngine for AgentSdkEngine {
 #[expect(
     clippy::expect_used,
     clippy::indexing_slicing,
+    clippy::unwrap_used,
     reason = "test assertions and helpers"
 )]
 mod tests {
@@ -409,5 +467,70 @@ mod tests {
         let args = engine.build_args(&AgentOptions::new());
 
         assert!(!args.iter().any(|arg| arg == "--mcp-config"));
+    }
+
+    fn engine_config(oauth_token: Option<String>) -> AgentSdkConfig {
+        AgentSdkConfig {
+            default_model: "claude-sonnet-4-20250514".to_owned(),
+            skip_permissions: false,
+            disable_plugins: false,
+            oauth_token,
+            mcp_servers: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn new_accepts_missing_oauth_token() {
+        assert!(AgentSdkEngine::new(engine_config(None)).is_ok());
+    }
+
+    #[test]
+    fn new_accepts_valid_oauth_token() {
+        let config = engine_config(Some("sk-ant-oat01-valid-token".to_owned()));
+        assert!(AgentSdkEngine::new(config).is_ok());
+    }
+
+    #[test]
+    fn new_rejects_empty_oauth_token() {
+        let err = AgentSdkEngine::new(engine_config(Some(String::new()))).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("empty or contains only whitespace")
+        );
+    }
+
+    #[test]
+    fn new_rejects_whitespace_only_oauth_token() {
+        let err = AgentSdkEngine::new(engine_config(Some("   \t  ".to_owned()))).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("empty or contains only whitespace")
+        );
+    }
+
+    #[test]
+    fn new_rejects_oauth_token_with_leading_or_trailing_whitespace() {
+        let err = AgentSdkEngine::new(engine_config(Some(" sk-ant-oat01-token ".to_owned())))
+            .unwrap_err();
+        assert!(err.to_string().contains("leading or trailing whitespace"));
+    }
+
+    #[test]
+    fn new_rejects_oauth_token_with_nul_byte() {
+        let err = AgentSdkEngine::new(engine_config(Some("sk-ant-oat01-\0token".to_owned())))
+            .unwrap_err();
+        assert!(err.to_string().contains("NUL byte"));
+    }
+
+    #[test]
+    fn new_rejects_oauth_token_with_newline() {
+        let err = AgentSdkEngine::new(engine_config(Some("sk-ant-oat01-\ntoken".to_owned())))
+            .unwrap_err();
+        assert!(err.to_string().contains("newline"));
+    }
+
+    #[test]
+    fn validate_oauth_token_accepts_plain_token() {
+        assert!(validate_oauth_token("sk-ant-oat01-valid-token").is_ok());
     }
 }

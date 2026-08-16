@@ -1,10 +1,12 @@
 //! `HttpEngine`: subprocess-based implementation of [`DispatchEngine`].
 //!
-//! Named `HttpEngine` because the trait targets the Anthropic Agent SDK HTTP/SSE
-//! API. The current implementation uses the Claude CLI subprocess as a transport
-//! (matching phronesis's approach) because the Agent SDK HTTP endpoints are not
-//! yet publicly documented. The [`DispatchEngine`] trait boundary insulates
-//! callers from this implementation detail.
+//! WHY the name doesn't match the transport: this is a Claude CLI subprocess
+//! (matching phronesis's approach), not an HTTP/SSE client. There is no
+//! Anthropic-hosted "Agent SDK" HTTP/SSE endpoint waiting to be documented —
+//! the Claude Agent SDK is Claude Code packaged as a library, a harness the
+//! caller hosts locally, not a server product (see `crate::agent_sdk` for
+//! the full reasoning). The [`DispatchEngine`] trait boundary still
+//! insulates callers from this implementation detail.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -20,9 +22,10 @@ use crate::http::stream::EventStream;
 
 /// Subprocess-based dispatch engine targeting the Claude CLI.
 ///
-/// Spawns `claude --output-format stream-json` subprocesses and streams NDJSON
-/// events. Will be replaced by a direct HTTP/SSE client when the Anthropic
-/// Agent SDK HTTP endpoints are publicly available.
+/// Spawns `claude --output-format stream-json` subprocesses and streams
+/// NDJSON events. This is not a placeholder for an eventual HTTP/SSE
+/// replacement — no such Anthropic-hosted endpoint exists for the Claude
+/// Agent SDK to migrate to (see `crate::agent_sdk`).
 pub struct HttpEngine {
     /// Default model identifier (e.g., "claude-sonnet-4-20250514").
     default_model: String,
