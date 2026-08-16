@@ -1167,6 +1167,15 @@ Anthropic server-side tool (web search, code execution) availability. WHY config
 | `webSearchMaxUses` | integer | unset | Maximum web search uses per turn (`None` = provider default). |
 | `codeExecution` | bool | false | Whether code execution is available for activation. |
 
+### serverTools.versions
+
+Provider `tool_type` version strings for each server tool.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `webSearchType` | string | "web_search_20250305" | `tool_type` string sent for the web-search server tool. |
+| `codeExecutionType` | string | "code_execution_20250522" | `tool_type` string sent for the code-execution server tool. |
+
 ## messaging
 
 Agora messaging transport poll, buffer, and circuit-breaker settings. WHY configurable: poll intervals and buffer sizes depend on channel message volume; circuit-breaker thresholds must balance reliability against false positives in flaky network conditions.
@@ -1182,6 +1191,15 @@ Agora messaging transport poll, buffer, and circuit-breaker settings. WHY config
 | `receiveTimeoutSecs` | integer | 15 | Timeout in seconds waiting to receive a Semeion response. |
 | `agentDispatchTimeoutSecs` | integer | 300 | Default timeout in seconds for agent-dispatch tool calls. |
 | `maxConcurrentHandlers` | integer | 64 | Maximum concurrent inbound-message handler tasks. Default: 64. |
+
+### messaging.outbound
+
+Per-agent outbound-recipient allowlist and default-deny posture, enforced by `agora::ChannelRegistry::send` before any provider send.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `allowlist` | map<string, string[]> | {} | Allowed recipients per sending agent: `nous_id` -> recipient patterns. A pattern of exactly `"*"` allows any recipient for that agent; any other pattern must match the recipient exactly. |
+| `defaultDeny` | bool | true | Deny a send when the sending agent has no `allowlist` entry at all. Default: `true` (fail closed) -- an operator who never configured `[messaging.outbound]` blocks every send rather than allowing every send, matching `RecallSourcesConfig`'s network-source default-off posture. |
 
 ## tuning
 
