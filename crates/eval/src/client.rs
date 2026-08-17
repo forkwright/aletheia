@@ -101,13 +101,17 @@ impl EvalClient {
         session_key: &str,
     ) -> Result<SessionResponse> {
         let url = format!("{}/api/v1/sessions", self.base_url);
-        let mut body = serde_json::json!({
-            "nous_id": nous_id,
-            "session_key": session_key,
-        });
+        // WHY a map rather than `json!({..})` plus index-assign: serde_json's
+        // `Index` impl panics when the receiver is not an object, so
+        // `body["model"] = ..` carries a panic path that only its literal
+        // construction rules out. Inserting into a `Map` has no such path.
+        let mut body = serde_json::Map::new();
+        body.insert("nous_id".to_owned(), serde_json::json!(nous_id));
+        body.insert("session_key".to_owned(), serde_json::json!(session_key));
         if let Some(model) = &self.model {
-            body["model"] = serde_json::json!(model);
+            body.insert("model".to_owned(), serde_json::json!(model));
         }
+        let body = serde_json::Value::Object(body);
         let resp = self.authed_post(&url, &body).await?;
         self.expect_status(&url, resp, &[201, 200]).await
     }
