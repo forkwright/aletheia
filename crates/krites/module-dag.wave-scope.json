@@ -44,10 +44,10 @@
       "to": "W3_storage_trait_fts_index",
       "count": 4,
       "evidence": [
-        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::AsciiFoldingFilter",
-        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::RawTokenizer",
-        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::SimpleTokenizer",
-        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:11 -> crate::fts::tokenizer::TextAnalyzer"
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:17 -> crate::fts::tokenizer::AsciiFoldingFilter",
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:17 -> crate::fts::tokenizer::RawTokenizer",
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:17 -> crate::fts::tokenizer::SimpleTokenizer",
+        "fts/tokenizer/ascii_folding_filter/tests/mod.rs:17 -> crate::fts::tokenizer::TextAnalyzer"
       ]
     },
     {
@@ -72,21 +72,21 @@
       "to": "W5prime_value_model",
       "count": 15,
       "evidence": [
-        "fts/config.rs:6 -> crate::data::memcmp::MemCmpEncoder",
-        "fts/config.rs:7 -> crate::data::value::DataValue",
-        "fts/indexing.rs:14 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
-        "fts/indexing.rs:14 -> crate::data::tuple::Tuple",
-        "fts/indexing.rs:14 -> crate::data::tuple::decode_tuple_from_key",
-        "fts/indexing.rs:15 -> crate::data::value::LARGEST_UTF_CHAR",
-        "fts/indexing.rs:24 -> crate::data::value::DataValue",
-        "fts/mod.rs:8 -> crate::data::value::DataValue",
+        "fts/config.rs:12 -> crate::data::memcmp::MemCmpEncoder",
+        "fts/config.rs:13 -> crate::data::value::DataValue",
+        "fts/indexing.rs:20 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
+        "fts/indexing.rs:20 -> crate::data::tuple::Tuple",
+        "fts/indexing.rs:20 -> crate::data::tuple::decode_tuple_from_key",
+        "fts/indexing.rs:21 -> crate::data::value::LARGEST_UTF_CHAR",
+        "fts/indexing.rs:30 -> crate::data::value::DataValue",
+        "fts/mod.rs:14 -> crate::data::value::DataValue",
         "storage/fjall_backend.rs:562 -> crate::data::value::DataValue",
         "storage/fjall_backend.rs:562 -> crate::data::value::Validity",
         "storage/fjall_backend.rs:8 -> crate::data::tuple::Tuple",
         "storage/fjall_backend.rs:8 -> crate::data::tuple::check_key_for_validity",
         "storage/fjall_backend.rs:9 -> crate::data::value::ValidityTs",
-        "storage/mod.rs:7 -> crate::data::tuple::Tuple",
-        "storage/mod.rs:8 -> crate::data::value::ValidityTs"
+        "storage/mod.rs:13 -> crate::data::tuple::Tuple",
+        "storage/mod.rs:14 -> crate::data::value::ValidityTs"
       ]
     },
     {
@@ -135,26 +135,26 @@
       "to": "W5prime_value_model",
       "count": 20,
       "evidence": [
-        "runtime/hnsw/adaptive.rs:17 -> crate::data::value::DataValue",
-        "runtime/hnsw/adaptive.rs:20 -> crate::data::tuple::Tuple",
-        "runtime/hnsw/adaptive.rs:21 -> crate::data::value::Vector",
-        "runtime/hnsw/graph.rs:29 -> crate::data::value::DataValue",
-        "runtime/hnsw/graph.rs:30 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
-        "runtime/hnsw/graph.rs:31 -> crate::data::value::Vector",
-        "runtime/hnsw/put.rs:25 -> crate::data::value::DataValue",
-        "runtime/hnsw/put.rs:27 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
-        "runtime/hnsw/put.rs:28 -> crate::data::value::Vector",
-        "runtime/hnsw/put.rs:581 -> crate::data::value::DataValue",
-        "runtime/hnsw/remove.rs:7 -> crate::data::value::DataValue",
-        "runtime/hnsw/remove.rs:8 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
-        "runtime/hnsw/search.rs:11 -> crate::data::tuple::Tuple",
-        "runtime/hnsw/search.rs:12 -> crate::data::value::Vector",
-        "runtime/hnsw/search.rs:16 -> crate::data::value::DataValue",
-        "runtime/hnsw/search.rs:247 -> crate::data::value::DataValue",
-        "runtime/hnsw/types.rs:11 -> crate::data::tuple::Tuple",
-        "runtime/hnsw/types.rs:12 -> crate::data::value::Vector",
-        "runtime/hnsw/types.rs:9 -> crate::data::value::DataValue",
-        "runtime/hnsw/visited_pool.rs:91 -> crate::data::value::DataValue"
+        "runtime/hnsw/adaptive.rs:23 -> crate::data::value::DataValue",
+        "runtime/hnsw/adaptive.rs:26 -> crate::data::tuple::Tuple",
+        "runtime/hnsw/adaptive.rs:27 -> crate::data::value::Vector",
+        "runtime/hnsw/graph.rs:35 -> crate::data::value::DataValue",
+        "runtime/hnsw/graph.rs:36 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
+        "runtime/hnsw/graph.rs:37 -> crate::data::value::Vector",
+        "runtime/hnsw/put.rs:31 -> crate::data::value::DataValue",
+        "runtime/hnsw/put.rs:33 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
+        "runtime/hnsw/put.rs:34 -> crate::data::value::Vector",
+        "runtime/hnsw/put.rs:587 -> crate::data::value::DataValue",
+        "runtime/hnsw/remove.rs:13 -> crate::data::value::DataValue",
+        "runtime/hnsw/remove.rs:14 -> crate::data::tuple::ENCODED_KEY_MIN_LEN",
+        "runtime/hnsw/search.rs:17 -> crate::data::tuple::Tuple",
+        "runtime/hnsw/search.rs:18 -> crate::data::value::Vector",
+        "runtime/hnsw/search.rs:22 -> crate::data::value::DataValue",
+        "runtime/hnsw/search.rs:253 -> crate::data::value::DataValue",
+        "runtime/hnsw/types.rs:15 -> crate::data::value::DataValue",
+        "runtime/hnsw/types.rs:17 -> crate::data::tuple::Tuple",
+        "runtime/hnsw/types.rs:18 -> crate::data::value::Vector",
+        "runtime/hnsw/visited_pool.rs:97 -> crate::data::value::DataValue"
       ]
     },
     {
@@ -162,10 +162,10 @@
       "to": "W5prime_value_model",
       "count": 6,
       "evidence": [
-        "fixed_rule/algos/louvain.rs:16 -> crate::data::symb::Symbol",
-        "fixed_rule/algos/louvain.rs:17 -> crate::data::value::DataValue",
-        "fixed_rule/algos/pagerank.rs:13 -> crate::data::symb::Symbol",
-        "fixed_rule/algos/pagerank.rs:14 -> crate::data::value::DataValue",
+        "fixed_rule/algos/louvain.rs:22 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/louvain.rs:23 -> crate::data::value::DataValue",
+        "fixed_rule/algos/pagerank.rs:19 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/pagerank.rs:20 -> crate::data::value::DataValue",
         "fixed_rule/utilities/rrf.rs:10 -> crate::data::value::DataValue",
         "fixed_rule/utilities/rrf.rs:9 -> crate::data::symb::Symbol"
       ]
