@@ -528,6 +528,49 @@ jobs:
           CARGO_TARGET_DIR: target
         run: cargo check --manifest-path fuzz/Cargo.toml --bins
 
+  gate-coverage-sovereign-hnsw:
+    name: gate-coverage-sovereign-hnsw
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # WHY: retirement PLAN.md Sec.2 land-dark/soak/delete needs every consumer
+    # reachable through mneme/episteme (aletheia, nous, pylon, ...) testable
+    # against the sovereign HNSW tree (runtime/hnsw_sovereign/) before the
+    # default flips. hybrid-gate's nextest_cmd above only ever selects the
+    # default tree (runtime/hnsw/); this job is the identical workspace
+    # nextest invocation with the krites_sovereign_hnsw passthrough added, so
+    # real consumer test suites exercise the replacement, not just krites'
+    # own crate-scoped test in gate-coverage-compile-checks above. A separate
+    # job rather than a step there: it rebuilds the workspace test binaries
+    # under a different feature set and needs a budget comparable to
+    # hybrid-gate's own full-gate-build, not the 20-minute compile-only
+    # budget the other coverage checks share.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: gate-coverage-sovereign-hnsw
+
+      - name: Configure git credentials for fleet deps
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2
+        with:
+          tool: nextest@0.9.143
+
+      - name: Sovereign-HNSW workspace test gate
+        run: cargo nextest run --profile ci --workspace --features test-core,krites_sovereign_hnsw
+
   # WHY(#4943): every other job above configures fleet-git-credentials, so
   # none of them can tell "resolves because it's genuinely public" apart
   # from "resolves because this token happened to be set" — the two look
@@ -574,6 +617,7 @@ jobs:
         hybrid-gate,
         gate-coverage-scripts,
         gate-coverage-compile-checks,
+        gate-coverage-sovereign-hnsw,
         attestation-verify,
         fork-portability-check,
       ]
@@ -586,6 +630,7 @@ jobs:
           HYBRID_GATE_RESULT: ${{ needs.hybrid-gate.result }}
           COVERAGE_SCRIPTS_RESULT: ${{ needs.gate-coverage-scripts.result }}
           COVERAGE_COMPILE_RESULT: ${{ needs.gate-coverage-compile-checks.result }}
+          COVERAGE_SOVEREIGN_HNSW_RESULT: ${{ needs.gate-coverage-sovereign-hnsw.result }}
           FORK_PORTABILITY_RESULT: ${{ needs.fork-portability-check.result }}
           ATTESTATION_VERIFY_RESULT: ${{ needs.attestation-verify.result }}
           TRAILER_PRESENT: ${{ needs.attestation-verify.outputs.trailer_present }}
@@ -682,6 +727,18 @@ jobs:
               ;;
           esac
 
+          case "$COVERAGE_SOVEREIGN_HNSW_RESULT" in
+            success) ;;
+            cancelled|skipped)
+              echo "CANCELLED: gate-coverage-sovereign-hnsw did not run to a verdict (result: ${COVERAGE_SOVEREIGN_HNSW_RESULT}). This is NOT a check failure: re-run the job. See aletheia#6701." >&2
+              exit 1
+              ;;
+            *)
+              echo "ERROR: gate-coverage-sovereign-hnsw did not succeed (result: ${COVERAGE_SOVEREIGN_HNSW_RESULT})." >&2
+              exit 1
+              ;;
+          esac
+
           # WHY(#4943): a failure here means the workspace no longer resolves
           # or compiles without maintainer-only credentials — the exact
           # regression this job exists to catch before it reaches an actual
@@ -698,4 +755,4 @@ jobs:
               ;;
           esac
 
-          echo "All gate stages passed (hybrid gate + coverage scripts + coverage compile checks + fork portability)."
+          echo "All gate stages passed (hybrid gate + coverage scripts + coverage compile checks + coverage sovereign-HNSW + fork portability)."
