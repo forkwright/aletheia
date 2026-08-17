@@ -27,7 +27,7 @@ poiesis-charts = { path = "../charts", optional = true }
 poiesis-typst = { path = "../typst", optional = true }
 
 # Pure-Rust SVG rasterizer for chart figures.
-resvg = { version = "0.45.1", optional = true }
+resvg = { version = "0.48.1", optional = true }
 
 # Pandoc binary discovery for the availability probe
 which = { version = "8", optional = true }
