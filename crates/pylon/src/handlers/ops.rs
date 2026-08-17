@@ -16,35 +16,6 @@ pub use ops_dto::{LiveInvocationEntry, OpsToolsResponse, ToolCatalogEntry, ToolH
 
 const RECENT_TOOL_HISTORY_LIMIT: usize = 100;
 
-fn metrics_snapshot() -> (u64, u64) {
-    let registry = koina::metrics::MetricsRegistry::new();
-    registry.with_registry(organon::metrics::register);
-
-    let mut encoded = String::new();
-    if let Err(err) = registry.encode(&mut encoded) {
-        unreachable!("encoding into a String is infallible: {err}");
-    }
-
-    let mut total_calls = 0_u64;
-    let mut total_errors = 0_u64;
-
-    for line in encoded.lines() {
-        if !line.starts_with("aletheia_tool_invocations_total{") {
-            continue;
-        }
-        let Some((_, value_text)) = line.rsplit_once(' ') else {
-            continue;
-        };
-        let value = value_text.parse::<u64>().unwrap_or(0);
-        total_calls = total_calls.saturating_add(value);
-        if line.contains("status=\"error\"") {
-            total_errors = total_errors.saturating_add(value);
-        }
-    }
-
-    (total_calls, total_errors)
-}
-
 fn history_entry(record: mneme::types::ToolAuditRecord) -> ToolHistoryEntry {
     let receipt_state = if record.receipt.is_some() {
         "present"
@@ -115,9 +86,10 @@ fn catalog_entry(def: &ToolDef, has_origin: bool) -> ToolCatalogEntry {
 ///
 /// The registry catalog is sourced from organon's live tool registry. Live
 /// invocations are tracked by organon's metrics module and removed when the
-/// execution guard drops. Totals and errors are read from the organon
-/// Prometheus families. Chronological tool-call history is sourced from
-/// mneme's bounded recent tool audit records.
+/// execution guard drops. Totals and errors are read from organon's typed
+/// cumulative counters, not by encoding and re-parsing the Prometheus
+/// exposition text. Chronological tool-call history is sourced from mneme's
+/// bounded recent tool audit records.
 #[utoipa::path(
     get,
     path = "/api/v1/ops/tools",
@@ -149,7 +121,7 @@ pub async fn tools(
         })
         .collect();
 
-    let (total_calls, total_errors) = metrics_snapshot();
+    let (total_calls, total_errors) = organon::metrics::invocation_totals();
     let state_clone = state.clone();
     let history_result = tokio::task::spawn_blocking(move || {
         let store = state_clone.session_store.blocking_lock();
