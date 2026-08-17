@@ -22,8 +22,9 @@ use std::str::FromStr;
 use jiff::Timestamp;
 use p256::ecdsa::signature::Signer as _;
 use p256::ecdsa::{DerSignature, SigningKey};
+use p256::elliptic_curve::Generate as _;
 use p256::elliptic_curve::pkcs8::EncodePrivateKey;
-use rand_core::{OsRng, RngCore as _};
+use rand::Rng as _;
 use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
@@ -52,13 +53,15 @@ pub(crate) fn generate(
     days: u32,
     common_name: &str,
 ) -> Result<SelfSignedCert, Error> {
-    let mut rng = OsRng;
+    let mut rng = rand::rng();
 
     // ---- key pair ----
-    let signing_key = SigningKey::random(&mut rng);
+    // NOTE: `SigningKey::random` is deprecated since ecdsa 0.17 in favor of
+    // the `Generate` trait; `generate_from_rng` is its direct replacement.
+    let signing_key = SigningKey::generate_from_rng(&mut rng);
     let pkcs8_doc = signing_key.to_pkcs8_der().map_err(|_e| Error::KeyGen)?;
 
-    let pub_point = signing_key.verifying_key().to_encoded_point(false);
+    let pub_point = signing_key.verifying_key().to_sec1_point(false);
     let pub_key = pub_point.as_bytes();
 
     // ---- times ----
@@ -328,5 +331,131 @@ fn write_general_name(writer: &mut Writer, san: &str) {
         writer.write(0x87, &bytes); // context [7] OCTET STRING
     } else {
         writer.write(0x82, san.as_bytes()); // context [2] IA5String (dNSName)
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use p256::ecdsa::signature::Verifier as _;
+    use p256::elliptic_curve::pkcs8::DecodePrivateKey;
+    use p256::elliptic_curve::sec1::ToSec1Point as _;
+
+    use super::*;
+
+    fn sample_sans() -> Vec<String> {
+        vec!["example.com".to_owned(), "127.0.0.1".to_owned()]
+    }
+
+    // WHY: no X.509/DER parser is a workspace dependency. `split_der_children`
+    // + `tlv_content` are a minimal decode-side mirror of `Writer` above --
+    // generic TLV structure only, no tag semantics -- sized to exactly what
+    // this test needs: recovering the TBS bytes, the embedded signature, and
+    // the embedded SPKI point from what `Writer` wrote.
+    fn split_der_children(der: &[u8]) -> Vec<&[u8]> {
+        let mut out = Vec::new();
+        let mut pos = 0;
+        while pos < der.len() {
+            let start = pos;
+            pos += 1; // tag
+            let first_len = der[pos];
+            pos += 1;
+            let content_len = if first_len & 0x80 == 0 {
+                usize::from(first_len)
+            } else {
+                let n = usize::from(first_len & 0x7f);
+                let mut len = 0usize;
+                for &b in &der[pos..pos + n] {
+                    len = (len << 8) | usize::from(b);
+                }
+                pos += n;
+                len
+            };
+            pos += content_len;
+            out.push(&der[start..pos]);
+        }
+        out
+    }
+
+    fn tlv_content(tlv: &[u8]) -> &[u8] {
+        let mut pos = 1; // skip tag
+        let first_len = tlv[pos];
+        pos += 1;
+        if first_len & 0x80 == 0 {
+            &tlv[pos..pos + usize::from(first_len)]
+        } else {
+            let n = usize::from(first_len & 0x7f);
+            let mut len = 0usize;
+            for &b in &tlv[pos..pos + n] {
+                len = (len << 8) | usize::from(b);
+            }
+            pos += n;
+            &tlv[pos..pos + len]
+        }
+    }
+
+    #[test]
+    fn generate_produces_a_verifiable_self_consistent_cert() {
+        let cert = generate(&sample_sans(), 30, "test").expect("generate succeeds");
+
+        // ---- key_pem: sound PKCS#8 P-256 private key ----
+        let key_pem = pem::parse(&cert.key_pem).expect("key_pem parses as PEM");
+        assert_eq!(key_pem.tag(), "PRIVATE KEY");
+
+        let secret_key =
+            p256::SecretKey::from_pkcs8_der(key_pem.contents()).expect("valid PKCS#8 DER");
+        let derived_point = secret_key.public_key().to_sec1_point(false);
+        let derived_point_bytes = derived_point.as_bytes();
+        assert_eq!(
+            derived_point_bytes.len(),
+            65,
+            "uncompressed P-256 SEC1 point"
+        );
+        assert_eq!(derived_point_bytes[0], 0x04, "SEC1 uncompressed tag");
+
+        let signing_key = SigningKey::from(secret_key);
+        let verifying_key = signing_key.verifying_key();
+        let msg = b"tls_self_signed round-trip probe";
+        let sig: DerSignature = signing_key.try_sign(msg).expect("sign succeeds");
+        verifying_key
+            .verify(msg, &sig)
+            .expect("key_pem's key is a sound, self-consistent keypair");
+
+        // independent draws must not collide (rules out a derandomized RNG)
+        let cert2 = generate(&sample_sans(), 30, "test").expect("generate succeeds");
+        assert_ne!(cert.key_pem, cert2.key_pem);
+
+        // ---- cert_pem: signature verifies against key_pem's key ----
+        let cert_pem = pem::parse(&cert.cert_pem).expect("cert_pem parses as PEM");
+        assert_eq!(cert_pem.tag(), "CERTIFICATE");
+        let cert_der = cert_pem.contents();
+
+        let cert_children = split_der_children(tlv_content(cert_der));
+        assert_eq!(cert_children.len(), 3, "cert = SEQUENCE(tbs, sigAlg, sig)");
+        let tbs_bytes = cert_children[0];
+        let sig_bitstring = tlv_content(cert_children[2]);
+        let cert_sig =
+            DerSignature::from_bytes(&sig_bitstring[1..]).expect("valid embedded signature DER");
+        verifying_key
+            .verify(tbs_bytes, &cert_sig)
+            .expect("cert_pem's signature verifies against key_pem's key");
+
+        // ---- embedded SPKI matches the independently derived point ----
+        let tbs_children = split_der_children(tlv_content(tbs_bytes));
+        assert_eq!(tbs_children.len(), 8, "TBS has 8 fields incl. extensions");
+        let spki_children = split_der_children(tlv_content(tbs_children[6]));
+        assert_eq!(
+            spki_children.len(),
+            2,
+            "SPKI = SEQUENCE(algId, subjectPublicKey)"
+        );
+        let embedded_point = &tlv_content(spki_children[1])[1..];
+        assert_eq!(embedded_point, derived_point_bytes);
+    }
+
+    #[test]
+    fn expiry_overflow_is_reported() {
+        let result = generate(&sample_sans(), u32::MAX, "test");
+        assert!(matches!(result, Err(Error::ExpiryOverflow { .. })));
     }
 }
