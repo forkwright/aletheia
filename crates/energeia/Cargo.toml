@@ -19,6 +19,7 @@ storage-fjall = ["dep:fjall", "koina/fjall"]
 [dependencies]
 aletheia-routing = { path = "../aletheia-routing" }
 compact_str = { workspace = true }
+epitelesis = { workspace = true }
 koina = { path = "../koina" }
 eidos = { path = "../eidos" }
 hermeneus = { path = "../hermeneus" }

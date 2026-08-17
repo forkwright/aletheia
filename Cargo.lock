@@ -75,7 +75,7 @@ dependencies = [
  "reqwest 0.13.4",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "taxis",
  "tempfile",
  "tokio",
@@ -163,7 +163,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "supports-color",
  "symbolon",
  "taxis",
@@ -185,7 +185,7 @@ dependencies = [
  "jiff",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "tracing",
@@ -207,7 +207,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "taxis",
  "tempfile",
  "tokio",
@@ -223,7 +223,7 @@ dependencies = [
  "jiff",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "tracing",
@@ -243,7 +243,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tracing",
  "tracing-subscriber",
@@ -691,7 +691,7 @@ source = "git+https://github.com/forkwright/theatron.git?tag=v1.6.0#f319c949856b
 dependencies = [
  "dirs",
  "serde",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tracing",
  "tracing-appender",
@@ -2170,7 +2170,7 @@ dependencies = [
  "prometheus-client",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
 ]
 
@@ -2194,7 +2194,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "symbolon",
  "taxis",
  "tempfile",
@@ -2316,7 +2316,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "supports-color",
  "tempfile",
  "tokio",
@@ -2400,7 +2400,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "tracing",
@@ -2467,6 +2467,7 @@ dependencies = [
  "aletheia-routing",
  "compact_str",
  "eidos",
+ "epitelesis",
  "fjall",
  "hermeneus",
  "jiff",
@@ -2483,7 +2484,7 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -2587,7 +2588,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokenizers",
  "tokio",
@@ -2596,6 +2597,16 @@ dependencies = [
  "tracing-subscriber",
  "unicode-normalization",
  "wiremock",
+]
+
+[[package]]
+name = "epitelesis"
+version = "0.3.0"
+source = "git+https://github.com/forkwright/epitelesis.git?tag=v0.3.0#c22f67015f48afc7ea1aa3840a4d4afa7c7e6d71"
+dependencies = [
+ "rustix",
+ "snafu 0.8.9",
+ "tracing",
 ]
 
 [[package]]
@@ -3291,7 +3302,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "syn 3.0.3",
  "tempfile",
  "tracing",
@@ -3318,7 +3329,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "tokio-util",
@@ -3552,7 +3563,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tokio",
  "tower",
  "tracing",
@@ -4460,7 +4471,7 @@ dependencies = [
  "reqwest 0.13.4",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tokio",
 ]
 
@@ -4502,7 +4513,7 @@ dependencies = [
  "serde_json",
  "similar 3.1.2",
  "skene",
- "snafu",
+ "snafu 0.9.2",
  "syntect",
  "tempfile",
  "tokio",
@@ -4526,7 +4537,7 @@ dependencies = [
  "rustix",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
@@ -4681,7 +4692,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "smallvec",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "tracing",
@@ -5056,7 +5067,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "tracing",
@@ -5165,7 +5176,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "tracing-subscriber",
@@ -5362,7 +5373,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "taxis",
  "tempfile",
  "thesauros",
@@ -5557,7 +5568,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "taxis",
  "tempfile",
  "tokio",
@@ -5708,7 +5719,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "taxis",
  "tempfile",
  "tokio",
@@ -6180,7 +6191,7 @@ dependencies = [
  "poiesis-theme",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tracing",
 ]
 
@@ -6193,7 +6204,7 @@ dependencies = [
  "jiff",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "toml 1.1.4+spec-1.1.0",
 ]
@@ -6206,7 +6217,7 @@ dependencies = [
  "poiesis-core",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tracing",
 ]
 
@@ -6218,7 +6229,7 @@ dependencies = [
  "poiesis-ooxml-parse",
  "poiesis-sheet",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tracing",
  "zip 8.6.0",
 ]
@@ -6237,7 +6248,7 @@ dependencies = [
  "resvg",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tracing",
  "wait-timeout",
@@ -6257,7 +6268,7 @@ dependencies = [
  "poiesis-ooxml-parse",
  "poiesis-sheet",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tracing",
  "zip 8.6.0",
 ]
@@ -6269,7 +6280,7 @@ dependencies = [
  "aletheia-lexica",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tracing",
 ]
 
@@ -6280,7 +6291,7 @@ dependencies = [
  "poiesis-core",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
 ]
 
 [[package]]
@@ -6297,7 +6308,7 @@ dependencies = [
  "chromiumoxide",
  "futures",
  "poiesis-core",
- "snafu",
+ "snafu 0.9.2",
  "tokio",
  "tracing",
  "which 7.0.3",
@@ -6311,7 +6322,7 @@ dependencies = [
  "poiesis-sheet",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tracing",
 ]
 
@@ -6324,7 +6335,7 @@ dependencies = [
  "poiesis-theme",
  "rust_xlsxwriter",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "spreadsheet-ods",
  "tracing",
 ]
@@ -6337,7 +6348,7 @@ dependencies = [
  "quick-xml 0.41.0",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tracing",
  "zip 8.6.0",
 ]
@@ -6348,7 +6359,7 @@ version = "0.38.1"
 dependencies = [
  "krilla 0.7.0",
  "poiesis-core",
- "snafu",
+ "snafu 0.9.2",
  "zip 8.6.0",
 ]
 
@@ -6361,7 +6372,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "toml 1.1.4+spec-1.1.0",
  "zip 8.6.0",
@@ -6376,7 +6387,7 @@ dependencies = [
  "parking_lot",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tracing",
  "typst",
@@ -6389,7 +6400,7 @@ version = "0.38.1"
 dependencies = [
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
 ]
 
 [[package]]
@@ -6812,7 +6823,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "skene",
- "snafu",
+ "snafu 0.9.2",
  "symbolon",
  "taxis",
  "tempfile",
@@ -8293,7 +8304,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "tempfile",
  "tokio",
  "toml 1.1.4+spec-1.1.0",
@@ -8352,11 +8363,32 @@ checksum = "e8e2fb0f499abb4d162f2bedad68f5ef91a1682b5a03596ddb67efd37768d100"
 
 [[package]]
 name = "snafu"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e84b3f4eacbf3a1ce05eac6763b4d629d60cbc94d632e4092c54ade71f1e1a2"
+dependencies = [
+ "snafu-derive 0.8.9",
+]
+
+[[package]]
+name = "snafu"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e45cb604038abb7b926b679887b3226d8d0f23874b66623625a0454be425a4b7"
 dependencies = [
- "snafu-derive",
+ "snafu-derive 0.9.2",
+]
+
+[[package]]
+name = "snafu-derive"
+version = "0.8.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1c97747dbf44bb1ca44a561ece23508e99cb592e862f22222dcf42f51d1e451"
+dependencies = [
+ "heck 0.4.1",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -8622,7 +8654,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.11.0",
- "snafu",
+ "snafu 0.9.2",
  "subtle",
  "tempfile",
  "tokio",
@@ -8753,7 +8785,7 @@ dependencies = [
  "rand 0.10.2",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "symbolon",
  "taxis",
  "tempfile",
@@ -8883,7 +8915,7 @@ dependencies = [
  "organon",
  "serde",
  "serde_json",
- "snafu",
+ "snafu 0.9.2",
  "taxis",
  "tempfile",
  "tokio",
