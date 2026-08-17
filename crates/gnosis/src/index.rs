@@ -305,7 +305,14 @@ impl<'ast> Visit<'ast> for IndexVisitor<'_> {
 
     fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
         // NOTE: only impl-trait blocks are recorded (not inherent impls).
-        if let Some((_, trait_path, _)) = &node.trait_ {
+        // NOTE: syn 3.0 moved the negative-impl `!` out of this tuple and into
+        // `node.modifiers.polarity`, so an `impl !Trait for T` still reaches
+        // here and is still recorded as though it were a positive impl. Not
+        // filtered, because negative impls are nightly-only (rust#68318) and
+        // this workspace builds on stable — the filter would be untestable
+        // code guarding a case that cannot occur. If gnosis ever indexes a
+        // nightly tree, check `node.modifiers.polarity.is_some()` here.
+        if let Some((trait_path, _)) = &node.trait_ {
             let type_name = type_name_from_type(&node.self_ty);
             let line = span_line(
                 trait_path
