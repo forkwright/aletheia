@@ -492,7 +492,13 @@ fn populate_crate_edges(store: &Store, metadata: &cargo_metadata::Metadata) -> R
         }
         let from_name = pkg.name.as_str();
         for dep in &pkg.dependencies {
-            if workspace_ids.values().any(|n| n == dep.name.as_str()) {
+            // WHY both sides as_str(): cargo_metadata 0.23 made package names a
+            // `PackageName` newtype, and `&PackageName == &str` would require
+            // `PackageName: PartialEq<str>` -- unsatisfiable, since `str` is unsized.
+            if workspace_ids
+                .values()
+                .any(|n| n.as_str() == dep.name.as_str())
+            {
                 store.insert_crate_edge(from_name, dep.name.as_str())?;
             }
         }
