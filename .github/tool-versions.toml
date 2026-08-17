@@ -13,6 +13,7 @@ version = "0.9.143"
 sites = [
     ".github/workflows/desktop.yml",
     ".github/workflows/online-tests.yml",
+    ".github/workflows/gate-attestation.yml",
 ]
 
 [tools.cargo-audit]
