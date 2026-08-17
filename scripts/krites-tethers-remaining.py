@@ -125,6 +125,7 @@ import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
+from typing import NoReturn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -150,7 +151,7 @@ SIBLING_PROVENANCE_CHECK = SCRIPT_DIR / "check-krites-provenance.py"
 SIBLING_CAPABILITY_CHECK = SCRIPT_DIR / "check-krites-capability-matrix.py"
 
 
-def refuse(message: str) -> None:
+def refuse(message: str) -> NoReturn:
     # WHY exit 3, distinct from 1 (nonzero measured total) and 2 (a live
     # measurement failed): this is neither. It means a precondition the
     # total depends on did not hold, so no total -- not even UNKNOWN -- is
@@ -381,7 +382,20 @@ def line_3_license_artifacts(meta: dict, rows: list[dict]) -> Line:
 
     notice_label = f"{NOTICE_PATH.relative_to(REPO_ROOT)} (CozoDB/MPL attribution section)"
     expected_notice = render_notice(meta, rows)
-    actual_notice = NOTICE_PATH.read_text() if NOTICE_PATH.is_file() else None
+    # WHY an absent NOTICE.md is its own case rather than folded into the drift
+    # comparison below: deleting the file and hand-editing it to drop the
+    # attribution are different acts with the same consequence, and a reader
+    # given "out of sync with the ledger" for a file that does not exist is
+    # sent to diff something that is not there. Separating them also removes a
+    # nullable from the comparison, so `expected_notice` cannot be narrowed to
+    # a possible None by the equality check that follows.
+    if not NOTICE_PATH.is_file():
+        refuse(
+            f"{NOTICE_PATH} does not exist. It is generated from the ledger and is the artifact "
+            "recording which files carry CozoDB lineage; its absence is not evidence the "
+            "attribution obligation ended. Run scripts/measure-krites-provenance.py to regenerate."
+        )
+    actual_notice = NOTICE_PATH.read_text()
     if actual_notice != expected_notice:
         # WHY refuse rather than count as absent: an edit that drifts
         # NOTICE.md from what the ledger renders -- including one that
