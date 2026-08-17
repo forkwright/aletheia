@@ -377,6 +377,18 @@ jobs:
       # would have missed at review time. Runs unconditionally like the
       # other pure-python checks in this job, not path-scoped, so a PR that
       # touches krites without touching the matrix still gets caught.
+      #
+      # The self-test runs FIRST: the matrix check now resolves each row's
+      # gate_test against a source-derived index of the crate's tests, and a
+      # resolver that silently stops resolving would report the matrix green
+      # while enforcing nothing. This job has no cargo, so that index is
+      # reconstructed from source rather than from `cargo nextest list`; the
+      # self-test pins the walker's behaviour against fixture crates, and
+      # `--nextest-list` cross-checks it against a real listing where one is
+      # available.
+      - name: Test check-krites-capability-matrix.py
+        run: scripts/test-check-krites-capability-matrix.py
+
       - name: Check krites capability-coverage matrix
         run: scripts/check-krites-capability-matrix.py
 

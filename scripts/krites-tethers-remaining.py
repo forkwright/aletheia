@@ -75,17 +75,28 @@ Lines:
      (which fails outright, unconditionally, when the snapshot is absent):
      main() runs that check before loading anything below, so this script
      never reaches a total without it having already passed.
-  4. CAPABILITY_MATRIX.toml capabilities with no gate_test pointer. The
-     field does not exist in the schema yet, so this line counts every row
-     that lacks it -- honestly the full row count today, but a per-row
-     filter, not a fixed len(rows): the first row that legitimately gains a
-     gate_test pointer moves this line, which len(rows) never could. Checked
-     first against the matrix's OWN source-derived categories -- reusing
+  4. CAPABILITY_MATRIX.toml capabilities with no gate_test pointer -- a row
+     whose disappearance no test would report. `gate_test` names the test as
+     a `<binary-id>::<test path>` id; check-krites-capability-matrix.py
+     resolves every pointer against a source-derived index of the crate's
+     tests and FAILS on one that names no test or names an `#[ignore]`d one,
+     so this line counts pointers that were verified to resolve, not strings
+     that were typed. `"none"` and an absent field both count as unpointed:
+     the honest state of a capability nothing gates. Checked first against
+     the matrix's OWN source-derived categories -- reusing
      check-krites-capability-matrix.py's extract_sysop_variants /
-     extract_datavalue_variants / extract_lib_public_api / check_category /
-     check_appendix_a, not a second reimplementation of that mapping -- so a
-     row deleted to shrink this count is caught the same way a deleted
-     ledger row is caught in line 1.
+     extract_datavalue_variants / extract_lib_public_api /
+     extract_fixed_rule_names / extract_storage_methods / check_category /
+     check_appendix_a / check_capability_sets, not a second reimplementation
+     of that mapping -- so a row deleted to shrink this count is caught the
+     same way a deleted ledger row is caught in line 1.
+
+     WARNING: a resolving pointer proves the capability cannot be deleted
+     without a test disappearing or failing. It does NOT prove the row's
+     `gate` sentence is asserted anywhere, and it does not prove the test
+     passed -- the CI job that resolves these has no cargo. Reaching 0 on
+     this line means every capability has a disappearance detector, not that
+     every capability is verified.
   5. GitHub issues, from a tracked set, labelled as compromising the
      provenance mechanism itself rather than a single file's measurement.
      No GitHub label captures exactly this set (checked live, every run --
@@ -315,7 +326,14 @@ def _validate_capability_matrix_completeness(rows: list[dict]) -> None:
     errors += _capmatrix.check_category(
         "public_api", _capmatrix.extract_lib_public_api(), rows, "lib.rs"
     )
+    errors += _capmatrix.check_category(
+        "fixed_rule", _capmatrix.extract_fixed_rule_names(), rows, "fixed_rule/mod.rs"
+    )
+    errors += _capmatrix.check_category(
+        "storage_method", _capmatrix.extract_storage_methods(), rows, "storage/mod.rs"
+    )
     errors += _capmatrix.check_appendix_a(rows)
+    errors += _capmatrix.check_capability_sets(_capmatrix.load_capability_sets())
     if errors:
         refuse(
             f"{CAPABILITY_MATRIX_PATH} does not validate against its own source-derived categories "
@@ -449,28 +467,37 @@ def line_3_license_artifacts(meta: dict, rows: list[dict]) -> Line:
     )
 
 
+def _is_unpointed(row: dict) -> bool:
+    # SAFETY: must match check-krites-capability-matrix.py's GATE_TEST_UNPOINTED
+    # exactly. A row this file counts as pointed while the checker treats it as
+    # unpointed would let the total drop without the pointer ever being resolved.
+    value = row.get("gate_test")
+    return not isinstance(value, str) or value.strip().lower() in {"", "none"}
+
+
 def line_4_no_gate_test(rows: list[dict]) -> Line:
-    unpointed = [r for r in rows if not r.get("gate_test")]
+    unpointed = [r for r in rows if _is_unpointed(r)]
     have_gate_test = len(rows) - len(unpointed)
-    if have_gate_test == 0:
-        detail = (
-            f"{len(rows)} [[capability]] rows total; 'gate_test' is not a field in the schema yet, "
-            "so 0 rows carry it -- every row is honestly unpointed, not defaulted to 0"
-        )
-    else:
-        detail = (
-            f"{have_gate_test} of {len(rows)} [[capability]] rows carry a 'gate_test' pointer; "
-            f"{len(unpointed)} do not -- this line is a per-row filter, so it moves as rows gain one"
-        )
+    by_category: dict[str, int] = {}
+    for row in unpointed:
+        category = row.get("category", "<missing>")
+        by_category[category] = by_category.get(category, 0) + 1
     return Line(
         label="4. CAPABILITY_MATRIX.toml capabilities with no gate_test pointer",
         source=(
-            f"{CAPABILITY_MATRIX_PATH.relative_to(REPO_ROOT)} -- per-row filter on a truthy "
-            "'gate_test' field, row set verified against its own source-derived categories "
-            "(reusing check-krites-capability-matrix.py) before this line is computed"
+            f"{CAPABILITY_MATRIX_PATH.relative_to(REPO_ROOT)} -- per-row filter on a "
+            "'gate_test' field that check-krites-capability-matrix.py has already RESOLVED "
+            "against a source-derived index of the crate's tests (a pointer naming no test, "
+            "or an #[ignore]d one, fails that sibling validator before this line runs), with "
+            "the row set verified against its own source-derived categories"
         ),
         count=len(unpointed),
-        detail=detail,
+        detail=(
+            f"{have_gate_test} of {len(rows)} [[capability]] rows carry a resolved 'gate_test' "
+            f"pointer; {len(unpointed)} do not, by category: {by_category}. A resolved pointer "
+            "means the capability cannot vanish unnoticed -- not that its gate is asserted, and "
+            "not that the test passed (this checker runs with no cargo)"
+        ),
     )
 
 
