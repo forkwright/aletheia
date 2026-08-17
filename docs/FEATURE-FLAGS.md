@@ -18,6 +18,7 @@ Cargo metadata cannot infer.
 | **aletheia** | `mcp` | no | MCP server (Model Context Protocol) with recall-backed knowledge tools | `recall`, `dep:diaporeia`, `dep:rmcp` |
 | **aletheia** | `recall` | no | KnowledgeStore vector search + extraction persistence | `nous/knowledge-store`, `mneme/mneme-engine`, `mneme/storage-fjall`, `pylon/knowledge-store` |
 | **aletheia** | `storage-fjall` | no | fjall LSM-tree backend | `mneme/storage-fjall` |
+| **aletheia** | `krites_sovereign_hnsw` | no | Selects krites' sovereign HNSW tree over the CozoDB-derived one; off by default during the retirement soak | `mneme/krites_sovereign_hnsw` |
 | **aletheia** | `embed-candle` | no | Local ML embeddings via candle | `mneme/embed-candle` |
 | **aletheia** | `openai-embed` | no | OpenAI-compatible and Voyage embedding providers | `mneme/openai-embed` |
 | **aletheia** | `online-tests` | no | Network-dependent candle tests (HuggingFace downloads at test time) | `mneme/online-tests` |
@@ -55,6 +56,7 @@ Cargo metadata cannot infer.
 | **energeia** | `test-full` | no | - | `test-core` |
 | **episteme** | `default` | **yes** | `graph-algo`, `reranker` | - |
 | **episteme** | `graph-algo` | no | Graph algorithms | `krites?/graph-algo` |
+| **episteme** | `krites_sovereign_hnsw` | no | Forwards krites' sovereign-HNSW selector so consumers can be tested against the replacement tree | `krites?/krites_sovereign_hnsw` |
 | **episteme** | `reranker` | no | HTTP cross-encoder reranker | `dep:reqwest`, `dep:rustls`, `dep:tokio` |
 | **episteme** | `gliner` | no | GLiNER ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
 | **episteme** | `nuextract` | no | NuExtract ONNX bookkeeping provider | `dep:ort`, `dep:tokio`, `dep:tokenizers` |
@@ -106,6 +108,7 @@ Cargo metadata cannot infer.
 | **melete** | `test-full` | no | - | - |
 | **mneme** | `default` | **yes** | `graph-algo`, `mneme-engine`, `portability` | - |
 | **mneme** | `graph-algo` | no | Graph algorithm types | `episteme/graph-algo` |
+| **mneme** | `krites_sovereign_hnsw` | no | Forwards krites' sovereign-HNSW selector so consumers can be tested against the replacement tree | `episteme/krites_sovereign_hnsw` |
 | **mneme** | `portability` | no | Agent export/import raw entry points | `graphe/portability` |
 | **mneme** | `reranker` | no | HTTP cross-encoder reranker passthrough | `episteme/reranker` |
 | **mneme** | `gliner` | no | GLiNER bookkeeping provider passthrough | `episteme/gliner` |
