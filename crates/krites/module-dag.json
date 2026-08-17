@@ -130,8 +130,8 @@
     {
       "from": "fts",
       "to": "root",
-      "count": 5,
-      "production_count": 5,
+      "count": 6,
+      "production_count": 6,
       "test_only": false,
       "first_evidence": "fts/config.rs:8",
       "first_production_evidence": "fts/config.rs:8"
@@ -381,7 +381,7 @@
     }
   ],
   "file_count": 205,
-  "statement_count": 1032,
+  "statement_count": 1031,
   "required_edges_present": [
     [
       "runtime",
