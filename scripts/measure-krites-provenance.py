@@ -525,6 +525,55 @@ def load_prior_paths(path: pathlib.Path) -> set[str]:
     }
 
 
+def load_method_status(path: pathlib.Path) -> dict[str, tuple[str, str]]:
+    """Preserves each row's (method, method_evidence) across regeneration.
+
+    WHY this exists at all (#6797-followup): this script is the ledger's sole
+    regenerator and rebuilds every row from scratch on every run. method and
+    method_evidence are NOT derived from source the way verbatim_pct is — they
+    record a fact about how a file was written, established once (by git-log
+    research or an explicit --set-method call) and never re-derivable from the
+    tree. Without this preservation, the very next regeneration after clearing
+    a row's 'unknown' would silently overwrite the resolved value back to the
+    default and drop its evidence pointer with it — the exact 'measured once,
+    then quietly lost' failure this field exists to prevent, just moved one
+    step later than krites-provenance-transition.py's own --to sovereign case.
+
+    Read with bare tomllib for the same reason load_graduated_status is: this
+    consumes two fields and has no business demanding the full current row
+    schema validate before it can read them."""
+    if not path.exists():
+        return {}
+    try:
+        data = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as exc:
+        raise SystemExit(unparsable_ledger_message(path, exc)) from exc
+    preserved = {}
+    for r in data.get("file", []):
+        if not isinstance(r, dict):
+            continue
+        path_key = r.get("path")
+        method = r.get("method")
+        evidence = r.get("method_evidence")
+        if isinstance(path_key, str) and isinstance(method, str) and isinstance(evidence, str):
+            preserved[path_key] = (method, evidence)
+    return preserved
+
+
+def resolve_method(rel: str, status: str, method_status: dict[str, tuple[str, str]]) -> tuple[str, str]:
+    """The (method, method_evidence) a regenerated row should carry.
+
+    A preserved value survives only onto a row that is still sovereign this
+    run — method is only meaningful there (krites_provenance_lib.validate_rows
+    requires 'none' everywhere else). A row regenerating without any prior
+    record defaults to 'unknown'/'none' if sovereign (the honest state: no
+    evidence exists yet) or 'none'/'none' otherwise (not applicable)."""
+    preserved = method_status.get(rel)
+    if preserved is not None and status == "sovereign":
+        return preserved
+    return ("unknown", "none") if status == "sovereign" else ("none", "none")
+
+
 def check_dual_survives_move(
     graduated: dict[str, tuple[str, int]],
     prior_paths: set[str],
@@ -603,6 +652,7 @@ def main() -> None:
 
     graduated = load_graduated_status(LEDGER_PATH)
     prior_paths = load_prior_paths(LEDGER_PATH)
+    method_status = load_method_status(LEDGER_PATH)
 
     rows: list[dict] = []
     for rel in local_files:
@@ -621,6 +671,7 @@ def main() -> None:
                 measured_pct = verbatim_pct(local_text, fetch_upstream(verify_rel))
             else:
                 measured_pct = 0.0
+            method, method_evidence = resolve_method(rel, "sovereign", method_status)
             rows.append(
                 {
                     "path": rel,
@@ -629,6 +680,8 @@ def main() -> None:
                     "verbatim_pct": measured_pct,
                     "status": "sovereign",
                     "soak_expires_at_commit_count": 0,
+                    "method": method,
+                    "method_evidence": method_evidence,
                 }
             )
             continue
@@ -661,6 +714,7 @@ def main() -> None:
             # ledger the moment anyone re-ran this script after a real
             # in-place dual -> sovereign transition. The measurement itself
             # is still real -- it lands in replaced_upstream_path instead.
+            method, method_evidence = resolve_method(rel, "sovereign", method_status)
             rows.append(
                 {
                     "path": rel,
@@ -669,9 +723,12 @@ def main() -> None:
                     "verbatim_pct": measured_pct,
                     "status": "sovereign",
                     "soak_expires_at_commit_count": 0,
+                    "method": method,
+                    "method_evidence": method_evidence,
                 }
             )
         else:
+            method, method_evidence = resolve_method(rel, status, method_status)
             rows.append(
                 {
                     "path": rel,
@@ -680,6 +737,8 @@ def main() -> None:
                     "verbatim_pct": measured_pct,
                     "status": status,
                     "soak_expires_at_commit_count": soak,
+                    "method": method,
+                    "method_evidence": method_evidence,
                 }
             )
 

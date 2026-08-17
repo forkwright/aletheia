@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Apply a status transition (derived -> dual, or dual -> sovereign; see
 kanon/projects/aletheia/phases/05g-krites-overhaul/PROVENANCE-LEDGER.md
-"Transitions") to named PROVENANCE.toml rows, and re-render NOTICE.md.
+"Transitions"), or clear a sovereign row's authorship `method`, to named
+PROVENANCE.toml rows, and re-render NOTICE.md. Exactly one of --to/--set-method is
+required per invocation — they are deliberately not combinable: a status transition
+tells us nothing about how a file was originally written (a fresh dual -> sovereign
+row always enters at method='unknown'), so recording HOW is always a separate,
+deliberate act with its own evidence, never a side effect of moving status.
 
 WHY this exists as a script rather than a hand-edit: PROVENANCE.toml's own
 header says "do not hand-edit rows" — that norm exists to stop the ledger
@@ -37,11 +42,30 @@ Usage:
         fts/tokenizer/stop_word_filter/derived/mod.rs \\
         ...
 
+    python3 scripts/krites-provenance-transition.py \\
+        --set-method from_behavioral_oracle --evidence 3d0c035eedda8c476bb6d9b71dbdd1f5c336377c \\
+        runtime/hnsw_sovereign/types.rs runtime/hnsw_sovereign/graph.rs ...
+
+    python3 scripts/krites-provenance-transition.py \\
+        --set-method unknown \\
+        some/sovereign/row.rs
+
 --soak-commits is required for --to dual (added to the current
 `git rev-list --count origin/main` to produce an absolute
 soak_expires_at_commit_count, per the ledger header's own note that the field
 is absolute, not relative). It is rejected for --to sovereign, where the
 correct value is always 0 (soak is over).
+
+--set-method requires --evidence (a GitHub PR/issue reference '#NNNN', a git
+commit SHA, or a spec path 'spec:<path>') for every value except 'unknown',
+where --evidence is rejected — 'unknown' by definition has nothing to point
+at, and a value + a placeholder evidence string would be indistinguishable
+from a real one to every downstream reader. This is the ONLY sanctioned way
+to clear a row's 'unknown' authorship method — PROVENANCE.toml's own header
+says rows are generated and must not be hand-edited, and method is no
+exception: krites_provenance_lib.validate_rows re-checks the evidence shape
+on write regardless, so a hand-edit that skips this script fails the next
+gate run rather than silently landing.
 """
 
 from __future__ import annotations
@@ -57,6 +81,7 @@ from krites_provenance_lib import (  # noqa: E402
     ALLOWED_TRANSITIONS,
     KRITES_SRC,
     LEDGER_PATH,
+    METHODS,
     NOTICE_PATH,
     REPO_ROOT,
     UPSTREAM_SNAPSHOT_DIR,
@@ -93,7 +118,18 @@ def apply_to_sovereign(row: dict) -> None:
     behavior and this script has no network fetch of its own to match it.
     check-krites-provenance.py's check_verbatim_recompute will catch any
     resulting drift the moment the snapshot is present, exactly as it does
-    for derived/dual rows today."""
+    for derived/dual rows today.
+
+    WHY method always resets to 'unknown' here (#6797-followup): a status
+    transition is not an authorship record. The dual-era row's method was
+    always 'none' (method is only meaningful on sovereign rows), so there is
+    no prior method value to carry forward the way upstream_path is carried
+    forward as replaced_upstream_path — the row is entering sovereign for the
+    first time and genuinely has no recorded method yet. Defaulting to
+    anything but 'unknown' here would be exactly the fiat-clean-value mistake
+    this field exists to end. Call --set-method separately, with real
+    evidence, if the wave PR that completed this transition also knows how
+    the file was written."""
     prior_upstream_path = row["upstream_path"]
     row["soak_expires_at_commit_count"] = 0
     row["replaced_upstream_path"] = prior_upstream_path
@@ -110,6 +146,20 @@ def apply_to_sovereign(row: dict) -> None:
             file=sys.stderr,
         )
     row["upstream_path"] = "none"
+    row["method"] = "unknown"
+    row["method_evidence"] = "none"
+
+
+def apply_set_method(row: dict, method: str, evidence: str) -> None:
+    """Mutate a sovereign row's method/method_evidence in place.
+
+    WHY this is the ONLY sanctioned mutator: PROVENANCE.toml's header says rows
+    are generated and must not be hand-edited, and a hand-edit that skips this
+    script fails the next gate run anyway (krites_provenance_lib.validate_rows
+    re-checks the method/method_evidence shape on every write). Routing through
+    here just makes that the first failure encountered rather than the last."""
+    row["method"] = method
+    row["method_evidence"] = evidence
 
 
 def git_commit_count(ref: str) -> int:
@@ -124,16 +174,37 @@ def git_commit_count(ref: str) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--to", required=True, choices=["dual", "sovereign"])
+    parser.add_argument("--to", choices=["dual", "sovereign"], default=None)
     parser.add_argument("--soak-commits", type=int, default=None, help="required for --to dual")
     parser.add_argument("--main-ref", default="origin/main")
+    parser.add_argument(
+        "--set-method",
+        choices=METHODS,
+        default=None,
+        help="clear/re-record a sovereign row's authorship method; mutually exclusive with --to",
+    )
+    parser.add_argument(
+        "--evidence",
+        default=None,
+        help="required with --set-method unless the value is 'unknown' — a '#NNNN' PR/issue "
+        "ref, a commit SHA, or 'spec:<path>'",
+    )
     parser.add_argument("paths", nargs="+")
     args = parser.parse_args()
+
+    if (args.to is None) == (args.set_method is None):
+        parser.error("exactly one of --to or --set-method is required")
 
     if args.to == "dual" and args.soak_commits is None:
         parser.error("--to dual requires --soak-commits")
     if args.to == "sovereign" and args.soak_commits is not None:
         parser.error("--to sovereign takes soak_expires_at_commit_count=0 always; do not pass --soak-commits")
+    if args.set_method is not None:
+        if args.set_method == "unknown":
+            if args.evidence is not None:
+                parser.error("--set-method unknown must not carry --evidence — 'unknown' has nothing to point at")
+        elif args.evidence is None:
+            parser.error(f"--set-method {args.set_method!r} requires --evidence")
 
     try:
         meta, rows = parse_ledger(LEDGER_PATH.read_text())
@@ -150,21 +221,33 @@ def main() -> int:
     if args.to == "dual":
         target_expiry = git_commit_count(args.main_ref) + args.soak_commits
 
-    for p in args.paths:
-        row = by_path[p]
-        prior = row["status"]
-        if (prior, args.to) not in ALLOWED_TRANSITIONS:
-            print(
-                f"error: {p}: illegal transition {prior!r} -> {args.to!r} "
-                f"(allowed: {sorted(ALLOWED_TRANSITIONS)})",
-                file=sys.stderr,
-            )
-            return 1
-        row["status"] = args.to
-        if args.to == "dual":
-            row["soak_expires_at_commit_count"] = target_expiry
-        else:
-            apply_to_sovereign(row)
+    if args.to is not None:
+        for p in args.paths:
+            row = by_path[p]
+            prior = row["status"]
+            if (prior, args.to) not in ALLOWED_TRANSITIONS:
+                print(
+                    f"error: {p}: illegal transition {prior!r} -> {args.to!r} "
+                    f"(allowed: {sorted(ALLOWED_TRANSITIONS)})",
+                    file=sys.stderr,
+                )
+                return 1
+            row["status"] = args.to
+            if args.to == "dual":
+                row["soak_expires_at_commit_count"] = target_expiry
+            else:
+                apply_to_sovereign(row)
+    else:
+        evidence = "none" if args.set_method == "unknown" else args.evidence
+        for p in args.paths:
+            row = by_path[p]
+            if row["status"] != "sovereign":
+                print(
+                    f"error: {p}: method only applies to sovereign rows (status={row['status']!r})",
+                    file=sys.stderr,
+                )
+                return 1
+            apply_set_method(row, args.set_method, evidence)
 
     try:
         LEDGER_PATH.write_text(dump_ledger(meta, rows))
@@ -173,7 +256,10 @@ def main() -> int:
         return 1
     NOTICE_PATH.write_text(render_notice(meta, rows))
 
-    print(f"transitioned {len(args.paths)} row(s) to {args.to!r}")
+    if args.to is not None:
+        print(f"transitioned {len(args.paths)} row(s) to {args.to!r}")
+    else:
+        print(f"set method={args.set_method!r} on {len(args.paths)} row(s)")
     for p in args.paths:
         print(f"  {p}")
     return 0

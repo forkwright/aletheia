@@ -86,7 +86,19 @@ def row(
     status: str,
     soak: int = 0,
     replaced_upstream_path: str = "none",
+    method: str | None = None,
+    method_evidence: str | None = None,
 ) -> dict:
+    # WHY method/method_evidence default from status, not a fixed literal: every
+    # pre-#6797-followup test fixture in this file constructs both sovereign and
+    # non-sovereign rows through this one helper, and the field's own validation
+    # rule (krites_provenance_lib.validate_rows) is itself status-conditioned —
+    # 'none' off sovereign, a real METHODS value (default 'unknown') on it. Mirroring
+    # that here means every existing call site keeps passing without being touched.
+    if method is None:
+        method = "unknown" if status == "sovereign" else "none"
+    if method_evidence is None:
+        method_evidence = "none"
     return {
         "path": path,
         "upstream_path": upstream_path,
@@ -94,6 +106,8 @@ def row(
         "verbatim_pct": verbatim_pct,
         "status": status,
         "soak_expires_at_commit_count": soak,
+        "method": method,
+        "method_evidence": method_evidence,
     }
 
 
@@ -340,6 +354,12 @@ def test_apply_to_sovereign_retains_and_recomputes() -> None:
             expect(
                 r["soak_expires_at_commit_count"] == 0,
                 f"soak_expires_at_commit_count must be zeroed; got {r['soak_expires_at_commit_count']}",
+            )
+            expect(
+                r["method"] == "unknown" and r["method_evidence"] == "none",
+                "a status transition is not an authorship record -- a row entering sovereign "
+                f"for the first time must start at method='unknown'/'none'; got "
+                f"method={r['method']!r}, method_evidence={r['method_evidence']!r}",
             )
         finally:
             TRANSITION.UPSTREAM_SNAPSHOT_DIR = orig_snapshot
@@ -741,6 +761,249 @@ def test_no_unjustified_exemption_flags_stale_reason() -> None:
         CHECKER.NO_PREDECESSOR_REASONS = orig
 
 
+# --- #6797-followup: method records HOW a sovereign row was written ---
+
+
+def test_method_missing_key_passes_validate_rows() -> None:
+    # WHY tolerated at the validate_rows layer: a ledger serialized before this
+    # field existed has no such key at all, and check-krites-provenance.py's
+    # --base-ref comparison reads exactly such a ledger on every PR until enough
+    # history passes it by (the same reasoning replaced_upstream_path's own
+    # setdefault documents). Presence is gated at check-krites-provenance.py's
+    # check_method_recorded instead, on the CURRENT ledger only.
+    rows = [{"path": "old.rs", "upstream_path": "up.rs", "replaced_upstream_path": "none", "verbatim_pct": 40.0, "status": "derived", "soak_expires_at_commit_count": 0}]
+    try:
+        LIB.validate_rows(rows)
+    except LIB.LedgerError as exc:
+        _FAILURES.append(f"a row with no 'method' key at all must still pass validate_rows (pre-migration ledger read); got {exc}")
+
+
+def test_method_recorded_rejects_missing_key() -> None:
+    rows = [row("a.rs", "up.rs", 40.0, "derived")]
+    del rows[0]["method"]
+    errors = CHECKER.check_method_recorded(rows)
+    expect(
+        any("missing 'method'" in e and "a.rs" in e for e in errors),
+        f"a row with no 'method' key must be rejected by check_method_recorded; got {errors}",
+    )
+
+
+def test_method_recorded_rejects_sovereign_transliterated() -> None:
+    rows = [row("copy.rs", "none", 15.5, "sovereign", replaced_upstream_path="up.rs", method="transliterated", method_evidence="#6656")]
+    errors = CHECKER.check_method_recorded(rows)
+    expect(
+        any("transliterated" in e and "copy.rs" in e for e in errors),
+        f"a sovereign row carrying method='transliterated' must be rejected; got {errors}",
+    )
+
+
+def test_method_recorded_accepts_legitimate_value() -> None:
+    rows = [
+        row("oracle.rs", "none", 0.0, "sovereign", method="from_behavioral_oracle", method_evidence="3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"),
+        row("derived.rs", "up.rs", 40.0, "derived"),
+    ]
+    errors = CHECKER.check_method_recorded(rows)
+    expect(errors == [], f"rows with a legitimate method must pass check_method_recorded; got {errors}")
+
+
+def test_method_only_meaningful_on_sovereign() -> None:
+    rows = [row("d.rs", "up.rs", 40.0, "derived", method="from_spec")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a non-sovereign row carrying a real method value must be rejected",
+    )
+
+
+def test_sovereign_method_must_be_a_known_value() -> None:
+    rows = [row("s.rs", "none", 0.0, "sovereign", method="hand_waved")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a sovereign row's method must be one of METHODS",
+    )
+
+
+def test_sovereign_method_rejects_none() -> None:
+    rows = [row("s.rs", "none", 0.0, "sovereign", method="none")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a sovereign row must never carry method='none' -- it always has an authorship claim, "
+        "even if that claim is 'unknown'",
+    )
+
+
+def test_method_evidence_required_when_resolved() -> None:
+    rows = [row("s.rs", "none", 0.0, "sovereign", method="attested_original", method_evidence="none")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a resolved (non-unknown) sovereign method must carry real method_evidence, not 'none'",
+    )
+
+
+def test_method_evidence_forbidden_when_unknown() -> None:
+    rows = [row("s.rs", "none", 0.0, "sovereign", method="unknown", method_evidence="#1234")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "method='unknown' must carry method_evidence='none' -- unknown has nothing to point at",
+    )
+
+
+def test_method_evidence_forbidden_off_sovereign() -> None:
+    rows = [row("d.rs", "up.rs", 40.0, "derived", method_evidence="#1234")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a non-sovereign row must never carry a real method_evidence",
+    )
+
+
+def test_method_evidence_accepts_pr_ref_commit_sha_and_spec_path() -> None:
+    for evidence in ("#6640", "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c", "3d0c035", "spec:docs/algo.md"):
+        rows = [row("s.rs", "none", 0.0, "sovereign", method="from_spec", method_evidence=evidence)]
+        try:
+            LIB.validate_rows(rows)
+        except LIB.LedgerError as exc:
+            _FAILURES.append(f"method_evidence={evidence!r} is a legitimate shape and must be accepted; got {exc}")
+
+
+def test_method_evidence_rejects_prose() -> None:
+    rows = [row("s.rs", "none", 0.0, "sovereign", method="from_spec", method_evidence="trust me")]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a prose justification is not an independently-checkable evidence pointer and must be rejected",
+    )
+
+
+def test_dump_ledger_refuses_row_missing_method() -> None:
+    rows = [row("a.rs", "up.rs", 40.0, "derived")]
+    del rows[0]["method"]
+    del rows[0]["method_evidence"]
+    meta = {"upstream_repo": "https://example/x", "upstream_ref": "deadbeef"}
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.dump_ledger(meta, rows),
+        "dump_ledger must refuse to write a row with no method/method_evidence rather than crash "
+        "with a bare KeyError",
+    )
+
+
+def test_transition_set_method_unknown_forbids_evidence() -> None:
+    # WHY no ledger fixture needed: every branch below raises via parser.error()
+    # (argparse -> SystemExit(2)) before main() ever touches LEDGER_PATH.
+    orig_argv = sys.argv
+    sys.argv = ["krites-provenance-transition.py", "--set-method", "unknown", "--evidence", "#1", "some.rs"]
+    try:
+        expect_raises(SystemExit, TRANSITION.main, "--set-method unknown must reject --evidence")
+    finally:
+        sys.argv = orig_argv
+
+
+def test_transition_set_method_resolved_requires_evidence() -> None:
+    orig_argv = sys.argv
+    sys.argv = ["krites-provenance-transition.py", "--set-method", "from_spec", "some.rs"]
+    try:
+        expect_raises(SystemExit, TRANSITION.main, "--set-method from_spec with no --evidence must be rejected")
+    finally:
+        sys.argv = orig_argv
+
+
+def test_transition_to_and_set_method_are_mutually_exclusive() -> None:
+    orig_argv = sys.argv
+    sys.argv = ["krites-provenance-transition.py", "--to", "sovereign", "--set-method", "unknown", "some.rs"]
+    try:
+        expect_raises(SystemExit, TRANSITION.main, "--to and --set-method together must be rejected")
+    finally:
+        sys.argv = orig_argv
+
+
+def test_transition_neither_to_nor_set_method_is_rejected() -> None:
+    orig_argv = sys.argv
+    sys.argv = ["krites-provenance-transition.py", "some.rs"]
+    try:
+        expect_raises(SystemExit, TRANSITION.main, "neither --to nor --set-method must be rejected")
+    finally:
+        sys.argv = orig_argv
+
+
+def test_transition_set_method_end_to_end_updates_ledger() -> None:
+    # WHY a real tempfile round-trip, not just apply_set_method(): this is the ONLY
+    # sanctioned way to clear 'unknown' with evidence (item 4's requirement), so its
+    # full path -- CLI parsing, ledger read, mutation, dump_ledger's own re-validation,
+    # NOTICE.md re-render -- needs to be proven end to end, not just the pure mutator.
+    with tempfile.TemporaryDirectory() as tmp:
+        ledger_path = Path(tmp) / "PROVENANCE.toml"
+        notice_path = Path(tmp) / "NOTICE.md"
+        ledger_path.write_text(
+            '[meta]\n'
+            'upstream_repo = "https://example/x"\n'
+            'upstream_ref = "deadbeef"\n\n'
+            '[[file]]\n'
+            'path = "s.rs"\n'
+            'upstream_path = "none"\n'
+            'replaced_upstream_path = "none"\n'
+            'verbatim_pct = 0.0\n'
+            'status = "sovereign"\n'
+            'soak_expires_at_commit_count = 0\n'
+            'method = "unknown"\n'
+            'method_evidence = "none"\n'
+        )
+        orig_ledger, orig_notice = TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH
+        TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = ledger_path, notice_path
+        orig_argv = sys.argv
+        sys.argv = [
+            "krites-provenance-transition.py",
+            "--set-method",
+            "from_behavioral_oracle",
+            "--evidence",
+            "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c",
+            "s.rs",
+        ]
+        try:
+            exit_code = TRANSITION.main()
+            expect(exit_code == 0, f"a legitimate --set-method call must exit 0; got {exit_code}")
+            _, written_rows = LIB.parse_ledger(ledger_path.read_text())
+            written = written_rows[0]
+            expect(
+                written["method"] == "from_behavioral_oracle"
+                and written["method_evidence"] == "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c",
+                f"the written ledger must carry the new method/evidence; got {written}",
+            )
+            expect(notice_path.exists(), "NOTICE.md must be re-rendered")
+        finally:
+            TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = orig_ledger, orig_notice
+            sys.argv = orig_argv
+
+
+def test_apply_set_method_writes_both_fields() -> None:
+    r = row("s.rs", "none", 0.0, "sovereign")
+    TRANSITION.apply_set_method(r, "from_behavioral_oracle", "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c")
+    expect(
+        r["method"] == "from_behavioral_oracle" and r["method_evidence"] == "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c",
+        f"apply_set_method must set both fields; got method={r['method']!r}, method_evidence={r['method_evidence']!r}",
+    )
+
+
+def test_resolve_method_preserves_across_regeneration() -> None:
+    preserved = {"s.rs": ("from_spec", "#6656")}
+    got = MEASURE.resolve_method("s.rs", "sovereign", preserved)
+    expect(got == ("from_spec", "#6656"), f"a preserved resolved method must survive regeneration unchanged; got {got}")
+
+
+def test_resolve_method_defaults_new_sovereign_row_to_unknown() -> None:
+    got = MEASURE.resolve_method("new.rs", "sovereign", {})
+    expect(got == ("unknown", "none"), f"a brand-new sovereign row with no prior record must default to unknown/none; got {got}")
+
+
+def test_resolve_method_defaults_non_sovereign_to_none() -> None:
+    got = MEASURE.resolve_method("d.rs", "derived", {})
+    expect(got == ("none", "none"), f"a non-sovereign row must default to method='none'; got {got}")
+
+
 # --- a moved `dual` file must not lose its soak fuse ---
 
 
@@ -878,6 +1141,28 @@ def main() -> int:
         test_dual_move_guard_quiet_when_nothing_moved,
         test_unparsable_ledger_fails_closed,
         test_missing_ledger_still_bootstraps,
+        test_method_missing_key_passes_validate_rows,
+        test_method_recorded_rejects_missing_key,
+        test_method_recorded_rejects_sovereign_transliterated,
+        test_method_recorded_accepts_legitimate_value,
+        test_method_only_meaningful_on_sovereign,
+        test_sovereign_method_must_be_a_known_value,
+        test_sovereign_method_rejects_none,
+        test_method_evidence_required_when_resolved,
+        test_method_evidence_forbidden_when_unknown,
+        test_method_evidence_forbidden_off_sovereign,
+        test_method_evidence_accepts_pr_ref_commit_sha_and_spec_path,
+        test_method_evidence_rejects_prose,
+        test_dump_ledger_refuses_row_missing_method,
+        test_transition_set_method_unknown_forbids_evidence,
+        test_transition_set_method_resolved_requires_evidence,
+        test_transition_to_and_set_method_are_mutually_exclusive,
+        test_transition_neither_to_nor_set_method_is_rejected,
+        test_transition_set_method_end_to_end_updates_ledger,
+        test_apply_set_method_writes_both_fields,
+        test_resolve_method_preserves_across_regeneration,
+        test_resolve_method_defaults_new_sovereign_row_to_unknown,
+        test_resolve_method_defaults_non_sovereign_to_none,
     ):
         test_fn()
 

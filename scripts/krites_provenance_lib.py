@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import difflib
 import pathlib
+import re
 
 import tomllib
 
@@ -16,6 +17,39 @@ NOTICE_PATH = KRITES_DIR / "NOTICE.md"
 # by this branch. Optional — check_verbatim_recompute skips (not fails) when
 # absent, so this file has no ordering dependency on that branch landing.
 UPSTREAM_SNAPSHOT_DIR = KRITES_DIR / "upstream-snapshot" / "cozo-core-src"
+
+# INVARIANT(#6797-followup): the #1-ranked hole in this whole scheme -- every other
+# field records what a file's TEXT looks like (verbatim_pct) or where it came from
+# (upstream_path/replaced_upstream_path); none records HOW a sovereign row was
+# WRITTEN, which is what 'sovereign' actually claims. verbatim_pct provably cannot
+# substitute: a confirmed transliteration (fixed_rule/algos/dfs_native.rs, #6656)
+# measured 26.6% against its source while a confirmed independent rewrite
+# (degree_centrality_native.rs) measured HIGHER at 32.1% -- the metric ranks a copy
+# above a rewrite. 'transliterated' is a FINDING value, not a state check_verbatim_
+# recompute or any other measurement can reach on its own; it exists so a value CAN
+# be recorded when one is found (fts/tokenizer/stop_word_filter/sovereign/mod.rs, a
+# statement-for-statement match at 15.5%, below every calibration threshold), while
+# check-krites-provenance.py's check_method_recorded fails the build on any row that
+# carries it -- recording a finding is legitimate; leaving the row sovereign with it
+# is not.
+METHODS = (
+    "from_spec",  # written against a written specification/paper, source not consulted
+    "from_behavioral_oracle",  # written against observed behaviour/tests, source not read
+    "rewritten_with_source_open",  # the derived file was consulted while writing
+    "transliterated",  # finding value -- confirmed disguised copy, never legitimate on a sovereign row
+    "attested_original",  # no predecessor existed; this is aletheia's own new code
+    "unknown",  # no record exists
+)
+
+# WHY a regex, not free text: 'evidence' that clears 'unknown' is only worth
+# recording if a reader can independently go verify it. A GitHub PR/issue reference,
+# a git commit SHA, or a spec path are all independently checkable; a prose
+# justification with nothing to follow is exactly the "measured once, trusted
+# forever" failure this whole field exists to end (krites-provenance-transition.py
+# once hardcoded verbatim_pct=0.0 on every dual -> sovereign transition -- 17 files
+# entered 'sovereign' that way and later re-measured at 18-41%; an unfollowable
+# 'evidence' string would repeat that with prose standing in for the fiat zero).
+METHOD_EVIDENCE_PATTERN = re.compile(r"^(#\d+|[0-9a-f]{7,40}|spec:\S+)$")
 
 STATUSES = ("derived", "sovereign", "dual")
 # INVARIANT(P1): the only legal forward status transitions — a row may only
@@ -299,6 +333,53 @@ def validate_rows(rows: list[dict]) -> None:
                 f"unmeasured claim with no retained evidence (got verbatim_pct={row['verbatim_pct']})"
             )
 
+        # INVARIANT(#6797-followup): method records HOW a row was WRITTEN, distinct from
+        # every other field's WHAT/WHERE. Deliberately checked only "if present" rather
+        # than setdefault-ed like replaced_upstream_path above: 'unknown' is a legitimate,
+        # honest FINAL value for this field (the migrated state of every pre-existing
+        # sovereign row), so silently defaulting an absent key to 'unknown' here would make
+        # a genuinely-missing field indistinguishable from a genuinely-recorded 'unknown' —
+        # check-krites-provenance.py's check_method_recorded needs that distinction to gate
+        # on presence. A ledger predating this field (read via --base-ref against
+        # pre-migration history) still parses: absence is silently tolerated on READ, and
+        # dump_ledger (below) is where absence on WRITE is refused instead.
+        if "method" in row:
+            method = row["method"]
+            if not isinstance(method, str):
+                raise LedgerError(f"{path}: method must be a string, got {method!r}")
+            if row["status"] != "sovereign":
+                if method != "none":
+                    raise LedgerError(
+                        f"{path}: method is only meaningful on status=sovereign rows (got "
+                        f"status={row['status']!r}, method={method!r}) — a derived/dual row's "
+                        "authorship is already answered by upstream_path, not a separate claim"
+                    )
+            elif method not in METHODS:
+                raise LedgerError(f"{path}: status=sovereign requires method to be one of {METHODS}, got {method!r}")
+        # NOTE: method_evidence is the independently-checkable pointer (PR/issue ref, commit SHA,
+        # spec path) that a resolved method claim is backed by something a reader can go
+        # verify, not a hand-typed assertion. Present exactly when method is sovereign AND
+        # resolved (i.e. not 'unknown') — 'unknown' by construction has nothing to point at,
+        # and a non-sovereign row's method is already 'none' with nothing to back.
+        if "method_evidence" in row:
+            evidence = row["method_evidence"]
+            if not isinstance(evidence, str):
+                raise LedgerError(f"{path}: method_evidence must be a string, got {evidence!r}")
+            method = row.get("method")
+            if row["status"] != "sovereign" or method in (None, "unknown"):
+                if evidence != "none":
+                    raise LedgerError(
+                        f"{path}: method_evidence must be 'none' unless a resolved sovereign "
+                        f"method is recorded (got status={row['status']!r}, method={method!r}, "
+                        f"method_evidence={evidence!r})"
+                    )
+            elif evidence == "none" or not METHOD_EVIDENCE_PATTERN.match(evidence):
+                raise LedgerError(
+                    f"{path}: method={method!r} requires a real method_evidence — a PR/issue "
+                    "reference ('#NNNN'), a commit SHA (7-40 hex chars), or a spec path "
+                    f"('spec:<path>') — got {evidence!r}"
+                )
+
 
 def parse_ledger(text: str) -> tuple[dict, list[dict]]:
     data = tomllib.loads(text)
@@ -315,6 +396,19 @@ def _toml_str(value: str) -> str:
 
 def dump_ledger(meta: dict, rows: list[dict]) -> str:
     validate_rows(rows)
+    # SAFETY(#6797-followup): unlike validate_rows' read path, a WRITE requires method/
+    # method_evidence present on every row — 'generated, do not hand-edit rows' means the
+    # only legitimate way a row reaches this function is through measure-krites-provenance.py
+    # or krites-provenance-transition.py, both of which always set both fields. A row
+    # missing either here is a caller bug or a hand-edit that stripped the field; raising a
+    # clear LedgerError beats a bare KeyError from the f-string access below.
+    missing = sorted(row["path"] for row in rows if "method" not in row or "method_evidence" not in row)
+    if missing:
+        raise LedgerError(
+            "dump_ledger requires 'method' and 'method_evidence' set on every row before "
+            "writing (regenerate via measure-krites-provenance.py, or set explicitly via "
+            "krites-provenance-transition.py): " + ", ".join(missing)
+        )
     lines = [
         "# NOTE: generated by scripts/measure-krites-provenance.py — do not hand-edit rows.",
         "# NOTE: soak_expires_at_commit_count = 0 means the file is not in dual",
@@ -334,6 +428,15 @@ def dump_ledger(meta: dict, rows: list[dict]) -> str:
         "# NOTE: then measured against THIS field, not upstream_path (which stays 'none'",
         "# NOTE: on every sovereign row — no MPL lineage claim). CI recomputes and",
         "# NOTE: fails on drift (check_verbatim_recompute), same as derived/dual.",
+        "# NOTE: method records HOW a sovereign row was written ('none' on derived/dual —",
+        "# NOTE: answered already by upstream_path): from_spec | from_behavioral_oracle |",
+        "# NOTE: rewritten_with_source_open | transliterated | attested_original | unknown.",
+        "# NOTE: 'unknown' is the honest default for every row with no record; CI fails on a",
+        "# NOTE: missing method or a sovereign row carrying 'transliterated' (check_method_",
+        "# NOTE: recorded). method_evidence is 'none' unless method is resolved and non-",
+        "# NOTE: 'unknown', in which case it is a PR/issue ref, a commit SHA, or a spec path —",
+        "# NOTE: never a hand-typed justification. Clear 'unknown' only via",
+        "# NOTE: krites-provenance-transition.py --set-method, never by hand-editing this row.",
         "",
         "[meta]",
         f"upstream_repo = {_toml_str(meta['upstream_repo'])}",
@@ -348,6 +451,8 @@ def dump_ledger(meta: dict, rows: list[dict]) -> str:
         lines.append(f"verbatim_pct = {row['verbatim_pct']:.1f}")
         lines.append(f"status = {_toml_str(row['status'])}")
         lines.append(f"soak_expires_at_commit_count = {row['soak_expires_at_commit_count']}")
+        lines.append(f"method = {_toml_str(row['method'])}")
+        lines.append(f"method_evidence = {_toml_str(row['method_evidence'])}")
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
 
@@ -393,6 +498,9 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to "
         "measure and its `verbatim_pct` is genuinely 0.0."
     )
+    unknown_sovereign = [r for r in sovereign if r.get("method", "none") == "unknown"]
+    resolved_sovereign = [r for r in sovereign if r.get("method", "none") not in ("none", "unknown")]
+
     lines.append("")
     lines.append(f"- Upstream: <{meta['upstream_repo']}>, pinned at `{meta['upstream_ref']}`")
     lines.append(f"- {len(rows)} files under `src/`: {len(derived)} derived, {len(sovereign)} sovereign, {len(dual)} dual")
@@ -400,9 +508,14 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         f"- Mean verbatim match across the {len(derived)} derived files: {mean_pct}% "
         "(unweighted average of the per-file `verbatim_pct` column below)"
     )
+    lines.append(
+        f"- Of the {len(sovereign)} sovereign files, **{len(unknown_sovereign)} carry "
+        f"`method = \"unknown\"`** (no record of how they were written) and {len(resolved_sovereign)} "
+        "carry a resolved, evidence-backed method — see \"Authorship method\" below."
+    )
     lines.append("")
-    lines.append("| File | Upstream | Verbatim | Status |")
-    lines.append("|---|---|---:|---|")
+    lines.append("| File | Upstream | Verbatim | Status | Method |")
+    lines.append("|---|---|---:|---|---|")
     for row in rows:
         if row["upstream_path"] != "none":
             upstream_cell = f"`{row['upstream_path']}`"
@@ -410,8 +523,16 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
             upstream_cell = f"cf. `{row['replaced_upstream_path']}`"
         else:
             upstream_cell = "—"
+        method = row.get("method", "none")
+        evidence = row.get("method_evidence", "none")
+        if method == "none":
+            method_cell = "—"
+        elif evidence != "none":
+            method_cell = f"{method} (cf. `{evidence}`)"
+        else:
+            method_cell = method
         lines.append(
-            f"| `src/{row['path']}` | {upstream_cell} | {row['verbatim_pct']:.1f}% | {row['status']} |"
+            f"| `src/{row['path']}` | {upstream_cell} | {row['verbatim_pct']:.1f}% | {row['status']} | {method_cell} |"
         )
     lines.append("")
     lines.append(
@@ -420,6 +541,47 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "path, `kcore`, RRF, the fixed-rule test suite, and `data/tests/proptest_memcmp` — all "
         "`sovereign` in the table above. They do not change the provenance of the derived files "
         "they extend."
+    )
+    lines.append("")
+    lines.append("## Authorship method")
+    lines.append("")
+    lines.append(
+        "`status = sovereign` is a claim about **authorship** — that a file was written by "
+        "aletheia rather than derived from CozoDB. Every other field in the ledger records what a "
+        "file's text looks like (`verbatim_pct`) or where it came from (`upstream_path`, "
+        "`replaced_upstream_path`); none of them record *how* a sovereign file was written, which "
+        "is what the claim actually rests on. `verbatim_pct` cannot substitute: a confirmed "
+        "transliteration (`fixed_rule/algos/dfs_native.rs`, aletheia#6656) measured 26.6% against "
+        "its source while a confirmed independent rewrite (`degree_centrality_native.rs`) measured "
+        "*higher*, at 32.1% — the metric ranks a disguised copy above a genuine rewrite. `method` "
+        "is the field that answers the question textual similarity cannot."
+    )
+    lines.append("")
+    lines.append("| Value | Meaning |")
+    lines.append("|---|---|")
+    lines.append("| `from_spec` | written against a written specification/paper, without reference to the derived source |")
+    lines.append("| `from_behavioral_oracle` | written against observed behaviour/tests of the derived code, source not read |")
+    lines.append("| `rewritten_with_source_open` | the derived file was consulted while writing |")
+    lines.append("| `transliterated` | a **finding** value — confirms the file is a disguised copy; never a legitimate state for a sovereign row (see \"Anti-backsliding\" below) |")
+    lines.append("| `attested_original` | no predecessor existed; this is aletheia's own new code |")
+    lines.append("| `unknown` | no record exists |")
+    lines.append("")
+    lines.append(
+        f"**{len(unknown_sovereign)} of {len(sovereign)}** sovereign rows carry `method = \"unknown\"` "
+        "today. They were migrated there deliberately, not defaulted to a clean value: no evidence "
+        "existed to support one, and a clean-by-default value would repeat this scheme's own "
+        "history — `krites-provenance-transition.py` once hardcoded `verbatim_pct = 0.0` on every "
+        "`dual` → `sovereign` transition, and 17 files that entered `sovereign` that way later "
+        "re-measured at 18–41%. `unknown` is not itself a failure; it is the honest state until "
+        "cleared with evidence."
+    )
+    lines.append("")
+    lines.append(
+        f"**{len(resolved_sovereign)}** carry a resolved method backed by a `method_evidence` "
+        "pointer — a PR/issue reference, a commit SHA, or a spec path, always independently "
+        "checkable, never a hand-typed justification. `unknown` is cleared only through "
+        "`scripts/krites-provenance-transition.py --set-method <value> --evidence <pointer>`, never "
+        "by hand-editing a row."
     )
     lines.append("")
     lines.append("## Reading `verbatim_pct`: what it can and cannot prove")
@@ -551,5 +713,17 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "`NO_PREDECESSOR_REASONS` — an explicit, individually-verified declaration of "
         "why the row genuinely has nothing to compare against — or if that map holds "
         "a stale entry for a row that no longer qualifies."
+    )
+    lines.append("")
+    lines.append(
+        "A third clause closes the gap none of the above reach: every check above verifies "
+        "*what a file's text looks like* against *where it came from* — none of them record "
+        "*how it was written*, which is what `status = sovereign` actually claims. CI now fails "
+        "the build if any ledger row is missing `method`, or if a `sovereign` row carries "
+        "`method = \"transliterated\"` (`check_method_recorded`). Recording a transliteration "
+        "finding is legitimate — `fts/tokenizer/stop_word_filter/sovereign/mod.rs` carries it "
+        "today, a statement-for-statement match against its replaced upstream at 15.5% "
+        "(aletheia#6656) — leaving the row `sovereign` with it is not: the row must be "
+        "rewritten independently or reclassified before the gate passes again."
     )
     return "\n".join(lines).rstrip("\n") + "\n"

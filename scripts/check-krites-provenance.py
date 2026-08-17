@@ -354,6 +354,50 @@ def check_no_unjustified_exemption(rows: list[dict]) -> list[str]:
     return errors
 
 
+def check_method_recorded(rows: list[dict]) -> list[str]:
+    """#6797-followup: the ledger's #1-ranked hole — every other field records what a
+    file's text looks like (verbatim_pct) or where it came from (upstream_path/
+    replaced_upstream_path); none records HOW a sovereign row was written, which is
+    what 'sovereign' actually claims. verbatim_pct cannot substitute: a confirmed
+    transliteration measured 26.6% against its source while a confirmed independent
+    rewrite measured HIGHER at 32.1% (aletheia#6656) — the metric ranks a copy above
+    a rewrite.
+
+    Gates on PRESENCE, not on a score: a row with no 'method' key at all fails (the
+    field is optional at parse time — krites_provenance_lib.validate_rows tolerates
+    absence so a pre-migration --base-ref ledger still parses — but the CURRENT
+    ledger must always carry it, since dump_ledger refuses to write a row without
+    one). A 'sovereign' row carrying method='transliterated' also fails: that value
+    exists so a finding CAN be recorded (fts/tokenizer/stop_word_filter/sovereign/
+    mod.rs carries it today — a statement-for-statement match at 15.5%, aletheia#6656)
+    but recording the finding does not clear the row; only rewriting it independently
+    or reclassifying it does.
+    """
+    errors = []
+    for row in rows:
+        path = row["path"]
+        method = row.get("method")
+        if not method:
+            errors.append(
+                f"{path}: missing 'method' — every ledger row must record HOW it was "
+                "written, not only what it looks like (verbatim_pct provably cannot "
+                "substitute — aletheia#6656). Regenerate via "
+                "scripts/measure-krites-provenance.py, or set explicitly via "
+                "scripts/krites-provenance-transition.py --set-method"
+            )
+            continue
+        if row["status"] == "sovereign" and method == "transliterated":
+            errors.append(
+                f"{path}: sovereign row carries method='transliterated' — that is a "
+                "finding value, never a legitimate state for a sovereign row: it means "
+                "the file was confirmed to be a disguised copy, not an independent "
+                "rewrite. Fix the file's provenance (rewrite it independently, per "
+                "aletheia#6656's own remediation of fixed_rule/algos/dfs_native.rs, or "
+                "reclassify the row) rather than leaving it sovereign with this method"
+            )
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-ref", default="origin/main")
@@ -384,6 +428,7 @@ def main() -> int:
     errors += check_soak_expiry(rows, git_commit_count(args.main_ref))
     errors += check_verbatim_recompute(rows)
     errors += check_no_unjustified_exemption(rows)
+    errors += check_method_recorded(rows)
 
     if errors:
         for err in errors:
