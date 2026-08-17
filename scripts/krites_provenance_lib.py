@@ -32,6 +32,132 @@ ALLOWED_TRANSITIONS = frozenset({("derived", "dual"), ("dual", "sovereign")})
 # until this tuple grew .md/.py alongside .rs/.pest.
 TRACKED_SUFFIXES = (".rs", ".pest", ".md", ".py")
 
+# INVARIANT(#6797): a 'sovereign' row's replaced_upstream_path == 'none' is a claim
+# that the file genuinely has no predecessor to measure against -- before this map
+# existed, that claim was the SKIP branch's unconditional default, and nothing
+# distinguished "genuinely fresh" from "nobody ever mapped it". That is how
+# runtime/hnsw_sovereign/* (2912 lines, the crate's highest-risk rewrite) sat
+# completely unmeasured at 'none' while 17 smaller fixed_rule/algos/*_native.rs
+# rewrites next to it were all measured (aletheia#6656 already fixed those; this map
+# closes the mechanism that let a NEW row repeat the same hole).
+#
+# check-krites-provenance.py's check_no_unjustified_exemption requires every
+# sovereign/'none' row to appear here. Key = the row's path exactly as it appears
+# in PROVENANCE.toml; value = a one-line reason, individually verified against
+# crates/krites/upstream-snapshot/cozo-core-src/ (same discipline as UPSTREAM_MAP
+# and SOVEREIGN_VERIFY_MAP in measure-krites-provenance.py, for the same reason --
+# do not derive membership by path-shape pattern matching, e.g. truncating a
+# directory to find a same-named file one level up: fixed_rule/csr/mod.rs is not
+# fixed_rule/mod.rs, and query/tests/mod.rs is not query/mod.rs).
+#
+# A row that instead DOES have a real predecessor belongs in
+# measure-krites-provenance.py's SOVEREIGN_VERIFY_MAP, not here -- the two are
+# mutually exclusive per row, exactly like UPSTREAM_MAP/SOVEREIGN_VERIFY_MAP already
+# are.
+NO_PREDECESSOR_REASONS: dict[str, str] = {
+    "async_surface.rs": (
+        "aletheia-native async surface; NOTICE.md lists it among aletheia's own "
+        "sovereign additions with no upstream counterpart"
+    ),
+    "counterfactual.rs": (
+        "aletheia-native counterfactual-query feature; NOTICE.md lists it among "
+        "aletheia's own sovereign additions"
+    ),
+    "counterfactual_tests.rs": "test suite for counterfactual.rs, a feature with no upstream analogue",
+    "data/error.rs": (
+        "cozo-core has no error.rs anywhere -- it uses type-erased miette::Error "
+        "plus scattered derive structs, not a per-module error file"
+    ),
+    "data/tests/functions/validity_units.rs": (
+        "regression test for aletheia#6656 / upstream cozo#312's Validity "
+        "microsecond/second unit boundary, a krites-specific bugfix with no "
+        "upstream test to compare against"
+    ),
+    "data/tests/proptest_memcmp.rs": (
+        "proptest-based property-test suite for DataValue memcmp/serde round-trips; "
+        "cozo-core has no proptest-based test file under data/tests/"
+    ),
+    "error.rs": "cozo-core has no error.rs anywhere -- type-erased miette::Error plus scattered derive structs",
+    "fixed_rule/algos/kcore.rs": (
+        "cozo-core has no k-core implementation at all (grep for KCore/k_core/kcore "
+        "over the snapshot returns zero hits)"
+    ),
+    "fixed_rule/csr/mod.rs": (
+        "from-scratch compressed-sparse-row graph representation; cozo-core has no "
+        "CSR module (fixed_rule/mod.rs is the unrelated FixedRule trait definition, "
+        "not a predecessor despite the truncated-path match)"
+    ),
+    "fixed_rule/csr/page_rank.rs": (
+        "PageRank power iteration over the from-scratch CSR representation; "
+        "reimplements the third-party `graph` crate's page_rank/PageRankConfig API "
+        "that cozo-core's own fixed_rule/algos/pagerank.rs delegates to, not a "
+        "rewrite of cozo-core's own file (measured 0.0% against it)"
+    ),
+    "fixed_rule/error.rs": "cozo-core has no error.rs anywhere",
+    "fixed_rule/tests/centrality_spanning.rs": (
+        "krites-native DbInstance integration tests; cozo-core has no "
+        "fixed_rule/tests/ directory at all"
+    ),
+    "fixed_rule/tests/connectivity_misc.rs": (
+        "krites-native DbInstance integration tests; cozo-core has no "
+        "fixed_rule/tests/ directory"
+    ),
+    "fixed_rule/tests/mod.rs": (
+        "module declarations for krites-native fixed_rule test files; cozo-core has "
+        "no fixed_rule/tests/ directory"
+    ),
+    "fixed_rule/tests/path_algorithms.rs": (
+        "krites-native DbInstance integration tests; cozo-core has no "
+        "fixed_rule/tests/ directory"
+    ),
+    "fixed_rule/tests/proptest_algos.rs": (
+        "krites-native property tests for graph algorithms; cozo-core has no "
+        "fixed_rule/tests/ directory"
+    ),
+    "fixed_rule/tests/wave5_reference_semantics.rs": (
+        "krites-native reference-semantics tests for the land-dark cfg mechanism, "
+        "which cozo-core does not have"
+    ),
+    "fixed_rule/utilities/rrf.rs": "krites-native reciprocal-rank-fusion utility with no upstream equivalent",
+    "fts/error.rs": "cozo-core has no error.rs anywhere",
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py": (
+        "UCD/CLDR table-generation tool; cozo-core's fold table is hand-authored "
+        "inline in ascii_folding_filter.rs, with no generator script of any kind to "
+        "compare against"
+    ),
+    "fts/tokenizer/stop_word_filter/sovereign/NOTICE.md": (
+        "third-party (stopwords-iso, MIT) attribution notice; cozo-core carries no "
+        "such notice file anywhere"
+    ),
+    "hot_reload.rs": "aletheia-native hot-reload feature; NOTICE.md lists it among aletheia's own sovereign additions",
+    "parse/error.rs": "cozo-core has no error.rs anywhere",
+    "query/context.rs": (
+        "krites-native QueryContext trait decoupling query/ from "
+        "runtime::transact::SessionTx; cozo-core's query/ names SessionTx directly "
+        "and has no such abstraction"
+    ),
+    "query/error.rs": "cozo-core has no error.rs anywhere",
+    "query/tests/mod.rs": (
+        "krites-native query integration tests; cozo-core has no query/tests/ "
+        "directory (query/mod.rs is the unrelated query-engine module, not a "
+        "predecessor despite the truncated-path match)"
+    ),
+    "query/tests/reference_semantics.rs": (
+        "krites-native query integration tests; cozo-core has no query/tests/ directory"
+    ),
+    "query_cache.rs": "aletheia-native query cache; NOTICE.md lists it among aletheia's own sovereign additions",
+    "runtime/error.rs": "cozo-core has no error.rs anywhere",
+    "runtime/query_context_impl.rs": (
+        "krites-native SessionTx -> QueryContext trait impl completing the "
+        "query/context.rs decoupling; cozo-core has no such abstraction"
+    ),
+    "storage/error.rs": "cozo-core has no error.rs anywhere",
+    "storage/fjall_backend.rs": (
+        "aletheia-native fjall storage backend; cozo-core's storage/ holds mem, "
+        "newrocks, rocks, sled, sqlite, temp, tikv -- no fjall backend of any kind"
+    ),
+}
+
 
 class LedgerError(ValueError):
     pass
@@ -411,5 +537,19 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "discouraged: neither check alone stops a bypass that clears the other (flip status alone "
         "leaves verbatim_pct as evidence; zero the field too and the sequence check still "
         "requires a `dual` commit in between)."
+    )
+    lines.append("")
+    lines.append(
+        "One more clause closes a gap the recompute check could not reach on its own "
+        "(aletheia#6797): a `sovereign` row with `replaced_upstream_path == 'none'` had "
+        "nothing for the recompute check to run against, and nothing verified that "
+        "`'none'` meant \"genuinely nothing to compare against\" rather than \"nobody "
+        "mapped it yet\" — the two looked identical, which is how the crate's "
+        "highest-risk rewrite (`runtime/hnsw_sovereign/*`, 2912 lines) sat completely "
+        "unmeasured while smaller rewrites beside it were all measured. CI now fails "
+        "the build if any such row is absent from `krites_provenance_lib.py`'s "
+        "`NO_PREDECESSOR_REASONS` — an explicit, individually-verified declaration of "
+        "why the row genuinely has nothing to compare against — or if that map holds "
+        "a stale entry for a row that no longer qualifies."
     )
     return "\n".join(lines).rstrip("\n") + "\n"

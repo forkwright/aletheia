@@ -363,6 +363,39 @@ SOVEREIGN_VERIFY_MAP: dict[str, str] = {
     "runtime/hnsw_sovereign/remove.rs": "runtime/hnsw.rs",
     "runtime/hnsw_sovereign/search.rs": "runtime/hnsw.rs",
     "runtime/hnsw_sovereign/types.rs": "runtime/hnsw.rs",
+    # #6797: the same audit that closed aletheia#6656 for hnsw_sovereign found two
+    # more sovereign-with-none rows that DO have a real predecessor, once judged by
+    # content rather than path shape.
+    #
+    # fold_table_sovereign/{mod.rs,table.rs}: fold_table.rs (this crate's own row,
+    # already sovereign) already carries replaced_upstream_path =
+    # "fts/tokenizer/ascii_folding_filter.rs" -- it is now a ten-line shim that
+    # delegates to fold_table_sovereign, exactly the "upstream keeps it in one file,
+    # krites split it further" shape the hnsw_sovereign group above documents.
+    # mod.rs's own fold_non_ascii_char(c: char) -> Option<&'static str> is the same
+    # function name and signature upstream's file implements inline; table.rs holds
+    # the data that function looks up. generate.py (the UCD/CLDR codegen tool that
+    # produced table.rs) is deliberately absent here -- unlike stop_word_filter's
+    # gen_stopwords.py below, cozo-core's fold table was hand-authored with no
+    # generator script of any kind, so there is nothing for a Python file to be
+    # measured against.
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs": "fts/tokenizer/ascii_folding_filter.rs",
+    "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs": "fts/tokenizer/ascii_folding_filter.rs",
+    # stop_word_filter/sovereign/mod.rs: a line-for-line reproduction of upstream's
+    # own stop_word_filter/mod.rs -- same StopWordFilter struct, same for_lang match
+    # arms (only reordered), same TokenFilter/TokenStream impl shape. Measures 15.5%,
+    # squarely inside the aletheia#6656 review-worthy band (14.9%-32.1% across the
+    # fixed_rule/algos/*_native.rs rewrites) -- exactly the sovereign-with-nothing-
+    # to-compare-against shape this map exists to close.
+    "fts/tokenizer/stop_word_filter/sovereign/mod.rs": "fts/tokenizer/stop_word_filter/mod.rs",
+    # stop_word_filter/sovereign/gen_stopwords.py: cozo-core has its own
+    # gen_stopwords.py at the same relative path, doing the same job (emit the Rust
+    # stopword-list source from external data) -- a real, named predecessor, unlike
+    # fold_table_sovereign/generate.py above, which has none. This crate's own
+    # docstring says as much: it names itself the successor to "the sibling
+    # `derived/gen_stopwords.py`" (the CozoDB-lineage copy, since retired) which was
+    # itself a copy of this same upstream file.
+    "fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py": "fts/tokenizer/stop_word_filter/gen_stopwords.py",
 }
 
 DUAL_SOAK_WINDOW: dict[str, int] = {

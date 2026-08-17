@@ -112,8 +112,8 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/tokenizer/alphanum_only.rs` | `fts/tokenizer/alphanum_only.rs` | 67.7% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/fold_table.rs` | cf. `fts/tokenizer/ascii_folding_filter.rs` | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py` | — | 0.0% | sovereign |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs` | — | 0.0% | sovereign |
-| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs` | cf. `fts/tokenizer/ascii_folding_filter.rs` | 0.0% | sovereign |
+| `src/fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs` | cf. `fts/tokenizer/ascii_folding_filter.rs` | 0.0% | sovereign |
 | `src/fts/tokenizer/ascii_folding_filter/mod.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 75.0% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 60.6% | derived |
 | `src/fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs` | `fts/tokenizer/ascii_folding_filter.rs` | 56.6% | derived |
@@ -131,8 +131,8 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/tokenizer/stemmer.rs` | `fts/tokenizer/stemmer.rs` | 89.0% | derived |
 | `src/fts/tokenizer/stop_word_filter/mod.rs` | cf. `fts/tokenizer/stop_word_filter/mod.rs` | 0.0% | sovereign |
 | `src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` | — | 0.0% | sovereign |
-| `src/fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py` | — | 0.0% | sovereign |
-| `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | — | 0.0% | sovereign |
+| `src/fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py` | cf. `fts/tokenizer/stop_word_filter/gen_stopwords.py` | 0.0% | sovereign |
+| `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | cf. `fts/tokenizer/stop_word_filter/mod.rs` | 15.5% | sovereign |
 | `src/fts/tokenizer/stop_word_filter/sovereign/stopwords.rs` | cf. `fts/tokenizer/stop_word_filter/stopwords.rs` | 76.6% | sovereign |
 | `src/fts/tokenizer/tokenized_string.rs` | `fts/tokenizer/tokenized_string.rs` | 76.4% | derived |
 | `src/fts/tokenizer/tokenizer_impl.rs` | `fts/tokenizer/tokenizer_impl.rs` | 74.1% | derived |
@@ -256,3 +256,5 @@ The related trap, since it is what produced the gap: `docs/HUBS.md` asks memory 
 ## Anti-backsliding
 
 `scripts/check-krites-provenance.py` runs in CI (wired into the repo's required `gate` check, not a side workflow) and fails the build if: any file under `crates/krites/src/` is missing from the ledger; this file drifts from what the ledger renders; the set of `derived` rows grows relative to the PR's base commit; a row's status skips the `derived` → `dual` → `sovereign` sequence; a `dual` → `sovereign` transition drops or rewrites the `replaced_upstream_path` it carried forward from that row's own `upstream_path`; a `sovereign` row with no retained predecessor (`replaced_upstream_path == 'none'`) carries a nonzero `verbatim_pct`; a `dual` row's soak window has expired against the current commit count on `main`; or — when the offline upstream snapshot is present — a `derived`/`dual` row's stored `verbatim_pct` no longer matches a fresh recomputation against `upstream_path`, **or a `sovereign` row's stored `verbatim_pct` no longer matches a fresh recomputation against its retained `replaced_upstream_path`**. That last clause is what makes a `sovereign` claim keep proving itself instead of being measured once and trusted forever — the original gap this file's own existence (see "Why this notice exists" above) was written to close, and that a transliterated file could still slip past a status flip that quietly zeroed its evidence (aletheia#6656). The status-sequence and sovereign/verbatim_pct checks together make a direct `derived` → `sovereign` jump structurally impossible, not merely discouraged: neither check alone stops a bypass that clears the other (flip status alone leaves verbatim_pct as evidence; zero the field too and the sequence check still requires a `dual` commit in between).
+
+One more clause closes a gap the recompute check could not reach on its own (aletheia#6797): a `sovereign` row with `replaced_upstream_path == 'none'` had nothing for the recompute check to run against, and nothing verified that `'none'` meant "genuinely nothing to compare against" rather than "nobody mapped it yet" — the two looked identical, which is how the crate's highest-risk rewrite (`runtime/hnsw_sovereign/*`, 2912 lines) sat completely unmeasured while smaller rewrites beside it were all measured. CI now fails the build if any such row is absent from `krites_provenance_lib.py`'s `NO_PREDECESSOR_REASONS` — an explicit, individually-verified declaration of why the row genuinely has nothing to compare against — or if that map holds a stale entry for a row that no longer qualifies.

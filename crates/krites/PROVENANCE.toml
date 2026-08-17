@@ -808,7 +808,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs"
 upstream_path = "none"
-replaced_upstream_path = "none"
+replaced_upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -816,7 +816,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs"
 upstream_path = "none"
-replaced_upstream_path = "none"
+replaced_upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -960,7 +960,7 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py"
 upstream_path = "none"
-replaced_upstream_path = "none"
+replaced_upstream_path = "fts/tokenizer/stop_word_filter/gen_stopwords.py"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
@@ -968,8 +968,8 @@ soak_expires_at_commit_count = 0
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/mod.rs"
 upstream_path = "none"
-replaced_upstream_path = "none"
-verbatim_pct = 0.0
+replaced_upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
+verbatim_pct = 15.5
 status = "sovereign"
 soak_expires_at_commit_count = 0
 
