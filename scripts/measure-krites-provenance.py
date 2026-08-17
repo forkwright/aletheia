@@ -341,6 +341,28 @@ SOVEREIGN_VERIFY_MAP: dict[str, str] = {
     "fixed_rule/algos/yen.rs": "fixed_rule/algos/yen.rs",
     "fixed_rule/utilities/constant.rs": "fixed_rule/utilities/constant.rs",
     "fixed_rule/utilities/reorder_sort.rs": "fixed_rule/utilities/reorder_sort.rs",
+    # WHY these eight belong here: every `*_native.rs` rewrite above records a
+    # predecessor and is measured against it, while the largest and highest-risk
+    # rewrite in the program recorded `replaced_upstream_path = "none"` and was
+    # therefore measured against nothing -- check_verbatim_recompute skips rows
+    # with no predecessor by construction. That made the one tree that ships to
+    # production when `krites_sovereign_hnsw` flips the only tree with no
+    # measurement at all.
+    #
+    # Each file's predecessor is the upstream path its derived sibling under
+    # `runtime/hnsw/` already carries: upstream keeps HNSW in one file, which
+    # krites split. close_reopen_tests.rs is included deliberately even though
+    # it has no upstream analogue -- it asserts the behaviour of a rewrite that
+    # is byte-compatible with upstream's encoding, and a row asserting "nothing
+    # to compare against" is precisely the shape that evades the gate.
+    "runtime/hnsw_sovereign/adaptive.rs": "runtime/hnsw.rs",
+    "runtime/hnsw_sovereign/close_reopen_tests.rs": "runtime/hnsw.rs",
+    "runtime/hnsw_sovereign/graph.rs": "runtime/hnsw.rs",
+    "runtime/hnsw_sovereign/mod.rs": "runtime/hnsw.rs",
+    "runtime/hnsw_sovereign/put.rs": "runtime/hnsw.rs",
+    "runtime/hnsw_sovereign/remove.rs": "runtime/hnsw.rs",
+    "runtime/hnsw_sovereign/search.rs": "runtime/hnsw.rs",
+    "runtime/hnsw_sovereign/types.rs": "runtime/hnsw.rs",
 }
 
 DUAL_SOAK_WINDOW: dict[str, int] = {

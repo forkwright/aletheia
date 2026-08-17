@@ -190,14 +190,14 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 19.7% | derived |
 | `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 11.9% | derived |
 | `src/runtime/hnsw/visited_pool.rs` | `runtime/hnsw.rs` | 3.3% | derived |
-| `src/runtime/hnsw_sovereign/adaptive.rs` | — | 0.0% | sovereign |
-| `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | — | 0.0% | sovereign |
-| `src/runtime/hnsw_sovereign/graph.rs` | — | 0.0% | sovereign |
-| `src/runtime/hnsw_sovereign/mod.rs` | — | 0.0% | sovereign |
-| `src/runtime/hnsw_sovereign/put.rs` | — | 0.0% | sovereign |
-| `src/runtime/hnsw_sovereign/remove.rs` | — | 0.0% | sovereign |
-| `src/runtime/hnsw_sovereign/search.rs` | — | 0.0% | sovereign |
-| `src/runtime/hnsw_sovereign/types.rs` | — | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/adaptive.rs` | cf. `runtime/hnsw.rs` | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | cf. `runtime/hnsw.rs` | 1.6% | sovereign |
+| `src/runtime/hnsw_sovereign/graph.rs` | cf. `runtime/hnsw.rs` | 13.6% | sovereign |
+| `src/runtime/hnsw_sovereign/mod.rs` | cf. `runtime/hnsw.rs` | 0.0% | sovereign |
+| `src/runtime/hnsw_sovereign/put.rs` | cf. `runtime/hnsw.rs` | 9.6% | sovereign |
+| `src/runtime/hnsw_sovereign/remove.rs` | cf. `runtime/hnsw.rs` | 8.3% | sovereign |
+| `src/runtime/hnsw_sovereign/search.rs` | cf. `runtime/hnsw.rs` | 15.8% | sovereign |
+| `src/runtime/hnsw_sovereign/types.rs` | cf. `runtime/hnsw.rs` | 3.4% | sovereign |
 | `src/runtime/imperative.rs` | `runtime/imperative.rs` | 35.6% | derived |
 | `src/runtime/minhash_lsh.rs` | `runtime/minhash_lsh.rs` | 53.0% | derived |
 | `src/runtime/mod.rs` | `runtime/mod.rs` | 0.0% | derived |
