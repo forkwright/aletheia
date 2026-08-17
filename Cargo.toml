@@ -317,9 +317,12 @@ default-features = false
 features = ["derive", "std"]
 
 [workspace.dependencies.p256]
-version = "0.13"
+version = "0.14"
 default-features = false
-features = ["ecdsa", "pem"]
+# WHY alloc: ecdsa 0.17's `EncodePrivateKey for SigningKey` impl gates on
+# `alloc` in addition to `pkcs8` (p256's own `alloc` feature is the only thing
+# that wires `ecdsa-core?/alloc`; "pem"/"ecdsa" alone do not).
+features = ["ecdsa", "pem", "alloc"]
 
 [workspace.dependencies.axum-server]
 version = "0.8"
