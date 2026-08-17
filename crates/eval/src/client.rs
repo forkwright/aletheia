@@ -740,7 +740,10 @@ mod tests {
             .expect("mutex")
             .clone()
             .expect("request body captured");
-        assert_eq!(body["model"], "claude-opus-4-5");
+        assert_eq!(
+            body.get("model").and_then(serde_json::Value::as_str),
+            Some("claude-opus-4-5")
+        );
     }
 
     #[test]
