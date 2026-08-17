@@ -22,9 +22,6 @@ pub(crate) struct EvalArgs {
     /// Filter scenarios by ID substring
     #[arg(long)]
     pub scenario: Option<String>,
-    /// Model override for every session this run's scenarios create
-    #[arg(long)]
-    pub model: Option<String>,
     /// Output results as JSON
     #[arg(long)]
     pub json: bool,
@@ -100,9 +97,8 @@ fn validate_args(args: &EvalArgs) -> Result<()> {
 // WHY(#4960): mirrors the benchmark path's provenance envelope
 // (benchmark.rs::collect_metadata). git_sha and target_identity are the
 // build and target-instance facts a publishable report needs, and neither was
-// ever attached on this path. Borrows rather than consumes: `scenario`,
-// `token`, and `model` are all moved into RunConfig immediately after this
-// returns.
+// ever attached on this path. Borrows rather than consumes: `scenario` and
+// `token` are both moved into RunConfig immediately after this returns.
 //
 // NOTE: the token contributes only its presence to the hash, never its value,
 // because the hash is published in a provenance record -- but whether one was
@@ -115,10 +111,9 @@ async fn build_eval_provenance(
     timeout: u64,
     coverage_policy: &CoveragePolicy,
     publishable: bool,
-    model: Option<&str>,
 ) -> dokimion::provenance::EvalProvenance {
     let config_hash = dokimion::provenance::sha256_hex_str(&format!(
-        "url={url}\nscenario={scenario:?}\njson_output={json_output}\ntimeout={timeout}\ntoken_present={}\ncoverage_policy={coverage_policy}\npublishable={publishable}\nmodel={model:?}",
+        "url={url}\nscenario={scenario:?}\njson_output={json_output}\ntimeout={timeout}\ntoken_present={}\ncoverage_policy={coverage_policy}\npublishable={publishable}",
         token.is_some(),
     ));
     let cli_args: Vec<String> = std::env::args().collect();
@@ -140,9 +135,6 @@ async fn build_eval_provenance(
     if let Some(identity) = target_identity {
         provenance = provenance.with_target_identity(identity);
     }
-    if let Some(model) = model {
-        provenance = provenance.with_audit_refs(Some(model.to_owned()), None, None, None, None);
-    }
     provenance
 }
 
@@ -152,7 +144,6 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         url,
         token,
         scenario,
-        model,
         json: json_output,
         timeout,
         jsonl_output,
@@ -183,7 +174,6 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         timeout,
         &coverage_policy,
         publishable,
-        model.as_deref(),
     )
     .await;
 
@@ -195,8 +185,13 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         fail_fast: false,
         timeout_secs: timeout,
         json_output,
-        model,
         provenance,
+        // WHY(#6859): no `--model` flag is exposed yet. The API accepts and persists a
+        // session model, but `PipelineContext` carries no session, so
+        // `resolve_turn_route` never reads it and the configured model still
+        // serves the turn. A flag here would stamp `model_ref` with a model
+        // that did not run, making eval comparisons fabricated evidence.
+        model: None,
     };
     let runner = dokimion::runner::ScenarioRunner::new(config);
     let report = runner.run().await;
@@ -255,7 +250,6 @@ mod tests {
             url: url.to_owned(),
             token: None,
             scenario: scenario.map(str::to_owned),
-            model: None,
             json: false,
             timeout,
             jsonl_output: None,
@@ -300,41 +294,6 @@ mod tests {
             parse_coverage_policy("smoke-dev").unwrap(),
             CoveragePolicy::SmokeDev
         );
-    }
-
-    // WHY(#4541): pins that `--model` reaches the provenance envelope's
-    // `model_ref` audit field, distinct from whether it changes turn-time
-    // generation routing (see `CreateSessionRequest.model` docs).
-    #[tokio::test]
-    async fn build_eval_provenance_records_model_ref_when_set() {
-        let provenance = build_eval_provenance(
-            "http://127.0.0.1:1",
-            None,
-            None,
-            false,
-            30,
-            &CoveragePolicy::Ci,
-            false,
-            Some("claude-opus-4-5"),
-        )
-        .await;
-        assert_eq!(provenance.model_ref.as_deref(), Some("claude-opus-4-5"));
-    }
-
-    #[tokio::test]
-    async fn build_eval_provenance_leaves_model_ref_unset_by_default() {
-        let provenance = build_eval_provenance(
-            "http://127.0.0.1:1",
-            None,
-            None,
-            false,
-            30,
-            &CoveragePolicy::Ci,
-            false,
-            None,
-        )
-        .await;
-        assert!(provenance.model_ref.is_none());
     }
 
     fn report_with(
