@@ -180,6 +180,32 @@ pub fn live_invocations() -> Vec<LiveInvocation> {
         .collect()
 }
 
+// ── Cumulative invocation totals ──
+
+static TOTAL_INVOCATIONS: AtomicU64 = AtomicU64::new(0);
+static TOTAL_ERROR_INVOCATIONS: AtomicU64 = AtomicU64::new(0);
+
+/// Cumulative (total calls, total error calls) recorded by [`record_invocation`].
+///
+/// `Family` has no typed API to iterate or sum the entries it already holds
+/// (`prometheus_client::metrics::family::Family`), so ops surfaces that want a
+/// cumulative total historically encoded the whole registry to Prometheus text
+/// and re-parsed the `aletheia_tool_invocations_total{...}` lines back out.
+/// That round trip trusts the encoded text as if it were structured data, but
+/// this crate's text encoder does not escape `"`, `\`, or newline in label
+/// values (`prometheus_client::encoding::text::LabelValueEncoder::write_str`
+/// writes the value verbatim) -- a tool name containing those bytes can forge
+/// an extra, independently-parseable metric line. These atomics are
+/// maintained directly by [`record_invocation`] instead, so a total can never
+/// depend on what a tool name happens to contain.
+#[must_use]
+pub fn invocation_totals() -> (u64, u64) {
+    (
+        TOTAL_INVOCATIONS.load(Ordering::Relaxed),
+        TOTAL_ERROR_INVOCATIONS.load(Ordering::Relaxed),
+    )
+}
+
 /// Register this crate's metrics with the shared registry.
 pub fn register(registry: &mut Registry) {
     registry.register(
@@ -252,6 +278,10 @@ pub(crate) fn record_invocation(tool_name: &str, duration_secs: f64, status: Inv
             tool_name: tool_name.to_owned(),
         })
         .observe(duration_secs);
+    TOTAL_INVOCATIONS.fetch_add(1, Ordering::Relaxed);
+    if matches!(status, InvocationStatus::Error) {
+        TOTAL_ERROR_INVOCATIONS.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 /// Record an approval-gate decision for a Required/Mandatory/Advisory/None
@@ -588,6 +618,64 @@ mod tests {
                 "aletheia_tool_output_truncated_total{tool_name=\"_test_truncated_tool\"} 2"
             ),
             "got: {out}"
+        );
+    }
+
+    #[test]
+    fn invocation_totals_counts_calls_and_errors() {
+        let (calls_before, errors_before) = invocation_totals();
+        record_invocation("_test_totals_ok", 0.01, InvocationStatus::Ok);
+        record_invocation("_test_totals_error", 0.01, InvocationStatus::Error);
+        let (calls_after, errors_after) = invocation_totals();
+        assert!(
+            calls_after >= calls_before + 2,
+            "two recorded calls must add at least two to the cumulative total"
+        );
+        assert!(
+            errors_after > errors_before,
+            "the Error call must add at least one to the cumulative error total"
+        );
+    }
+
+    // WARNING: prometheus-client's text encoder does not escape `"`, `\`, or
+    // newline in label values (`LabelValueEncoder::write_str` in
+    // `prometheus_client::encoding::text` writes the value verbatim). A tool
+    // name carrying raw newlines can therefore forge an extra, independently
+    // line-parseable `aletheia_tool_invocations_total{...}` entry inside the
+    // encoded exposition text. This is the concrete failure mode a
+    // `.lines()`-based re-parser is exposed to and `invocation_totals` is
+    // not, because it reads dedicated atomics rather than re-deriving state
+    // from the text a `Family` was encoded into.
+    #[test]
+    fn invocation_totals_survive_label_injection() {
+        let forged_value: u64 = 987_654_321;
+        let forged_line = format!(
+            "aletheia_tool_invocations_total{{tool_name=\"ghost\",status=\"error\"}} {forged_value}"
+        );
+        let evil_tool_name = format!("evil\n{forged_line}\ntrailing");
+
+        // Confirm the injection actually lands as its own physical line in
+        // the encoded text -- proving the vulnerability the typed accessor
+        // below is immune to, not just asserting a number came out right.
+        let r = fresh_registry();
+        record_invocation(&evil_tool_name, 0.01, InvocationStatus::Ok);
+        let out = encode(&r);
+        assert!(
+            out.lines().any(|line| line == forged_line),
+            "expected the crafted tool name to forge an independent metric line; got: {out}"
+        );
+
+        // A single Ok call must add a small, bounded amount to the typed
+        // totals -- nowhere near the forged value a text re-parser would
+        // have summed in, and never counted as an error.
+        let (total_calls, total_errors) = invocation_totals();
+        assert!(
+            total_calls < forged_value,
+            "typed totals must not incorporate a forged exposition line: total_calls={total_calls}"
+        );
+        assert!(
+            total_errors < forged_value,
+            "the injected call was Ok, not Error: total_errors={total_errors}"
         );
     }
 }
