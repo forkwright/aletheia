@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.38.1](https://github.com/forkwright/aletheia/compare/v0.38.0...v0.38.1) (2026-08-17)
+
+
+### Bug Fixes
+
+* **energeia:** validate the OAuth token at construction; correct the Agent SDK transport premise ([#6849](https://github.com/forkwright/aletheia/issues/6849)) ([be88d62](https://github.com/forkwright/aletheia/commit/be88d62be128b73f59dc966e0a563a12c4626e15))
+
 ## [0.38.0](https://github.com/forkwright/aletheia/compare/v0.37.1...v0.38.0) (2026-08-16)
 
 
