@@ -495,6 +495,20 @@ jobs:
       # ML-feature lint steps pass while a test run cannot. Adding the step without solving
       # the native dependency turns a required check permanently red, so the gap is tracked
       # rather than papered over.
+      # WHY: `runtime/mod.rs`'s land-dark selector claims both HNSW trees are
+      # covered by a "CI matrix". No workflow referenced
+      # `krites_sovereign_hnsw` before this step, so the sovereign tree — the
+      # replacement the retirement program depends on — was never compiled or
+      # tested by CI at all. The default build selects `runtime/hnsw`, so a
+      # break in `runtime/hnsw_sovereign` is invisible to every other check.
+      #
+      # Tests run rather than just `check`, because the tree's own
+      # close_reopen_tests.rs asserts the behaviours that fail silently:
+      # canary-node survival across delete, and recall after close/reopen.
+      # Compiling proves neither.
+      - name: Krites sovereign-HNSW feature gate
+        run: cargo nextest run --profile ci -p krites --features krites_sovereign_hnsw --no-fail-fast
+
       - name: Poiesis-charts Vega-Lite feature gate
         run: cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings
 
