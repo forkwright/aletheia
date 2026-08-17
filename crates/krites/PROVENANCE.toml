@@ -1217,7 +1217,7 @@ replaced_upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
 verbatim_pct = 9.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
-method = "from_spec"
+method = "rewritten_with_source_open"
 method_evidence = "#6656"
 
 [[file]]

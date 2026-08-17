@@ -133,7 +133,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/tokenizer/stop_word_filter/mod.rs` | cf. `fts/tokenizer/stop_word_filter/mod.rs` | 0.0% | sovereign | unknown |
 | `src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` | — | 0.0% | sovereign | unknown |
 | `src/fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py` | cf. `fts/tokenizer/stop_word_filter/gen_stopwords.py` | 0.0% | sovereign | unknown |
-| `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | cf. `fts/tokenizer/stop_word_filter/mod.rs` | 9.4% | sovereign | from_spec (cf. `#6656`) |
+| `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | cf. `fts/tokenizer/stop_word_filter/mod.rs` | 9.4% | sovereign | rewritten_with_source_open (cf. `#6656`) |
 | `src/fts/tokenizer/stop_word_filter/sovereign/stopwords.rs` | cf. `fts/tokenizer/stop_word_filter/stopwords.rs` | 76.6% | sovereign | unknown |
 | `src/fts/tokenizer/tokenized_string.rs` | `fts/tokenizer/tokenized_string.rs` | 76.4% | derived | — |
 | `src/fts/tokenizer/tokenizer_impl.rs` | `fts/tokenizer/tokenizer_impl.rs` | 74.1% | derived | — |
