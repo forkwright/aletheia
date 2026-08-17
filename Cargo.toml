@@ -277,10 +277,10 @@ loom = { version = "0.7", default-features = false }
 # readable. Cargo resolves them identically to inline form.
 [workspace.dependencies.epitelesis]
 git = "https://github.com/forkwright/epitelesis.git"
-tag = "v0.3.0"
+tag = "v0.4.0"
 # WHY: version pin lets cargo-deny resolve the git workspace dep in the graph
 # (without it, deny emits bug[unresolved-workspace-dependency] for every user).
-version = "0.3.0"
+version = "0.4.0"
 
 [workspace.dependencies.parodos]
 git = "https://github.com/forkwright/theatron.git"
