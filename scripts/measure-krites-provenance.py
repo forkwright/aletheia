@@ -18,6 +18,7 @@ from krites_provenance_lib import (  # noqa: E402
     UPSTREAM_SNAPSHOT_DIR,
     dump_ledger,
     iter_src_files,
+    ledger_source_path,
     render_notice,
     sync_exhibit_a,
     verbatim_pct,
@@ -693,7 +694,7 @@ def main() -> None:
                 soak = DUAL_SOAK_WINDOW.get(rel, 0)
                 status = "dual" if soak else "derived"
 
-        change = sync_exhibit_a(KRITES_SRC / rel, status)
+        change = sync_exhibit_a(ledger_source_path(KRITES_SRC, rel), status)
         if change is not None:
             notice_changes[rel] = change
 

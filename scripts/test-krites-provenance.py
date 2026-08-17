@@ -1651,7 +1651,11 @@ def test_transition_to_sovereign_removes_the_notice() -> None:
                 "removal must restore the file's own bytes, nothing else",
             )
             expect(
-                r["verbatim_pct"] == 50.0,
+                # WHY a tolerance on a value the generator rounds to one decimal: exact
+                # float equality holds only while that rounding does, and a later change
+                # to the stored precision would turn this into a flake rather than a
+                # finding.
+                abs(r["verbatim_pct"] - 50.0) < 1e-9,
                 f"the transition must not move verbatim_pct by removing the notice; got "
                 f"{r['verbatim_pct']}",
             )

@@ -103,6 +103,7 @@ from krites_provenance_lib import (  # noqa: E402
     UPSTREAM_SNAPSHOT_DIR,
     LedgerError,
     dump_ledger,
+    ledger_source_path,
     parse_ledger,
     render_notice,
     sync_exhibit_a,
@@ -171,7 +172,7 @@ def apply_to_sovereign(row: dict) -> None:
     # header) is not this script's to delete, and check_exhibit_a_notices reports it instead,
     # because deleting someone else's copyright header silently is the one direction that
     # must never be automatic.
-    sync_exhibit_a(KRITES_SRC / row["path"], "sovereign")
+    sync_exhibit_a(ledger_source_path(KRITES_SRC, row["path"]), "sovereign")
     row["method"] = "unknown"
     row["method_evidence"] = "none"
     # NOTE(#6879): consulted travels with method for the same reason — a row entering

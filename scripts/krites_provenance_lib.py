@@ -272,7 +272,11 @@ COMMENT_SYNTAX: dict[str, tuple[str, str]] = {
 # stands), a `#` block, and an HTML comment -- and it is line-wrapped differently in each.
 # Stripping comment punctuation off both edges and collapsing whitespace makes one quoted
 # sentence answer for all of them.
-_COMMENT_EDGE_RE = re.compile(r"^[\s/*#<!>-]+|[\s*/<!>-]+$")
+# WHY a str.strip character set rather than a regex: the anchored-alternation form
+# `^[...]+|[...]+$` backtracks super-linearly on a long run of edge characters, and
+# str.strip is linear, allocation-free per edge, and says what it does. The set is
+# every character that can wrap the notice in any of the four comment styles.
+_COMMENT_EDGE_CHARS = " \t\r\n/*#<!>-"
 
 
 def render_exhibit_a(suffix: str) -> str:
@@ -335,7 +339,7 @@ def strip_generated_notice(text: str) -> str:
 
 
 def _normalized_prose(text: str) -> str:
-    lines = (_COMMENT_EDGE_RE.sub("", line) for line in text.splitlines())
+    lines = (line.strip(_COMMENT_EDGE_CHARS) for line in text.splitlines())
     return re.sub(r"\s+", " ", " ".join(line for line in lines if line))
 
 
@@ -346,6 +350,34 @@ def has_exhibit_a(text: str) -> bool:
 
 def has_generated_notice_marker(text: str) -> bool:
     return EXHIBIT_A_MARKER in text
+
+
+def ledger_source_path(root: pathlib.Path, rel: str) -> pathlib.Path:
+    """Join a ledger row's path onto the crate source root, refusing to escape it.
+
+    SAFETY: a row's `path` is data any pull request can edit, and the tooling that
+    consumes it WRITES to the result. A row reading `../../.github/workflows/gate.yml`,
+    or naming a symlink pointing out of the tree, would otherwise have a licence header
+    written into it by CI. Containment is checked on the RESOLVED path so a symlink
+    cannot launder the escape past a textual check.
+
+    WHY here rather than inside sync_exhibit_a: this is where ledger data becomes a
+    filesystem path, and validating at the join keeps sync_exhibit_a's contract —
+    operate on the path you are given — intact for callers that construct one honestly.
+
+    WHY root is a parameter rather than this module's KRITES_SRC: each consuming script
+    re-imports KRITES_SRC into its own namespace and tests monkeypatch that copy, so a
+    reference to this module's global would validate against the real tree while the
+    caller writes into a temporary one.
+    """
+    resolved_root = root.resolve()
+    joined = (root / rel).resolve()
+    if not joined.is_relative_to(resolved_root):
+        raise LedgerError(
+            f"ledger row path {rel!r} resolves to {joined}, outside {resolved_root}. "
+            "A row must name a file inside the crate's own source tree."
+        )
+    return joined
 
 
 def sync_exhibit_a(path: pathlib.Path, status: str) -> str | None:
