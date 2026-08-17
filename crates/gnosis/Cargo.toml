@@ -14,7 +14,7 @@ test-core = []
 test-full = []
 
 [dependencies]
-cargo_metadata = "0.18"
+cargo_metadata = "0.23"
 parking_lot = "0.12"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 syn = { version = "2", features = ["full", "extra-traits", "visit"] }
