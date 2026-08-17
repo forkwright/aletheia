@@ -47,6 +47,11 @@ Usage:
         runtime/hnsw_sovereign/types.rs runtime/hnsw_sovereign/graph.rs ...
 
     python3 scripts/krites-provenance-transition.py \\
+        --set-method from_spec_derived_siblings --evidence '#6879' \\
+        --consulted fts/tokenizer/remove_long.rs,fts/tokenizer/stemmer.rs \\
+        fts/tokenizer/stop_word_filter/sovereign/mod.rs
+
+    python3 scripts/krites-provenance-transition.py \\
         --set-method unknown \\
         some/sovereign/row.rs
 
@@ -66,6 +71,16 @@ says rows are generated and must not be hand-edited, and method is no
 exception: krites_provenance_lib.validate_rows re-checks the evidence shape
 on write regardless, so a hand-edit that skips this script fails the next
 gate run rather than silently landing.
+
+--consulted takes a comma-separated list of ledger paths the author read while
+writing (relative to crates/krites/src/, like every other path in the ledger)
+and is REQUIRED for the two spec-class methods, which are the values that make
+a claim about what was NOT read (aletheia#6879). Pass an empty string to record
+"none" against them. It is rejected with --set-method unknown for the same
+reason --evidence is, and is optional elsewhere — omitted, it leaves whatever
+the row already records, since re-recording a method does not change what its
+author read. krites_provenance_lib.consulted_errors runs on the write path via
+dump_ledger, so a list that contradicts the method never reaches the file.
 """
 
 from __future__ import annotations
@@ -84,6 +99,7 @@ from krites_provenance_lib import (  # noqa: E402
     METHODS,
     NOTICE_PATH,
     REPO_ROOT,
+    SPEC_CLASS_METHODS,
     UPSTREAM_SNAPSHOT_DIR,
     LedgerError,
     dump_ledger,
@@ -148,18 +164,32 @@ def apply_to_sovereign(row: dict) -> None:
     row["upstream_path"] = "none"
     row["method"] = "unknown"
     row["method_evidence"] = "none"
+    # NOTE(#6879): consulted travels with method for the same reason — a row entering
+    # sovereign has no recorded reading list yet, and [] here means "nothing recorded",
+    # not a verified "nothing read". --set-method with --consulted is what records one.
+    row["consulted"] = []
 
 
-def apply_set_method(row: dict, method: str, evidence: str) -> None:
-    """Mutate a sovereign row's method/method_evidence in place.
+def apply_set_method(row: dict, method: str, evidence: str, consulted: list[str] | None = None) -> None:
+    """Mutate a sovereign row's method/method_evidence/consulted in place.
 
     WHY this is the ONLY sanctioned mutator: PROVENANCE.toml's header says rows
     are generated and must not be hand-edited, and a hand-edit that skips this
     script fails the next gate run anyway (krites_provenance_lib.validate_rows
-    re-checks the method/method_evidence shape on every write). Routing through
-    here just makes that the first failure encountered rather than the last."""
+    re-checks the method/method_evidence shape on every write, and
+    consulted_errors the sibling rule). Routing through here just makes that the
+    first failure encountered rather than the last.
+
+    consulted=None leaves the row's existing list alone (defaulting to [] on a
+    row that predates the field): re-recording a method does not change what its
+    author read, and silently clearing the list would drop the only part of the
+    claim a checker can reach (aletheia#6879)."""
     row["method"] = method
     row["method_evidence"] = evidence
+    if consulted is not None:
+        row["consulted"] = consulted
+    else:
+        row.setdefault("consulted", [])
 
 
 def git_commit_count(ref: str) -> int:
@@ -189,6 +219,13 @@ def main() -> int:
         help="required with --set-method unless the value is 'unknown' — a '#NNNN' PR/issue "
         "ref, a commit SHA, or 'spec:<path>'",
     )
+    parser.add_argument(
+        "--consulted",
+        default=None,
+        help="comma-separated ledger paths read while writing (relative to crates/krites/src/); "
+        f"required for {' and '.join(SPEC_CLASS_METHODS)}, rejected with --set-method unknown, "
+        "optional elsewhere. Pass an empty string to record none",
+    )
     parser.add_argument("paths", nargs="+")
     args = parser.parse_args()
 
@@ -199,12 +236,25 @@ def main() -> int:
         parser.error("--to dual requires --soak-commits")
     if args.to == "sovereign" and args.soak_commits is not None:
         parser.error("--to sovereign takes soak_expires_at_commit_count=0 always; do not pass --soak-commits")
+    if args.to is not None and args.consulted is not None:
+        parser.error("--consulted belongs with --set-method; a status transition records no authorship")
     if args.set_method is not None:
         if args.set_method == "unknown":
             if args.evidence is not None:
                 parser.error("--set-method unknown must not carry --evidence — 'unknown' has nothing to point at")
+            if args.consulted is not None:
+                parser.error("--set-method unknown must not carry --consulted — 'unknown' means no record exists")
         elif args.evidence is None:
             parser.error(f"--set-method {args.set_method!r} requires --evidence")
+        # SAFETY(#6879): the spec-class values assert what was NOT read. Recording one
+        # without stating what WAS read leaves the assertion unfalsifiable, which is the
+        # defect 'method' itself was built to end, reproduced one level up.
+        if args.set_method in SPEC_CLASS_METHODS and args.consulted is None:
+            parser.error(
+                f"--set-method {args.set_method!r} requires --consulted — it claims what the "
+                "author did not read, so what they DID read is the only checkable part of it. "
+                "Pass --consulted '' to record that nothing was consulted"
+            )
 
     try:
         meta, rows = parse_ledger(LEDGER_PATH.read_text())
@@ -239,6 +289,9 @@ def main() -> int:
                 apply_to_sovereign(row)
     else:
         evidence = "none" if args.set_method == "unknown" else args.evidence
+        consulted = None if args.consulted is None else [c.strip() for c in args.consulted.split(",") if c.strip()]
+        if args.set_method == "unknown":
+            consulted = []
         for p in args.paths:
             row = by_path[p]
             if row["status"] != "sovereign":
@@ -247,7 +300,7 @@ def main() -> int:
                     file=sys.stderr,
                 )
                 return 1
-            apply_set_method(row, args.set_method, evidence)
+            apply_set_method(row, args.set_method, evidence, consulted)
 
     try:
         LEDGER_PATH.write_text(dump_ledger(meta, rows))

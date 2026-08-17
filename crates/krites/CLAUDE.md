@@ -21,6 +21,25 @@ The naming rule in `docs/HUBS.md` — prefer Krites/Datalog/Fjall over CozoDB �
 
 **Verbatim-drift measurement**: `scripts/check-krites-verbatim-drift.py` scores any file here against the pinned upstream snapshot at `upstream-snapshot/` (its own `NOTICE.md`). The full report is informational, but `--strict` **gates**, on one condition: a row that is `sovereign` AND records `replaced_upstream_path = "none"` AND scores above the calibrated threshold. A `derived` row scoring high is the metric working, and never fails. If it fires on your file, record what the file replaced in `SOVEREIGN_VERIFY_MAP` and regenerate — the row then carries a measured figure instead of an asserted `0.0`. Do not waive it.
 
+## Clean-room rewrites — which siblings you may read
+
+Most of this crate is `derived`, so the sibling that best demonstrates a local convention is usually the sibling doing the same job — exactly the expression a rewrite exists to stop carrying forward. "Match the surrounding crate" and "clean-room" are in real tension here, and the line that makes both workable is what you take from the sibling:
+
+- **Mechanical conventions** — error type, lint attributes, module layout, naming, test shape — may come from any sibling, `derived` included.
+- **The shape of the same algorithm** — its control flow, its data structures, the order it does things in — may come only from a `sovereign` one.
+
+Every rewrite records what it read. `PROVENANCE.toml`'s `consulted` column lists the source paths open while writing (`[]` for none), and CI reads each one's own ledger status: `from_spec` means every consulted path was `sovereign`; `from_spec_derived_siblings` means at least one was not. Record both with one command:
+
+```
+scripts/krites-provenance-transition.py --set-method from_spec_derived_siblings \
+    --evidence '#NNNN' --consulted fts/tokenizer/remove_long.rs,fts/tokenizer/stemmer.rs \
+    fts/tokenizer/<your rewrite>.rs
+```
+
+A truthful weaker method always beats a false stronger one, and that command is the whole cost of downgrading. What the check cannot see is whether the list is complete: nothing observes what you opened, so a path you leave out reads exactly like a path you never read. The list is worth only the care taken writing it.
+
+**Calibration — for a `TokenStream` filter, roughly 9% verbatim is the interface-forced floor.** The trait dictates the `transform` signature, the `token`/`token_mut` bodies delegate, and the struct declaration and braces are fixed; none of that is expressive. A filter rewrite scoring near there is not carrying residual derivation, and driving toward 0% chases something the trait makes unreachable. Measure after writing, never before — editing toward a number is how a transliteration gets tuned under a threshold instead of rewritten.
+
 ## Derived artifacts — never hand-merge, always recompute
 
 `PROVENANCE.toml`, `NOTICE.md`, and the three `module-dag` variants are whole-file

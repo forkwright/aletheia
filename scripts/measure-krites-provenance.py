@@ -525,19 +525,25 @@ def load_prior_paths(path: pathlib.Path) -> set[str]:
     }
 
 
-def load_method_status(path: pathlib.Path) -> dict[str, tuple[str, str]]:
-    """Preserves each row's (method, method_evidence) across regeneration.
+def load_method_status(path: pathlib.Path) -> dict[str, tuple[str, str, list[str]]]:
+    """Preserves each row's (method, method_evidence, consulted) across regeneration.
 
     WHY this exists at all (#6797-followup): this script is the ledger's sole
-    regenerator and rebuilds every row from scratch on every run. method and
-    method_evidence are NOT derived from source the way verbatim_pct is — they
-    record a fact about how a file was written, established once (by git-log
-    research or an explicit --set-method call) and never re-derivable from the
-    tree. Without this preservation, the very next regeneration after clearing
-    a row's 'unknown' would silently overwrite the resolved value back to the
-    default and drop its evidence pointer with it — the exact 'measured once,
-    then quietly lost' failure this field exists to prevent, just moved one
-    step later than krites-provenance-transition.py's own --to sovereign case.
+    regenerator and rebuilds every row from scratch on every run. method,
+    method_evidence and consulted are NOT derived from source the way
+    verbatim_pct is — they record facts about how a file was written,
+    established once (by git-log research or an explicit --set-method call) and
+    never re-derivable from the tree. Without this preservation, the very next
+    regeneration after clearing a row's 'unknown' would silently overwrite the
+    resolved value back to the default and drop its evidence pointer with it —
+    the exact 'measured once, then quietly lost' failure this field exists to
+    prevent, just moved one step later than krites-provenance-transition.py's
+    own --to sovereign case.
+
+    SAFETY(#6879): consulted travels with method here, in one tuple, because
+    the two are checked against each other (krites_provenance_lib.
+    consulted_errors). Preserving one without the other would regenerate a
+    ledger the very next gate run rejects.
 
     Read with bare tomllib for the same reason load_graduated_status is: this
     consumes two fields and has no business demanding the full current row
@@ -555,23 +561,29 @@ def load_method_status(path: pathlib.Path) -> dict[str, tuple[str, str]]:
         path_key = r.get("path")
         method = r.get("method")
         evidence = r.get("method_evidence")
+        consulted = r.get("consulted", [])
+        if not (isinstance(consulted, list) and all(isinstance(c, str) for c in consulted)):
+            consulted = []
         if isinstance(path_key, str) and isinstance(method, str) and isinstance(evidence, str):
-            preserved[path_key] = (method, evidence)
+            preserved[path_key] = (method, evidence, consulted)
     return preserved
 
 
-def resolve_method(rel: str, status: str, method_status: dict[str, tuple[str, str]]) -> tuple[str, str]:
-    """The (method, method_evidence) a regenerated row should carry.
+def resolve_method(
+    rel: str, status: str, method_status: dict[str, tuple[str, str, list[str]]]
+) -> tuple[str, str, list[str]]:
+    """The (method, method_evidence, consulted) a regenerated row should carry.
 
     A preserved value survives only onto a row that is still sovereign this
     run — method is only meaningful there (krites_provenance_lib.validate_rows
-    requires 'none' everywhere else). A row regenerating without any prior
-    record defaults to 'unknown'/'none' if sovereign (the honest state: no
-    evidence exists yet) or 'none'/'none' otherwise (not applicable)."""
+    requires 'none' everywhere else, and an empty consulted list with it). A row
+    regenerating without any prior record defaults to 'unknown'/'none'/[] if
+    sovereign (the honest state: no evidence exists yet) or 'none'/'none'/[]
+    otherwise (not applicable)."""
     preserved = method_status.get(rel)
     if preserved is not None and status == "sovereign":
         return preserved
-    return ("unknown", "none") if status == "sovereign" else ("none", "none")
+    return ("unknown", "none", []) if status == "sovereign" else ("none", "none", [])
 
 
 def check_dual_survives_move(
@@ -671,7 +683,7 @@ def main() -> None:
                 measured_pct = verbatim_pct(local_text, fetch_upstream(verify_rel))
             else:
                 measured_pct = 0.0
-            method, method_evidence = resolve_method(rel, "sovereign", method_status)
+            method, method_evidence, consulted = resolve_method(rel, "sovereign", method_status)
             rows.append(
                 {
                     "path": rel,
@@ -682,6 +694,7 @@ def main() -> None:
                     "soak_expires_at_commit_count": 0,
                     "method": method,
                     "method_evidence": method_evidence,
+                    "consulted": consulted,
                 }
             )
             continue
@@ -714,7 +727,7 @@ def main() -> None:
             # ledger the moment anyone re-ran this script after a real
             # in-place dual -> sovereign transition. The measurement itself
             # is still real -- it lands in replaced_upstream_path instead.
-            method, method_evidence = resolve_method(rel, "sovereign", method_status)
+            method, method_evidence, consulted = resolve_method(rel, "sovereign", method_status)
             rows.append(
                 {
                     "path": rel,
@@ -725,10 +738,11 @@ def main() -> None:
                     "soak_expires_at_commit_count": 0,
                     "method": method,
                     "method_evidence": method_evidence,
+                    "consulted": consulted,
                 }
             )
         else:
-            method, method_evidence = resolve_method(rel, status, method_status)
+            method, method_evidence, consulted = resolve_method(rel, status, method_status)
             rows.append(
                 {
                     "path": rel,
@@ -739,6 +753,7 @@ def main() -> None:
                     "soak_expires_at_commit_count": soak,
                     "method": method,
                     "method_evidence": method_evidence,
+                    "consulted": consulted,
                 }
             )
 

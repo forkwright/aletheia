@@ -88,6 +88,7 @@ def row(
     replaced_upstream_path: str = "none",
     method: str | None = None,
     method_evidence: str | None = None,
+    consulted: list[str] | None = None,
 ) -> dict:
     # WHY method/method_evidence default from status, not a fixed literal: every
     # pre-#6797-followup test fixture in this file constructs both sovereign and
@@ -108,6 +109,7 @@ def row(
         "soak_expires_at_commit_count": soak,
         "method": method,
         "method_evidence": method_evidence,
+        "consulted": [] if consulted is None else consulted,
     }
 
 
@@ -989,19 +991,336 @@ def test_apply_set_method_writes_both_fields() -> None:
 
 
 def test_resolve_method_preserves_across_regeneration() -> None:
-    preserved = {"s.rs": ("from_spec", "#6656")}
+    preserved = {"s.rs": ("from_spec", "#6656", ["sib.rs"])}
     got = MEASURE.resolve_method("s.rs", "sovereign", preserved)
-    expect(got == ("from_spec", "#6656"), f"a preserved resolved method must survive regeneration unchanged; got {got}")
+    expect(
+        got == ("from_spec", "#6656", ["sib.rs"]),
+        f"a preserved resolved method must survive regeneration unchanged, consulted list with it; got {got}",
+    )
 
 
 def test_resolve_method_defaults_new_sovereign_row_to_unknown() -> None:
     got = MEASURE.resolve_method("new.rs", "sovereign", {})
-    expect(got == ("unknown", "none"), f"a brand-new sovereign row with no prior record must default to unknown/none; got {got}")
+    expect(got == ("unknown", "none", []), f"a brand-new sovereign row with no prior record must default to unknown/none/[]; got {got}")
 
 
 def test_resolve_method_defaults_non_sovereign_to_none() -> None:
     got = MEASURE.resolve_method("d.rs", "derived", {})
-    expect(got == ("none", "none"), f"a non-sovereign row must default to method='none'; got {got}")
+    expect(got == ("none", "none", []), f"a non-sovereign row must default to method='none'; got {got}")
+
+
+# --- #6879: the sibling rule — which siblings a clean-room rewrite may read ---
+
+
+def _sibling_rows(target_method: str, consulted: list[str]) -> list[dict]:
+    """A ledger with one sovereign rewrite plus one sibling of each status.
+
+    WHY a shared fixture: every rule below is about the STATUS of a consulted
+    path, so each case differs only in which siblings the rewrite names — the
+    surrounding ledger must stay identical or the tests stop being comparable.
+    """
+    return [
+        row("rewrite.rs", "none", 0.0, "sovereign", replaced_upstream_path="up.rs",
+            method=target_method, method_evidence="#6879", consulted=consulted),
+        row("derived_sibling.rs", "up_sibling.rs", 42.1, "derived"),
+        row("sovereign_sibling.rs", "none", 0.0, "sovereign", method="attested_original", method_evidence="#6879"),
+    ]
+
+
+def test_consulted_from_spec_rejects_derived_sibling() -> None:
+    # WHY this is the whole issue: the first clean-room rewrite under `method` read
+    # fts/tokenizer/remove_long.rs — derived, jaccard 0.4215 against upstream, and
+    # structurally the same artifact it was writing. Nothing saw it; the rewriter
+    # volunteered it. A rewriter who said nothing would carry from_spec today.
+    errors = LIB.consulted_errors(_sibling_rows("from_spec", ["derived_sibling.rs"]))
+    expect(
+        any("rewrite.rs" in e and "derived_sibling.rs" in e and "from_spec_derived_siblings" in e for e in errors),
+        f"from_spec consulting a derived sibling must fail and name the offending path; got {errors}",
+    )
+
+
+def test_consulted_from_spec_accepts_sovereign_siblings() -> None:
+    errors = LIB.consulted_errors(_sibling_rows("from_spec", ["sovereign_sibling.rs"]))
+    expect(errors == [], f"from_spec consulting only sovereign siblings must pass; got {errors}")
+
+
+def test_consulted_from_spec_accepts_empty_list() -> None:
+    errors = LIB.consulted_errors(_sibling_rows("from_spec", []))
+    expect(errors == [], f"from_spec that consulted nothing must pass; got {errors}")
+
+
+def test_consulted_derived_siblings_rejects_all_sovereign_list() -> None:
+    # WHY this direction is checked too: silently accepting the weaker value on a row
+    # that earned the stronger one makes from_spec_derived_siblings the lazy default,
+    # and the pair stops distinguishing anything.
+    errors = LIB.consulted_errors(_sibling_rows("from_spec_derived_siblings", ["sovereign_sibling.rs"]))
+    expect(
+        any("rewrite.rs" in e and "from_spec" in e for e in errors),
+        f"from_spec_derived_siblings whose consulted list is entirely sovereign must fail; got {errors}",
+    )
+
+
+def test_consulted_derived_siblings_rejects_empty_list() -> None:
+    errors = LIB.consulted_errors(_sibling_rows("from_spec_derived_siblings", []))
+    expect(
+        any("rewrite.rs" in e and "empty" in e for e in errors),
+        f"from_spec_derived_siblings with an empty consulted list must fail; got {errors}",
+    )
+
+
+def test_consulted_derived_siblings_accepts_mixed_list() -> None:
+    errors = LIB.consulted_errors(
+        _sibling_rows("from_spec_derived_siblings", ["derived_sibling.rs", "sovereign_sibling.rs"])
+    )
+    expect(errors == [], f"from_spec_derived_siblings naming a real derived sibling must pass; got {errors}")
+
+
+def test_consulted_rejects_path_not_in_ledger() -> None:
+    # WHY: a consulted path is checked by its ledger status, so a typo resolves to no
+    # status at all — and an unchecked path must never read as a clean one.
+    errors = LIB.consulted_errors(_sibling_rows("from_spec", ["derived_sibbling.rs"]))
+    expect(
+        any("rewrite.rs" in e and "derived_sibbling.rs" in e and "no PROVENANCE.toml row" in e for e in errors),
+        f"a consulted path with no ledger row must fail; got {errors}",
+    )
+
+
+def test_consulted_unconstrained_for_rewritten_with_source_open() -> None:
+    errors = LIB.consulted_errors(_sibling_rows("rewritten_with_source_open", ["derived_sibling.rs"]))
+    expect(
+        errors == [],
+        f"rewritten_with_source_open already records reading the replaced file, so its consulted "
+        f"list carries no constraint; got {errors}",
+    )
+
+
+def test_consulted_missing_key_passes_validate_rows() -> None:
+    # WHY tolerated here: a --base-ref ledger predating this field carries no such key,
+    # exactly as with 'method'. Presence is gated by consulted_errors on the CURRENT
+    # ledger, and by dump_ledger on every write.
+    r = row("old.rs", "up.rs", 40.0, "derived")
+    del r["consulted"]
+    try:
+        LIB.validate_rows([r])
+    except LIB.LedgerError as exc:
+        _FAILURES.append(f"a row with no 'consulted' key must still pass validate_rows (pre-migration ledger read); got {exc}")
+
+
+def test_consulted_missing_key_rejected_by_checker() -> None:
+    r = row("a.rs", "up.rs", 40.0, "derived")
+    del r["consulted"]
+    errors = CHECKER.check_consulted_siblings([r])
+    expect(
+        any("missing 'consulted'" in e and "a.rs" in e for e in errors),
+        f"the current ledger must carry 'consulted' on every row; got {errors}",
+    )
+
+
+def test_consulted_forbidden_off_sovereign() -> None:
+    rows = [row("d.rs", "up.rs", 40.0, "derived", consulted=["x.rs"])]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a derived/dual row makes no authorship claim, so it must never carry a consulted list",
+    )
+
+
+def test_consulted_must_be_a_list_of_paths() -> None:
+    for bad in ("none", ["ok.rs", 7], [""]):
+        rows = [row("s.rs", "none", 0.0, "sovereign", consulted=bad)]
+        expect_raises(
+            LIB.LedgerError,
+            lambda rows=rows: LIB.validate_rows(rows),
+            f"consulted={bad!r} is not a list of ledger paths and must be rejected",
+        )
+
+
+def test_dump_ledger_refuses_row_missing_consulted() -> None:
+    r = row("a.rs", "up.rs", 40.0, "derived")
+    del r["consulted"]
+    meta = {"upstream_repo": "https://example/x", "upstream_ref": "deadbeef"}
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.dump_ledger(meta, [r]),
+        "dump_ledger must refuse to write a row with no consulted list",
+    )
+
+
+def test_dump_ledger_refuses_contradicting_consulted() -> None:
+    # WHY the write path enforces it too: a row that only fails later in CI is the
+    # failure mode this whole scheme keeps repeating — a value written by fiat, caught
+    # a wave later, if at all.
+    meta = {"upstream_repo": "https://example/x", "upstream_ref": "deadbeef"}
+    rows = _sibling_rows("from_spec", ["derived_sibling.rs"])
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.dump_ledger(meta, rows),
+        "dump_ledger must refuse to write a from_spec row that consulted a derived sibling",
+    )
+
+
+def test_transition_spec_class_requires_consulted() -> None:
+    for method in LIB.SPEC_CLASS_METHODS:
+        orig_argv = sys.argv
+        sys.argv = ["krites-provenance-transition.py", "--set-method", method, "--evidence", "#6879", "some.rs"]
+        try:
+            expect_raises(SystemExit, TRANSITION.main, f"--set-method {method} with no --consulted must be rejected")
+        finally:
+            sys.argv = orig_argv
+
+
+def test_transition_set_method_unknown_forbids_consulted() -> None:
+    orig_argv = sys.argv
+    sys.argv = ["krites-provenance-transition.py", "--set-method", "unknown", "--consulted", "x.rs", "some.rs"]
+    try:
+        expect_raises(SystemExit, TRANSITION.main, "--set-method unknown must reject --consulted")
+    finally:
+        sys.argv = orig_argv
+
+
+def test_transition_consulted_rejected_with_status_transition() -> None:
+    orig_argv = sys.argv
+    sys.argv = ["krites-provenance-transition.py", "--to", "sovereign", "--consulted", "x.rs", "some.rs"]
+    try:
+        expect_raises(SystemExit, TRANSITION.main, "--consulted with --to must be rejected")
+    finally:
+        sys.argv = orig_argv
+
+
+def test_transition_set_method_consulted_end_to_end() -> None:
+    # WHY a real round-trip: --consulted is the only sanctioned way to record a reading
+    # list, so its full path — CLI parsing, ledger read, mutation, dump_ledger's own
+    # re-validation of the sibling rule, NOTICE.md re-render — needs proving end to end.
+    with tempfile.TemporaryDirectory() as tmp:
+        ledger_path = Path(tmp) / "PROVENANCE.toml"
+        notice_path = Path(tmp) / "NOTICE.md"
+        ledger_path.write_text(
+            '[meta]\n'
+            'upstream_repo = "https://example/x"\n'
+            'upstream_ref = "deadbeef"\n\n'
+            '[[file]]\n'
+            'path = "rewrite.rs"\n'
+            'upstream_path = "none"\n'
+            'replaced_upstream_path = "none"\n'
+            'verbatim_pct = 0.0\n'
+            'status = "sovereign"\n'
+            'soak_expires_at_commit_count = 0\n'
+            'method = "unknown"\n'
+            'method_evidence = "none"\n'
+            'consulted = []\n\n'
+            '[[file]]\n'
+            'path = "derived_sibling.rs"\n'
+            'upstream_path = "up_sibling.rs"\n'
+            'replaced_upstream_path = "none"\n'
+            'verbatim_pct = 42.1\n'
+            'status = "derived"\n'
+            'soak_expires_at_commit_count = 0\n'
+            'method = "none"\n'
+            'method_evidence = "none"\n'
+            'consulted = []\n'
+        )
+        orig_ledger, orig_notice = TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH
+        orig_reasons = LIB.NO_PREDECESSOR_REASONS
+        TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = ledger_path, notice_path
+        orig_argv = sys.argv
+        sys.argv = [
+            "krites-provenance-transition.py",
+            "--set-method",
+            "from_spec_derived_siblings",
+            "--evidence",
+            "#6879",
+            "--consulted",
+            "derived_sibling.rs",
+            "rewrite.rs",
+        ]
+        try:
+            exit_code = TRANSITION.main()
+            expect(exit_code == 0, f"a legitimate --set-method + --consulted call must exit 0; got {exit_code}")
+            _, written_rows = LIB.parse_ledger(ledger_path.read_text())
+            written = next(r for r in written_rows if r["path"] == "rewrite.rs")
+            expect(
+                written["method"] == "from_spec_derived_siblings" and written["consulted"] == ["derived_sibling.rs"],
+                f"the written ledger must carry the new method and its consulted list; got {written}",
+            )
+            expect(
+                "derived_sibling.rs" in notice_path.read_text(),
+                "NOTICE.md must surface what a rewrite consulted, not only its method",
+            )
+        finally:
+            TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = orig_ledger, orig_notice
+            LIB.NO_PREDECESSOR_REASONS = orig_reasons
+            sys.argv = orig_argv
+
+
+def test_transition_refuses_to_write_a_contradicting_consulted_list() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        ledger_path = Path(tmp) / "PROVENANCE.toml"
+        notice_path = Path(tmp) / "NOTICE.md"
+        ledger_path.write_text(
+            '[meta]\n'
+            'upstream_repo = "https://example/x"\n'
+            'upstream_ref = "deadbeef"\n\n'
+            '[[file]]\n'
+            'path = "rewrite.rs"\n'
+            'upstream_path = "none"\n'
+            'replaced_upstream_path = "none"\n'
+            'verbatim_pct = 0.0\n'
+            'status = "sovereign"\n'
+            'soak_expires_at_commit_count = 0\n'
+            'method = "unknown"\n'
+            'method_evidence = "none"\n'
+            'consulted = []\n\n'
+            '[[file]]\n'
+            'path = "derived_sibling.rs"\n'
+            'upstream_path = "up_sibling.rs"\n'
+            'replaced_upstream_path = "none"\n'
+            'verbatim_pct = 42.1\n'
+            'status = "derived"\n'
+            'soak_expires_at_commit_count = 0\n'
+            'method = "none"\n'
+            'method_evidence = "none"\n'
+            'consulted = []\n'
+        )
+        before = ledger_path.read_text()
+        orig_ledger, orig_notice = TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH
+        TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = ledger_path, notice_path
+        orig_argv = sys.argv
+        sys.argv = [
+            "krites-provenance-transition.py",
+            "--set-method",
+            "from_spec",
+            "--evidence",
+            "#6879",
+            "--consulted",
+            "derived_sibling.rs",
+            "rewrite.rs",
+        ]
+        try:
+            exit_code = TRANSITION.main()
+            expect(exit_code == 1, f"a from_spec row consulting a derived sibling must not be written; got exit {exit_code}")
+            expect(ledger_path.read_text() == before, "a refused --set-method must leave the ledger untouched")
+        finally:
+            TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = orig_ledger, orig_notice
+            sys.argv = orig_argv
+
+
+def test_apply_set_method_preserves_consulted_when_omitted() -> None:
+    r = row("s.rs", "none", 0.0, "sovereign", consulted=["sib.rs"])
+    TRANSITION.apply_set_method(r, "attested_original", "#6879")
+    expect(
+        r["consulted"] == ["sib.rs"],
+        f"re-recording a method must not silently clear what its author read; got {r['consulted']}",
+    )
+
+
+def test_apply_to_sovereign_enters_with_no_consulted_record() -> None:
+    r = row("d.rs", "up_missing.rs", 40.0, "dual", soak=99)
+    TRANSITION.apply_to_sovereign(r)
+    expect(
+        r["consulted"] == [] and r["method"] == "unknown",
+        f"a row entering sovereign has no recorded reading list yet; got method={r['method']!r}, "
+        f"consulted={r['consulted']!r}",
+    )
 
 
 # --- a moved `dual` file must not lose its soak fuse ---
@@ -1163,6 +1482,27 @@ def main() -> int:
         test_resolve_method_preserves_across_regeneration,
         test_resolve_method_defaults_new_sovereign_row_to_unknown,
         test_resolve_method_defaults_non_sovereign_to_none,
+        test_consulted_from_spec_rejects_derived_sibling,
+        test_consulted_from_spec_accepts_sovereign_siblings,
+        test_consulted_from_spec_accepts_empty_list,
+        test_consulted_derived_siblings_rejects_all_sovereign_list,
+        test_consulted_derived_siblings_rejects_empty_list,
+        test_consulted_derived_siblings_accepts_mixed_list,
+        test_consulted_rejects_path_not_in_ledger,
+        test_consulted_unconstrained_for_rewritten_with_source_open,
+        test_consulted_missing_key_passes_validate_rows,
+        test_consulted_missing_key_rejected_by_checker,
+        test_consulted_forbidden_off_sovereign,
+        test_consulted_must_be_a_list_of_paths,
+        test_dump_ledger_refuses_row_missing_consulted,
+        test_dump_ledger_refuses_contradicting_consulted,
+        test_transition_spec_class_requires_consulted,
+        test_transition_set_method_unknown_forbids_consulted,
+        test_transition_consulted_rejected_with_status_transition,
+        test_transition_set_method_consulted_end_to_end,
+        test_transition_refuses_to_write_a_contradicting_consulted_list,
+        test_apply_set_method_preserves_consulted_when_omitted,
+        test_apply_to_sovereign_enters_with_no_consulted_record,
     ):
         test_fn()
 

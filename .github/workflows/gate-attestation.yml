@@ -382,9 +382,9 @@ jobs:
 
       # WHY: krites retirement plan wave 0.1 (metis-ops/deliverables/
       # krites-replacement/PLAN.md §3, kill criterion 8). The anti-backslide
-      # gate for crates/krites/PROVENANCE.toml: completeness, NOTICE.md
-      # sync, no derived-row regression, status-sequence (derived -> dual ->
-      # sovereign, no direct jump), soak expiry, offline verbatim recompute.
+      # gate for crates/krites/PROVENANCE.toml. The script's own module
+      # docstring names which checks it runs; restating that list here only
+      # produced a copy that fell behind the script it describes.
       # Runs here, not as a standalone workflow — gate-coverage-scripts
       # feeds the required `gate` check, so a standalone workflow (the
       # prior shape) could report failure without ever blocking a merge.

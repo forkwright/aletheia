@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """CI gate: PROVENANCE.toml completeness, NOTICE.md sync, no derived-row growth,
-status-sequence, soak expiry, offline verbatim recompute."""
+status-sequence, soak expiry, offline verbatim recompute, consulted-sibling rule."""
 
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from krites_provenance_lib import (  # noqa: E402
     REPO_ROOT,
     UPSTREAM_SNAPSHOT_DIR,
     LedgerError,
+    consulted_errors,
     iter_src_files,
     parse_ledger,
     render_notice,
@@ -409,6 +410,26 @@ def check_method_recorded(rows: list[dict]) -> list[str]:
     return errors
 
 
+def check_consulted_siblings(rows: list[dict]) -> list[str]:
+    """#6879: the sibling rule — which siblings a clean-room rewrite may read, and what
+    the row must then record.
+
+    'method' answered how a sovereign row was written but left the answer unfalsifiable:
+    the first clean-room rewrite under it read four DERIVED siblings for style, one of
+    them (fts/tokenizer/remove_long.rs, jaccard 0.4215 against upstream) structurally the
+    same artifact it was writing. That was caught only because the rewriter volunteered
+    it — no check saw it, and a rewriter who said nothing would carry 'from_spec' in the
+    ledger today, the field recording a claim it cannot support.
+
+    The rule lives in krites_provenance_lib.consulted_errors so the WRITE path
+    (dump_ledger, therefore both krites-provenance-transition.py and
+    measure-krites-provenance.py) refuses the same rows this gate rejects, rather than
+    two copies drifting. Runs on the current ledger only — a --base-ref ledger predating
+    'consulted' has no such key and must still parse.
+    """
+    return consulted_errors(rows)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-ref", default="origin/main")
@@ -440,6 +461,7 @@ def main() -> int:
     errors += check_verbatim_recompute(rows)
     errors += check_no_unjustified_exemption(rows)
     errors += check_method_recorded(rows)
+    errors += check_consulted_siblings(rows)
 
     if errors:
         for err in errors:

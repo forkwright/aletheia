@@ -133,7 +133,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/fts/tokenizer/stop_word_filter/mod.rs` | cf. `fts/tokenizer/stop_word_filter/mod.rs` | 0.0% | sovereign | unknown |
 | `src/fts/tokenizer/stop_word_filter/sovereign/NOTICE.md` | — | 0.0% | sovereign | unknown |
 | `src/fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py` | cf. `fts/tokenizer/stop_word_filter/gen_stopwords.py` | 0.0% | sovereign | unknown |
-| `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | cf. `fts/tokenizer/stop_word_filter/mod.rs` | 9.4% | sovereign | rewritten_with_source_open (cf. `#6656`) |
+| `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | cf. `fts/tokenizer/stop_word_filter/mod.rs` | 9.4% | sovereign | from_spec_derived_siblings (cf. `#6879`) |
 | `src/fts/tokenizer/stop_word_filter/sovereign/stopwords.rs` | cf. `fts/tokenizer/stop_word_filter/stopwords.rs` | 76.6% | sovereign | unknown |
 | `src/fts/tokenizer/tokenized_string.rs` | `fts/tokenizer/tokenized_string.rs` | 76.4% | derived | — |
 | `src/fts/tokenizer/tokenizer_impl.rs` | `fts/tokenizer/tokenizer_impl.rs` | 74.1% | derived | — |
@@ -235,6 +235,7 @@ Aletheia's own additions are real and sit alongside the derived files — `async
 | Value | Meaning |
 |---|---|
 | `from_spec` | written against a written specification/paper, without reference to the derived source |
+| `from_spec_derived_siblings` | written against a specification, but derived siblings in this crate were read for local convention |
 | `from_behavioral_oracle` | written against observed behaviour/tests of the derived code, source not read |
 | `rewritten_with_source_open` | the derived file was consulted while writing |
 | `transliterated` | a **finding** value — confirms the file is a disguised copy; never a legitimate state for a sovereign row (see "Anti-backsliding" below) |
@@ -243,7 +244,13 @@ Aletheia's own additions are real and sit alongside the derived files — `async
 
 **55 of 68** sovereign rows carry `method = "unknown"` today. They were migrated there deliberately, not defaulted to a clean value: no evidence existed to support one, and a clean-by-default value would repeat this scheme's own history — `krites-provenance-transition.py` once hardcoded `verbatim_pct = 0.0` on every `dual` → `sovereign` transition, and 17 files that entered `sovereign` that way later re-measured at 18–41%. `unknown` is not itself a failure; it is the honest state until cleared with evidence.
 
-**13** carry a resolved method backed by a `method_evidence` pointer — a PR/issue reference, a commit SHA, or a spec path, always independently checkable, never a hand-typed justification. `unknown` is cleared only through `scripts/krites-provenance-transition.py --set-method <value> --evidence <pointer>`, never by hand-editing a row.
+`from_spec` and `from_spec_derived_siblings` differ only in what the author read for local convention, and the ledger records that as a `consulted` list per row — the source paths read while writing, `[]` when none. It exists because most of this crate is derived, so the sibling that best demonstrates a convention is usually the sibling doing the same job. Mechanical conventions (error type, lint attributes, module layout, naming) may come from any sibling; the shape of the same algorithm may only come from a `sovereign` one. CI reads each consulted path's own status: a `from_spec` row that consulted a `derived` sibling fails, and so does a `from_spec_derived_siblings` row whose list is empty or entirely `sovereign`. What the check cannot reach is the list's completeness — nothing observes what an author opened, so an omitted path reads exactly like a path never read.
+
+| File | Consulted while writing |
+|---|---|
+| `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | `src/fts/tokenizer/remove_long.rs`, `src/fts/tokenizer/stemmer.rs`, `src/fts/tokenizer/simple_tokenizer.rs`, `src/fts/tokenizer/split_compound_words.rs` |
+
+**13** carry a resolved method backed by a `method_evidence` pointer — a PR/issue reference, a commit SHA, or a spec path, always independently checkable, never a hand-typed justification. `unknown` is cleared only through `scripts/krites-provenance-transition.py --set-method <value> --evidence <pointer>` (plus `--consulted <paths>`, which the two `from_spec` values require), never by hand-editing a row.
 
 ## Reading `verbatim_pct`: what it can and cannot prove
 
