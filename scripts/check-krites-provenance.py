@@ -16,6 +16,7 @@ from krites_provenance_lib import (  # noqa: E402
     ALLOWED_TRANSITIONS,
     KRITES_SRC,
     LEDGER_PATH,
+    NO_PREDECESSOR_REASONS,
     NOTICE_PATH,
     REPO_ROOT,
     UPSTREAM_SNAPSHOT_DIR,
@@ -306,6 +307,53 @@ def check_verbatim_recompute(rows: list[dict]) -> list[str]:
     return errors
 
 
+def check_no_unjustified_exemption(rows: list[dict]) -> list[str]:
+    """#6797: check_verbatim_recompute's replaced_upstream_path == 'none' skip has a
+    hole its own docstring names but nothing closed -- "a genuinely fresh addition
+    with nothing to compare against" is exempt, but nothing verified 'genuinely'.
+    'none' means both "genuinely new" and "nobody ever mapped it", and the two were
+    indistinguishable: that is how all 8 runtime/hnsw_sovereign/* rows (2912 lines,
+    the crate's highest-risk rewrite) sat unmeasured at a hardcoded verbatim_pct=0.0
+    while 17 smaller fixed_rule/algos/*_native.rs rewrites beside them were all
+    measured (the aletheia#6656 fix reached those; this closes the mechanism that
+    let a NEW row repeat the same hole).
+
+    A sovereign row with replaced_upstream_path == 'none' must now be an explicit,
+    reasoned declaration: either krites_provenance_lib.py's NO_PREDECESSOR_REASONS
+    names why it genuinely has none, or the row belongs in
+    measure-krites-provenance.py's SOVEREIGN_VERIFY_MAP instead (a real predecessor,
+    measured for real by check_verbatim_recompute exactly like a derived/dual row).
+
+    Also flags the reverse drift: a NO_PREDECESSOR_REASONS entry for a path that is
+    no longer a sovereign/'none' row (deleted, or a predecessor was later found and
+    it now belongs in SOVEREIGN_VERIFY_MAP) -- an unread stale reason is the same
+    shape of default this check exists to close, just facing the other direction.
+    """
+    errors = []
+    exempt_paths: set[str] = set()
+    for row in rows:
+        if row["status"] != "sovereign" or row.get("replaced_upstream_path", "none") != "none":
+            continue
+        exempt_paths.add(row["path"])
+        if row["path"] not in NO_PREDECESSOR_REASONS:
+            errors.append(
+                f"{row['path']}: sovereign row with replaced_upstream_path='none' has no entry "
+                "in krites_provenance_lib.py's NO_PREDECESSOR_REASONS -- a new sovereign row must "
+                "either record a predecessor (a real replaced_upstream_path, via "
+                "measure-krites-provenance.py's SOVEREIGN_VERIFY_MAP) or declare in "
+                "NO_PREDECESSOR_REASONS why it genuinely has none"
+            )
+    stale = sorted(set(NO_PREDECESSOR_REASONS) - exempt_paths)
+    if stale:
+        errors.append(
+            "NO_PREDECESSOR_REASONS has entries for paths that are no longer a sovereign row "
+            "with replaced_upstream_path='none' (deleted, or a predecessor was found for it and "
+            "it belongs in SOVEREIGN_VERIFY_MAP instead) -- remove the stale entry: "
+            + ", ".join(stale)
+        )
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-ref", default="origin/main")
@@ -335,6 +383,7 @@ def main() -> int:
     errors += check_status_sequence(rows, base_rows)
     errors += check_soak_expiry(rows, git_commit_count(args.main_ref))
     errors += check_verbatim_recompute(rows)
+    errors += check_no_unjustified_exemption(rows)
 
     if errors:
         for err in errors:

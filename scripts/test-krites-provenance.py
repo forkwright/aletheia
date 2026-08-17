@@ -677,6 +677,70 @@ def test_verbatim_recompute_detects_drift() -> None:
             CHECKER.KRITES_SRC = orig_src
 
 
+# --- #6797: a sovereign/'none' row must be an explicit, reasoned declaration ---
+
+
+def test_no_unjustified_exemption_rejects_bare_none() -> None:
+    # WHY: this is the literal aletheia#6797 reproduction — check_verbatim_recompute
+    # SKIPS every replaced_upstream_path == 'none' row unconditionally, and before
+    # this check existed, nothing distinguished a genuinely fresh file from one
+    # nobody had ever mapped. A row not in NO_PREDECESSOR_REASONS must be rejected.
+    orig = CHECKER.NO_PREDECESSOR_REASONS
+    CHECKER.NO_PREDECESSOR_REASONS = {"justified.rs": "genuinely fresh, no predecessor"}
+    try:
+        rows = [row("unjustified.rs", "none", 0.0, "sovereign")]
+        errors = CHECKER.check_no_unjustified_exemption(rows)
+        expect(
+            any("has no entry in" in e and "unjustified.rs" in e for e in errors),
+            f"a sovereign/'none' row absent from NO_PREDECESSOR_REASONS must be rejected; got {errors}",
+        )
+    finally:
+        CHECKER.NO_PREDECESSOR_REASONS = orig
+
+
+def test_no_unjustified_exemption_accepts_justified_none() -> None:
+    orig = CHECKER.NO_PREDECESSOR_REASONS
+    CHECKER.NO_PREDECESSOR_REASONS = {"justified.rs": "genuinely fresh, no predecessor"}
+    try:
+        rows = [row("justified.rs", "none", 0.0, "sovereign")]
+        errors = CHECKER.check_no_unjustified_exemption(rows)
+        expect(errors == [], f"a sovereign/'none' row present in NO_PREDECESSOR_REASONS must pass; got {errors}")
+    finally:
+        CHECKER.NO_PREDECESSOR_REASONS = orig
+
+
+def test_no_unjustified_exemption_ignores_rows_with_a_real_predecessor() -> None:
+    # A sovereign row that DOES carry a real replaced_upstream_path has something to
+    # measure against (check_verbatim_recompute handles it) and has no business in
+    # NO_PREDECESSOR_REASONS at all.
+    orig = CHECKER.NO_PREDECESSOR_REASONS
+    CHECKER.NO_PREDECESSOR_REASONS = {}
+    try:
+        rows = [row("measured.rs", "none", 15.5, "sovereign", replaced_upstream_path="upstream.rs")]
+        errors = CHECKER.check_no_unjustified_exemption(rows)
+        expect(errors == [], f"a sovereign row with a real replaced_upstream_path must not be flagged; got {errors}")
+    finally:
+        CHECKER.NO_PREDECESSOR_REASONS = orig
+
+
+def test_no_unjustified_exemption_flags_stale_reason() -> None:
+    # A NO_PREDECESSOR_REASONS entry for a path that is no longer a sovereign/'none'
+    # row (deleted, or graduated into SOVEREIGN_VERIFY_MAP with a real predecessor)
+    # is an unread reason nobody is checking any more — the same shape of default
+    # this check exists to close, facing the other direction.
+    orig = CHECKER.NO_PREDECESSOR_REASONS
+    CHECKER.NO_PREDECESSOR_REASONS = {"gone.rs": "stale reason for a row that no longer qualifies"}
+    try:
+        rows = [row("measured.rs", "none", 15.5, "sovereign", replaced_upstream_path="upstream.rs")]
+        errors = CHECKER.check_no_unjustified_exemption(rows)
+        expect(
+            any("stale entry" in e and "gone.rs" in e for e in errors),
+            f"a stale NO_PREDECESSOR_REASONS entry must be flagged; got {errors}",
+        )
+    finally:
+        CHECKER.NO_PREDECESSOR_REASONS = orig
+
+
 # --- a moved `dual` file must not lose its soak fuse ---
 
 
@@ -804,6 +868,10 @@ def main() -> int:
         test_soak_expiry_fails_closed_when_commit_count_unavailable,
         test_verbatim_recompute_fails_closed_without_snapshot,
         test_verbatim_recompute_detects_drift,
+        test_no_unjustified_exemption_rejects_bare_none,
+        test_no_unjustified_exemption_accepts_justified_none,
+        test_no_unjustified_exemption_ignores_rows_with_a_real_predecessor,
+        test_no_unjustified_exemption_flags_stale_reason,
         test_dual_move_blocked,
         test_dual_retirement_allowed,
         test_dual_move_guard_ignores_sovereign,
