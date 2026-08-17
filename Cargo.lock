@@ -2606,6 +2606,7 @@ source = "git+https://github.com/forkwright/epitelesis.git?tag=v0.3.0#c22f67015f
 dependencies = [
  "rustix",
  "snafu 0.8.9",
+ "tokio",
  "tracing",
 ]
 
