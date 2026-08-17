@@ -112,7 +112,8 @@ impl SessionTx<'_> {
             .collect_vec();
 
         if self.store_tx.supports_par_put() {
-            for tuple in rel_handle.scan_all(self) {
+            for (row, tuple) in rel_handle.scan_all(self).enumerate() {
+                self.check_poison_at_row(row)?;
                 let tuple = tuple?;
                 let extracted = extraction_indices
                     .iter()
@@ -123,10 +124,12 @@ impl SessionTx<'_> {
             }
         } else {
             let mut existing = TempCollector::default();
-            for tuple in rel_handle.scan_all(self) {
+            for (row, tuple) in rel_handle.scan_all(self).enumerate() {
+                self.check_poison_at_row(row)?;
                 existing.push(tuple?);
             }
-            for tuple in existing.into_iter() {
+            for (row, tuple) in existing.into_iter().enumerate() {
+                self.check_poison_at_row(row)?;
                 let extracted = extraction_indices
                     .iter()
                     .map(|idx| tuple[*idx].clone())

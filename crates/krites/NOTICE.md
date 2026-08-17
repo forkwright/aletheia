@@ -10,7 +10,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
 - 210 files under `src/`: 142 derived, 68 sovereign, 0 dual
-- Mean verbatim match across the 142 derived files: 44.3% (unweighted average of the per-file `verbatim_pct` column below)
+- Mean verbatim match across the 142 derived files: 44.1% (unweighted average of the per-file `verbatim_pct` column below)
 
 | File | Upstream | Verbatim | Status |
 |---|---|---:|---|
@@ -179,9 +179,9 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/query/tests/reference_semantics.rs` | — | 0.0% | sovereign |
 | `src/query_cache.rs` | — | 0.0% | sovereign |
 | `src/runtime/callback.rs` | `runtime/callback.rs` | 55.3% | derived |
-| `src/runtime/db.rs` | `runtime/db.rs` | 23.7% | derived |
+| `src/runtime/db.rs` | `runtime/db.rs` | 22.7% | derived |
 | `src/runtime/error.rs` | — | 0.0% | sovereign |
-| `src/runtime/exec.rs` | `runtime/db.rs` | 66.8% | derived |
+| `src/runtime/exec.rs` | `runtime/db.rs` | 66.6% | derived |
 | `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | derived |
 | `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | derived |
 | `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | derived |
@@ -198,26 +198,26 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/hnsw_sovereign/remove.rs` | cf. `runtime/hnsw.rs` | 8.3% | sovereign |
 | `src/runtime/hnsw_sovereign/search.rs` | cf. `runtime/hnsw.rs` | 15.8% | sovereign |
 | `src/runtime/hnsw_sovereign/types.rs` | cf. `runtime/hnsw.rs` | 3.4% | sovereign |
-| `src/runtime/imperative.rs` | `runtime/imperative.rs` | 35.6% | derived |
+| `src/runtime/imperative.rs` | `runtime/imperative.rs` | 33.9% | derived |
 | `src/runtime/minhash_lsh.rs` | `runtime/minhash_lsh.rs` | 53.0% | derived |
 | `src/runtime/mod.rs` | `runtime/mod.rs` | 0.0% | derived |
 | `src/runtime/query_context_impl.rs` | — | 0.0% | sovereign |
 | `src/runtime/relation/extractors.rs` | `query/stored.rs` | 56.9% | derived |
 | `src/runtime/relation/handles.rs` | `runtime/relation.rs` | 68.7% | derived |
-| `src/runtime/relation/index_create.rs` | `runtime/relation.rs` | 64.7% | derived |
-| `src/runtime/relation/index_management.rs` | `runtime/relation.rs` | 60.8% | derived |
+| `src/runtime/relation/index_create.rs` | `runtime/relation.rs` | 61.3% | derived |
+| `src/runtime/relation/index_management.rs` | `runtime/relation.rs` | 57.0% | derived |
 | `src/runtime/relation/mod.rs` | `runtime/relation.rs` | 0.0% | derived |
 | `src/runtime/relation/mutation.rs` | `query/stored.rs` | 63.7% | derived |
 | `src/runtime/relation/relation_crud.rs` | `runtime/relation.rs` | 48.0% | derived |
 | `src/runtime/relation/validation.rs` | `query/stored.rs` | 73.3% | derived |
-| `src/runtime/sys.rs` | `runtime/db.rs` | 60.8% | derived |
+| `src/runtime/sys.rs` | `runtime/db.rs` | 55.1% | derived |
 | `src/runtime/temp_store.rs` | `runtime/temp_store.rs` | 81.0% | derived |
 | `src/runtime/tests/basic_queries.rs` | `runtime/tests.rs` | 12.3% | derived |
 | `src/runtime/tests/imperative.rs` | `runtime/tests.rs` | 44.4% | derived |
-| `src/runtime/tests/indexing.rs` | `runtime/tests.rs` | 41.2% | derived |
+| `src/runtime/tests/indexing.rs` | `runtime/tests.rs` | 29.0% | derived |
 | `src/runtime/tests/mod.rs` | `runtime/tests.rs` | 0.0% | derived |
 | `src/runtime/tests/triggers_callbacks.rs` | `runtime/tests.rs` | 7.6% | derived |
-| `src/runtime/transact.rs` | `runtime/transact.rs` | 12.1% | derived |
+| `src/runtime/transact.rs` | `runtime/transact.rs` | 11.4% | derived |
 | `src/storage/error.rs` | — | 0.0% | sovereign |
 | `src/storage/fjall_backend.rs` | — | 0.0% | sovereign |
 | `src/storage/mem.rs` | cf. `storage/mem.rs` | 22.6% | sovereign |

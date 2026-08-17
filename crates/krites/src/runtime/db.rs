@@ -140,6 +140,42 @@ impl Drop for RunningQueryCleanup {
     }
 }
 
+impl<S> Db<S> {
+    /// Register a fresh cancellation token as an in-flight operation,
+    /// returning the token and the guard that unregisters it on drop.
+    ///
+    /// INVARIANT: every operation long enough for a kill to matter registers
+    /// here, so `::running` lists exactly the set `::kill` can reach. Callers
+    /// additionally attach the returned token to the `SessionTx` the work runs
+    /// on -- that is what the query evaluator, the index searches and the
+    /// index builds actually check.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the wall-clock start time cannot be read.
+    pub(crate) fn register_running(&self) -> Result<(Poison, RunningQueryCleanup)> {
+        let poison = Poison::default();
+        let id = self.queries_count.fetch_add(1, Ordering::AcqRel);
+        self.running_queries
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                id,
+                RunningQueryHandle {
+                    started_at: seconds_since_the_epoch()?,
+                    poison: poison.clone(),
+                },
+            );
+        Ok((
+            poison,
+            RunningQueryCleanup {
+                id,
+                running_queries: Arc::clone(&self.running_queries),
+            },
+        ))
+    }
+}
+
 /// Whether a script is mutable or immutable.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]

@@ -1345,7 +1345,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/db.rs"
 upstream_path = "runtime/db.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 23.7
+verbatim_pct = 22.7
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1361,7 +1361,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/exec.rs"
 upstream_path = "runtime/db.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 66.8
+verbatim_pct = 66.6
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1497,7 +1497,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/imperative.rs"
 upstream_path = "runtime/imperative.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 35.6
+verbatim_pct = 33.9
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1545,7 +1545,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/relation/index_create.rs"
 upstream_path = "runtime/relation.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 64.7
+verbatim_pct = 61.3
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1553,7 +1553,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/relation/index_management.rs"
 upstream_path = "runtime/relation.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 60.8
+verbatim_pct = 57.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1593,7 +1593,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/sys.rs"
 upstream_path = "runtime/db.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 60.8
+verbatim_pct = 55.1
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1625,7 +1625,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/tests/indexing.rs"
 upstream_path = "runtime/tests.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 41.2
+verbatim_pct = 29.0
 status = "derived"
 soak_expires_at_commit_count = 0
 
@@ -1649,7 +1649,7 @@ soak_expires_at_commit_count = 0
 path = "runtime/transact.rs"
 upstream_path = "runtime/transact.rs"
 replaced_upstream_path = "none"
-verbatim_pct = 12.1
+verbatim_pct = 11.4
 status = "derived"
 soak_expires_at_commit_count = 0
 

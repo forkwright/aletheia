@@ -100,7 +100,6 @@ pub(crate) mod hnsw;
     clippy::default_trait_access,
     clippy::explicit_iter_loop,
     clippy::needless_continue,
-    clippy::redundant_closure_for_method_calls,
     clippy::redundant_else,
     clippy::ref_option,
     clippy::result_large_err,

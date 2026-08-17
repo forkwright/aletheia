@@ -4,6 +4,10 @@
     clippy::indexing_slicing,
     reason = "test assertions: index into known-shape NamedRows results"
 )]
+#![expect(
+    clippy::result_large_err,
+    reason = "test helpers — the engine's error size is not a test concern"
+)]
 use std::collections::BTreeMap;
 
 use crate::DbInstance;
@@ -646,5 +650,293 @@ fn insertion() {
         db.run_default(r"?[x, y] <- [[1, 3]] :insert a {x => y}",)
             .is_err(),
         "duplicate key insert should fail"
+    );
+}
+
+// Index-build cancellation (#6866). A `::kill` issued against a running index
+// build must abort it; the aborted transaction is never committed, so the next
+// open finds no index rather than a half-built graph that reads as complete.
+
+/// Rows the cancellation tests index. Large enough to span many
+/// `INDEX_BUILD_POISON_CADENCE` batches, so a kill lands inside the loop rather
+/// than between the only two batches there were.
+const MULTI_BATCH_ROWS: usize = 512;
+
+const HNSW_CREATE: &str = r"::hnsw create vecs:idx {
+    dim: 4, m: 16, dtype: F32, fields: [v], distance: L2, ef_construction: 60,
+    extend_candidates: false, keep_pruned_connections: false,
+}";
+
+const FTS_CREATE: &str = r"::fts create docs:fts {
+    extractor: text,
+    tokenizer: Simple,
+    filters: [Lowercase]
+}";
+
+/// Deterministic, well-separated integer coordinates: an all-identical fixture
+/// collapses the graph and makes the build too short to cancel.
+fn vector_rows(n: usize) -> String {
+    (0..n)
+        .map(|i| format!("[{i}, [{i}, {}, {}, {}]]", i / 2, i % 13, i % 7))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn text_rows(n: usize) -> String {
+    (0..n)
+        .map(|i| format!(r#"[{i}, "term{i} shared alpha beta gamma"]"#))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn seed_vectors(db: &DbInstance, n: usize) {
+    db.run_default(":create vecs {id: Int => v: <F32; 4>}")
+        .expect("creating the vector relation should succeed");
+    db.run_default(&format!(
+        "?[id, v] <- [{}] :put vecs {{id => v}}",
+        vector_rows(n)
+    ))
+    .expect("seeding vector rows should succeed");
+}
+
+fn seed_docs(db: &DbInstance, n: usize) {
+    db.run_default(":create docs {id: Int => text: String}")
+        .expect("creating the document relation should succeed");
+    db.run_default(&format!(
+        "?[id, text] <- [{}] :put docs {{id => text}}",
+        text_rows(n)
+    ))
+    .expect("seeding document rows should succeed");
+}
+
+fn read_rows(db: &DbInstance, script: &str) -> crate::NamedRows {
+    db.run_script(script, BTreeMap::new(), ScriptMutability::Immutable)
+        .expect("read-only script should succeed")
+}
+
+fn cancellation_reason(
+    err: &crate::error::InternalError,
+) -> Option<crate::runtime::db::CancellationReason> {
+    match err {
+        crate::error::InternalError::Runtime {
+            source: crate::runtime::error::RuntimeError::QueryKilled { reason, .. },
+        } => Some(*reason),
+        _ => None,
+    }
+}
+
+/// Poll `::running` until the build registers, then `::kill` it. Returns false
+/// when the build finished before anything was ever listed, so the caller can
+/// fail on that rather than hang or silently pass.
+fn kill_when_listed<T>(db: &DbInstance, build: &std::thread::JoinHandle<T>) -> bool {
+    loop {
+        let running = read_rows(db, "::running");
+        if let Some(id) = running.rows.first().and_then(|row| row[0].get_int()) {
+            let res = read_rows(db, &format!("::kill {id}"));
+            assert_eq!(
+                res.rows[0][0],
+                crate::DataValue::from("KILLING"),
+                "::kill must reach the operation ::running just listed"
+            );
+            return true;
+        }
+        if build.is_finished() {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_micros(200));
+    }
+}
+
+fn assert_index_absent(db: &DbInstance, relation: &str, index: &str) {
+    let indices = read_rows(db, &format!("::indices {relation}"));
+    assert!(
+        indices.rows.is_empty(),
+        "a cancelled build must commit no index, but ::indices {relation} lists {:?}",
+        indices.rows
+    );
+    let qualified = format!("{relation}:{index}");
+    let relations = read_rows(db, "::relations");
+    assert!(
+        !relations
+            .rows
+            .iter()
+            .any(|row| row[0] == crate::DataValue::from(qualified.as_str())),
+        "the index relation {qualified} must not survive a cancelled build"
+    );
+}
+
+#[test]
+fn when_an_hnsw_build_is_killed_it_aborts_and_commits_no_index() {
+    let db = DbInstance::default();
+    seed_vectors(&db, MULTI_BATCH_ROWS);
+
+    let builder = db.clone();
+    let build = std::thread::spawn(move || builder.run_default(HNSW_CREATE));
+    let killed = kill_when_listed(&db, &build);
+    let outcome = build.join().expect("the build thread must not panic");
+
+    assert!(
+        killed,
+        "the HNSW build completed before ::running ever listed it, so nothing was cancelled"
+    );
+    let err = outcome.expect_err("a killed HNSW build must not report success");
+    assert_eq!(
+        cancellation_reason(&err),
+        Some(crate::runtime::db::CancellationReason::Killed),
+        "a killed build must fail as a cancellation, not as some other error: {err}"
+    );
+    assert_index_absent(&db, "vecs", "idx");
+}
+
+#[test]
+fn when_an_fts_reindex_is_killed_it_aborts_and_commits_no_index() {
+    let db = DbInstance::default();
+    seed_docs(&db, MULTI_BATCH_ROWS);
+
+    let builder = db.clone();
+    let build = std::thread::spawn(move || builder.run_default(FTS_CREATE));
+    let killed = kill_when_listed(&db, &build);
+    let outcome = build.join().expect("the build thread must not panic");
+
+    assert!(
+        killed,
+        "the FTS reindex completed before ::running ever listed it, so nothing was cancelled"
+    );
+    let err = outcome.expect_err("a killed FTS reindex must not report success");
+    assert_eq!(
+        cancellation_reason(&err),
+        Some(crate::runtime::db::CancellationReason::Killed),
+        "a killed reindex must fail as a cancellation, not as some other error: {err}"
+    );
+    assert_index_absent(&db, "docs", "fts");
+}
+
+/// Guards the opposite failure: a cadence check that always trips would pass
+/// every test above while making index creation impossible.
+#[test]
+fn an_uncancelled_multi_batch_index_build_still_completes() {
+    let db = DbInstance::default();
+
+    seed_vectors(&db, MULTI_BATCH_ROWS);
+    db.run_default(HNSW_CREATE)
+        .expect("an uncancelled HNSW build spanning many batches must complete");
+    let indices = read_rows(&db, "::indices vecs");
+    assert_eq!(
+        indices.rows.len(),
+        1,
+        "the completed build must leave exactly one index on vecs"
+    );
+    let hits = read_rows(
+        &db,
+        "?[id] := ~vecs:idx{id | query: vec([1,1,1,1]), k: 5, ef: 50}",
+    );
+    assert_eq!(
+        hits.rows.len(),
+        5,
+        "a completed HNSW index must answer a k=5 search with 5 neighbours"
+    );
+
+    seed_docs(&db, MULTI_BATCH_ROWS);
+    db.run_default(FTS_CREATE)
+        .expect("an uncancelled FTS reindex spanning many batches must complete");
+    let hits = read_rows(&db, "?[id] := ~docs:fts{id, text | query: 'term7', k: 5}");
+    assert!(
+        !hits.rows.is_empty(),
+        "a completed FTS index must match a term it indexed"
+    );
+}
+
+/// The in-memory tests above assert what the *process* sees. This one asserts
+/// what *storage* holds: the database is closed after the kill and reopened
+/// from disk, so a partially-written index would have to survive the round trip
+/// to be caught.
+#[cfg(feature = "storage-fjall")]
+#[test]
+fn a_killed_hnsw_build_leaves_a_recoverable_database_on_disk() {
+    use crate::storage::fjall_backend::{FjallStorage, new_krites_fjall};
+
+    type FjallDb = crate::runtime::db::Db<FjallStorage>;
+
+    fn write(db: &FjallDb, script: &str) -> crate::error::InternalResult<crate::NamedRows> {
+        db.run_script(script, BTreeMap::new(), ScriptMutability::Mutable)
+    }
+    fn read(db: &FjallDb, script: &str) -> crate::NamedRows {
+        db.run_script(script, BTreeMap::new(), ScriptMutability::Immutable)
+            .expect("read-only script should succeed")
+    }
+
+    let dir = tempfile::tempdir().expect("creating a temp dir should succeed");
+    let path = dir.path();
+
+    {
+        let db = new_krites_fjall(path).expect("opening the fjall database should succeed");
+        write(&db, ":create vecs {id: Int => v: <F32; 4>}")
+            .expect("creating the vector relation should succeed");
+        write(
+            &db,
+            &format!(
+                "?[id, v] <- [{}] :put vecs {{id => v}}",
+                vector_rows(MULTI_BATCH_ROWS)
+            ),
+        )
+        .expect("seeding vector rows should succeed");
+
+        let builder = db.clone();
+        let build = std::thread::spawn(move || write(&builder, HNSW_CREATE));
+        let killed = loop {
+            let running = read(&db, "::running");
+            if let Some(id) = running.rows.first().and_then(|row| row[0].get_int()) {
+                read(&db, &format!("::kill {id}"));
+                break true;
+            }
+            if build.is_finished() {
+                break false;
+            }
+            std::thread::sleep(std::time::Duration::from_micros(200));
+        };
+        let outcome = build.join().expect("the build thread must not panic");
+        assert!(
+            killed,
+            "the HNSW build completed before ::running ever listed it, so nothing was cancelled"
+        );
+        let err = outcome.expect_err("a killed HNSW build must not report success");
+        assert_eq!(
+            cancellation_reason(&err),
+            Some(crate::runtime::db::CancellationReason::Killed),
+            "a killed build must fail as a cancellation, not as some other error: {err}"
+        );
+    } // db dropped here: fjall keyspace closed, lock released.
+
+    let db = new_krites_fjall(path).expect("reopening the fjall database should succeed");
+    let indices = read(&db, "::indices vecs");
+    assert!(
+        indices.rows.is_empty(),
+        "the reopened database must find no index from the cancelled build, found {:?}",
+        indices.rows
+    );
+    let relations = read(&db, "::relations");
+    assert!(
+        !relations
+            .rows
+            .iter()
+            .any(|row| row[0] == crate::DataValue::from("vecs:idx")),
+        "the index relation must not survive a cancelled build across a reopen"
+    );
+    let base = read(&db, "?[id] := *vecs{id}");
+    assert_eq!(
+        base.rows.len(),
+        MULTI_BATCH_ROWS,
+        "the base relation must survive a cancelled index build intact"
+    );
+
+    write(&db, HNSW_CREATE).expect("rebuilding after a cancelled build must succeed");
+    let hits = read(
+        &db,
+        "?[id] := ~vecs:idx{id | query: vec([1,1,1,1]), k: 5, ef: 50}",
+    );
+    assert_eq!(
+        hits.rows.len(),
+        5,
+        "the rebuilt index must answer a k=5 search with 5 neighbours"
     );
 }

@@ -126,11 +126,13 @@ impl SessionTx<'_> {
 
         let hash_perms = manifest.get_hash_perms()?;
         let mut existing = TempCollector::default();
-        for tuple in rel_handle.scan_all(self) {
+        for (row, tuple) in rel_handle.scan_all(self).enumerate() {
+            self.check_poison_at_row(row)?;
             existing.push(tuple?);
         }
 
-        for tuple in existing.into_iter() {
+        for (row, tuple) in existing.into_iter().enumerate() {
+            self.check_poison_at_row(row)?;
             self.put_lsh_index_item(
                 &tuple,
                 &extractor,
@@ -273,10 +275,12 @@ impl SessionTx<'_> {
         let mut stack = vec![];
 
         let mut existing = TempCollector::default();
-        for tuple in rel_handle.scan_all(self) {
+        for (row, tuple) in rel_handle.scan_all(self).enumerate() {
+            self.check_poison_at_row(row)?;
             existing.push(tuple?);
         }
-        for tuple in existing.into_iter() {
+        for (row, tuple) in existing.into_iter().enumerate() {
+            self.check_poison_at_row(row)?;
             let key_part = &tuple[..rel_handle.metadata.keys.len()];
             if rel_handle.exists(self, key_part)? {
                 self.del_fts_index_item(
@@ -485,7 +489,8 @@ impl SessionTx<'_> {
         };
 
         let mut all_tuples = TempCollector::default();
-        for tuple in rel_handle.scan_all(self) {
+        for (row, tuple) in rel_handle.scan_all(self).enumerate() {
+            self.check_poison_at_row(row)?;
             all_tuples.push(tuple?);
         }
         let filter = if let Some(f_code) = &manifest.index_filter {
@@ -518,7 +523,8 @@ impl SessionTx<'_> {
             Some(&filter)
         };
         let mut stack = vec![];
-        for tuple in all_tuples.into_iter() {
+        for (row, tuple) in all_tuples.into_iter().enumerate() {
+            self.check_poison_at_row(row)?;
             self.hnsw_put(
                 &manifest,
                 &rel_handle,

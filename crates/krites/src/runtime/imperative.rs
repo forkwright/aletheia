@@ -5,7 +5,6 @@
 //! nested query execution. Each imperative program runs inside a single
 //! transaction with poison-based cancellation support.
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::Ordering;
 
 use compact_str::CompactString;
 use either::{Either, Left, Right};
@@ -20,7 +19,6 @@ use crate::parse::{
     ImperativeCondition, ImperativeProgram, ImperativeStmt, ImperativeStmtClause, SourceSpan,
 };
 use crate::runtime::callback::CallbackCollector;
-use crate::runtime::db::{RunningQueryCleanup, RunningQueryHandle, seconds_since_the_epoch};
 use crate::runtime::error::{InvalidOperationSnafu, ReadOnlyViolationSnafu};
 use crate::runtime::relation::InputRelationHandle;
 use crate::runtime::transact::SessionTx;
@@ -284,6 +282,12 @@ impl<'s, S: Storage<'s>> Db<S> {
                     ret = NamedRows::default();
                 }
                 ImperativeStmt::SysOp { sysop, .. } => {
+                    // WHY (#6866): an index build here must observe this
+                    // program's kill/timeout. The token is re-attached per
+                    // statement rather than once at program start because a
+                    // preceding query statement overwrites `tx.poison` with
+                    // its own token and leaves it killed on completion.
+                    tx.poison = Some(ctx.poison.clone());
                     ret = self.run_sys_op_with_tx(tx, &sysop.sysop, ctx.readonly, true)?;
                     if let Some(store_as) = &sysop.store_as {
                         tx.script_store_as_relation(self, store_as, &ret, cur_vld)?;
@@ -366,22 +370,7 @@ impl<'s, S: Storage<'s>> Db<S> {
                 self.transact()?
             };
 
-            let poison = Poison::default();
-            let qid = self.queries_count.fetch_add(1, Ordering::AcqRel);
-            let since_the_epoch = seconds_since_the_epoch()?;
-
-            let q_handle = RunningQueryHandle {
-                started_at: since_the_epoch,
-                poison: poison.clone(),
-            };
-            self.running_queries
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .insert(qid, q_handle);
-            let _guard = RunningQueryCleanup {
-                id: qid,
-                running_queries: self.running_queries.clone(),
-            };
+            let (poison, _guard) = self.register_running()?;
 
             let mut ctx = ImperativeCallbackCtx {
                 cleanups: &mut cleanups,
