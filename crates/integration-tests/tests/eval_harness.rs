@@ -33,6 +33,7 @@ async fn eval_health_scenarios_pass() {
         fail_fast: false,
         timeout_secs: 10,
         json_output: false,
+        model: None,
         provenance: test_provenance(&base_url),
     };
 
@@ -55,6 +56,7 @@ async fn eval_auth_scenarios_pass() {
         fail_fast: false,
         timeout_secs: 10,
         json_output: false,
+        model: None,
         provenance: test_provenance(&base_url),
     };
 
@@ -77,6 +79,7 @@ async fn eval_nous_scenarios_pass() {
         fail_fast: false,
         timeout_secs: 10,
         json_output: false,
+        model: None,
         provenance: test_provenance(&base_url),
     };
 
@@ -103,6 +106,7 @@ async fn eval_session_scenarios_pass() {
         fail_fast: false,
         timeout_secs: 10,
         json_output: false,
+        model: None,
         provenance: test_provenance(&base_url),
     };
 
@@ -142,6 +146,7 @@ async fn eval_conversation_scenarios_pass() {
         fail_fast: false,
         timeout_secs: 15,
         json_output: false,
+        model: None,
         provenance: test_provenance(&base_url),
     };
 
@@ -180,6 +185,7 @@ async fn eval_full_run_excludes_canary() {
             fail_fast: false,
             timeout_secs: 15,
             json_output: true,
+            model: None,
             provenance: test_provenance(&base_url),
         };
         let runner = ScenarioRunner::new(config);

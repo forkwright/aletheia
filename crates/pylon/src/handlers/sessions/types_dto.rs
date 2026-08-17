@@ -11,6 +11,16 @@ pub struct CreateSessionRequest {
     pub nous_id: String,
     /// Client-chosen key for session deduplication.
     pub session_key: String,
+    /// Model override recorded on the session at creation time.
+    ///
+    /// WARNING(#4541): validated against the live provider registry and
+    /// returned via `SessionResponse.model`, but it is a label only -- the
+    /// turn-execution model route (`nous::execute::resolve::resolve_turn_route`)
+    /// derives the model solely from the nous agent's configured default and
+    /// carries no per-session override input, so this does not yet change
+    /// which model actually answers the conversation.
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 /// Body for `PUT /api/v1/sessions/{id}/name`.

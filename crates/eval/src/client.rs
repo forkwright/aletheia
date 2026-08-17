@@ -14,6 +14,7 @@ pub struct EvalClient {
     http: reqwest::Client,
     base_url: String,
     token: Option<SecretString>,
+    model: Option<String>,
 }
 
 impl EvalClient {
@@ -36,7 +37,20 @@ impl EvalClient {
             http: reqwest::Client::new(),
             base_url,
             token: token.map(SecretString::from),
+            model: None,
         }
+    }
+
+    /// Override the model this client requests when it creates sessions.
+    ///
+    /// Applies to every session `create_session` opens afterward -- a single
+    /// eval run targets one model for the whole scenario suite, not a
+    /// per-scenario choice. `None` (the default) leaves session creation to
+    /// the nous agent's configured default model.
+    #[must_use]
+    pub fn with_model(mut self, model: Option<String>) -> Self {
+        self.model = model;
+        self
     }
 
     /// Whether an auth token is configured.
@@ -77,6 +91,9 @@ impl EvalClient {
     }
 
     /// Create a new session bound to a nous agent.
+    ///
+    /// Includes the client's configured model override (see [`Self::with_model`])
+    /// in the request body only when one was set.
     #[instrument(skip(self))]
     pub async fn create_session(
         &self,
@@ -84,10 +101,13 @@ impl EvalClient {
         session_key: &str,
     ) -> Result<SessionResponse> {
         let url = format!("{}/api/v1/sessions", self.base_url);
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "nous_id": nous_id,
             "session_key": session_key,
         });
+        if let Some(model) = &self.model {
+            body["model"] = serde_json::json!(model);
+        }
         let resp = self.authed_post(&url, &body).await?;
         self.expect_status(&url, resp, &[201, 200]).await
     }
@@ -627,9 +647,97 @@ pub struct KnowledgeExplainCandidate {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use organon::testing::install_crypto_provider;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
     use super::*;
+
+    /// Minimal well-formed `SessionResponse` body for a mocked create-session reply.
+    fn session_response_json(model: Option<&str>) -> serde_json::Value {
+        serde_json::json!({
+            "id": "ses-test",
+            "nous_id": "nous-a",
+            "session_key": "key-a",
+            "status": "active",
+            "model": model,
+            "message_count": 0,
+            "token_count_estimate": 0,
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        })
+    }
+
+    #[tokio::test]
+    async fn create_session_omits_model_when_none() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        let captured = Arc::new(Mutex::new(None));
+        let captured_clone = Arc::clone(&captured);
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sessions"))
+            .respond_with(move |request: &Request| {
+                let body = request
+                    .body_json::<serde_json::Value>()
+                    .expect("create_session request should be JSON");
+                *captured_clone.lock().expect("mutex") = Some(body);
+                ResponseTemplate::new(201).set_body_json(session_response_json(None))
+            })
+            .mount(&server)
+            .await;
+
+        let client = EvalClient::new(server.uri(), None);
+        client
+            .create_session("nous-a", "key-a")
+            .await
+            .expect("create_session should succeed");
+
+        let body = captured
+            .lock()
+            .expect("mutex")
+            .clone()
+            .expect("request body captured");
+        assert!(
+            body.get("model").is_none(),
+            "model key should be omitted from the request body when no override is set, got {body:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_session_includes_model_when_set() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        let captured = Arc::new(Mutex::new(None));
+        let captured_clone = Arc::clone(&captured);
+        Mock::given(method("POST"))
+            .and(path("/api/v1/sessions"))
+            .respond_with(move |request: &Request| {
+                let body = request
+                    .body_json::<serde_json::Value>()
+                    .expect("create_session request should be JSON");
+                *captured_clone.lock().expect("mutex") = Some(body);
+                ResponseTemplate::new(201)
+                    .set_body_json(session_response_json(Some("claude-opus-4-5")))
+            })
+            .mount(&server)
+            .await;
+
+        let client =
+            EvalClient::new(server.uri(), None).with_model(Some("claude-opus-4-5".to_owned()));
+        client
+            .create_session("nous-a", "key-a")
+            .await
+            .expect("create_session should succeed");
+
+        let body = captured
+            .lock()
+            .expect("mutex")
+            .clone()
+            .expect("request body captured");
+        assert_eq!(body["model"], "claude-opus-4-5");
+    }
 
     #[test]
     fn url_construction_trims_trailing_slash() {
