@@ -632,7 +632,7 @@ mod tests {
             "two recorded calls must add at least two to the cumulative total"
         );
         assert!(
-            errors_after >= errors_before + 1,
+            errors_after > errors_before,
             "the Error call must add at least one to the cumulative error total"
         );
     }
