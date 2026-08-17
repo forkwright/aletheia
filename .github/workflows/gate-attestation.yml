@@ -402,6 +402,26 @@ jobs:
       - name: Krites provenance checker self-tests
         run: scripts/test-krites-provenance.py
 
+      # WHY here rather than in krites-verbatim-drift.yml: that workflow is not
+      # in `main`'s required-status-check set (`cargo audit`, `cargo deny`,
+      # `gate`), so its --strict step could report failure without ever blocking
+      # a merge. That is the same shape the provenance-ledger comment above
+      # rejects, and it went unnoticed because a red standalone check looks
+      # identical to a red blocking one on the PR page.
+      #
+      # WARNING: passing here is NECESSARY, NOT SUFFICIENT. --strict fails only
+      # on a `sovereign` row that records no predecessor AND scores above the
+      # calibrated threshold. A confirmed transliteration once scored 26.6%
+      # while a confirmed independent rewrite scored 32.1% (#6656), so the
+      # metric cannot separate the two classes it is pointed at. Read a green
+      # result as "no unmeasured sovereign row textually resembles upstream",
+      # never as "the sovereign claims are true".
+      #
+      # The script declares `dependencies = []` and imports only the standard
+      # library, so it needs no uv in this job.
+      - name: Gate on unmeasured sovereign claims (krites)
+        run: python3 scripts/check-krites-verbatim-drift.py --strict
+
   gate-coverage-compile-checks:
     name: gate-coverage-compile-checks
     runs-on: ubuntu-latest
