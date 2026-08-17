@@ -116,6 +116,17 @@ def check_completeness(rows: list[dict]) -> list[str]:
 
 def check_notice_sync(meta: dict, rows: list[dict]) -> list[str]:
     expected = render_notice(meta, rows)
+    # WHY an explicit existence check: read_text() on a missing NOTICE.md raised
+    # FileNotFoundError out of main(), so deleting the file produced a traceback
+    # rather than a finding. A checker that dies untidily reads as broken tooling
+    # and gets re-run or ignored, while deleting the artifact recording which
+    # files carry CozoDB lineage is exactly the act this check exists to catch.
+    if not NOTICE_PATH.is_file():
+        return [
+            f"{NOTICE_PATH} does not exist. It is generated from PROVENANCE.toml and records "
+            "which files carry CozoDB lineage; its absence is not evidence the attribution "
+            "obligation ended — run scripts/measure-krites-provenance.py to regenerate it"
+        ]
     actual = NOTICE_PATH.read_text()
     if expected != actual:
         return ["NOTICE.md is out of sync with PROVENANCE.toml — run scripts/measure-krites-provenance.py or scripts/render-krites-notice.py and commit the result"]
