@@ -468,21 +468,13 @@ jobs:
       - name: Episteme ML-feature gate (gliner, nuextract)
         run: cargo clippy -p episteme --features gliner,nuextract --all-targets -- -D warnings
 
-      # WHY(#4414): clippy --all-targets lints the test targets but never runs them — a real
-      # panic/logic defect inside a #[cfg(test)] fn under these features could still merge.
-      # This actually executes gliner.rs/nuextract.rs's test modules.
-      #
-      # CAVEAT (state it, don't hide it): gliner_model_smoke_inference_when_staged_model_exists
-      # and nuextract_smoke_inference_when_staged_model_exists both self-skip
-      # (`if !model_dir.exists() { return; }`) against DEFAULT_MODEL_DIR
-      # (/models/onnx/gliner_multi-v2.1, /models/onnx/nuextract-2b) — no ONNX model is staged on
-      # a GitHub-hosted runner, so neither smoke test exercises real inference here; that stays
-      # untested by CI. The rest of each module (split_words, parse_extraction_json_* parsing
-      # logic, the Send+Sync compile-check, etc.) carries no such gate and runs for real, so
-      # this step is not a no-op — it just does not close the ONNX-inference gap.
-      - name: Episteme ML-feature gate nextest (gliner, nuextract)
-        run: cargo nextest run --profile ci -p episteme --features gliner,nuextract --build-jobs 4 --test-threads 4 --no-fail-fast
-
+      # WHY(#6862) there is no gliner/nuextract nextest step here: executing those tests
+      # requires LINKING episteme, and `ort-sys`' build script does not supply the
+      # `onnxruntime` native library on a hosted runner — `could not find native static
+      # library 'onnxruntime'`. `cargo check`/`clippy` never link, which is why the existing
+      # ML-feature lint steps pass while a test run cannot. Adding the step without solving
+      # the native dependency turns a required check permanently red, so the gap is tracked
+      # rather than papered over.
       - name: Poiesis-charts Vega-Lite feature gate
         run: cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings
 
