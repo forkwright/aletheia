@@ -37,6 +37,65 @@ async fn create_session_returns_201() {
     assert_eq!(session["status"], "active");
 }
 
+// WHY(#4541): pins that a session's `model` reflects the nous agent's
+// configured default when no override is requested -- the test harness's
+// `syn` nous is spawned with `generation.model = "mock-model"`.
+#[tokio::test]
+async fn create_session_without_model_uses_configured_default() {
+    let (app, _dir) = app().await;
+    let session = create_test_session(&app).await;
+    assert_eq!(session["model"], "mock-model");
+}
+
+// WHY(#4541): a `model` override that a registered provider claims is
+// validated and recorded on the session, distinct from the nous agent's
+// configured default (the test harness's mock provider claims both
+// "mock-model" and "claude-opus-4-20250514").
+#[tokio::test]
+async fn create_session_with_known_model_override_returns_201() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "model-override-session",
+            "model": "claude-opus-4-20250514"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = body_json(resp).await;
+    assert_eq!(body["model"], "claude-opus-4-20250514");
+}
+
+// WHY(#4541): a model no registered provider claims reuses hermeneus's
+// `UnsupportedModel` error rather than being silently accepted or dropped.
+#[tokio::test]
+async fn create_session_with_unsupported_model_returns_400() {
+    let (app, _dir) = app().await;
+    let req = authed_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "unsupported-model-session",
+            "model": "totally-unknown-model-xyz"
+        })),
+    );
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "bad_request");
+    assert!(
+        body["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("totally-unknown-model-xyz"),
+        "error message should name the unsupported model, got: {body}"
+    );
+}
+
 #[tokio::test]
 async fn get_session_returns_created_session() {
     let (router, _dir) = app().await;

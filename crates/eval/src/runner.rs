@@ -36,6 +36,10 @@ pub struct RunConfig {
     pub timeout_secs: u64,
     /// Emit JSON instead of formatted output.
     pub json_output: bool,
+    /// Model override applied to every session this run's scenarios create.
+    /// `None` leaves session creation to the target nous agent's configured
+    /// default model.
+    pub model: Option<String>,
     /// Durable provenance envelope for this run.
     pub provenance: EvalProvenance,
 }
@@ -100,7 +104,8 @@ impl ScenarioRunner {
         let client = EvalClient::new(
             &config.base_url,
             config.token.as_ref().map(|t| t.expose_secret().to_owned()),
-        );
+        )
+        .with_model(config.model.clone());
         Self {
             config,
             client,
