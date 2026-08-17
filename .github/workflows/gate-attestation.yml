@@ -450,6 +450,11 @@ jobs:
         with:
           token: ${{ secrets.FLEET_REPO_TOKEN }}
 
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2
+        with:
+          tool: nextest@0.9.143
+
       - name: Poiesis feature gates
         run: |
           cargo check -p poiesis-slides
@@ -483,8 +488,21 @@ jobs:
       - name: Episteme ML-feature gate (gliner, nuextract)
         run: cargo clippy -p episteme --features gliner,nuextract --all-targets -- -D warnings
 
+      # WHY(#6862) there is no gliner/nuextract nextest step here: executing those tests
+      # requires LINKING episteme, and `ort-sys`' build script does not supply the
+      # `onnxruntime` native library on a hosted runner — `could not find native static
+      # library 'onnxruntime'`. `cargo check`/`clippy` never link, which is why the existing
+      # ML-feature lint steps pass while a test run cannot. Adding the step without solving
+      # the native dependency turns a required check permanently red, so the gap is tracked
+      # rather than papered over.
       - name: Poiesis-charts Vega-Lite feature gate
         run: cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings
+
+      # WHY(#4414): same rationale as the episteme nextest step above. vega.rs's test module has
+      # no external-dependency gate (it exercises build_spec() only, never the npx/vega-lite
+      # shell-out in vl_to_svg()), so all of it runs for real here — no self-skip caveat.
+      - name: Poiesis-charts Vega-Lite feature gate nextest
+        run: cargo nextest run --profile ci -p poiesis-charts --features charts-vega --build-jobs 4 --test-threads 4 --no-fail-fast
 
       - name: cargo check fuzz targets
         env:
