@@ -181,7 +181,12 @@ def _load_sibling_module(path: Path, name: str) -> ModuleType:
     module = importlib.util.module_from_spec(spec)
     try:
         spec.loader.exec_module(module)
-    except Exception as exc:
+    # WHY the blind catch is correct here rather than narrowed: exec_module runs
+    # arbitrary module-level code from a sibling script, which can raise any
+    # exception type. Narrowing would let an unanticipated one escape as a raw
+    # traceback, which is the failure this guard exists to prevent -- a checker
+    # that dies untidily reads as broken tooling rather than as a refusal.
+    except Exception as exc:  # noqa: BLE001
         refuse(f"could not load {path} for reuse -- its checks cannot be applied: {exc}")
     return module
 
@@ -526,7 +531,10 @@ def _original_tracked_issue_numbers() -> frozenset[int]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         refuse(f"could not read the anchor commit {TRACKED_ISSUES_ANCHOR_COMMIT}: {exc}")
-        raise AssertionError("unreachable")
+        # NOTE: refuse() exits, so this is unreachable and exists only so the
+        # type checker sees the branch terminate. Chained from `exc` so that if
+        # refuse() is ever changed to return, the original cause survives.
+        raise AssertionError("unreachable") from exc
     if result.returncode != 0:
         refuse(
             f"git show {TRACKED_ISSUES_ANCHOR_COMMIT}:scripts/krites-tethers-remaining.py failed -- "
