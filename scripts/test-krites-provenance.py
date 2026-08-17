@@ -1414,6 +1414,252 @@ def test_missing_ledger_still_bootstraps() -> None:
             expect(False, f"a MISSING ledger must remain the bootstrap case, not a failure: {exc}")
 
 
+# --- #5956: per-file MPL Exhibit A notices, and the measurement they must not move ---
+
+
+_UPSTREAM_STYLE_HEADER = (
+    "/*\n"
+    " * Copyright 2022, The Cozo Project Authors.\n"
+    " *\n"
+    " * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.\n"
+    " * If a copy of the MPL was not distributed with this file,\n"
+    " * You can obtain one at https://mozilla.org/MPL/2.0/.\n"
+    " */\n"
+)
+
+
+def test_verbatim_pct_is_unmoved_by_the_generated_notice() -> None:
+    # WHY this is the load-bearing test in this section: verbatim_pct is
+    # matched-lines / local-non-blank-lines, so a 5-line header added to 142 derived
+    # files moves the de-derivation program's central metric on every one of them
+    # while nothing about any file's derivation changed. A number that moves without
+    # the underlying work is the exact failure the ledger exists to end, so the notice
+    # must be outside what is measured -- proven here, not assumed.
+    upstream = "".join(f"fn f{i}() {{}}\n" for i in range(20))
+    plain = "".join(f"fn f{i}() {{}}\n" for i in range(10)) + "fn zzz() {}\n"
+    stamped = LIB.add_generated_notice(plain, LIB.render_exhibit_a(".rs"))
+
+    expect(stamped != plain, "fixture bug: the stamped text must actually carry the notice")
+    expect(
+        LIB.nonblank_lines(stamped) == LIB.nonblank_lines(plain),
+        "the notice must not survive line extraction",
+    )
+    expect(
+        LIB.verbatim_pct(plain, upstream) == LIB.verbatim_pct(stamped, upstream),
+        f"verbatim_pct moved when the notice was added: {LIB.verbatim_pct(plain, upstream)} "
+        f"-> {LIB.verbatim_pct(stamped, upstream)}",
+    )
+
+    # The negative control: without the exclusion the figure DOES move, so the
+    # assertion above is measuring the exclusion rather than passing vacuously.
+    naive = len([line for line in stamped.splitlines() if line.strip()])
+    expect(
+        naive > len(LIB.nonblank_lines(stamped)),
+        "fixture bug: a naive line count must see the notice, or this test proves nothing",
+    )
+
+
+def test_generated_notice_roundtrip_is_exact() -> None:
+    for suffix in LIB.COMMENT_SYNTAX:
+        block = LIB.render_exhibit_a(suffix)
+        expect(LIB.has_exhibit_a(block), f"{suffix}: the rendered block must satisfy has_exhibit_a")
+        for base in ("body line one\nbody line two\n", "#!/usr/bin/env python3\nbody\n"):
+            stamped = LIB.add_generated_notice(base, block)
+            expect(
+                LIB.remove_generated_notice(stamped, block) == base,
+                f"{suffix}: add then remove must return the original bytes",
+            )
+            expect(
+                LIB.strip_generated_notice(stamped) == base,
+                f"{suffix}: strip_generated_notice must remove exactly the block",
+            )
+        shebang_stamped = LIB.add_generated_notice("#!/usr/bin/env python3\nbody\n", block)
+        expect(
+            shebang_stamped.startswith("#!/usr/bin/env python3\n"),
+            f"{suffix}: the notice must go BELOW a shebang, not displace it",
+        )
+
+
+def test_render_exhibit_a_refuses_an_unregistered_suffix() -> None:
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.render_exhibit_a(".toml"),
+        "a suffix with no registered comment syntax must raise rather than guess one",
+    )
+
+
+def test_has_exhibit_a_accepts_a_retained_upstream_header() -> None:
+    # WHY: 122 of the upstream files carry the notice in their own `/* * */` header, and
+    # MPL 3.1 forbids removing it. The gate therefore has to recognise the notice in the
+    # wrapping it arrives in, or it would demand a second copy of the same sentence.
+    expect(LIB.has_exhibit_a(_UPSTREAM_STYLE_HEADER), "upstream's own C-style header must count")
+    expect(not LIB.has_exhibit_a("fn a() {}\n"), "a file with no notice must not count")
+    expect(
+        not LIB.has_generated_notice_marker(_UPSTREAM_STYLE_HEADER),
+        "upstream's header is not this tooling's generated block",
+    )
+
+
+def _exhibit_a_errors(files: dict[str, str], rows: list[dict]) -> list[str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        src_dir = Path(tmp) / "src"
+        src_dir.mkdir()
+        for name, text in files.items():
+            (src_dir / name).write_text(text)
+        orig = CHECKER.KRITES_SRC
+        CHECKER.KRITES_SRC = src_dir
+        try:
+            return CHECKER.check_exhibit_a_notices(rows)
+        finally:
+            CHECKER.KRITES_SRC = orig
+
+
+def test_exhibit_a_gate_rejects_a_derived_file_with_no_notice() -> None:
+    plain = "fn a() {}\n"
+    errors = _exhibit_a_errors({"local.rs": plain}, [row("local.rs", "up.rs", 50.0, "derived")])
+    expect(
+        any("carries no MPL Exhibit A notice" in e for e in errors),
+        f"a derived file with no notice must fail; got {errors}",
+    )
+    stamped = LIB.add_generated_notice(plain, LIB.render_exhibit_a(".rs"))
+    errors2 = _exhibit_a_errors({"local.rs": stamped}, [row("local.rs", "up.rs", 50.0, "derived")])
+    expect(errors2 == [], f"the same file must pass once the notice is rendered; got {errors2}")
+
+
+def test_exhibit_a_gate_requires_the_notice_on_dual_too() -> None:
+    # A dual row is the retiring CozoDB-lineage copy soaking before deletion, not a
+    # rewrite -- it carries upstream expression for the whole soak window.
+    errors = _exhibit_a_errors(
+        {"local.rs": "fn a() {}\n"}, [row("local.rs", "up.rs", 50.0, "dual", soak=99)]
+    )
+    expect(
+        any("carries no MPL Exhibit A notice" in e for e in errors),
+        f"a dual file with no notice must fail; got {errors}",
+    )
+
+
+def test_exhibit_a_gate_accepts_a_retained_upstream_notice() -> None:
+    errors = _exhibit_a_errors(
+        {"local.rs": _UPSTREAM_STYLE_HEADER + "fn a() {}\n"},
+        [row("local.rs", "up.rs", 50.0, "derived")],
+    )
+    expect(errors == [], f"a file retaining upstream's own MPL header must pass; got {errors}")
+
+
+def test_exhibit_a_gate_rejects_a_notice_on_a_sovereign_row() -> None:
+    # The opposite error, and the worse one: a sovereign row claims no CozoDB lineage,
+    # so a notice there asserts an MPL obligation over aletheia's own work.
+    stamped = LIB.add_generated_notice("fn a() {}\n", LIB.render_exhibit_a(".rs"))
+    errors = _exhibit_a_errors(
+        {"local.rs": stamped},
+        [row("local.rs", "none", 0.0, "sovereign")],
+    )
+    expect(
+        any("status=sovereign but the file carries an MPL notice" in e for e in errors),
+        f"a sovereign file carrying the notice must fail; got {errors}",
+    )
+    errors2 = _exhibit_a_errors(
+        {"local.rs": "fn a() {}\n"}, [row("local.rs", "none", 0.0, "sovereign")]
+    )
+    expect(errors2 == [], f"a sovereign file with no notice must pass; got {errors2}")
+
+
+def test_exhibit_a_gate_rejects_a_hand_edited_block() -> None:
+    # A block that no longer matches what render_exhibit_a emits stops being excluded
+    # from the measurement, so it starts counting licence boilerplate as the file's own
+    # expression. The notice sentence is still there, so only the marker reveals it.
+    mangled = LIB.render_exhibit_a(".rs").replace("// v. 2.0.", "//    v. 2.0.")
+    errors = _exhibit_a_errors(
+        {"local.rs": mangled + "\nfn a() {}\n"}, [row("local.rs", "up.rs", 50.0, "derived")]
+    )
+    expect(
+        any("hand-edited" in e for e in errors),
+        f"a drifted generated block must fail even though the sentence survives; got {errors}",
+    )
+
+
+def test_sync_exhibit_a_is_status_directed_and_idempotent() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "local.rs"
+        path.write_text("fn a() {}\n")
+
+        expect(LIB.sync_exhibit_a(path, "derived") == "added", "a derived file must gain the notice")
+        stamped = path.read_text()
+        expect(LIB.has_exhibit_a(stamped), "the notice must actually be written")
+        expect(
+            LIB.sync_exhibit_a(path, "derived") is None and path.read_text() == stamped,
+            "a second run must be a no-op, never a second copy of the notice",
+        )
+        expect(LIB.sync_exhibit_a(path, "dual") is None, "a dual row keeps the notice it had")
+        expect(LIB.sync_exhibit_a(path, "sovereign") == "removed", "sovereign must lose the notice")
+        expect(path.read_text() == "fn a() {}\n", "removal must restore the original bytes exactly")
+        expect(LIB.sync_exhibit_a(path, "sovereign") is None, "removal must be idempotent too")
+
+        # A notice this tooling did not write is not this tooling's to delete: upstream's
+        # own copyright header goes with it, and deleting that silently is the one
+        # direction that must never be automatic. The gate reports it instead.
+        path.write_text(_UPSTREAM_STYLE_HEADER + "fn a() {}\n")
+        expect(
+            LIB.sync_exhibit_a(path, "sovereign") is None,
+            "an inherited upstream header must not be auto-deleted",
+        )
+        expect(LIB.has_exhibit_a(path.read_text()), "the inherited header must still be there")
+
+
+def test_sync_exhibit_a_skips_a_row_whose_file_is_gone() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        expect(
+            LIB.sync_exhibit_a(Path(tmp) / "no-such-file.rs", "derived") is None,
+            "a ledger row naming a missing file is check_completeness's finding, not a crash",
+        )
+
+
+def test_transition_to_sovereign_removes_the_notice() -> None:
+    # #5956: a rewritten file that keeps the notice keeps asserting an MPL obligation it
+    # no longer carries. The verbatim_pct assertion is the other half: the figure must be
+    # the same before and after the removal, or the transition itself would move the metric.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        snapshot_dir = root / "snapshot"
+        snapshot_dir.mkdir()
+        (snapshot_dir / "up.rs").write_text(
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn e() {}\nfn f() {}\nfn g() {}\nfn h() {}\n"
+        )
+        src_dir = root / "src"
+        src_dir.mkdir()
+        body = (
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn zzz() {}\nfn www() {}\nfn yyy() {}\nfn xxx() {}\n"
+        )
+        local = src_dir / "local.rs"
+        local.write_text(LIB.add_generated_notice(body, LIB.render_exhibit_a(".rs")))
+
+        orig_snapshot = TRANSITION.UPSTREAM_SNAPSHOT_DIR
+        orig_src = TRANSITION.KRITES_SRC
+        TRANSITION.UPSTREAM_SNAPSHOT_DIR = snapshot_dir
+        TRANSITION.KRITES_SRC = src_dir
+        try:
+            r = row("local.rs", "up.rs", 50.0, "dual", soak=100)
+            TRANSITION.apply_to_sovereign(r)
+            expect(
+                not LIB.has_exhibit_a(local.read_text()),
+                "a dual -> sovereign transition must take the MPL notice back out",
+            )
+            expect(
+                local.read_text() == body,
+                "removal must restore the file's own bytes, nothing else",
+            )
+            expect(
+                r["verbatim_pct"] == 50.0,
+                f"the transition must not move verbatim_pct by removing the notice; got "
+                f"{r['verbatim_pct']}",
+            )
+        finally:
+            TRANSITION.UPSTREAM_SNAPSHOT_DIR = orig_snapshot
+            TRANSITION.KRITES_SRC = orig_src
+
+
 def main() -> int:
     for test_fn in (
         test_sovereign_high_verbatim_rejected,
@@ -1503,6 +1749,18 @@ def main() -> int:
         test_transition_refuses_to_write_a_contradicting_consulted_list,
         test_apply_set_method_preserves_consulted_when_omitted,
         test_apply_to_sovereign_enters_with_no_consulted_record,
+        test_verbatim_pct_is_unmoved_by_the_generated_notice,
+        test_generated_notice_roundtrip_is_exact,
+        test_render_exhibit_a_refuses_an_unregistered_suffix,
+        test_has_exhibit_a_accepts_a_retained_upstream_header,
+        test_exhibit_a_gate_rejects_a_derived_file_with_no_notice,
+        test_exhibit_a_gate_requires_the_notice_on_dual_too,
+        test_exhibit_a_gate_accepts_a_retained_upstream_notice,
+        test_exhibit_a_gate_rejects_a_notice_on_a_sovereign_row,
+        test_exhibit_a_gate_rejects_a_hand_edited_block,
+        test_sync_exhibit_a_is_status_directed_and_idempotent,
+        test_sync_exhibit_a_skips_a_row_whose_file_is_gone,
+        test_transition_to_sovereign_removes_the_notice,
     ):
         test_fn()
 
