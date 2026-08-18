@@ -166,6 +166,34 @@ def test_calibration_regression_guard() -> None:
     )
 
 
+def test_generated_exhibit_a_notice_excluded() -> None:
+    # WHY(#5956): this filter keeps ordinary comment lines, and 122 of the upstream files
+    # carry the MPL notice in their own header -- so a per-file notice stamped on a derived
+    # file would shingle-match upstream's copy and raise this metric on licence boilerplate
+    # rather than on shared expression. The exclusion has to reach this instrument too, not
+    # only verbatim_pct.
+    sys.path.insert(0, str(SCRIPT_PATH.parent))
+    import krites_provenance_lib as lib
+
+    body = "fn real_function_body() { call_something_here(); }\n"
+    stamped = lib.add_generated_notice(body, lib.render_exhibit_a(".rs"))
+    check(
+        "generated exhibit-a notice excluded",
+        DRIFT.eligible_lines(stamped) == DRIFT.eligible_lines(body),
+        f"got {DRIFT.eligible_lines(stamped)!r}",
+    )
+    check(
+        "notice would otherwise be eligible",
+        len([line for line in stamped.splitlines() if line.strip()]) > len(DRIFT.eligible_lines(stamped)),
+        "fixture proves nothing if the notice is dropped by another filter",
+    )
+    check(
+        "notice shingles do not reach the token stream",
+        "Mozilla" not in DRIFT.tokenize(stamped),
+        f"got {DRIFT.tokenize(stamped)!r}",
+    )
+
+
 def main() -> int:
     tests = [
         test_punctuation_only_lines_excluded,
@@ -179,6 +207,7 @@ def main() -> int:
         test_shingles_disjoint_text_zero_overlap,
         test_short_stream_below_shingle_size_yields_empty_set,
         test_calibration_regression_guard,
+        test_generated_exhibit_a_notice_excluded,
     ]
     for t in tests:
         t()

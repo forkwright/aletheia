@@ -10,7 +10,10 @@
 #      fails on a mismatch that looks like a provenance problem and is not.
 #   2. `measure-krites-provenance.py` next -- it writes PROVENANCE.toml AND
 #      renders NOTICE.md from it, so the notice can never disagree with the
-#      ledger it summarises.
+#      ledger it summarises. It also stamps each derived/dual file's MPL
+#      Exhibit A header and strips it from sovereign files, so this step edits
+#      SOURCE, not only artifacts. That is safe after `cargo fmt` and moves no
+#      figure: the generated block is excluded from every verbatim measurement.
 #   3. The three module-dag variants last. CI checks all three; regenerating
 #      one and forgetting the others is the most common way to fail that step.
 #

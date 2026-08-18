@@ -18,7 +18,9 @@ from krites_provenance_lib import (  # noqa: E402
     UPSTREAM_SNAPSHOT_DIR,
     dump_ledger,
     iter_src_files,
+    ledger_source_path,
     render_notice,
+    sync_exhibit_a,
     verbatim_pct,
 )
 
@@ -667,8 +669,35 @@ def main() -> None:
     method_status = load_method_status(LEDGER_PATH)
 
     rows: list[dict] = []
+    notice_changes: dict[str, str] = {}
     for rel in local_files:
         upstream_rel = UPSTREAM_MAP[rel]
+
+        # WHY the status is resolved before the file is read: sync_exhibit_a mutates the
+        # source, and verbatim_pct must be measured against the bytes that end up on disk.
+        # Measuring first and stamping afterwards would publish a figure for a tree the
+        # very next check-krites-provenance.py run reads differently.
+        if upstream_rel is None:
+            status, soak = "sovereign", 0
+        else:
+            # WHY both sources, in this order: they solve different halves and either alone loses
+            # data. The ledger is authoritative for a transition that has ALREADY happened —
+            # regenerating must not silently walk a `dual` row back to `derived`, which is what the
+            # original unconditional "derived" did and what would have quietly undone every
+            # land-dark wave on the next regen. DUAL_SOAK_WINDOW seeds a transition the ledger has
+            # not recorded yet, which is the only case preservation cannot cover: the first regen
+            # after a wave flips a file.
+            preserved = graduated.get(rel)
+            if preserved:
+                status, soak = preserved
+            else:
+                soak = DUAL_SOAK_WINDOW.get(rel, 0)
+                status = "dual" if soak else "derived"
+
+        change = sync_exhibit_a(ledger_source_path(KRITES_SRC, rel), status)
+        if change is not None:
+            notice_changes[rel] = change
+
         local_text = (KRITES_SRC / rel).read_text(errors="replace")
 
         if upstream_rel is None:
@@ -705,18 +734,6 @@ def main() -> None:
         # here -- only which FIELD the number lands in differs by status.
         upstream_text = fetch_upstream(upstream_rel)
         measured_pct = verbatim_pct(local_text, upstream_text)
-        # WHY both sources, in this order: they solve different halves and either alone loses data.
-        # The ledger is authoritative for a transition that has ALREADY happened -- regenerating must
-        # not silently walk a `dual` row back to `derived`, which is what the original unconditional
-        # "derived" did and what would have quietly undone every land-dark wave on the next regen.
-        # DUAL_SOAK_WINDOW seeds a transition the ledger has not recorded yet, which is the only case
-        # preservation cannot cover: the first regen after a wave flips a file.
-        preserved = graduated.get(rel)
-        if preserved:
-            status, soak = preserved
-        else:
-            soak = DUAL_SOAK_WINDOW.get(rel, 0)
-            status = "dual" if soak else "derived"
 
         if status == "sovereign":
             # SAFETY(#6656): a graduated-sovereign row must NOT carry
@@ -770,6 +787,14 @@ def main() -> None:
         f"{dual_ct} dual, {sovereign_ct} sovereign)"
     )
     print(f"wrote {NOTICE_PATH}")
+    added = sorted(p for p, change in notice_changes.items() if change == "added")
+    removed = sorted(p for p, change in notice_changes.items() if change == "removed")
+    if added:
+        print(f"added MPL Exhibit A notice to {len(added)} file(s)")
+    if removed:
+        print(f"removed the generated Exhibit A notice from {len(removed)} sovereign file(s)")
+    if not notice_changes:
+        print("Exhibit A notices already in sync with the ledger")
 
 
 if __name__ == "__main__":

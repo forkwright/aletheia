@@ -103,8 +103,10 @@ from krites_provenance_lib import (  # noqa: E402
     UPSTREAM_SNAPSHOT_DIR,
     LedgerError,
     dump_ledger,
+    ledger_source_path,
     parse_ledger,
     render_notice,
+    sync_exhibit_a,
     verbatim_pct,
 )
 
@@ -162,6 +164,15 @@ def apply_to_sovereign(row: dict) -> None:
             file=sys.stderr,
         )
     row["upstream_path"] = "none"
+    # SAFETY(#5956): the notice leaves with the lineage claim. A row entering sovereign
+    # asserts the file is aletheia's own expression; a retained MPL Exhibit A header would
+    # keep telling every recipient the opposite, and would encumber aletheia's own work with
+    # an obligation the ledger says it does not carry. sync_exhibit_a removes only the block
+    # this tooling generated — a notice inherited from the replaced copy (upstream's own
+    # header) is not this script's to delete, and check_exhibit_a_notices reports it instead,
+    # because deleting someone else's copyright header silently is the one direction that
+    # must never be automatic.
+    sync_exhibit_a(ledger_source_path(KRITES_SRC, row["path"]), "sovereign")
     row["method"] = "unknown"
     row["method_evidence"] = "none"
     # NOTE(#6879): consulted travels with method for the same reason — a row entering
@@ -272,16 +283,22 @@ def main() -> int:
         target_expiry = git_commit_count(args.main_ref) + args.soak_commits
 
     if args.to is not None:
-        for p in args.paths:
-            row = by_path[p]
-            prior = row["status"]
-            if (prior, args.to) not in ALLOWED_TRANSITIONS:
+        # SAFETY(#5956): every path is validated before ANY is applied. apply_to_sovereign
+        # now writes to source files (it removes the Exhibit A notice), so validating inside
+        # the apply loop would leave the first half of a batch stamped and the rest not when
+        # a later path turns out to be an illegal transition — a half-applied batch that the
+        # ledger, unwritten, gives no record of.
+        illegal = [(p, by_path[p]["status"]) for p in args.paths if (by_path[p]["status"], args.to) not in ALLOWED_TRANSITIONS]
+        if illegal:
+            for p, prior in illegal:
                 print(
                     f"error: {p}: illegal transition {prior!r} -> {args.to!r} "
                     f"(allowed: {sorted(ALLOWED_TRANSITIONS)})",
                     file=sys.stderr,
                 )
-                return 1
+            return 1
+        for p in args.paths:
+            row = by_path[p]
             row["status"] = args.to
             if args.to == "dual":
                 row["soak_expires_at_commit_count"] = target_expiry

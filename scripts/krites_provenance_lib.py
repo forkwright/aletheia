@@ -235,7 +235,195 @@ def iter_src_files() -> list[str]:
     )
 
 
+# INVARIANT(#5956): MPL-2.0 Exhibit A, verbatim. This is the licence's own recommended
+# notice text, not prose this repo is free to reword -- it is quoted, and the quote is the
+# single source both render_exhibit_a() and has_exhibit_a() read, so a per-file header and
+# the gate that requires it can never disagree about what the notice says.
+EXHIBIT_A_LINES = (
+    "This Source Code Form is subject to the terms of the Mozilla Public License,",
+    "v. 2.0. If a copy of the MPL was not distributed with this file, You can",
+    "obtain one at https://mozilla.org/MPL/2.0/.",
+)
+EXHIBIT_A_TEXT = " ".join(EXHIBIT_A_LINES)
+
+# INVARIANT(#5956): the sentinel that makes the generated block machine-recognisable.
+# The measurement exclusion (strip_generated_notice, below) keys off the EXACT rendered
+# block rather than a fuzzy marker scan, so it can never over-strip; this token exists so
+# a hand-edited block -- one that no longer matches byte-for-byte and therefore stops
+# being excluded -- is still detectable and can be reported as drift instead of silently
+# moving every figure the block sits in.
+EXHIBIT_A_MARKER = "krites-exhibit-a"
+_EXHIBIT_A_BEGIN = f"{EXHIBIT_A_MARKER}: begin (generated -- scripts/measure-krites-provenance.py)"
+_EXHIBIT_A_END = f"{EXHIBIT_A_MARKER}: end"
+
+# WARNING(#5956): keyed by the same suffixes TRACKED_SUFFIXES admits. A tracked suffix with
+# no entry here has no comment syntax to render a notice in, which render_exhibit_a refuses
+# rather than guessing -- guessing produces a file that no longer parses in its own language.
+COMMENT_SYNTAX: dict[str, tuple[str, str]] = {
+    ".rs": ("//", ""),
+    ".pest": ("//", ""),
+    ".py": ("#", ""),
+    ".md": ("<!--", "-->"),
+}
+
+# WHY a normalizer rather than a substring search on the raw text: the same notice is
+# legitimately present in four wrappings -- our generated `//` block, upstream cozo-core's
+# own `/* * */` header (which §3.1 forbids removing, so it must satisfy the gate as it
+# stands), a `#` block, and an HTML comment -- and it is line-wrapped differently in each.
+# Stripping comment punctuation off both edges and collapsing whitespace makes one quoted
+# sentence answer for all of them.
+# WHY a str.strip character set rather than a regex: the anchored-alternation form
+# `^[...]+|[...]+$` backtracks super-linearly on a long run of edge characters, and
+# str.strip is linear, allocation-free per edge, and says what it does. The set is
+# every character that can wrap the notice in any of the four comment styles.
+_COMMENT_EDGE_CHARS = " \t\r\n/*#<!>-"
+
+
+def render_exhibit_a(suffix: str) -> str:
+    """The exact generated notice block for a file of this suffix, newline-terminated."""
+    if suffix not in COMMENT_SYNTAX:
+        raise LedgerError(
+            f"no comment syntax registered for {suffix!r} — add it to COMMENT_SYNTAX before "
+            "tracking a file of this type, rather than emitting a notice in a syntax the "
+            "file's own language does not accept"
+        )
+    prefix, closer = COMMENT_SYNTAX[suffix]
+    body = (_EXHIBIT_A_BEGIN, *EXHIBIT_A_LINES, _EXHIBIT_A_END)
+    rendered = [" ".join(part for part in (prefix, line, closer) if part) for line in body]
+    return "\n".join(rendered) + "\n"
+
+
+def add_generated_notice(text: str, block: str) -> str:
+    """Insert `block` at the top, after a shebang line if one is present.
+
+    INVARIANT(#5956): exactly inverted by remove_generated_notice — add then remove
+    returns the original bytes. The measurement exclusion depends on that: a block the
+    remover cannot take back out is a block that stays in the line count.
+    """
+    if text.startswith("#!"):
+        shebang, _, rest = text.partition("\n")
+        return f"{shebang}\n{block}\n{rest}"
+    return f"{block}\n{text}"
+
+
+def remove_generated_notice(text: str, block: str) -> str:
+    if block + "\n" in text:
+        return text.replace(block + "\n", "", 1)
+    return text.replace(block, "", 1)
+
+
+def strip_generated_notice(text: str) -> str:
+    """Remove the generated Exhibit A block, whatever comment syntax it is rendered in.
+
+    INVARIANT(#5956): this is the reason the notices can be added at all. verbatim_pct is
+    matched-lines / local-non-blank-lines, so a 5-line header added to a file that is
+    otherwise byte-identical to upstream moves its score by 5/len — datalog.pest, which
+    IS byte-identical below its header, reads 94.2% rather than 100% for exactly that
+    kind of reason. Applied across 142 derived rows, that motion would improve the
+    program's central metric by a few points per file while nothing about any file's
+    derivation changed: a number moving without the underlying work, which is the failure
+    this whole ledger exists to end. A file's figure must therefore be identical with and
+    without its notice, which means the notice is not part of what is measured.
+
+    Matches the EXACT rendered block, never a marker scan: an unterminated or reworded
+    marker would otherwise strip an unbounded region and silently delete real lines from
+    the measurement. A block that has drifted from the rendered form is left in place —
+    it then shows up as a verbatim_pct mismatch AND as a check_exhibit_a_notices drift
+    error, which is the loud failure, not the silent one.
+    """
+    for suffix in COMMENT_SYNTAX:
+        block = render_exhibit_a(suffix)
+        if block in text:
+            text = remove_generated_notice(text, block)
+    return text
+
+
+def _normalized_prose(text: str) -> str:
+    lines = (line.strip(_COMMENT_EDGE_CHARS) for line in text.splitlines())
+    return re.sub(r"\s+", " ", " ".join(line for line in lines if line))
+
+
+def has_exhibit_a(text: str) -> bool:
+    """Whether the file informs its recipient that it is MPL-governed, in any wrapping."""
+    return EXHIBIT_A_TEXT in _normalized_prose(text)
+
+
+def has_generated_notice_marker(text: str) -> bool:
+    return EXHIBIT_A_MARKER in text
+
+
+def ledger_source_path(root: pathlib.Path, rel: str) -> pathlib.Path:
+    """Join a ledger row's path onto the crate source root, refusing to escape it.
+
+    SAFETY: a row's `path` is data any pull request can edit, and the tooling that
+    consumes it WRITES to the result. A row reading `../../.github/workflows/gate.yml`,
+    or naming a symlink pointing out of the tree, would otherwise have a licence header
+    written into it by CI. Containment is checked on the RESOLVED path so a symlink
+    cannot launder the escape past a textual check.
+
+    WHY here rather than inside sync_exhibit_a: this is where ledger data becomes a
+    filesystem path, and validating at the join keeps sync_exhibit_a's contract —
+    operate on the path you are given — intact for callers that construct one honestly.
+
+    WHY root is a parameter rather than this module's KRITES_SRC: each consuming script
+    re-imports KRITES_SRC into its own namespace and tests monkeypatch that copy, so a
+    reference to this module's global would validate against the real tree while the
+    caller writes into a temporary one.
+    """
+    resolved_root = root.resolve()
+    joined = (root / rel).resolve()
+    if not joined.is_relative_to(resolved_root):
+        raise LedgerError(
+            f"ledger row path {rel!r} resolves to {joined}, outside {resolved_root}. "
+            "A row must name a file inside the crate's own source tree."
+        )
+    return joined
+
+
+def sync_exhibit_a(path: pathlib.Path, status: str) -> str | None:
+    """Bring one source file's generated notice into line with its ledger status.
+
+    Returns 'added', 'removed', or None when the file was already correct.
+
+    WHY a path rather than a ledger-relative name: KRITES_SRC exists as a module global in
+    this library AND is re-imported (and independently monkeypatched in tests) by every
+    caller, so resolving the name here would silently read a different tree than the caller
+    is working in. Taking the path the caller already holds removes the second name.
+
+    INVARIANT(#5956): a `derived` or `dual` row's file physically carries CozoDB-licensed
+    expression, so it gets the notice. A `sovereign` row makes no MPL lineage claim, and
+    stamping one on it would assert an obligation the file does not carry — the opposite
+    error, and the worse one, since it encumbers aletheia's own work. A `dual` row keeps
+    its notice: dual is the retiring derived copy soaking before deletion, not a rewrite.
+
+    WHY adding is conditional on has_exhibit_a rather than on the block's presence: a file
+    that retained upstream's own MPL header (datalog.pest) already satisfies §3.1, and
+    stacking a second copy of the same sentence on top of it would be redundant noise
+    rather than compliance. Removal is conditional on the generated block specifically —
+    a notice this tooling did not write is not this tooling's to delete.
+    """
+    # NOTE: a ledger row naming a file that does not exist is check_completeness's finding.
+    # Reporting it a second time here would bury the one error that names the cause.
+    if not path.is_file():
+        return None
+    text = path.read_text(errors="replace")
+    block = render_exhibit_a(path.suffix)
+    if status == "sovereign":
+        if block not in text:
+            return None
+        path.write_text(remove_generated_notice(text, block))
+        return "removed"
+    if has_exhibit_a(text):
+        return None
+    path.write_text(add_generated_notice(text, block))
+    return "added"
+
+
 def nonblank_lines(text: str) -> list[str]:
+    # WARNING(#5956): the generated Exhibit A block is removed BEFORE any line is counted,
+    # so a file's measurement is identical with and without its notice. See
+    # strip_generated_notice for why that exclusion is load-bearing rather than tidy.
+    text = strip_generated_notice(text)
     # WHY(aletheia#6656): strip leading AND trailing whitespace, not just the
     # trailing newline splitlines() already drops on its own. A pure
     # re-indentation carries no content change but shifts every line's
@@ -890,5 +1078,27 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "today, a statement-for-statement match against its replaced upstream at 15.5% "
         "(aletheia#6656) — leaving the row `sovereign` with it is not: the row must be "
         "rewritten independently or reclassified before the gate passes again."
+    )
+    lines.append("")
+    lines.append(
+        "A fourth clause gates the notices themselves. Every `derived`/`dual` file must carry "
+        "the MPL Exhibit A notice, and no `sovereign` file may — CI fails the build either way "
+        "(`check_exhibit_a_notices`). The enumeration above is what satisfies §3.1; the per-file "
+        "notice covers what an enumeration cannot follow, a single file copied out of this tree "
+        "on its own. The notice is rendered from this ledger by "
+        "`scripts/measure-krites-provenance.py`, never hand-written, which is why a refactor can "
+        "no longer quietly strip one the way it stripped `datalog.pest`'s. A file that retained "
+        "upstream's own header satisfies the gate as it stands, since §3.1 forbids removing it "
+        "and a second copy of the same sentence is not compliance."
+    )
+    lines.append("")
+    lines.append(
+        "The generated block is excluded from `verbatim_pct` and from the drift metric alike. "
+        "`verbatim_pct` is matched lines over the file's own non-blank lines, so a five-line "
+        "header on every derived file would move the figure on all of them at once — the mean "
+        "across the derived set falls from 44.3% to 42.5%, and `fts/README.md` reads 44.4% "
+        "instead of 100.0%, entirely on licence boilerplate. Every figure in the table above is "
+        "therefore identical with and without its file's notice, which is the only reading under "
+        "which the numbers still mean what they say."
     )
     return "\n".join(lines).rstrip("\n") + "\n"
