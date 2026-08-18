@@ -270,7 +270,10 @@ jobs:
   gate-coverage-scripts:
     name: gate-coverage-scripts
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # WHY 20m: 10m canceled twice at 10m16s while apt-get crawled a slow ubuntu
+    # mirror (runs 32166077570, 32166077578) — the scripts run in seconds; the
+    # budget exists for setup slowness, not the checks.
+    timeout-minutes: 20
     # WHY(#6433): pure-python, no compile — restores per-PR coverage that
     # kanon.toml/.kanon-ci.toml never carried. Runs unconditionally (no
     # dependency on check-trailer) on every PR, including trusted-automation
@@ -396,9 +399,9 @@ jobs:
 
       # WHY: krites retirement plan wave 0.1 (metis-ops/deliverables/
       # krites-replacement/PLAN.md §3, kill criterion 8). The anti-backslide
-      # gate for crates/krites/PROVENANCE.toml: completeness, NOTICE.md
-      # sync, no derived-row regression, status-sequence (derived -> dual ->
-      # sovereign, no direct jump), soak expiry, offline verbatim recompute.
+      # gate for crates/krites/PROVENANCE.toml. The script's own module
+      # docstring names which checks it runs; restating that list here only
+      # produced a copy that fell behind the script it describes.
       # Runs here, not as a standalone workflow — gate-coverage-scripts
       # feeds the required `gate` check, so a standalone workflow (the
       # prior shape) could report failure without ever blocking a merge.
@@ -545,7 +548,10 @@ jobs:
   gate-coverage-sovereign-hnsw:
     name: gate-coverage-sovereign-hnsw
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # WHY 60m: 45m canceled on a cold cache with the sovereign build still
+    # running. Ceiling for runaway jobs, not a target — same raise as the
+    # full-gate-build budget (#6896).
+    timeout-minutes: 60
     # WHY: retirement PLAN.md Sec.2 land-dark/soak/delete needs every consumer
     # reachable through mneme/episteme (aletheia, nous, pylon, ...) testable
     # against the sovereign HNSW tree (runtime/hnsw_sovereign/) before the

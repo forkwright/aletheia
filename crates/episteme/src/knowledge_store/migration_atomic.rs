@@ -5,13 +5,13 @@
 //! the relation permanently, with no recovery path. `::rename` is the only
 //! atomic swap primitive the engine offers — a single write transaction that
 //! rewrites only the name-keyed metadata row (O(1), no data copy;
-//! `krites/src/runtime/relation/index_management.rs:213-254`) — so every
+//! `krites/src/runtime/relation/index_management.rs:219-260`) — so every
 //! destructive migration is built on staging + rename here instead of
 //! drop-then-recreate.
 //!
 //! `MultiTransaction` cannot host any step of this sequence: it routes
 //! through `DatalogScript::get_single_program()`
-//! (`krites/src/parse/mod.rs:232-243`), which hard-errors on
+//! (`krites/src/parse/mod.rs:238-249`), which hard-errors on
 //! `DatalogScript::Sys(_)` — every sys-op below (`::create`, `::remove`,
 //! `::rename`, `::index`/`::fts`/`::hnsw`/`::lsh` create/drop) is a
 //! standalone `db.run()` call, each its own transaction. Crash-safety comes
