@@ -51,10 +51,10 @@ Source: 205 `.rs` files, 1032 `use crate::` statements under `crates/krites/src/
 | `runtime` | `data` | 155 | 148 | no | runtime/db.rs:29 |
 | `runtime` | `fixed_rule` | 6 | 4 | no | runtime/db.rs:28 |
 | `runtime` | `fts` | 13 | 11 | no | runtime/db.rs:34 |
-| `runtime` | `parse` | 33 | 32 | no | runtime/exec.rs:28 |
-| `runtime` | `query` | 25 | 25 | no | runtime/exec.rs:29 |
+| `runtime` | `parse` | 33 | 32 | no | runtime/exec.rs:27 |
+| `runtime` | `query` | 25 | 25 | no | runtime/exec.rs:28 |
 | `runtime` | `root` | 33 | 30 | no | runtime/db.rs:32 |
-| `runtime` | `storage` | 18 | 16 | no | runtime/callback.rs:14 |
+| `runtime` | `storage` | 20 | 16 | no | runtime/callback.rs:14 |
 | `storage` | `data` | 13 | 13 | no | storage/fjall_backend.rs:8 |
 | `storage` | `root` | 5 | 5 | no | storage/fjall_backend.rs:10 |
 | `storage` | `runtime` | 10 | 10 | no | storage/fjall_backend.rs:7 |
