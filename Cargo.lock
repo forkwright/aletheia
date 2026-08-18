@@ -5680,7 +5680,7 @@ dependencies = [
 name = "organon"
 version = "0.38.1"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.0",
  "eidos",
  "energeia",
  "fjall",
