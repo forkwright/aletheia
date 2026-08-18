@@ -1,3 +1,9 @@
+// krites-exhibit-a: begin (generated -- scripts/measure-krites-provenance.py)
+// This Source Code Form is subject to the terms of the Mozilla Public License,
+// v. 2.0. If a copy of the MPL was not distributed with this file, You can
+// obtain one at https://mozilla.org/MPL/2.0/.
+// krites-exhibit-a: end
+
 //! Rule and atom parsing: rule heads, body atoms, disjunctions, and relation applications.
 //!
 //! Each function in this module converts a pest pair into a typed AST node
