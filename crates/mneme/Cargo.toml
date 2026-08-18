@@ -22,6 +22,11 @@ path = "tests/ts_compat.rs"
 # session store API; mneme-engine layers the Datalog knowledge store on top.
 default = ["graph-algo", "mneme-engine", "portability"]
 graph-algo = ["episteme/graph-algo"]
+# WHY: retirement PLAN.md Sec.2 land-dark/soak/delete -- same passthrough
+# shape as graph-algo above, so the sovereign HNSW tree is reachable from
+# mneme's own --workspace selection rather than only krites' crate-scoped
+# test.
+krites_sovereign_hnsw = ["episteme/krites_sovereign_hnsw"]
 # Passthrough for the non-default migration crash-injection seam
 # (aletheia#5779 §8.4/F10) — enabled only by `integration-tests`.
 crash-injection = ["episteme/crash-injection"]
