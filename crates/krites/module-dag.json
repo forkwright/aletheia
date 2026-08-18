@@ -16,8 +16,8 @@
       "count": 2,
       "production_count": 2,
       "test_only": false,
-      "first_evidence": "data/program/fixed_rule.rs:20",
-      "first_production_evidence": "data/program/fixed_rule.rs:20"
+      "first_evidence": "data/program/fixed_rule.rs:26",
+      "first_production_evidence": "data/program/fixed_rule.rs:26"
     },
     {
       "from": "data",
@@ -25,8 +25,8 @@
       "count": 2,
       "production_count": 2,
       "test_only": false,
-      "first_evidence": "data/program/search/lsh_fts.rs:27",
-      "first_production_evidence": "data/program/search/lsh_fts.rs:27"
+      "first_evidence": "data/program/search/lsh_fts.rs:33",
+      "first_production_evidence": "data/program/search/lsh_fts.rs:33"
     },
     {
       "from": "data",
@@ -34,8 +34,8 @@
       "count": 10,
       "production_count": 10,
       "test_only": false,
-      "first_evidence": "data/expr/expr_impl.rs:41",
-      "first_production_evidence": "data/expr/expr_impl.rs:41"
+      "first_evidence": "data/expr/expr_impl.rs:47",
+      "first_production_evidence": "data/expr/expr_impl.rs:47"
     },
     {
       "from": "data",
@@ -43,8 +43,8 @@
       "count": 4,
       "production_count": 4,
       "test_only": false,
-      "first_evidence": "data/program/magic.rs:19",
-      "first_production_evidence": "data/program/magic.rs:19"
+      "first_evidence": "data/program/magic.rs:25",
+      "first_production_evidence": "data/program/magic.rs:25"
     },
     {
       "from": "data",
@@ -52,8 +52,8 @@
       "count": 15,
       "production_count": 15,
       "test_only": false,
-      "first_evidence": "data/expr/expr_impl.rs:40",
-      "first_production_evidence": "data/expr/expr_impl.rs:40"
+      "first_evidence": "data/expr/expr_impl.rs:46",
+      "first_production_evidence": "data/expr/expr_impl.rs:46"
     },
     {
       "from": "data",
@@ -61,8 +61,8 @@
       "count": 17,
       "production_count": 14,
       "test_only": false,
-      "first_evidence": "data/program/atoms.rs:9",
-      "first_production_evidence": "data/program/atoms.rs:9"
+      "first_evidence": "data/program/atoms.rs:15",
+      "first_production_evidence": "data/program/atoms.rs:15"
     },
     {
       "from": "fixed_rule",
@@ -88,8 +88,8 @@
       "count": 1,
       "production_count": 1,
       "test_only": false,
-      "first_evidence": "fixed_rule/mod.rs:35",
-      "first_production_evidence": "fixed_rule/mod.rs:35"
+      "first_evidence": "fixed_rule/mod.rs:41",
+      "first_production_evidence": "fixed_rule/mod.rs:41"
     },
     {
       "from": "fixed_rule",
@@ -115,8 +115,8 @@
       "count": 14,
       "production_count": 14,
       "test_only": false,
-      "first_evidence": "fts/config.rs:6",
-      "first_production_evidence": "fts/config.rs:6"
+      "first_evidence": "fts/config.rs:12",
+      "first_production_evidence": "fts/config.rs:12"
     },
     {
       "from": "fts",
@@ -124,8 +124,8 @@
       "count": 2,
       "production_count": 2,
       "test_only": false,
-      "first_evidence": "fts/indexing.rs:20",
-      "first_production_evidence": "fts/indexing.rs:20"
+      "first_evidence": "fts/indexing.rs:26",
+      "first_production_evidence": "fts/indexing.rs:26"
     },
     {
       "from": "fts",
@@ -133,8 +133,8 @@
       "count": 6,
       "production_count": 6,
       "test_only": false,
-      "first_evidence": "fts/config.rs:8",
-      "first_production_evidence": "fts/config.rs:8"
+      "first_evidence": "fts/config.rs:14",
+      "first_production_evidence": "fts/config.rs:14"
     },
     {
       "from": "fts",
@@ -142,8 +142,8 @@
       "count": 3,
       "production_count": 3,
       "test_only": false,
-      "first_evidence": "fts/indexing.rs:21",
-      "first_production_evidence": "fts/indexing.rs:21"
+      "first_evidence": "fts/indexing.rs:27",
+      "first_production_evidence": "fts/indexing.rs:27"
     },
     {
       "from": "parse",
@@ -151,8 +151,8 @@
       "count": 95,
       "production_count": 94,
       "test_only": false,
-      "first_evidence": "parse/expr/bytecode.rs:13",
-      "first_production_evidence": "parse/expr/bytecode.rs:13"
+      "first_evidence": "parse/expr/bytecode.rs:19",
+      "first_production_evidence": "parse/expr/bytecode.rs:19"
     },
     {
       "from": "parse",
@@ -160,8 +160,8 @@
       "count": 9,
       "production_count": 9,
       "test_only": false,
-      "first_evidence": "parse/imperative.rs:26",
-      "first_production_evidence": "parse/imperative.rs:26"
+      "first_evidence": "parse/imperative.rs:32",
+      "first_production_evidence": "parse/imperative.rs:32"
     },
     {
       "from": "parse",
@@ -169,8 +169,8 @@
       "count": 9,
       "production_count": 9,
       "test_only": false,
-      "first_evidence": "parse/fts.rs:21",
-      "first_production_evidence": "parse/fts.rs:21"
+      "first_evidence": "parse/fts.rs:27",
+      "first_production_evidence": "parse/fts.rs:27"
     },
     {
       "from": "parse",
@@ -178,8 +178,8 @@
       "count": 13,
       "production_count": 13,
       "test_only": false,
-      "first_evidence": "parse/expr/bytecode.rs:14",
-      "first_production_evidence": "parse/expr/bytecode.rs:14"
+      "first_evidence": "parse/expr/bytecode.rs:20",
+      "first_production_evidence": "parse/expr/bytecode.rs:20"
     },
     {
       "from": "parse",
@@ -187,8 +187,8 @@
       "count": 3,
       "production_count": 3,
       "test_only": false,
-      "first_evidence": "parse/query/options.rs:28",
-      "first_production_evidence": "parse/query/options.rs:28"
+      "first_evidence": "parse/query/options.rs:34",
+      "first_production_evidence": "parse/query/options.rs:34"
     },
     {
       "from": "query",
@@ -196,8 +196,8 @@
       "count": 130,
       "production_count": 127,
       "test_only": false,
-      "first_evidence": "query/compile.rs:18",
-      "first_production_evidence": "query/compile.rs:18"
+      "first_evidence": "query/compile.rs:24",
+      "first_production_evidence": "query/compile.rs:24"
     },
     {
       "from": "query",
@@ -205,8 +205,8 @@
       "count": 1,
       "production_count": 1,
       "test_only": false,
-      "first_evidence": "query/eval.rs:34",
-      "first_production_evidence": "query/eval.rs:34"
+      "first_evidence": "query/eval.rs:40",
+      "first_production_evidence": "query/eval.rs:40"
     },
     {
       "from": "query",
@@ -232,8 +232,8 @@
       "count": 20,
       "production_count": 20,
       "test_only": false,
-      "first_evidence": "query/compile.rs:26",
-      "first_production_evidence": "query/compile.rs:26"
+      "first_evidence": "query/compile.rs:32",
+      "first_production_evidence": "query/compile.rs:32"
     },
     {
       "from": "query",
@@ -241,8 +241,8 @@
       "count": 30,
       "production_count": 27,
       "test_only": false,
-      "first_evidence": "query/compile.rs:30",
-      "first_production_evidence": "query/compile.rs:30"
+      "first_evidence": "query/compile.rs:36",
+      "first_production_evidence": "query/compile.rs:36"
     },
     {
       "from": "root",
@@ -295,8 +295,8 @@
       "count": 155,
       "production_count": 148,
       "test_only": false,
-      "first_evidence": "runtime/db.rs:29",
-      "first_production_evidence": "runtime/db.rs:29"
+      "first_evidence": "runtime/db.rs:35",
+      "first_production_evidence": "runtime/db.rs:35"
     },
     {
       "from": "runtime",
@@ -304,8 +304,8 @@
       "count": 6,
       "production_count": 4,
       "test_only": false,
-      "first_evidence": "runtime/db.rs:28",
-      "first_production_evidence": "runtime/db.rs:28"
+      "first_evidence": "runtime/db.rs:34",
+      "first_production_evidence": "runtime/db.rs:34"
     },
     {
       "from": "runtime",
@@ -313,8 +313,8 @@
       "count": 13,
       "production_count": 11,
       "test_only": false,
-      "first_evidence": "runtime/db.rs:34",
-      "first_production_evidence": "runtime/db.rs:34"
+      "first_evidence": "runtime/db.rs:40",
+      "first_production_evidence": "runtime/db.rs:40"
     },
     {
       "from": "runtime",
@@ -322,8 +322,8 @@
       "count": 33,
       "production_count": 32,
       "test_only": false,
-      "first_evidence": "runtime/exec.rs:28",
-      "first_production_evidence": "runtime/exec.rs:28"
+      "first_evidence": "runtime/exec.rs:34",
+      "first_production_evidence": "runtime/exec.rs:34"
     },
     {
       "from": "runtime",
@@ -331,8 +331,8 @@
       "count": 25,
       "production_count": 25,
       "test_only": false,
-      "first_evidence": "runtime/exec.rs:29",
-      "first_production_evidence": "runtime/exec.rs:29"
+      "first_evidence": "runtime/exec.rs:35",
+      "first_production_evidence": "runtime/exec.rs:35"
     },
     {
       "from": "runtime",
@@ -340,8 +340,8 @@
       "count": 33,
       "production_count": 30,
       "test_only": false,
-      "first_evidence": "runtime/db.rs:32",
-      "first_production_evidence": "runtime/db.rs:32"
+      "first_evidence": "runtime/db.rs:38",
+      "first_production_evidence": "runtime/db.rs:38"
     },
     {
       "from": "runtime",
@@ -349,8 +349,8 @@
       "count": 18,
       "production_count": 16,
       "test_only": false,
-      "first_evidence": "runtime/callback.rs:14",
-      "first_production_evidence": "runtime/callback.rs:14"
+      "first_evidence": "runtime/callback.rs:20",
+      "first_production_evidence": "runtime/callback.rs:20"
     },
     {
       "from": "storage",

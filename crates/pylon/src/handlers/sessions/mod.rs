@@ -22,6 +22,8 @@ use axum::response::IntoResponse;
 use serde::Deserialize;
 use tracing::{info, instrument};
 
+use hermeneus::error::UnsupportedModelSnafu;
+use hermeneus::provider::{ProviderRegistry, ProviderResolutionError, ProviderRoute};
 use mneme::types::SessionStatus;
 
 use symbolon::types::Role;
@@ -240,7 +242,13 @@ pub async fn create(
     // WHY: SessionId (UUID v4) is the canonical format. ULID here caused
     // 'invalid SessionId' when nous parsed the stored ID back (#2349).
     let id = koina::id::SessionId::new().to_string();
-    let model = config.generation.model.clone();
+    let model = match body.model {
+        Some(requested) => {
+            require_known_model(&state.provider_registry, &requested)?;
+            requested
+        }
+        None => config.generation.model.clone(),
+    };
 
     let state_clone = state.clone();
     let id_clone = id.clone();
@@ -271,6 +279,27 @@ pub async fn create(
         StatusCode::CREATED,
         Json(SessionResponse::from_mneme(&session)),
     ))
+}
+
+/// Reject a `CreateSessionRequest.model` override that no registered provider
+/// claims, reusing hermeneus's `UnsupportedModel` error rather than adding a
+/// pylon-local variant.
+///
+/// WHY(#4541): model-only routing (no explicit provider requested) can only
+/// ever surface `NoProvider` or `ProviderUnavailable` here (never
+/// `ProviderNotFound`/`ProviderDoesNotSupportModel`, which require an
+/// explicit provider route -- see `resolve_model_route_readiness` in
+/// `handlers/providers.rs`). Only `NoProvider` means the model itself is
+/// unknown; `ProviderUnavailable` means a real provider claims it but is
+/// currently down, which is a transient health condition, not a bad
+/// request, so it is not rejected here.
+fn require_known_model(registry: &ProviderRegistry, model: &str) -> Result<(), ApiError> {
+    if let Err(ProviderResolutionError::NoProvider { model }) =
+        registry.resolve_provider(model, ProviderRoute::ModelOnly)
+    {
+        return Err(UnsupportedModelSnafu { model }.build().into());
+    }
+    Ok(())
 }
 
 /// GET /api/v1/sessions: list sessions, optionally filtered by agent.

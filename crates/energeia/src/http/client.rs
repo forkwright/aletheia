@@ -114,45 +114,58 @@ impl DispatchEngine for HttpEngine {
     ) -> Pin<Box<dyn Future<Output = Result<Option<u64>>> + Send + 'a>> {
         Box::pin(async move {
             let t0 = Instant::now();
-            let mut cmd = Command::new(&self.binary);
-            cmd.arg("--version")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null());
-            cmd.kill_on_drop(true);
 
-            let mut child = cmd.spawn().map_err(|e| {
-                error::EngineSnafu {
-                    detail: format!("failed to spawn claude health probe: {e}"),
-                }
-                .build()
+            // WHY inherit rather than epitelesis's `Clean` default: `self.binary`
+            // defaults to the bare name `claude`, which only resolves through
+            // PATH, and the CLI may read HOME-scoped configuration on startup.
+            // The hand-rolled probe this replaced inherited the whole parent
+            // environment; narrowing that is a separate decision with its own
+            // failure mode, not something to change while swapping runners.
+            let command = epitelesis::Command::new(&self.binary)
+                .arg("--version")
+                .inherit_environment(
+                    "the probe runs the operator-configured claude CLI, resolved through PATH",
+                )
+                .map_err(|e| {
+                    error::EngineSnafu {
+                        detail: format!("claude health probe policy rejected: {e}"),
+                    }
+                    .build()
+                })?
+                // WHY a wall-clock deadline is right HERE specifically: the probe
+                // runs `--version` and exits. Sites that stream a live session
+                // are governed by an IDLE timeout instead, and porting those to a
+                // deadline would kill legitimately long-running sessions.
+                .deadline(timeout)
+                .map_err(|e| {
+                    error::EngineSnafu {
+                        detail: format!("claude health probe deadline rejected: {e}"),
+                    }
+                    .build()
+                })?;
+
+            // WHY the bare `?` carries the whole contract: epitelesis fails a
+            // non-zero exit as `Error::NonZeroExit` rather than returning an
+            // `Output` holding a failed status, so reaching the next line means
+            // the process exited zero.
+            epitelesis::spawn(command).await.map_err(|e| {
+                let detail = match &e {
+                    epitelesis::Error::Timeout { .. } => {
+                        format!("claude health probe timed out after {timeout:?}")
+                    }
+                    epitelesis::Error::SpawnFailed { .. } => {
+                        format!("failed to spawn claude health probe: {e}")
+                    }
+                    epitelesis::Error::NonZeroExit { .. } => {
+                        format!("claude health probe exited non-zero: {e}")
+                    }
+                    _ => format!("claude health probe failed: {e}"),
+                };
+                error::EngineSnafu { detail }.build()
             })?;
 
-            let status = match tokio::time::timeout(timeout, child.wait()).await {
-                Ok(Ok(status)) => status,
-                Ok(Err(e)) => {
-                    return Err(error::EngineSnafu {
-                        detail: format!("claude health probe failed while waiting: {e}"),
-                    }
-                    .build());
-                }
-                Err(_) => {
-                    let _ = child.start_kill();
-                    return Err(error::EngineSnafu {
-                        detail: format!("claude health probe timed out after {timeout:?}"),
-                    }
-                    .build());
-                }
-            };
-
-            if status.success() {
-                let latency_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
-                Ok(Some(latency_ms))
-            } else {
-                Err(error::EngineSnafu {
-                    detail: format!("claude health probe exited with status {status}"),
-                }
-                .build())
-            }
+            let latency_ms = u64::try_from(t0.elapsed().as_millis()).unwrap_or(u64::MAX);
+            Ok(Some(latency_ms))
         })
     }
 

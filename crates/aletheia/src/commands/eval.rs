@@ -186,6 +186,12 @@ pub(crate) async fn run(args: EvalArgs) -> Result<()> {
         timeout_secs: timeout,
         json_output,
         provenance,
+        // WHY(#6859): no `--model` flag is exposed yet. The API accepts and persists a
+        // session model, but `PipelineContext` carries no session, so
+        // `resolve_turn_route` never reads it and the configured model still
+        // serves the turn. A flag here would stamp `model_ref` with a model
+        // that did not run, making eval comparisons fabricated evidence.
+        model: None,
     };
     let runner = dokimion::runner::ScenarioRunner::new(config);
     let report = runner.run().await;

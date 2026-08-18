@@ -1,3 +1,9 @@
+// krites-exhibit-a: begin (generated -- scripts/measure-krites-provenance.py)
+// This Source Code Form is subject to the terms of the Mozilla Public License,
+// v. 2.0. If a copy of the MPL was not distributed with this file, You can
+// obtain one at https://mozilla.org/MPL/2.0/.
+// krites-exhibit-a: end
+
 //! Query execution methods for the Db engine.
 //!
 //! Entry points for running Datalog scripts against the database:

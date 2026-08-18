@@ -88,6 +88,7 @@ def row(
     replaced_upstream_path: str = "none",
     method: str | None = None,
     method_evidence: str | None = None,
+    consulted: list[str] | None = None,
 ) -> dict:
     # WHY method/method_evidence default from status, not a fixed literal: every
     # pre-#6797-followup test fixture in this file constructs both sovereign and
@@ -108,6 +109,7 @@ def row(
         "soak_expires_at_commit_count": soak,
         "method": method,
         "method_evidence": method_evidence,
+        "consulted": [] if consulted is None else consulted,
     }
 
 
@@ -989,19 +991,336 @@ def test_apply_set_method_writes_both_fields() -> None:
 
 
 def test_resolve_method_preserves_across_regeneration() -> None:
-    preserved = {"s.rs": ("from_spec", "#6656")}
+    preserved = {"s.rs": ("from_spec", "#6656", ["sib.rs"])}
     got = MEASURE.resolve_method("s.rs", "sovereign", preserved)
-    expect(got == ("from_spec", "#6656"), f"a preserved resolved method must survive regeneration unchanged; got {got}")
+    expect(
+        got == ("from_spec", "#6656", ["sib.rs"]),
+        f"a preserved resolved method must survive regeneration unchanged, consulted list with it; got {got}",
+    )
 
 
 def test_resolve_method_defaults_new_sovereign_row_to_unknown() -> None:
     got = MEASURE.resolve_method("new.rs", "sovereign", {})
-    expect(got == ("unknown", "none"), f"a brand-new sovereign row with no prior record must default to unknown/none; got {got}")
+    expect(got == ("unknown", "none", []), f"a brand-new sovereign row with no prior record must default to unknown/none/[]; got {got}")
 
 
 def test_resolve_method_defaults_non_sovereign_to_none() -> None:
     got = MEASURE.resolve_method("d.rs", "derived", {})
-    expect(got == ("none", "none"), f"a non-sovereign row must default to method='none'; got {got}")
+    expect(got == ("none", "none", []), f"a non-sovereign row must default to method='none'; got {got}")
+
+
+# --- #6879: the sibling rule — which siblings a clean-room rewrite may read ---
+
+
+def _sibling_rows(target_method: str, consulted: list[str]) -> list[dict]:
+    """A ledger with one sovereign rewrite plus one sibling of each status.
+
+    WHY a shared fixture: every rule below is about the STATUS of a consulted
+    path, so each case differs only in which siblings the rewrite names — the
+    surrounding ledger must stay identical or the tests stop being comparable.
+    """
+    return [
+        row("rewrite.rs", "none", 0.0, "sovereign", replaced_upstream_path="up.rs",
+            method=target_method, method_evidence="#6879", consulted=consulted),
+        row("derived_sibling.rs", "up_sibling.rs", 42.1, "derived"),
+        row("sovereign_sibling.rs", "none", 0.0, "sovereign", method="attested_original", method_evidence="#6879"),
+    ]
+
+
+def test_consulted_from_spec_rejects_derived_sibling() -> None:
+    # WHY this is the whole issue: the first clean-room rewrite under `method` read
+    # fts/tokenizer/remove_long.rs — derived, jaccard 0.4215 against upstream, and
+    # structurally the same artifact it was writing. Nothing saw it; the rewriter
+    # volunteered it. A rewriter who said nothing would carry from_spec today.
+    errors = LIB.consulted_errors(_sibling_rows("from_spec", ["derived_sibling.rs"]))
+    expect(
+        any("rewrite.rs" in e and "derived_sibling.rs" in e and "from_spec_derived_siblings" in e for e in errors),
+        f"from_spec consulting a derived sibling must fail and name the offending path; got {errors}",
+    )
+
+
+def test_consulted_from_spec_accepts_sovereign_siblings() -> None:
+    errors = LIB.consulted_errors(_sibling_rows("from_spec", ["sovereign_sibling.rs"]))
+    expect(errors == [], f"from_spec consulting only sovereign siblings must pass; got {errors}")
+
+
+def test_consulted_from_spec_accepts_empty_list() -> None:
+    errors = LIB.consulted_errors(_sibling_rows("from_spec", []))
+    expect(errors == [], f"from_spec that consulted nothing must pass; got {errors}")
+
+
+def test_consulted_derived_siblings_rejects_all_sovereign_list() -> None:
+    # WHY this direction is checked too: silently accepting the weaker value on a row
+    # that earned the stronger one makes from_spec_derived_siblings the lazy default,
+    # and the pair stops distinguishing anything.
+    errors = LIB.consulted_errors(_sibling_rows("from_spec_derived_siblings", ["sovereign_sibling.rs"]))
+    expect(
+        any("rewrite.rs" in e and "from_spec" in e for e in errors),
+        f"from_spec_derived_siblings whose consulted list is entirely sovereign must fail; got {errors}",
+    )
+
+
+def test_consulted_derived_siblings_rejects_empty_list() -> None:
+    errors = LIB.consulted_errors(_sibling_rows("from_spec_derived_siblings", []))
+    expect(
+        any("rewrite.rs" in e and "empty" in e for e in errors),
+        f"from_spec_derived_siblings with an empty consulted list must fail; got {errors}",
+    )
+
+
+def test_consulted_derived_siblings_accepts_mixed_list() -> None:
+    errors = LIB.consulted_errors(
+        _sibling_rows("from_spec_derived_siblings", ["derived_sibling.rs", "sovereign_sibling.rs"])
+    )
+    expect(errors == [], f"from_spec_derived_siblings naming a real derived sibling must pass; got {errors}")
+
+
+def test_consulted_rejects_path_not_in_ledger() -> None:
+    # WHY: a consulted path is checked by its ledger status, so a typo resolves to no
+    # status at all — and an unchecked path must never read as a clean one.
+    errors = LIB.consulted_errors(_sibling_rows("from_spec", ["derived_sibbling.rs"]))
+    expect(
+        any("rewrite.rs" in e and "derived_sibbling.rs" in e and "no PROVENANCE.toml row" in e for e in errors),
+        f"a consulted path with no ledger row must fail; got {errors}",
+    )
+
+
+def test_consulted_unconstrained_for_rewritten_with_source_open() -> None:
+    errors = LIB.consulted_errors(_sibling_rows("rewritten_with_source_open", ["derived_sibling.rs"]))
+    expect(
+        errors == [],
+        f"rewritten_with_source_open already records reading the replaced file, so its consulted "
+        f"list carries no constraint; got {errors}",
+    )
+
+
+def test_consulted_missing_key_passes_validate_rows() -> None:
+    # WHY tolerated here: a --base-ref ledger predating this field carries no such key,
+    # exactly as with 'method'. Presence is gated by consulted_errors on the CURRENT
+    # ledger, and by dump_ledger on every write.
+    r = row("old.rs", "up.rs", 40.0, "derived")
+    del r["consulted"]
+    try:
+        LIB.validate_rows([r])
+    except LIB.LedgerError as exc:
+        _FAILURES.append(f"a row with no 'consulted' key must still pass validate_rows (pre-migration ledger read); got {exc}")
+
+
+def test_consulted_missing_key_rejected_by_checker() -> None:
+    r = row("a.rs", "up.rs", 40.0, "derived")
+    del r["consulted"]
+    errors = CHECKER.check_consulted_siblings([r])
+    expect(
+        any("missing 'consulted'" in e and "a.rs" in e for e in errors),
+        f"the current ledger must carry 'consulted' on every row; got {errors}",
+    )
+
+
+def test_consulted_forbidden_off_sovereign() -> None:
+    rows = [row("d.rs", "up.rs", 40.0, "derived", consulted=["x.rs"])]
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.validate_rows(rows),
+        "a derived/dual row makes no authorship claim, so it must never carry a consulted list",
+    )
+
+
+def test_consulted_must_be_a_list_of_paths() -> None:
+    for bad in ("none", ["ok.rs", 7], [""]):
+        rows = [row("s.rs", "none", 0.0, "sovereign", consulted=bad)]
+        expect_raises(
+            LIB.LedgerError,
+            lambda rows=rows: LIB.validate_rows(rows),
+            f"consulted={bad!r} is not a list of ledger paths and must be rejected",
+        )
+
+
+def test_dump_ledger_refuses_row_missing_consulted() -> None:
+    r = row("a.rs", "up.rs", 40.0, "derived")
+    del r["consulted"]
+    meta = {"upstream_repo": "https://example/x", "upstream_ref": "deadbeef"}
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.dump_ledger(meta, [r]),
+        "dump_ledger must refuse to write a row with no consulted list",
+    )
+
+
+def test_dump_ledger_refuses_contradicting_consulted() -> None:
+    # WHY the write path enforces it too: a row that only fails later in CI is the
+    # failure mode this whole scheme keeps repeating — a value written by fiat, caught
+    # a wave later, if at all.
+    meta = {"upstream_repo": "https://example/x", "upstream_ref": "deadbeef"}
+    rows = _sibling_rows("from_spec", ["derived_sibling.rs"])
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.dump_ledger(meta, rows),
+        "dump_ledger must refuse to write a from_spec row that consulted a derived sibling",
+    )
+
+
+def test_transition_spec_class_requires_consulted() -> None:
+    for method in LIB.SPEC_CLASS_METHODS:
+        orig_argv = sys.argv
+        sys.argv = ["krites-provenance-transition.py", "--set-method", method, "--evidence", "#6879", "some.rs"]
+        try:
+            expect_raises(SystemExit, TRANSITION.main, f"--set-method {method} with no --consulted must be rejected")
+        finally:
+            sys.argv = orig_argv
+
+
+def test_transition_set_method_unknown_forbids_consulted() -> None:
+    orig_argv = sys.argv
+    sys.argv = ["krites-provenance-transition.py", "--set-method", "unknown", "--consulted", "x.rs", "some.rs"]
+    try:
+        expect_raises(SystemExit, TRANSITION.main, "--set-method unknown must reject --consulted")
+    finally:
+        sys.argv = orig_argv
+
+
+def test_transition_consulted_rejected_with_status_transition() -> None:
+    orig_argv = sys.argv
+    sys.argv = ["krites-provenance-transition.py", "--to", "sovereign", "--consulted", "x.rs", "some.rs"]
+    try:
+        expect_raises(SystemExit, TRANSITION.main, "--consulted with --to must be rejected")
+    finally:
+        sys.argv = orig_argv
+
+
+def test_transition_set_method_consulted_end_to_end() -> None:
+    # WHY a real round-trip: --consulted is the only sanctioned way to record a reading
+    # list, so its full path — CLI parsing, ledger read, mutation, dump_ledger's own
+    # re-validation of the sibling rule, NOTICE.md re-render — needs proving end to end.
+    with tempfile.TemporaryDirectory() as tmp:
+        ledger_path = Path(tmp) / "PROVENANCE.toml"
+        notice_path = Path(tmp) / "NOTICE.md"
+        ledger_path.write_text(
+            '[meta]\n'
+            'upstream_repo = "https://example/x"\n'
+            'upstream_ref = "deadbeef"\n\n'
+            '[[file]]\n'
+            'path = "rewrite.rs"\n'
+            'upstream_path = "none"\n'
+            'replaced_upstream_path = "none"\n'
+            'verbatim_pct = 0.0\n'
+            'status = "sovereign"\n'
+            'soak_expires_at_commit_count = 0\n'
+            'method = "unknown"\n'
+            'method_evidence = "none"\n'
+            'consulted = []\n\n'
+            '[[file]]\n'
+            'path = "derived_sibling.rs"\n'
+            'upstream_path = "up_sibling.rs"\n'
+            'replaced_upstream_path = "none"\n'
+            'verbatim_pct = 42.1\n'
+            'status = "derived"\n'
+            'soak_expires_at_commit_count = 0\n'
+            'method = "none"\n'
+            'method_evidence = "none"\n'
+            'consulted = []\n'
+        )
+        orig_ledger, orig_notice = TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH
+        orig_reasons = LIB.NO_PREDECESSOR_REASONS
+        TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = ledger_path, notice_path
+        orig_argv = sys.argv
+        sys.argv = [
+            "krites-provenance-transition.py",
+            "--set-method",
+            "from_spec_derived_siblings",
+            "--evidence",
+            "#6879",
+            "--consulted",
+            "derived_sibling.rs",
+            "rewrite.rs",
+        ]
+        try:
+            exit_code = TRANSITION.main()
+            expect(exit_code == 0, f"a legitimate --set-method + --consulted call must exit 0; got {exit_code}")
+            _, written_rows = LIB.parse_ledger(ledger_path.read_text())
+            written = next(r for r in written_rows if r["path"] == "rewrite.rs")
+            expect(
+                written["method"] == "from_spec_derived_siblings" and written["consulted"] == ["derived_sibling.rs"],
+                f"the written ledger must carry the new method and its consulted list; got {written}",
+            )
+            expect(
+                "derived_sibling.rs" in notice_path.read_text(),
+                "NOTICE.md must surface what a rewrite consulted, not only its method",
+            )
+        finally:
+            TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = orig_ledger, orig_notice
+            LIB.NO_PREDECESSOR_REASONS = orig_reasons
+            sys.argv = orig_argv
+
+
+def test_transition_refuses_to_write_a_contradicting_consulted_list() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        ledger_path = Path(tmp) / "PROVENANCE.toml"
+        notice_path = Path(tmp) / "NOTICE.md"
+        ledger_path.write_text(
+            '[meta]\n'
+            'upstream_repo = "https://example/x"\n'
+            'upstream_ref = "deadbeef"\n\n'
+            '[[file]]\n'
+            'path = "rewrite.rs"\n'
+            'upstream_path = "none"\n'
+            'replaced_upstream_path = "none"\n'
+            'verbatim_pct = 0.0\n'
+            'status = "sovereign"\n'
+            'soak_expires_at_commit_count = 0\n'
+            'method = "unknown"\n'
+            'method_evidence = "none"\n'
+            'consulted = []\n\n'
+            '[[file]]\n'
+            'path = "derived_sibling.rs"\n'
+            'upstream_path = "up_sibling.rs"\n'
+            'replaced_upstream_path = "none"\n'
+            'verbatim_pct = 42.1\n'
+            'status = "derived"\n'
+            'soak_expires_at_commit_count = 0\n'
+            'method = "none"\n'
+            'method_evidence = "none"\n'
+            'consulted = []\n'
+        )
+        before = ledger_path.read_text()
+        orig_ledger, orig_notice = TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH
+        TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = ledger_path, notice_path
+        orig_argv = sys.argv
+        sys.argv = [
+            "krites-provenance-transition.py",
+            "--set-method",
+            "from_spec",
+            "--evidence",
+            "#6879",
+            "--consulted",
+            "derived_sibling.rs",
+            "rewrite.rs",
+        ]
+        try:
+            exit_code = TRANSITION.main()
+            expect(exit_code == 1, f"a from_spec row consulting a derived sibling must not be written; got exit {exit_code}")
+            expect(ledger_path.read_text() == before, "a refused --set-method must leave the ledger untouched")
+        finally:
+            TRANSITION.LEDGER_PATH, TRANSITION.NOTICE_PATH = orig_ledger, orig_notice
+            sys.argv = orig_argv
+
+
+def test_apply_set_method_preserves_consulted_when_omitted() -> None:
+    r = row("s.rs", "none", 0.0, "sovereign", consulted=["sib.rs"])
+    TRANSITION.apply_set_method(r, "attested_original", "#6879")
+    expect(
+        r["consulted"] == ["sib.rs"],
+        f"re-recording a method must not silently clear what its author read; got {r['consulted']}",
+    )
+
+
+def test_apply_to_sovereign_enters_with_no_consulted_record() -> None:
+    r = row("d.rs", "up_missing.rs", 40.0, "dual", soak=99)
+    TRANSITION.apply_to_sovereign(r)
+    expect(
+        r["consulted"] == [] and r["method"] == "unknown",
+        f"a row entering sovereign has no recorded reading list yet; got method={r['method']!r}, "
+        f"consulted={r['consulted']!r}",
+    )
 
 
 # --- a moved `dual` file must not lose its soak fuse ---
@@ -1095,6 +1414,256 @@ def test_missing_ledger_still_bootstraps() -> None:
             expect(False, f"a MISSING ledger must remain the bootstrap case, not a failure: {exc}")
 
 
+# --- #5956: per-file MPL Exhibit A notices, and the measurement they must not move ---
+
+
+_UPSTREAM_STYLE_HEADER = (
+    "/*\n"
+    " * Copyright 2022, The Cozo Project Authors.\n"
+    " *\n"
+    " * This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.\n"
+    " * If a copy of the MPL was not distributed with this file,\n"
+    " * You can obtain one at https://mozilla.org/MPL/2.0/.\n"
+    " */\n"
+)
+
+
+def test_verbatim_pct_is_unmoved_by_the_generated_notice() -> None:
+    # WHY this is the load-bearing test in this section: verbatim_pct is
+    # matched-lines / local-non-blank-lines, so a 5-line header added to 142 derived
+    # files moves the de-derivation program's central metric on every one of them
+    # while nothing about any file's derivation changed. A number that moves without
+    # the underlying work is the exact failure the ledger exists to end, so the notice
+    # must be outside what is measured -- proven here, not assumed.
+    upstream = "".join(f"fn f{i}() {{}}\n" for i in range(20))
+    plain = "".join(f"fn f{i}() {{}}\n" for i in range(10)) + "fn zzz() {}\n"
+    stamped = LIB.add_generated_notice(plain, LIB.render_exhibit_a(".rs"))
+
+    expect(stamped != plain, "fixture bug: the stamped text must actually carry the notice")
+    expect(
+        LIB.nonblank_lines(stamped) == LIB.nonblank_lines(plain),
+        "the notice must not survive line extraction",
+    )
+    expect(
+        LIB.verbatim_pct(plain, upstream) == LIB.verbatim_pct(stamped, upstream),
+        f"verbatim_pct moved when the notice was added: {LIB.verbatim_pct(plain, upstream)} "
+        f"-> {LIB.verbatim_pct(stamped, upstream)}",
+    )
+
+    # The negative control: without the exclusion the figure DOES move, so the
+    # assertion above is measuring the exclusion rather than passing vacuously.
+    naive = len([line for line in stamped.splitlines() if line.strip()])
+    expect(
+        naive > len(LIB.nonblank_lines(stamped)),
+        "fixture bug: a naive line count must see the notice, or this test proves nothing",
+    )
+
+
+def test_generated_notice_roundtrip_is_exact() -> None:
+    for suffix in LIB.COMMENT_SYNTAX:
+        block = LIB.render_exhibit_a(suffix)
+        expect(LIB.has_exhibit_a(block), f"{suffix}: the rendered block must satisfy has_exhibit_a")
+        for base in ("body line one\nbody line two\n", "#!/usr/bin/env python3\nbody\n"):
+            stamped = LIB.add_generated_notice(base, block)
+            expect(
+                LIB.remove_generated_notice(stamped, block) == base,
+                f"{suffix}: add then remove must return the original bytes",
+            )
+            expect(
+                LIB.strip_generated_notice(stamped) == base,
+                f"{suffix}: strip_generated_notice must remove exactly the block",
+            )
+        shebang_stamped = LIB.add_generated_notice("#!/usr/bin/env python3\nbody\n", block)
+        expect(
+            shebang_stamped.startswith("#!/usr/bin/env python3\n"),
+            f"{suffix}: the notice must go BELOW a shebang, not displace it",
+        )
+
+
+def test_render_exhibit_a_refuses_an_unregistered_suffix() -> None:
+    expect_raises(
+        LIB.LedgerError,
+        lambda: LIB.render_exhibit_a(".toml"),
+        "a suffix with no registered comment syntax must raise rather than guess one",
+    )
+
+
+def test_has_exhibit_a_accepts_a_retained_upstream_header() -> None:
+    # WHY: 122 of the upstream files carry the notice in their own `/* * */` header, and
+    # MPL 3.1 forbids removing it. The gate therefore has to recognise the notice in the
+    # wrapping it arrives in, or it would demand a second copy of the same sentence.
+    expect(LIB.has_exhibit_a(_UPSTREAM_STYLE_HEADER), "upstream's own C-style header must count")
+    expect(not LIB.has_exhibit_a("fn a() {}\n"), "a file with no notice must not count")
+    expect(
+        not LIB.has_generated_notice_marker(_UPSTREAM_STYLE_HEADER),
+        "upstream's header is not this tooling's generated block",
+    )
+
+
+def _exhibit_a_errors(files: dict[str, str], rows: list[dict]) -> list[str]:
+    with tempfile.TemporaryDirectory() as tmp:
+        src_dir = Path(tmp) / "src"
+        src_dir.mkdir()
+        for name, text in files.items():
+            (src_dir / name).write_text(text)
+        orig = CHECKER.KRITES_SRC
+        CHECKER.KRITES_SRC = src_dir
+        try:
+            return CHECKER.check_exhibit_a_notices(rows)
+        finally:
+            CHECKER.KRITES_SRC = orig
+
+
+def test_exhibit_a_gate_rejects_a_derived_file_with_no_notice() -> None:
+    plain = "fn a() {}\n"
+    errors = _exhibit_a_errors({"local.rs": plain}, [row("local.rs", "up.rs", 50.0, "derived")])
+    expect(
+        any("carries no MPL Exhibit A notice" in e for e in errors),
+        f"a derived file with no notice must fail; got {errors}",
+    )
+    stamped = LIB.add_generated_notice(plain, LIB.render_exhibit_a(".rs"))
+    errors2 = _exhibit_a_errors({"local.rs": stamped}, [row("local.rs", "up.rs", 50.0, "derived")])
+    expect(errors2 == [], f"the same file must pass once the notice is rendered; got {errors2}")
+
+
+def test_exhibit_a_gate_requires_the_notice_on_dual_too() -> None:
+    # A dual row is the retiring CozoDB-lineage copy soaking before deletion, not a
+    # rewrite -- it carries upstream expression for the whole soak window.
+    errors = _exhibit_a_errors(
+        {"local.rs": "fn a() {}\n"}, [row("local.rs", "up.rs", 50.0, "dual", soak=99)]
+    )
+    expect(
+        any("carries no MPL Exhibit A notice" in e for e in errors),
+        f"a dual file with no notice must fail; got {errors}",
+    )
+
+
+def test_exhibit_a_gate_accepts_a_retained_upstream_notice() -> None:
+    errors = _exhibit_a_errors(
+        {"local.rs": _UPSTREAM_STYLE_HEADER + "fn a() {}\n"},
+        [row("local.rs", "up.rs", 50.0, "derived")],
+    )
+    expect(errors == [], f"a file retaining upstream's own MPL header must pass; got {errors}")
+
+
+def test_exhibit_a_gate_rejects_a_notice_on_a_sovereign_row() -> None:
+    # The opposite error, and the worse one: a sovereign row claims no CozoDB lineage,
+    # so a notice there asserts an MPL obligation over aletheia's own work.
+    stamped = LIB.add_generated_notice("fn a() {}\n", LIB.render_exhibit_a(".rs"))
+    errors = _exhibit_a_errors(
+        {"local.rs": stamped},
+        [row("local.rs", "none", 0.0, "sovereign")],
+    )
+    expect(
+        any("status=sovereign but the file carries an MPL notice" in e for e in errors),
+        f"a sovereign file carrying the notice must fail; got {errors}",
+    )
+    errors2 = _exhibit_a_errors(
+        {"local.rs": "fn a() {}\n"}, [row("local.rs", "none", 0.0, "sovereign")]
+    )
+    expect(errors2 == [], f"a sovereign file with no notice must pass; got {errors2}")
+
+
+def test_exhibit_a_gate_rejects_a_hand_edited_block() -> None:
+    # A block that no longer matches what render_exhibit_a emits stops being excluded
+    # from the measurement, so it starts counting licence boilerplate as the file's own
+    # expression. The notice sentence is still there, so only the marker reveals it.
+    mangled = LIB.render_exhibit_a(".rs").replace("// v. 2.0.", "//    v. 2.0.")
+    errors = _exhibit_a_errors(
+        {"local.rs": mangled + "\nfn a() {}\n"}, [row("local.rs", "up.rs", 50.0, "derived")]
+    )
+    expect(
+        any("hand-edited" in e for e in errors),
+        f"a drifted generated block must fail even though the sentence survives; got {errors}",
+    )
+
+
+def test_sync_exhibit_a_is_status_directed_and_idempotent() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "local.rs"
+        path.write_text("fn a() {}\n")
+
+        expect(LIB.sync_exhibit_a(path, "derived") == "added", "a derived file must gain the notice")
+        stamped = path.read_text()
+        expect(LIB.has_exhibit_a(stamped), "the notice must actually be written")
+        expect(
+            LIB.sync_exhibit_a(path, "derived") is None and path.read_text() == stamped,
+            "a second run must be a no-op, never a second copy of the notice",
+        )
+        expect(LIB.sync_exhibit_a(path, "dual") is None, "a dual row keeps the notice it had")
+        expect(LIB.sync_exhibit_a(path, "sovereign") == "removed", "sovereign must lose the notice")
+        expect(path.read_text() == "fn a() {}\n", "removal must restore the original bytes exactly")
+        expect(LIB.sync_exhibit_a(path, "sovereign") is None, "removal must be idempotent too")
+
+        # A notice this tooling did not write is not this tooling's to delete: upstream's
+        # own copyright header goes with it, and deleting that silently is the one
+        # direction that must never be automatic. The gate reports it instead.
+        path.write_text(_UPSTREAM_STYLE_HEADER + "fn a() {}\n")
+        expect(
+            LIB.sync_exhibit_a(path, "sovereign") is None,
+            "an inherited upstream header must not be auto-deleted",
+        )
+        expect(LIB.has_exhibit_a(path.read_text()), "the inherited header must still be there")
+
+
+def test_sync_exhibit_a_skips_a_row_whose_file_is_gone() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        expect(
+            LIB.sync_exhibit_a(Path(tmp) / "no-such-file.rs", "derived") is None,
+            "a ledger row naming a missing file is check_completeness's finding, not a crash",
+        )
+
+
+def test_transition_to_sovereign_removes_the_notice() -> None:
+    # #5956: a rewritten file that keeps the notice keeps asserting an MPL obligation it
+    # no longer carries. The verbatim_pct assertion is the other half: the figure must be
+    # the same before and after the removal, or the transition itself would move the metric.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        snapshot_dir = root / "snapshot"
+        snapshot_dir.mkdir()
+        (snapshot_dir / "up.rs").write_text(
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn e() {}\nfn f() {}\nfn g() {}\nfn h() {}\n"
+        )
+        src_dir = root / "src"
+        src_dir.mkdir()
+        body = (
+            "fn a() {}\nfn b() {}\nfn c() {}\nfn d() {}\n"
+            "fn zzz() {}\nfn www() {}\nfn yyy() {}\nfn xxx() {}\n"
+        )
+        local = src_dir / "local.rs"
+        local.write_text(LIB.add_generated_notice(body, LIB.render_exhibit_a(".rs")))
+
+        orig_snapshot = TRANSITION.UPSTREAM_SNAPSHOT_DIR
+        orig_src = TRANSITION.KRITES_SRC
+        TRANSITION.UPSTREAM_SNAPSHOT_DIR = snapshot_dir
+        TRANSITION.KRITES_SRC = src_dir
+        try:
+            r = row("local.rs", "up.rs", 50.0, "dual", soak=100)
+            TRANSITION.apply_to_sovereign(r)
+            expect(
+                not LIB.has_exhibit_a(local.read_text()),
+                "a dual -> sovereign transition must take the MPL notice back out",
+            )
+            expect(
+                local.read_text() == body,
+                "removal must restore the file's own bytes, nothing else",
+            )
+            expect(
+                # WHY a tolerance on a value the generator rounds to one decimal: exact
+                # float equality holds only while that rounding does, and a later change
+                # to the stored precision would turn this into a flake rather than a
+                # finding.
+                abs(r["verbatim_pct"] - 50.0) < 1e-9,
+                f"the transition must not move verbatim_pct by removing the notice; got "
+                f"{r['verbatim_pct']}",
+            )
+        finally:
+            TRANSITION.UPSTREAM_SNAPSHOT_DIR = orig_snapshot
+            TRANSITION.KRITES_SRC = orig_src
+
+
 def main() -> int:
     for test_fn in (
         test_sovereign_high_verbatim_rejected,
@@ -1163,6 +1732,39 @@ def main() -> int:
         test_resolve_method_preserves_across_regeneration,
         test_resolve_method_defaults_new_sovereign_row_to_unknown,
         test_resolve_method_defaults_non_sovereign_to_none,
+        test_consulted_from_spec_rejects_derived_sibling,
+        test_consulted_from_spec_accepts_sovereign_siblings,
+        test_consulted_from_spec_accepts_empty_list,
+        test_consulted_derived_siblings_rejects_all_sovereign_list,
+        test_consulted_derived_siblings_rejects_empty_list,
+        test_consulted_derived_siblings_accepts_mixed_list,
+        test_consulted_rejects_path_not_in_ledger,
+        test_consulted_unconstrained_for_rewritten_with_source_open,
+        test_consulted_missing_key_passes_validate_rows,
+        test_consulted_missing_key_rejected_by_checker,
+        test_consulted_forbidden_off_sovereign,
+        test_consulted_must_be_a_list_of_paths,
+        test_dump_ledger_refuses_row_missing_consulted,
+        test_dump_ledger_refuses_contradicting_consulted,
+        test_transition_spec_class_requires_consulted,
+        test_transition_set_method_unknown_forbids_consulted,
+        test_transition_consulted_rejected_with_status_transition,
+        test_transition_set_method_consulted_end_to_end,
+        test_transition_refuses_to_write_a_contradicting_consulted_list,
+        test_apply_set_method_preserves_consulted_when_omitted,
+        test_apply_to_sovereign_enters_with_no_consulted_record,
+        test_verbatim_pct_is_unmoved_by_the_generated_notice,
+        test_generated_notice_roundtrip_is_exact,
+        test_render_exhibit_a_refuses_an_unregistered_suffix,
+        test_has_exhibit_a_accepts_a_retained_upstream_header,
+        test_exhibit_a_gate_rejects_a_derived_file_with_no_notice,
+        test_exhibit_a_gate_requires_the_notice_on_dual_too,
+        test_exhibit_a_gate_accepts_a_retained_upstream_notice,
+        test_exhibit_a_gate_rejects_a_notice_on_a_sovereign_row,
+        test_exhibit_a_gate_rejects_a_hand_edited_block,
+        test_sync_exhibit_a_is_status_directed_and_idempotent,
+        test_sync_exhibit_a_skips_a_row_whose_file_is_gone,
+        test_transition_to_sovereign_removes_the_notice,
     ):
         test_fn()
 

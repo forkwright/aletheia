@@ -24,7 +24,7 @@ Behavioral eval framework: scenario-based API testing against a live Aletheia in
 | `ScenarioMeta` | `scenario.rs` | ID, description, category, auth/nous requirements |
 | `ScenarioOutcome` | `scenario.rs` | Enum: Passed, Failed, Skipped |
 | `ScenarioRunner` | `runner.rs` | Orchestrates scenario execution with filtering and timeouts |
-| `RunConfig` | `runner.rs` | Base URL, token, filter, fail-fast, timeout, JSON output |
+| `RunConfig` | `runner.rs` | Base URL, token, filter, fail-fast, timeout, JSON output, model override |
 | `RunReport` | `runner.rs` | Aggregated pass/fail/skip counts and per-scenario results |
 | `EvalClient` | `client.rs` | HTTP client for health, nous, session, knowledge API calls |
 | `EvalRecord` | `persistence.rs` | JSONL record for training data persistence |

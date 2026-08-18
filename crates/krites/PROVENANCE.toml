@@ -17,14 +17,19 @@
 # NOTE: on every sovereign row — no MPL lineage claim). CI recomputes and
 # NOTE: fails on drift (check_verbatim_recompute), same as derived/dual.
 # NOTE: method records HOW a sovereign row was written ('none' on derived/dual —
-# NOTE: answered already by upstream_path): from_spec | from_behavioral_oracle |
-# NOTE: rewritten_with_source_open | transliterated | attested_original | unknown.
+# NOTE: answered already by upstream_path): from_spec | from_spec_derived_siblings |
+# NOTE: from_behavioral_oracle | rewritten_with_source_open | transliterated |
+# NOTE: attested_original | unknown.
 # NOTE: 'unknown' is the honest default for every row with no record; CI fails on a
 # NOTE: missing method or a sovereign row carrying 'transliterated' (check_method_
 # NOTE: recorded). method_evidence is 'none' unless method is resolved and non-
 # NOTE: 'unknown', in which case it is a PR/issue ref, a commit SHA, or a spec path —
 # NOTE: never a hand-typed justification. Clear 'unknown' only via
 # NOTE: krites-provenance-transition.py --set-method, never by hand-editing this row.
+# NOTE: consulted lists the source paths the author read while writing the file
+# NOTE: ([] when none; always [] off sovereign). from_spec requires every one of
+# NOTE: them to be a sovereign row; from_spec_derived_siblings requires at least one
+# NOTE: that is not; a path with no row here fails either way (CI: consulted_errors).
 
 [meta]
 upstream_repo = "https://github.com/cozodb/cozo"
@@ -39,6 +44,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "counterfactual.rs"
@@ -49,6 +55,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "counterfactual_tests.rs"
@@ -59,6 +66,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/aggr/boolean.rs"
@@ -69,6 +77,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/aggr/misc.rs"
@@ -79,6 +88,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/aggr/mod.rs"
@@ -89,6 +99,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/aggr/numeric.rs"
@@ -99,6 +110,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/error.rs"
@@ -109,6 +121,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/expr/expr_impl.rs"
@@ -119,6 +132,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/expr/mod.rs"
@@ -129,6 +143,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/expr/op.rs"
@@ -139,6 +154,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/aggregate.rs"
@@ -149,6 +165,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/bits.rs"
@@ -159,6 +176,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/collections.rs"
@@ -169,6 +187,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/math/arithmetic.rs"
@@ -179,6 +198,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/math/mod.rs"
@@ -189,6 +209,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/math/transcendental.rs"
@@ -199,6 +220,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/mod.rs"
@@ -209,6 +231,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/string.rs"
@@ -219,6 +242,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/temporal.rs"
@@ -229,6 +253,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/trig.rs"
@@ -239,6 +264,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/utility.rs"
@@ -249,6 +275,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/vector.rs"
@@ -259,6 +286,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/json.rs"
@@ -269,6 +297,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/memcmp.rs"
@@ -279,6 +308,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/mod.rs"
@@ -289,6 +319,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/atoms.rs"
@@ -299,6 +330,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/fixed_rule.rs"
@@ -309,6 +341,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/input.rs"
@@ -319,6 +352,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/magic.rs"
@@ -329,6 +363,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/mod.rs"
@@ -339,6 +374,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/search/atom_impl.rs"
@@ -349,6 +385,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/search/hnsw_normalize.rs"
@@ -359,6 +396,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/search/lsh_fts.rs"
@@ -369,6 +407,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/search/mod.rs"
@@ -379,6 +418,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/types.rs"
@@ -389,6 +429,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/relation.rs"
@@ -399,6 +440,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/symb.rs"
@@ -409,6 +451,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/aggrs.rs"
@@ -419,6 +462,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/exprs.rs"
@@ -429,6 +473,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/arithmetic.rs"
@@ -439,6 +484,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/collections.rs"
@@ -449,6 +495,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/mod.rs"
@@ -459,6 +506,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/string_ops.rs"
@@ -469,6 +517,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/type_conversion.rs"
@@ -479,6 +528,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/validity_units.rs"
@@ -489,6 +539,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/json.rs"
@@ -499,6 +550,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/memcmp.rs"
@@ -509,6 +561,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/mod.rs"
@@ -519,6 +572,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/proptest_memcmp.rs"
@@ -529,6 +583,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/validity.rs"
@@ -539,6 +594,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/values.rs"
@@ -549,6 +605,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tuple.rs"
@@ -559,6 +616,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/value.rs"
@@ -569,6 +627,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "datalog.pest"
@@ -579,6 +638,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "error.rs"
@@ -589,6 +649,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/all_pairs_shortest_path.rs"
@@ -599,6 +660,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/astar.rs"
@@ -609,6 +671,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/bfs.rs"
@@ -619,6 +682,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_spec"
 method_evidence = "#6656"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/degree_centrality.rs"
@@ -629,6 +693,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_spec"
 method_evidence = "#6656"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/dfs.rs"
@@ -639,6 +704,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_behavioral_oracle"
 method_evidence = "94dca62745e26cd2fbf2eb526f5dd37344c35e6a"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/kcore.rs"
@@ -649,6 +715,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/kruskal.rs"
@@ -659,6 +726,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/label_propagation.rs"
@@ -669,6 +737,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/louvain.rs"
@@ -679,6 +748,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/mod.rs"
@@ -689,6 +759,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/pagerank.rs"
@@ -699,6 +770,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/prim.rs"
@@ -709,6 +781,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/random_walk.rs"
@@ -719,6 +792,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/shortest_path_bfs.rs"
@@ -729,6 +803,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/shortest_path_dijkstra.rs"
@@ -739,6 +814,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/strongly_connected_components.rs"
@@ -749,6 +825,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/top_sort.rs"
@@ -759,6 +836,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_spec"
 method_evidence = "#6656"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/triangles.rs"
@@ -769,6 +847,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/yen.rs"
@@ -779,6 +858,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/csr/mod.rs"
@@ -789,6 +869,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/csr/page_rank.rs"
@@ -799,6 +880,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/error.rs"
@@ -809,6 +891,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/mod.rs"
@@ -819,6 +902,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/centrality_spanning.rs"
@@ -829,6 +913,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/connectivity_misc.rs"
@@ -839,6 +924,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/mod.rs"
@@ -849,6 +935,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/path_algorithms.rs"
@@ -859,6 +946,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/proptest_algos.rs"
@@ -869,6 +957,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/wave5_reference_semantics.rs"
@@ -879,6 +968,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/utilities/constant.rs"
@@ -889,6 +979,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/utilities/mod.rs"
@@ -899,6 +990,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/utilities/reorder_sort.rs"
@@ -909,6 +1001,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/utilities/rrf.rs"
@@ -919,6 +1012,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/README.md"
@@ -929,6 +1023,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/ast.rs"
@@ -939,6 +1034,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/config.rs"
@@ -949,6 +1045,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/error.rs"
@@ -959,6 +1056,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/indexing.rs"
@@ -969,6 +1067,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/mod.rs"
@@ -979,6 +1078,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/alphanum_only.rs"
@@ -989,6 +1089,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table.rs"
@@ -999,6 +1100,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py"
@@ -1009,6 +1111,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs"
@@ -1019,6 +1122,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs"
@@ -1029,6 +1133,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/mod.rs"
@@ -1039,6 +1144,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs"
@@ -1049,6 +1155,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs"
@@ -1059,6 +1166,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs"
@@ -1069,6 +1177,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_t_z.rs"
@@ -1079,6 +1188,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/mod.rs"
@@ -1089,6 +1199,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/empty_tokenizer.rs"
@@ -1099,6 +1210,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/lower_caser.rs"
@@ -1109,6 +1221,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/mod.rs"
@@ -1119,6 +1232,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ngram_tokenizer.rs"
@@ -1129,6 +1243,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/raw_tokenizer.rs"
@@ -1139,6 +1254,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/remove_long.rs"
@@ -1149,6 +1265,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/simple_tokenizer.rs"
@@ -1159,6 +1276,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/split_compound_words.rs"
@@ -1169,6 +1287,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stemmer.rs"
@@ -1179,6 +1298,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/mod.rs"
@@ -1189,6 +1309,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/NOTICE.md"
@@ -1199,6 +1320,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py"
@@ -1209,6 +1331,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/mod.rs"
@@ -1217,8 +1340,9 @@ replaced_upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
 verbatim_pct = 9.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
-method = "rewritten_with_source_open"
-method_evidence = "#6656"
+method = "from_spec_derived_siblings"
+method_evidence = "#6879"
+consulted = ["fts/tokenizer/remove_long.rs", "fts/tokenizer/stemmer.rs", "fts/tokenizer/simple_tokenizer.rs", "fts/tokenizer/split_compound_words.rs"]
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/stopwords.rs"
@@ -1229,6 +1353,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/tokenized_string.rs"
@@ -1239,6 +1364,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/tokenizer_impl.rs"
@@ -1249,6 +1375,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/whitespace_tokenizer.rs"
@@ -1259,6 +1386,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "hot_reload.rs"
@@ -1269,6 +1397,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "lib.rs"
@@ -1279,6 +1408,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/error.rs"
@@ -1289,6 +1419,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/expr/bytecode.rs"
@@ -1299,6 +1430,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/expr/mod.rs"
@@ -1309,6 +1441,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/expr/strings.rs"
@@ -1319,6 +1452,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/fts.rs"
@@ -1329,6 +1463,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/imperative.rs"
@@ -1339,6 +1474,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/mod.rs"
@@ -1349,6 +1485,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/atoms.rs"
@@ -1359,6 +1496,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/fixed_rules.rs"
@@ -1369,6 +1507,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/mod.rs"
@@ -1379,6 +1518,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/options.rs"
@@ -1389,6 +1529,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/program.rs"
@@ -1399,6 +1540,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/schema.rs"
@@ -1409,6 +1551,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/sys/index.rs"
@@ -1419,6 +1562,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/sys/mod.rs"
@@ -1429,6 +1573,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/sys/parse.rs"
@@ -1439,6 +1584,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/compile.rs"
@@ -1449,6 +1595,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/context.rs"
@@ -1459,6 +1606,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/error.rs"
@@ -1469,6 +1617,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/eval.rs"
@@ -1479,6 +1628,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/graph.rs"
@@ -1489,6 +1639,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/logical.rs"
@@ -1499,6 +1650,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/magic.rs"
@@ -1509,6 +1661,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/mod.rs"
@@ -1519,6 +1672,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/filter.rs"
@@ -1529,6 +1683,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/inline_fixed.rs"
@@ -1539,6 +1694,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/join.rs"
@@ -1549,6 +1705,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/mod.rs"
@@ -1559,6 +1716,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/project.rs"
@@ -1569,6 +1727,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/search.rs"
@@ -1579,6 +1738,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/sort.rs"
@@ -1589,6 +1749,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/stored.rs"
@@ -1599,6 +1760,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/temp_store.rs"
@@ -1609,6 +1771,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/reorder.rs"
@@ -1619,6 +1782,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/sort.rs"
@@ -1629,6 +1793,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/stratify.rs"
@@ -1639,6 +1804,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/tests/mod.rs"
@@ -1649,6 +1815,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/tests/reference_semantics.rs"
@@ -1659,6 +1826,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query_cache.rs"
@@ -1669,6 +1837,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/callback.rs"
@@ -1679,6 +1848,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/db.rs"
@@ -1689,6 +1859,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/error.rs"
@@ -1699,6 +1870,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/exec.rs"
@@ -1709,6 +1881,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/adaptive.rs"
@@ -1719,6 +1892,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/graph.rs"
@@ -1729,6 +1903,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/mod.rs"
@@ -1739,6 +1914,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/put.rs"
@@ -1749,6 +1925,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/remove.rs"
@@ -1759,6 +1936,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/search.rs"
@@ -1769,6 +1947,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/types.rs"
@@ -1779,6 +1958,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/visited_pool.rs"
@@ -1789,6 +1969,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/adaptive.rs"
@@ -1799,6 +1980,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_behavioral_oracle"
 method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/close_reopen_tests.rs"
@@ -1809,6 +1991,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_behavioral_oracle"
 method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/graph.rs"
@@ -1819,6 +2002,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_behavioral_oracle"
 method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/mod.rs"
@@ -1829,6 +2013,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_behavioral_oracle"
 method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/put.rs"
@@ -1839,6 +2024,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_behavioral_oracle"
 method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/remove.rs"
@@ -1849,6 +2035,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_behavioral_oracle"
 method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/search.rs"
@@ -1859,6 +2046,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_behavioral_oracle"
 method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/types.rs"
@@ -1869,6 +2057,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "from_behavioral_oracle"
 method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/imperative.rs"
@@ -1879,6 +2068,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/minhash_lsh.rs"
@@ -1889,6 +2079,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/mod.rs"
@@ -1899,6 +2090,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/query_context_impl.rs"
@@ -1909,6 +2101,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/extractors.rs"
@@ -1919,6 +2112,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/handles.rs"
@@ -1929,6 +2123,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/index_create.rs"
@@ -1939,6 +2134,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/index_management.rs"
@@ -1949,6 +2145,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/mod.rs"
@@ -1959,6 +2156,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/mutation.rs"
@@ -1969,6 +2167,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/relation_crud.rs"
@@ -1979,6 +2178,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/validation.rs"
@@ -1989,6 +2189,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/sys.rs"
@@ -1999,6 +2200,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/temp_store.rs"
@@ -2009,6 +2211,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/basic_queries.rs"
@@ -2019,6 +2222,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/imperative.rs"
@@ -2029,6 +2233,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/indexing.rs"
@@ -2039,6 +2244,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/mod.rs"
@@ -2049,6 +2255,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/triggers_callbacks.rs"
@@ -2059,6 +2266,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/transact.rs"
@@ -2069,6 +2277,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/error.rs"
@@ -2079,6 +2288,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/fjall_backend.rs"
@@ -2089,6 +2299,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/mem.rs"
@@ -2099,6 +2310,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/mod.rs"
@@ -2109,6 +2321,7 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/temp.rs"
@@ -2119,6 +2332,7 @@ status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
 method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "utils.rs"
@@ -2129,3 +2343,4 @@ status = "derived"
 soak_expires_at_commit_count = 0
 method = "none"
 method_evidence = "none"
+consulted = []

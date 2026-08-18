@@ -34,12 +34,42 @@ UPSTREAM_SNAPSHOT_DIR = KRITES_DIR / "upstream-snapshot" / "cozo-core-src"
 # is not.
 METHODS = (
     "from_spec",  # written against a written specification/paper, source not consulted
+    "from_spec_derived_siblings",  # written against a spec, but derived siblings were read for convention
     "from_behavioral_oracle",  # written against observed behaviour/tests, source not read
     "rewritten_with_source_open",  # the derived file was consulted while writing
     "transliterated",  # finding value -- confirmed disguised copy, never legitimate on a sovereign row
     "attested_original",  # no predecessor existed; this is aletheia's own new code
     "unknown",  # no record exists
 )
+
+# INVARIANT(#6879): the values whose whole content is a claim about what was NOT read, and
+# which are therefore meaningless without the consulted list that bounds it. Named once
+# here because krites-provenance-transition.py refuses to record one without --consulted
+# and consulted_errors checks exactly these two.
+SPEC_CLASS_METHODS = ("from_spec", "from_spec_derived_siblings")
+
+# INVARIANT(#6879): "match the surrounding crate" and "clean-room" are in direct tension
+# here -- most rows in this ledger are derived, so the sibling that best demonstrates a
+# convention is usually the sibling doing the same job, which is exactly the expression
+# that must not propagate. 'consulted' is the list of source paths (relative to KRITES_SRC,
+# like every other path in the ledger) that the author read while writing the row's file;
+# an empty list means none. It exists because a bare 'from_spec' is an unfalsifiable
+# attestation, while a NAMED consulted path has a ledger STATUS the checker can read --
+# which is the only part of this claim a machine can reach.
+#
+# WARNING(#6879): an empty list on a row whose method was established by RESEARCH rather
+# than recorded by its author (every row that predates this field) records "nothing was
+# recorded", not a verified "nothing was read". The distinction is only real going forward.
+# The list's COMPLETENESS is unverifiable in either direction: nothing observes what an
+# author actually opened, so an omitted path reads identically to a path never read.
+# 'consulted' converts an unfalsifiable claim into a partially-checkable one, not into a
+# proof.
+#
+# WARNING(#6879): 'from_behavioral_oracle' carries the same independence claim as
+# 'from_spec' but is deliberately NOT constrained by consulted_errors below, because no
+# enum value exists for "written against a behavioural oracle, with derived siblings read"
+# -- constraining it would force a rewrite in that position to record something false. Grow
+# METHODS when a rewrite actually lands there; do not bend the record to fit.
 
 # WHY a regex, not free text: 'evidence' that clears 'unknown' is only worth
 # recording if a reader can independently go verify it. A GitHub PR/issue reference,
@@ -205,7 +235,195 @@ def iter_src_files() -> list[str]:
     )
 
 
+# INVARIANT(#5956): MPL-2.0 Exhibit A, verbatim. This is the licence's own recommended
+# notice text, not prose this repo is free to reword -- it is quoted, and the quote is the
+# single source both render_exhibit_a() and has_exhibit_a() read, so a per-file header and
+# the gate that requires it can never disagree about what the notice says.
+EXHIBIT_A_LINES = (
+    "This Source Code Form is subject to the terms of the Mozilla Public License,",
+    "v. 2.0. If a copy of the MPL was not distributed with this file, You can",
+    "obtain one at https://mozilla.org/MPL/2.0/.",
+)
+EXHIBIT_A_TEXT = " ".join(EXHIBIT_A_LINES)
+
+# INVARIANT(#5956): the sentinel that makes the generated block machine-recognisable.
+# The measurement exclusion (strip_generated_notice, below) keys off the EXACT rendered
+# block rather than a fuzzy marker scan, so it can never over-strip; this token exists so
+# a hand-edited block -- one that no longer matches byte-for-byte and therefore stops
+# being excluded -- is still detectable and can be reported as drift instead of silently
+# moving every figure the block sits in.
+EXHIBIT_A_MARKER = "krites-exhibit-a"
+_EXHIBIT_A_BEGIN = f"{EXHIBIT_A_MARKER}: begin (generated -- scripts/measure-krites-provenance.py)"
+_EXHIBIT_A_END = f"{EXHIBIT_A_MARKER}: end"
+
+# WARNING(#5956): keyed by the same suffixes TRACKED_SUFFIXES admits. A tracked suffix with
+# no entry here has no comment syntax to render a notice in, which render_exhibit_a refuses
+# rather than guessing -- guessing produces a file that no longer parses in its own language.
+COMMENT_SYNTAX: dict[str, tuple[str, str]] = {
+    ".rs": ("//", ""),
+    ".pest": ("//", ""),
+    ".py": ("#", ""),
+    ".md": ("<!--", "-->"),
+}
+
+# WHY a normalizer rather than a substring search on the raw text: the same notice is
+# legitimately present in four wrappings -- our generated `//` block, upstream cozo-core's
+# own `/* * */` header (which §3.1 forbids removing, so it must satisfy the gate as it
+# stands), a `#` block, and an HTML comment -- and it is line-wrapped differently in each.
+# Stripping comment punctuation off both edges and collapsing whitespace makes one quoted
+# sentence answer for all of them.
+# WHY a str.strip character set rather than a regex: the anchored-alternation form
+# `^[...]+|[...]+$` backtracks super-linearly on a long run of edge characters, and
+# str.strip is linear, allocation-free per edge, and says what it does. The set is
+# every character that can wrap the notice in any of the four comment styles.
+_COMMENT_EDGE_CHARS = " \t\r\n/*#<!>-"
+
+
+def render_exhibit_a(suffix: str) -> str:
+    """The exact generated notice block for a file of this suffix, newline-terminated."""
+    if suffix not in COMMENT_SYNTAX:
+        raise LedgerError(
+            f"no comment syntax registered for {suffix!r} — add it to COMMENT_SYNTAX before "
+            "tracking a file of this type, rather than emitting a notice in a syntax the "
+            "file's own language does not accept"
+        )
+    prefix, closer = COMMENT_SYNTAX[suffix]
+    body = (_EXHIBIT_A_BEGIN, *EXHIBIT_A_LINES, _EXHIBIT_A_END)
+    rendered = [" ".join(part for part in (prefix, line, closer) if part) for line in body]
+    return "\n".join(rendered) + "\n"
+
+
+def add_generated_notice(text: str, block: str) -> str:
+    """Insert `block` at the top, after a shebang line if one is present.
+
+    INVARIANT(#5956): exactly inverted by remove_generated_notice — add then remove
+    returns the original bytes. The measurement exclusion depends on that: a block the
+    remover cannot take back out is a block that stays in the line count.
+    """
+    if text.startswith("#!"):
+        shebang, _, rest = text.partition("\n")
+        return f"{shebang}\n{block}\n{rest}"
+    return f"{block}\n{text}"
+
+
+def remove_generated_notice(text: str, block: str) -> str:
+    if block + "\n" in text:
+        return text.replace(block + "\n", "", 1)
+    return text.replace(block, "", 1)
+
+
+def strip_generated_notice(text: str) -> str:
+    """Remove the generated Exhibit A block, whatever comment syntax it is rendered in.
+
+    INVARIANT(#5956): this is the reason the notices can be added at all. verbatim_pct is
+    matched-lines / local-non-blank-lines, so a 5-line header added to a file that is
+    otherwise byte-identical to upstream moves its score by 5/len — datalog.pest, which
+    IS byte-identical below its header, reads 94.2% rather than 100% for exactly that
+    kind of reason. Applied across 142 derived rows, that motion would improve the
+    program's central metric by a few points per file while nothing about any file's
+    derivation changed: a number moving without the underlying work, which is the failure
+    this whole ledger exists to end. A file's figure must therefore be identical with and
+    without its notice, which means the notice is not part of what is measured.
+
+    Matches the EXACT rendered block, never a marker scan: an unterminated or reworded
+    marker would otherwise strip an unbounded region and silently delete real lines from
+    the measurement. A block that has drifted from the rendered form is left in place —
+    it then shows up as a verbatim_pct mismatch AND as a check_exhibit_a_notices drift
+    error, which is the loud failure, not the silent one.
+    """
+    for suffix in COMMENT_SYNTAX:
+        block = render_exhibit_a(suffix)
+        if block in text:
+            text = remove_generated_notice(text, block)
+    return text
+
+
+def _normalized_prose(text: str) -> str:
+    lines = (line.strip(_COMMENT_EDGE_CHARS) for line in text.splitlines())
+    return re.sub(r"\s+", " ", " ".join(line for line in lines if line))
+
+
+def has_exhibit_a(text: str) -> bool:
+    """Whether the file informs its recipient that it is MPL-governed, in any wrapping."""
+    return EXHIBIT_A_TEXT in _normalized_prose(text)
+
+
+def has_generated_notice_marker(text: str) -> bool:
+    return EXHIBIT_A_MARKER in text
+
+
+def ledger_source_path(root: pathlib.Path, rel: str) -> pathlib.Path:
+    """Join a ledger row's path onto the crate source root, refusing to escape it.
+
+    SAFETY: a row's `path` is data any pull request can edit, and the tooling that
+    consumes it WRITES to the result. A row reading `../../.github/workflows/gate.yml`,
+    or naming a symlink pointing out of the tree, would otherwise have a licence header
+    written into it by CI. Containment is checked on the RESOLVED path so a symlink
+    cannot launder the escape past a textual check.
+
+    WHY here rather than inside sync_exhibit_a: this is where ledger data becomes a
+    filesystem path, and validating at the join keeps sync_exhibit_a's contract —
+    operate on the path you are given — intact for callers that construct one honestly.
+
+    WHY root is a parameter rather than this module's KRITES_SRC: each consuming script
+    re-imports KRITES_SRC into its own namespace and tests monkeypatch that copy, so a
+    reference to this module's global would validate against the real tree while the
+    caller writes into a temporary one.
+    """
+    resolved_root = root.resolve()
+    joined = (root / rel).resolve()
+    if not joined.is_relative_to(resolved_root):
+        raise LedgerError(
+            f"ledger row path {rel!r} resolves to {joined}, outside {resolved_root}. "
+            "A row must name a file inside the crate's own source tree."
+        )
+    return joined
+
+
+def sync_exhibit_a(path: pathlib.Path, status: str) -> str | None:
+    """Bring one source file's generated notice into line with its ledger status.
+
+    Returns 'added', 'removed', or None when the file was already correct.
+
+    WHY a path rather than a ledger-relative name: KRITES_SRC exists as a module global in
+    this library AND is re-imported (and independently monkeypatched in tests) by every
+    caller, so resolving the name here would silently read a different tree than the caller
+    is working in. Taking the path the caller already holds removes the second name.
+
+    INVARIANT(#5956): a `derived` or `dual` row's file physically carries CozoDB-licensed
+    expression, so it gets the notice. A `sovereign` row makes no MPL lineage claim, and
+    stamping one on it would assert an obligation the file does not carry — the opposite
+    error, and the worse one, since it encumbers aletheia's own work. A `dual` row keeps
+    its notice: dual is the retiring derived copy soaking before deletion, not a rewrite.
+
+    WHY adding is conditional on has_exhibit_a rather than on the block's presence: a file
+    that retained upstream's own MPL header (datalog.pest) already satisfies §3.1, and
+    stacking a second copy of the same sentence on top of it would be redundant noise
+    rather than compliance. Removal is conditional on the generated block specifically —
+    a notice this tooling did not write is not this tooling's to delete.
+    """
+    # NOTE: a ledger row naming a file that does not exist is check_completeness's finding.
+    # Reporting it a second time here would bury the one error that names the cause.
+    if not path.is_file():
+        return None
+    text = path.read_text(errors="replace")
+    block = render_exhibit_a(path.suffix)
+    if status == "sovereign":
+        if block not in text:
+            return None
+        path.write_text(remove_generated_notice(text, block))
+        return "removed"
+    if has_exhibit_a(text):
+        return None
+    path.write_text(add_generated_notice(text, block))
+    return "added"
+
+
 def nonblank_lines(text: str) -> list[str]:
+    # WARNING(#5956): the generated Exhibit A block is removed BEFORE any line is counted,
+    # so a file's measurement is identical with and without its notice. See
+    # strip_generated_notice for why that exclusion is load-bearing rather than tidy.
+    text = strip_generated_notice(text)
     # WHY(aletheia#6656): strip leading AND trailing whitespace, not just the
     # trailing newline splitlines() already drops on its own. A pure
     # re-indentation carries no content change but shifts every line's
@@ -379,6 +597,95 @@ def validate_rows(rows: list[dict]) -> None:
                     "reference ('#NNNN'), a commit SHA (7-40 hex chars), or a spec path "
                     f"('spec:<path>') — got {evidence!r}"
                 )
+        # NOTE: structure only. Whether the consulted paths are the RIGHT ones for the
+        # row's method needs every other row's status, so it lives in consulted_errors()
+        # below and runs on the current ledger, not on a --base-ref read: a ledger
+        # serialized before this field existed carries no 'consulted' key at all and must
+        # still parse here, exactly as 'method' already does.
+        if "consulted" in row:
+            consulted = row["consulted"]
+            if not isinstance(consulted, list) or not all(isinstance(c, str) and c for c in consulted):
+                raise LedgerError(
+                    f"{path}: consulted must be a list of non-empty ledger paths ([] when none), "
+                    f"got {consulted!r}"
+                )
+            if row["status"] != "sovereign" and consulted:
+                raise LedgerError(
+                    f"{path}: consulted is only meaningful on status=sovereign rows (got "
+                    f"status={row['status']!r}, consulted={consulted!r}) — a derived/dual row makes "
+                    "no authorship claim for a reading list to qualify"
+                )
+
+
+def consulted_errors(rows: list[dict]) -> list[str]:
+    """The sibling rule: what a clean-room rewrite may read, checked against the ledger.
+
+    WHY this is checkable at all while a bare 'from_spec' was not: 'from_spec' asserts a
+    negative about the author's own reading, which nothing observes. Naming the sources
+    read moves the checkable part onto their ledger STATUS — a claim of independence is
+    refuted the moment a named source is itself derived, without anyone having to
+    reconstruct what the author did.
+
+    - from_spec: every consulted path must be a sovereign row. A derived/dual one refutes
+      the independence the value claims; the row belongs at from_spec_derived_siblings.
+    - from_spec_derived_siblings: consulted must be non-empty AND name at least one
+      non-sovereign path. An all-sovereign list is plain from_spec, and accepting the
+      weaker value there would make it the lazy default for rows that earned the stronger.
+    - every consulted path must be a row in this ledger — a typo resolves to nothing and
+      would otherwise read as clean.
+    - rewritten_with_source_open (the replaced file itself was read), from_behavioral_oracle,
+      attested_original, transliterated, unknown: no constraint on consulted.
+    """
+    status_by_path = {row["path"]: row["status"] for row in rows}
+    errors: list[str] = []
+    for row in rows:
+        path = row["path"]
+        if "consulted" not in row:
+            errors.append(
+                f"{path}: missing 'consulted' — every ledger row must record which sources its "
+                "author read while writing it ([] when none). Regenerate via "
+                "scripts/measure-krites-provenance.py, or set explicitly via "
+                "scripts/krites-provenance-transition.py --set-method ... --consulted"
+            )
+            continue
+        consulted = row["consulted"]
+        method = row.get("method")
+        unmapped = [c for c in consulted if c not in status_by_path]
+        if unmapped:
+            errors.append(
+                f"{path}: consulted names path(s) with no PROVENANCE.toml row: "
+                + ", ".join(unmapped)
+                + " — a consulted path is checked by its ledger status, so one that resolves to "
+                "no row is unverifiable rather than clean. Use the row's exact ledger path "
+                "(relative to crates/krites/src/)"
+            )
+            continue
+        if method == "from_spec":
+            contaminating = [c for c in consulted if status_by_path[c] != "sovereign"]
+            if contaminating:
+                errors.append(
+                    f"{path}: method='from_spec' claims the rewrite drew on no CozoDB-derived "
+                    "expression, but consulted names non-sovereign row(s): "
+                    + ", ".join(f"{c} (status={status_by_path[c]})" for c in contaminating)
+                    + " — record method='from_spec_derived_siblings' instead, which states what "
+                    "actually happened. A truthful weaker method always beats a false stronger one"
+                )
+        elif method == "from_spec_derived_siblings":
+            if not consulted:
+                errors.append(
+                    f"{path}: method='from_spec_derived_siblings' names an exposure to derived "
+                    "siblings, so consulted must list them — an empty list records no exposure and "
+                    "belongs at method='from_spec'"
+                )
+            elif all(status_by_path[c] == "sovereign" for c in consulted):
+                errors.append(
+                    f"{path}: method='from_spec_derived_siblings' consulted only sovereign row(s) "
+                    + ", ".join(consulted)
+                    + " — that is plain method='from_spec'. Recording the weaker value for a row "
+                    "that earned the stronger one makes it the lazy default and drains both of "
+                    "meaning"
+                )
+    return errors
 
 
 def parse_ledger(text: str) -> tuple[dict, list[dict]]:
@@ -394,6 +701,10 @@ def _toml_str(value: str) -> str:
     return f'"{escaped}"'
 
 
+def _toml_str_list(values: list[str]) -> str:
+    return "[" + ", ".join(_toml_str(v) for v in values) + "]"
+
+
 def dump_ledger(meta: dict, rows: list[dict]) -> str:
     validate_rows(rows)
     # SAFETY(#6797-followup): unlike validate_rows' read path, a WRITE requires method/
@@ -402,13 +713,25 @@ def dump_ledger(meta: dict, rows: list[dict]) -> str:
     # or krites-provenance-transition.py, both of which always set both fields. A row
     # missing either here is a caller bug or a hand-edit that stripped the field; raising a
     # clear LedgerError beats a bare KeyError from the f-string access below.
-    missing = sorted(row["path"] for row in rows if "method" not in row or "method_evidence" not in row)
+    missing = sorted(
+        row["path"]
+        for row in rows
+        if "method" not in row or "method_evidence" not in row or "consulted" not in row
+    )
     if missing:
         raise LedgerError(
-            "dump_ledger requires 'method' and 'method_evidence' set on every row before "
-            "writing (regenerate via measure-krites-provenance.py, or set explicitly via "
+            "dump_ledger requires 'method', 'method_evidence' and 'consulted' set on every row "
+            "before writing (regenerate via measure-krites-provenance.py, or set explicitly via "
             "krites-provenance-transition.py): " + ", ".join(missing)
         )
+    # SAFETY(#6879): the sibling rule is enforced on the WRITE path too, not only by
+    # check-krites-provenance.py. A row that violates it is unwritable, so no tool can
+    # produce a ledger that only fails later in CI — which is where the previous
+    # generation of this scheme kept landing (a value written by fiat, caught a wave
+    # later, if at all).
+    sibling_errors = consulted_errors(rows)
+    if sibling_errors:
+        raise LedgerError("; ".join(sibling_errors))
     lines = [
         "# NOTE: generated by scripts/measure-krites-provenance.py — do not hand-edit rows.",
         "# NOTE: soak_expires_at_commit_count = 0 means the file is not in dual",
@@ -429,14 +752,19 @@ def dump_ledger(meta: dict, rows: list[dict]) -> str:
         "# NOTE: on every sovereign row — no MPL lineage claim). CI recomputes and",
         "# NOTE: fails on drift (check_verbatim_recompute), same as derived/dual.",
         "# NOTE: method records HOW a sovereign row was written ('none' on derived/dual —",
-        "# NOTE: answered already by upstream_path): from_spec | from_behavioral_oracle |",
-        "# NOTE: rewritten_with_source_open | transliterated | attested_original | unknown.",
+        "# NOTE: answered already by upstream_path): from_spec | from_spec_derived_siblings |",
+        "# NOTE: from_behavioral_oracle | rewritten_with_source_open | transliterated |",
+        "# NOTE: attested_original | unknown.",
         "# NOTE: 'unknown' is the honest default for every row with no record; CI fails on a",
         "# NOTE: missing method or a sovereign row carrying 'transliterated' (check_method_",
         "# NOTE: recorded). method_evidence is 'none' unless method is resolved and non-",
         "# NOTE: 'unknown', in which case it is a PR/issue ref, a commit SHA, or a spec path —",
         "# NOTE: never a hand-typed justification. Clear 'unknown' only via",
         "# NOTE: krites-provenance-transition.py --set-method, never by hand-editing this row.",
+        "# NOTE: consulted lists the source paths the author read while writing the file",
+        "# NOTE: ([] when none; always [] off sovereign). from_spec requires every one of",
+        "# NOTE: them to be a sovereign row; from_spec_derived_siblings requires at least one",
+        "# NOTE: that is not; a path with no row here fails either way (CI: consulted_errors).",
         "",
         "[meta]",
         f"upstream_repo = {_toml_str(meta['upstream_repo'])}",
@@ -453,6 +781,7 @@ def dump_ledger(meta: dict, rows: list[dict]) -> str:
         lines.append(f"soak_expires_at_commit_count = {row['soak_expires_at_commit_count']}")
         lines.append(f"method = {_toml_str(row['method'])}")
         lines.append(f"method_evidence = {_toml_str(row['method_evidence'])}")
+        lines.append(f"consulted = {_toml_str_list(row['consulted'])}")
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n"
 
@@ -560,6 +889,7 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
     lines.append("| Value | Meaning |")
     lines.append("|---|---|")
     lines.append("| `from_spec` | written against a written specification/paper, without reference to the derived source |")
+    lines.append("| `from_spec_derived_siblings` | written against a specification, but derived siblings in this crate were read for local convention |")
     lines.append("| `from_behavioral_oracle` | written against observed behaviour/tests of the derived code, source not read |")
     lines.append("| `rewritten_with_source_open` | the derived file was consulted while writing |")
     lines.append("| `transliterated` | a **finding** value — confirms the file is a disguised copy; never a legitimate state for a sovereign row (see \"Anti-backsliding\" below) |")
@@ -577,11 +907,34 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
     )
     lines.append("")
     lines.append(
+        "`from_spec` and `from_spec_derived_siblings` differ only in what the author read for "
+        "local convention, and the ledger records that as a `consulted` list per row — the source "
+        "paths read while writing, `[]` when none. It exists because most of this crate is "
+        "derived, so the sibling that best demonstrates a convention is usually the sibling doing "
+        "the same job. Mechanical conventions (error type, lint attributes, module layout, naming) "
+        "may come from any sibling; the shape of the same algorithm may only come from a "
+        "`sovereign` one. CI reads each consulted path's own status: a `from_spec` row that "
+        "consulted a `derived` sibling fails, and so does a `from_spec_derived_siblings` row whose "
+        "list is empty or entirely `sovereign`. What the check cannot reach is the list's "
+        "completeness — nothing observes what an author opened, so an omitted path reads exactly "
+        "like a path never read."
+    )
+    consulting = [r for r in rows if r.get("consulted")]
+    if consulting:
+        lines.append("")
+        lines.append("| File | Consulted while writing |")
+        lines.append("|---|---|")
+        for r in consulting:
+            read = ", ".join(f"`src/{c}`" for c in r["consulted"])
+            lines.append(f"| `src/{r['path']}` | {read} |")
+    lines.append("")
+    lines.append(
         f"**{len(resolved_sovereign)}** carry a resolved method backed by a `method_evidence` "
         "pointer — a PR/issue reference, a commit SHA, or a spec path, always independently "
         "checkable, never a hand-typed justification. `unknown` is cleared only through "
-        "`scripts/krites-provenance-transition.py --set-method <value> --evidence <pointer>`, never "
-        "by hand-editing a row."
+        "`scripts/krites-provenance-transition.py --set-method <value> --evidence <pointer>` "
+        "(plus `--consulted <paths>`, which the two `from_spec` values require), never by "
+        "hand-editing a row."
     )
     lines.append("")
     lines.append("## Reading `verbatim_pct`: what it can and cannot prove")
@@ -725,5 +1078,27 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
         "today, a statement-for-statement match against its replaced upstream at 15.5% "
         "(aletheia#6656) — leaving the row `sovereign` with it is not: the row must be "
         "rewritten independently or reclassified before the gate passes again."
+    )
+    lines.append("")
+    lines.append(
+        "A fourth clause gates the notices themselves. Every `derived`/`dual` file must carry "
+        "the MPL Exhibit A notice, and no `sovereign` file may — CI fails the build either way "
+        "(`check_exhibit_a_notices`). The enumeration above is what satisfies §3.1; the per-file "
+        "notice covers what an enumeration cannot follow, a single file copied out of this tree "
+        "on its own. The notice is rendered from this ledger by "
+        "`scripts/measure-krites-provenance.py`, never hand-written, which is why a refactor can "
+        "no longer quietly strip one the way it stripped `datalog.pest`'s. A file that retained "
+        "upstream's own header satisfies the gate as it stands, since §3.1 forbids removing it "
+        "and a second copy of the same sentence is not compliance."
+    )
+    lines.append("")
+    lines.append(
+        "The generated block is excluded from `verbatim_pct` and from the drift metric alike. "
+        "`verbatim_pct` is matched lines over the file's own non-blank lines, so a five-line "
+        "header on every derived file would move the figure on all of them at once — the mean "
+        "across the derived set falls from 44.3% to 42.5%, and `fts/README.md` reads 44.4% "
+        "instead of 100.0%, entirely on licence boilerplate. Every figure in the table above is "
+        "therefore identical with and without its file's notice, which is the only reading under "
+        "which the numbers still mean what they say."
     )
     return "\n".join(lines).rstrip("\n") + "\n"

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """CI gate: PROVENANCE.toml completeness, NOTICE.md sync, no derived-row growth,
-status-sequence, soak expiry, offline verbatim recompute."""
+status-sequence, soak expiry, offline verbatim recompute, consulted-sibling rule,
+per-file MPL Exhibit A notices."""
 
 from __future__ import annotations
 
@@ -21,8 +22,12 @@ from krites_provenance_lib import (  # noqa: E402
     REPO_ROOT,
     UPSTREAM_SNAPSHOT_DIR,
     LedgerError,
+    consulted_errors,
+    has_exhibit_a,
+    has_generated_notice_marker,
     iter_src_files,
     parse_ledger,
+    render_exhibit_a,
     render_notice,
     verbatim_pct,
 )
@@ -116,6 +121,17 @@ def check_completeness(rows: list[dict]) -> list[str]:
 
 def check_notice_sync(meta: dict, rows: list[dict]) -> list[str]:
     expected = render_notice(meta, rows)
+    # WHY an explicit existence check: read_text() on a missing NOTICE.md raised
+    # FileNotFoundError out of main(), so deleting the file produced a traceback
+    # rather than a finding. A checker that dies untidily reads as broken tooling
+    # and gets re-run or ignored, while deleting the artifact recording which
+    # files carry CozoDB lineage is exactly the act this check exists to catch.
+    if not NOTICE_PATH.is_file():
+        return [
+            f"{NOTICE_PATH} does not exist. It is generated from PROVENANCE.toml and records "
+            "which files carry CozoDB lineage; its absence is not evidence the attribution "
+            "obligation ended — run scripts/measure-krites-provenance.py to regenerate it"
+        ]
     actual = NOTICE_PATH.read_text()
     if expected != actual:
         return ["NOTICE.md is out of sync with PROVENANCE.toml — run scripts/measure-krites-provenance.py or scripts/render-krites-notice.py and commit the result"]
@@ -398,6 +414,89 @@ def check_method_recorded(rows: list[dict]) -> list[str]:
     return errors
 
 
+def check_exhibit_a_notices(rows: list[dict]) -> list[str]:
+    """#5956: every `derived`/`dual` file carries the MPL Exhibit A notice; no `sovereign`
+    file does.
+
+    §3.1's actual requirement is already met centrally — NOTICE.md enumerates all 210
+    files, LICENSE-MPL-2.0 sits beside it, and PROVENANCE.toml names each derived file's
+    upstream path under this gate. Exhibit A per-file headers are the licence's RECOMMENDED
+    form, and what they add over the enumeration is the case the enumeration cannot reach: a
+    single file copied out of this tree in isolation travels with its own notice.
+
+    Gates on the NOTICE, not on the generated block. A file that retained upstream
+    cozo-core's own MPL header satisfies §3.1 exactly as it stands (datalog.pest is the one
+    such file), and §3.1 forbids removing that header — so requiring aletheia's generated
+    block on top of it would demand the same sentence twice. What the generated block is for
+    is the measurement: it is the only form strip_generated_notice can exclude, which is why
+    a block that has drifted from the rendered form is reported here as well. Drift matters
+    because an unrecognised block stops being excluded and starts moving verbatim_pct.
+
+    The sovereign direction is the one that is easy to get backwards. A sovereign row makes
+    no MPL lineage claim, so a notice there asserts an obligation the file does not carry —
+    it encumbers aletheia's own work rather than disclosing someone else's, which is why a
+    `dual` -> `sovereign` transition must take the notice back out (handled by
+    krites-provenance-transition.py) and why leaving it fails here.
+    """
+    errors = []
+    for row in rows:
+        path = KRITES_SRC / row["path"]
+        # NOTE: a ledger row for a file that does not exist is check_completeness's finding,
+        # not this one — reporting it twice buries the one error that names the cause.
+        if not path.is_file():
+            continue
+        text = path.read_text(errors="replace")
+        suffix = pathlib.Path(row["path"]).suffix
+        block = render_exhibit_a(suffix)
+        if row["status"] == "sovereign":
+            if has_exhibit_a(text) or has_generated_notice_marker(text):
+                errors.append(
+                    f"{row['path']}: status=sovereign but the file carries an MPL notice — a "
+                    "sovereign row asserts no CozoDB lineage, so the notice claims an "
+                    "obligation this file does not carry and encumbers aletheia's own work. "
+                    "Run scripts/measure-krites-provenance.py (which removes the generated "
+                    "block), or delete a non-generated notice by hand if the file inherited "
+                    "one from the copy it replaced"
+                )
+            continue
+        if not has_exhibit_a(text):
+            errors.append(
+                f"{row['path']}: status={row['status']} but the file carries no MPL Exhibit A "
+                "notice — a derived file copied out of this tree on its own would travel with "
+                "no statement that it is MPL-governed, which NOTICE.md's enumeration cannot "
+                "follow it. Run scripts/measure-krites-provenance.py to render the notice from "
+                "the ledger; never hand-write it"
+            )
+        elif has_generated_notice_marker(text) and block not in text:
+            errors.append(
+                f"{row['path']}: the generated Exhibit A block has been hand-edited — it no "
+                "longer matches what render_exhibit_a() emits, so the measurement can no "
+                "longer exclude it and this file's verbatim_pct now counts licence boilerplate "
+                "as its own expression. Restore it with scripts/measure-krites-provenance.py"
+            )
+    return errors
+
+
+def check_consulted_siblings(rows: list[dict]) -> list[str]:
+    """#6879: the sibling rule — which siblings a clean-room rewrite may read, and what
+    the row must then record.
+
+    'method' answered how a sovereign row was written but left the answer unfalsifiable:
+    the first clean-room rewrite under it read four DERIVED siblings for style, one of
+    them (fts/tokenizer/remove_long.rs, jaccard 0.4215 against upstream) structurally the
+    same artifact it was writing. That was caught only because the rewriter volunteered
+    it — no check saw it, and a rewriter who said nothing would carry 'from_spec' in the
+    ledger today, the field recording a claim it cannot support.
+
+    The rule lives in krites_provenance_lib.consulted_errors so the WRITE path
+    (dump_ledger, therefore both krites-provenance-transition.py and
+    measure-krites-provenance.py) refuses the same rows this gate rejects, rather than
+    two copies drifting. Runs on the current ledger only — a --base-ref ledger predating
+    'consulted' has no such key and must still parse.
+    """
+    return consulted_errors(rows)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-ref", default="origin/main")
@@ -429,6 +528,8 @@ def main() -> int:
     errors += check_verbatim_recompute(rows)
     errors += check_no_unjustified_exemption(rows)
     errors += check_method_recorded(rows)
+    errors += check_consulted_siblings(rows)
+    errors += check_exhibit_a_notices(rows)
 
     if errors:
         for err in errors:

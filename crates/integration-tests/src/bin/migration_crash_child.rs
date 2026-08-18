@@ -5,7 +5,7 @@
 //! a side effect of `open_fjall`) and, if `ALETHEIA_MIGRATION_CRASH_AT` is
 //! set, aborts the process the instant migration code reaches that step
 //! number. A separate binary is required rather than `fork()`-ing from the
-//! test process: `krites::Db` spawns rayon threads (`krites/src/lib.rs:326`
+//! test process: `krites::Db` spawns rayon threads (`krites/src/lib.rs:332`
 //! doc comment), and `fork()` is unsafe once a process holds live threads.
 //!
 //! Usage: `migration_crash_child <fjall-path> <dim>`
