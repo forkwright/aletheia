@@ -20,6 +20,13 @@ default = ["graph-algo", "reranker"]
 # declaration. The `?` keeps krites optional: the forward applies only when a
 # feature that pulls krites in (mneme-engine) is already enabled.
 graph-algo = ["krites?/graph-algo"]
+# WHY: retirement PLAN.md Sec.2 land-dark/soak/delete -- consumers must be
+# testable against the sovereign HNSW tree (runtime/hnsw_sovereign/) before
+# the default flips, and without this passthrough it is unreachable from any
+# consumer's tests, only from krites' own crate-scoped `-p krites` build. The
+# `?` keeps krites optional, same as graph-algo above: the forward applies
+# only once mneme-engine has already pulled krites in.
+krites_sovereign_hnsw = ["krites?/krites_sovereign_hnsw"]
 # WHY (aletheia#5779 §8.4/F10): the process-crash injection seam
 # (`crash_injection` module) must not exist in a normal production build —
 # `register_crash_hook` would otherwise be reachable public API in the
@@ -78,7 +85,7 @@ unicode-normalization = { version = "0.1" }
 candle-core = { version = "=0.11.0", optional = true }
 candle-nn = { version = "=0.10.2", optional = true }
 candle-transformers = { version = "=0.10.2", optional = true }
-tokenizers = { version = "0.22", optional = true, default-features = false, features = [
+tokenizers = { version = "0.23", optional = true, default-features = false, features = [
     "fancy-regex",
 ] }
 ort = { version = "2.0.0-rc.12", optional = true, default-features = false, features = [
