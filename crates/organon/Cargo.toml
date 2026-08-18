@@ -113,7 +113,7 @@ poiesis-printer-chromium = { path = "../poiesis/printer-chromium", optional = tr
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 base64 = { workspace = true }
-getrandom = "0.3"
+getrandom = "0.4"
 indexmap = { workspace = true }
 hmac = { workspace = true }
 jiff = { workspace = true }

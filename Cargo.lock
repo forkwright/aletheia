@@ -5986,7 +5986,7 @@ dependencies = [
  "eidos",
  "energeia",
  "fjall",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "gnosis",
  "graphe",
  "hermeneus",
