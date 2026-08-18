@@ -153,7 +153,9 @@ jobs:
       #
       # Re-measure before raising it again. If the honest total approaches 60, the
       # answer is to cut the work (test-binary count, codegen) rather than the budget.
-      full_gate_timeout_minutes: 60
+      # WHY 90: the 60m raise (#6896) already sees 49.6m and 52.8m runs in its
+      # first day — cold-cache headroom was too thin (audit for kanon#10081).
+      full_gate_timeout_minutes: 90
       ai_attribution_check: true
       docs_only_exemption: true
     secrets: inherit
@@ -442,7 +444,11 @@ jobs:
   gate-coverage-compile-checks:
     name: gate-coverage-compile-checks
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # WHY 30m: 20m canceled three times on main in one day at 20m16-21s
+    # mid-krites-test (runs 32189413460, 32182893609, 32178663763); cold-cache
+    # successes already reach 16.4m and slow checkouts eat setup. Ceiling, not
+    # a target.
+    timeout-minutes: 30
     # WHY(#6433): same rationale as gate-coverage-scripts — the poiesis
     # feature-combination checks and the fuzz-target compile check are also
     # absent from kanon.toml/.kanon-ci.toml (and so from hybrid-gate.yml),

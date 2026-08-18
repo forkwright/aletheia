@@ -27,7 +27,9 @@ jobs:
     # WHY(#6416): cold build alone runs ~17-18min; 20min left no margin for
     # the test binary compile + the smoke test itself, so every run was
     # cancelled before reaching the test.
-    timeout-minutes: 35
+    # WHY 45m: a cold-cache run hit 32.2m of the 35m budget (92%) — one slow
+    # runner from a cancel. Ceiling, not a target.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
