@@ -135,7 +135,7 @@ pulldown-cmark = { version = "0.13", features = ["simd"] }
 dirs = "6"
 toml = "1.1"
 aes-gcm = "0.10"
-keyring = "3"
+keyring = "4"
 # WHY: version/features must be kept in sync with the aletheia root
 # workspace's [workspace.dependencies] entry — this standalone workspace
 # cannot inherit across the boundary (see the file header above).
