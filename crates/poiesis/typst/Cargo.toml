@@ -15,7 +15,7 @@ workspace = true
 # Typst compiler (library API — reproducible, offline, rich diagnostics)
 # WHY: the library route avoids subprocess coupling and gives typed
 # access to source locations on errors. Apache-2.0.
-typst = "0.14"
+typst = "0.15"
 typst-pdf = "0.14"
 # typst's memoization layer; required by the World trait bounds.
 comemo = "0.5"
