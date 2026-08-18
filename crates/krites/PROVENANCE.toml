@@ -16,6 +16,20 @@
 # NOTE: then measured against THIS field, not upstream_path (which stays 'none'
 # NOTE: on every sovereign row — no MPL lineage claim). CI recomputes and
 # NOTE: fails on drift (check_verbatim_recompute), same as derived/dual.
+# NOTE: method records HOW a sovereign row was written ('none' on derived/dual —
+# NOTE: answered already by upstream_path): from_spec | from_spec_derived_siblings |
+# NOTE: from_behavioral_oracle | rewritten_with_source_open | transliterated |
+# NOTE: attested_original | unknown.
+# NOTE: 'unknown' is the honest default for every row with no record; CI fails on a
+# NOTE: missing method or a sovereign row carrying 'transliterated' (check_method_
+# NOTE: recorded). method_evidence is 'none' unless method is resolved and non-
+# NOTE: 'unknown', in which case it is a PR/issue ref, a commit SHA, or a spec path —
+# NOTE: never a hand-typed justification. Clear 'unknown' only via
+# NOTE: krites-provenance-transition.py --set-method, never by hand-editing this row.
+# NOTE: consulted lists the source paths the author read while writing the file
+# NOTE: ([] when none; always [] off sovereign). from_spec requires every one of
+# NOTE: them to be a sovereign row; from_spec_derived_siblings requires at least one
+# NOTE: that is not; a path with no row here fails either way (CI: consulted_errors).
 
 [meta]
 upstream_repo = "https://github.com/cozodb/cozo"
@@ -28,6 +42,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "counterfactual.rs"
@@ -36,6 +53,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "counterfactual_tests.rs"
@@ -44,6 +64,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/aggr/boolean.rs"
@@ -52,6 +75,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 71.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/aggr/misc.rs"
@@ -60,6 +86,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 71.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/aggr/mod.rs"
@@ -68,6 +97,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 46.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/aggr/numeric.rs"
@@ -76,6 +108,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 56.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/error.rs"
@@ -84,6 +119,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/expr/expr_impl.rs"
@@ -92,6 +130,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 64.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/expr/mod.rs"
@@ -100,6 +141,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 44.8
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/expr/op.rs"
@@ -108,6 +152,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 84.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/aggregate.rs"
@@ -116,6 +163,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 12.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/bits.rs"
@@ -124,6 +174,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 32.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/collections.rs"
@@ -132,6 +185,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 8.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/math/arithmetic.rs"
@@ -140,6 +196,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 27.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/math/mod.rs"
@@ -148,6 +207,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 18.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/math/transcendental.rs"
@@ -156,6 +218,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 6.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/mod.rs"
@@ -164,6 +229,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 2.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/string.rs"
@@ -172,6 +240,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 11.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/temporal.rs"
@@ -180,6 +251,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 6.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/trig.rs"
@@ -188,6 +262,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 22.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/utility.rs"
@@ -196,6 +273,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 27.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/functions/vector.rs"
@@ -204,6 +284,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 22.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/json.rs"
@@ -212,6 +295,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 48.8
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/memcmp.rs"
@@ -220,6 +306,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 44.2
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/mod.rs"
@@ -228,6 +317,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 17.4
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/atoms.rs"
@@ -236,6 +328,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 65.8
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/fixed_rule.rs"
@@ -244,6 +339,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 57.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/input.rs"
@@ -252,6 +350,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 70.4
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/magic.rs"
@@ -260,6 +361,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 82.2
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/mod.rs"
@@ -268,6 +372,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/search/atom_impl.rs"
@@ -276,6 +383,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 80.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/search/hnsw_normalize.rs"
@@ -284,6 +394,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 46.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/search/lsh_fts.rs"
@@ -292,6 +405,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 48.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/search/mod.rs"
@@ -300,6 +416,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 75.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/program/types.rs"
@@ -308,6 +427,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 80.2
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/relation.rs"
@@ -316,6 +438,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 54.2
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/symb.rs"
@@ -324,6 +449,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 66.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/aggrs.rs"
@@ -332,6 +460,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 27.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/exprs.rs"
@@ -340,6 +471,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 22.2
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/arithmetic.rs"
@@ -348,6 +482,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 23.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/collections.rs"
@@ -356,6 +493,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 38.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/mod.rs"
@@ -364,6 +504,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/string_ops.rs"
@@ -372,6 +515,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 42.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/type_conversion.rs"
@@ -380,6 +526,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 11.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/functions/validity_units.rs"
@@ -388,6 +537,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/json.rs"
@@ -396,6 +548,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 7.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/memcmp.rs"
@@ -404,6 +559,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 55.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/mod.rs"
@@ -412,6 +570,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 55.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/proptest_memcmp.rs"
@@ -420,6 +581,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/validity.rs"
@@ -428,6 +592,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 41.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tests/values.rs"
@@ -436,6 +603,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 14.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/tuple.rs"
@@ -444,6 +614,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 52.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "data/value.rs"
@@ -452,6 +625,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 60.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "datalog.pest"
@@ -460,6 +636,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 94.2
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "error.rs"
@@ -468,6 +647,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/all_pairs_shortest_path.rs"
@@ -476,6 +658,9 @@ replaced_upstream_path = "fixed_rule/algos/all_pairs_shortest_path.rs"
 verbatim_pct = 15.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/astar.rs"
@@ -484,6 +669,9 @@ replaced_upstream_path = "fixed_rule/algos/astar.rs"
 verbatim_pct = 18.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/bfs.rs"
@@ -492,6 +680,9 @@ replaced_upstream_path = "fixed_rule/algos/bfs.rs"
 verbatim_pct = 18.9
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_spec"
+method_evidence = "#6656"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/degree_centrality.rs"
@@ -500,6 +691,9 @@ replaced_upstream_path = "fixed_rule/algos/degree_centrality.rs"
 verbatim_pct = 32.1
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_spec"
+method_evidence = "#6656"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/dfs.rs"
@@ -508,6 +702,9 @@ replaced_upstream_path = "fixed_rule/algos/dfs.rs"
 verbatim_pct = 18.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_behavioral_oracle"
+method_evidence = "94dca62745e26cd2fbf2eb526f5dd37344c35e6a"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/kcore.rs"
@@ -516,6 +713,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/kruskal.rs"
@@ -524,6 +724,9 @@ replaced_upstream_path = "fixed_rule/algos/kruskal.rs"
 verbatim_pct = 14.9
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/label_propagation.rs"
@@ -532,6 +735,9 @@ replaced_upstream_path = "fixed_rule/algos/label_propagation.rs"
 verbatim_pct = 13.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/louvain.rs"
@@ -540,6 +746,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 29.2
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/mod.rs"
@@ -548,6 +757,9 @@ replaced_upstream_path = "fixed_rule/algos/mod.rs"
 verbatim_pct = 82.9
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/pagerank.rs"
@@ -556,6 +768,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 37.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/prim.rs"
@@ -564,6 +779,9 @@ replaced_upstream_path = "fixed_rule/algos/prim.rs"
 verbatim_pct = 14.9
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/random_walk.rs"
@@ -572,6 +790,9 @@ replaced_upstream_path = "fixed_rule/algos/random_walk.rs"
 verbatim_pct = 19.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/shortest_path_bfs.rs"
@@ -580,6 +801,9 @@ replaced_upstream_path = "fixed_rule/algos/shortest_path_bfs.rs"
 verbatim_pct = 19.1
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/shortest_path_dijkstra.rs"
@@ -588,6 +812,9 @@ replaced_upstream_path = "fixed_rule/algos/shortest_path_dijkstra.rs"
 verbatim_pct = 9.2
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/strongly_connected_components.rs"
@@ -596,6 +823,9 @@ replaced_upstream_path = "fixed_rule/algos/strongly_connected_components.rs"
 verbatim_pct = 18.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/top_sort.rs"
@@ -604,6 +834,9 @@ replaced_upstream_path = "fixed_rule/algos/top_sort.rs"
 verbatim_pct = 27.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_spec"
+method_evidence = "#6656"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/triangles.rs"
@@ -612,6 +845,9 @@ replaced_upstream_path = "fixed_rule/algos/triangles.rs"
 verbatim_pct = 23.5
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/algos/yen.rs"
@@ -620,6 +856,9 @@ replaced_upstream_path = "fixed_rule/algos/yen.rs"
 verbatim_pct = 11.8
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/csr/mod.rs"
@@ -628,6 +867,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/csr/page_rank.rs"
@@ -636,6 +878,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/error.rs"
@@ -644,6 +889,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/mod.rs"
@@ -652,6 +900,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 57.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/centrality_spanning.rs"
@@ -660,6 +911,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/connectivity_misc.rs"
@@ -668,6 +922,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/mod.rs"
@@ -676,6 +933,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/path_algorithms.rs"
@@ -684,6 +944,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/proptest_algos.rs"
@@ -692,6 +955,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/tests/wave5_reference_semantics.rs"
@@ -700,6 +966,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/utilities/constant.rs"
@@ -708,6 +977,9 @@ replaced_upstream_path = "fixed_rule/utilities/constant.rs"
 verbatim_pct = 17.2
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/utilities/mod.rs"
@@ -716,6 +988,9 @@ replaced_upstream_path = "fixed_rule/utilities/mod.rs"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/utilities/reorder_sort.rs"
@@ -724,6 +999,9 @@ replaced_upstream_path = "fixed_rule/utilities/reorder_sort.rs"
 verbatim_pct = 17.5
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fixed_rule/utilities/rrf.rs"
@@ -732,6 +1010,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/README.md"
@@ -740,6 +1021,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 100.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/ast.rs"
@@ -748,6 +1032,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 71.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/config.rs"
@@ -756,6 +1043,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 34.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/error.rs"
@@ -764,6 +1054,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/indexing.rs"
@@ -772,6 +1065,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 31.4
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/mod.rs"
@@ -780,6 +1076,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 30.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/alphanum_only.rs"
@@ -788,6 +1087,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 67.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table.rs"
@@ -796,6 +1098,9 @@ replaced_upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/generate.py"
@@ -804,6 +1109,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs"
@@ -812,6 +1120,9 @@ replaced_upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/table.rs"
@@ -820,6 +1131,9 @@ replaced_upstream_path = "fts/tokenizer/ascii_folding_filter.rs"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/mod.rs"
@@ -828,6 +1142,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 75.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_a_i.rs"
@@ -836,6 +1153,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 60.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_j_s.rs"
@@ -844,6 +1164,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 56.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_num_sym.rs"
@@ -852,6 +1175,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 77.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/foldings_t_z.rs"
@@ -860,6 +1186,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 57.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ascii_folding_filter/tests/mod.rs"
@@ -868,6 +1197,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 60.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/empty_tokenizer.rs"
@@ -876,6 +1208,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 85.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/lower_caser.rs"
@@ -884,6 +1219,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 74.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/mod.rs"
@@ -892,6 +1230,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 52.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/ngram_tokenizer.rs"
@@ -900,6 +1241,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 64.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/raw_tokenizer.rs"
@@ -908,6 +1252,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 74.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/remove_long.rs"
@@ -916,6 +1263,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 72.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/simple_tokenizer.rs"
@@ -924,6 +1274,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 73.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/split_compound_words.rs"
@@ -932,6 +1285,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 86.8
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stemmer.rs"
@@ -940,6 +1296,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 89.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/mod.rs"
@@ -948,6 +1307,9 @@ replaced_upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/NOTICE.md"
@@ -956,6 +1318,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/gen_stopwords.py"
@@ -964,14 +1329,20 @@ replaced_upstream_path = "fts/tokenizer/stop_word_filter/gen_stopwords.py"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/mod.rs"
 upstream_path = "none"
 replaced_upstream_path = "fts/tokenizer/stop_word_filter/mod.rs"
-verbatim_pct = 15.5
+verbatim_pct = 9.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_spec_derived_siblings"
+method_evidence = "#6879"
+consulted = ["fts/tokenizer/remove_long.rs", "fts/tokenizer/stemmer.rs", "fts/tokenizer/simple_tokenizer.rs", "fts/tokenizer/split_compound_words.rs"]
 
 [[file]]
 path = "fts/tokenizer/stop_word_filter/sovereign/stopwords.rs"
@@ -980,6 +1351,9 @@ replaced_upstream_path = "fts/tokenizer/stop_word_filter/stopwords.rs"
 verbatim_pct = 76.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/tokenized_string.rs"
@@ -988,6 +1362,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 76.4
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/tokenizer_impl.rs"
@@ -996,6 +1373,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 74.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "fts/tokenizer/whitespace_tokenizer.rs"
@@ -1004,6 +1384,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 73.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "hot_reload.rs"
@@ -1012,6 +1395,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "lib.rs"
@@ -1020,6 +1406,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/error.rs"
@@ -1028,6 +1417,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/expr/bytecode.rs"
@@ -1036,6 +1428,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 29.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/expr/mod.rs"
@@ -1044,6 +1439,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 24.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/expr/strings.rs"
@@ -1052,6 +1450,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/fts.rs"
@@ -1060,6 +1461,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 25.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/imperative.rs"
@@ -1068,6 +1472,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 21.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/mod.rs"
@@ -1076,6 +1483,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 24.8
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/atoms.rs"
@@ -1084,6 +1494,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 33.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/fixed_rules.rs"
@@ -1092,6 +1505,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 10.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/mod.rs"
@@ -1100,6 +1516,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/options.rs"
@@ -1108,6 +1527,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 27.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/query/program.rs"
@@ -1116,6 +1538,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 16.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/schema.rs"
@@ -1124,6 +1549,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 33.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/sys/index.rs"
@@ -1132,6 +1560,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 18.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/sys/mod.rs"
@@ -1140,6 +1571,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 18.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "parse/sys/parse.rs"
@@ -1148,6 +1582,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 9.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/compile.rs"
@@ -1156,6 +1593,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 74.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/context.rs"
@@ -1164,6 +1604,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/error.rs"
@@ -1172,6 +1615,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/eval.rs"
@@ -1180,6 +1626,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 42.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/graph.rs"
@@ -1188,6 +1637,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 56.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/logical.rs"
@@ -1196,6 +1648,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 77.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/magic.rs"
@@ -1204,6 +1659,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 76.2
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/mod.rs"
@@ -1212,6 +1670,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 17.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/filter.rs"
@@ -1220,6 +1681,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 64.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/inline_fixed.rs"
@@ -1228,6 +1692,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 69.8
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/join.rs"
@@ -1236,6 +1703,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 64.2
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/mod.rs"
@@ -1244,6 +1714,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 73.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/project.rs"
@@ -1252,6 +1725,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 64.4
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/search.rs"
@@ -1260,6 +1736,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 22.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/sort.rs"
@@ -1268,6 +1747,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 38.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/stored.rs"
@@ -1276,6 +1758,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 61.4
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/ra/temp_store.rs"
@@ -1284,6 +1769,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 67.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/reorder.rs"
@@ -1292,6 +1780,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 72.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/sort.rs"
@@ -1300,6 +1791,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 46.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/stratify.rs"
@@ -1308,6 +1802,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 69.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/tests/mod.rs"
@@ -1316,6 +1813,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query/tests/reference_semantics.rs"
@@ -1324,6 +1824,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "query_cache.rs"
@@ -1332,6 +1835,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/callback.rs"
@@ -1340,6 +1846,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 55.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/db.rs"
@@ -1348,6 +1857,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 22.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/error.rs"
@@ -1356,6 +1868,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/exec.rs"
@@ -1364,6 +1879,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 66.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/adaptive.rs"
@@ -1372,6 +1890,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/graph.rs"
@@ -1380,6 +1901,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 46.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/mod.rs"
@@ -1388,6 +1912,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/put.rs"
@@ -1396,6 +1923,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 27.5
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/remove.rs"
@@ -1404,6 +1934,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 49.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/search.rs"
@@ -1412,6 +1945,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 19.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/types.rs"
@@ -1420,6 +1956,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 11.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw/visited_pool.rs"
@@ -1428,6 +1967,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 3.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/adaptive.rs"
@@ -1436,6 +1978,9 @@ replaced_upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_behavioral_oracle"
+method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/close_reopen_tests.rs"
@@ -1444,6 +1989,9 @@ replaced_upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 1.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_behavioral_oracle"
+method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/graph.rs"
@@ -1452,6 +2000,9 @@ replaced_upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 13.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_behavioral_oracle"
+method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/mod.rs"
@@ -1460,6 +2011,9 @@ replaced_upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_behavioral_oracle"
+method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/put.rs"
@@ -1468,6 +2022,9 @@ replaced_upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 9.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_behavioral_oracle"
+method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/remove.rs"
@@ -1476,6 +2033,9 @@ replaced_upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 8.3
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_behavioral_oracle"
+method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/search.rs"
@@ -1484,6 +2044,9 @@ replaced_upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 15.8
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_behavioral_oracle"
+method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/hnsw_sovereign/types.rs"
@@ -1492,6 +2055,9 @@ replaced_upstream_path = "runtime/hnsw.rs"
 verbatim_pct = 3.4
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "from_behavioral_oracle"
+method_evidence = "3d0c035eedda8c476bb6d9b71dbdd1f5c336377c"
+consulted = []
 
 [[file]]
 path = "runtime/imperative.rs"
@@ -1500,6 +2066,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 33.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/minhash_lsh.rs"
@@ -1508,6 +2077,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 53.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/mod.rs"
@@ -1516,6 +2088,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/query_context_impl.rs"
@@ -1524,6 +2099,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/extractors.rs"
@@ -1532,6 +2110,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 56.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/handles.rs"
@@ -1540,6 +2121,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 68.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/index_create.rs"
@@ -1548,6 +2132,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 61.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/index_management.rs"
@@ -1556,6 +2143,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 57.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/mod.rs"
@@ -1564,6 +2154,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/mutation.rs"
@@ -1572,6 +2165,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 63.7
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/relation_crud.rs"
@@ -1580,6 +2176,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 48.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/relation/validation.rs"
@@ -1588,6 +2187,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 73.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/sys.rs"
@@ -1596,6 +2198,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 55.1
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/temp_store.rs"
@@ -1604,6 +2209,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 81.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/basic_queries.rs"
@@ -1612,6 +2220,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 12.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/imperative.rs"
@@ -1620,6 +2231,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 44.4
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/indexing.rs"
@@ -1628,6 +2242,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 29.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/mod.rs"
@@ -1636,6 +2253,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/tests/triggers_callbacks.rs"
@@ -1644,6 +2264,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 7.6
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "runtime/transact.rs"
@@ -1652,6 +2275,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 11.4
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/error.rs"
@@ -1660,6 +2286,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/fjall_backend.rs"
@@ -1668,6 +2297,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 0.0
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/mem.rs"
@@ -1676,6 +2308,9 @@ replaced_upstream_path = "storage/mem.rs"
 verbatim_pct = 22.6
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/mod.rs"
@@ -1684,6 +2319,9 @@ replaced_upstream_path = "none"
 verbatim_pct = 39.3
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "storage/temp.rs"
@@ -1692,6 +2330,9 @@ replaced_upstream_path = "storage/temp.rs"
 verbatim_pct = 33.2
 status = "sovereign"
 soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
 
 [[file]]
 path = "utils.rs"
@@ -1700,3 +2341,6 @@ replaced_upstream_path = "none"
 verbatim_pct = 42.9
 status = "derived"
 soak_expires_at_commit_count = 0
+method = "none"
+method_evidence = "none"
+consulted = []

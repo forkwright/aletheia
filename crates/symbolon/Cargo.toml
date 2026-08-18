@@ -20,7 +20,7 @@ test-full = []
 
 [dependencies]
 koina = { path = "../koina", features = ["fjall"] }
-keyring = { version = "3", optional = true }
+keyring = { version = "4", optional = true }
 argon2 = { version = "0.5", features = ["std"] }
 blake3 = "1"
 fjall = { version = "3", default-features = false, features = ["lz4"] }

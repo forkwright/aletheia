@@ -139,7 +139,21 @@ jobs:
       system_packages: ""
       needs_fleet_repo_token: true
       rust_cache_key: "gate-attestation"
-      full_gate_timeout_minutes: 45
+      # WHY 60 and not the reusable's default 45: measured on a SUCCESSFUL main run,
+      # this job spends fmt 6s, check 7m19s, clippy 1m43s and nextest 28m48s for a
+      # total of 40m17s. None of that is idle — nextest's bulk is compiling 148 test
+      # binaries, after which the 12,181 tests themselves run in under two minutes.
+      # Five minutes of headroom is inside ordinary hosted-runner variance, and the
+      # result was PRs failing at ~46m while siblings passed at ~41m on the same tree.
+      #
+      # WARNING: this raises the cost of a genuine hang from 45 minutes to 60. That is
+      # the deliberate trade. A timeout that fires on healthy runs teaches readers the
+      # check is flaky, and a check treated as flaky stops being read — which costs
+      # more than the extra quarter hour a real hang would burn.
+      #
+      # Re-measure before raising it again. If the honest total approaches 60, the
+      # answer is to cut the work (test-binary count, codegen) rather than the budget.
+      full_gate_timeout_minutes: 60
       ai_attribution_check: true
       docs_only_exemption: true
     secrets: inherit
@@ -382,9 +396,9 @@ jobs:
 
       # WHY: krites retirement plan wave 0.1 (metis-ops/deliverables/
       # krites-replacement/PLAN.md §3, kill criterion 8). The anti-backslide
-      # gate for crates/krites/PROVENANCE.toml: completeness, NOTICE.md
-      # sync, no derived-row regression, status-sequence (derived -> dual ->
-      # sovereign, no direct jump), soak expiry, offline verbatim recompute.
+      # gate for crates/krites/PROVENANCE.toml. The script's own module
+      # docstring names which checks it runs; restating that list here only
+      # produced a copy that fell behind the script it describes.
       # Runs here, not as a standalone workflow — gate-coverage-scripts
       # feeds the required `gate` check, so a standalone workflow (the
       # prior shape) could report failure without ever blocking a merge.

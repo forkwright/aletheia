@@ -14,12 +14,32 @@ This crate is substantially derived from **CozoDB** (`cozo-core`), licensed **MP
 
 Two consequences bind day-to-day work in this crate:
 
-- **The MPL notices stay, per file.** Upstream identifiers were renamed during the migration and the notices were dropped, which is the one thing MPL §3.1 does not permit. That has been repaired. Note what "per file" rules out: this crate's `NOTICE.md` recording a file as derived, however accurately, does not substitute for the notice that file is itself required to carry — §3.1 binds the Source Code Form, not the distribution around it. `datalog.pest` was the live example, byte-identical to upstream below a header that had been replaced with a one-line description while the ledger honestly reported it at 99.6%. Anything that reads like tidy-up but removes attribution re-creates the defect.
+- **The MPL notices stay, per file.** Upstream identifiers were renamed during the migration and the notices were dropped, which is the one thing MPL §3.1 does not permit. That has been repaired. Note what "per file" rules out: this crate's `NOTICE.md` recording a file as derived, however accurately, does not substitute for the notice that file is itself required to carry — §3.1 binds the Source Code Form, not the distribution around it. `datalog.pest` was the live example, byte-identical to upstream below a header that had been replaced with a one-line description while the ledger honestly reported it at 99.6%. Anything that reads like tidy-up but removes attribution re-creates the defect. The notice is now rendered into every `derived`/`dual` file from the ledger by `scripts/measure-krites-provenance.py` and gated by `check-krites-provenance.py`, so removing one fails the build rather than going unnoticed — never hand-write or hand-edit the block. A `sovereign` file must carry no notice at all: it claims no CozoDB lineage, so stamping one there asserts an MPL obligation over aletheia's own work, and a `dual` → `sovereign` transition takes the block back out.
+  **The generated block is excluded from every verbatim measurement, deliberately.** `verbatim_pct` is matched-lines over the file's own non-blank lines, so a five-line header on 142 derived files would move the de-derivation program's central metric on every one of them while nothing about any file's derivation changed — measured, the mean falls 44.28% → 42.46% and `fts/README.md` reads 44.4% instead of 100.0%. A number that moves without the underlying work is the failure this ledger exists to end, so `krites_provenance_lib.strip_generated_notice` removes the block before either instrument (`verbatim_pct` and the drift metric's `eligible_lines`) counts a line. Anything that adds a third measurement path must call it too.
 - **`Cargo.toml` deliberately overrides the workspace license** with `AGPL-3.0-or-later AND MPL-2.0`. It is not drift. The derived files, and our modifications to them, stay MPL under file-level copyleft; the AGPL Larger Work is permitted by §3.3.
 
 The naming rule in `docs/HUBS.md` — prefer Krites/Datalog/Fjall over CozoDB — is about **architecture** and explicitly stops short of provenance. Attribution and licensing statements name CozoDB, because they are claims about authorship rather than about how the system is built.
 
 **Verbatim-drift measurement**: `scripts/check-krites-verbatim-drift.py` scores any file here against the pinned upstream snapshot at `upstream-snapshot/` (its own `NOTICE.md`). The full report is informational, but `--strict` **gates**, on one condition: a row that is `sovereign` AND records `replaced_upstream_path = "none"` AND scores above the calibrated threshold. A `derived` row scoring high is the metric working, and never fails. If it fires on your file, record what the file replaced in `SOVEREIGN_VERIFY_MAP` and regenerate — the row then carries a measured figure instead of an asserted `0.0`. Do not waive it.
+
+## Clean-room rewrites — which siblings you may read
+
+Most of this crate is `derived`, so the sibling that best demonstrates a local convention is usually the sibling doing the same job — exactly the expression a rewrite exists to stop carrying forward. "Match the surrounding crate" and "clean-room" are in real tension here, and the line that makes both workable is what you take from the sibling:
+
+- **Mechanical conventions** — error type, lint attributes, module layout, naming, test shape — may come from any sibling, `derived` included.
+- **The shape of the same algorithm** — its control flow, its data structures, the order it does things in — may come only from a `sovereign` one.
+
+Every rewrite records what it read. `PROVENANCE.toml`'s `consulted` column lists the source paths open while writing (`[]` for none), and CI reads each one's own ledger status: `from_spec` means every consulted path was `sovereign`; `from_spec_derived_siblings` means at least one was not. Record both with one command:
+
+```
+scripts/krites-provenance-transition.py --set-method from_spec_derived_siblings \
+    --evidence '#NNNN' --consulted fts/tokenizer/remove_long.rs,fts/tokenizer/stemmer.rs \
+    fts/tokenizer/<your rewrite>.rs
+```
+
+A truthful weaker method always beats a false stronger one, and that command is the whole cost of downgrading. What the check cannot see is whether the list is complete: nothing observes what you opened, so a path you leave out reads exactly like a path you never read. The list is worth only the care taken writing it.
+
+**Calibration — for a `TokenStream` filter, roughly 9% verbatim is the interface-forced floor.** The trait dictates the `transform` signature, the `token`/`token_mut` bodies delegate, and the struct declaration and braces are fixed; none of that is expressive. A filter rewrite scoring near there is not carrying residual derivation, and driving toward 0% chases something the trait makes unreachable. Measure after writing, never before — editing toward a number is how a transliteration gets tuned under a threshold instead of rewritten.
 
 ## Derived artifacts — never hand-merge, always recompute
 

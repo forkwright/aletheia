@@ -77,6 +77,15 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# NOTE(#5956): the one import this otherwise-standalone script takes from the ledger
+# library, and it is deliberate. What counts as "the generated notice block" must have a
+# single definition, or this metric and verbatim_pct would exclude different things and the
+# divergence would show up as an unexplained figure rather than as an error. The library
+# imports only the standard library, so `dependencies = []` above still holds.
+from krites_provenance_lib import strip_generated_notice  # noqa: E402
+
 LOGGER = logging.getLogger("check-krites-verbatim-drift")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -178,10 +187,20 @@ class _UseTracker:
 
 
 def eligible_lines(text: str) -> list[str]:
-    """Return the subset of lines that count toward the shingle stream."""
+    """Return the subset of lines that count toward the shingle stream.
+
+    WARNING(#5956): the generated MPL Exhibit A block is removed before any line is
+    classified. This filter keeps ordinary comment lines -- only punctuation-only, `use`,
+    `mod` and attribute lines are dropped -- and 122 of the upstream files carry the same
+    notice in their own header, so a per-file notice added to a derived file would
+    shingle-match upstream's copy and raise this metric on licence boilerplate. That is the
+    corruption strip_generated_notice exists to prevent in verbatim_pct, reached through a
+    second instrument, so it is excluded from the same single definition rather than a
+    second copy of one.
+    """
     out: list[str] = []
     use_tracker = _UseTracker()
-    for raw in text.splitlines():
+    for raw in strip_generated_notice(text).splitlines():
         stripped = raw.strip()
         if not stripped:
             continue
