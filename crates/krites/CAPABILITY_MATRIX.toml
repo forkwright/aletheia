@@ -651,7 +651,7 @@ item = "Poison"
 source = "crates/krites/src/lib.rs:435"
 dest_wave = "wave-11"
 dest_module = "runtime/db.rs (cross-checked at wave-10)"
-gate = "A cooperative cancel token is honoured by the executor and by long index operations (HNSW build, FTS reindex); cancelling mid-build shows bounded wind-down (Appendix A row: Poison / cancellation). D08: the poison boundary aborts after a structured log."
+gate = "A cooperative cancel token is honoured by the executor, by the index searches, and by the index builds -- HNSW, FTS, LSH and B-tree -- which check it once per INDEX_BUILD_POISON_CADENCE rows, so wind-down is bounded to one batch. Index builds register a running-query handle, so ::running lists them and ::kill reaches them. A cancelled build returns before commit_tx, so its transaction is dropped whole: the next open finds no index rather than a partial one (Appendix A row: Poison / cancellation). D08: the poison boundary aborts after a structured log. Asserted in runtime/tests/indexing.rs -- a killed HNSW build, a killed FTS reindex, a killed build reopened from disk, and an uncancelled multi-batch build that still completes."
 call_sites = 0
 call_sites_method = "grep -rn '\\bPoison\\b' crates/ --include='*.rs' | grep -v ^crates/krites/ | grep -vP '^\\S+:[0-9]+:\\s*//'"
 notes = "Bare 'Poison' is a comment-only mention outside krites (crud.rs:22,23, prose about 'the Poison flag'), never a code call site -- the trailing grep -vP excludes comment lines so the measured figure matches the real code usage, not a text-search false positive."

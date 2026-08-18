@@ -17,7 +17,6 @@
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::Ordering;
 use std::thread;
 use std::time::Duration;
 
@@ -38,10 +37,7 @@ use crate::query::ra::{
     StoredRA, StoredWithValidityRA, TempStoreRA, UnificationRA,
 };
 use crate::runtime::callback::CallbackCollector;
-use crate::runtime::db::{
-    Db, NamedRows, Poison, RunningQueryCleanup, RunningQueryHandle, ScriptMutability,
-    seconds_since_the_epoch,
-};
+use crate::runtime::db::{Db, NamedRows, ScriptMutability};
 use crate::runtime::error::{
     AssertionFailedSnafu, InvalidOperationSnafu, ReadOnlyViolationSnafu,
     RelationAlreadyExistsSnafu, RelationNotFoundSnafu,
@@ -496,7 +492,7 @@ impl<'s, S: Storage<'s>> Db<S> {
         let program = stratified_program.magic_sets_rewrite(tx)?;
         let compiled = crate::query::compile::stratified_magic_compile(tx, program)?;
 
-        let poison = Poison::default();
+        let (poison, _guard) = self.register_running()?;
         if let Some(secs) = out_opts.timeout {
             poison.set_timeout(secs)?;
         }
@@ -506,23 +502,6 @@ impl<'s, S: Storage<'s>> Db<S> {
         // `tx` here reaches every search this query runs without threading
         // a new parameter through QueryContext and every RelAlgebra::iter().
         tx.poison = Some(poison.clone());
-        let id = self.queries_count.fetch_add(1, Ordering::AcqRel);
-
-        let since_the_epoch = seconds_since_the_epoch()?;
-
-        let handle = RunningQueryHandle {
-            started_at: since_the_epoch,
-            poison: poison.clone(),
-        };
-        self.running_queries
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(id, handle);
-
-        let _guard = RunningQueryCleanup {
-            id,
-            running_queries: self.running_queries.clone(),
-        };
 
         let total_num_to_take = if out_opts.sorters.is_empty() {
             out_opts.num_to_take()

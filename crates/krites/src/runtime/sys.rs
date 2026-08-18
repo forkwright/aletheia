@@ -35,6 +35,38 @@ fn ok_rows() -> NamedRows {
     )
 }
 
+/// Whether `op` scans its whole base relation and writes one index entry per
+/// row, i.e. runs long enough that an operator must be able to abort it.
+///
+/// WHY (#6866): these are the only sys ops that register a running-query
+/// handle. Registering every sys op would make `::running` list itself and
+/// `::kill` addressable at operations that complete before the id can be read,
+/// which is noise rather than control. The match is exhaustive so a new sys op
+/// forces this decision rather than defaulting to uncancellable.
+fn is_index_build(op: &SysOp) -> bool {
+    match op {
+        SysOp::CreateIndex(..)
+        | SysOp::CreateVectorIndex(_)
+        | SysOp::CreateFtsIndex(_)
+        | SysOp::CreateMinHashLshIndex(_) => true,
+        SysOp::Compact
+        | SysOp::ListColumns(_)
+        | SysOp::ListIndices(_)
+        | SysOp::ListRelations
+        | SysOp::ListRunning
+        | SysOp::ListFixedRules
+        | SysOp::KillRunning(_)
+        | SysOp::Explain(_)
+        | SysOp::RemoveRelation(_)
+        | SysOp::RenameRelation(_)
+        | SysOp::ShowTrigger(_)
+        | SysOp::SetTriggers(..)
+        | SysOp::SetAccessLevel(..)
+        | SysOp::RemoveIndex(..)
+        | SysOp::DescribeRelation(..) => false,
+    }
+}
+
 impl<'s, S: Storage<'s>> Db<S> {
     /// Acquire a write lock on `relation_name` unless `skip_locking` is set,
     /// then execute `body`. Returns the body's result.
@@ -306,6 +338,20 @@ impl<'s, S: Storage<'s>> Db<S> {
             self.transact()?
         } else {
             self.transact_write()?
+        };
+        // WHY (#6866): an index build is the longest single operation the
+        // engine runs and the one an operator most wants to abort. The handle
+        // is what `::running` lists and `::kill` reaches; the same token on the
+        // transaction is what the build loops check. On cancellation the build
+        // returns an error here, so `commit_tx` is never reached and the
+        // transaction is dropped -- every index row and the relation metadata
+        // pointing at them are discarded together.
+        let _running = if is_index_build(&op) {
+            let (poison, guard) = self.register_running()?;
+            tx.poison = Some(poison);
+            Some(guard)
+        } else {
+            None
         };
         let res = self.run_sys_op_with_tx(&mut tx, &op, read_only, false)?;
         tx.commit_tx()?;
