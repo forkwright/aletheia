@@ -275,6 +275,13 @@ loom = { version = "0.7", default-features = false }
 # WHY: long dependency specifications are declared as expanded tables at the end
 # to satisfy TOML/inline-table-too-long while keeping `[workspace.dependencies]`
 # readable. Cargo resolves them identically to inline form.
+[workspace.dependencies.epitelesis]
+git = "https://github.com/forkwright/epitelesis.git"
+tag = "v0.4.0"
+# WHY: version pin lets cargo-deny resolve the git workspace dep in the graph
+# (without it, deny emits bug[unresolved-workspace-dependency] for every user).
+version = "0.4.0"
+
 [workspace.dependencies.parodos]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.0"

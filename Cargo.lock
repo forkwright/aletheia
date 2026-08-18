@@ -2467,6 +2467,7 @@ dependencies = [
  "aletheia-routing",
  "compact_str",
  "eidos",
+ "epitelesis",
  "fjall",
  "hermeneus",
  "jiff",
@@ -2596,6 +2597,17 @@ dependencies = [
  "tracing-subscriber",
  "unicode-normalization",
  "wiremock",
+]
+
+[[package]]
+name = "epitelesis"
+version = "0.4.0"
+source = "git+https://github.com/forkwright/epitelesis.git?tag=v0.4.0#1b2843c3765ab67c0dc7fda40790aba8cadec291"
+dependencies = [
+ "rustix",
+ "snafu",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
