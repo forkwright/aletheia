@@ -83,8 +83,8 @@ unicode-normalization = { version = "0.1" }
 
 # Candle embedding dependencies
 candle-core = { version = "=0.11.0", optional = true }
-candle-nn = { version = "=0.10.2", optional = true }
-candle-transformers = { version = "=0.10.2", optional = true }
+candle-nn = { version = "=0.11.0", optional = true }
+candle-transformers = { version = "=0.11.0", optional = true }
 tokenizers = { version = "0.23", optional = true, default-features = false, features = [
     "fancy-regex",
 ] }
