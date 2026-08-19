@@ -19,8 +19,8 @@ use std::path::{Path, PathBuf};
 use parking_lot::Mutex;
 use typst::WorldExt;
 use typst::diag::{FileError, FileResult, Severity, SourceDiagnostic};
-use typst::foundations::{Bytes, Datetime};
-use typst::syntax::{FileId, Source, VirtualPath};
+use typst::foundations::{Bytes, Datetime, Duration};
+use typst::syntax::{FileId, RootedPath, Source, VirtualPath, VirtualRoot};
 use typst::text::{Font, FontBook};
 use typst::utils::LazyHash;
 use typst::{Library, LibraryExt, World};
@@ -72,15 +72,11 @@ struct CacheSlot {
 impl TypstWorld {
     /// Create a world from a source string and optional serialized data bytes.
     pub(crate) fn new(source: &str, data_bytes: Option<Vec<u8>>) -> Self {
-        let main_vpath = VirtualPath::new("main.typ");
-        let main = FileId::new(None, main_vpath);
+        let main = project_file_id("main.typ");
         let main_source = Source::new(main, source.to_owned());
 
         let (data_id, data_bytes) = match data_bytes {
-            Some(bytes) => {
-                let id = FileId::new(None, VirtualPath::new(DATA_VPATH));
-                (Some(id), Some(Bytes::new(bytes)))
-            }
+            Some(bytes) => (Some(project_file_id(DATA_VPATH)), Some(Bytes::new(bytes))),
             None => (None, None),
         };
 
@@ -97,6 +93,20 @@ impl TypstWorld {
             cache: Mutex::new(HashMap::new()),
         }
     }
+}
+
+/// Intern a `FileId` for a project-rooted virtual path.
+///
+/// WHY expect: `VirtualPath::new` fails only on backslashes or root escapes
+/// (`PathError`); the callers pass compile-time literals (`main.typ`,
+/// `data.json`) that contain neither, so the error branch is unreachable.
+#[expect(
+    clippy::expect_used,
+    reason = "vpath literals cannot fail normalization"
+)]
+fn project_file_id(vpath: &str) -> FileId {
+    let vpath = VirtualPath::new(vpath).expect("literal vpath normalizes");
+    RootedPath::new(VirtualRoot::Project, vpath).intern()
 }
 
 impl World for TypstWorld {
@@ -125,7 +135,7 @@ impl World for TypstWorld {
         }
 
         // No disk-backed sources: only the main file and data.json are known.
-        let path = id.vpath().as_rootless_path().to_path_buf();
+        let path = PathBuf::from(id.vpath().get_without_slash());
         let result: FileResult<Source> = Err(FileError::NotFound(path));
         cache.entry(id).or_default().source = Some(result.clone());
         result
@@ -145,7 +155,7 @@ impl World for TypstWorld {
             return r.clone();
         }
 
-        let path = id.vpath().as_rootless_path().to_path_buf();
+        let path = PathBuf::from(id.vpath().get_without_slash());
         let result: FileResult<Bytes> = Err(FileError::NotFound(path));
         cache.entry(id).or_default().bytes = Some(result.clone());
         result
@@ -155,10 +165,18 @@ impl World for TypstWorld {
         self.fonts.get(index).map(|e| e.font.clone())
     }
 
-    fn today(&self, offset: Option<i64>) -> Option<Datetime> {
-        // WHY: typst requests today in local time (offset=None) or UTC+N (offset=Some).
-        let date = if let Some(hours) = offset {
-            let offset_secs = i32::try_from(hours.saturating_mul(3600)).ok()?;
+    fn today(&self, offset: Option<Duration>) -> Option<Datetime> {
+        // WHY: typst requests today in local time (offset=None) or with a UTC
+        // offset (offset=Some). typst 0.15 passes the offset as a `Duration`
+        // (was whole hours as `i64`); jiff still wants whole seconds.
+        let date = if let Some(duration) = offset {
+            #[expect(
+                clippy::as_conversions,
+                clippy::cast_possible_truncation,
+                reason = "f64→i64: UTC offsets are tiny; value is rounded first"
+            )]
+            let seconds = duration.seconds().round() as i64;
+            let offset_secs = i32::try_from(seconds).ok()?;
             let tz_offset = jiff::tz::Offset::from_seconds(offset_secs).ok()?;
             let tz = jiff::tz::TimeZone::fixed(tz_offset);
             jiff::Timestamp::now().to_zoned(tz).date()
@@ -193,14 +211,16 @@ pub(crate) fn format_diagnostics(world: &TypstWorld, diagnostics: &[SourceDiagno
                 let source = world.source(id).ok()?;
                 let line = source.lines().byte_to_line(range.start)? + 1;
                 let col = source.lines().byte_to_column(range.start)? + 1;
-                let path = id.vpath().as_rootless_path().display().to_string();
+                let path = id.vpath().get_without_slash();
                 Some(format!("{path}:{line}:{col}"))
             })
             .unwrap_or_else(|| "<unknown>".to_owned());
 
         let _ = writeln!(out, "{severity}: {location}: {}", diag.message); // kanon:ignore RUST/no-silent-result-swallow — writeln! to String is infallible; error is unreachable
         for hint in &diag.hints {
-            let _ = writeln!(out, "  hint: {hint}"); // kanon:ignore RUST/no-silent-result-swallow — writeln! to String is infallible; error is unreachable
+            // WHY `.v`: typst 0.15 spans each hint (`Spanned<EcoString,
+            // DiagSpan>`); the hint span is secondary and not rendered here.
+            let _ = writeln!(out, "  hint: {}", hint.v); // kanon:ignore RUST/no-silent-result-swallow — writeln! to String is infallible; error is unreachable
         }
     }
     out

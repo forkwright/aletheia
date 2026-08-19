@@ -113,5 +113,5 @@ Current slugs: `default`, `eval-report`, `graph-audit` (see `typst/src/templates
 
 ## Dependencies
 
-Uses: jiff, snafu, typst + typst-pdf + comemo + parking_lot (typst backend), krilla (optional), zip (optional), quick-xml (optional), rust_xlsxwriter (optional), spreadsheet-ods (optional), docx-rs (optional)
+Uses: jiff, snafu, typst + typst-pdf + typst-layout + parking_lot (typst backend), krilla (optional), zip (optional), quick-xml (optional), rust_xlsxwriter (optional), spreadsheet-ods (optional), docx-rs (optional)
 Used by: organon (as report tools)
