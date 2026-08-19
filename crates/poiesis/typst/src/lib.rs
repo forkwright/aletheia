@@ -45,7 +45,7 @@ pub mod templates;
 pub use error::PoiesisError;
 
 use tracing::instrument;
-use typst::layout::PagedDocument;
+use typst_layout::PagedDocument;
 
 use crate::world::{TypstWorld, format_diagnostics};
 
