@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.39.0](https://github.com/forkwright/aletheia/compare/v0.38.1...v0.39.0) (2026-08-19)
+
+
+### Features
+
+* **energeia:** route the health probe through epitelesis ([#6871](https://github.com/forkwright/aletheia/issues/6871)) ([8852602](https://github.com/forkwright/aletheia/commit/8852602ad7eadb1f588b5fba77cede6e4e314574))
+* **eval:** accept a session model override at the API boundary ([#6860](https://github.com/forkwright/aletheia/issues/6860)) ([4b1e429](https://github.com/forkwright/aletheia/commit/4b1e42972d671447614762fb23b928b501a9186b))
+* **krites:** forward krites_sovereign_hnsw through the workspace, gate it in CI ([#6876](https://github.com/forkwright/aletheia/issues/6876)) ([f004a07](https://github.com/forkwright/aletheia/commit/f004a077a9f733c1fc0aa5afd06ba5a4a91e78a3))
+* **krites:** stamp MPL Exhibit A on every derived file, without moving the metric ([#6894](https://github.com/forkwright/aletheia/issues/6894)) ([b78a2d0](https://github.com/forkwright/aletheia/commit/b78a2d0481c45a75e8b5e189f3d087296507d6da))
+* **poiesis:** migrate the typst integration to 0.15.1 ([#6901](https://github.com/forkwright/aletheia/issues/6901)) ([ba01ba6](https://github.com/forkwright/aletheia/commit/ba01ba69c8fcd4a8e86fc29756a51b09892824c5))
+
+
+### Bug Fixes
+
+* **krites:** honour cancellation in index builds ([#6895](https://github.com/forkwright/aletheia/issues/6895)) ([4c449f6](https://github.com/forkwright/aletheia/commit/4c449f6118509f09122a6fc9a54d56dd9e73e394))
+* **krites:** make a sovereign row's missing predecessor an explicit declaration ([#6870](https://github.com/forkwright/aletheia/issues/6870)) ([a7290fd](https://github.com/forkwright/aletheia/commit/a7290fd2b589bd73d4d5cd0d46bf08be3de7ca9e))
+* **krites:** measure the sovereign HNSW tree against a predecessor ([#6869](https://github.com/forkwright/aletheia/issues/6869)) ([cfb7356](https://github.com/forkwright/aletheia/commit/cfb73566a7a479040e3a851b56ffa894649a5781))
+* **krites:** provenance method ledger + stop-word filter clean-room rewrite ([#6899](https://github.com/forkwright/aletheia/issues/6899)) ([6d96998](https://github.com/forkwright/aletheia/commit/6d969987af465d9f7f25ea9ba394ad7908011738))
+* **krites:** report a missing NOTICE.md instead of crashing on it ([#6878](https://github.com/forkwright/aletheia/issues/6878)) ([6bf15b3](https://github.com/forkwright/aletheia/commit/6bf15b38bd9648ea5ec84c250aa6bc6debfd2ff3))
+* **pylon:** read tool-invocation totals from typed counters ([#6857](https://github.com/forkwright/aletheia/issues/6857)) ([b9eb498](https://github.com/forkwright/aletheia/commit/b9eb498c6b97f7d3b062d3800f49c22db93ce730))
+
 ## [0.38.1](https://github.com/forkwright/aletheia/compare/v0.38.0...v0.38.1) (2026-08-17)
 
 
