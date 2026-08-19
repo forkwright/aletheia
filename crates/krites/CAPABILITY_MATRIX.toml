@@ -11,17 +11,18 @@
 #
 # `gate_test` names the test that would fail if the capability disappeared, as
 # a `<binary-id>::<test path>` id (what `cargo nextest list -p krites` prints).
-# The checker resolves every pointer against a source-derived index of the
-# crate's tests and fails on one that names no test or names an `#[ignore]`d
-# one. `"none"` is legal and means UNPOINTED -- an honestly unpointed row is
-# worth more than a pointer at a test that does not exercise the capability,
-# and the unpointed count is printed rather than buried.
+# The required hosted gate resolves every pointer against compiler-derived
+# nextest output for the feature world it then executes, and fails on one that
+# names no test or names an `#[ignore]`d one. `"none"` is legal and means
+# UNPOINTED -- an honestly unpointed row is worth more than a pointer at a test
+# that does not exercise the capability, and the count is printed rather than
+# buried.
 #
 # WARNING(what a pointer proves): that the capability cannot be deleted
 # without a test disappearing or failing. NOT that the row's `gate` sentence
 # is asserted anywhere -- several gates name conformance behaviour no current
-# test checks -- and NOT that the test passed, since the CI job that runs this
-# checker is pure-python with no cargo.
+# test checks. A green required hosted job does prove the same listed feature
+# world's nextest run passed.
 #
 # `[[capability_set]]` covers the populations too large for one row each: 139
 # scalar functions, 138 DSL-reachable op names, 25 aggregations, 25

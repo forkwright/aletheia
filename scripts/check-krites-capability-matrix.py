@@ -46,21 +46,21 @@ measurable -- the registry holds 26 entries, `define_aggr!` 25, and
 `define_op!` 139 against 138 DSL-reachable names.
 
 `gate_test` names the test that would fail if the capability disappeared,
-as a `<binary-id>::<test path>` id resolved against a source-derived index
-of the crate's tests (scripts/krites_test_index.py). The named test must
-exist and must not be `#[ignore]`d. `"none"` or an absent field is legal
+as a `<binary-id>::<test path>` id. Without `--nextest-list`, this script
+validates only that the field has that shape. The required hosted gate supplies
+machine-readable output from `cargo nextest list` for the exact feature world
+it then executes; only that compiler-derived list is authoritative for whether
+the named test exists and is not ignored. `"none"` or an absent field is legal
 and counts as UNPOINTED -- an honestly unpointed row is worth more than a
 pointer at a test that does not exercise the capability.
 
-WARNING(what a pointer proves): a resolving `gate_test` proves the
-capability cannot be deleted without a test disappearing or failing. It
-does NOT prove the row's `gate` sentence is asserted anywhere -- several
-gates name conformance behaviour (recorded-vector replay, post-crash
-visibility, multiset-vs-sequence) that no current test checks. It also does
-not prove the test PASSED: this checker runs in a pure-python CI job with
-no cargo and no compiled test binaries, so it verifies existence and
-runnability, never a result. Read the pointed count as "cannot vanish
-unnoticed", not as "verified".
+WARNING(what a pointer proves): a pointer resolved against nextest proves the
+test exists and is runnable in the listed build. A green required hosted job
+also proves that same feature world's nextest run passed. Neither proves the
+row's `gate` sentence is asserted by that test -- several gates name
+conformance behaviour (recorded-vector replay, post-crash visibility,
+multiset-vs-sequence) that no current test checks. Read the pointed count as
+"cannot vanish unnoticed", not as semantic conformance.
 
 `call_sites` on a sysop/datavalue/public_api row is a measured integer,
 never a guess: `check_call_sites_measured` re-executes each row's
@@ -90,11 +90,13 @@ import re
 import subprocess
 import sys
 import tomllib
-from pathlib import Path
+from collections.abc import Mapping
+from functools import lru_cache
+from pathlib import Path, PurePosixPath
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import krites_test_index as KTI  # noqa: E402
+import krites_capability_evidence as EVIDENCE
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KRITES_DIR = REPO_ROOT / "crates" / "krites"
@@ -116,6 +118,77 @@ EXPECTED_APPENDIX_A_ROWS = 33
 
 IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_:]*")
 
+# The matrix normally requires one row per source capability.  These five rows
+# are deliberate atomic bundles: their gate/destination applies to every named
+# member together.  Pinning the exact exception here makes the checker an
+# independent oracle; a matrix edit cannot authorize its own absorption of a
+# sibling row merely by changing prose or adding metadata beside the change.
+PUBLIC_API_SOURCE_BUNDLES: dict[str, frozenset[str]] = {
+    "api-error-result": frozenset({"Error", "Result"}),
+    "api-query-cache": frozenset({"QueryCache", "QueryCacheStats"}),
+    "api-fixed-rule-trait": frozenset(
+        {"FixedRule", "FixedRuleInputRelation", "FixedRulePayload"}
+    ),
+    "api-multi-transaction-error": frozenset(
+        {
+            "MultiTransactionError::WorkerPanicked",
+            "MultiTransactionError::SendFailed",
+            "MultiTransactionError::Query",
+        }
+    ),
+    "api-multi-transaction-struct": frozenset(
+        {
+            "MultiTransaction::transact",
+            "MultiTransaction::commit",
+            "MultiTransaction::abort",
+        }
+    ),
+}
+
+
+def _is_top_level(clean: str, offset: int) -> bool:
+    """Whether `offset` is outside every (), [] and {} token tree."""
+    stack: list[str] = []
+    pairs = {")": "(", "]": "[", "}": "{"}
+    for ch in clean[:offset]:
+        if ch in "([{":
+            stack.append(ch)
+        elif ch in pairs:
+            if not stack or stack[-1] != pairs[ch]:
+                raise ValueError("unbalanced delimiters while locating a source owner")
+            stack.pop()
+    return not stack
+
+
+def _top_level_matches(clean: str, pattern: re.Pattern[str]) -> list[re.Match[str]]:
+    return [
+        match
+        for match in pattern.finditer(clean)
+        if _is_top_level(clean, match.start())
+    ]
+
+
+def _item_attrs(
+    raw: str,
+    clean: str,
+    item_offset: int,
+    lower_bound: int = 0,
+) -> list[str]:
+    return [
+        *EVIDENCE.leading_inner_attributes(raw, clean),
+        *EVIDENCE.preceding_outer_attributes(raw, clean, item_offset, lower_bound),
+    ]
+
+
+def _attrs_possible(
+    inherited_branches: list[tuple[str, ...]],
+    local_attrs: list[str] | tuple[str, ...],
+) -> bool:
+    return any(
+        EVIDENCE.cfg_attrs_satisfiable([*branch, *local_attrs])
+        for branch in inherited_branches
+    )
+
 
 def _strip_leading_attributes(text: str) -> int:
     """Consume zero or more leading `#[...]` attributes (bracket-matched,
@@ -128,28 +201,21 @@ def _strip_leading_attributes(text: str) -> int:
     caller keep scanning the remainder of the line for a variant.
     """
     pos = 0
-    while text[pos : pos + 2] == "#[":
-        depth = 0
-        j = pos
-        while j < len(text):
-            if text[j] == "[":
-                depth += 1
-            elif text[j] == "]":
-                depth -= 1
-                if depth == 0:
-                    j += 1
-                    break
-            j += 1
-        pos = j
-        while pos < len(text) and text[pos] in " \t":
+    while (parsed := EVIDENCE._read_attribute(text, pos)) is not None and not parsed[3]:
+        pos = parsed[2]
+        while pos < len(text) and text[pos].isspace():
             pos += 1
     return pos
 
 
-def extract_enum_variants(text: str, enum_name: str) -> dict[str, int]:
+def extract_enum_variants(
+    text: str,
+    enum_name: str,
+    inherited_branches: list[tuple[str, ...]] | None = None,
+) -> dict[str, int]:
     """Return {variant_name: line_number} for a `pub enum <enum_name> { ... }` block.
 
-    Scoped to the first top-level enum by that name. Strips line comments
+    Scoped to exactly one satisfiable top-level enum by that name. Strips comments
     and leading attributes, then scans each line for every top-level
     variant declaration it contains -- not just one anchored at column 0.
     Stops at the closing brace that returns to column 0.
@@ -163,92 +229,104 @@ def extract_enum_variants(text: str, enum_name: str) -> dict[str, int]:
     and fmt is a separate step; nothing ties them together structurally, so
     the parser is hardened to not depend on that coincidence.
     """
-    lines = text.splitlines()
-    start = None
-    for i, line in enumerate(lines):
-        if re.match(rf"^\s*pub enum {re.escape(enum_name)}\b", line):
-            start = i
-            break
-    if start is None:
-        raise ValueError(f"enum {enum_name} not found")
-
+    # Work from the length-preserving lexical view.  Reading raw lines here
+    # makes a block-commented variant indistinguishable from live source, and
+    # braces inside comments/literals corrupt the payload-depth accounting.
+    clean = EVIDENCE.strip_noise(text)
+    branches = inherited_branches or [()]
+    headers = [
+        header
+        for header in _top_level_matches(
+            clean,
+            re.compile(
+                rf"{EVIDENCE.RUST_TOKEN_START}pub\s+enum\s+{re.escape(enum_name)}"
+                rf"{EVIDENCE.RUST_TOKEN_END}"
+            ),
+        )
+        if _attrs_possible(branches, _item_attrs(text, clean, header.start()))
+    ]
+    if len(headers) != 1:
+        raise ValueError(
+            f"expected one top-level enum {enum_name}, found {len(headers)}"
+        )
+    header = headers[0]
+    owner_attrs = _item_attrs(text, clean, header.start())
+    open_at = clean.find("{", header.end())
+    if open_at == -1:
+        raise ValueError(f"enum {enum_name} has no body")
+    close_at = _matching_delimiter(clean, open_at, "{", "}")
+    body = clean[open_at + 1 : close_at]
     variants: dict[str, int] = {}
-    enum_depth = 0
-    started_body = False
-    # WHY: bracket depth left open by a struct/tuple variant payload that
-    # spans multiple lines (e.g. `Query {\n    source: Box<Error>,\n },`).
-    # While > 0, subsequent lines are payload interior (field names, etc.)
-    # -- never a new variant -- so they're depth-tracked only, not scanned.
-    payload_depth = 0
-    for i in range(start, len(lines)):
-        # Strip trailing line comments before anything else -- `// Sneaky,`
-        # must never be mistaken for code.
-        code = re.sub(r"//.*$", "", lines[i])
-        enum_depth += code.count("{") - code.count("}")
-        if "{" in code and not started_body:
-            started_body = True
-            code = code[code.index("{") + 1 :]
-        elif not started_body:
-            continue
-        if enum_depth <= 0:
-            break
-
-        if payload_depth > 0:
-            payload_depth += (
-                code.count("(") + code.count("{") - code.count(")") - code.count("}")
-            )
-            continue
-
+    for seg_start, seg_end in _top_level_segments(body):
+        segment = body[seg_start:seg_end]
         pos = 0
-        while pos < len(code):
-            stripped = code[pos:].lstrip()
-            pos += len(code[pos:]) - len(stripped)
-            if not stripped:
+        while True:
+            pos += len(segment[pos:]) - len(segment[pos:].lstrip())
+            consumed = _strip_leading_attributes(segment[pos:])
+            if not consumed:
                 break
-            consumed = _strip_leading_attributes(code[pos:])
-            if consumed:
-                pos += consumed
-                continue
-            # WHY: `[,({]` covers all three variant shapes -- unit
-            # (`Name,`), tuple (`Name(...)`), and struct (`Name { ... }`,
-            # e.g. MultiTransactionError::Query { source: Box<Error> }).
-            # Missing the `{` case here silently drops struct variants from
-            # extraction, which would make the checker pass without ever
-            # having looked at them -- an "unverifiable collapsing to
-            # clean", exactly what the tri-state Verdict pattern (Appendix
-            # A row: Tri-state Verdict) exists to forbid.
-            m = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s*([,({])", code[pos:])
-            if not m:
-                break
-            name, opener = m.group(1), m.group(2)
-            variants.setdefault(name, i + 1)
-            pos += m.end()
-            if opener in "({":
-                depth = 1
-                j = pos
-                while j < len(code) and depth > 0:
-                    if code[j] in "({":
-                        depth += 1
-                    elif code[j] in ")}":
-                        depth -= 1
-                    j += 1
-                if depth > 0:
-                    payload_depth = depth
-                    break
-                pos = j
-            while pos < len(code) and code[pos] in ", \t":
-                pos += 1
+            pos += consumed
+        remainder = segment[pos:].strip()
+        if not remainder:
+            continue
+        name_match = re.match(
+            r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)" + EVIDENCE.RUST_TOKEN_END,
+            remainder,
+        )
+        if name_match is None:
+            raise ValueError(
+                f"enum {enum_name} has an unsupported variant segment at "
+                f"line {_line_of(text, open_at + 1 + seg_start + pos)}"
+            )
+        name = name_match.group("name")
+        shape = remainder[name_match.end() :].strip()
+        if shape and shape[0] not in "({=":
+            raise ValueError(
+                f"enum {enum_name} variant {name} has unsupported shape {shape!r}"
+            )
+        if shape.startswith("=") and not shape[1:].strip():
+            raise ValueError(
+                f"enum {enum_name} variant {name} has an empty discriminant"
+            )
+        name_in_segment = segment.find(name, pos)
+        absolute_name = open_at + 1 + seg_start + name_in_segment
+        attrs = _item_attrs(
+            text,
+            clean,
+            absolute_name,
+            open_at + 1 + seg_start,
+        )
+        if not _attrs_possible(branches, [*owner_attrs, *attrs]):
+            continue
+        variants.setdefault(
+            name,
+            _line_of(text, absolute_name),
+        )
     return variants
 
 
 def extract_sysop_variants() -> dict[str, int]:
     text = SYSOP_FILE.read_text(encoding="utf-8")
-    return extract_enum_variants(text, "SysOp")
+    return {
+        f"SysOp::{name}": line
+        for name, line in extract_enum_variants(
+            text,
+            "SysOp",
+            _source_branches(SYSOP_FILE),
+        ).items()
+    }
 
 
 def extract_datavalue_variants() -> dict[str, int]:
     text = DATAVALUE_FILE.read_text(encoding="utf-8")
-    return extract_enum_variants(text, "DataValue")
+    return {
+        f"DataValue::{name}": line
+        for name, line in extract_enum_variants(
+            text,
+            "DataValue",
+            _source_branches(DATAVALUE_FILE),
+        ).items()
+    }
 
 
 def extract_lib_public_api() -> dict[str, int]:
@@ -260,40 +338,113 @@ def extract_lib_public_api() -> dict[str, int]:
     `pub mod` submodules -- see module docstring for the scope rationale.
     """
     text = LIB_FILE.read_text(encoding="utf-8")
-    lines = text.splitlines()
+    clean = EVIDENCE.strip_noise(text)
+    branches = _source_branches(LIB_FILE)
     items: dict[str, int] = {}
 
     # `pub use` statements: join across lines up to the terminating `;`.
-    for m in re.finditer(r"pub use ([^;]+);", text, re.DOTALL):
+    for m in _top_level_matches(clean, re.compile(r"pub use ([^;]+);", re.DOTALL)):
+        if not _attrs_possible(branches, _item_attrs(text, clean, m.start())):
+            continue
         line_no = text[: m.start()].count("\n") + 1
-        body = m.group(1)
+        body = m.group(1).strip()
         # Drop the leading path (crate::a::b::{...} or crate::a::b::Name or
         # module::Name) -- keep only the final `{...}` group or final segment.
-        brace = re.search(r"\{([^}]*)\}", body)
+        brace = re.fullmatch(r"(?P<prefix>[^{}]+)::\{(?P<names>[^{}]+)\}", body)
         if brace:
-            names = [n.strip() for n in brace.group(1).split(",") if n.strip()]
+            names = [n.strip() for n in brace.group("names").split(",") if n.strip()]
         else:
-            names = [body.strip().rsplit("::", 1)[-1]]
+            if any(token in body for token in ("{", "}", "*")):
+                raise ValueError(
+                    f"unsupported nested/glob pub use tree at line {line_no}: {body!r}"
+                )
+            names = [body.rsplit("::", 1)[-1]]
         for name in names:
-            name = name.split(" as ")[-1].strip()
-            items.setdefault(name, line_no)
+            alias = re.fullmatch(
+                r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?:\s+as\s+(?P<alias>[A-Za-z_][A-Za-z0-9_]*))?",
+                name,
+            )
+            if alias is None or alias.group("name") in {"self", "super", "crate"}:
+                raise ValueError(
+                    f"unsupported pub use member at line {line_no}: {name!r}"
+                )
+            items.setdefault(alias.group("alias") or alias.group("name"), line_no)
 
-    # `pub fn <name>` -- all methods in this file belong to Db or
-    # MultiTransaction (verified by inspection; this file defines no other
-    # pub-fn-bearing type).
-    for i, line in enumerate(lines):
-        m = re.match(r"^\s*pub fn ([A-Za-z_][A-Za-z0-9_]*)", line)
-        if m:
-            items.setdefault(m.group(1), i + 1)
+    # Public methods are owner-qualified.  A same-named method on another type
+    # must never satisfy a Db/MultiTransaction row after the real method moves.
+    method_re = re.compile(
+        EVIDENCE.RUST_TOKEN_START + r"pub\s+"
+        r"(?:(?:const|async|unsafe)\s+)*"
+        r'(?:extern\s+(?:"[^"]*"\s+)?)?'
+        r"fn\s+((?:r#)?[A-Za-z_][A-Za-z0-9_]*)" + EVIDENCE.RUST_TOKEN_END
+    )
+    for owner in ("Db", "MultiTransaction"):
+        impl_re = re.compile(
+            rf"(?m)^impl(?:<[^{{}}]*>)?\s+{re.escape(owner)}(?:<[^{{}}]*>)?\s*\{{"
+        )
+        for impl_match in _top_level_matches(clean, impl_re):
+            impl_attrs = _item_attrs(text, clean, impl_match.start())
+            if not _attrs_possible(branches, impl_attrs):
+                continue
+            impl_open = impl_match.end() - 1
+            impl_end = _matching_delimiter(clean, impl_open, "{", "}")
+            impl_attrs = [
+                *impl_attrs,
+                *EVIDENCE.inner_attributes_after(text, clean, impl_open),
+            ]
+            if not _attrs_possible(branches, impl_attrs):
+                continue
+            body = clean[impl_open + 1 : impl_end]
+            for method in method_re.finditer(body):
+                if not _is_top_level(body, method.start()):
+                    continue
+                if method.group(1).startswith("r#"):
+                    raise ValueError(
+                        f"public {owner} method uses unsupported raw identifier "
+                        f"{method.group(1)!r}"
+                    )
+                method_signature_end = impl_open + 1 + method.end()
+                method_body_open = EVIDENCE._function_body_open(
+                    clean, method_signature_end
+                )
+                if method_body_open is None or method_body_open >= impl_end:
+                    raise ValueError(
+                        f"public {owner} method {method.group(1)} has no owned body"
+                    )
+                method_attrs = _item_attrs(
+                    text,
+                    clean,
+                    impl_open + 1 + method.start(),
+                    impl_open + 1,
+                )
+                method_attrs.extend(
+                    EVIDENCE.inner_attributes_after(text, clean, method_body_open)
+                )
+                if not _attrs_possible(branches, [*impl_attrs, *method_attrs]):
+                    continue
+                absolute = impl_open + 1 + method.start(1)
+                items.setdefault(
+                    f"{owner}::{method.group(1)}", _line_of(text, absolute)
+                )
 
     # MultiTransactionError variants, same block-extraction as the enums above.
-    for name, line_no in extract_enum_variants(text, "MultiTransactionError").items():
-        items.setdefault(name, line_no)
+    for name, line_no in extract_enum_variants(
+        text,
+        "MultiTransactionError",
+        branches,
+    ).items():
+        items.setdefault(f"MultiTransactionError::{name}", line_no)
 
     return items
 
 
-def _block_span(text: str, header_re: re.Pattern[str]) -> tuple[int, int]:
+def _block_span(
+    text: str,
+    header_re: re.Pattern[str],
+    inherited_branches: list[tuple[str, ...]] | None = None,
+    *,
+    function_body: bool = False,
+) -> tuple[int, int, list[str]]:
     """Offsets of the `{ ... }` body that follows `header_re`'s match.
 
     Offsets index `text` unchanged, so a caller slices the ORIGINAL source and
@@ -309,13 +460,27 @@ def _block_span(text: str, header_re: re.Pattern[str]) -> tuple[int, int]:
     structure. Matching them shortens the span, which is the same silent
     under-read.
     """
-    clean = KTI.strip_noise(text)
-    m = header_re.search(clean)
-    if m is None:
-        raise ValueError(f"could not locate {header_re.pattern} in source")
-    open_at = clean.find("{", m.end())
+    clean = EVIDENCE.strip_noise(text)
+    branches = inherited_branches or [()]
+    candidates = [
+        candidate
+        for candidate in _top_level_matches(clean, header_re)
+        if _attrs_possible(branches, _item_attrs(text, clean, candidate.start()))
+    ]
+    if len(candidates) != 1:
+        raise ValueError(
+            f"expected one top-level {header_re.pattern}, found {len(candidates)}"
+        )
+    m = candidates[0]
+    open_at = (
+        EVIDENCE._function_body_open(clean, m.end())
+        if function_body
+        else clean.find("{", m.end())
+    )
     if open_at == -1:
         raise ValueError(f"no block body after {header_re.pattern}")
+    if open_at is None:
+        raise ValueError(f"no function body after {header_re.pattern}")
     depth = 0
     for i in range(open_at, len(clean)):
         if clean[i] == "{":
@@ -323,12 +488,113 @@ def _block_span(text: str, header_re: re.Pattern[str]) -> tuple[int, int]:
         elif clean[i] == "}":
             depth -= 1
             if depth == 0:
-                return open_at, i
+                return (
+                    open_at,
+                    i,
+                    [
+                        *_item_attrs(text, clean, m.start()),
+                        *EVIDENCE.inner_attributes_after(text, clean, open_at),
+                    ],
+                )
     raise ValueError(f"unterminated block after {header_re.pattern}")
 
 
 def _line_of(text: str, offset: int) -> int:
     return text.count("\n", 0, offset) + 1
+
+
+def _matching_delimiter(text: str, open_at: int, opener: str, closer: str) -> int:
+    """Return the matching delimiter offset in length-preserving clean source."""
+    if text[open_at] != opener:
+        raise ValueError(f"expected {opener!r} at offset {open_at}")
+    depth = 0
+    for i in range(open_at, len(text)):
+        if text[i] == opener:
+            depth += 1
+        elif text[i] == closer:
+            depth -= 1
+            if depth == 0:
+                return i
+    raise ValueError(f"unterminated {opener!r} at offset {open_at}")
+
+
+def _first_top_level_comma(text: str) -> int | None:
+    """Find a comma outside nested (), [] and {} in clean Rust source."""
+    depths = {"(": 0, "[": 0, "{": 0}
+    closing = {")": "(", "]": "[", "}": "{"}
+    for i, ch in enumerate(text):
+        if ch in depths:
+            depths[ch] += 1
+        elif ch in closing:
+            depths[closing[ch]] -= 1
+        elif ch == "," and not any(depths.values()):
+            return i
+    return None
+
+
+def _top_level_segments(text: str) -> list[tuple[int, int]]:
+    """Split clean Rust source on commas outside (), [] and {}."""
+    stack: list[str] = []
+    pairs = {")": "(", "]": "[", "}": "{"}
+    start = 0
+    segments: list[tuple[int, int]] = []
+    for i, ch in enumerate(text):
+        if ch in "([{":
+            stack.append(ch)
+        elif ch in pairs:
+            if not stack or stack[-1] != pairs[ch]:
+                raise ValueError("unbalanced delimiters while splitting Rust inventory")
+            stack.pop()
+        elif ch == "," and not stack:
+            segments.append((start, i))
+            start = i + 1
+    if stack:
+        raise ValueError("unterminated delimiter while splitting Rust inventory")
+    segments.append((start, len(text)))
+    return segments
+
+
+def _blank_string_spans(clean: str) -> list[tuple[int, int]]:
+    """Offsets of quote-delimited literals after `strip_noise` blanked content."""
+    return [(m.start(), m.end()) for m in re.finditer(r'"[ \t\r\n]*"', clean)]
+
+
+def _ascii_registry_key(raw_literal: str, context: str) -> str:
+    """Decode the identifier-shaped registry keys this matrix can represent.
+
+    The surrounding expression must be one of the explicitly identity-preserving
+    String materializations accepted by `_identity_string_literal_span`.
+    Unsupported dynamic, transformed, or escaped keys fail instead of collapsing
+    to an empty source inventory.
+    """
+    match = re.fullmatch(r'"([A-Za-z][A-Za-z0-9_]*)"', raw_literal)
+    if match is None:
+        raise ValueError(
+            f"{context} has unsupported non-identifier key {raw_literal!r}"
+        )
+    return match.group(1)
+
+
+def _identity_string_literal_span(clean_expr: str, context: str) -> tuple[int, int]:
+    """Locate the literal in a statically identity-preserving String expression."""
+    literal = r'"[ \t\r\n]*"'
+    patterns = (
+        re.compile(
+            rf"^[ \t\r\n]*(?P<literal>{literal})[ \t\r\n]*\.[ \t\r\n]*"
+            r"(?:to_string|to_owned|into)[ \t\r\n]*\([ \t\r\n]*\)[ \t\r\n]*$"
+        ),
+        re.compile(
+            rf"^[ \t\r\n]*String[ \t\r\n]*::[ \t\r\n]*from[ \t\r\n]*"
+            rf"\([ \t\r\n]*(?P<literal>{literal})[ \t\r\n]*\)[ \t\r\n]*$"
+        ),
+    )
+    for pattern in patterns:
+        if match := pattern.fullmatch(clean_expr):
+            return match.start("literal"), match.end("literal")
+    raise ValueError(
+        f"{context} does not use a supported identity String materialization; "
+        "refusing to infer a runtime key from a transformed expression"
+    )
 
 
 def extract_fixed_rule_names() -> dict[str, int]:
@@ -340,44 +606,443 @@ def extract_fixed_rule_names() -> dict[str, int]:
     would notice.
     """
     text = FIXED_RULE_FILE.read_text(encoding="utf-8")
-    start, end = _block_span(text, re.compile(r"static DEFAULT_FIXED_RULES\b"))
-    body = text[start:end]
+    clean = EVIDENCE.strip_noise(text)
+    branches = _source_branches(FIXED_RULE_FILE)
+    start, end, owner_attrs = _block_span(
+        text,
+        re.compile(
+            EVIDENCE.RUST_TOKEN_START
+            + r"(?:pub\s*(?:\([^)]*\)\s*)?)?static\s+DEFAULT_FIXED_RULES"
+            + EVIDENCE.RUST_TOKEN_END
+        ),
+        branches,
+    )
+    constructors = list(
+        re.finditer(
+            EVIDENCE.RUST_TOKEN_START + r"BTreeMap\s*::\s*from\s*\(",
+            clean[start:end],
+        )
+    )
+    if len(constructors) != 1:
+        raise ValueError(
+            f"DEFAULT_FIXED_RULES has {len(constructors)} BTreeMap::from constructors; "
+            "the returned inventory owner is not unique"
+        )
+    constructor = constructors[0]
+    call_open = start + constructor.end() - 1
+    call_end = _matching_delimiter(clean, call_open, "(", ")")
+    if clean[call_end + 1 : end].strip():
+        raise ValueError(
+            "DEFAULT_FIXED_RULES BTreeMap::from is not the closure's tail expression; "
+            "refusing to derive a discarded inventory"
+        )
+    array_at = clean.find("[", start + constructor.end())
+    if array_at == -1 or array_at >= end:
+        raise ValueError("DEFAULT_FIXED_RULES BTreeMap::from has no array inventory")
+    array_end = _matching_delimiter(clean, array_at, "[", "]")
+    if (
+        clean[call_open + 1 : array_at].strip()
+        or clean[array_end + 1 : call_end].strip()
+    ):
+        raise ValueError(
+            "DEFAULT_FIXED_RULES BTreeMap::from argument is not one direct array inventory; "
+            "refusing to derive a nested or transformed argument"
+        )
+
+    # Parse every top-level array element as a `(key, value)` tuple.  This
+    # makes the key's structural position authoritative and avoids coupling
+    # capability discovery to whichever valid String conversion happens to
+    # spell the first tuple element today.
     out: dict[str, int] = {}
-    for m in re.finditer(r'"([A-Za-z][A-Za-z0-9_]*)"\.to_string\(\)', body):
-        out.setdefault(m.group(1), _line_of(text, start + m.start()))
+    pos = array_at + 1
+    while pos < array_end:
+        while pos < array_end and (clean[pos].isspace() or clean[pos] == ","):
+            pos += 1
+        consumed = _strip_leading_attributes(clean[pos:array_end])
+        if consumed:
+            pos += consumed
+            continue
+        if pos >= array_end:
+            break
+        if clean[pos] != "(":
+            raise ValueError(
+                "DEFAULT_FIXED_RULES contains a non-tuple inventory entry at "
+                f"line {_line_of(text, pos)}; source extraction would be incomplete"
+            )
+        tuple_end = _matching_delimiter(clean, pos, "(", ")")
+        entry_attrs = _item_attrs(text, clean, pos, array_at + 1)
+        if not _attrs_possible(branches, [*owner_attrs, *entry_attrs]):
+            pos = tuple_end + 1
+            continue
+        tuple_body = clean[pos + 1 : tuple_end]
+        comma = _first_top_level_comma(tuple_body)
+        if comma is None:
+            raise ValueError(
+                f"DEFAULT_FIXED_RULES tuple at line {_line_of(text, pos)} has no value"
+            )
+        key_clean = tuple_body[:comma]
+        context = f"DEFAULT_FIXED_RULES entry at line {_line_of(text, pos)}"
+        literal_start, literal_end = _identity_string_literal_span(key_clean, context)
+        absolute_start = pos + 1 + literal_start
+        absolute_end = pos + 1 + literal_end
+        key = _ascii_registry_key(
+            text[absolute_start:absolute_end],
+            context,
+        )
+        out.setdefault(key, _line_of(text, absolute_start))
+        pos = tuple_end + 1
     return out
 
 
 def extract_storage_methods() -> dict[str, int]:
     """Return {`Trait::method`: line} for the `Storage` and `StoreTx` traits."""
     text = STORAGE_FILE.read_text(encoding="utf-8")
+    clean = EVIDENCE.strip_noise(text)
+    branches = _source_branches(STORAGE_FILE)
     out: dict[str, int] = {}
     for trait in ("Storage", "StoreTx"):
-        start, end = _block_span(text, re.compile(rf"pub trait {trait}\b"))
-        for m in re.finditer(r"^\s{4}fn\s+([a-z_][A-Za-z0-9_]*)", text[start:end], re.MULTILINE):
-            out.setdefault(f"{trait}::{m.group(1)}", _line_of(text, start + m.start(1)))
+        start, end, owner_attrs = _block_span(
+            text,
+            re.compile(
+                rf"{EVIDENCE.RUST_TOKEN_START}pub trait {trait}{EVIDENCE.RUST_TOKEN_END}"
+            ),
+            branches,
+        )
+        body = clean[start + 1 : end]
+        method_re = re.compile(
+            r"(?<![A-Za-z0-9_])"
+            r"(?:(?:const|async|unsafe)\s+)*"
+            r'(?:extern\s+(?:"[^"]*"\s+)?)?'
+            r"fn\s+((?:r#)?[a-z_][A-Za-z0-9_]*)" + EVIDENCE.RUST_TOKEN_END
+        )
+        for m in method_re.finditer(body):
+            if _is_top_level(body, m.start()):
+                if m.group(1).startswith("r#"):
+                    raise ValueError(
+                        f"{trait} method uses unsupported raw identifier {m.group(1)!r}"
+                    )
+                signature_end = start + 1 + m.end()
+                method_body_open = EVIDENCE._function_body_open(clean, signature_end)
+                method_attrs = _item_attrs(
+                    text,
+                    clean,
+                    start + 1 + m.start(),
+                    start + 1,
+                )
+                if method_body_open is not None and method_body_open < end:
+                    method_attrs.extend(
+                        EVIDENCE.inner_attributes_after(text, clean, method_body_open)
+                    )
+                if not _attrs_possible(branches, [*owner_attrs, *method_attrs]):
+                    continue
+                out.setdefault(
+                    f"{trait}::{m.group(1)}",
+                    _line_of(text, start + 1 + m.start(1)),
+                )
     return out
 
 
-def _scan_dir(directory: Path, pattern: re.Pattern[str]) -> dict[str, str]:
-    """{captured name: 'relpath:line'} over every .rs file under `directory`."""
+def _reachable_module_branches(root: Path) -> dict[Path, list[tuple[str, ...]]]:
+    """Map reachable Rust module files to their possible inherited cfg attrs."""
+    if not root.is_file():
+        raise ValueError(f"module inventory root does not exist: {root}")
+    branches: dict[Path, list[tuple[str, ...]]] = {}
+    active: set[Path] = set()
+
+    def visit(
+        path: Path,
+        inherited: tuple[str, ...],
+        is_root: bool,
+        depth: int,
+    ) -> None:
+        path = path.resolve()
+        if depth > EVIDENCE.MAX_MODULE_DEPTH:
+            raise ValueError(f"module inventory exceeded depth cap at {path}")
+        if path in active:
+            raise ValueError(f"module inventory cycle reaches {path}")
+        raw = path.read_text(encoding="utf-8")
+        clean = EVIDENCE.strip_noise(raw)
+        effective = (*inherited, *EVIDENCE.leading_inner_attributes(raw, clean))
+        if not EVIDENCE.cfg_attrs_satisfiable(effective):
+            return
+        if effective in branches.setdefault(path, []):
+            return
+        branches[path].append(effective)
+        active.add(path)
+        module_re = re.compile(
+            EVIDENCE.RUST_TOKEN_START
+            + r"(?:pub\s*(?:\([^)]*\)\s*)?)?"
+            + r"mod\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
+            + EVIDENCE.RUST_TOKEN_END
+            + r"\s*;"
+        )
+        for declaration in _top_level_matches(clean, module_re):
+            attrs = EVIDENCE.preceding_outer_attributes(
+                raw,
+                clean,
+                declaration.start(),
+            )
+            child_effective = (*effective, *attrs)
+            if not EVIDENCE.cfg_attrs_satisfiable(child_effective):
+                continue
+            try:
+                path_attr = EVIDENCE._path_attr(attrs)
+            except ValueError as error:
+                raise ValueError(
+                    f"module path at {path}:{_line_of(raw, declaration.start())} "
+                    f"is unresolved: {error}"
+                ) from error
+            base = EVIDENCE._module_dir(path, is_root)
+            child = EVIDENCE._resolve_mod_file(
+                base, declaration.group("name"), path_attr
+            )
+            if child is None:
+                raise ValueError(
+                    f"module {declaration.group('name')} at "
+                    f"{path}:{_line_of(raw, declaration.start())} resolves to no file"
+                )
+            visit(child, child_effective, False, depth + 1)
+        active.remove(path)
+
+    visit(root, (), True, 0)
+    return branches
+
+
+@lru_cache(maxsize=1)
+def _crate_module_branches() -> dict[Path, list[tuple[str, ...]]]:
+    return _reachable_module_branches(LIB_FILE)
+
+
+def _source_branches(path: Path) -> list[tuple[str, ...]]:
+    resolved = path.resolve()
+    if not resolved.is_relative_to(KRITES_SRC.resolve()):
+        return [()]
+    branches = _crate_module_branches().get(resolved)
+    if not branches:
+        raise ValueError(
+            f"source inventory owner {path.relative_to(REPO_ROOT)} is unreachable from "
+            f"{LIB_FILE.relative_to(REPO_ROOT)}"
+        )
+    return branches
+
+
+def _scan_macro_items(directory: Path, macro_name: str) -> dict[str, str]:
+    """Return module-item macro capabilities, rejecting nested invocations.
+
+    The population contract is the set of declaration macros at a source
+    file's module-item level.  Counting the token inside a function or another
+    macro (for example `stringify!(define_op!(...))`) invents capabilities;
+    ignoring that shape could hide a moved declaration.  Both therefore fail
+    closed.
+    """
     out: dict[str, str] = {}
-    for path in sorted(directory.rglob("*.rs")):
+    invocation = re.compile(
+        rf"{EVIDENCE.RUST_TOKEN_START}(?:r#)?{re.escape(macro_name)}\s*!\s*"
+        r"(?P<open>[([{])"
+    )
+    resolved_dir = directory.resolve()
+    if resolved_dir.is_relative_to(KRITES_SRC.resolve()):
+        module_root = (resolved_dir / "mod.rs").resolve()
+        inherited = _source_branches(module_root)
+        local = _reachable_module_branches(module_root)
+        branches = {
+            path: [
+                (*ancestor, *descendant)
+                for ancestor in inherited
+                for descendant in descendant_branches
+                if EVIDENCE.cfg_attrs_satisfiable([*ancestor, *descendant])
+            ]
+            for path, descendant_branches in local.items()
+        }
+    else:
+        branches = _reachable_module_branches(directory / "mod.rs")
+    reachable = set(branches)
+    for orphan in sorted(set(directory.rglob("*.rs")) - reachable):
+        orphan_clean = EVIDENCE.strip_noise(orphan.read_text(encoding="utf-8"))
+        if invocation.search(orphan_clean):
+            raise ValueError(
+                f"{macro_name}! appears in unreachable module file "
+                f"{orphan.relative_to(REPO_ROOT)}"
+            )
+    for path in sorted(reachable):
         text = path.read_text(encoding="utf-8")
+        clean = EVIDENCE.strip_noise(text)
         rel = path.relative_to(REPO_ROOT)
-        for m in pattern.finditer(text):
-            out.setdefault(m.group(1), f"{rel}:{_line_of(text, m.start(1))}")
+        for match in invocation.finditer(clean):
+            if re.search(r"::\s*$", clean[: match.start()]):
+                raise ValueError(
+                    f"path-qualified {macro_name}! at "
+                    f"{rel}:{_line_of(text, match.start())} is unsupported; "
+                    "refusing to detach declaration attributes from the macro owner"
+                )
+            attrs = EVIDENCE.preceding_outer_attributes(text, clean, match.start())
+            if not any(
+                EVIDENCE.cfg_attrs_satisfiable([*branch, *attrs])
+                for branch in branches[path]
+            ):
+                continue
+            if not _is_top_level(clean, match.start()):
+                raise ValueError(
+                    f"{macro_name}! at {rel}:{_line_of(text, match.start())} is nested; "
+                    "the capability-set scanner only accepts module-item declarations"
+                )
+            first_arg = re.match(
+                r"\s*(?P<name>[A-Z][A-Z0-9_]*)" + EVIDENCE.RUST_TOKEN_END,
+                clean[match.end() :],
+            )
+            if first_arg is None:
+                raise ValueError(
+                    f"{macro_name}! at {rel}:{_line_of(text, match.start())} does not "
+                    "start with an uppercase capability identifier"
+                )
+            name_start = match.end() + first_arg.start("name")
+            out.setdefault(
+                first_arg.group("name"),
+                f"{rel}:{_line_of(text, name_start)}",
+            )
     return out
 
 
 def _match_arm_keys(file_path: Path, fn_name: str) -> dict[str, str]:
     """{literal match-arm key: 'relpath:line'} inside `fn_name`'s body."""
     text = file_path.read_text(encoding="utf-8")
-    start, end = _block_span(text, re.compile(rf"fn {re.escape(fn_name)}\b"))
+    clean = EVIDENCE.strip_noise(text)
+    branches = _source_branches(file_path)
+    start, end, owner_attrs = _block_span(
+        text,
+        re.compile(
+            EVIDENCE.RUST_TOKEN_START
+            + r"(?:pub\s*(?:\([^)]*\)\s*)?)?"
+            + r"(?:(?:const|async|unsafe)\s+)*"
+            + r'(?:extern\s+(?:"[^"]*"\s+)?)?'
+            + rf"fn\s+{re.escape(fn_name)}"
+            + EVIDENCE.RUST_TOKEN_END
+        ),
+        branches,
+        function_body=True,
+    )
     rel = file_path.relative_to(REPO_ROOT)
+    match_headers = list(
+        re.finditer(
+            EVIDENCE.RUST_TOKEN_START + r"Some\s*\(\s*match\s+name\s*\{",
+            clean[start:end],
+        )
+    )
+    if len(match_headers) != 1:
+        raise ValueError(
+            f"{fn_name} has {len(match_headers)} `Some(match name {{...}})` registries; "
+            "the capability owner is not unique"
+        )
+    match_header = match_headers[0]
+    match_header_start = start + match_header.start()
+    if clean[start + 1 : match_header_start].strip():
+        raise ValueError(
+            f"{fn_name}'s capability registry is not the function's returned tail expression"
+        )
+    match_open = start + match_header.end() - 1
+    match_end = _matching_delimiter(clean, match_open, "{", "}")
+    some_open = clean.find("(", match_header_start, match_open)
+    some_end = _matching_delimiter(clean, some_open, "(", ")")
+    if some_end < match_end or clean[some_end + 1 : end].strip():
+        raise ValueError(
+            f"{fn_name}'s capability registry is not the function's returned tail expression"
+        )
+    arm_clean = clean[match_open + 1 : match_end]
+
     out: dict[str, str] = {}
-    for m in re.finditer(r'^\s*"([^"]+)"\s*=>', text[start:end], re.MULTILINE):
-        out.setdefault(m.group(1), f"{rel}:{_line_of(text, start + m.start(1))}")
+    # Split on top-level arm commas/arrows with a full delimiter stack.  Regex
+    # over the whole match body sees nested match arms in RHS expressions and
+    # can promote a decoy to a real DSL key.
+    stack: list[str] = []
+    pairs = {")": "(", "]": "[", "}": "{"}
+    arm_start = 0
+    arrow: int | None = None
+    lhs_spans: list[tuple[int, int]] = []
+    i = 0
+    while i < len(arm_clean):
+        ch = arm_clean[i]
+        if ch in "([{":
+            stack.append(ch)
+        elif ch in pairs:
+            if not stack or stack[-1] != pairs[ch]:
+                raise ValueError(f"unbalanced delimiters in {fn_name}'s match registry")
+            stack.pop()
+        elif not stack and arm_clean[i : i + 2] == "=>":
+            if arrow is not None:
+                raise ValueError(
+                    f"{fn_name} has a block arm without a separating comma; "
+                    "the capability extractor does not guess its next pattern"
+                )
+            arrow = i
+            i += 1
+        elif not stack and ch == "," and arrow is not None:
+            lhs_spans.append((arm_start, arrow))
+            arm_start = i + 1
+            arrow = None
+        i += 1
+    if stack:
+        raise ValueError(f"unterminated delimiter in {fn_name}'s match registry")
+    if arrow is not None:
+        lhs_spans.append((arm_start, arrow))
+    elif arm_clean[arm_start:].strip():
+        raise ValueError(
+            f"{fn_name} has a trailing match fragment with no top-level arm"
+        )
+
+    literal_arm = re.compile(
+        r"^[ \t\r\n]*(?:\|[ \t\r\n]*)?"
+        r'(?P<alts>"[ \t\r\n]*"(?:[ \t\r\n]*\|[ \t\r\n]*"[ \t\r\n]*")*)'
+        r"[ \t\r\n]*$"
+    )
+    for lhs_start, lhs_end in lhs_spans:
+        lhs = arm_clean[lhs_start:lhs_end]
+        stripped_at = 0
+        while True:
+            stripped_at += len(lhs[stripped_at:]) - len(lhs[stripped_at:].lstrip())
+            consumed = _strip_leading_attributes(lhs[stripped_at:])
+            if not consumed:
+                break
+            stripped_at += consumed
+        arm_attrs = _item_attrs(
+            text,
+            clean,
+            match_open + 1 + lhs_start + stripped_at,
+            match_open + 1 + lhs_start,
+        )
+        if not _attrs_possible(branches, [*owner_attrs, *arm_attrs]):
+            continue
+        pattern_text = lhs[stripped_at:]
+        if pattern_text.strip() == "_":
+            continue
+        arm = literal_arm.fullmatch(pattern_text)
+        if arm is None:
+            line = _line_of(text, match_open + 1 + lhs_start)
+            raise ValueError(
+                f"{fn_name} arm at line {line} is not a literal/OR pattern; "
+                "capability extraction would be incomplete"
+            )
+        for literal_start, literal_end in _blank_string_spans(arm.group("alts")):
+            absolute_start = (
+                match_open
+                + 1
+                + lhs_start
+                + stripped_at
+                + arm.start("alts")
+                + literal_start
+            )
+            absolute_end = (
+                match_open
+                + 1
+                + lhs_start
+                + stripped_at
+                + arm.start("alts")
+                + literal_end
+            )
+            key = _ascii_registry_key(
+                text[absolute_start:absolute_end],
+                f"{fn_name} arm at line {_line_of(text, absolute_start)}",
+            )
+            out.setdefault(key, f"{rel}:{_line_of(text, absolute_start)}")
     return out
 
 
@@ -392,7 +1057,7 @@ def _match_arm_keys(file_path: Path, fn_name: str) -> dict[str, str]:
 CAPABILITY_SET_SOURCES: dict[str, tuple[str, object]] = {
     "scalar-functions": (
         "crates/krites/src/data/functions/**  `define_op!(NAME, ...)`",
-        lambda: _scan_dir(FUNCTIONS_DIR, re.compile(r"define_op!\(\s*([A-Z][A-Z0-9_]*)")),
+        lambda: _scan_macro_items(FUNCTIONS_DIR, "define_op"),
     ),
     "scalar-function-dsl-names": (
         "crates/krites/src/data/expr/op.rs  `get_op` match arms",
@@ -400,7 +1065,7 @@ CAPABILITY_SET_SOURCES: dict[str, tuple[str, object]] = {
     ),
     "aggregations": (
         "crates/krites/src/data/aggr/**  `define_aggr!(NAME, ...)`",
-        lambda: _scan_dir(AGGR_DIR, re.compile(r"define_aggr!\(\s*([A-Z][A-Z0-9_]*)")),
+        lambda: _scan_macro_items(AGGR_DIR, "define_aggr"),
     ),
     "aggregation-dsl-names": (
         "crates/krites/src/data/aggr/mod.rs  `parse_aggr` match arms",
@@ -425,6 +1090,28 @@ def item_tokens(item_text: str) -> set[str]:
     return tokens
 
 
+def matrix_item_members(item_text: str) -> set[str]:
+    """Return the source capabilities a row's structured `item` names.
+
+    A scoped item (`Db::run`) owns its final segment.  Rows that name a
+    container followed by a parenthesized member list own the members, not the
+    container (`MultiTransaction (transact, commit, abort)`).  This keeps the
+    human-facing item as the visible expression of the mapping while the
+    independent `PUBLIC_API_SOURCE_BUNDLES` contract pins deliberate many-to-one
+    rows exactly.
+    """
+    parenthesized = re.fullmatch(
+        r"(?P<owner>[A-Za-z_][A-Za-z0-9_:]*)\s*\((?P<members>.*)\)", item_text.strip()
+    )
+    if parenthesized:
+        owner = parenthesized.group("owner")
+        return {
+            f"{owner}::{token.rsplit('::', 1)[-1]}"
+            for token in IDENT_RE.findall(parenthesized.group("members"))
+        }
+    return set(IDENT_RE.findall(item_text))
+
+
 def load_matrix() -> list[dict]:
     with MATRIX_FILE.open("rb") as fh:
         data = tomllib.load(fh)
@@ -442,32 +1129,69 @@ def check_category(
     source_items: dict[str, int],
     rows: list[dict],
     source_label: str,
+    *,
+    allowed_bundles: dict[str, frozenset[str]] | None = None,
 ) -> list[str]:
     errors: list[str] = []
     cat_rows = [r for r in rows if r.get("category") == category]
-
-    all_tokens: set[str] = set()
-    row_tokens: list[tuple[dict, set[str]]] = []
+    source_names = set(source_items)
+    bundle_contract = allowed_bundles or {}
+    source_to_rows: dict[str, list[str]] = {name: [] for name in source_names}
+    row_matches: list[tuple[dict, set[str]]] = []
     for row in cat_rows:
-        toks = item_tokens(row.get("item", ""))
-        row_tokens.append((row, toks))
-        all_tokens |= toks
+        row_id = row.get("id", "<no id>")
+        declared = matrix_item_members(row.get("item", ""))
+        expected_bundle = bundle_contract.get(row_id)
+        if expected_bundle is not None:
+            if declared != set(expected_bundle):
+                errors.append(
+                    f"BUNDLE DRIFT [{category}] matrix row '{row_id}' names "
+                    f"{sorted(declared)}, but its independent bundle contract is "
+                    f"{sorted(expected_bundle)}"
+                )
+        elif len(declared) > 1:
+            errors.append(
+                f"OVERBROAD [{category}] matrix row '{row_id}' names multiple source "
+                f"capabilities {sorted(declared)} without an approved bundle contract"
+            )
 
-    unmapped = sorted(name for name in source_items if name not in all_tokens)
+        missing_recorded = sorted(declared - source_names)
+        for name in missing_recorded:
+            errors.append(
+                f"MISSING [{category}] matrix row '{row_id}' records source member {name!r}, "
+                f"but it does not exist in the current {source_label} inventory"
+            )
+
+        matches = declared & source_names
+        row_matches.append((row, matches))
+        for name in matches:
+            source_to_rows[name].append(row_id)
+
+    unmapped = sorted(name for name, owners in source_to_rows.items() if not owners)
     for name in unmapped:
         errors.append(
             f"UNMAPPED [{category}] {name} ({source_label}:{source_items[name]}) "
             f"has no row in {MATRIX_FILE.relative_to(REPO_ROOT)}"
         )
 
-    stale = []
-    for row, toks in row_tokens:
-        if not toks & set(source_items):
-            stale.append(row.get("id", "<no id>"))
-    for row_id in sorted(stale):
+    for row, matches in row_matches:
+        row_id = row.get("id", "<no id>")
+        if not matches:
+            errors.append(
+                f"STALE [{category}] matrix row '{row_id}' matches no current "
+                f"{source_label} item -- source drifted or the row is fabricated"
+            )
+    for name, owners in sorted(source_to_rows.items()):
+        if len(owners) > 1:
+            errors.append(
+                f"MULTIMAPPED [{category}] {name} is claimed by rows {sorted(owners)} -- "
+                "each source capability must have exactly one matrix owner"
+            )
+
+    row_ids = {row.get("id") for row in cat_rows}
+    for row_id in sorted(set(bundle_contract) - row_ids):
         errors.append(
-            f"STALE [{category}] matrix row '{row_id}' matches no current "
-            f"{source_label} item -- source drifted or the row is fabricated"
+            f"MISSING BUNDLE [{category}] approved bundled row '{row_id}' is absent from the matrix"
         )
 
     return errors
@@ -496,7 +1220,9 @@ def check_appendix_a(rows: list[dict]) -> list[str]:
         seen_ids.add(row_id)
         for field in ("item", "source", "dest_wave", "gate"):
             if not row.get(field):
-                errors.append(f"appendix_a row '{row_id}' missing required field '{field}'")
+                errors.append(
+                    f"appendix_a row '{row_id}' missing required field '{field}'"
+                )
 
     return errors
 
@@ -527,7 +1253,9 @@ def check_capability_sets(sets: list[dict]) -> list[str]:
             continue
         for field in ("source", "dest_wave", "gate"):
             if not entry.get(field):
-                errors.append(f"capability_set '{set_id}' missing required field '{field}'")
+                errors.append(
+                    f"capability_set '{set_id}' missing required field '{field}'"
+                )
         members = entry.get("members")
         if not isinstance(members, list) or not members:
             errors.append(f"capability_set '{set_id}' has no 'members' list")
@@ -547,7 +1275,7 @@ def check_capability_sets(sets: list[dict]) -> list[str]:
         for name in unrecorded:
             errors.append(
                 f"UNRECORDED [capability_set {set_id}] '{name}' ({derived[name]}) exists in "
-                f"source but is not in the set's members -- add it, so the set stays the "
+                "source but is not in the set's members -- add it, so the set stays the "
                 "complete enumeration it claims to be"
             )
     missing_sets = sorted(set(CAPABILITY_SET_SOURCES) - seen)
@@ -561,63 +1289,64 @@ def check_capability_sets(sets: list[dict]) -> list[str]:
 
 
 GATE_TEST_UNPOINTED = {"", "none"}
+GATE_TEST_ID_RE = re.compile(r"^[^:\s]+(?:::[^:\s]+)+$")
 
 
-def check_gate_tests(rows: list[dict]) -> tuple[list[str], list[str], int, int]:
-    """Resolve every `gate_test` against the crate's source-derived test index.
+def check_gate_tests(
+    rows: list[dict],
+    *,
+    nextest_tests: Mapping[str, bool] | None = None,
+) -> tuple[list[str], list[str], int, int]:
+    """Validate `gate_test` fields, using nextest as the optional authority.
 
-    Returns (errors, notes, pointed, unpointed). A pointer must name a test the
-    index contains and that is not `#[ignore]`d; anything else is a pointer to
-    nothing, which is the failure mode this field exists to end.
+    Returns (errors, notes, pointed, unpointed). Without ``nextest_tests`` this
+    check can establish only that a row records a well-shaped pointer. When a
+    machine-readable ``cargo nextest list`` is supplied, the mapping is the
+    authority for existence and ignored state. An explicitly empty mapping is
+    therefore different from no mapping: it rejects every recorded pointer.
     """
     errors: list[str] = []
     notes: list[str] = []
-    index, unresolved = KTI.build_index(KRITES_DIR, REPO_ROOT)
-    for problem in unresolved:
-        errors.append(
-            f"test index could not resolve a module -- gate_test resolution would be "
-            f"incomplete and would report real tests as missing: {problem}"
-        )
 
     pointed = 0
     unpointed = 0
     for row in rows:
         row_id = row.get("id", "<no id>")
         value = row.get("gate_test")
-        if value is None or (isinstance(value, str) and value.strip().lower() in GATE_TEST_UNPOINTED):
+        if value is None or (
+            isinstance(value, str) and value.strip().lower() in GATE_TEST_UNPOINTED
+        ):
             unpointed += 1
             continue
         if not isinstance(value, str):
             errors.append(f"row '{row_id}': gate_test must be a string, got {value!r}")
             unpointed += 1
             continue
-        case = index.get(value)
-        if case is None:
+        if GATE_TEST_ID_RE.fullmatch(value) is None:
             errors.append(
-                f"row '{row_id}': gate_test '{value}' names no test in crates/krites. "
-                "Expected a `<binary-id>::<test path>` id as listed by "
-                "`cargo nextest list -p krites` (or scripts/krites_test_index.py). "
-                "Use \"none\" rather than a pointer that resolves to nothing"
+                f"row '{row_id}': gate_test '{value}' is not a `<binary-id>::<test path>` id"
             )
             unpointed += 1
             continue
-        if case.ignored:
+        if nextest_tests is None:
+            pointed += 1
+            continue
+        ignored = nextest_tests.get(value)
+        if ignored is None:
             errors.append(
-                f"row '{row_id}': gate_test '{value}' ({case.file}:{case.line}) is "
-                "#[ignore]d, so it never runs and cannot gate anything"
+                f"row '{row_id}': gate_test '{value}' names no test in the supplied "
+                "`cargo nextest list` result. "
+                'Use "none" rather than a pointer that resolves to nothing'
             )
             unpointed += 1
             continue
-        # WHY only feature-shaped guards: `cfg(test)` is on every unit test by
-        # construction and carries no information. A `feature = ` / `not(...)`
-        # guard does: the test runs only in a build that selects that arm, so
-        # the pointer gates less than it appears to.
-        conditional = [g for g in case.cfg_guards if "feature" in g or "not(" in g]
-        if conditional:
-            notes.append(
-                f"row '{row_id}': gate_test '{value}' sits under {conditional} -- "
-                "it runs only in a build that selects those cfgs"
+        if ignored:
+            errors.append(
+                f"row '{row_id}': gate_test '{value}' is #[ignore]d in the supplied "
+                "nextest result, so it never runs and cannot gate anything"
             )
+            unpointed += 1
+            continue
         pointed += 1
     return errors, notes, pointed, unpointed
 
@@ -662,7 +1391,9 @@ def check_all_rows_well_formed(rows: list[dict]) -> list[str]:
 # recognized reason is a checker failure, not a silent pass.
 CALL_SITES_NOT_MEASURED = -1
 NOT_MEASURED_PREFIXES = ("not measured:", "not separately measured:")
-_COVERED_UNDER_RE = re.compile(r"^covered under ([a-z0-9-]+); not separately re-measured$")
+_COVERED_UNDER_RE = re.compile(
+    r"^covered under ([a-z0-9-]+); not separately re-measured$"
+)
 
 # WHY: the one row (`sysop-remove-index`) whose call_sites_method aggregates
 # several sub-greps in prose rather than being one literal command:
@@ -745,7 +1476,9 @@ def check_call_sites_measured(rows: list[dict]) -> list[str]:
         method = row.get("call_sites_method", "")
 
         if not isinstance(call_sites, int) or isinstance(call_sites, bool):
-            errors.append(f"row '{row_id}': call_sites must be an integer, got {call_sites!r}")
+            errors.append(
+                f"row '{row_id}': call_sites must be an integer, got {call_sites!r}"
+            )
             continue
 
         if call_sites == CALL_SITES_NOT_MEASURED:
@@ -816,7 +1549,7 @@ def check_call_sites_measured(rows: list[dict]) -> list[str]:
             errors.append(
                 f"row '{row_id}': call_sites = {call_sites} is a FLOOR but "
                 f"call_sites_method measures only {measured_count} -- a consumer "
-                f"disappeared; re-verify the capability is still reachable before "
+                "disappeared; re-verify the capability is still reachable before "
                 f"lowering the figure -- `{runnable}`"
             )
 
@@ -844,7 +1577,9 @@ def check_file_line_refs(rows: list[dict]) -> list[str]:
     capability.
     """
     errors: list[str] = []
-    file_cache: dict[str, list[str] | None] = {}
+    file_cache: dict[str, tuple[list[str], list[str]] | None] = {}
+    repo_root = REPO_ROOT.resolve()
+    fixed_rule_sources: dict[str, int] | None = None
     for row in rows:
         if row.get("category") not in _CITED_CATEGORIES:
             continue
@@ -863,28 +1598,72 @@ def check_file_line_refs(rows: list[dict]) -> list[str]:
                 continue
             rel_path, line_list = m.group(1), m.group(2)
             if rel_path not in file_cache:
-                path = REPO_ROOT / rel_path
-                file_cache[rel_path] = (
-                    path.read_text(encoding="utf-8").splitlines() if path.is_file() else None
+                rel = PurePosixPath(rel_path)
+                if any(part in {".", ".."} for part in rel.parts):
+                    errors.append(
+                        f"row '{row_id}': {field} path {rel_path!r} is not lexically contained "
+                        "under the repository"
+                    )
+                    file_cache[rel_path] = None
+                else:
+                    path = (repo_root / Path(*rel.parts)).resolve()
+                    try:
+                        path.relative_to(repo_root)
+                    except ValueError:
+                        errors.append(
+                            f"row '{row_id}': {field} path {rel_path!r} resolves outside "
+                            "the repository"
+                        )
+                        file_cache[rel_path] = None
+                    else:
+                        if path.is_file():
+                            raw_text = path.read_text(encoding="utf-8")
+                            raw_lines = raw_text.splitlines()
+                            code_lines = (
+                                EVIDENCE.strip_noise(raw_text).splitlines()
+                                if path.suffix == ".rs"
+                                else raw_lines
+                            )
+                            file_cache[rel_path] = (raw_lines, code_lines)
+                        else:
+                            file_cache[rel_path] = None
+            cached = file_cache[rel_path]
+            if cached is None:
+                errors.append(
+                    f"row '{row_id}': {field} references missing file {rel_path}"
                 )
-            lines = file_cache[rel_path]
-            if lines is None:
-                errors.append(f"row '{row_id}': {field} references missing file {rel_path}")
                 continue
+            raw_lines, code_lines = cached
             for line_str in line_list.split(","):
                 line_no = int(line_str)
-                if not 1 <= line_no <= len(lines):
+                if not 1 <= line_no <= len(raw_lines):
                     errors.append(
                         f"row '{row_id}': {field} line {line_no} out of range "
-                        f"for {rel_path} ({len(lines)} lines)"
+                        f"for {rel_path} ({len(raw_lines)} lines)"
                     )
                     continue
-                cited = lines[line_no - 1]
-                if not any(re.search(rf"\b{re.escape(tok)}", cited) for tok in tokens):
+                raw_cited = raw_lines[line_no - 1]
+                if row.get("category") == "fixed_rule" and field == "source":
+                    if fixed_rule_sources is None:
+                        fixed_rule_sources = extract_fixed_rule_names()
+                    fixed_rel = str(FIXED_RULE_FILE.relative_to(REPO_ROOT))
+                    anchored = rel_path == fixed_rel and any(
+                        fixed_rule_sources.get(token) == line_no for token in tokens
+                    )
+                else:
+                    cited = code_lines[line_no - 1]
+                    anchored = any(
+                        re.search(
+                            rf"{EVIDENCE.RUST_TOKEN_START}{re.escape(tok)}{EVIDENCE.RUST_TOKEN_END}",
+                            cited,
+                        )
+                        for tok in tokens
+                    )
+                if not anchored:
                     errors.append(
                         f"row '{row_id}': {field} {rel_path}:{line_no} names none of the "
                         f"row's item tokens {sorted(tokens)} -- the cited line reads "
-                        f"{cited.strip()!r}; source moved and the citation did not"
+                        f"{raw_cited.strip()!r}; source moved and the citation did not"
                     )
     return errors
 
@@ -896,7 +1675,9 @@ def live_plan_diff(plan_md: Path, rows: list[dict]) -> list[str]:
         return [f"--plan-md {plan_md} does not exist -- skipping live diff"]
 
     text = plan_md.read_text(encoding="utf-8")
-    m = re.search(r"^## Appendix A.*?\n(.*?)^## Appendix B", text, re.DOTALL | re.MULTILINE)
+    m = re.search(
+        r"^## Appendix A.*?\n(.*?)^## Appendix B", text, re.DOTALL | re.MULTILINE
+    )
     if not m:
         return ["could not locate '## Appendix A' ... '## Appendix B' span in PLAN.md"]
 
@@ -955,11 +1736,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--nextest-list",
-        type=Path,
+        type=argparse.FileType("r", encoding="utf-8"),
         default=None,
+        metavar="LIST_JSON",
         help=(
-            "optional `cargo nextest list --message-format json` dump; cross-checks the "
-            "source-derived test index against a real build's test list"
+            "optional `cargo nextest list --message-format json` dump; when supplied, "
+            "it is the authority for gate_test existence and ignored state"
         ),
     )
     args = parser.parse_args()
@@ -969,35 +1751,43 @@ def main() -> int:
 
     errors: list[str] = []
     errors += check_all_rows_well_formed(rows)
-    errors += check_category("sysop", extract_sysop_variants(), rows, "parse/sys/mod.rs")
-    errors += check_category("datavalue", extract_datavalue_variants(), rows, "data/value.rs")
-    errors += check_category("public_api", extract_lib_public_api(), rows, "lib.rs")
-    errors += check_category("fixed_rule", extract_fixed_rule_names(), rows, "fixed_rule/mod.rs")
-    errors += check_category("storage_method", extract_storage_methods(), rows, "storage/mod.rs")
+    errors += check_category(
+        "sysop", extract_sysop_variants(), rows, "parse/sys/mod.rs"
+    )
+    errors += check_category(
+        "datavalue", extract_datavalue_variants(), rows, "data/value.rs"
+    )
+    errors += check_category(
+        "public_api",
+        extract_lib_public_api(),
+        rows,
+        "lib.rs",
+        allowed_bundles=PUBLIC_API_SOURCE_BUNDLES,
+    )
+    errors += check_category(
+        "fixed_rule", extract_fixed_rule_names(), rows, "fixed_rule/mod.rs"
+    )
+    errors += check_category(
+        "storage_method", extract_storage_methods(), rows, "storage/mod.rs"
+    )
     errors += check_appendix_a(rows)
     errors += check_capability_sets(sets)
     errors += check_call_sites_measured(rows)
     errors += check_file_line_refs(rows)
-    gate_errors, gate_notes, pointed, unpointed = check_gate_tests(rows)
+    nextest_tests = (
+        EVIDENCE.load_nextest_list(args.nextest_list)
+        if args.nextest_list is not None
+        else None
+    )
+    gate_errors, gate_notes, pointed, unpointed = check_gate_tests(
+        rows,
+        nextest_tests=nextest_tests,
+    )
     errors += gate_errors
 
     if args.plan_md is not None:
         for warning in live_plan_diff(args.plan_md, rows):
             print(f"warning: {warning}", file=sys.stderr)
-
-    if args.nextest_list is not None:
-        index, _ = KTI.build_index(KRITES_DIR, REPO_ROOT)
-        delta = KTI.cross_validate(index, KTI.load_nextest_list(args.nextest_list))
-        for key, values in delta.items():
-            print(f"nextest cross-check {key}: {len(values)}", file=sys.stderr)
-            for value in values:
-                print(f"    {value}", file=sys.stderr)
-        if delta["only_in_nextest"] or delta["ignored_disagrees"]:
-            errors.append(
-                "the source-derived test index disagrees with the supplied nextest listing "
-                "in the direction that matters: a real test the index cannot see would make "
-                "a correct gate_test read as missing"
-            )
 
     for note in gate_notes:
         print(f"note: {note}", file=sys.stderr)
@@ -1007,7 +1797,7 @@ def main() -> int:
         for error in errors:
             print(f"  - {error}", file=sys.stderr)
         print(
-            f"\nFix by adding/removing a row in "
+            "\nFix by adding/removing a row in "
             f"{MATRIX_FILE.relative_to(REPO_ROOT)} with a named destination "
             "wave and gate -- an unmapped capability is never dropped "
             "silently (PLAN.md kill criterion 10).",
@@ -1027,12 +1817,17 @@ def main() -> int:
         f"{n_appendix_a} Appendix A rows -- all mapped, no stale rows; "
         f"{len(sets)} capability sets covering {set_members} members re-derived exactly."
     )
-    print(
-        f"gate_test pointers: {pointed} of {len(rows)} rows resolve to an existing, "
-        f"non-ignored test; {unpointed} are unpointed. Resolution is existence + "
-        "runnability against a source-derived index -- this job has no cargo, so no "
-        "pointer here is evidence that its test PASSED."
-    )
+    if nextest_tests is None:
+        print(
+            f"gate_test declarations: {pointed} of {len(rows)} rows carry a syntactically "
+            f"valid pointer; {unpointed} are unpointed. Existence and ignored state are "
+            "deliberately not claimed without --nextest-list."
+        )
+    else:
+        print(
+            f"gate_test pointers: {pointed} of {len(rows)} rows resolve to an existing, "
+            f"non-ignored test in the supplied nextest result; {unpointed} are unpointed."
+        )
     return 0
 
 

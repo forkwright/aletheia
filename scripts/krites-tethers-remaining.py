@@ -76,13 +76,13 @@ Lines:
      main() runs that check before loading anything below, so this script
      never reaches a total without it having already passed.
   4. CAPABILITY_MATRIX.toml capabilities with no gate_test pointer -- a row
-     whose disappearance no test would report. `gate_test` names the test as
-     a `<binary-id>::<test path>` id; check-krites-capability-matrix.py
-     resolves every pointer against a source-derived index of the crate's
-     tests and FAILS on one that names no test or names an `#[ignore]`d one,
-     so this line counts pointers that were verified to resolve, not strings
-     that were typed. `"none"` and an absent field both count as unpointed:
-     the honest state of a capability nothing gates. Checked first against
+     with no recorded candidate for disappearance detection. `gate_test`
+     names the candidate as a `<binary-id>::<test path>` id; this no-cargo
+     inventory can validate only that shape. The required hosted gate
+     separately resolves every recorded pointer against compiler-derived
+     `cargo nextest list` output and executes that same feature world.
+     `"none"` and an absent field both count as unpointed: the honest state
+     of a capability with no recorded candidate. Checked first against
      the matrix's OWN source-derived categories -- reusing
      check-krites-capability-matrix.py's extract_sysop_variants /
      extract_datavalue_variants / extract_lib_public_api /
@@ -91,12 +91,12 @@ Lines:
      of that mapping -- so a row deleted to shrink this count is caught the
      same way a deleted ledger row is caught in line 1.
 
-     WARNING: a resolving pointer proves the capability cannot be deleted
-     without a test disappearing or failing. It does NOT prove the row's
-     `gate` sentence is asserted anywhere, and it does not prove the test
-     passed -- the CI job that resolves these has no cargo. Reaching 0 on
-     this line means every capability has a disappearance detector, not that
-     every capability is verified.
+     WARNING: a pointer resolved by the required hosted nextest check proves
+     the capability cannot be deleted without a test disappearing or failing,
+     and that job executes the same feature world. It does NOT prove the row's
+     `gate` sentence is asserted by that test. Reaching 0 on this line means
+     every capability records a disappearance-detector candidate, not that
+     every capability is semantically verified.
   5. GitHub issues, from a tracked set, labelled as compromising the
      provenance mechanism itself rather than a single file's measurement.
      No GitHub label captures exactly this set (checked live, every run --
@@ -140,7 +140,7 @@ from typing import NoReturn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from krites_provenance_lib import (  # noqa: E402
+from krites_provenance_lib import (
     KRITES_DIR,
     LEDGER_PATH,
     NOTICE_PATH,
@@ -199,11 +199,15 @@ def _load_sibling_module(path: Path, name: str) -> ModuleType:
     # traceback, which is the failure this guard exists to prevent -- a checker
     # that dies untidily reads as broken tooling rather than as a refusal.
     except Exception as exc:  # noqa: BLE001
-        refuse(f"could not load {path} for reuse -- its checks cannot be applied: {exc}")
+        refuse(
+            f"could not load {path} for reuse -- its checks cannot be applied: {exc}"
+        )
     return module
 
 
-_capmatrix = _load_sibling_module(SIBLING_CAPABILITY_CHECK, "krites_capability_matrix_check")
+_capmatrix = _load_sibling_module(
+    SIBLING_CAPABILITY_CHECK, "krites_capability_matrix_check"
+)
 
 # INVARIANT: the only legal way a member leaves this tuple is a live GitHub
 # query confirming it CLOSED with stateReason COMPLETED (checked below,
@@ -302,10 +306,12 @@ def _validate_ledger_completeness(rows: list[dict]) -> None:
     extra = sorted(p for p in ledger_paths - src_paths if p is not None)
     if missing or extra:
         detail = [
-            f"{LEDGER_PATH} does not exactly match crates/krites/src/ "
-            "(iter_src_files(), the same completeness boundary check-krites-provenance.py's "
-            "check_completeness uses) -- refusing to count lines 1/2 against a ledger that cannot "
-            "be trusted to enumerate the real tree."
+            (
+                f"{LEDGER_PATH} does not exactly match crates/krites/src/ "
+                "(iter_src_files(), the same completeness boundary "
+                "check-krites-provenance.py's check_completeness uses) -- refusing to count "
+                "lines 1/2 against a ledger that cannot be trusted to enumerate the real tree."
+            )
         ]
         if missing:
             detail.append(f"  source files with no ledger row: {missing}")
@@ -324,7 +330,11 @@ def _validate_capability_matrix_completeness(rows: list[dict]) -> None:
         "datavalue", _capmatrix.extract_datavalue_variants(), rows, "data/value.rs"
     )
     errors += _capmatrix.check_category(
-        "public_api", _capmatrix.extract_lib_public_api(), rows, "lib.rs"
+        "public_api",
+        _capmatrix.extract_lib_public_api(),
+        rows,
+        "lib.rs",
+        allowed_bundles=_capmatrix.PUBLIC_API_SOURCE_BUNDLES,
     )
     errors += _capmatrix.check_category(
         "fixed_rule", _capmatrix.extract_fixed_rule_names(), rows, "fixed_rule/mod.rs"
@@ -398,7 +408,9 @@ def line_3_license_artifacts(meta: dict, rows: list[dict]) -> Line:
     else:
         absent.append(license_label)
 
-    notice_label = f"{NOTICE_PATH.relative_to(REPO_ROOT)} (CozoDB/MPL attribution section)"
+    notice_label = (
+        f"{NOTICE_PATH.relative_to(REPO_ROOT)} (CozoDB/MPL attribution section)"
+    )
     expected_notice = render_notice(meta, rows)
     # WHY an absent NOTICE.md is its own case rather than folded into the drift
     # comparison below: deleting the file and hand-editing it to drop the
@@ -448,7 +460,9 @@ def line_3_license_artifacts(meta: dict, rows: list[dict]) -> Line:
         else []
     )
     if snapshot_files:
-        present.append(f"{UPSTREAM_SNAPSHOT_ROOT.relative_to(REPO_ROOT)}/ ({len(snapshot_files)} files)")
+        present.append(
+            f"{UPSTREAM_SNAPSHOT_ROOT.relative_to(REPO_ROOT)}/ ({len(snapshot_files)} files)"
+        )
     else:
         absent.append(f"{UPSTREAM_SNAPSHOT_ROOT.relative_to(REPO_ROOT)}/")
 
@@ -486,17 +500,16 @@ def line_4_no_gate_test(rows: list[dict]) -> Line:
         label="4. CAPABILITY_MATRIX.toml capabilities with no gate_test pointer",
         source=(
             f"{CAPABILITY_MATRIX_PATH.relative_to(REPO_ROOT)} -- per-row filter on a "
-            "'gate_test' field that check-krites-capability-matrix.py has already RESOLVED "
-            "against a source-derived index of the crate's tests (a pointer naming no test, "
-            "or an #[ignore]d one, fails that sibling validator before this line runs), with "
-            "the row set verified against its own source-derived categories"
+            "syntactically validated 'gate_test' field, with the row set verified against "
+            "its own source-derived categories. Existence and ignored state are intentionally "
+            "outside this no-cargo count and belong to the required hosted nextest check"
         ),
         count=len(unpointed),
         detail=(
-            f"{have_gate_test} of {len(rows)} [[capability]] rows carry a resolved 'gate_test' "
-            f"pointer; {len(unpointed)} do not, by category: {by_category}. A resolved pointer "
-            "means the capability cannot vanish unnoticed -- not that its gate is asserted, and "
-            "not that the test passed (this checker runs with no cargo)"
+            f"{have_gate_test} of {len(rows)} [[capability]] rows record a well-shaped "
+            f"'gate_test' candidate; {len(unpointed)} do not, by category: {by_category}. "
+            "This line measures recorded candidates only; the hosted gate owns resolution and "
+            "execution, and neither count proves the row's gate sentence is asserted"
         ),
     )
 
@@ -509,8 +522,14 @@ def _gh_issue_status(number: int) -> IssueStatus | None:
     try:
         result = subprocess.run(
             [
-                "gh", "issue", "view", str(number), "--repo", GH_REPO,
-                "--json", "state,stateReason,labels,closedByPullRequestsReferences",
+                "gh",
+                "issue",
+                "view",
+                str(number),
+                "--repo",
+                GH_REPO,
+                "--json",
+                "state,stateReason,labels,closedByPullRequestsReferences",
             ],
             capture_output=True,
             text=True,
@@ -518,7 +537,10 @@ def _gh_issue_status(number: int) -> IssueStatus | None:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"gh issue view {number} --repo {GH_REPO} failed to run: {exc}", file=sys.stderr)
+        print(
+            f"gh issue view {number} --repo {GH_REPO} failed to run: {exc}",
+            file=sys.stderr,
+        )
         return None
     if result.returncode != 0:
         print(
@@ -530,9 +552,14 @@ def _gh_issue_status(number: int) -> IssueStatus | None:
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        print(f"gh issue view {number} --repo {GH_REPO} returned unparsable JSON: {exc}", file=sys.stderr)
+        print(
+            f"gh issue view {number} --repo {GH_REPO} returned unparsable JSON: {exc}",
+            file=sys.stderr,
+        )
         return None
-    labels = tuple(sorted(entry.get("name", "") for entry in payload.get("labels") or []))
+    labels = tuple(
+        sorted(entry.get("name", "") for entry in payload.get("labels") or [])
+    )
     # NOTE: gh's closedByPullRequestsReferences nests {name, owner: {login}},
     # not a flattened nameWithOwner -- url is already the fully-qualified,
     # always-correct form and needs no reassembly.
@@ -564,14 +591,22 @@ def _issue_disposition(status: IssueStatus) -> str:
 def _original_tracked_issue_numbers() -> frozenset[int]:
     try:
         result = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "show", f"{TRACKED_ISSUES_ANCHOR_COMMIT}:scripts/krites-tethers-remaining.py"],
+            [
+                "git",
+                "-C",
+                str(REPO_ROOT),
+                "show",
+                f"{TRACKED_ISSUES_ANCHOR_COMMIT}:scripts/krites-tethers-remaining.py",
+            ],
             capture_output=True,
             text=True,
             timeout=30,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        refuse(f"could not read the anchor commit {TRACKED_ISSUES_ANCHOR_COMMIT}: {exc}")
+        refuse(
+            f"could not read the anchor commit {TRACKED_ISSUES_ANCHOR_COMMIT}: {exc}"
+        )
         # NOTE: refuse() exits, so this is unreachable and exists only so the
         # type checker sees the branch terminate. Chained from `exc` so that if
         # refuse() is ever changed to return, the original cause survives.
@@ -624,7 +659,9 @@ def _validate_tracked_issue_removals() -> list[int]:
 def line_5_open_mechanism_issues() -> Line:
     removal_query_failed = _validate_tracked_issue_removals()
 
-    statuses: dict[int, IssueStatus | None] = {n: _gh_issue_status(n) for n in TRACKED_MECHANISM_ISSUES}
+    statuses: dict[int, IssueStatus | None] = {
+        n: _gh_issue_status(n) for n in TRACKED_MECHANISM_ISSUES
+    }
     failed = sorted(removal_query_failed)
     failed += sorted(n for n, s in statuses.items() if s is None)
     source = (
@@ -646,7 +683,11 @@ def line_5_open_mechanism_issues() -> Line:
             ),
         )
 
-    unresolved = sorted(n for n, s in statuses.items() if s is not None and _issue_disposition(s) != "resolved")
+    unresolved = sorted(
+        n
+        for n, s in statuses.items()
+        if s is not None and _issue_disposition(s) != "resolved"
+    )
     no_krites_label = sorted(
         n for n, s in statuses.items() if s is not None and "krites" not in s.labels
     )
@@ -682,7 +723,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--json", action="store_true", help="emit the breakdown as JSON")
+    parser.add_argument(
+        "--json", action="store_true", help="emit the breakdown as JSON"
+    )
     args = parser.parse_args()
 
     # INVARIANT: no total is emitted unless the sibling validators that
@@ -712,7 +755,12 @@ def main() -> int:
         payload = {
             "necessary_not_sufficient": __doc__.strip(),
             "lines": [
-                {"label": ln.label, "source": ln.source, "count": ln.count, "detail": ln.detail}
+                {
+                    "label": ln.label,
+                    "source": ln.source,
+                    "count": ln.count,
+                    "detail": ln.detail,
+                }
                 for ln in lines
             ],
             "total": None if unknown else measured_total,
@@ -730,7 +778,9 @@ def main() -> int:
             print(f"    {ln.detail}")
             print()
         if unknown:
-            print(f"TOTAL: UNKNOWN ({len(unknown)} of {len(lines)} line(s) could not be measured)")
+            print(
+                f"TOTAL: UNKNOWN ({len(unknown)} of {len(lines)} line(s) could not be measured)"
+            )
         else:
             print(f"TOTAL: {measured_total}")
 
