@@ -46,15 +46,28 @@ pub struct SessionTx<'a> {
     pub(crate) tokenizers: Arc<TokenizerCache>,
     pub(crate) fts_cache: Arc<RwLock<FtsCache>>,
     pub(crate) fts_cache_invalidations: FxHashSet<(CompactString, CompactString)>,
-    /// Cooperative cancellation handle for the query this transaction is
-    /// serving, when one exists (#4511). `None` for non-query transactions
-    /// (schema mutations, relation writes, maintenance) that have no
-    /// query-level `Poison` to check -- `Db::run_query` sets this on an
-    /// already-constructed `SessionTx` right after building its `Poison`,
-    /// rather than threading a new parameter through every `QueryContext`
-    /// method and every `RelAlgebra::iter()` implementation in `query/ra/`.
+    /// Cooperative cancellation handle for the operation this transaction is
+    /// currently serving, when one exists (#4511, #6866).
+    ///
+    /// INVARIANT: whoever is about to run long work sets this immediately
+    /// before running it -- `Db::run_query` for a query, `Db::run_sys_op` and
+    /// the imperative sys-op arm for an index build. A finished operation
+    /// leaves its own token behind and `RunningQueryCleanup` marks that token
+    /// killed, so a reader that did not set the token itself must not treat
+    /// what it finds as its own. Setting it on an already-constructed
+    /// `SessionTx` is what avoids threading a new parameter through every
+    /// `QueryContext` method and every `RelAlgebra::iter()` implementation in
+    /// `query/ra/`.
     pub(crate) poison: Option<crate::runtime::db::Poison>,
 }
+
+/// Rows an index build processes between cooperative-cancellation checks.
+///
+/// WHY: `Poison::check` takes a mutex on the deadline slot, so a per-row check
+/// sits in the hot path of a loop that is otherwise one graph insert or one
+/// posting write per row. Checking per batch bounds the work an abort has to
+/// wait through to a single batch without putting a lock in every iteration.
+pub(crate) const INDEX_BUILD_POISON_CADENCE: usize = 64;
 
 pub const CURRENT_STORAGE_VERSION: [u8; 1] = [0x00];
 
@@ -67,6 +80,24 @@ const STATUS_STR: &str = "status";
 const OK_STR: &str = "OK";
 
 impl SessionTx<'_> {
+    /// Observe cooperative cancellation at the index-build cadence: a no-op
+    /// except on every [`INDEX_BUILD_POISON_CADENCE`]-th row, and on row 0 so
+    /// a build cancelled before it starts does no work at all.
+    ///
+    /// # Errors
+    ///
+    /// Returns a query-killed error when this transaction carries a token that
+    /// has been killed or whose deadline has elapsed.
+    #[must_use = "caller must propagate the query-killed error"]
+    pub(crate) fn check_poison_at_row(&self, row_index: usize) -> Result<()> {
+        if row_index.is_multiple_of(INDEX_BUILD_POISON_CADENCE)
+            && let Some(poison) = &self.poison
+        {
+            poison.check()?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn get_returning_rows(
         &self,
         callback_collector: &CallbackCollector,
