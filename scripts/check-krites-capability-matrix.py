@@ -45,22 +45,24 @@ unrecorded one. The prose these replace ("~102 functions consuming Num",
 measurable -- the registry holds 26 entries, `define_aggr!` 25, and
 `define_op!` 139 against 138 DSL-reachable names.
 
-`gate_test` names the test that would fail if the capability disappeared,
-as a `<binary-id>::<test path>` id. Without `--nextest-list`, this script
-validates only that the field has that shape. The required hosted gate supplies
-machine-readable output from `cargo nextest list` for the exact feature world
+`gate_test` records a maintainer-selected candidate test as a
+`<binary-id>::<test path>` id. Without `--nextest-list`, this script validates
+only that the field has that shape. The required hosted gate supplies
+machine-readable output from `cargo nextest list` for the exact test selection
 it then executes; only that compiler-derived list is authoritative for whether
-the named test exists and is not ignored. `"none"` or an absent field is legal
-and counts as UNPOINTED -- an honestly unpointed row is worth more than a
-pointer at a test that does not exercise the capability.
+the candidate exists, matches the selected filters, and is not ignored.
+`"none"` or an absent field is legal and counts as UNPOINTED -- an honestly
+unpointed row is worth more than a pointer at a test that does not exercise the
+capability.
 
-WARNING(what a pointer proves): a pointer resolved against nextest proves the
-test exists and is runnable in the listed build. A green required hosted job
-also proves that same feature world's nextest run passed. Neither proves the
-row's `gate` sentence is asserted by that test -- several gates name
-conformance behaviour (recorded-vector replay, post-crash visibility,
-multiset-vs-sequence) that no current test checks. Read the pointed count as
-"cannot vanish unnoticed", not as semantic conformance.
+WARNING(what a pointer proves): a pointer resolved against nextest proves only
+that the named test exists and is runnable in the listed build. A green
+required hosted job also proves that the listed test world passed. Neither
+fact mechanically couples that test to the row's capability or proves the
+row's `gate` sentence is asserted -- several gates name conformance behaviour
+(recorded-vector replay, post-crash visibility, multiset-vs-sequence) that no
+current test checks. Read the pointed count as "rows with a runnable candidate
+recorded", never as disappearance detection or semantic conformance.
 
 `call_sites` on a sysop/datavalue/public_api row is a measured integer,
 never a guess: `check_call_sites_measured` re-executes each row's
@@ -70,12 +72,12 @@ capability cannot lose its last consumer unnoticed, and a consumer being
 ADDED is not a defect. Requiring equality made every unrelated PR that
 gained a caller fail a krites check -- `api-db-open-mem` moved 129 -> 130 ->
 131 in one session, each a hand edit invalidated by the next merge -- and it
-made a real disappearance indistinguishable from ordinary growth. `call_sites = -1` is the one documented exception -- it
-means "not measured", and is only legal when `call_sites_method` states why
-(a generic-token/type-level rationale, or `covered under <other-row-id>;
-not separately re-measured`). Zero call sites is never grounds to drop a
-row -- see the plan's B7 finding and kill criterion 10 -- and -1 is never a
-stand-in for zero.
+made a real disappearance indistinguishable from ordinary growth.
+`call_sites = -1` means "not measured" and is legal only for the exact row ids
+and covered-row relationships owned by this checker; `call_sites_method`
+retains the human reason but cannot authorize a new exception. Zero call sites
+is never grounds to drop a row -- see the plan's B7 finding and kill criterion
+10 -- and -1 is never a stand-in for zero.
 
 Usage:
     python3 scripts/check-krites-capability-matrix.py
@@ -87,6 +89,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shlex
 import subprocess
 import sys
 import tomllib
@@ -115,6 +118,9 @@ MATRIX_FILE = KRITES_DIR / "CAPABILITY_MATRIX.toml"
 # data rows as of this checker's authoring). A floor, not a ceiling -- the
 # plan may grow rows; it must never silently shrink under this file.
 EXPECTED_APPENDIX_A_ROWS = 33
+SOURCE_DERIVED_CATEGORIES = frozenset(
+    {"sysop", "datavalue", "public_api", "fixed_rule", "storage_method"}
+)
 
 IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_:]*")
 
@@ -380,13 +386,16 @@ def extract_lib_public_api() -> dict[str, int]:
     )
     for owner in ("Db", "MultiTransaction"):
         impl_re = re.compile(
-            rf"(?m)^impl(?:<[^{{}}]*>)?\s+{re.escape(owner)}(?:<[^{{}}]*>)?\s*\{{"
+            rf"(?m)^impl(?:<[^{{}}]*>)?\s+{re.escape(owner)}(?:<[^{{}}]*>)?"
+            rf"{EVIDENCE.RUST_TOKEN_END}(?=\s*(?:where{EVIDENCE.RUST_TOKEN_END}|\{{))"
         )
         for impl_match in _top_level_matches(clean, impl_re):
             impl_attrs = _item_attrs(text, clean, impl_match.start())
             if not _attrs_possible(branches, impl_attrs):
                 continue
-            impl_open = impl_match.end() - 1
+            impl_open = EVIDENCE._function_body_open(clean, impl_match.end())
+            if impl_open is None:
+                raise ValueError(f"inherent impl {owner} has no body")
             impl_end = _matching_delimiter(clean, impl_open, "{", "}")
             impl_attrs = [
                 *impl_attrs,
@@ -742,6 +751,37 @@ def extract_storage_methods() -> dict[str, int]:
     return out
 
 
+def _literal_include_path(raw_arg: str, clean_arg: str) -> str:
+    """Decode one direct, unescaped Rust string passed to module-level include!."""
+    cooked = re.fullmatch(
+        r'\s*(?P<literal>"[ \t\r\n]*")\s*,?\s*',
+        clean_arg,
+    )
+    if cooked is not None:
+        literal = raw_arg[cooked.start("literal") : cooked.end("literal")]
+        decoded = re.fullmatch(r'"(?P<value>[^"\\]*)"', literal, re.DOTALL)
+        if decoded is None:
+            raise ValueError("include! uses an escaped cooked string literal")
+        return decoded.group("value")
+
+    raw_string = re.fullmatch(
+        r'\s*(?P<literal>r(?P<hashes>#{0,255})"[ \t\r\n]*"(?P=hashes))\s*,?\s*',
+        clean_arg,
+    )
+    if raw_string is not None:
+        literal = raw_arg[raw_string.start("literal") : raw_string.end("literal")]
+        decoded = re.fullmatch(
+            r'r(?P<hashes>#{0,255})"(?P<value>.*?)"(?P=hashes)',
+            literal,
+            re.DOTALL,
+        )
+        if decoded is None:
+            raise ValueError("include! uses an unsupported raw string literal")
+        return decoded.group("value")
+
+    raise ValueError("include! argument is not one direct string literal")
+
+
 def _reachable_module_branches(root: Path) -> dict[Path, list[tuple[str, ...]]]:
     """Map reachable Rust module files to their possible inherited cfg attrs."""
     if not root.is_file():
@@ -802,6 +842,51 @@ def _reachable_module_branches(root: Path) -> dict[Path, list[tuple[str, ...]]]:
                     f"{path}:{_line_of(raw, declaration.start())} resolves to no file"
                 )
             visit(child, child_effective, False, depth + 1)
+
+        include_re = re.compile(
+            EVIDENCE.RUST_TOKEN_START + r"include\s*!\s*(?P<open>[([{])"
+        )
+        for declaration in _top_level_matches(clean, include_re):
+            attrs = EVIDENCE.preceding_outer_attributes(
+                raw,
+                clean,
+                declaration.start(),
+            )
+            child_effective = (*effective, *attrs)
+            if not EVIDENCE.cfg_attrs_satisfiable(child_effective):
+                continue
+            rel = path.relative_to(REPO_ROOT)
+            line = _line_of(raw, declaration.start())
+            if re.search(r"::\s*$", clean[: declaration.start()]):
+                raise ValueError(
+                    f"path-qualified include! at {rel}:{line} is unsupported"
+                )
+            opener = declaration.group("open")
+            closer = {"(": ")", "[": "]", "{": "}"}[opener]
+            open_at = declaration.end() - 1
+            close_at = _matching_delimiter(clean, open_at, opener, closer)
+            try:
+                include_path = _literal_include_path(
+                    raw[open_at + 1 : close_at],
+                    clean[open_at + 1 : close_at],
+                )
+            except ValueError as error:
+                raise ValueError(
+                    f"include! at {rel}:{line} is unresolved: {error}"
+                ) from error
+            child = (path.parent / include_path).resolve()
+            try:
+                child.relative_to(REPO_ROOT.resolve())
+            except ValueError as error:
+                raise ValueError(
+                    f"include! at {rel}:{line} escapes the repository: {include_path!r}"
+                ) from error
+            if not child.is_file():
+                raise ValueError(
+                    f"include! at {rel}:{line} resolves to no regular file: "
+                    f"{include_path!r}"
+                )
+            visit(child, child_effective, True, depth + 1)
         active.remove(path)
 
     visit(root, (), True, 0)
@@ -1334,8 +1419,8 @@ def check_gate_tests(
         ignored = nextest_tests.get(value)
         if ignored is None:
             errors.append(
-                f"row '{row_id}': gate_test '{value}' names no test in the supplied "
-                "`cargo nextest list` result. "
+                f"row '{row_id}': gate_test '{value}' does not resolve to a runnable, "
+                "filter-matching test in the supplied `cargo nextest list` result. "
                 'Use "none" rather than a pointer that resolves to nothing'
             )
             unpointed += 1
@@ -1354,14 +1439,7 @@ def check_gate_tests(
 def check_all_rows_well_formed(rows: list[dict]) -> list[str]:
     errors: list[str] = []
     seen_ids: set[str] = set()
-    valid_categories = {
-        "sysop",
-        "datavalue",
-        "public_api",
-        "fixed_rule",
-        "storage_method",
-        "appendix_a",
-    }
+    valid_categories = {*SOURCE_DERIVED_CATEGORIES, "appendix_a"}
     for row in rows:
         row_id = row.get("id")
         if not row_id:
@@ -1379,6 +1457,11 @@ def check_all_rows_well_formed(rows: list[dict]) -> list[str]:
             errors.append(f"row '{row_id}' missing required field 'gate'")
         if not row.get("dest_wave"):
             errors.append(f"row '{row_id}' missing required field 'dest_wave'")
+        if category in SOURCE_DERIVED_CATEGORIES and not row.get("source"):
+            errors.append(
+                f"row '{row_id}' missing required field 'source' for "
+                f"source-derived category '{category}'"
+            )
     return errors
 
 
@@ -1391,8 +1474,42 @@ def check_all_rows_well_formed(rows: list[dict]) -> list[str]:
 # recognized reason is a checker failure, not a silent pass.
 CALL_SITES_NOT_MEASURED = -1
 NOT_MEASURED_PREFIXES = ("not measured:", "not separately measured:")
-_COVERED_UNDER_RE = re.compile(
-    r"^covered under ([a-z0-9-]+); not separately re-measured$"
+# WHY these exceptions live outside CAPABILITY_MATRIX.toml: a row must not be
+# able to turn its own measured count into `-1` by adding persuasive prose to
+# the same mutable record. These are the reviewed judgment boundary. The four
+# covered rows additionally bind to one exact measured owner below; the other
+# rows are explicitly admitted as not mechanically measurable.
+CALL_SITES_COVERED_BY = {
+    "api-validity-ts": "datavalue-validity",
+    "api-vector": "datavalue-vec",
+    "api-persist-mode": "api-db-config",
+    "api-db-with-config": "api-db-config",
+}
+CALL_SITES_UNMEASURED_ROWS = frozenset(
+    {
+        "api-error-result",
+        "api-datavalue-type",
+        "api-named-rows",
+        "api-array1",
+        "api-db-run",
+        "api-db-run-read-only",
+        "storage-batch-put",
+        "storage-range-compact",
+        "storage-storage-kind",
+        "storage-transact",
+        "store-tx-commit",
+        "store-tx-del",
+        "store-tx-del-range-from-persisted",
+        "store-tx-exists",
+        "store-tx-get",
+        "store-tx-par-put",
+        "store-tx-put",
+        "store-tx-range-count",
+        "store-tx-range-scan",
+        "store-tx-range-scan-tuple",
+        "store-tx-range-skip-scan-tuple",
+        "store-tx-supports-par-put",
+    }
 )
 
 # WHY: the one row (`sysop-remove-index`) whose call_sites_method aggregates
@@ -1447,27 +1564,86 @@ def _below_floor(measured: int, recorded: int) -> bool:
 
 
 def _run_grep_pipeline(cmd: str) -> int:
-    """Execute a recorded grep pipeline from the repo root; return the
-    matched line count. A pipeline with zero matches exits non-zero (the
-    trailing `grep -v` convention) -- expected, not an error; only stdout
-    is read."""
+    """Execute the one checker-owned grep shape and return its line count.
+
+    `call_sites_method` is evidence, not executable authority.  Parse its
+    historical shell spelling into a closed argv grammar, execute only the
+    first grep without a shell, and apply the two admitted exclusions here.
+    Exit 1 is grep's honest zero-match result; every other non-zero status is
+    a measurement failure, never a fabricated zero.
+    """
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError as error:
+        raise ValueError(f"invalid call-site grep quoting: {error}") from error
+
+    pipes = [index for index, token in enumerate(tokens) if token == "|"]
+    if len(pipes) not in (1, 2):
+        raise ValueError("call-site measurement must contain one or two fixed filters")
+    first_pipe = pipes[0]
+    search = tokens[:first_pipe]
+    exclude_krites_end = pipes[1] if len(pipes) == 2 else len(tokens)
+    exclude_krites = tokens[first_pipe + 1 : exclude_krites_end]
+    exclude_comments = tokens[pipes[1] + 1 :] if len(pipes) == 2 else []
+
+    if (
+        len(search) not in (5, 6)
+        or search[0] != "grep"
+        or search[1] not in {"-rn", "-rEn"}
+        or (len(search) == 6 and search[2] != "--")
+        or search[-2:] != ["crates/", "--include=*.rs"]
+    ):
+        raise ValueError("call-site measurement is not an admitted repository grep")
+    if exclude_krites != ["grep", "-v", "^crates/krites/"]:
+        raise ValueError("call-site measurement must exclude crates/krites exactly")
+    if exclude_comments and exclude_comments != [
+        "grep",
+        "-vP",
+        r"^\S+:[0-9]+:\s*//",
+    ]:
+        raise ValueError("call-site measurement has an unsupported trailing filter")
+
+    pattern_index = 3 if len(search) == 6 else 2
+    search_argv = [
+        "grep",
+        search[1],
+        "--include=*.rs",
+        "--",
+        search[pattern_index],
+        "crates/",
+    ]
     result = subprocess.run(
-        cmd, shell=True, cwd=REPO_ROOT, capture_output=True, text=True, check=False
+        search_argv,
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
     )
-    return len([line for line in result.stdout.splitlines() if line])
+    if result.returncode not in (0, 1):
+        detail = result.stderr.strip() or "grep reported no diagnostic"
+        raise ValueError(f"call-site grep exited {result.returncode}: {detail}")
+    lines = [
+        line
+        for line in result.stdout.splitlines()
+        if line and not line.startswith("crates/krites/")
+    ]
+    if exclude_comments:
+        comment_line = re.compile(r"^\S+:[0-9]+:\s*//")
+        lines = [line for line in lines if not comment_line.search(line)]
+    return len(lines)
 
 
 def check_call_sites_measured(rows: list[dict]) -> list[str]:
     """Enforce the file header's claim that `call_sites` is "a measured
     integer ... never a guess": for every sysop/datavalue/public_api row,
     either call_sites == -1 with a recognized not-measured reason, or
-    call_sites_method is actually executed and its output count must equal
-    the declared figure. This is what makes drift between the prose and
-    reality a build failure instead of something only an adversarial review
-    catches by hand.
+    call_sites_method is actually executed and its output count must be at
+    least the declared floor. This is what makes downward drift between the
+    prose and reality a build failure instead of something only an
+    adversarial review catches by hand.
     """
     errors: list[str] = []
-    row_ids = {r.get("id") for r in rows}
+    rows_by_id = {r.get("id"): r for r in rows}
     for row in rows:
         if "call_sites" not in row:
             continue
@@ -1482,21 +1658,39 @@ def check_call_sites_measured(rows: list[dict]) -> list[str]:
             continue
 
         if call_sites == CALL_SITES_NOT_MEASURED:
-            covered = _COVERED_UNDER_RE.match(method)
-            if covered:
-                if covered.group(1) not in row_ids:
+            expected_owner = CALL_SITES_COVERED_BY.get(row_id)
+            if expected_owner is not None:
+                expected_method = (
+                    f"covered under {expected_owner}; not separately re-measured"
+                )
+                if method != expected_method:
                     errors.append(
-                        f"row '{row_id}': call_sites_method references "
-                        f"unknown row id '{covered.group(1)}'"
+                        f"row '{row_id}': call_sites = -1 must bind to the reviewed "
+                        f"measurement owner {expected_owner!r}, not {method!r}"
+                    )
+                    continue
+                owner = rows_by_id.get(expected_owner)
+                owner_count = owner.get("call_sites") if owner is not None else None
+                if (
+                    not isinstance(owner_count, int)
+                    or isinstance(owner_count, bool)
+                    or owner_count < 0
+                ):
+                    errors.append(
+                        f"row '{row_id}': reviewed measurement owner {expected_owner!r} "
+                        "is absent or is not itself mechanically measured"
                     )
                 continue
-            if method.startswith(NOT_MEASURED_PREFIXES):
+            if row_id in CALL_SITES_UNMEASURED_ROWS:
+                if not method.startswith(NOT_MEASURED_PREFIXES):
+                    errors.append(
+                        f"row '{row_id}': reviewed not-measured exception must retain "
+                        f"an explicit reason, got {method!r}"
+                    )
                 continue
             errors.append(
-                f"row '{row_id}': call_sites = -1 (not-measured sentinel) but "
-                f"call_sites_method {method!r} doesn't start with a recognized "
-                "reason ('not measured:', 'not separately measured:', or "
-                "'covered under <id>; not separately re-measured')"
+                f"row '{row_id}': call_sites = -1 is not in the checker-owned "
+                "reviewed exception contract"
             )
             continue
 
@@ -1518,7 +1712,13 @@ def check_call_sites_measured(rows: list[dict]) -> list[str]:
                     f"{len(breakdown)} terms"
                 )
                 continue
-            measured = [_run_grep_pipeline(_quote_anchored_grep(p)) for p in patterns]
+            try:
+                measured = [
+                    _run_grep_pipeline(_quote_anchored_grep(p)) for p in patterns
+                ]
+            except ValueError as error:
+                errors.append(f"row '{row_id}': call_sites measurement failed: {error}")
+                continue
             if measured != breakdown:
                 errors.append(
                     f"row '{row_id}': call_sites_method breakdown {breakdown} "
@@ -1544,7 +1744,11 @@ def check_call_sites_measured(rows: list[dict]) -> list[str]:
             continue
 
         runnable = method.split(_TRAILING_ANNOTATION_SEP, 1)[0].rstrip()
-        measured_count = _run_grep_pipeline(runnable)
+        try:
+            measured_count = _run_grep_pipeline(runnable)
+        except ValueError as error:
+            errors.append(f"row '{row_id}': call_sites measurement failed: {error}")
+            continue
         if _below_floor(measured_count, call_sites):
             errors.append(
                 f"row '{row_id}': call_sites = {call_sites} is a FLOOR but "
@@ -1554,9 +1758,6 @@ def check_call_sites_measured(rows: list[dict]) -> list[str]:
             )
 
     return errors
-
-
-_CITED_CATEGORIES = ("sysop", "datavalue", "public_api", "fixed_rule", "storage_method")
 
 
 def check_file_line_refs(rows: list[dict]) -> list[str]:
@@ -1581,7 +1782,7 @@ def check_file_line_refs(rows: list[dict]) -> list[str]:
     repo_root = REPO_ROOT.resolve()
     fixed_rule_sources: dict[str, int] | None = None
     for row in rows:
-        if row.get("category") not in _CITED_CATEGORIES:
+        if row.get("category") not in SOURCE_DERIVED_CATEGORIES:
             continue
         row_id = row.get("id", "<no id>")
         tokens = item_tokens(row.get("item", ""))
@@ -1813,8 +2014,10 @@ def main() -> int:
         f"{len(extract_datavalue_variants())} DataValue variants, "
         f"{len(extract_lib_public_api())} public API items, "
         f"{len(extract_fixed_rule_names())} fixed-rule registry keys, "
-        f"{len(extract_storage_methods())} Storage/StoreTx methods, "
-        f"{n_appendix_a} Appendix A rows -- all mapped, no stale rows; "
+        f"{len(extract_storage_methods())} Storage/StoreTx methods -- "
+        "the five source-derived categories are mapped exactly; "
+        f"{n_appendix_a} internally checked Appendix A mirror rows "
+        "(external plan drift remains non-gating; #6867); "
         f"{len(sets)} capability sets covering {set_members} members re-derived exactly."
     )
     if nextest_tests is None:

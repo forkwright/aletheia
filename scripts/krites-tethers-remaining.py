@@ -76,11 +76,12 @@ Lines:
      main() runs that check before loading anything below, so this script
      never reaches a total without it having already passed.
   4. CAPABILITY_MATRIX.toml capabilities with no gate_test pointer -- a row
-     with no recorded candidate for disappearance detection. `gate_test`
+     with no recorded runnable-test candidate. `gate_test`
      names the candidate as a `<binary-id>::<test path>` id; this no-cargo
      inventory can validate only that shape. The required hosted gate
-     separately resolves every recorded pointer against compiler-derived
-     `cargo nextest list` output and executes that same feature world.
+     separately resolves every recorded pointer against compiler-derived,
+     filter-matching `cargo nextest list` output and executes that same test
+     selection.
      `"none"` and an absent field both count as unpointed: the honest state
      of a capability with no recorded candidate. Checked first against
      the matrix's OWN source-derived categories -- reusing
@@ -91,23 +92,22 @@ Lines:
      of that mapping -- so a row deleted to shrink this count is caught the
      same way a deleted ledger row is caught in line 1.
 
-     WARNING: a pointer resolved by the required hosted nextest check proves
-     the capability cannot be deleted without a test disappearing or failing,
-     and that job executes the same feature world. It does NOT prove the row's
-     `gate` sentence is asserted by that test. Reaching 0 on this line means
-     every capability records a disappearance-detector candidate, not that
-     every capability is semantically verified.
+     WARNING: resolution by the required hosted nextest check proves only that
+     the named test exists, is runnable, and belongs to the listed world that
+     the job executes. It does NOT mechanically couple the test to this row's
+     capability or prove the `gate` sentence is asserted. Reaching 0 on this
+     line means every capability records a runnable-test candidate, not that
+     any capability has disappearance detection or semantic verification.
   5. GitHub issues, from a tracked set, labelled as compromising the
      provenance mechanism itself rather than a single file's measurement.
      No GitHub label captures exactly this set (checked live, every run --
      see TRACKED_MECHANISM_ISSUES below for what was found and why this
      line's cardinality stays reviewer-enforced beyond what is checked). A
      CLOSED issue counts as resolved only when GitHub's stateReason is
-     COMPLETED; a NOT_PLANNED ("wontfix") close reads identically to still
-     OPEN, because a close-without-a-fix is exactly the wording this line's
-     own code comment always promised would not satisfy it. The closing
-     reference (linked PR/commit, when any) is printed for every tracked
-     issue so a reviewer can see what actually closed it.
+     COMPLETED and GitHub links the closing PR. A NOT_PLANNED ("wontfix") or
+     bare manual close reads identically to still OPEN, because a close bit is
+     not proof of the repair this line claims. The closing reference is
+     printed for every tracked issue so a reviewer can inspect what closed it.
 
 Usage:
     python3 scripts/krites-tethers-remaining.py [--json]
@@ -583,7 +583,13 @@ def _issue_disposition(status: IssueStatus) -> str:
     # identically to still OPEN.
     if status.state != "CLOSED":
         return "unresolved"
-    if (status.state_reason or "").upper() == "NOT_PLANNED":
+    if (status.state_reason or "").upper() != "COMPLETED":
+        return "unresolved"
+    # A state bit is still the maker grading its own completion.  Require the
+    # tracker-owned join to the PR that closed the issue so a bare manual close
+    # cannot lower this load-bearing count.  A non-PR completion needs a
+    # separately typed proof mechanism before it can count here.
+    if not status.closing_refs:
         return "unresolved"
     return "resolved"
 
@@ -631,8 +637,9 @@ def _original_tracked_issue_numbers() -> frozenset[int]:
 def _validate_tracked_issue_removals() -> list[int]:
     """Every issue number present in TRACKED_ISSUES_ANCHOR_COMMIT's tuple but
     absent from TRACKED_MECHANISM_ISSUES today must be independently
-    verified, via a live gh query, to be genuinely CLOSED with stateReason
-    COMPLETED -- the only legitimate way a member leaves this set. Returns
+    verified, via a live gh query, to be CLOSED with stateReason COMPLETED and
+    joined to a closing PR -- the only typed proof currently admitted for a
+    member leaving this set. Returns
     the numbers whose gh query failed (contributes to line 5's UNKNOWN
     state, same as any other gh outage); refuses outright the moment a
     removed member is confirmed NOT legitimately closed, since that is a
@@ -649,9 +656,10 @@ def _validate_tracked_issue_removals() -> list[int]:
         if _issue_disposition(status) != "resolved":
             refuse(
                 f"#{number} was removed from TRACKED_MECHANISM_ISSUES but GitHub reports "
-                f"state={status.state!r} stateReason={status.state_reason!r} -- a member may only "
-                "leave this tuple once genuinely CLOSED as COMPLETED, never by editing the tuple "
-                "down to make line 5 read lower"
+                f"state={status.state!r} stateReason={status.state_reason!r} "
+                f"closing_refs={status.closing_refs!r} -- a member may only leave this "
+                "tuple once CLOSED as COMPLETED with a closing PR, never by editing the "
+                "tuple down to make line 5 read lower"
             )
     return failed
 
@@ -668,7 +676,7 @@ def line_5_open_mechanism_issues() -> Line:
         f"gh issue view <N> --repo {GH_REPO} --json state,stateReason,labels,"
         f"closedByPullRequestsReferences, for N in {TRACKED_MECHANISM_ISSUES}; every number present "
         f"in commit {TRACKED_ISSUES_ANCHOR_COMMIT[:12]}'s tuple but absent from it today is verified "
-        "CLOSED+COMPLETED before this line runs"
+        "CLOSED+COMPLETED with a closing PR before this line runs"
     )
     if failed:
         return Line(

@@ -589,12 +589,15 @@ def _path_attr(attrs: list[str]) -> str | None:
 
 
 def load_nextest_list(source: TextIO) -> dict[str, bool]:
-    """Decode an explicitly opened nextest JSON stream into {test id: ignored}.
+    """Decode filter-matching nextest tests into {test id: ignored}.
 
     Opening the operator-selected CLI input belongs to the caller. This helper
     only decodes text it is handed; it neither constructs nor expands a
     filesystem path. The shape is validated because an absent or malformed
     suite map must never collapse into an authoritative empty test universe.
+    Listed-but-filtered testcases still count toward nextest's declared total,
+    but cannot satisfy a gate pointer because the paired run will not execute
+    them.
     """
     payload = json.load(source)
     if not isinstance(payload, dict):
@@ -603,10 +606,16 @@ def load_nextest_list(source: TextIO) -> dict[str, bool]:
     if not isinstance(suites, dict):
         raise TypeError("nextest list must contain a 'rust-suites' object")
     result: dict[str, bool] = {}
+    seen_test_ids: set[str] = set()
     decoded_count = 0
     for suite_key, suite in suites.items():
         if not isinstance(suite, dict):
             raise TypeError(f"nextest suite {suite_key!r} must be an object")
+        status = suite.get("status")
+        if status not in {"listed", "skipped", "skipped-default-filter"}:
+            raise ValueError(
+                f"nextest suite {suite_key!r} has unsupported status {status!r}"
+            )
         binary_id = suite.get("binary-id")
         if not isinstance(binary_id, str):
             raise TypeError(f"nextest suite {suite_key!r} has a non-string binary-id")
@@ -615,6 +624,10 @@ def load_nextest_list(source: TextIO) -> dict[str, bool]:
         testcases = suite.get("testcases")
         if not isinstance(testcases, dict):
             raise TypeError(f"nextest suite {suite_key!r} has no testcases object")
+        if status != "listed" and testcases:
+            raise ValueError(
+                f"nextest suite {suite_key!r} is {status!r} but has testcases"
+            )
         for name, meta in testcases.items():
             if not isinstance(name, str):
                 raise TypeError(
@@ -633,10 +646,26 @@ def load_nextest_list(source: TextIO) -> dict[str, bool]:
                     f"nextest test {binary_id}::{name} has no boolean ignored field"
                 )
             test_id = f"{binary_id}::{name}"
-            ignored = meta["ignored"]
-            if test_id in result:
+            if test_id in seen_test_ids:
                 raise ValueError(f"nextest list contains duplicate test id {test_id!r}")
-            result[test_id] = ignored
+            seen_test_ids.add(test_id)
+            filter_match = meta.get("filter-match")
+            if not isinstance(filter_match, dict):
+                raise TypeError(f"nextest test {test_id} has no filter-match object")
+            filter_status = filter_match.get("status")
+            if filter_status not in {"matches", "mismatch"}:
+                raise ValueError(
+                    f"nextest test {test_id} has unsupported filter-match status "
+                    f"{filter_status!r}"
+                )
+            if filter_status == "mismatch":
+                reason = filter_match.get("reason")
+                if not isinstance(reason, str) or not reason:
+                    raise ValueError(
+                        f"nextest test {test_id} has a mismatch without a reason"
+                    )
+            else:
+                result[test_id] = meta["ignored"]
             decoded_count += 1
     declared_count = payload.get("test-count")
     if not isinstance(declared_count, int) or isinstance(declared_count, bool):

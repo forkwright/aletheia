@@ -611,13 +611,16 @@ jobs:
           # and the land-dark selector provides the two sovereign-HNSW tests.
           # Listing through nextest is the authority for test existence and
           # ignored state; the following run proves the same world passes.
-          cargo nextest list --profile ci --message-format json -p krites \
-            --features test-core,krites_sovereign_hnsw \
+          nextest_selection=(
+            --profile ci
+            --workspace
+            --features test-core,krites_sovereign_hnsw
+          )
+          cargo nextest list --message-format json "${nextest_selection[@]}" \
             > "$RUNNER_TEMP/krites-nextest.json"
           python3 scripts/check-krites-capability-matrix.py \
             --nextest-list "$RUNNER_TEMP/krites-nextest.json"
-          cargo nextest run --profile ci --workspace \
-            --features test-core,krites_sovereign_hnsw
+          cargo nextest run "${nextest_selection[@]}"
 
   # WHY(#4943): every other job above configures fleet-git-credentials, so
   # none of them can tell "resolves because it's genuinely public" apart

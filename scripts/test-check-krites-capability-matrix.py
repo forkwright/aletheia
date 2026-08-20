@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import re
 import sys
 import tempfile
 from io import StringIO
@@ -34,6 +35,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import krites_capability_evidence as EVIDENCE
 
 _CHECK_SCRIPT = Path(__file__).resolve().parent / "check-krites-capability-matrix.py"
+_TETHERS_SCRIPT = Path(__file__).resolve().parent / "krites-tethers-remaining.py"
+_GATE_WORKFLOW = (
+    Path(__file__).resolve().parents[1]
+    / ".github"
+    / "workflows"
+    / "gate-attestation.yml"
+)
 
 
 def _load(name: str, path: Path):
@@ -47,6 +55,7 @@ def _load(name: str, path: Path):
 
 
 CHECKER = _load("check_krites_capability_matrix", _CHECK_SCRIPT)
+TETHERS = _load("krites_tethers_remaining", _TETHERS_SCRIPT)
 LIVE_ROWS = CHECKER.load_matrix()
 LIVE_SETS = CHECKER.load_capability_sets()
 
@@ -79,6 +88,40 @@ def _nextest_truth(rows: list[dict] | None = None) -> dict[str, bool]:
         if isinstance(row.get("gate_test"), str)
         and row["gate_test"].strip().lower() not in CHECKER.GATE_TEST_UNPOINTED
     }
+
+
+def _nextest_workflow_selection_errors(text: str) -> list[str]:
+    errors: list[str] = []
+    match = re.search(r"nextest_selection=\(\n(?P<body>.*?)\n\s*\)", text, re.DOTALL)
+    if match is None:
+        return ["missing nextest_selection array"]
+    selectors = [
+        line.strip() for line in match.group("body").splitlines() if line.strip()
+    ]
+    expected = [
+        "--profile ci",
+        "--workspace",
+        "--features test-core,krites_sovereign_hnsw",
+    ]
+    if selectors != expected:
+        errors.append(f"selection array drifted: {selectors!r}")
+    command_lines = [
+        line.strip()
+        for line in text.splitlines()
+        if line.strip().startswith(("cargo nextest list", "cargo nextest run"))
+    ]
+    if len(command_lines) != 2:
+        errors.append(f"expected one list and one run command: {command_lines!r}")
+    for line in command_lines:
+        if '"${nextest_selection[@]}"' not in line:
+            errors.append(f"nextest command bypasses shared selection: {line!r}")
+        scrubbed = line.replace('"${nextest_selection[@]}"', "")
+        if re.search(
+            r"(?:^|\s)(?:-p|--package|--workspace|--features|--profile)(?:\s|=)",
+            scrubbed,
+        ):
+            errors.append(f"nextest command carries a private selector: {line!r}")
+    return errors
 
 
 def test_live_matrix_is_green() -> None:
@@ -129,7 +172,9 @@ def test_gate_test_naming_a_missing_test_fails() -> None:
     )
     check(
         "gate_test naming no test is an error",
-        any("names no test" in e for e in errors),
+        any(
+            "does not resolve to a runnable, filter-matching test" in e for e in errors
+        ),
         str(errors[:2]),
     )
 
@@ -198,7 +243,11 @@ def test_empty_authoritative_nextest_listing_rejects_every_pointer() -> None:
         "an explicit empty nextest result cannot collapse to static mode",
         pointed == 0
         and unpointed == len(LIVE_ROWS)
-        and sum("names no test" in error for error in errors) == expected_pointed,
+        and sum(
+            "does not resolve to a runnable, filter-matching test" in error
+            for error in errors
+        )
+        == expected_pointed,
         f"pointed={pointed}, unpointed={unpointed}, errors={len(errors)}",
     )
 
@@ -351,6 +400,88 @@ def test_deleting_a_whole_capability_set_fails() -> None:
         "deleting a whole set is an error",
         any("has a source derivation but no row" in e for e in errors),
         str(errors[:2]),
+    )
+
+
+def test_source_derived_rows_require_a_source_citation() -> None:
+    rows = _rows_with(**{"api-db-run": {"source": ""}})
+    errors = CHECKER.check_all_rows_well_formed(rows)
+    check(
+        "a source-derived row cannot delete its provenance anchor",
+        any("api-db-run" in error and "field 'source'" in error for error in errors),
+        str(errors[:2]),
+    )
+
+
+def test_call_site_measurements_are_not_row_authored_shell() -> None:
+    rows = _rows_with(
+        **{
+            "sysop-compact": {
+                "call_sites": 0,
+                "call_sites_method": "grep --definitely-invalid; printf fabricated",
+            }
+        }
+    )
+    errors = CHECKER.check_call_sites_measured(rows)
+    check(
+        "an invalid or fabricated grep cannot authorize a zero measurement",
+        any(
+            "sysop-compact" in error and "measurement failed" in error
+            for error in errors
+        ),
+        str(errors[:2]),
+    )
+
+
+def test_not_measured_call_sites_use_checker_owned_exceptions() -> None:
+    arbitrary = _rows_with(
+        **{
+            "sysop-compact": {
+                "call_sites": -1,
+                "call_sites_method": "not measured: because this row says so",
+            }
+        }
+    )
+    arbitrary_errors = CHECKER.check_call_sites_measured(arbitrary)
+    wrong_owner = _rows_with(
+        **{
+            "api-validity-ts": {
+                "call_sites_method": (
+                    "covered under api-array1; not separately re-measured"
+                )
+            }
+        }
+    )
+    owner_errors = CHECKER.check_call_sites_measured(wrong_owner)
+    check(
+        "a measured row cannot self-authorize the not-measured sentinel",
+        any("not in the checker-owned" in error for error in arbitrary_errors),
+        str(arbitrary_errors[:2]),
+    )
+    check(
+        "a covered row cannot choose an arbitrary measurement owner",
+        any("reviewed measurement owner" in error for error in owner_errors),
+        str(owner_errors[:2]),
+    )
+
+
+def test_issue_completion_requires_state_and_a_closing_pr() -> None:
+    complete = TETHERS.IssueStatus(
+        state="CLOSED",
+        state_reason="COMPLETED",
+        closing_refs=("https://github.com/forkwright/aletheia/pull/1",),
+    )
+    bare = TETHERS.IssueStatus(state="CLOSED", state_reason="COMPLETED")
+    missing_reason = TETHERS.IssueStatus(
+        state="CLOSED",
+        state_reason=None,
+        closing_refs=("https://github.com/forkwright/aletheia/pull/1",),
+    )
+    check(
+        "only completed issues joined to a closing PR are resolved",
+        TETHERS._issue_disposition(complete) == "resolved"
+        and TETHERS._issue_disposition(bare) == "unresolved"
+        and TETHERS._issue_disposition(missing_reason) == "unresolved",
     )
 
 
@@ -1268,6 +1399,91 @@ def test_macro_inventory_follows_logical_path_descendants() -> None:
     )
 
 
+def test_macro_inventory_follows_literal_module_include() -> None:
+    original_root = CHECKER.REPO_ROOT
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        macro_dir = root / "macros"
+        macro_dir.mkdir()
+        (macro_dir / "mod.rs").write_text('include!("generated.inc");\n')
+        (macro_dir / "generated.inc").write_text("define_op!(INCLUDED, included);\n")
+        CHECKER.REPO_ROOT = root
+        try:
+            found = CHECKER._scan_macro_items(macro_dir, "define_op")
+        finally:
+            CHECKER.REPO_ROOT = original_root
+    check(
+        "a literal module include contributes declaration macros",
+        set(found) == {"INCLUDED"},
+        str(found),
+    )
+
+
+def test_macro_inventory_rejects_unresolvable_module_include() -> None:
+    original_root = CHECKER.REPO_ROOT
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        macro_dir = root / "macros"
+        macro_dir.mkdir()
+        module = macro_dir / "mod.rs"
+        module.write_text(
+            '#[cfg(any())]\ninclude!(concat!("dead", ".inc"));\n'
+            'include!(concat!("generated", ".inc"));\n'
+        )
+        CHECKER.REPO_ROOT = root
+        try:
+            try:
+                CHECKER._scan_macro_items(macro_dir, "define_op")
+            except ValueError as error:
+                include_error = str(error)
+            else:
+                include_error = ""
+        finally:
+            CHECKER.REPO_ROOT = original_root
+    check(
+        "computed live module includes fail closed while impossible ones are skipped",
+        "include!" in include_error and "direct string literal" in include_error,
+        include_error,
+    )
+
+
+def test_public_api_inherent_impl_where_clauses_are_enumerated() -> None:
+    original = CHECKER.LIB_FILE
+    with tempfile.TemporaryDirectory() as tmp:
+        fixture = Path(tmp) / "lib.rs"
+        fixture.write_text(
+            "struct Marker<const N: usize>;\n"
+            "impl Db\n"
+            "where\n"
+            "    Marker<{ 1 }>: Sized,\n"
+            "{\n"
+            "    pub fn db_where() {}\n"
+            "}\n"
+            "impl MultiTransaction\n"
+            "where\n"
+            "    MultiTransaction: Sized,\n"
+            "{\n"
+            "    pub fn tx_where() {}\n"
+            "}\n"
+            "pub enum MultiTransactionError { LiveError }\n"
+        )
+        CHECKER.LIB_FILE = fixture
+        try:
+            public = CHECKER.extract_lib_public_api()
+        finally:
+            CHECKER.LIB_FILE = original
+    check(
+        "where-qualified inherent impl methods are enumerated",
+        set(public)
+        == {
+            "Db::db_where",
+            "MultiTransaction::tx_where",
+            "MultiTransactionError::LiveError",
+        },
+        str(public),
+    )
+
+
 def test_qualified_storage_methods_are_enumerated() -> None:
     original = CHECKER.STORAGE_FILE
     with tempfile.TemporaryDirectory() as tmp:
@@ -1324,8 +1540,12 @@ def test_strip_noise_preserves_length_and_blanks_literals() -> None:
 
 def test_nextest_listing_decodes_an_explicit_stream() -> None:
     listing = StringIO(
-        '{"test-count":2,"rust-suites":{"suite":{"binary-id":"fixture",'
-        '"testcases":{"runs":{"ignored":false},"skips":{"ignored":true}}}}}'
+        '{"test-count":3,"rust-suites":{"suite":{"status":"listed",'
+        '"binary-id":"fixture","testcases":{'
+        '"runs":{"ignored":false,"filter-match":{"status":"matches"}},'
+        '"skips":{"ignored":true,"filter-match":{"status":"matches"}},'
+        '"filtered":{"ignored":false,"filter-match":{'
+        '"status":"mismatch","reason":"default-filter"}}}}}}'
     )
     parsed = EVIDENCE.load_nextest_list(listing)
     check(
@@ -1335,22 +1555,75 @@ def test_nextest_listing_decodes_an_explicit_stream() -> None:
     )
 
 
+def test_hosted_list_and_run_share_one_nextest_selection() -> None:
+    workflow = _GATE_WORKFLOW.read_text(encoding="utf-8")
+    errors = _nextest_workflow_selection_errors(workflow)
+    mutated = workflow.replace(
+        "cargo nextest list --message-format json",
+        "cargo nextest list -p krites --message-format json",
+        1,
+    )
+    mutant_errors = _nextest_workflow_selection_errors(mutated)
+    check(
+        "hosted nextest listing and run consume one exact selection",
+        not errors,
+        str(errors),
+    )
+    check(
+        "a package-only listing cannot diverge from the workspace run",
+        any("private selector" in error for error in mutant_errors),
+        str(mutant_errors),
+    )
+
+
 def test_nextest_listing_fails_closed_on_malformed_authority() -> None:
     malformed = {
         "missing suites": '{"test-count":0}',
         "missing count": '{"rust-suites":{}}',
+        "missing suite status": (
+            '{"test-count":0,"rust-suites":{"suite":{"binary-id":"fixture",'
+            '"testcases":{}}}}'
+        ),
+        "unknown suite status": (
+            '{"test-count":0,"rust-suites":{"suite":{"status":"future",'
+            '"binary-id":"fixture","testcases":{}}}}'
+        ),
+        "skipped suite with tests": (
+            '{"test-count":1,"rust-suites":{"suite":{"status":"skipped",'
+            '"binary-id":"fixture","testcases":{"runs":{"ignored":false,'
+            '"filter-match":{"status":"matches"}}}}}}'
+        ),
         "non-boolean ignored": (
-            '{"test-count":1,"rust-suites":{"suite":{"binary-id":"fixture",'
-            '"testcases":{"runs":{"ignored":0}}}}}'
+            '{"test-count":1,"rust-suites":{"suite":{"status":"listed",'
+            '"binary-id":"fixture","testcases":{"runs":{"ignored":0,'
+            '"filter-match":{"status":"matches"}}}}}}'
+        ),
+        "missing filter match": (
+            '{"test-count":1,"rust-suites":{"suite":{"status":"listed",'
+            '"binary-id":"fixture","testcases":{"runs":{"ignored":false}}}}}'
+        ),
+        "unknown filter status": (
+            '{"test-count":1,"rust-suites":{"suite":{"status":"listed",'
+            '"binary-id":"fixture","testcases":{"runs":{"ignored":false,'
+            '"filter-match":{"status":"future"}}}}}}'
+        ),
+        "mismatch without reason": (
+            '{"test-count":1,"rust-suites":{"suite":{"status":"listed",'
+            '"binary-id":"fixture","testcases":{"runs":{"ignored":false,'
+            '"filter-match":{"status":"mismatch"}}}}}}'
         ),
         "count mismatch": (
-            '{"test-count":2,"rust-suites":{"suite":{"binary-id":"fixture",'
-            '"testcases":{"runs":{"ignored":false}}}}}'
+            '{"test-count":2,"rust-suites":{"suite":{"status":"listed",'
+            '"binary-id":"fixture","testcases":{"runs":{"ignored":false,'
+            '"filter-match":{"status":"matches"}}}}}}'
         ),
         "duplicate id": (
             '{"test-count":2,"rust-suites":{'
-            '"one":{"binary-id":"fixture","testcases":{"runs":{"ignored":false}}},'
-            '"two":{"binary-id":"fixture","testcases":{"runs":{"ignored":false}}}}}'
+            '"one":{"status":"listed","binary-id":"fixture","testcases":{'
+            '"runs":{"ignored":false,"filter-match":{"status":"mismatch",'
+            '"reason":"default-filter"}}}},'
+            '"two":{"status":"listed","binary-id":"fixture","testcases":{'
+            '"runs":{"ignored":false,"filter-match":{"status":"matches"}}}}}}'
         ),
     }
     rejected: list[str] = []
@@ -1363,6 +1636,16 @@ def test_nextest_listing_fails_closed_on_malformed_authority() -> None:
         "malformed nextest authority is rejected rather than decoded as empty/runnable",
         set(rejected) == set(malformed),
         f"rejected={rejected}",
+    )
+
+    skipped = StringIO(
+        '{"test-count":0,"rust-suites":{"suite":{'
+        '"status":"skipped-default-filter","binary-id":"fixture",'
+        '"testcases":{}}}}'
+    )
+    check(
+        "an empty skipped suite is represented honestly",
+        EVIDENCE.load_nextest_list(skipped) == {},
     )
 
 

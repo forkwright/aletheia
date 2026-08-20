@@ -9,20 +9,21 @@
 # with no matching source item (stale) fails the same way, so drift is caught
 # both directions.
 #
-# `gate_test` names the test that would fail if the capability disappeared, as
-# a `<binary-id>::<test path>` id (what `cargo nextest list -p krites` prints).
+# `gate_test` records a candidate test as a `<binary-id>::<test path>` id
+# (what `cargo nextest list` prints).
 # The required hosted gate resolves every pointer against compiler-derived
-# nextest output for the feature world it then executes, and fails on one that
-# names no test or names an `#[ignore]`d one. `"none"` is legal and means
-# UNPOINTED -- an honestly unpointed row is worth more than a pointer at a test
-# that does not exercise the capability, and the count is printed rather than
-# buried.
+# nextest output for the exact selection it then executes, and fails on one
+# that names no filter-matching test or names an `#[ignore]`d one. `"none"` is
+# legal and means UNPOINTED -- an honestly unpointed row is worth more than a
+# pointer at a test that does not exercise the capability, and the count is
+# printed rather than buried.
 #
-# WARNING(what a pointer proves): that the capability cannot be deleted
-# without a test disappearing or failing. NOT that the row's `gate` sentence
-# is asserted anywhere -- several gates name conformance behaviour no current
-# test checks. A green required hosted job does prove the same listed feature
-# world's nextest run passed.
+# WARNING(what a pointer proves): only that the named test exists and is
+# runnable in the listed test world. Membership does not mechanically couple
+# the test to this capability or prove the row's `gate` sentence -- several
+# gates name conformance behaviour no current test checks. A green required
+# hosted job proves the listed test world passed, not that this row's candidate
+# exercised its capability.
 #
 # `[[capability_set]]` covers the populations too large for one row each: 139
 # scalar functions, 138 DSL-reachable op names, 25 aggregations, 25
@@ -51,11 +52,11 @@
 # figure only after re-running its own call_sites_method, never by
 # incrementing -- an incremented number agrees with itself while being wrong.
 #
-# `call_sites = -1` is the ONE documented exception: "not measured", legal
-# only when `call_sites_method` states why -- prefixed `not measured:` /
-# `not separately measured:` (too generic a token/type to grep meaningfully)
-# or `covered under <other-row-id>; not separately re-measured` (a sibling
-# row already counts it). -1 is never a stand-in for a guessed 0.
+# `call_sites = -1` means "not measured" and is legal only for the exact row
+# ids and covered-row relationships owned by the checker. `call_sites_method`
+# retains the human reason -- too generic a token/type to grep meaningfully,
+# or one exact sibling row already owns the measurement -- but matrix prose
+# cannot authorize a new exception. -1 is never a stand-in for a guessed 0.
 #
 # dest_wave values: "wave-0".."wave-12" per PLAN.md Sec 4/Sec 7; "sovereign"
 # for code that already carries forward unrewritten (PLAN.md Sec 4 totals);
@@ -422,7 +423,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs (RegexWrapper, engine-internal)"
 gate = "Never serializes (serde impl returns a custom error on attempt, by design); Hash/Ord compare the source pattern string only, never compiled regex state."
 gate_test = "krites::data::tests::functions::string_ops::test_regex"
-notes = "Doc-comment-declared engine-internal (never appears in user-facing query results); zero external sites is expected by design, not a gap. The pointer constructs DataValue::Regex and exercises the regex ops, so the variant cannot be deleted unnoticed; the serde-refusal half of the gate is asserted nowhere."
+notes = "Doc-comment-declared engine-internal (never appears in user-facing query results); zero external sites is expected by design, not a gap. Human review observes that the candidate constructs DataValue::Regex and exercises regex ops; pointer membership itself does not prove that coupling, and the serde-refusal half of the gate is asserted nowhere."
 call_sites = 0
 call_sites_method = "grep -rn 'DataValue::Regex\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -641,7 +642,7 @@ dest_wave = "wave-10"
 dest_module = "query engine (row-result contract)"
 gate = "Row multiset for unordered queries; row sequence only where the script requests an order (Sec 3 wave 0.5, B17). Freezing an unordered result as a sequence is a kill-criterion violation."
 gate_test = "krites::public_api_fts_io_misc::named_rows_json_roundtrip"
-notes = "The pointer covers the type and its headers/rows round-trip, so NamedRows cannot vanish unnoticed. It does NOT assert this row's gate: no current test distinguishes an unordered result compared as a multiset from one frozen as a sequence, which is the B17 kill-criterion clause. That assertion arrives with the wave-0.5 recorder."
+notes = "Human review observes that the candidate covers the type and its headers/rows round-trip; pointer membership itself does not prove that coupling. It does NOT assert this row's gate: no current test distinguishes an unordered result compared as a multiset from one frozen as a sequence, which is the B17 kill-criterion clause. That assertion arrives with the wave-0.5 recorder."
 call_sites = -1
 call_sites_method = "not separately measured: NamedRows is the return type of Db::run/run_read_only, covered by those rows' measurement"
 
@@ -901,6 +902,7 @@ gate = "Error class oracle (Sec 6.1): each variant maps 1:1 to a distinguishable
 gate_test = "krites::runtime::tests::basic_queries::multi_transaction_reports_worker_termination_as_typed_error"
 call_sites = 0
 call_sites_method = "grep -rn 'MultiTransactionError' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "The recorded candidate exercises WorkerPanicked only. SendFailed and Query have no separate candidate in this bundled row, and the checker does not establish the row's three-variant error-class oracle."
 
 [[capability]]
 id = "api-multi-transaction-struct"
