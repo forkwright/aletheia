@@ -3,9 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import importlib.util
 import io
+import os
 import stat
 import sys
 import tarfile
@@ -217,6 +219,34 @@ def test_noncanonical_member_alias_fails() -> None:
     )
 
 
+def test_cli_files_must_remain_beneath_invocation_directory() -> None:
+    with tempfile.TemporaryDirectory(prefix="aletheia-tarball-cli-") as tmp:
+        parent = Path(tmp)
+        allowed = parent / "allowed"
+        allowed.mkdir()
+        inside = allowed / "inside"
+        inside.write_bytes(b"inside")
+        outside = parent / "outside"
+        outside.write_bytes(b"outside")
+        escape_link = allowed / "escape-link"
+        escape_link.symlink_to(outside)
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(allowed)
+            expect(
+                CHECKER._contained_cli_file("inside") == inside.resolve(),
+                "contained CLI file should resolve",
+            )
+            for value in ("../outside", str(outside), "escape-link", "."):
+                try:
+                    CHECKER._contained_cli_file(value)
+                except argparse.ArgumentTypeError:
+                    continue
+                expect(False, f"CLI containment accepted {value!r}")
+        finally:
+            os.chdir(original_cwd)
+
+
 def main() -> int:
     for test in (
         test_valid_tarball_passes,
@@ -228,6 +258,7 @@ def main() -> int:
         test_empty_package_root_fails,
         test_embedded_binary_must_equal_standalone_asset,
         test_noncanonical_member_alias_fails,
+        test_cli_files_must_remain_beneath_invocation_directory,
     ):
         test()
 

@@ -103,6 +103,21 @@ def test_checksum_mismatch_fails(root: Path) -> None:
     )
 
 
+def test_malformed_checksum_record_fails(root: Path) -> None:
+    checksum = root / "aletheia-linux-x86_64-1.2.3.sha256"
+    checksum.write_text(
+        "not-a-sha256  aletheia-linux-x86_64-1.2.3\n", encoding="utf-8"
+    )
+    errors = CHECKER.check_assets(root, TAG)
+    expect(
+        any(
+            checksum.name in error and "malformed SHA-256 record" in error
+            for error in errors
+        ),
+        f"malformed checksum should fail: {errors}",
+    )
+
+
 def test_malformed_attestation_fails(root: Path) -> None:
     bundle = root / "aletheia-linux-x86_64-1.2.3.provenance.intoto.jsonl"
     bundle.write_text("not json\n", encoding="utf-8")
@@ -199,6 +214,7 @@ def main() -> int:
         test_complete_set_passes,
         test_missing_and_unexpected_assets_fail,
         test_checksum_mismatch_fails,
+        test_malformed_checksum_record_fails,
         test_malformed_attestation_fails,
         test_semantically_empty_sbom_fails,
         test_shaped_but_dependency_empty_sboms_fail,

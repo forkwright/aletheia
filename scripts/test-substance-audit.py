@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -19,6 +20,7 @@ SPEC.loader.exec_module(AUDIT)
 
 SHA = "a" * 40
 FAILURES: list[str] = []
+TRUSTED_FIXTURE_PARENT = SCRIPT.parents[1].resolve(strict=True)
 
 
 def expect(condition: bool, message: str) -> None:
@@ -26,9 +28,51 @@ def expect(condition: bool, message: str) -> None:
         FAILURES.append(message)
 
 
+def _fixture_root(raw_path: str) -> Path:
+    """Rebuild TemporaryDirectory's generated name beneath a trusted parent."""
+    safe_name = os.path.basename(raw_path)
+    candidate = (TRUSTED_FIXTURE_PARENT / safe_name).resolve(strict=True)
+    if candidate.parent != TRUSTED_FIXTURE_PARENT or not candidate.is_dir():
+        raise ValueError(f"fixture root escaped trusted parent: {raw_path!r}")
+    return candidate
+
+
+def _fixture_path(root: Path, path: Path) -> Path:
+    """Return a normalized fixture path whose every component stays under root."""
+    safe_root_name = os.path.basename(os.fspath(root))
+    resolved_root = (TRUSTED_FIXTURE_PARENT / safe_root_name).resolve(strict=True)
+    if (
+        resolved_root != root.resolve(strict=True)
+        or resolved_root.parent != TRUSTED_FIXTURE_PARENT
+    ):
+        raise ValueError(f"untrusted fixture root: {root}")
+    try:
+        relative = path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"fixture path escapes root: {path}") from exc
+    safe_parts: list[str] = []
+    for part in relative.parts:
+        safe_part = os.path.basename(part)
+        if safe_part != part or safe_part in {"", ".", ".."}:
+            raise ValueError(f"unsafe fixture path component: {part!r}")
+        safe_parts.append(safe_part)
+    candidate = resolved_root.joinpath(*safe_parts).resolve(strict=False)
+    if resolved_root not in candidate.parents:
+        raise ValueError(f"fixture path resolves outside root: {path}")
+    return candidate
+
+
+def _write_text(root: Path, path: Path, value: str) -> None:
+    safe_path = _fixture_path(root, path)
+    safe_path.parent.mkdir(parents=True, exist_ok=True)
+    safe_path.write_text(value, encoding="utf-8")
+
+
 def write_repo(root: Path) -> Path:
-    (root / "rust-toolchain.toml").write_text(
-        '[toolchain]\nchannel = "1.97.1"\n', encoding="utf-8"
+    _write_text(
+        root,
+        root / "rust-toolchain.toml",
+        '[toolchain]\nchannel = "1.97.1"\n',
     )
     paths = {
         "symbolon": ["crates/symbolon/src"],
@@ -43,24 +87,29 @@ def write_repo(root: Path) -> Path:
     for crate, required in paths.items():
         crate_root = root / "crates" / crate
         (crate_root / "src").mkdir(parents=True, exist_ok=True)
-        (crate_root / "Cargo.toml").write_text(
+        _write_text(
+            root,
+            crate_root / "Cargo.toml",
             f'[package]\nname = "{crate}"\nversion = "1.2.3"\n',
-            encoding="utf-8",
         )
-        (crate_root / "src" / "lib.rs").write_text(
-            "pub fn live() -> bool { true }\n", encoding="utf-8"
+        _write_text(
+            root,
+            crate_root / "src" / "lib.rs",
+            "pub fn live() -> bool { true }\n",
         )
         for raw in required:
             path = root / raw
             if path.suffix:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("pub fn critical() {}\n", encoding="utf-8")
+                _write_text(root, path, "pub fn critical() {}\n")
             else:
                 path.mkdir(parents=True, exist_ok=True)
 
     policy = root / "scripts" / "substance-audit-policy.toml"
     policy.parent.mkdir(parents=True, exist_ok=True)
-    policy.write_text(
+    _write_text(
+        root,
+        policy,
         """schema_version = 1
 
 [tools]
@@ -102,12 +151,15 @@ path = "crates/nous"
 features = []
 critical_paths = []
 """,
-        encoding="utf-8",
     )
     workflow = root / ".github/workflows/substance-audit.yml"
     workflow.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(SCRIPT.parents[1] / ".github/workflows/substance-audit.yml", workflow)
-    return policy
+    safe_workflow = _fixture_path(root, workflow)
+    safe_workflow.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        SCRIPT.parents[1] / ".github/workflows/substance-audit.yml", safe_workflow
+    )
+    return _fixture_path(root, policy)
 
 
 def report(crate: str, *, mutation: str = "PASS", taut: str = "PASS", config: str = "PASS") -> dict[str, object]:
@@ -209,9 +261,8 @@ def outcomes(crate: str, summary: str = "CaughtMutant", path: str | None = None)
     return value
 
 
-def write_json(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value), encoding="utf-8")
+def write_json(root: Path, path: Path, value: object) -> None:
+    _write_text(root, path, json.dumps(value))
 
 
 def classify_fixture(
@@ -223,7 +274,10 @@ def classify_fixture(
     outcomes_value: dict[str, object] | None = None,
     audit_exit: int = 0,
 ) -> dict[str, object]:
-    evidence = root / "evidence" / crate
+    safe_crate = os.path.basename(crate)
+    if safe_crate != crate or safe_crate not in AUDIT.CRATES:
+        raise ValueError(f"invalid fixture crate: {crate!r}")
+    evidence = _fixture_path(root, root / "evidence" / safe_crate)
     evidence.mkdir(parents=True, exist_ok=True)
     audit_json = evidence / "audit.json"
     outcomes_json = evidence / "mutants.out" / "outcomes.json"
@@ -232,9 +286,10 @@ def classify_fixture(
     baseline_exit = evidence / "baseline-exit.txt"
     audit_exit_path = evidence / "audit-exit.txt"
     clean_exit = evidence / "clean-exit.txt"
-    write_json(audit_json, report_value or report(crate))
-    write_json(outcomes_json, outcomes_value or outcomes(crate))
+    write_json(root, audit_json, report_value or report(safe_crate))
+    write_json(root, outcomes_json, outcomes_value or outcomes(safe_crate))
     write_json(
+        root,
         metadata,
         {
             "kanon_version": "0.13.0",
@@ -248,14 +303,14 @@ def classify_fixture(
         "symbolon": ["keyring"],
         "episteme": ["storage-fjall"],
     }.get(crate, [])
-    config.write_text(AUDIT.render_mutants_config(features), encoding="utf-8")
-    baseline_exit.write_text("0\n", encoding="utf-8")
-    audit_exit_path.write_text(f"{audit_exit}\n", encoding="utf-8")
-    clean_exit.write_text("0\n", encoding="utf-8")
+    _write_text(root, config, AUDIT.render_mutants_config(features))
+    _write_text(root, baseline_exit, "0\n")
+    _write_text(root, audit_exit_path, f"{audit_exit}\n")
+    _write_text(root, clean_exit, "0\n")
     args = SimpleNamespace(
         repo_root=root,
         policy=policy,
-        crate=crate,
+        crate=safe_crate,
         repo_sha=SHA,
         release_pr=6902,
         source_run_id="123",
@@ -278,7 +333,7 @@ def write_receipts(root: Path, policy: Path, overrides: dict[str, dict[str, obje
         if overrides and crate in overrides:
             value.update(overrides[crate])
         path = root / "evidence" / crate / "receipt.json"
-        write_json(path, value)
+        write_json(root, path, value)
         paths.append(path)
     return paths
 
@@ -302,35 +357,61 @@ def aggregate_fixture(
     return AUDIT.aggregate(args)
 
 
+def test_fixture_path_containment(root: Path, policy: Path) -> None:
+    safe_path = _fixture_path(root, root / "safe-child")
+    expect(safe_path.parent == root, "contained fixture path should resolve")
+
+    escape_link = root / "escape-link"
+    escape_link.symlink_to(SCRIPT)
+    for path in (root / ".." / "escape", SCRIPT, escape_link):
+        try:
+            _fixture_path(root, path)
+        except ValueError:
+            continue
+        expect(False, f"fixture containment accepted {path}")
+
+    for crate in ("../symbolon", "unknown"):
+        try:
+            classify_fixture(root, policy, crate)
+        except ValueError:
+            continue
+        expect(False, f"fixture crate validation accepted {crate!r}")
+
+
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="substance-audit-") as tmp:
-        root = Path(tmp)
+    with tempfile.TemporaryDirectory(
+        prefix=".substance-audit-", dir=TRUSTED_FIXTURE_PARENT
+    ) as tmp:
+        root = _fixture_root(tmp)
         policy_path = write_repo(root)
+        test_fixture_path_containment(root, policy_path)
         policy, errors = AUDIT.load_policy(policy_path, root)
         expect(not errors, f"valid policy failed: {errors}")
         workflow_errors = AUDIT.validate_workflow_contract(policy, root)
         expect(not workflow_errors, f"valid workflow contract failed: {workflow_errors}")
         workflow_path = root / ".github/workflows/substance-audit.yml"
         workflow_text = workflow_path.read_text(encoding="utf-8")
-        workflow_path.write_text(
+        _write_text(
+            root,
+            workflow_path,
             workflow_text.replace(
                 "ref: 6795565b0ae3368faa0b710608dfeabe1f70fafb",
                 "ref: " + "0" * 40,
                 1,
             ),
-            encoding="utf-8",
         )
         expect(
             any("exact Kanon commit" in error for error in AUDIT.validate_workflow_contract(policy, root)),
             "workflow validator accepted the wrong private Kanon commit",
         )
-        workflow_path.write_text(
+        _write_text(
+            root,
+            workflow_path,
             workflow_text.replace(
                 'CARGO_MUTANTS_OUTPUT="$RESULT_DIR"',
                 'CARGO_MUTANTS_OUTPUT="$RESULT_DIR/mutants.out"',
                 1,
             ),
-            encoding="utf-8",
         )
         expect(
             any(
@@ -339,9 +420,10 @@ def main() -> int:
             ),
             "workflow validator accepted a nested cargo-mutants output parent",
         )
-        workflow_path.write_text(
+        _write_text(
+            root,
+            workflow_path,
             workflow_text.replace("MUTANT_JOBS: 4", "MUTANT_JOBS: 5", 1),
-            encoding="utf-8",
         )
         expect(
             any(
@@ -350,18 +432,19 @@ def main() -> int:
             ),
             "workflow validator accepted mutation-job drift",
         )
-        workflow_path.write_text(workflow_text, encoding="utf-8")
+        _write_text(root, workflow_path, workflow_text)
         policy_text = policy_path.read_text(encoding="utf-8")
-        policy_path.write_text(
+        _write_text(
+            root,
+            policy_path,
             policy_text.replace('kanon_tag = "v0.13.0"', 'kanon_tag = "v9.9.9"'),
-            encoding="utf-8",
         )
         _, tag_errors = AUDIT.load_policy(policy_path, root)
         expect(
             any("kanon_tag" in error for error in tag_errors),
             "policy validator accepted a tag/version mismatch",
         )
-        policy_path.write_text(policy_text, encoding="utf-8")
+        _write_text(root, policy_path, policy_text)
         expect(
             AUDIT.matrix(policy)[0]["features"] == "keyring",
             "matrix lost symbolon feature world",
@@ -419,7 +502,11 @@ def main() -> int:
         )
 
         critical_doc = root / "crates/episteme/src/conflict.rs"
-        critical_doc.write_text("/// Returns the conflict.\npub fn conflict() {}\n", encoding="utf-8")
+        _write_text(
+            root,
+            critical_doc,
+            "/// Returns the conflict.\npub fn conflict() {}\n",
+        )
         taut = classify_fixture(
             root,
             policy_path,
@@ -432,7 +519,7 @@ def main() -> int:
             and any(item["kind"] == "tautological_doc" for item in taut["blockers"]),
             "critical tautological doc did not block",
         )
-        critical_doc.write_text("pub fn conflict() {}\n", encoding="utf-8")
+        _write_text(root, critical_doc, "pub fn conflict() {}\n")
 
         human = classify_fixture(
             root,
@@ -508,7 +595,7 @@ def main() -> int:
             ),
             audit_exit=1,
         )
-        write_json(receipts[1], advisory_value)
+        write_json(root, receipts[1], advisory_value)
         unowned = aggregate_fixture(root, policy_path, receipts)
         expect(
             unowned["status"] == "BLOCKED"
@@ -531,7 +618,7 @@ def main() -> int:
             plain_receipts[0].read_text(encoding="utf-8")
         )
         contradictory_receipt["status"] = "BLOCKED"
-        write_json(plain_receipts[0], contradictory_receipt)
+        write_json(root, plain_receipts[0], contradictory_receipt)
         contradictory_aggregate = aggregate_fixture(
             root, policy_path, plain_receipts
         )
@@ -548,7 +635,7 @@ def main() -> int:
         incomplete_receipt = json.loads(plain_receipts[0].read_text(encoding="utf-8"))
         incomplete_receipt["tools"] = None
         incomplete_receipt["evidence_sha256"] = {}
-        write_json(plain_receipts[0], incomplete_receipt)
+        write_json(root, plain_receipts[0], incomplete_receipt)
         incomplete_aggregate = aggregate_fixture(root, policy_path, plain_receipts)
         expect(
             incomplete_aggregate["status"] == "BLOCKED"
@@ -574,7 +661,7 @@ def main() -> int:
             report_value=report("symbolon", config="FAIL"),
             audit_exit=1,
         )
-        write_json(global_receipts[0], global_value)
+        write_json(root, global_receipts[0], global_value)
         global_disagreement = aggregate_fixture(
             root,
             policy_path,
@@ -597,7 +684,7 @@ def main() -> int:
         plain_receipts = write_receipts(root, policy_path)
         plain_aggregate = aggregate_fixture(root, policy_path, plain_receipts)
         aggregate_path = root / "aggregate.json"
-        write_json(aggregate_path, plain_aggregate)
+        write_json(root, aggregate_path, plain_aggregate)
         enforce_args = SimpleNamespace(
             receipt=aggregate_path,
             policy=policy_path,
@@ -609,7 +696,7 @@ def main() -> int:
         expect(AUDIT.cmd_enforce(enforce_args) == 0, "valid aggregate did not enforce")
 
         bare_path = root / "bare-aggregate.json"
-        write_json(bare_path, {"status": "PASS"})
+        write_json(root, bare_path, {"status": "PASS"})
         bare_args = SimpleNamespace(**{**vars(enforce_args), "receipt": bare_path})
         expect(
             AUDIT.cmd_enforce(bare_args) == 1,
@@ -618,7 +705,7 @@ def main() -> int:
 
         forged = json.loads(aggregate_path.read_text(encoding="utf-8"))
         forged["receipts"]["symbolon"]["status"] = "BLOCKED"
-        write_json(bare_path, forged)
+        write_json(root, bare_path, forged)
         expect(
             AUDIT.cmd_enforce(bare_args) == 1,
             "aggregate PASS ignored a BLOCKED crate receipt summary",

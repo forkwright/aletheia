@@ -47,6 +47,22 @@ class ManifestRow:
     size: int
 
 
+def _contained_cli_file(value: str) -> Path:
+    """Resolve a CLI file beneath the invocation directory, without symlink escape."""
+    allowed_root = Path.cwd().resolve(strict=True)
+    try:
+        candidate = (allowed_root / value).resolve(strict=True)
+    except OSError as exc:
+        raise argparse.ArgumentTypeError(f"invalid file {value!r}: {exc}") from exc
+    if allowed_root not in candidate.parents:
+        raise argparse.ArgumentTypeError(
+            f"{value!r} resolves outside invocation directory {allowed_root}"
+        )
+    if not candidate.is_file():
+        raise argparse.ArgumentTypeError(f"{value!r} is not a regular file")
+    return candidate
+
+
 def _safe_member_name(name: str, root: str) -> str | None:
     pure = PurePosixPath(name)
     if pure.is_absolute() or ".." in pure.parts or "." in pure.parts:
@@ -247,11 +263,11 @@ def check_tarball(
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("tarball", type=Path)
+    parser.add_argument("tarball", type=_contained_cli_file)
     parser.add_argument("version")
     parser.add_argument("target")
     parser.add_argument("source_sha")
-    parser.add_argument("standalone_binary", type=Path)
+    parser.add_argument("standalone_binary", type=_contained_cli_file)
     return parser.parse_args(argv)
 
 

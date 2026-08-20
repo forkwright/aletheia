@@ -57,14 +57,20 @@ def _check_checksum(directory: Path, checksum_path: Path) -> list[str]:
     except OSError as exc:
         return [f"{checksum_path.name}: failed to read checksum: {exc}"]
 
-    match = re.fullmatch(r"([0-9a-f]{64})\s+\*?(.+)", line)
-    if match is None:
+    fields = line.split(maxsplit=1)
+    if (
+        len(fields) != 2
+        or len(fields[0]) != 64
+        or any(character not in "0123456789abcdef" for character in fields[0])
+    ):
         return [f"{checksum_path.name}: malformed SHA-256 record"]
+    digest, recorded_name = fields
+    recorded_name = recorded_name.removeprefix("*")
 
     subject_name = checksum_path.name.removesuffix(".sha256")
-    if match.group(2) != subject_name:
+    if recorded_name != subject_name:
         errors.append(
-            f"{checksum_path.name}: names {match.group(2)!r}, expected {subject_name!r}"
+            f"{checksum_path.name}: names {recorded_name!r}, expected {subject_name!r}"
         )
         return errors
 
@@ -74,9 +80,9 @@ def _check_checksum(directory: Path, checksum_path: Path) -> list[str]:
     except OSError as exc:
         errors.append(f"{subject_name}: failed to hash: {exc}")
         return errors
-    if observed != match.group(1):
+    if observed != digest:
         errors.append(
-            f"{checksum_path.name}: digest {match.group(1)} does not match {observed}"
+            f"{checksum_path.name}: digest {digest} does not match {observed}"
         )
     return errors
 
