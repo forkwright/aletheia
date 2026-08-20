@@ -440,6 +440,668 @@ def main() -> int:
             ),
             "workflow validator accepted mutation-job drift",
         )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "check-release-versioning.py verify-comparison",
+                "check-release-versioning.py check",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "immutable release comparison" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted removal of immutable comparison validation",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "compare/${GITHUB_SHA}...${EXPECTED_SHA}",
+                "compare/main...${EXPECTED_SHA}",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "immutable comparison route" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted a mutable comparison base",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                '--base-sha "$GITHUB_SHA"',
+                '--base-sha "$EXPECTED_SHA"',
+                1,
+            ),
+        )
+        expect(
+            any(
+                "trusted comparison base binding" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted the wrong comparison base binding",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                '--candidate-sha "$EXPECTED_SHA"',
+                '--candidate-sha "$GITHUB_SHA"',
+                1,
+            ),
+        )
+        expect(
+            any(
+                "trusted comparison candidate binding" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted the wrong comparison candidate binding",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                '<<<"$compare_json"',
+                '<<<"$compare_json" || true',
+                1,
+            ),
+        )
+        expect(
+            any(
+                "immutable comparison step must remain exact" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted suppression of comparison failure",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "Bind the open Release Please PR to current main\n",
+                "Bind the open Release Please PR to current main\n"
+                "        continue-on-error: true\n",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "release PR binding step must fail closed" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted continue-on-error on candidate admission",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "  preflight:\n",
+                "  preflight:\n    continue-on-error: true\n",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "preflight admission job must fail closed" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted job-level preflight suppression",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "- name: Bind the open Release Please PR to current main\n"
+                "        env:",
+                "- name: Bind the open Release Please PR to current main\n"
+                "        if: false\n"
+                "        env:",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "preflight steps must not be conditional" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted a skipped candidate-admission step",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "\nenv:\n  GH_REPO:",
+                "\ndefaults:\n  run:\n    shell: bash {0}\n\nenv:\n  GH_REPO:",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "must not override the default run shell" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted a fail-open workflow shell override",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "  preflight:\n",
+                "  preflight:\n"
+                "    defaults:\n"
+                "      run:\n"
+                "        shell: bash {0}\n",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "preflight admission job must fail closed" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted a fail-open preflight shell override",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                '          compare_json="$(gh api "repos/${GH_REPO}/compare/',
+                "          cat >/dev/null <<'REVIEW_EOF'\n"
+                '          compare_json="$(gh api "repos/${GH_REPO}/compare/',
+                1,
+            ).replace(
+                '            <<<"$compare_json"',
+                '            <<<"$compare_json"\n          REVIEW_EOF',
+                1,
+            ),
+        )
+        expect(
+            any(
+                "immutable comparison step must remain exact" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted an inert comparison heredoc",
+        )
+        candidate_checkout = (
+            "          path: release-candidate\n"
+            "          persist-credentials: false\n"
+            "          ref: ${{ inputs.expected_sha }}"
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                candidate_checkout,
+                candidate_checkout.replace(
+                    "${{ inputs.expected_sha }}", "${{ github.sha }}"
+                ),
+                1,
+            ),
+        )
+        expect(
+            any(
+                "must inspect the exact candidate checkout" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted validation of the wrong candidate tree",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace("    needs: [preflight]\n", "", 1),
+        )
+        expect(
+            any(
+                "audit job must depend on preflight" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted audit execution without preflight",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "    if: inputs.source_run_id == ''",
+                "    if: always() && inputs.source_run_id == ''",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "must retain the implicit successful-preflight condition" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted audit execution after failed preflight",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}",
+                "matrix: ${{ fromJSON(inputs.matrix) }}",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "audit matrix must come from preflight" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted an untrusted audit matrix",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "    permissions:\n      contents: read\n    steps:\n",
+                "    permissions:\n"
+                "      contents: write\n"
+                "      id-token: write\n"
+                "    steps:\n",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "audit permissions must remain exact" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted expanded candidate-audit permissions",
+        )
+        audit_control_checkout = (
+            "          path: control\n"
+            "          persist-credentials: false\n"
+            "          ref: ${{ github.sha }}"
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                audit_control_checkout,
+                audit_control_checkout.replace(
+                    "${{ github.sha }}", "${{ inputs.expected_sha }}"
+                ),
+                1,
+            ),
+        )
+        expect(
+            any(
+                "audit control must use the trusted base" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted candidate code as audit control",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "- name: Scrub private source and credentials before Aletheia execution\n"
+                "        run:",
+                "- name: Scrub private source and credentials before Aletheia execution\n"
+                "        if: false\n"
+                "        run:",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "private-source scrub must remain exact" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted candidate execution without private scrub",
+        )
+        for expression in (
+            "${{ secrets.FLEET_REPO_TOKEN }}",
+            "${{ secrets['FLEET_REPO_TOKEN'] }}",
+            "${{ github['token'] }}",
+            "${{ toJSON(secrets) }}",
+        ):
+            _write_text(
+                root,
+                workflow_path,
+                workflow_text.replace(
+                    "- name: Run the exact feature-world baseline and substance audit\n"
+                    "        env:\n",
+                    "- name: Run the exact feature-world baseline and substance audit\n"
+                    "        env:\n"
+                    f"          LEAKED_CREDENTIAL: {expression}\n",
+                    1,
+                ),
+            )
+            expect(
+                any(
+                    "must not expose credentials after the private-source scrub"
+                    in error
+                    for error in AUDIT.validate_workflow_contract(policy, root)
+                ),
+                "workflow validator accepted post-scrub credential expression "
+                f"{expression}",
+            )
+        private_start = workflow_text.index(
+            "      - uses: actions/checkout@"
+            "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"
+            "        with:\n"
+            "          repository: forkwright/kanon"
+        )
+        scrub_start = workflow_text.index(
+            "      - name: Scrub private source and credentials before "
+            "Aletheia execution",
+            private_start,
+        )
+        target_start = workflow_text.index(
+            "      - uses: actions/checkout@"
+            "3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1\n"
+            "        with:\n"
+            "          path: target",
+            scrub_start,
+        )
+        private_build_block = workflow_text[private_start:scrub_start]
+        scrub_block = workflow_text[scrub_start:target_start]
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text[:private_start]
+            + scrub_block
+            + private_build_block
+            + workflow_text[target_start:],
+        )
+        expect(
+            any(
+                "audit step order must remain exact" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted private checkout after the scrub boundary",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "always() && needs.preflight.result == 'success' &&",
+                "always() &&",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "aggregate job must require successful preflight" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted aggregation after failed preflight",
+        )
+        aggregate_start = workflow_text.index("\n  aggregate:")
+        aggregate_text = workflow_text[aggregate_start:]
+        aggregate_control_checkout = (
+            "          persist-credentials: false\n"
+            "          ref: ${{ github.sha }}"
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text[:aggregate_start]
+            + aggregate_text.replace(
+                aggregate_control_checkout,
+                aggregate_control_checkout.replace(
+                    "${{ github.sha }}", "${{ inputs.expected_sha }}"
+                ),
+                1,
+            ),
+        )
+        expect(
+            any(
+                "must bind trusted control and exact candidate" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted candidate code as aggregate control",
+        )
+        aggregate_candidate_checkout = (
+            "          path: release-candidate\n"
+            "          persist-credentials: false\n"
+            "          ref: ${{ inputs.expected_sha }}"
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text[:aggregate_start]
+            + aggregate_text.replace(
+                aggregate_candidate_checkout,
+                aggregate_candidate_checkout.replace(
+                    "${{ inputs.expected_sha }}", "${{ github.sha }}"
+                ),
+                1,
+            ),
+        )
+        expect(
+            any(
+                "must bind trusted control and exact candidate" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted base code as the aggregate candidate",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "  aggregate:\n",
+                "  aggregate:\n    continue-on-error: true\n",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "aggregate job keys must remain exact" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted job-level aggregate failure suppression",
+        )
+        aggregate_permissions = (
+            "    permissions:\n"
+            "      actions: read\n"
+            "      contents: read\n"
+            "      pull-requests: write\n"
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                aggregate_permissions,
+                "    permissions:\n"
+                "      actions: write\n"
+                "      contents: write\n"
+                "      id-token: write\n"
+                "      pull-requests: write\n",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "aggregate permissions must remain exact" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted expanded aggregate permissions",
+        )
+        enforce_marker = "- name: Enforce release substance policy\n"
+        for insertion, label in (
+            ("        if: false\n", "skipped"),
+            ("        continue-on-error: true\n", "failure-suppressed"),
+        ):
+            _write_text(
+                root,
+                workflow_path,
+                workflow_text.replace(
+                    enforce_marker,
+                    enforce_marker + insertion,
+                    1,
+                ),
+            )
+            expect(
+                any(
+                    "final policy enforcement step must remain exact" in error
+                    for error in AUDIT.validate_workflow_contract(policy, root)
+                ),
+                f"workflow validator accepted a {label} final policy decision",
+            )
+        update_marker = "- name: Rebind the receipt before updating the release PR\n"
+        for insertion, label in (
+            ("        if: false\n", "skipped"),
+            ("        continue-on-error: true\n", "failure-suppressed"),
+        ):
+            _write_text(
+                root,
+                workflow_path,
+                workflow_text.replace(
+                    update_marker,
+                    update_marker + insertion,
+                    1,
+                ),
+            )
+            expect(
+                any(
+                    "PR receipt update step must remain exact" in error
+                    for error in AUDIT.validate_workflow_contract(policy, root)
+                ),
+                f"workflow validator accepted a {label} PR receipt update",
+            )
+        update_index = workflow_text.index(update_marker)
+        update_prefix = workflow_text[:update_index]
+        update_block = workflow_text[update_index:]
+        head_binding = (
+            "          test \"$(jq -r '.head.sha' <<<\"$pr_json\")\" = "
+            "\"$EXPECTED_SHA\""
+        )
+        last_binding = update_block.rfind(head_binding)
+        expect(last_binding >= 0, "fixture could not find the post-edit head binding")
+        if last_binding >= 0:
+            _write_text(
+                root,
+                workflow_path,
+                update_prefix
+                + update_block[:last_binding]
+                + "          true"
+                + update_block[last_binding + len(head_binding) :],
+            )
+            expect(
+                any(
+                    "PR receipt update step must remain exact" in error
+                    for error in AUDIT.validate_workflow_contract(policy, root)
+                ),
+                "workflow validator accepted removal of the post-edit head binding",
+            )
+        upload_marker = "- name: Upload the aggregate release receipt\n"
+        for insertion, label in (
+            ("        if: false\n", "skipped"),
+            ("        continue-on-error: true\n", "failure-suppressed"),
+        ):
+            _write_text(
+                root,
+                workflow_path,
+                workflow_text.replace(
+                    upload_marker,
+                    upload_marker + insertion,
+                    1,
+                ),
+            )
+            expect(
+                any(
+                    "aggregate receipt upload must remain exact" in error
+                    for error in AUDIT.validate_workflow_contract(policy, root)
+                ),
+                f"workflow validator accepted a {label} aggregate receipt upload",
+            )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text
+            + "\n  bypass:\n"
+            + "    runs-on: ubuntu-latest\n"
+            + "    steps:\n"
+            + "      - run: echo unexpected\n",
+        )
+        expect(
+            any(
+                "must contain exactly preflight, audit, and aggregate jobs" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted an unrecognized sibling job",
+        )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "--base-root . --candidate-root release-candidate",
+                "--base-root . --candidate-root release-candidate || true",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "release transition command block must remain exact" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted suppression of release transition failure",
+        )
+        for release_pr_reference in (
+            "$RELEASE_PR",
+            "${{ inputs.release_pr }}",
+        ):
+            _write_text(
+                root,
+                workflow_path,
+                workflow_text.replace(
+                    "scripts/check-release-versioning.py verify-comparison",
+                    f'gh api "repos/${{GH_REPO}}/pulls/{release_pr_reference}/files"\n'
+                    "          scripts/check-release-versioning.py verify-comparison",
+                    1,
+                ),
+            )
+            expect(
+                any(
+                    "mutable release PR files endpoint" in error
+                    for error in AUDIT.validate_workflow_contract(policy, root)
+                ),
+                "workflow validator accepted the mutable PR files endpoint",
+            )
+        _write_text(
+            root,
+            workflow_path,
+            workflow_text.replace(
+                "Rebind the Release Please PR after candidate validation",
+                "Candidate validation complete",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "post-validation release PR rebind" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted removal of the post-validation PR rebind",
+        )
+        rebind_marker = "Rebind the Release Please PR after candidate validation"
+        prefix, rebind_block = workflow_text.split(rebind_marker, 1)
+        _write_text(
+            root,
+            workflow_path,
+            prefix
+            + rebind_marker
+            + rebind_block.replace(
+                "test \"$(jq -r '.head.sha' <<<\"$pr_json\")\" = \"$EXPECTED_SHA\"",
+                "true",
+                1,
+            ),
+        )
+        expect(
+            any(
+                "post-validation rebind lacks candidate SHA binding" in error
+                for error in AUDIT.validate_workflow_contract(policy, root)
+            ),
+            "workflow validator accepted a named but vacuous post-validation rebind",
+        )
         _write_text(root, workflow_path, workflow_text)
         policy_text = policy_path.read_text(encoding="utf-8")
         _write_text(

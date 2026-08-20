@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -419,6 +420,104 @@ def test_release_transition_allows_only_canonical_metadata(root: Path) -> None:
     )
 
 
+def test_release_comparison_rejects_extra_newline_and_rename_paths(
+    _root: Path,
+) -> None:
+    base_sha = "a" * 40
+    candidate_sha = "b" * 40
+    valid_files = [
+        {"filename": path, "status": "modified"}
+        for path in CHECKER.RELEASE_TRANSITION_PATHS
+    ]
+
+    def comparison(files: list[dict[str, object]]) -> dict[str, object]:
+        return {
+            "status": "ahead",
+            "ahead_by": 1,
+            "behind_by": 0,
+            "total_commits": 1,
+            "base_commit": {"sha": base_sha},
+            "merge_base_commit": {"sha": base_sha},
+            "commits": [{"sha": candidate_sha}],
+            "files": files,
+        }
+
+    errors = CHECKER.check_release_comparison(
+        comparison(valid_files), base_sha, candidate_sha
+    )
+    expect(not errors, f"exact immutable release comparison should pass: {errors}")
+
+    errors = CHECKER.check_release_comparison([], base_sha, candidate_sha)
+    expect(
+        any("JSON object" in error for error in errors),
+        f"non-object comparison should fail: {errors}",
+    )
+    malformed_files = comparison(valid_files)
+    malformed_files["files"] = [*valid_files[:-1], "not-a-file-object"]
+    errors = CHECKER.check_release_comparison(
+        malformed_files, base_sha, candidate_sha
+    )
+    expect(
+        any("must be a JSON object" in error for error in errors),
+        f"malformed comparison file entry should fail: {errors}",
+    )
+
+    malformed_json = subprocess.run(
+        [
+            sys.executable,
+            str(_SCRIPT_PATH),
+            "verify-comparison",
+            "--base-sha",
+            base_sha,
+            "--candidate-sha",
+            candidate_sha,
+        ],
+        input="{",
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    expect(
+        malformed_json.returncode != 0
+        and "not valid JSON" in malformed_json.stderr,
+        "verify-comparison CLI accepted malformed JSON input",
+    )
+
+    cases = {
+        "ordinary sixth file": [
+            *valid_files,
+            {"filename": "crates/aletheia/src/escape.rs", "status": "modified"},
+        ],
+        "newline-bearing sixth file": [
+            *valid_files,
+            {"filename": "Cargo.toml\nCHANGELOG.md", "status": "modified"},
+        ],
+        "renamed release file": [
+            {
+                "filename": CHECKER.RELEASE_TRANSITION_PATHS[0],
+                "previous_filename": "renamed-owner",
+                "status": "renamed",
+            },
+            *valid_files[1:],
+        ],
+    }
+    for label, files in cases.items():
+        errors = CHECKER.check_release_comparison(
+            comparison(files), base_sha, candidate_sha
+        )
+        expect(errors, f"{label} must fail immutable comparison validation")
+
+    wrong_commit = comparison(valid_files)
+    wrong_commit["commits"] = [{"sha": "c" * 40}]
+    errors = CHECKER.check_release_comparison(
+        wrong_commit, base_sha, candidate_sha
+    )
+    expect(
+        any("expected candidate commit" in error for error in errors),
+        f"comparison candidate SHA drift should fail: {errors}",
+    )
+
+
 def run_isolated(test_fn: object) -> None:
     with tempfile.TemporaryDirectory() as tmp_str:
         root = Path(tmp_str)
@@ -436,6 +535,7 @@ def main() -> int:
         test_bump_updates_all_version_owners,
         test_check_rejects_stale_lock_version,
         test_release_transition_allows_only_canonical_metadata,
+        test_release_comparison_rejects_extra_newline_and_rename_paths,
     ):
         run_isolated(test_fn)
 

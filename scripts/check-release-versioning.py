@@ -13,6 +13,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import tomllib
 
@@ -25,10 +26,20 @@ ROOT_LOCK_JSONPATH = "$.package[?(!@.source)].version"
 CHANGELOG_PATH = "CHANGELOG.md"
 PROSKENION_LOCK_PATH = "crates/theatron/proskenion/Cargo.lock"
 PROSKENION_LOCK_PACKAGES = ("koina", "skene")
+RELEASE_VERSION_PATHS = (
+    ".release-please-manifest.json",
+    ROOT_LOCK_PATH,
+    ROOT_CARGO_PATH,
+    PROSKENION_LOCK_PATH,
+)
+RELEASE_TRANSITION_PATHS = tuple(
+    sorted((*RELEASE_VERSION_PATHS, CHANGELOG_PATH))
+)
 PROBE_VERSION = "999.999.999-release-versioning-check"
 SEMVER_RE = re.compile(
     r"^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$"
 )
+COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*(?:#.*)?$")
 VERSION_LINE_RE = re.compile(r'^(\s*version\s*=\s*)"([^"]*)"([^\r\n]*)(\r?\n)?$')
 PACKAGE_HEADER_RE = re.compile(r"(?m)^\s*\[\[package\]\]\s*(?:#.*)?(?:\r?\n|$)")
@@ -450,12 +461,7 @@ def check_release_transition(base_root: Path, candidate_root: Path) -> list[str]
             except ReleaseVersioningError as error:
                 errors.append(f"cannot render expected release metadata: {error}")
             else:
-                for relative in (
-                    ROOT_CARGO_PATH,
-                    ROOT_LOCK_PATH,
-                    PROSKENION_LOCK_PATH,
-                    ".release-please-manifest.json",
-                ):
+                for relative in RELEASE_VERSION_PATHS:
                     expected = expected_root / relative
                     candidate = candidate_root / relative
                     try:
@@ -500,6 +506,76 @@ def check_release_transition(base_root: Path, candidate_root: Path) -> list[str]
         errors.append(
             f"{CHANGELOG_PATH}: release candidate lacks the expected {base_version} -> "
             f"{candidate_version} section"
+        )
+    return errors
+
+
+def check_release_comparison(
+    comparison: Any, base_sha: str, candidate_sha: str
+) -> list[str]:
+    """Validate GitHub's immutable comparison for one Release Please commit."""
+
+    errors: list[str] = []
+    if not COMMIT_SHA_RE.fullmatch(base_sha):
+        errors.append("comparison base SHA must be lowercase 40-hex")
+    if not COMMIT_SHA_RE.fullmatch(candidate_sha):
+        errors.append("comparison candidate SHA must be lowercase 40-hex")
+    if errors:
+        return errors
+    if not isinstance(comparison, dict):
+        return ["release comparison must be a JSON object"]
+
+    if comparison.get("status") != "ahead":
+        errors.append("release candidate must be ahead of the current main commit")
+    for key, expected in (("ahead_by", 1), ("behind_by", 0), ("total_commits", 1)):
+        value = comparison.get(key)
+        if type(value) is not int or value != expected:
+            errors.append(f"release comparison {key} must equal {expected}")
+
+    base_commit = comparison.get("base_commit")
+    if not isinstance(base_commit, dict) or base_commit.get("sha") != base_sha:
+        errors.append("release comparison base_commit does not match the trusted main SHA")
+    merge_base = comparison.get("merge_base_commit")
+    if not isinstance(merge_base, dict) or merge_base.get("sha") != base_sha:
+        errors.append("release comparison merge base does not match the trusted main SHA")
+    commits = comparison.get("commits")
+    if (
+        not isinstance(commits, list)
+        or len(commits) != 1
+        or not isinstance(commits[0], dict)
+        or commits[0].get("sha") != candidate_sha
+    ):
+        errors.append("release comparison must contain only the expected candidate commit")
+
+    files = comparison.get("files")
+    if not isinstance(files, list):
+        errors.append("release comparison files must be a JSON array")
+        return errors
+    if len(files) != len(RELEASE_TRANSITION_PATHS):
+        errors.append(
+            "release comparison must contain exactly "
+            f"{len(RELEASE_TRANSITION_PATHS)} changed files"
+        )
+
+    filenames: list[str] = []
+    for index, item in enumerate(files):
+        if not isinstance(item, dict):
+            errors.append(f"release comparison file {index} must be a JSON object")
+            continue
+        filename = item.get("filename")
+        if not isinstance(filename, str):
+            errors.append(f"release comparison file {index} lacks a string filename")
+        else:
+            filenames.append(filename)
+        if item.get("status") != "modified" or "previous_filename" in item:
+            errors.append(
+                "release comparison files must be modified in place, never added, "
+                "removed, copied, or renamed"
+            )
+    if sorted(filenames) != list(RELEASE_TRANSITION_PATHS):
+        errors.append(
+            "release comparison changed paths must be exactly: "
+            + ", ".join(RELEASE_TRANSITION_PATHS)
         )
     return errors
 
@@ -792,6 +868,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     transition_parser.add_argument("--base-root", type=Path, required=True)
     transition_parser.add_argument("--candidate-root", type=Path, required=True)
 
+    comparison_parser = subcommands.add_parser(
+        "verify-comparison",
+        help="verify the immutable GitHub comparison for a Release Please candidate",
+    )
+    comparison_parser.add_argument("--base-sha", required=True)
+    comparison_parser.add_argument("--candidate-sha", required=True)
+
     return parser.parse_args(argv)
 
 
@@ -849,6 +932,23 @@ def main(argv: list[str] | None = None) -> int:
                 LOGGER.error("  - %s", error)
             return 1
         LOGGER.info("Release Please transition is a canonical metadata-only update")
+        return 0
+
+    if command == "verify-comparison":
+        try:
+            comparison = json.load(sys.stdin)
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            LOGGER.error("release comparison is not valid JSON: %s", exc)
+            return 1
+        errors = check_release_comparison(
+            comparison, args.base_sha, args.candidate_sha
+        )
+        if errors:
+            LOGGER.error("release comparison check failed:")
+            for error in errors:
+                LOGGER.error("  - %s", error)
+            return 1
+        LOGGER.info("Release Please comparison is an exact one-commit metadata update")
         return 0
 
     LOGGER.error("error: unknown command %s", command)

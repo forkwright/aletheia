@@ -22,6 +22,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 import tomllib
+import yaml
 
 SCHEMA_VERSION = 1
 CRATES = ("symbolon", "organon", "episteme", "krites", "nous")
@@ -274,6 +275,21 @@ def validate_workflow_contract(policy: dict[str, Any], repo_root: Path) -> list[
         "canonical release transition": (
             "check-release-versioning.py verify-transition"
         ),
+        "immutable release comparison": (
+            "check-release-versioning.py verify-comparison"
+        ),
+        "immutable comparison route": (
+            "compare/${GITHUB_SHA}...${EXPECTED_SHA}"
+        ),
+        "trusted comparison base binding": (
+            '--base-sha "$GITHUB_SHA"'
+        ),
+        "trusted comparison candidate binding": (
+            '--candidate-sha "$EXPECTED_SHA"'
+        ),
+        "post-validation release PR rebind": (
+            "Rebind the Release Please PR after candidate validation"
+        ),
         "cargo-mutants output parent": 'CARGO_MUTANTS_OUTPUT="$RESULT_DIR"',
         "raw outcomes classifier": "--outcomes-json \"$RESULT_DIR/mutants.out/outcomes.json\"",
         "prior-receipt replay": "run-id: ${{ inputs.source_run_id }}",
@@ -299,6 +315,670 @@ def validate_workflow_contract(policy: dict[str, Any], repo_root: Path) -> list[
     for forbidden in ("pull_request:", "schedule:"):
         if forbidden in text:
             errors.append(f"substance workflow must not expose {forbidden.rstrip(':')} trigger")
+    if re.search(r"pulls/[^\"']*/files(?:\?[^\"']*)?", text):
+        errors.append("substance workflow must not use the mutable release PR files endpoint")
+    try:
+        workflow_data = yaml.safe_load(text)
+    except yaml.YAMLError as error:
+        errors.append(f"substance workflow is not valid YAML: {error}")
+        workflow_data = {}
+    if not isinstance(workflow_data, dict):
+        errors.append("substance workflow must be a mapping")
+        workflow_data = {}
+    if "defaults" in workflow_data:
+        errors.append("substance workflow must not override the default run shell")
+    if workflow_data.get("env") != {"GH_REPO": "${{ github.repository }}"}:
+        errors.append("substance workflow must bind GH_REPO to the current repository")
+    if workflow_data.get("permissions") != {"contents": "read"}:
+        errors.append("substance workflow root permissions must remain read-only")
+    jobs = workflow_data.get("jobs", {})
+    if not isinstance(jobs, dict):
+        errors.append("substance workflow jobs must be a mapping")
+        jobs = {}
+    if set(jobs) != {"preflight", "audit", "aggregate"}:
+        errors.append(
+            "substance workflow must contain exactly preflight, audit, and aggregate jobs"
+        )
+    preflight_job = jobs.get("preflight", {})
+    if not isinstance(preflight_job, dict):
+        errors.append("substance workflow preflight job must be a mapping")
+        preflight_job = {}
+    if set(preflight_job) != {
+        "runs-on",
+        "timeout-minutes",
+        "permissions",
+        "outputs",
+        "steps",
+    }:
+        errors.append("substance workflow preflight job keys must remain exact")
+    expected_preflight_fields = {
+        "runs-on": "ubuntu-latest",
+        "timeout-minutes": 10,
+        "permissions": {
+            "actions": "read",
+            "contents": "read",
+            "pull-requests": "read",
+        },
+        "outputs": {"matrix": "${{ steps.policy.outputs.matrix }}"},
+    }
+    for key, expected in expected_preflight_fields.items():
+        if preflight_job.get(key) != expected:
+            errors.append(f"substance workflow preflight {key} must remain exact")
+    for forbidden in ("if", "continue-on-error", "defaults"):
+        if forbidden in preflight_job:
+            errors.append(
+                "substance workflow preflight admission job must fail closed; "
+                f"found {forbidden}"
+            )
+    preflight_steps = preflight_job.get("steps", [])
+    if not isinstance(preflight_steps, list):
+        errors.append("substance workflow preflight steps must be a list")
+        preflight_steps = []
+    for step in preflight_steps:
+        if not isinstance(step, dict):
+            errors.append("substance workflow preflight step must be a mapping")
+            continue
+        for forbidden in ("if", "continue-on-error", "working-directory"):
+            if forbidden in step:
+                errors.append(
+                    "substance workflow preflight steps must not be conditional or "
+                    f"suppress failures; found {forbidden}"
+                )
+
+    step_order = [
+        ("name", step["name"])
+        if isinstance(step, dict) and "name" in step
+        else ("uses", step.get("uses"))
+        if isinstance(step, dict)
+        else ("invalid", None)
+        for step in preflight_steps
+    ]
+    expected_step_order = [
+        ("name", "Require trusted main dispatch inputs"),
+        (
+            "uses",
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        ),
+        ("name", "Validate policy and derive the five-crate matrix"),
+        ("name", "Bind the open Release Please PR to current main"),
+        ("name", "Validate the immutable release comparison"),
+        (
+            "uses",
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        ),
+        ("name", "Validate the exact Release Please metadata transition"),
+        ("name", "Rebind the Release Please PR after candidate validation"),
+    ]
+    if step_order != expected_step_order:
+        errors.append("substance workflow preflight step order must remain exact")
+
+    exact_run_contracts = {
+        "Require trusted main dispatch inputs": (
+            {
+                "name": "Require trusted main dispatch inputs",
+                "env": {
+                    "EXPECTED_SHA": "${{ inputs.expected_sha }}",
+                    "RELEASE_PR": "${{ inputs.release_pr }}",
+                    "SOURCE_RUN_ID": "${{ inputs.source_run_id }}",
+                },
+            },
+            "12d947aa9af2c3ed946b799893965a6ec57695413a99568426e432ffc117fce4",
+        ),
+        "Validate policy and derive the five-crate matrix": (
+            {
+                "name": "Validate policy and derive the five-crate matrix",
+                "id": "policy",
+            },
+            "c42d90fb27d4a7eda186ce8eba5f7baf98ed14c8a5d8a8c258ec208dc056a81d",
+        ),
+        "Bind the open Release Please PR to current main": (
+            {
+                "name": "Bind the open Release Please PR to current main",
+                "env": {
+                    "EXPECTED_SHA": "${{ inputs.expected_sha }}",
+                    "GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
+                    "RELEASE_PR": "${{ inputs.release_pr }}",
+                    "SOURCE_RUN_ID": "${{ inputs.source_run_id }}",
+                },
+            },
+            "8919efc82158655befbca71222f5a553bb87a40a14d31feb5ce573d8ad658dc4",
+        ),
+        "Rebind the Release Please PR after candidate validation": (
+            {
+                "name": "Rebind the Release Please PR after candidate validation",
+                "env": {
+                    "EXPECTED_SHA": "${{ inputs.expected_sha }}",
+                    "GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
+                    "RELEASE_PR": "${{ inputs.release_pr }}",
+                },
+            },
+            "fa8b3efb360532f56b9f8da321a02f2365288d13d0d64ebf957daf832b3feebc",
+        ),
+    }
+    for name, (expected_metadata, expected_run_sha256) in exact_run_contracts.items():
+        matches = [
+            step
+            for step in preflight_steps
+            if isinstance(step, dict) and step.get("name") == name
+        ]
+        if len(matches) != 1:
+            errors.append(f"substance workflow must contain one exact {name!r} step")
+            continue
+        step = matches[0]
+        run = step.get("run")
+        run_sha256 = (
+            hashlib.sha256(run.encode("utf-8")).hexdigest()
+            if isinstance(run, str)
+            else ""
+        )
+        metadata = {key: value for key, value in step.items() if key != "run"}
+        if metadata != expected_metadata or run_sha256 != expected_run_sha256:
+            errors.append(f"substance workflow {name!r} step must remain exact")
+
+    main_checkouts = [
+        step
+        for step in preflight_steps
+        if isinstance(step, dict)
+        and step.get("uses")
+        == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        and isinstance(step.get("with"), dict)
+        and "path" not in step["with"]
+    ]
+    expected_main_checkout = {
+        "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "with": {
+            "persist-credentials": False,
+            "ref": "${{ github.sha }}",
+        },
+    }
+    if main_checkouts != [expected_main_checkout]:
+        errors.append("substance workflow preflight must inspect the exact trusted base")
+
+    comparison_name = "Validate the immutable release comparison"
+    comparison_steps = [
+        step
+        for step in preflight_steps
+        if isinstance(step, dict) and step.get("name") == comparison_name
+    ]
+    expected_comparison_step = {
+        "name": comparison_name,
+        "env": {
+            "EXPECTED_SHA": "${{ inputs.expected_sha }}",
+            "GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
+        },
+        "shell": "bash",
+        "run": (
+            'compare_json="$(gh api "repos/${GH_REPO}/compare/'
+            '${GITHUB_SHA}...${EXPECTED_SHA}")"\n'
+            "exec scripts/check-release-versioning.py verify-comparison \\\n"
+            '  --base-sha "$GITHUB_SHA" --candidate-sha "$EXPECTED_SHA" \\\n'
+            '  <<<"$compare_json"\n'
+        ),
+    }
+    if comparison_steps != [expected_comparison_step]:
+        errors.append(
+            "substance workflow immutable comparison step must remain exact and "
+            "fail closed"
+        )
+
+    candidate_checkouts = [
+        step
+        for step in preflight_steps
+        if isinstance(step, dict)
+        and step.get("uses")
+        == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        and isinstance(step.get("with"), dict)
+        and step["with"].get("path") == "release-candidate"
+    ]
+    expected_candidate_checkout = {
+        "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "with": {
+            "path": "release-candidate",
+            "persist-credentials": False,
+            "ref": "${{ inputs.expected_sha }}",
+        },
+    }
+    if candidate_checkouts != [expected_candidate_checkout]:
+        errors.append(
+            "substance workflow preflight must inspect the exact candidate checkout"
+        )
+
+    audit_job = jobs.get("audit", {})
+    if not isinstance(audit_job, dict):
+        errors.append("substance workflow audit job must be a mapping")
+        audit_job = {}
+    if audit_job.get("needs") != ["preflight"]:
+        errors.append("substance workflow audit job must depend on preflight")
+    if audit_job.get("if") != "inputs.source_run_id == ''":
+        errors.append(
+            "substance workflow audit job must retain the implicit successful-"
+            "preflight condition"
+        )
+    if set(audit_job) != {
+        "if",
+        "needs",
+        "permissions",
+        "runs-on",
+        "steps",
+        "strategy",
+        "timeout-minutes",
+    }:
+        errors.append("substance workflow audit job keys must remain exact")
+    expected_audit_fields = {
+        "runs-on": "ubuntu-latest",
+        "timeout-minutes": 360,
+        "permissions": {"contents": "read"},
+        "strategy": {
+            "fail-fast": False,
+            "matrix": "${{ fromJSON(needs.preflight.outputs.matrix) }}",
+        },
+    }
+    for key, expected in expected_audit_fields.items():
+        if audit_job.get(key) != expected:
+            errors.append(f"substance workflow audit {key} must remain exact")
+    strategy = audit_job.get("strategy", {})
+    if not isinstance(strategy, dict) or strategy.get("matrix") != (
+        "${{ fromJSON(needs.preflight.outputs.matrix) }}"
+    ):
+        errors.append("substance workflow audit matrix must come from preflight")
+    audit_candidate_checkouts = [
+        step
+        for step in audit_job.get("steps", [])
+        if isinstance(step, dict)
+        and step.get("uses")
+        == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        and isinstance(step.get("with"), dict)
+        and step["with"].get("path") == "target"
+    ]
+    expected_audit_candidate_checkout = {
+        "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "with": {
+            "path": "target",
+            "persist-credentials": False,
+            "ref": "${{ inputs.expected_sha }}",
+        },
+    }
+    if audit_candidate_checkouts != [expected_audit_candidate_checkout]:
+        errors.append("substance workflow audit must execute the exact candidate SHA")
+    audit_control_checkouts = [
+        step
+        for step in audit_job.get("steps", [])
+        if isinstance(step, dict)
+        and step.get("uses")
+        == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        and isinstance(step.get("with"), dict)
+        and step["with"].get("path") == "control"
+    ]
+    expected_audit_control_checkout = {
+        "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "with": {
+            "path": "control",
+            "persist-credentials": False,
+            "ref": "${{ github.sha }}",
+        },
+    }
+    if audit_control_checkouts != [expected_audit_control_checkout]:
+        errors.append("substance workflow audit control must use the trusted base")
+    private_checkouts = [
+        step
+        for step in audit_job.get("steps", [])
+        if isinstance(step, dict)
+        and step.get("uses")
+        == "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        and isinstance(step.get("with"), dict)
+        and step["with"].get("path") == "private-kanon"
+    ]
+    expected_private_checkout = {
+        "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "with": {
+            "repository": "forkwright/kanon",
+            "ref": "6795565b0ae3368faa0b710608dfeabe1f70fafb",
+            "token": "${{ secrets.FLEET_REPO_TOKEN }}",
+            "path": "private-kanon",
+            "persist-credentials": False,
+            "fetch-depth": 1,
+        },
+    }
+    if private_checkouts != [expected_private_checkout]:
+        errors.append("substance workflow private Kanon checkout must remain exact")
+    audit_steps = audit_job.get("steps", [])
+    audit_step_order = [
+        ("name", step["name"])
+        if isinstance(step, dict) and "name" in step
+        else ("uses", step.get("uses"))
+        if isinstance(step, dict)
+        else ("invalid", None)
+        for step in audit_steps
+    ]
+    expected_audit_step_order = [
+        (
+            "uses",
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        ),
+        ("name", "Require private Kanon read credential"),
+        (
+            "uses",
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        ),
+        (
+            "uses",
+            "dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7",
+        ),
+        ("name", "Build and verify the exact private Kanon CLI"),
+        ("name", "Scrub private source and credentials before Aletheia execution"),
+        (
+            "uses",
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        ),
+        ("name", "Install the pinned mutation runner"),
+        ("name", "Record exact tool identities"),
+        ("name", "Run the exact feature-world baseline and substance audit"),
+        ("name", "Classify the complete raw evidence"),
+        ("name", "Upload public audit evidence only"),
+    ]
+    if audit_step_order != expected_audit_step_order:
+        errors.append("substance workflow audit step order must remain exact")
+    scrub_name = "Scrub private source and credentials before Aletheia execution"
+    scrub_steps = [
+        (index, step)
+        for index, step in enumerate(audit_steps)
+        if isinstance(step, dict) and step.get("name") == scrub_name
+    ]
+    target_indices = [
+        index
+        for index, step in enumerate(audit_steps)
+        if step == expected_audit_candidate_checkout
+    ]
+    if len(scrub_steps) != 1 or len(target_indices) != 1:
+        errors.append("substance workflow must scrub private material before checkout")
+    else:
+        scrub_index, scrub_step = scrub_steps[0]
+        scrub_run = scrub_step.get("run")
+        scrub_sha256 = (
+            hashlib.sha256(scrub_run.encode("utf-8")).hexdigest()
+            if isinstance(scrub_run, str)
+            else ""
+        )
+        if (
+            set(scrub_step) != {"name", "run"}
+            or scrub_sha256
+            != "cf11f2194cde175536f14f0e6772969183c89d6e3038041afaad0948ea9482ea"
+            or scrub_index >= target_indices[0]
+        ):
+            errors.append(
+                "substance workflow private-source scrub must remain exact and "
+                "precede candidate checkout"
+            )
+        for step in audit_steps[scrub_index + 1 :]:
+            serialized = json.dumps(step, sort_keys=True)
+            if re.search(r"\b(?:secrets|github)\b", serialized):
+                errors.append(
+                    "substance workflow must not expose credentials after the "
+                    "private-source scrub"
+                )
+                break
+
+    aggregate_job = jobs.get("aggregate", {})
+    if not isinstance(aggregate_job, dict):
+        errors.append("substance workflow aggregate job must be a mapping")
+        aggregate_job = {}
+    expected_aggregate_if = (
+        "always() && needs.preflight.result == 'success' && "
+        "(needs.audit.result != 'cancelled' || inputs.source_run_id != '')"
+    )
+    if aggregate_job.get("needs") != ["preflight", "audit"]:
+        errors.append("substance workflow aggregate job must depend on preflight and audit")
+    if aggregate_job.get("if") != expected_aggregate_if:
+        errors.append("substance workflow aggregate job must require successful preflight")
+    if set(aggregate_job) != {
+        "if",
+        "needs",
+        "permissions",
+        "runs-on",
+        "steps",
+        "timeout-minutes",
+    }:
+        errors.append("substance workflow aggregate job keys must remain exact")
+    expected_aggregate_fields = {
+        "runs-on": "ubuntu-latest",
+        "timeout-minutes": 15,
+        "permissions": {
+            "actions": "read",
+            "contents": "read",
+            "pull-requests": "write",
+        },
+    }
+    for key, expected in expected_aggregate_fields.items():
+        if aggregate_job.get(key) != expected:
+            errors.append(f"substance workflow aggregate {key} must remain exact")
+    aggregate_steps = aggregate_job.get("steps", [])
+    if not isinstance(aggregate_steps, list):
+        errors.append("substance workflow aggregate steps must be a list")
+        aggregate_steps = []
+    aggregate_step_order = [
+        ("name", step["name"])
+        if isinstance(step, dict) and "name" in step
+        else ("uses", step.get("uses"))
+        if isinstance(step, dict)
+        else ("invalid", None)
+        for step in aggregate_steps
+    ]
+    expected_aggregate_step_order = [
+        (
+            "uses",
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        ),
+        (
+            "uses",
+            "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        ),
+        ("name", "Download this run's per-crate receipts"),
+        ("name", "Download prior per-crate receipts for issue adjudication"),
+        ("name", "Verify every advisory owner is an open Aletheia issue"),
+        ("name", "Aggregate exact-five receipts"),
+        ("name", "Rebind the receipt before updating the release PR"),
+        ("name", "Upload the aggregate release receipt"),
+        ("name", "Enforce release substance policy"),
+    ]
+    if aggregate_step_order != expected_aggregate_step_order:
+        errors.append("substance workflow aggregate step order must remain exact")
+
+    expected_aggregate_control_checkout = {
+        "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "with": {
+            "persist-credentials": False,
+            "ref": "${{ github.sha }}",
+        },
+    }
+    expected_aggregate_candidate_checkout = {
+        "uses": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "with": {
+            "path": "release-candidate",
+            "persist-credentials": False,
+            "ref": "${{ inputs.expected_sha }}",
+        },
+    }
+    if len(aggregate_steps) < 2 or aggregate_steps[:2] != [
+        expected_aggregate_control_checkout,
+        expected_aggregate_candidate_checkout,
+    ]:
+        errors.append(
+            "substance workflow aggregate must bind trusted control and exact candidate"
+        )
+
+    update_name = "Rebind the receipt before updating the release PR"
+    update_steps = [
+        step
+        for step in aggregate_steps
+        if isinstance(step, dict) and step.get("name") == update_name
+    ]
+    expected_update_metadata = {
+        "name": update_name,
+        "env": {
+            "EXPECTED_SHA": "${{ inputs.expected_sha }}",
+            "GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
+            "RELEASE_PR": "${{ inputs.release_pr }}",
+        },
+    }
+    if len(update_steps) != 1:
+        errors.append("substance workflow must contain one exact PR receipt update step")
+    else:
+        update_step = update_steps[0]
+        update_run = update_step.get("run")
+        update_sha256 = (
+            hashlib.sha256(update_run.encode("utf-8")).hexdigest()
+            if isinstance(update_run, str)
+            else ""
+        )
+        update_metadata = {
+            key: value for key, value in update_step.items() if key != "run"
+        }
+        if (
+            update_metadata != expected_update_metadata
+            or update_sha256
+            != "be8f42dc8dfa1870988fcd7bfa20ca54446ffb2674f7dc36e69d72afd44a41e2"
+        ):
+            errors.append("substance workflow PR receipt update step must remain exact")
+
+    upload_name = "Upload the aggregate release receipt"
+    upload_steps = [
+        step
+        for step in aggregate_steps
+        if isinstance(step, dict) and step.get("name") == upload_name
+    ]
+    expected_aggregate_upload = {
+        "name": upload_name,
+        "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        "with": {
+            "name": "substance-aggregate-${{ inputs.expected_sha }}",
+            "path": (
+                "${{ runner.temp }}/substance-receipt.json\n"
+                "${{ runner.temp }}/pr-body-updated.md\n"
+            ),
+            "if-no-files-found": "error",
+            "retention-days": 90,
+        },
+    }
+    if upload_steps != [expected_aggregate_upload]:
+        errors.append("substance workflow aggregate receipt upload must remain exact")
+
+    enforce_name = "Enforce release substance policy"
+    enforce_steps = [
+        step
+        for step in aggregate_steps
+        if isinstance(step, dict) and step.get("name") == enforce_name
+    ]
+    expected_enforce_metadata = {
+        "name": enforce_name,
+        "env": {
+            "EXPECTED_SHA": "${{ inputs.expected_sha }}",
+            "RELEASE_PR": "${{ inputs.release_pr }}",
+            "SOURCE_RUN_ID": "${{ inputs.source_run_id }}",
+        },
+    }
+    if len(enforce_steps) != 1:
+        errors.append("substance workflow must contain one final policy enforcement step")
+    else:
+        enforce_step = enforce_steps[0]
+        enforce_run = enforce_step.get("run")
+        enforce_sha256 = (
+            hashlib.sha256(enforce_run.encode("utf-8")).hexdigest()
+            if isinstance(enforce_run, str)
+            else ""
+        )
+        enforce_metadata = {
+            key: value for key, value in enforce_step.items() if key != "run"
+        }
+        if (
+            aggregate_steps[-1] is not enforce_step
+            or enforce_metadata != expected_enforce_metadata
+            or enforce_sha256
+            != "a9ac0e4a65e7bc76424dea95b5716d335c57d9ae4c1bb114cc08fb30920418c3"
+        ):
+            errors.append(
+                "substance workflow final policy enforcement step must remain exact"
+            )
+    preflight_index = text.find("\n  preflight:")
+    audit_job_index = text.find("\n  audit:", preflight_index)
+    if preflight_index < 0 or audit_job_index < 0:
+        errors.append("substance workflow lacks the preflight admission job")
+        preflight_block = ""
+    else:
+        preflight_block = text[preflight_index:audit_job_index]
+        for forbidden in ("continue-on-error:", "set +e", "set +o errexit", "||"):
+            if forbidden in preflight_block:
+                errors.append(
+                    "substance workflow preflight admission job must fail closed; "
+                    f"found {forbidden}"
+                )
+    bind_marker = "Bind the open Release Please PR to current main"
+    bind_index = text.find(bind_marker)
+    bind_end = text.find("\n      - uses:", bind_index)
+    if bind_index < 0 or bind_end < 0:
+        errors.append("substance workflow lacks the release PR binding step")
+    else:
+        bind_block = text[bind_index:bind_end]
+        for forbidden in ("continue-on-error:", "set +e", "set +o errexit"):
+            if forbidden in bind_block:
+                errors.append(
+                    "substance workflow release PR binding step must fail closed; "
+                    f"found {forbidden}"
+                )
+    transition_marker = "- name: Validate the exact Release Please metadata transition"
+    transition_index = text.find(transition_marker)
+    rebind_marker = "- name: Rebind the Release Please PR after candidate validation"
+    rebind_index = text.find(rebind_marker)
+    audit_index = text.find("\n  audit:", rebind_index)
+    if not 0 <= transition_index < rebind_index < audit_index:
+        errors.append(
+            "substance workflow must rebind the Release Please PR after candidate "
+            "validation and before audit execution"
+        )
+    else:
+        transition_lines = [
+            line.strip()
+            for line in text[transition_index:rebind_index].splitlines()
+            if line.strip()
+        ]
+        expected_transition_lines = [
+            transition_marker,
+            "run: >-",
+            "scripts/check-release-versioning.py verify-transition",
+            "--base-root . --candidate-root release-candidate",
+        ]
+        if transition_lines != expected_transition_lines:
+            errors.append(
+                "substance workflow release transition command block must remain "
+                "exact and fail closed"
+            )
+        rebind_block = text[rebind_index:audit_index]
+        rebind_required = {
+            "live PR read": (
+                'pr_json="$(gh api "repos/${GH_REPO}/pulls/${RELEASE_PR}")"'
+            ),
+            "open state": "test \"$(jq -r '.state' <<<\"$pr_json\")\" = \"open\"",
+            "same-repository head": (
+                "test \"$(jq -r '.head.repo.full_name' <<<\"$pr_json\")\" = \"$GH_REPO\""
+            ),
+            "release branch": (
+                "test \"$(jq -r '.head.ref' <<<\"$pr_json\")\" = "
+                '"release-please--branches--main"'
+            ),
+            "candidate SHA": (
+                "test \"$(jq -r '.head.sha' <<<\"$pr_json\")\" = \"$EXPECTED_SHA\""
+            ),
+            "main base": (
+                "test \"$(jq -r '.base.ref' <<<\"$pr_json\")\" = \"main\""
+            ),
+            "trusted base SHA": (
+                "test \"$(jq -r '.base.sha' <<<\"$pr_json\")\" = \"$GITHUB_SHA\""
+            ),
+        }
+        for label, needle in rebind_required.items():
+            if needle not in rebind_block:
+                errors.append(
+                    f"substance workflow post-validation rebind lacks {label} binding"
+                )
     upload_blocks = re.findall(
         r"uses: actions/upload-artifact@.*?(?=\n\s*- name:|\n\s*- uses:|\n\s{2}[a-zA-Z_-]+:|\Z)",
         text,

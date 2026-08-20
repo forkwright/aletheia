@@ -99,22 +99,6 @@ jobs:
           test "$(jq -r '.base.ref' <<<"$pr_json")" = "main"
           test "$(jq -r '.base.sha' <<<"$pr_json")" = "$GITHUB_SHA"
 
-          compare_json="$(gh api "repos/${GH_REPO}/compare/${GITHUB_SHA}...${EXPECTED_SHA}")"
-          test "$(jq -r '.status' <<<"$compare_json")" = "ahead"
-          test "$(jq -r '.ahead_by' <<<"$compare_json")" = "1"
-          test "$(jq -r '.behind_by' <<<"$compare_json")" = "0"
-
-          gh api --paginate "repos/${GH_REPO}/pulls/${RELEASE_PR}/files?per_page=100" \
-            --jq '.[].filename' | sort -u > "$RUNNER_TEMP/release-files.txt"
-          cat > "$RUNNER_TEMP/expected-release-files.txt" <<'EOF'
-          .release-please-manifest.json
-          CHANGELOG.md
-          Cargo.lock
-          Cargo.toml
-          crates/theatron/proskenion/Cargo.lock
-          EOF
-          diff -u "$RUNNER_TEMP/expected-release-files.txt" "$RUNNER_TEMP/release-files.txt"
-
           if [[ -n "$SOURCE_RUN_ID" ]]; then
             run_json="$(gh api "repos/${GH_REPO}/actions/runs/${SOURCE_RUN_ID}")"
             test "$(jq -r '.name' <<<"$run_json")" = "Release Substance Audit"
@@ -126,6 +110,21 @@ jobs:
             test "$(jq -r '.status' <<<"$run_json")" = "completed"
           fi
 
+      # WHY: keep this as one exact, fail-closed execution boundary. The PR
+      # head is mutable between API calls, and Git filenames may contain
+      # newlines, so the canonical checker consumes the immutable comparison
+      # as JSON and exec makes its status the step status.
+      - name: Validate the immutable release comparison
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          compare_json="$(gh api "repos/${GH_REPO}/compare/${GITHUB_SHA}...${EXPECTED_SHA}")"
+          exec scripts/check-release-versioning.py verify-comparison \
+            --base-sha "$GITHUB_SHA" --candidate-sha "$EXPECTED_SHA" \
+            <<<"$compare_json"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: release-candidate
@@ -136,6 +135,20 @@ jobs:
         run: >-
           scripts/check-release-versioning.py verify-transition
           --base-root . --candidate-root release-candidate
+
+      - name: Rebind the Release Please PR after candidate validation
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+        run: |
+          pr_json="$(gh api "repos/${GH_REPO}/pulls/${RELEASE_PR}")"
+          test "$(jq -r '.state' <<<"$pr_json")" = "open"
+          test "$(jq -r '.head.repo.full_name' <<<"$pr_json")" = "$GH_REPO"
+          test "$(jq -r '.head.ref' <<<"$pr_json")" = "release-please--branches--main"
+          test "$(jq -r '.head.sha' <<<"$pr_json")" = "$EXPECTED_SHA"
+          test "$(jq -r '.base.ref' <<<"$pr_json")" = "main"
+          test "$(jq -r '.base.sha' <<<"$pr_json")" = "$GITHUB_SHA"
 
   audit:
     if: inputs.source_run_id == ''
