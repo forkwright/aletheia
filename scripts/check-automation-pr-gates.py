@@ -2,9 +2,9 @@
 """Validate automation PR gate policy for CI workflow YAML."""
 
 import sys
-import tomllib
 from pathlib import Path
 
+import tomllib
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]

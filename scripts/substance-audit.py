@@ -18,9 +18,10 @@ import math
 import os
 import re
 import sys
-import tomllib
 from pathlib import Path, PurePosixPath
 from typing import Any
+
+import tomllib
 
 SCHEMA_VERSION = 1
 CRATES = ("symbolon", "organon", "episteme", "krites", "nous")

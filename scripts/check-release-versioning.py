@@ -11,9 +11,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+import tomllib
 
 LOGGER = logging.getLogger("check-release-versioning")
 ROOT_RELEASE_PACKAGE = "."

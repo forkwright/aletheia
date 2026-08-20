@@ -8,8 +8,9 @@ import json
 import shutil
 import sys
 import tempfile
-import tomllib
 from pathlib import Path
+
+import tomllib
 
 _SCRIPT_PATH = Path(__file__).parent / "check-release-versioning.py"
 

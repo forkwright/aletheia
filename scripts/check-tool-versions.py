@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import logging
 import sys
-import tomllib
 from pathlib import Path, PurePosixPath
+
+import tomllib
 
 LOGGER = logging.getLogger("check-tool-versions")
 

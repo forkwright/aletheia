@@ -6,9 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import tomllib
 from pathlib import Path
 
+import tomllib
 import yaml
 
 RELEASE_PLEASE = Path(".github/workflows/release-please.yml")
