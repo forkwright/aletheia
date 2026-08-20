@@ -332,6 +332,7 @@ jobs:
 
       - name: Release versioning
         run: |
+          python3 scripts/check-automation-pr-gates.py
           scripts/check-release-versioning.py
           scripts/test-release-versioning.py
           scripts/check-release-artifact-routing.py

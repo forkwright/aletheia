@@ -100,15 +100,21 @@ def load_properties(path: Path) -> dict[str, str]:
     return properties
 
 
-def python_fixture_paths() -> list[str]:
-    """Return executable Python fixture files that belong in Sonar test scope."""
+def test_fixture_paths() -> list[str]:
+    """Return Python and shell test fixtures for Sonar test scope."""
     scripts = ROOT / "scripts"
     nested_tests = scripts / "tests"
     return sorted(
         path.relative_to(ROOT).as_posix()
-        for path in scripts.rglob("*.py")
-        if path.name.startswith(("test-", "test_"))
-        or path.is_relative_to(nested_tests)
+        for path in scripts.rglob("*")
+        if path.is_file()
+        and (
+            path.suffix in {".py", ".sh"}
+            and (
+                path.name.startswith(("test-", "test_"))
+                or path.is_relative_to(nested_tests)
+            )
+        )
     )
 
 
@@ -136,7 +142,7 @@ def main() -> int:
                 ".sonarcloud.properties must contain exactly the guarded scope "
                 f"keys (expected {sorted(expected_keys)!r})"
             )
-        expected_tests = python_fixture_paths()
+        expected_tests = test_fixture_paths()
         configured_tests = sorted(
             filter(None, sonar.get("sonar.test.inclusions", "").split(","))
         )
@@ -150,7 +156,7 @@ def main() -> int:
         if configured_tests != expected_tests:
             errors.append(
                 ".sonarcloud.properties sonar.test.inclusions must exactly "
-                f"inventory Python fixtures (expected {expected_tests!r})"
+                f"inventory test fixtures (expected {expected_tests!r})"
             )
         if source_exclusions != expected_tests:
             errors.append(
@@ -232,7 +238,7 @@ def main() -> int:
             "<owner>/<repo>/.github/workflows/hybrid-gate.yml@...)"
         )
     else:
-        hybrid_job_id, hybrid_job = hybrid
+        _hybrid_job_id, hybrid_job = hybrid
         with_block = hybrid_job.get("with", {}) or {}
 
         try:
@@ -309,13 +315,16 @@ def main() -> int:
             # (the opposite of the original private-deps intent; fleet git deps are
             # public now and fetch anonymously). The step may skip — but only LOUDLY:
             # a silent exit 0 is still forbidden.
-            if "FLEET_REPO_TOKEN" in run and "exit 0" in run:
-                if "skipping credential setup" not in run:
-                    errors.append(
-                        f"{job_name} credential setup exits 0 silently when "
-                        "FLEET_REPO_TOKEN is missing — must announce the skip "
-                        '("skipping credential setup") or fail'
-                    )
+            if (
+                "FLEET_REPO_TOKEN" in run
+                and "exit 0" in run
+                and "skipping credential setup" not in run
+            ):
+                errors.append(
+                    f"{job_name} credential setup exits 0 silently when "
+                    "FLEET_REPO_TOKEN is missing — must announce the skip "
+                    '("skipping credential setup") or fail'
+                )
 
     auto_merge = load_workflow(".github/workflows/dependabot-auto-merge.yml")
     wait_step = named_step(auto_merge, "auto-merge", "Wait for CI checks to pass")
