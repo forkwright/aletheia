@@ -242,8 +242,11 @@ impl EgressGate {
     /// Check one resolved or connected address against policy.
     ///
     /// Called for every DNS-resolved candidate before connecting, and again
-    /// for the address a connection actually landed on -- so a rebinding
-    /// answer that differs between the two checks cannot slip through.
+    /// for the address a connection actually used. The second policy check can
+    /// reject a rebound peer that is no longer allowlisted, but it does not
+    /// compare the peer with the original DNS answer and occurs after request
+    /// transmission. Preventing request-side exposure requires pinning the
+    /// pre-connect answer.
     ///
     /// # Errors
     /// Returns [`EgressDenied`] when the policy is `Deny`, or when the
@@ -274,17 +277,25 @@ impl EgressGate {
     }
 }
 
-/// Resolve `host:port` and check every candidate address against `gate`.
+/// Apply the operator's egress decision before an in-process HTTP attempt.
 ///
-/// Called before connecting so `Deny` and a non-matching `Allowlist`
-/// destination are rejected before any bytes leave the process. `Allow`
-/// short-circuits without resolving: no per-address egress decision is
-/// needed, and the independent SSRF guard (private/internal address
-/// rejection) still applies regardless of egress policy.
+/// `Deny` rejects before DNS. `Allow` deliberately performs no lookup.
+/// `Allowlist` resolves `host:port` and rejects the whole attempt if any
+/// candidate address is outside the configured IP or CIDR networks. The HTTP
+/// client is not pinned to that answer, so callers must also validate the
+/// transport-reported peer.
+///
+/// This gate does not classify private or internal addresses. That SSRF
+/// decision remains a separate caller responsibility. A successful empty DNS
+/// answer currently contains no candidate to reject and passes this preflight;
+/// callers must not treat success as proof that a later connection uses a
+/// validated peer.
 ///
 /// # Errors
-/// Returns a message describing why egress was denied, or a DNS resolution
-/// failure surfaced by `resolver`.
+///
+/// Fails when policy is `Deny`, the resolver fails, or an `Allowlist` answer
+/// contains an unlisted address. An error is terminal for the attempted
+/// connection.
 pub async fn check_egress<R>(
     gate: &EgressGate,
     host: &str,
@@ -305,24 +316,24 @@ where
     Ok(())
 }
 
-/// Re-check the address a connection actually landed on, after connecting.
+/// Decide whether a response from the transport-reported peer may be accepted.
 ///
-/// SECURITY(#5229): DNS can change between [`check_egress`]'s resolution and
-/// the HTTP client's own connect-time resolution (rebinding). This closes
-/// that gap by validating the real peer instead of trusting the pre-connect
-/// answer, and applies unconditionally (not only under `egress =
-/// "allowlist"`): a private/internal peer is never an acceptable outcome for
-/// these tools regardless of egress policy, matching the pre-connect SSRF
-/// guard's behavior.
+/// SECURITY(#5229): this is a post-connect defense against a connect-time DNS
+/// answer differing from the pre-connect check. It can reject a private,
+/// internal, or policy-disallowed rebound peer before response handling, but
+/// does not compare the peer with the original DNS answer. The request has
+/// already been sent and any remote side effect cannot be undone. A reported
+/// private or internal peer is rejected under every egress mode; every other
+/// peer is checked again against `gate`.
 ///
-/// `addr` is `None` when the transport does not expose a peer address (some
-/// mocked clients in tests); there is nothing to re-validate in that case,
-/// the pre-connect check already ran.
+/// `None` is accepted because the transport supplied no peer to inspect. In
+/// that case this function provides no rebinding check and security rests on
+/// the earlier validation.
 ///
 /// # Errors
-/// Returns a message when the peer is a private/internal address, or when
-/// `gate`'s policy additionally rejects it (`Deny`, or `Allowlist` with no
-/// matching entry).
+///
+/// Fails when a reported peer is private or internal, or is rejected by the
+/// configured egress policy.
 pub fn check_egress_remote_addr(gate: &EgressGate, addr: Option<SocketAddr>) -> Result<(), String> {
     let Some(addr) = addr else {
         return Ok(());
@@ -763,11 +774,19 @@ static LANDLOCK_ABI: std::sync::LazyLock<Option<i32>> = std::sync::LazyLock::new
     abi
 });
 
-/// Probe the status of each sandbox guarantee for the given policy.
+/// Derive the sandbox guarantee status used for parent-side admission and
+/// operator diagnostics.
 ///
-/// Returns a snapshot suitable for operator diagnostics. The result reflects
-/// kernel capabilities and platform support; it does not guarantee that every
-/// child-side mechanism will succeed at runtime.
+/// Landlock status comes from the cached ABI probe. Seccomp status reflects
+/// whether this build supports the current architecture. Egress is
+/// `Unrestricted` for `Allow`; `Deny` and a loopback-only `Allowlist` track the
+/// seccomp fallback capability, while a non-loopback allowlist is
+/// `Unavailable` under enforcing mode and `Degraded` under permissive mode
+/// because the child mechanism cannot honor it.
+///
+/// [`apply_sandbox`] rejects `Unavailable` guarantees in enforcing mode and
+/// logs degraded ones in permissive mode. This is a preflight classification,
+/// not proof that child-side `pre_exec` installation will succeed.
 #[cfg(target_os = "linux")]
 #[must_use]
 fn probe_guarantees(policy: &SandboxPolicy) -> SandboxGuarantees {
@@ -861,14 +880,18 @@ fn egress_guarantee_status(policy: &SandboxPolicy, seccomp: GuaranteeStatus) -> 
     }
 }
 
-/// Probe the kernel for the highest Landlock ABI version it supports.
+/// Query Landlock ABI availability in the parent before child sandbox setup.
 ///
-/// Returns the ABI version integer (1 through N) if Landlock is available,
-/// or `None` if the kernel does not support Landlock or has it disabled.
+/// On Linux x86_64 and aarch64 this issues the documented
+/// `landlock_create_ruleset(..., LANDLOCK_CREATE_RULESET_VERSION)` probe
+/// without creating a ruleset. A positive kernel result is exposed as its
+/// highest ABI level. Unsupported architectures, disabled or unavailable
+/// Landlock, and every failed or non-positive probe are collapsed to `None`.
 ///
-/// Must be called from the parent process before `apply_sandbox`, not inside
-/// a `pre_exec` closure. The result is used to detect mismatches early so
-/// errors surface with context rather than as opaque "Permission denied" failures.
+/// `LANDLOCK_ABI` caches this value for [`probe_guarantees`].
+/// [`apply_sandbox`] treats absence as `Unavailable` in enforcing mode and
+/// `Degraded` in permissive mode. A positive ABI proves only API availability;
+/// creating and installing the child ruleset can still fail.
 #[cfg(target_os = "linux")]
 #[must_use]
 pub fn probe_landlock_abi() -> Option<i32> {

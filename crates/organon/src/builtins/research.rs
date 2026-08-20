@@ -101,9 +101,11 @@ where
             .await
             .map_err(|e| format!("fetch failed: {e}"))?;
 
-        // SECURITY(#5229): re-validate the address the connection actually
-        // landed on. DNS can change between check_egress's resolution above
-        // and reqwest's own connect-time resolution.
+        // SECURITY(#5229): inspect the address the connection actually used
+        // before accepting the response. This can reject a private or
+        // policy-disallowed rebound peer before response handling, but the
+        // request has already been sent; preventing request-side exposure
+        // requires pinning the validated address.
         check_egress_remote_addr(gate, response.remote_addr())?;
 
         if !response.status().is_redirection() {

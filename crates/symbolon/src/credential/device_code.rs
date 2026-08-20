@@ -162,7 +162,11 @@ impl DeviceOAuthProvider {
         self
     }
 
-    /// Set the redirect URI (used for refresh, not device flow).
+    /// Preserve a redirect URI on the embedded base OAuth configuration.
+    ///
+    /// The RFC 8628 authorization request and token polling do not read or
+    /// transmit this value. It remains available to callers that reuse the
+    /// public [`DeviceOAuthProvider::base`] configuration outside device flow.
     #[must_use]
     pub fn with_redirect_uri(mut self, uri: impl Into<String>) -> Self {
         self.base.redirect_uri = Some(uri.into());

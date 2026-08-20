@@ -209,7 +209,16 @@ impl OAuthProvider {
         self
     }
 
-    /// Set the redirect URI.
+    /// Override the `redirect_uri` sent in the authorization request and the
+    /// authorization-code token exchange.
+    ///
+    /// Without an override, the flow derives
+    /// `http://127.0.0.1:{port}/callback` from its ephemeral loopback listener.
+    /// This setting does not change where that listener binds, so a custom URI
+    /// must still route the provider callback to the selected loopback port.
+    /// The public action callbacks do not expose that port separately; a fixed
+    /// custom URI therefore needs out-of-band port discovery and routing rather
+    /// than relying on the built-in callback API alone.
     #[must_use]
     pub fn with_redirect_uri(mut self, uri: impl Into<String>) -> Self {
         self.redirect_uri = Some(uri.into());
@@ -480,9 +489,21 @@ fn send_error_response(stream: &mut TcpStream, message: &str) -> Result<()> {
     Ok(())
 }
 
-/// Start a temporary local HTTP server to receive the OAuth callback.
+/// Start a local HTTP server thread to receive one OAuth callback.
 ///
-/// Returns the bound port number.
+/// This binds an OS-selected IPv4 loopback port and spawns a blocking handler
+/// for one connection. The port supplies the default redirect URI; the
+/// receiver yields callback data only after request parsing and `state`
+/// validation, or carries the handler error.
+///
+/// The handler thread is detached. Dropping the receiver after the five-minute
+/// login timeout does not cancel its blocking `accept()` or close the listener;
+/// without a later connection, both can persist until the process exits.
+///
+/// # Errors
+///
+/// Fails before spawning if the listener cannot bind or its local address
+/// cannot be queried.
 fn start_callback_server(
     expected_state: &str,
 ) -> Result<(u16, tokio::sync::oneshot::Receiver<Result<CallbackData>>)> {

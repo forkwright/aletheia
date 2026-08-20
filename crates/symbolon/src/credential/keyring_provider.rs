@@ -78,21 +78,26 @@ impl KeyringCredentialProvider {
 
     /// Store a token in the OS keyring.
     ///
+    /// A successful write replaces the credential already stored under this
+    /// provider's `(service, username)` identity.
+    ///
     /// # Errors
     ///
-    /// Returns the keyring error if the backend is unavailable or the
-    /// write fails (e.g. user denied access).
+    /// Propagates failures to create or open the platform keyring entry or to
+    /// persist the token, including unavailable backends and access denial.
     pub fn store(&self, token: &str) -> Result<(), keyring::Error> {
         self.entry()?.set_password(token)
     }
 
     /// Remove the stored credential from the OS keyring.
     ///
+    /// Absence is success: [`keyring::Error::NoEntry`] is normalized to
+    /// `Ok(())`, making repeated deletion idempotent.
+    ///
     /// # Errors
     ///
-    /// Returns the keyring error if the backend is unavailable or deletion
-    /// fails. `NoEntry` errors are mapped to `Ok(())` since the goal state
-    /// (no credential present) is already achieved.
+    /// Propagates entry-creation failures and backend deletion errors other
+    /// than `NoEntry`.
     pub fn delete(&self) -> Result<(), keyring::Error> {
         match self.entry()?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
