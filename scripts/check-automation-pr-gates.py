@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Validate automation PR gate policy for CI workflow YAML."""
 
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import tomllib
-
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -85,8 +84,99 @@ def workflow_run_text(workflow: dict) -> str:
     return "\n".join(job_step_text(job) for job in workflow.get("jobs", {}).values())
 
 
+def load_properties(path: Path) -> dict[str, str]:
+    """Read the deliberately simple key=value Sonar configuration."""
+    properties: dict[str, str] = {}
+    for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            raise ValueError(f"{path}:{line_number}: expected key=value")
+        key, value = (part.strip() for part in line.split("=", 1))
+        if not key or key in properties:
+            raise ValueError(f"{path}:{line_number}: invalid or duplicate key {key!r}")
+        properties[key] = value
+    return properties
+
+
+def test_fixture_paths() -> list[str]:
+    """Return Python and shell test fixtures for Sonar test scope."""
+    scripts = ROOT / "scripts"
+    nested_tests = scripts / "tests"
+    return sorted(
+        path.relative_to(ROOT).as_posix()
+        for path in scripts.rglob("*")
+        if path.is_file()
+        and (
+            path.suffix in {".py", ".sh"}
+            and (
+                path.name.startswith(("test-", "test_"))
+                or path.is_relative_to(nested_tests)
+            )
+        )
+    )
+
+
 def main() -> int:
     errors: list[str] = []
+
+    # Automatic Analysis ignores sonar-project.properties and requires its
+    # source/test roots to be literal paths. Keep the guarded scope keys and
+    # explicit test inventory complete and disjoint so a broad filter cannot
+    # hide production or let fixture-only path mutation affect the rating.
+    sonar_path = ROOT / ".sonarcloud.properties"
+    try:
+        sonar = load_properties(sonar_path)
+    except (OSError, UnicodeError, ValueError) as error:
+        errors.append(f"cannot read Automatic Analysis scope: {error}")
+    else:
+        expected_keys = {
+            "sonar.sources",
+            "sonar.tests",
+            "sonar.exclusions",
+            "sonar.test.inclusions",
+        }
+        if set(sonar) != expected_keys:
+            errors.append(
+                ".sonarcloud.properties must contain exactly the guarded scope "
+                f"keys (expected {sorted(expected_keys)!r})"
+            )
+        expected_tests = test_fixture_paths()
+        configured_tests = sorted(
+            filter(None, sonar.get("sonar.test.inclusions", "").split(","))
+        )
+        source_exclusions = sorted(
+            filter(None, sonar.get("sonar.exclusions", "").split(","))
+        )
+        if sonar.get("sonar.sources") != ".":
+            errors.append(".sonarcloud.properties sonar.sources must be '.'")
+        if sonar.get("sonar.tests") != "scripts":
+            errors.append(".sonarcloud.properties sonar.tests must be 'scripts'")
+        if configured_tests != expected_tests:
+            errors.append(
+                ".sonarcloud.properties sonar.test.inclusions must exactly "
+                f"inventory test fixtures (expected {expected_tests!r})"
+            )
+        if source_exclusions != expected_tests:
+            errors.append(
+                ".sonarcloud.properties sonar.exclusions must exactly mirror "
+                "sonar.test.inclusions so source and test scopes are disjoint"
+            )
+        if any(
+            wildcard in sonar.get(key, "")
+            for key in (
+                "sonar.sources",
+                "sonar.tests",
+                "sonar.exclusions",
+                "sonar.test.inclusions",
+            )
+            for wildcard in ("*", "?")
+        ):
+            errors.append(
+                ".sonarcloud.properties must use literal Automatic Analysis paths, "
+                "not wildcards"
+            )
 
     # WHY(root-manifest coverage): a check that validates a file no PR-time
     # trigger watches is a check that does not run. check-proskenion-pins.py
@@ -148,7 +238,7 @@ def main() -> int:
             "<owner>/<repo>/.github/workflows/hybrid-gate.yml@...)"
         )
     else:
-        hybrid_job_id, hybrid_job = hybrid
+        _hybrid_job_id, hybrid_job = hybrid
         with_block = hybrid_job.get("with", {}) or {}
 
         try:
@@ -225,13 +315,16 @@ def main() -> int:
             # (the opposite of the original private-deps intent; fleet git deps are
             # public now and fetch anonymously). The step may skip — but only LOUDLY:
             # a silent exit 0 is still forbidden.
-            if "FLEET_REPO_TOKEN" in run and "exit 0" in run:
-                if "skipping credential setup" not in run:
-                    errors.append(
-                        f"{job_name} credential setup exits 0 silently when "
-                        "FLEET_REPO_TOKEN is missing — must announce the skip "
-                        '("skipping credential setup") or fail'
-                    )
+            if (
+                "FLEET_REPO_TOKEN" in run
+                and "exit 0" in run
+                and "skipping credential setup" not in run
+            ):
+                errors.append(
+                    f"{job_name} credential setup exits 0 silently when "
+                    "FLEET_REPO_TOKEN is missing — must announce the skip "
+                    '("skipping credential setup") or fail'
+                )
 
     auto_merge = load_workflow(".github/workflows/dependabot-auto-merge.yml")
     wait_step = named_step(auto_merge, "auto-merge", "Wait for CI checks to pass")

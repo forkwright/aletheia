@@ -9,14 +9,16 @@
    ```
 3. Download the tarball from [GitHub Releases](https://github.com/forkwright/aletheia/releases):
    ```bash
-   # Set VERSION to the release you are installing, e.g. v0.30.0
-   VERSION=vX.Y.Z
-   curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/aletheia-linux-x86_64-${VERSION}.tar.gz" \
-     -o aletheia.tar.gz
+   # TAG names the GitHub release; VERSION names files inside it.
+   TAG=vX.Y.Z
+   VERSION="${TAG#v}"
+   TARBALL="aletheia-linux-x86_64-${VERSION}.tar.gz"
+   curl -fLO "https://github.com/forkwright/aletheia/releases/download/${TAG}/${TARBALL}"
+   curl -fLO "https://github.com/forkwright/aletheia/releases/download/${TAG}/${TARBALL}.sha256"
    ```
 4. Verify the checksum:
    ```bash
-   sha256sum -c "aletheia-linux-x86_64-${VERSION}.tar.gz.sha256"
+   sha256sum -c "${TARBALL}.sha256"
    ```
 5. Stop the service:
    ```bash
@@ -24,7 +26,7 @@
    ```
 6. Extract and replace the binary:
    ```bash
-   tar xzf aletheia.tar.gz
+   tar xzf "$TARBALL"
    cp "aletheia-${VERSION}/aletheia" ~/.local/bin/aletheia
    ```
 7. Start the service:
@@ -144,7 +146,7 @@ The new binary will create fresh fjall stores on startup.
 Before any upgrade:
 1. `aletheia backup`: creates a timestamped whole-instance backup set
 2. Save the current binary: `cp /usr/local/bin/aletheia /usr/local/bin/aletheia.prev`
-3. Record current version: `aletheia health | jq .version`
+3. Record current version: `aletheia --version`
 
 ### Rollback procedure
 

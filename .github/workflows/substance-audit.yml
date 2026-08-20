@@ -1,0 +1,476 @@
+name: Release Substance Audit
+
+# WHY(#5435): this remains a maintainer-only release decision, not a universal
+# contributor PR gate.  Running it on trusted main lets the workflow validate
+# one same-repository Release Please head before executing that exact tree.
+on:
+  workflow_dispatch:
+    inputs:
+      release_pr:
+        description: Open Release Please PR number
+        required: true
+        type: string
+      expected_sha:
+        description: Exact release PR head SHA to audit
+        required: true
+        type: string
+      advisory_issues_json:
+        description: JSON object mapping advisory owner keys to open Aletheia issue URLs
+        required: false
+        default: "{}"
+        type: string
+      source_run_id:
+        description: Prior Release Substance Audit run whose per-crate receipts should be re-adjudicated
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: substance-audit-${{ inputs.release_pr }}-${{ inputs.expected_sha }}
+  cancel-in-progress: false
+
+env:
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    outputs:
+      matrix: ${{ steps.policy.outputs.matrix }}
+    steps:
+      - name: Require trusted main dispatch inputs
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          if [[ "$GITHUB_REPOSITORY" != "forkwright/aletheia" ]]; then
+            echo "::error::substance audit is restricted to forkwright/aletheia"
+            exit 1
+          fi
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "::error::substance audit must be dispatched at refs/heads/main"
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected_sha must be lowercase 40-hex"
+            exit 1
+          fi
+          if [[ ! "$RELEASE_PR" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::release_pr must be a positive integer"
+            exit 1
+          fi
+          if [[ -n "$SOURCE_RUN_ID" && ! "$SOURCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::source_run_id must be empty or a positive integer"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Validate policy and derive the five-crate matrix
+        id: policy
+        run: |
+          scripts/substance-audit.py validate
+          echo "matrix=$(scripts/substance-audit.py matrix)" >> "$GITHUB_OUTPUT"
+
+      - name: Bind the open Release Please PR to current main
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          pr_json="$(gh api "repos/${GH_REPO}/pulls/${RELEASE_PR}")"
+          test "$(jq -r '.state' <<<"$pr_json")" = "open"
+          test "$(jq -r '.head.repo.full_name' <<<"$pr_json")" = "$GH_REPO"
+          test "$(jq -r '.head.ref' <<<"$pr_json")" = "release-please--branches--main"
+          test "$(jq -r '.head.sha' <<<"$pr_json")" = "$EXPECTED_SHA"
+          test "$(jq -r '.base.ref' <<<"$pr_json")" = "main"
+          test "$(jq -r '.base.sha' <<<"$pr_json")" = "$GITHUB_SHA"
+
+          if [[ -n "$SOURCE_RUN_ID" ]]; then
+            run_json="$(gh api "repos/${GH_REPO}/actions/runs/${SOURCE_RUN_ID}")"
+            test "$(jq -r '.name' <<<"$run_json")" = "Release Substance Audit"
+            test "$(jq -r '.path' <<<"$run_json")" = ".github/workflows/substance-audit.yml"
+            test "$(jq -r '.event' <<<"$run_json")" = "workflow_dispatch"
+            test "$(jq -r '.head_branch' <<<"$run_json")" = "main"
+            test "$(jq -r '.head_sha' <<<"$run_json")" = "$GITHUB_SHA"
+            test "$(jq -r '.repository.full_name' <<<"$run_json")" = "$GH_REPO"
+            test "$(jq -r '.status' <<<"$run_json")" = "completed"
+          fi
+
+      # WHY: keep this as one exact, fail-closed execution boundary. The PR
+      # head is mutable between API calls, and Git filenames may contain
+      # newlines, so the canonical checker consumes the immutable comparison
+      # as JSON and exec makes its status the step status.
+      - name: Validate the immutable release comparison
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          compare_json="$(gh api "repos/${GH_REPO}/compare/${GITHUB_SHA}...${EXPECTED_SHA}")"
+          exec scripts/check-release-versioning.py verify-comparison \
+            --base-sha "$GITHUB_SHA" --candidate-sha "$EXPECTED_SHA" \
+            <<<"$compare_json"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: release-candidate
+          persist-credentials: false
+          ref: ${{ inputs.expected_sha }}
+
+      - name: Validate the exact Release Please metadata transition
+        run: >-
+          scripts/check-release-versioning.py verify-transition
+          --base-root . --candidate-root release-candidate
+
+      - name: Rebind the Release Please PR after candidate validation
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+        run: |
+          pr_json="$(gh api "repos/${GH_REPO}/pulls/${RELEASE_PR}")"
+          test "$(jq -r '.state' <<<"$pr_json")" = "open"
+          test "$(jq -r '.head.repo.full_name' <<<"$pr_json")" = "$GH_REPO"
+          test "$(jq -r '.head.ref' <<<"$pr_json")" = "release-please--branches--main"
+          test "$(jq -r '.head.sha' <<<"$pr_json")" = "$EXPECTED_SHA"
+          test "$(jq -r '.base.ref' <<<"$pr_json")" = "main"
+          test "$(jq -r '.base.sha' <<<"$pr_json")" = "$GITHUB_SHA"
+
+  audit:
+    if: inputs.source_run_id == ''
+    needs: [preflight]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: control
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Require private Kanon read credential
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [[ -z "$FLEET_REPO_TOKEN" ]]; then
+            echo "::error::FLEET_REPO_TOKEN is required to build the pinned private Kanon CLI"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: forkwright/kanon
+          ref: 6795565b0ae3368faa0b710608dfeabe1f70fafb
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
+          path: private-kanon
+          persist-credentials: false
+          fetch-depth: 1
+
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+        with:
+          toolchain: 1.97.1
+
+      - name: Build and verify the exact private Kanon CLI
+        run: |
+          cargo install --locked --path private-kanon/crates/pragma --bin kanon \
+            --root "$RUNNER_TEMP/kanon-root"
+          test "$(git -C private-kanon rev-parse HEAD)" = "6795565b0ae3368faa0b710608dfeabe1f70fafb"
+          kanon="$RUNNER_TEMP/kanon-root/bin/kanon"
+          test "$("$kanon" --version | awk '{print $2}')" = "0.13.0"
+          test "$("$kanon" build-sha)" = "6795565b0ae3368faa0b710608dfeabe1f70fafb"
+
+      - name: Scrub private source and credentials before Aletheia execution
+        run: |
+          rm -rf -- private-kanon "$CARGO_HOME/git"
+          rm -f -- "$HOME/.git-credentials"
+          git config --global --unset-all credential.helper || true
+          git config --global --unset-all http.https://github.com/.extraheader || true
+          test ! -e private-kanon
+          test ! -e "$HOME/.git-credentials"
+          if git config --global --get-all credential.helper >/dev/null 2>&1; then
+            echo "::error::global credential helper remains configured"
+            exit 1
+          fi
+          if git config --global --get-all http.https://github.com/.extraheader >/dev/null 2>&1; then
+            echo "::error::global GitHub auth header remains configured"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: target
+          persist-credentials: false
+          ref: ${{ inputs.expected_sha }}
+
+      - name: Install the pinned mutation runner
+        run: cargo install --locked cargo-mutants --version 27.1.0
+
+      - name: Record exact tool identities
+        env:
+          RESULT_DIR: ${{ runner.temp }}/substance-${{ matrix.crate }}
+        run: |
+          mkdir -p "$RESULT_DIR"
+          kanon="$RUNNER_TEMP/kanon-root/bin/kanon"
+          jq -n \
+            --arg kanon_version "$("$kanon" --version | awk '{print $2}')" \
+            --arg kanon_build_sha "$("$kanon" build-sha)" \
+            --arg cargo_mutants_version "$(cargo mutants --version | awk '{print $2}')" \
+            --arg rustc_version "$(rustc --version | awk '{print $2}')" \
+            --arg kanon_binary_sha256 "$(sha256sum "$kanon" | awk '{print $1}')" \
+            '{kanon_version:$kanon_version,kanon_build_sha:$kanon_build_sha,cargo_mutants_version:$cargo_mutants_version,rustc_version:$rustc_version,kanon_binary_sha256:$kanon_binary_sha256}' \
+            > "$RESULT_DIR/tool-metadata.json"
+
+      - name: Run the exact feature-world baseline and substance audit
+        env:
+          CRATE: ${{ matrix.crate }}
+          CRATE_PATH: ${{ matrix.path }}
+          FEATURES: ${{ matrix.features }}
+          MUTANT_JOBS: 4
+          MUTANT_TIMEOUT_SECONDS: 300
+          RESULT_DIR: ${{ runner.temp }}/substance-${{ matrix.crate }}
+          WALL_TIMEOUT_MINUTES: 330
+        run: |
+          config="target/.cargo/mutants.toml"
+          if [[ -e "$config" ]]; then
+            echo "::error::refusing to overwrite pre-existing $config"
+            exit 1
+          fi
+          cleanup() { rm -f -- "$config"; }
+          trap cleanup EXIT
+          control/scripts/substance-audit.py --repo-root target \
+            --policy control/scripts/substance-audit-policy.toml \
+            write-config --crate "$CRATE" --output "$config"
+          cp -- "$config" "$RESULT_DIR/mutants.toml"
+          test "$(git -C target status --short --ignored .cargo/mutants.toml)" = "!! .cargo/mutants.toml"
+
+          baseline=(cargo test --locked -p "$CRATE")
+          if [[ -n "$FEATURES" ]]; then
+            baseline+=(--features "$FEATURES")
+          fi
+          set +e
+          (cd target && "${baseline[@]}")
+          baseline_exit=$?
+          set -e
+          printf '%s\n' "$baseline_exit" > "$RESULT_DIR/baseline-exit.txt"
+
+          if [[ "$baseline_exit" -eq 0 ]]; then
+            set +e
+            (
+              cd target
+              CARGO_MUTANTS_JOBS="$MUTANT_JOBS" \
+              CARGO_MUTANTS_OUTPUT="$RESULT_DIR" \
+              timeout --signal=TERM --kill-after=5m "${WALL_TIMEOUT_MINUTES}m" \
+                "$RUNNER_TEMP/kanon-root/bin/kanon" audit substance "$CRATE_PATH" \
+                  --mutation-timeout-secs "$MUTANT_TIMEOUT_SECONDS" --json \
+                  > "$RESULT_DIR/audit.json"
+            )
+            audit_exit=$?
+            set -e
+          else
+            audit_exit=125
+          fi
+          printf '%s\n' "$audit_exit" > "$RESULT_DIR/audit-exit.txt"
+          cleanup
+          trap - EXIT
+
+          clean_exit=0
+          test ! -e "$config" || clean_exit=1
+          git -C target diff --quiet || clean_exit=1
+          git -C target diff --cached --quiet || clean_exit=1
+          test -z "$(git -C target ls-files --others --exclude-standard)" || clean_exit=1
+          printf '%s\n' "$clean_exit" > "$RESULT_DIR/clean-exit.txt"
+
+      - name: Classify the complete raw evidence
+        if: always()
+        env:
+          CRATE: ${{ matrix.crate }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+          RESULT_DIR: ${{ runner.temp }}/substance-${{ matrix.crate }}
+        run: |
+          mkdir -p "$RESULT_DIR"
+          control/scripts/substance-audit.py --repo-root target \
+            --policy control/scripts/substance-audit-policy.toml classify \
+            --crate "$CRATE" --repo-sha "$EXPECTED_SHA" --release-pr "$RELEASE_PR" \
+            --source-run-id "$GITHUB_RUN_ID" \
+            --source-run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --audit-json "$RESULT_DIR/audit.json" \
+            --outcomes-json "$RESULT_DIR/mutants.out/outcomes.json" \
+            --audit-exit "$RESULT_DIR/audit-exit.txt" \
+            --baseline-exit "$RESULT_DIR/baseline-exit.txt" \
+            --clean-exit "$RESULT_DIR/clean-exit.txt" \
+            --tool-metadata "$RESULT_DIR/tool-metadata.json" \
+            --mutants-config "$RESULT_DIR/mutants.toml" \
+            --output "$RESULT_DIR/receipt.json"
+
+      - name: Upload public audit evidence only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: substance-${{ matrix.crate }}
+          path: ${{ runner.temp }}/substance-${{ matrix.crate }}
+          if-no-files-found: error
+          retention-days: 90
+
+  aggregate:
+    if: >-
+      always() && needs.preflight.result == 'success' &&
+      (needs.audit.result != 'cancelled' || inputs.source_run_id != '')
+    needs: [preflight, audit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: release-candidate
+          persist-credentials: false
+          ref: ${{ inputs.expected_sha }}
+
+      - name: Download this run's per-crate receipts
+        if: inputs.source_run_id == ''
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: substance-*
+          path: ${{ runner.temp }}/substance-receipts
+
+      - name: Download prior per-crate receipts for issue adjudication
+        if: inputs.source_run_id != ''
+        continue-on-error: true
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: substance-*
+          path: ${{ runner.temp }}/substance-receipts
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Verify every advisory owner is an open Aletheia issue
+        env:
+          ADVISORY_ISSUES_JSON: ${{ inputs.advisory_issues_json }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          verified="$RUNNER_TEMP/verified-advisory-issues.json"
+          status=0
+          if ! normalized="$(scripts/substance-audit.py issue-map --json "$ADVISORY_ISSUES_JSON")"; then
+            status=1
+            normalized='{}'
+          fi
+          while IFS=$'\t' read -r key url; do
+            [[ -n "$key" ]] || continue
+            number="${url##*/}"
+            issue_json="$(gh issue view "$number" --repo "$GH_REPO" --json state,url 2>/dev/null)" || status=1
+            if [[ "$status" -eq 0 ]]; then
+              test "$(jq -r '.state' <<<"$issue_json")" = "OPEN" || status=1
+              test "$(jq -r '.url' <<<"$issue_json")" = "$url" || status=1
+            fi
+          done < <(jq -r 'to_entries[] | [.key,.value] | @tsv' <<<"$normalized")
+          if [[ "$status" -ne 0 ]]; then
+            echo "::error::one or more advisory issue owners are invalid or not open"
+            normalized='{}'
+          fi
+          printf '%s\n' "$normalized" > "$verified"
+          exit "$status"
+
+      - name: Aggregate exact-five receipts
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          mapfile -t receipts < <(find "$RUNNER_TEMP/substance-receipts" -name receipt.json -type f | sort)
+          if [[ "${#receipts[@]}" -eq 0 ]]; then
+            receipts=("$RUNNER_TEMP/missing-receipt.json")
+          fi
+          scripts/substance-audit.py --repo-root release-candidate aggregate \
+            --repo-sha "$EXPECTED_SHA" --release-pr "$RELEASE_PR" \
+            --source-run-id "${SOURCE_RUN_ID:-$GITHUB_RUN_ID}" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --advisory-issues-json "$(cat "$RUNNER_TEMP/verified-advisory-issues.json")" \
+            --receipts "${receipts[@]}" \
+            --output "$RUNNER_TEMP/substance-receipt.json"
+
+      - name: Rebind the receipt before updating the release PR
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+        run: |
+          pr_json="$(gh api "repos/${GH_REPO}/pulls/${RELEASE_PR}")"
+          test "$(jq -r '.state' <<<"$pr_json")" = "open"
+          test "$(jq -r '.head.repo.full_name' <<<"$pr_json")" = "$GH_REPO"
+          test "$(jq -r '.head.ref' <<<"$pr_json")" = "release-please--branches--main"
+          test "$(jq -r '.head.sha' <<<"$pr_json")" = "$EXPECTED_SHA"
+          test "$(jq -r '.base.ref' <<<"$pr_json")" = "main"
+          test "$(jq -r '.base.sha' <<<"$pr_json")" = "$GITHUB_SHA"
+
+          gh pr view "$RELEASE_PR" --repo "$GH_REPO" --json body --jq .body \
+            > "$RUNNER_TEMP/pr-body.md"
+          receipt_sha="$(sha256sum "$RUNNER_TEMP/substance-receipt.json" | awk '{print $1}')"
+          scripts/substance-audit.py render-body \
+            --body "$RUNNER_TEMP/pr-body.md" \
+            --receipt "$RUNNER_TEMP/substance-receipt.json" \
+            --receipt-sha256 "$receipt_sha" \
+            --output "$RUNNER_TEMP/pr-body-updated.md"
+
+          test "$(gh pr view "$RELEASE_PR" --repo "$GH_REPO" --json headRefOid --jq .headRefOid)" = "$EXPECTED_SHA"
+          gh pr edit "$RELEASE_PR" --repo "$GH_REPO" --body-file "$RUNNER_TEMP/pr-body-updated.md"
+
+          pr_json="$(gh api "repos/${GH_REPO}/pulls/${RELEASE_PR}")"
+          test "$(jq -r '.state' <<<"$pr_json")" = "open"
+          test "$(jq -r '.head.repo.full_name' <<<"$pr_json")" = "$GH_REPO"
+          test "$(jq -r '.head.ref' <<<"$pr_json")" = "release-please--branches--main"
+          test "$(jq -r '.head.sha' <<<"$pr_json")" = "$EXPECTED_SHA"
+          test "$(jq -r '.base.ref' <<<"$pr_json")" = "main"
+          test "$(jq -r '.base.sha' <<<"$pr_json")" = "$GITHUB_SHA"
+
+      - name: Upload the aggregate release receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: substance-aggregate-${{ inputs.expected_sha }}
+          path: |
+            ${{ runner.temp }}/substance-receipt.json
+            ${{ runner.temp }}/pr-body-updated.md
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Enforce release substance policy
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          RELEASE_PR: ${{ inputs.release_pr }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          scripts/substance-audit.py enforce \
+            --receipt "$RUNNER_TEMP/substance-receipt.json" \
+            --repo-sha "$EXPECTED_SHA" --release-pr "$RELEASE_PR" \
+            --source-run-id "${SOURCE_RUN_ID:-$GITHUB_RUN_ID}" \
+            --run-url "$run_url"

@@ -9,11 +9,11 @@ manifest and every site together, then this check confirms they agree.
 
 from __future__ import annotations
 
-import sys
-import tomllib
 import logging
-from pathlib import Path
+import sys
+from pathlib import Path, PurePosixPath
 
+import tomllib
 
 LOGGER = logging.getLogger("check-tool-versions")
 
@@ -21,14 +21,23 @@ LOGGER = logging.getLogger("check-tool-versions")
 # call-site shape (an install-action `tool:` value, a `cargo install --version`
 # flag, a shell variable assignment) is a property of HOW each tool is
 # installed, not of its version — six tools, six shapes, not worth a
-# templating DSL in the TOML for a set this size.
-TOOL_MATCH_TEMPLATES: dict[str, str] = {
-    "nextest": "nextest@{version}",
-    "cargo-audit": "cargo-audit@{version}",
-    "cargo-fuzz": "cargo-fuzz --locked --version {version}",
-    "cross": "cross --locked --version {version}",
-    "cargo-cyclonedx": 'CARGO_CYCLONEDX_VERSION="{version}"',
-    "uv": 'version: "{version}"',
+# templating DSL in the TOML for a set this size. A tool may have more than
+# one honest installation spelling (host Cargo versus a cross-image script).
+TOOL_MATCH_TEMPLATES: dict[str, tuple[str, ...]] = {
+    "nextest": ("nextest@{version}",),
+    "cargo-audit": ("cargo-audit@{version}",),
+    "cargo-fuzz": ("cargo-fuzz --locked --version {version}",),
+    "cross": ("cross --locked --version {version}",),
+    "cargo-auditable": (
+        "cargo-auditable --locked --version {version}",
+        'cargo_auditable_version="{version}"',
+    ),
+    "cargo-mutants": ("cargo-mutants --version {version}",),
+    "rust-audit-info": ("rust-audit-info@{version}",),
+    "trufflehog": ("version: {version}",),
+    "gitleaks": ("GITLEAKS_VERSION: {version}",),
+    "cargo-cyclonedx": ('CARGO_CYCLONEDX_VERSION="{version}"',),
+    "uv": ('version: "{version}"',),
 }
 
 
@@ -37,29 +46,56 @@ def load_toml(path: Path) -> dict:
         return tomllib.load(fh)
 
 
+def resolve_site(repo_root: Path, site: object) -> tuple[Path | None, str | None]:
+    """Resolve one canonical, non-symlinked manifest site below the repository."""
+    if not isinstance(site, str) or not site or site != site.strip() or "\\" in site:
+        return None, f"site {site!r} is not a canonical repository-relative path"
+    pure = PurePosixPath(site)
+    if (
+        pure.is_absolute()
+        or not pure.parts
+        or ".." in pure.parts
+        or pure.as_posix() != site
+    ):
+        return None, f"site {site!r} is not a canonical repository-relative path"
+    try:
+        root = repo_root.resolve(strict=True)
+        lexical = root.joinpath(*pure.parts)
+        resolved = lexical.resolve(strict=True)
+    except OSError as error:
+        return None, f"site {site!r} does not exist: {error}"
+    if resolved == root or not resolved.is_relative_to(root):
+        return None, f"site {site!r} escapes the repository"
+    if resolved != lexical:
+        return None, f"site {site!r} contains a symlink"
+    if not resolved.is_file():
+        return None, f"site {site!r} is not a file"
+    return resolved, None
+
+
 def check_tool(repo_root: Path, name: str, entry: dict) -> list[str]:
-    template = TOOL_MATCH_TEMPLATES.get(name)
-    if template is None:
+    templates = TOOL_MATCH_TEMPLATES.get(name)
+    if templates is None:
         return [f"{name}: no match template registered in check-tool-versions.py"]
 
     version = entry.get("version")
     sites = entry.get("sites", [])
     if not version:
         return [f"{name}: manifest entry missing 'version'"]
-    if not sites:
-        return [f"{name}: manifest entry missing 'sites'"]
+    if not isinstance(sites, list) or not sites:
+        return [f"{name}: manifest entry missing or invalid 'sites'"]
 
-    needle = template.format(version=version)
+    needles = tuple(template.format(version=version) for template in templates)
     errors: list[str] = []
     for site in sites:
-        site_path = repo_root / site
-        if not site_path.is_file():
-            errors.append(f"{name}: site {site} does not exist")
+        site_path, site_error = resolve_site(repo_root, site)
+        if site_error is not None or site_path is None:
+            errors.append(f"{name}: {site_error or 'site could not be resolved'}")
             continue
         content = site_path.read_text(encoding="utf-8")
-        if needle not in content:
+        if not any(needle in content for needle in needles):
             errors.append(
-                f"{name}: {site} does not contain the pinned literal {needle!r} "
+                f"{name}: {site} does not contain a pinned literal from {needles!r} "
                 f"(manifest says {version})"
             )
     return errors
@@ -71,12 +107,15 @@ def check_fuzz_nightly(repo_root: Path, entry: dict) -> list[str]:
     if not date:
         return ["fuzz: manifest [fuzz] section missing 'nightly_date'"]
 
+    if not isinstance(sites, list) or not sites:
+        return ["fuzz: manifest [fuzz] section missing or invalid 'sites'"]
+
     needle = f"nightly-{date}"
     errors: list[str] = []
     for site in sites:
-        site_path = repo_root / site
-        if not site_path.is_file():
-            errors.append(f"fuzz: site {site} does not exist")
+        site_path, site_error = resolve_site(repo_root, site)
+        if site_error is not None or site_path is None:
+            errors.append(f"fuzz: {site_error or 'site could not be resolved'}")
             continue
         content = site_path.read_text(encoding="utf-8")
         if needle not in content:

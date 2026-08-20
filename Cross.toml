@@ -1,7 +1,6 @@
-# WHY: a default [build] pre-build (not a per-target block) installs
-# cargo-auditable for EVERY cross target, so `cross auditable build` keeps
-# working when new cross targets are added to the release matrix.
+# WHY(#5423): Cross 0.2.5 treats `auditable` as an unknown host-only Cargo
+# subcommand.  The pre-build instead makes the container's `cargo` command an
+# auditable wrapper, so the recognized `cross build` path stays inside the
+# target image and embeds dependency data in the shipped binary.
 [build]
-pre-build = [
-    "cargo install cargo-auditable --locked --version 0.7.4",
-]
+pre-build = "./scripts/install-cargo-auditable-cross.sh"

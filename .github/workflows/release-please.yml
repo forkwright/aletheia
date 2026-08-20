@@ -3,20 +3,24 @@ name: Release Please
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
 
-permissions:
-  contents: write
-  pull-requests: write
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+permissions: {}
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # WHY(#6443): release creation and artifact dispatch share one control lane.
+    # Queue later main pushes rather than cancelling after the action has made a
+    # tag/draft but before this job has emitted the one exact-tag dispatch.
+    concurrency:
+      group: release-please-control-${{ github.ref }}
+      queue: max
+      cancel-in-progress: false
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
     steps:
       # WHY a checkout in a job whose only action talks to the API: the assert
       # step below runs `git fetch` and reads `release-please-config.json` from
@@ -33,6 +37,36 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # WHY(#6443): workflow_dispatch is the one GITHUB_TOKEN-created event
+      # GitHub intentionally allows to start another workflow. Dispatch at the
+      # new tag ref so release.yml's github.sha is the release commit even when
+      # a later main push happened to run Release Please first.
+      - name: Dispatch artifacts for the exact released tag
+        if: steps.release.outputs.release_created == 'true'
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag_name }}
+          RELEASE_SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ || ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::release-please emitted invalid release identity ${RELEASE_TAG}@${RELEASE_SHA}"
+            exit 1
+          fi
+          remote_refs="$(git ls-remote --tags origin \
+            "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}")"
+          direct="$(awk '$2 !~ /\^\{\}$/ { print $1 }' <<<"$remote_refs")"
+          peeled="$(awk '$2 ~ /\^\{\}$/ { print $1 }' <<<"$remote_refs")"
+          live_tag_commit="${peeled:-$direct}"
+          if [[ "$live_tag_commit" != "$RELEASE_SHA" ]]; then
+            echo "::error::live ${RELEASE_TAG}=${live_tag_commit:-missing}, expected=${RELEASE_SHA}"
+            exit 1
+          fi
+          gh workflow run release.yml \
+            --ref "$RELEASE_TAG" \
+            --field tag_name="$RELEASE_TAG" \
+            --field release_sha="$RELEASE_SHA"
 
       # WHY(#6713): release-please does not fail, or even exit non-zero, when an
       # `extra-files` jsonpath matches nothing. It logs "No entries modified" and
