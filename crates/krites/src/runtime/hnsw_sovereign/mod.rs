@@ -32,7 +32,7 @@
 //!   perf addition to this crate, not an extraction), so there is nothing
 //!   here to reimplement independently.
 //! - `close_reopen_tests` (test-only, `storage-fjall`): E05 close/reopen
-//!   recall and the open-time cost assertion
+//!   recall and the bounded Krites-initialization storage-access assertion
 
 pub(crate) mod adaptive;
 #[cfg(all(test, feature = "storage-fjall"))]

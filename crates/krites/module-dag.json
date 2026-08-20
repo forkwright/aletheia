@@ -292,7 +292,7 @@
     {
       "from": "runtime",
       "to": "data",
-      "count": 155,
+      "count": 158,
       "production_count": 148,
       "test_only": false,
       "first_evidence": "runtime/db.rs:35",
@@ -337,7 +337,7 @@
     {
       "from": "runtime",
       "to": "root",
-      "count": 33,
+      "count": 34,
       "production_count": 30,
       "test_only": false,
       "first_evidence": "runtime/db.rs:38",
@@ -346,7 +346,7 @@
     {
       "from": "runtime",
       "to": "storage",
-      "count": 20,
+      "count": 26,
       "production_count": 16,
       "test_only": false,
       "first_evidence": "runtime/callback.rs:20",
@@ -381,7 +381,7 @@
     }
   ],
   "file_count": 205,
-  "statement_count": 1031,
+  "statement_count": 1037,
   "required_edges_present": [
     [
       "runtime",

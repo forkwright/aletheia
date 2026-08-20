@@ -558,10 +558,12 @@ jobs:
       # tested by CI at all. The default build selects `runtime/hnsw`, so a
       # break in `runtime/hnsw_sovereign` is invisible to every other check.
       #
-      # Tests run rather than just `check`, because the tree's own
-      # close_reopen_tests.rs asserts the behaviours that fail silently:
-      # canary-node survival across delete, and recall after close/reopen.
-      # Compiling proves neither.
+      # Tests run rather than just `check` so the sovereign tree's ordinary
+      # crate-scoped behavior executes here; compiling alone proves no search
+      # behavior. Its Fjall-only close/reopen and bounded-initialization-I/O
+      # tests require `storage-fjall`, so the dedicated workspace job below
+      # runs them under `test-core,krites_sovereign_hnsw` instead of silently
+      # claiming this narrower command covers them.
       #
       # WHY `cargo test` and not nextest: this job installs no test runner —
       # every other step here is check or clippy. Plain cargo needs no
