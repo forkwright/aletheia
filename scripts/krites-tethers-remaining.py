@@ -104,10 +104,11 @@ Lines:
      see TRACKED_MECHANISM_ISSUES below for what was found and why this
      line's cardinality stays reviewer-enforced beyond what is checked). A
      CLOSED issue counts as resolved only when GitHub's stateReason is
-     COMPLETED and GitHub links the closing PR. A NOT_PLANNED ("wontfix") or
-     bare manual close reads identically to still OPEN, because a close bit is
-     not proof of the repair this line claims. The closing reference is
-     printed for every tracked issue so a reviewer can inspect what closed it.
+     COMPLETED and the issue's current ClosedEvent names a merged PR as its
+     closer. A NOT_PLANNED ("wontfix") or bare manual close reads identically
+     to still OPEN, because a close bit is not proof of the repair this line
+     claims. The closing reference is printed for every tracked issue so a
+     reviewer can inspect what closed it.
 
 Usage:
     python3 scripts/krites-tethers-remaining.py [--json]
@@ -256,6 +257,71 @@ class IssueStatus:
     state_reason: str | None
     labels: tuple[str, ...] = field(default_factory=tuple)
     closing_refs: tuple[str, ...] = field(default_factory=tuple)
+    merged_closing_refs: tuple[str, ...] = field(default_factory=tuple)
+
+
+_ISSUE_CLOSURE_TIMELINE_QUERY = """
+query($owner:String!,$repo:String!,$number:Int!){
+  repository(owner:$owner,name:$repo){
+    issue(number:$number){
+      timelineItems(itemTypes:[CLOSED_EVENT,REOPENED_EVENT],last:100){
+        totalCount
+        nodes{
+          __typename
+          ... on ClosedEvent{
+            createdAt
+            closer{
+              __typename
+              ... on PullRequest{url state merged mergedAt}
+            }
+          }
+          ... on ReopenedEvent{createdAt}
+        }
+      }
+    }
+  }
+}
+""".strip()
+
+
+def _merged_current_closer(payload: dict) -> tuple[str, ...]:
+    """Return the PR only when it owns the issue's current close event."""
+    try:
+        timeline = payload["data"]["repository"]["issue"]["timelineItems"]
+        total = timeline["totalCount"]
+        nodes = timeline["nodes"]
+    except (KeyError, TypeError) as error:
+        raise TypeError("issue closure timeline has an unexpected shape") from error
+    if (
+        not isinstance(total, int)
+        or isinstance(total, bool)
+        or not isinstance(nodes, list)
+    ):
+        raise TypeError("issue closure timeline count/nodes have unexpected types")
+    if total != len(nodes):
+        raise ValueError(
+            f"issue closure timeline was truncated: {len(nodes)} of {total} events"
+        )
+    if not nodes:
+        return ()
+    latest = nodes[-1]
+    if not isinstance(latest, dict):
+        raise TypeError("issue closure timeline contains a non-object event")
+    if latest.get("__typename") != "ClosedEvent":
+        return ()
+    closer = latest.get("closer")
+    if not isinstance(closer, dict) or closer.get("__typename") != "PullRequest":
+        return ()
+    if (
+        closer.get("state") != "MERGED"
+        or closer.get("merged") is not True
+        or not isinstance(closer.get("mergedAt"), str)
+        or not closer["mergedAt"]
+        or not isinstance(closer.get("url"), str)
+        or not closer["url"]
+    ):
+        return ()
+    return (closer["url"],)
 
 
 def _run_sibling_validator(script: Path) -> None:
@@ -515,10 +581,12 @@ def line_4_no_gate_test(rows: list[dict]) -> Line:
 
 
 def _gh_issue_status(number: int) -> IssueStatus | None:
-    """Return this issue's live state/stateReason/labels/closing references,
-    or None if the query could not be completed. WARNING: None must never be
-    read as 0 or as resolved by the caller -- it means the state is
-    genuinely unknown."""
+    """Return live issue state plus the PR, if any, owning its current close.
+
+    ``closedByPullRequestsReferences`` is retained only as reviewer context;
+    the GraphQL ClosedEvent/ReopenedEvent timeline owns causal completion.
+    None means a query/proof failure and must never read as zero or resolved.
+    """
     try:
         result = subprocess.run(
             [
@@ -567,11 +635,55 @@ def _gh_issue_status(number: int) -> IssueStatus | None:
         ref.get("url", f"#{ref.get('number')}")
         for ref in payload.get("closedByPullRequestsReferences") or []
     )
+    owner, repo = GH_REPO.split("/", 1)
+    try:
+        timeline_result = subprocess.run(
+            [
+                "gh",
+                "api",
+                "graphql",
+                "-f",
+                f"query={_ISSUE_CLOSURE_TIMELINE_QUERY}",
+                "-F",
+                f"owner={owner}",
+                "-F",
+                f"repo={repo}",
+                "-F",
+                f"number={number}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(
+            f"gh closure timeline query for #{number} failed to run: {exc}",
+            file=sys.stderr,
+        )
+        return None
+    if timeline_result.returncode != 0:
+        print(
+            f"gh closure timeline query for #{number} exited "
+            f"{timeline_result.returncode}: {timeline_result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        timeline_payload = json.loads(timeline_result.stdout)
+        merged_refs = _merged_current_closer(timeline_payload)
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        print(
+            f"gh closure timeline query for #{number} was invalid: {exc}",
+            file=sys.stderr,
+        )
+        return None
     return IssueStatus(
         state=payload.get("state"),
         state_reason=payload.get("stateReason") or None,
         labels=labels,
         closing_refs=refs,
+        merged_closing_refs=merged_refs,
     )
 
 
@@ -589,7 +701,7 @@ def _issue_disposition(status: IssueStatus) -> str:
     # tracker-owned join to the PR that closed the issue so a bare manual close
     # cannot lower this load-bearing count.  A non-PR completion needs a
     # separately typed proof mechanism before it can count here.
-    if not status.closing_refs:
+    if not status.merged_closing_refs:
         return "unresolved"
     return "resolved"
 
@@ -638,7 +750,7 @@ def _validate_tracked_issue_removals() -> list[int]:
     """Every issue number present in TRACKED_ISSUES_ANCHOR_COMMIT's tuple but
     absent from TRACKED_MECHANISM_ISSUES today must be independently
     verified, via a live gh query, to be CLOSED with stateReason COMPLETED and
-    joined to a closing PR -- the only typed proof currently admitted for a
+    joined to a merged closing PR -- the only typed proof currently admitted for a
     member leaving this set. Returns
     the numbers whose gh query failed (contributes to line 5's UNKNOWN
     state, same as any other gh outage); refuses outright the moment a
@@ -657,9 +769,10 @@ def _validate_tracked_issue_removals() -> list[int]:
             refuse(
                 f"#{number} was removed from TRACKED_MECHANISM_ISSUES but GitHub reports "
                 f"state={status.state!r} stateReason={status.state_reason!r} "
-                f"closing_refs={status.closing_refs!r} -- a member may only leave this "
-                "tuple once CLOSED as COMPLETED with a closing PR, never by editing the "
-                "tuple down to make line 5 read lower"
+                f"closing_refs={status.closing_refs!r} "
+                f"merged_closing_refs={status.merged_closing_refs!r} -- a member may "
+                "only leave this tuple once CLOSED as COMPLETED with a merged closing "
+                "PR, never by editing the tuple down to make line 5 read lower"
             )
     return failed
 
@@ -674,9 +787,11 @@ def line_5_open_mechanism_issues() -> Line:
     failed += sorted(n for n, s in statuses.items() if s is None)
     source = (
         f"gh issue view <N> --repo {GH_REPO} --json state,stateReason,labels,"
-        f"closedByPullRequestsReferences, for N in {TRACKED_MECHANISM_ISSUES}; every number present "
-        f"in commit {TRACKED_ISSUES_ANCHOR_COMMIT[:12]}'s tuple but absent from it today is verified "
-        "CLOSED+COMPLETED with a closing PR before this line runs"
+        "closedByPullRequestsReferences plus the issue's ClosedEvent/ReopenedEvent "
+        f"GraphQL timeline, for N in {TRACKED_MECHANISM_ISSUES}; every number present "
+        f"in commit {TRACKED_ISSUES_ANCHOR_COMMIT[:12]}'s tuple but absent from it "
+        "today is verified CLOSED+COMPLETED with a merged PR owning the current "
+        "close event before this line runs"
     )
     if failed:
         return Line(
@@ -704,6 +819,7 @@ def line_5_open_mechanism_issues() -> Line:
             "state": s.state,
             "state_reason": s.state_reason,
             "closing_refs": list(s.closing_refs),
+            "merged_closing_refs": list(s.merged_closing_refs),
         }
         for n, s in statuses.items()
         if s is not None

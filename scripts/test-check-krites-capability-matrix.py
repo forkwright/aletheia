@@ -470,18 +470,56 @@ def test_issue_completion_requires_state_and_a_closing_pr() -> None:
         state="CLOSED",
         state_reason="COMPLETED",
         closing_refs=("https://github.com/forkwright/aletheia/pull/1",),
+        merged_closing_refs=("https://github.com/forkwright/aletheia/pull/1",),
     )
     bare = TETHERS.IssueStatus(state="CLOSED", state_reason="COMPLETED")
+    open_reference = TETHERS.IssueStatus(
+        state="CLOSED",
+        state_reason="COMPLETED",
+        closing_refs=("https://github.com/forkwright/aletheia/pull/2",),
+    )
     missing_reason = TETHERS.IssueStatus(
         state="CLOSED",
         state_reason=None,
         closing_refs=("https://github.com/forkwright/aletheia/pull/1",),
+        merged_closing_refs=("https://github.com/forkwright/aletheia/pull/1",),
     )
     check(
-        "only completed issues joined to a closing PR are resolved",
+        "only completed issues joined to a merged closing PR are resolved",
         TETHERS._issue_disposition(complete) == "resolved"
         and TETHERS._issue_disposition(bare) == "unresolved"
+        and TETHERS._issue_disposition(open_reference) == "unresolved"
         and TETHERS._issue_disposition(missing_reason) == "unresolved",
+    )
+
+    merged_then_manual = {
+        "data": {
+            "repository": {
+                "issue": {
+                    "timelineItems": {
+                        "totalCount": 3,
+                        "nodes": [
+                            {
+                                "__typename": "ClosedEvent",
+                                "closer": {
+                                    "__typename": "PullRequest",
+                                    "url": "https://github.com/forkwright/aletheia/pull/1",
+                                    "state": "MERGED",
+                                    "merged": True,
+                                    "mergedAt": "2026-08-19T00:00:00Z",
+                                },
+                            },
+                            {"__typename": "ReopenedEvent"},
+                            {"__typename": "ClosedEvent", "closer": None},
+                        ],
+                    }
+                }
+            }
+        }
+    }
+    check(
+        "only the current close event can supply the merged-PR proof",
+        TETHERS._merged_current_closer(merged_then_manual) == (),
     )
 
 
@@ -1399,23 +1437,31 @@ def test_macro_inventory_follows_logical_path_descendants() -> None:
     )
 
 
-def test_macro_inventory_follows_literal_module_include() -> None:
+def test_macro_inventory_fails_closed_on_module_include() -> None:
     original_root = CHECKER.REPO_ROOT
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         macro_dir = root / "macros"
         macro_dir.mkdir()
-        (macro_dir / "mod.rs").write_text('include!("generated.inc");\n')
-        (macro_dir / "generated.inc").write_text("define_op!(INCLUDED, included);\n")
+        (macro_dir / "mod.rs").write_text(
+            "macro_rules! include { ($path:literal) => {}; }\n"
+            'include!("generated.inc");\n'
+        )
+        (macro_dir / "generated.inc").write_text("define_op!(GHOST, ghost);\n")
         CHECKER.REPO_ROOT = root
         try:
-            found = CHECKER._scan_macro_items(macro_dir, "define_op")
+            try:
+                CHECKER._scan_macro_items(macro_dir, "define_op")
+            except ValueError as error:
+                include_error = str(error)
+            else:
+                include_error = ""
         finally:
             CHECKER.REPO_ROOT = original_root
     check(
-        "a literal module include contributes declaration macros",
-        set(found) == {"INCLUDED"},
-        str(found),
+        "a shadowable include macro cannot invent declaration evidence",
+        "compiler-resolved macro ownership" in include_error,
+        include_error,
     )
 
 
@@ -1442,7 +1488,8 @@ def test_macro_inventory_rejects_unresolvable_module_include() -> None:
             CHECKER.REPO_ROOT = original_root
     check(
         "computed live module includes fail closed while impossible ones are skipped",
-        "include!" in include_error and "direct string literal" in include_error,
+        "include!" in include_error
+        and "compiler-resolved macro ownership" in include_error,
         include_error,
     )
 

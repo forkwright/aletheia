@@ -751,37 +751,6 @@ def extract_storage_methods() -> dict[str, int]:
     return out
 
 
-def _literal_include_path(raw_arg: str, clean_arg: str) -> str:
-    """Decode one direct, unescaped Rust string passed to module-level include!."""
-    cooked = re.fullmatch(
-        r'\s*(?P<literal>"[ \t\r\n]*")\s*,?\s*',
-        clean_arg,
-    )
-    if cooked is not None:
-        literal = raw_arg[cooked.start("literal") : cooked.end("literal")]
-        decoded = re.fullmatch(r'"(?P<value>[^"\\]*)"', literal, re.DOTALL)
-        if decoded is None:
-            raise ValueError("include! uses an escaped cooked string literal")
-        return decoded.group("value")
-
-    raw_string = re.fullmatch(
-        r'\s*(?P<literal>r(?P<hashes>#{0,255})"[ \t\r\n]*"(?P=hashes))\s*,?\s*',
-        clean_arg,
-    )
-    if raw_string is not None:
-        literal = raw_arg[raw_string.start("literal") : raw_string.end("literal")]
-        decoded = re.fullmatch(
-            r'r(?P<hashes>#{0,255})"(?P<value>.*?)"(?P=hashes)',
-            literal,
-            re.DOTALL,
-        )
-        if decoded is None:
-            raise ValueError("include! uses an unsupported raw string literal")
-        return decoded.group("value")
-
-    raise ValueError("include! argument is not one direct string literal")
-
-
 def _reachable_module_branches(root: Path) -> dict[Path, list[tuple[str, ...]]]:
     """Map reachable Rust module files to their possible inherited cfg attrs."""
     if not root.is_file():
@@ -857,36 +826,10 @@ def _reachable_module_branches(root: Path) -> dict[Path, list[tuple[str, ...]]]:
                 continue
             rel = path.relative_to(REPO_ROOT)
             line = _line_of(raw, declaration.start())
-            if re.search(r"::\s*$", clean[: declaration.start()]):
-                raise ValueError(
-                    f"path-qualified include! at {rel}:{line} is unsupported"
-                )
-            opener = declaration.group("open")
-            closer = {"(": ")", "[": "]", "{": "}"}[opener]
-            open_at = declaration.end() - 1
-            close_at = _matching_delimiter(clean, open_at, opener, closer)
-            try:
-                include_path = _literal_include_path(
-                    raw[open_at + 1 : close_at],
-                    clean[open_at + 1 : close_at],
-                )
-            except ValueError as error:
-                raise ValueError(
-                    f"include! at {rel}:{line} is unresolved: {error}"
-                ) from error
-            child = (path.parent / include_path).resolve()
-            try:
-                child.relative_to(REPO_ROOT.resolve())
-            except ValueError as error:
-                raise ValueError(
-                    f"include! at {rel}:{line} escapes the repository: {include_path!r}"
-                ) from error
-            if not child.is_file():
-                raise ValueError(
-                    f"include! at {rel}:{line} resolves to no regular file: "
-                    f"{include_path!r}"
-                )
-            visit(child, child_effective, True, depth + 1)
+            raise ValueError(
+                f"module-level include! at {rel}:{line} requires compiler-resolved "
+                "macro ownership; refusing to inventory its token argument as Rust source"
+            )
         active.remove(path)
 
     visit(root, (), True, 0)
