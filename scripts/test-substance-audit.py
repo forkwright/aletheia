@@ -63,7 +63,15 @@ def _fixture_path(root: Path, path: Path) -> Path:
 
 
 def _write_text(root: Path, path: Path, value: str) -> None:
-    safe_path = _fixture_path(root, path)
+    validated = _fixture_path(root, path)
+    safe_root_name = os.path.basename(os.fspath(root))
+    relative = validated.relative_to(root)
+    safe_parts = [os.path.basename(part) for part in relative.parts]
+    safe_path = (TRUSTED_FIXTURE_PARENT / safe_root_name).joinpath(*safe_parts)
+    if safe_path != validated or any(
+        part in {"", ".", ".."} for part in safe_parts
+    ):
+        raise ValueError(f"fixture write path was not canonical: {path}")
     safe_path.parent.mkdir(parents=True, exist_ok=True)
     safe_path.write_text(value, encoding="utf-8")
 
@@ -444,7 +452,109 @@ def main() -> int:
             any("kanon_tag" in error for error in tag_errors),
             "policy validator accepted a tag/version mismatch",
         )
+        for replacement, label in (
+            ('path = "../symbolon"', "parent traversal"),
+            (f'path = "{SCRIPT.parent.as_posix()}"', "absolute path"),
+        ):
+            _write_text(
+                root,
+                policy_path,
+                policy_text.replace('path = "crates/symbolon"', replacement, 1),
+            )
+            _, path_errors = AUDIT.load_policy(policy_path, root)
+            expect(
+                any("repository-relative path" in error for error in path_errors),
+                f"policy validator accepted crate {label}: {path_errors}",
+            )
+
+        linked_crate = root / "crates" / "linked-symbolon"
+        linked_crate.symlink_to(SCRIPT.parent, target_is_directory=True)
+        _write_text(
+            root,
+            policy_path,
+            policy_text.replace(
+                'path = "crates/symbolon"',
+                'path = "crates/linked-symbolon"',
+                1,
+            ),
+        )
+        _, symlink_errors = AUDIT.load_policy(policy_path, root)
+        expect(
+            any("escapes the audited repository" in error for error in symlink_errors),
+            f"policy validator accepted a symlinked crate escape: {symlink_errors}",
+        )
+        linked_crate.unlink()
         _write_text(root, policy_path, policy_text)
+
+        with tempfile.TemporaryDirectory(
+            prefix=".substance-external-", dir=TRUSTED_FIXTURE_PARENT
+        ) as external_tmp:
+            external_root = _fixture_root(external_tmp)
+            escaped_source = external_root / "escaped.rs"
+            _write_text(
+                external_root,
+                escaped_source,
+                "/// Returns the escaped secret.\npub fn escaped() {}\n",
+            )
+            source_link = root / "crates/nous/src/escaped.rs"
+            source_link.symlink_to(escaped_source)
+            escaped_findings, escaped_errors = AUDIT.scan_tautological_docs(
+                root, "crates/nous"
+            )
+            expect(
+                any("symlink or escapes" in error for error in escaped_errors),
+                f"source scanner accepted a symlink escape: {escaped_errors}",
+            )
+            expect(
+                not any("escaped secret" in item["text"] for item in escaped_findings),
+                "source scanner consumed text through a symlink escape",
+            )
+            source_link.unlink()
+
+            escaped_directory = external_root / "linked-directory"
+            _write_text(
+                external_root,
+                escaped_directory / "escaped.rs",
+                "/// Returns the directory escape.\npub fn escaped_dir() {}\n",
+            )
+            directory_link = root / "crates/nous/src/linked-directory"
+            directory_link.symlink_to(escaped_directory, target_is_directory=True)
+            directory_findings, directory_errors = AUDIT.scan_tautological_docs(
+                root, "crates/nous"
+            )
+            expect(
+                any(
+                    "source directory is a symlink or escapes" in error
+                    for error in directory_errors
+                ),
+                "source scanner silently skipped a symlinked directory escape: "
+                f"{directory_errors}",
+            )
+            expect(
+                not any(
+                    "directory escape" in item["text"]
+                    for item in directory_findings
+                ),
+                "source scanner consumed text through a directory symlink escape",
+            )
+            directory_link.unlink()
+
+        original_walk = AUDIT.os.walk
+
+        def failing_walk(*_args: object, onerror: object = None, **_kwargs: object) -> object:
+            if callable(onerror):
+                onerror(PermissionError(13, "permission denied", "sealed"))
+            return iter(())
+
+        AUDIT.os.walk = failing_walk
+        try:
+            _, traversal_errors = AUDIT.scan_tautological_docs(root, "crates/nous")
+        finally:
+            AUDIT.os.walk = original_walk
+        expect(
+            any("cannot traverse source directory" in error for error in traversal_errors),
+            f"source scanner silently ignored a traversal failure: {traversal_errors}",
+        )
         expect(
             AUDIT.matrix(policy)[0]["features"] == "keyring",
             "matrix lost symbolon feature world",

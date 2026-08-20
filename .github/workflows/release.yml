@@ -338,9 +338,12 @@ jobs:
       - name: Verify embedded auditable dependency graph
         run: |
           binary="target/${BUILD_TARGET}/release/aletheia"
-          rust-audit-info "$binary" > "$RUNNER_TEMP/auditable-info.json"
+          audit_dir=$(mktemp -d "$GITHUB_WORKSPACE/.release-audit.XXXXXX")
+          audit_info="$audit_dir/auditable-info.json"
+          rust-audit-info "$binary" > "$audit_info"
+          printf 'AUDITABLE_INFO=%s\n' "$audit_info" >> "$GITHUB_ENV"
           scripts/check-auditable-info.py \
-            "$RUNNER_TEMP/auditable-info.json" "$VERSION"
+            "$audit_info" "$VERSION"
         env:
           BUILD_TARGET: ${{ matrix.target }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -475,7 +478,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           scripts/check-auditable-info.py \
-            "$RUNNER_TEMP/auditable-info.json" \
+            "$AUDITABLE_INFO" \
             "$VERSION" \
             --cyclonedx "$BINARY.cdx.json" \
             --spdx "$BINARY.spdx.json"

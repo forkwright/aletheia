@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path, PurePosixPath
 
 LOGGER = logging.getLogger("check-tool-versions")
 
@@ -46,6 +45,33 @@ def load_toml(path: Path) -> dict:
         return tomllib.load(fh)
 
 
+def resolve_site(repo_root: Path, site: object) -> tuple[Path | None, str | None]:
+    """Resolve one canonical, non-symlinked manifest site below the repository."""
+    if not isinstance(site, str) or not site or site != site.strip() or "\\" in site:
+        return None, f"site {site!r} is not a canonical repository-relative path"
+    pure = PurePosixPath(site)
+    if (
+        pure.is_absolute()
+        or not pure.parts
+        or ".." in pure.parts
+        or pure.as_posix() != site
+    ):
+        return None, f"site {site!r} is not a canonical repository-relative path"
+    try:
+        root = repo_root.resolve(strict=True)
+        lexical = root.joinpath(*pure.parts)
+        resolved = lexical.resolve(strict=True)
+    except OSError as error:
+        return None, f"site {site!r} does not exist: {error}"
+    if resolved == root or not resolved.is_relative_to(root):
+        return None, f"site {site!r} escapes the repository"
+    if resolved != lexical:
+        return None, f"site {site!r} contains a symlink"
+    if not resolved.is_file():
+        return None, f"site {site!r} is not a file"
+    return resolved, None
+
+
 def check_tool(repo_root: Path, name: str, entry: dict) -> list[str]:
     templates = TOOL_MATCH_TEMPLATES.get(name)
     if templates is None:
@@ -55,15 +81,15 @@ def check_tool(repo_root: Path, name: str, entry: dict) -> list[str]:
     sites = entry.get("sites", [])
     if not version:
         return [f"{name}: manifest entry missing 'version'"]
-    if not sites:
-        return [f"{name}: manifest entry missing 'sites'"]
+    if not isinstance(sites, list) or not sites:
+        return [f"{name}: manifest entry missing or invalid 'sites'"]
 
     needles = tuple(template.format(version=version) for template in templates)
     errors: list[str] = []
     for site in sites:
-        site_path = repo_root / site
-        if not site_path.is_file():
-            errors.append(f"{name}: site {site} does not exist")
+        site_path, site_error = resolve_site(repo_root, site)
+        if site_error is not None or site_path is None:
+            errors.append(f"{name}: {site_error or 'site could not be resolved'}")
             continue
         content = site_path.read_text(encoding="utf-8")
         if not any(needle in content for needle in needles):
@@ -80,12 +106,15 @@ def check_fuzz_nightly(repo_root: Path, entry: dict) -> list[str]:
     if not date:
         return ["fuzz: manifest [fuzz] section missing 'nightly_date'"]
 
+    if not isinstance(sites, list) or not sites:
+        return ["fuzz: manifest [fuzz] section missing or invalid 'sites'"]
+
     needle = f"nightly-{date}"
     errors: list[str] = []
     for site in sites:
-        site_path = repo_root / site
-        if not site_path.is_file():
-            errors.append(f"fuzz: site {site} does not exist")
+        site_path, site_error = resolve_site(repo_root, site)
+        if site_error is not None or site_path is None:
+            errors.append(f"fuzz: {site_error or 'site could not be resolved'}")
             continue
         content = site_path.read_text(encoding="utf-8")
         if needle not in content:

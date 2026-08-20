@@ -77,6 +77,15 @@ def _archive(package: Path, destination: Path) -> None:
         archive.add(package, arcname=package.name)
 
 
+def _check_paths(
+    tarball: Path, source_sha: str, standalone: Path
+) -> list[str]:
+    with tarball.open("rb") as tarball_handle, standalone.open("rb") as binary_handle:
+        return CHECKER.check_tarball(
+            tarball_handle, VERSION, TARGET, source_sha, binary_handle
+        )
+
+
 def _run_fixture(mutator: object | None = None) -> list[str]:
     with tempfile.TemporaryDirectory(prefix="aletheia-tarball-") as tmp:
         root = Path(tmp)
@@ -87,9 +96,7 @@ def _run_fixture(mutator: object | None = None) -> list[str]:
         _archive(package, tarball)
         standalone = root / "aletheia-linux-x86_64-1.2.3"
         standalone.write_bytes((package / "aletheia").read_bytes())
-        return CHECKER.check_tarball(
-            tarball, VERSION, TARGET, SOURCE_SHA, standalone
-        )
+        return _check_paths(tarball, SOURCE_SHA, standalone)
 
 
 def test_valid_tarball_passes() -> None:
@@ -152,9 +159,7 @@ def test_wrong_source_commit_fails() -> None:
         wrong_sha = "f" * 40
         standalone = root / "aletheia-linux-x86_64-1.2.3"
         standalone.write_bytes((package / "aletheia").read_bytes())
-        errors = CHECKER.check_tarball(
-            tarball, VERSION, TARGET, wrong_sha, standalone
-        )
+        errors = _check_paths(tarball, wrong_sha, standalone)
     expect(
         any("source_commit" in error and wrong_sha in error for error in errors),
         f"wrong source commit should fail: {errors}",
@@ -170,9 +175,7 @@ def test_empty_package_root_fails() -> None:
         _archive(package, tarball)
         standalone = root / "aletheia-linux-x86_64-1.2.3"
         standalone.write_bytes(b"fixture")
-        errors = CHECKER.check_tarball(
-            tarball, VERSION, TARGET, SOURCE_SHA, standalone
-        )
+        errors = _check_paths(tarball, SOURCE_SHA, standalone)
     expect(
         any("missing aletheia-1.2.3/aletheia" in error for error in errors),
         f"empty package root should fail required paths: {errors}",
@@ -187,9 +190,7 @@ def test_embedded_binary_must_equal_standalone_asset() -> None:
         _archive(package, tarball)
         standalone = root / "aletheia-linux-x86_64-1.2.3"
         standalone.write_bytes(b"different standalone binary")
-        errors = CHECKER.check_tarball(
-            tarball, VERSION, TARGET, SOURCE_SHA, standalone
-        )
+        errors = _check_paths(tarball, SOURCE_SHA, standalone)
     expect(
         any("does not equal the standalone" in error for error in errors),
         f"tar/standalone binary mismatch should fail: {errors}",
@@ -210,9 +211,7 @@ def test_noncanonical_member_alias_fails() -> None:
             archive.addfile(alias, io.BytesIO(payload))
         standalone = root / "aletheia-linux-x86_64-1.2.3"
         standalone.write_bytes((package / "aletheia").read_bytes())
-        errors = CHECKER.check_tarball(
-            tarball, VERSION, TARGET, SOURCE_SHA, standalone
-        )
+        errors = _check_paths(tarball, SOURCE_SHA, standalone)
     expect(
         any("non-canonical archive member" in error for error in errors),
         f"normalized path alias should fail: {errors}",
@@ -233,10 +232,14 @@ def test_cli_files_must_remain_beneath_invocation_directory() -> None:
         original_cwd = Path.cwd()
         try:
             os.chdir(allowed)
-            expect(
-                CHECKER._contained_cli_file("inside") == inside.resolve(),
-                "contained CLI file should resolve",
-            )
+            contained = CHECKER._contained_cli_file("inside")
+            try:
+                expect(
+                    Path(contained.name) == inside.resolve(),
+                    "contained CLI file should resolve",
+                )
+            finally:
+                contained.close()
             for value in ("../outside", str(outside), "escape-link", "."):
                 try:
                     CHECKER._contained_cli_file(value)

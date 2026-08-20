@@ -11,6 +11,7 @@ import sys
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import BinaryIO
 
 FEATURES = "recall,embed-candle"
 REQUIRED_PATHS = (
@@ -47,8 +48,8 @@ class ManifestRow:
     size: int
 
 
-def _contained_cli_file(value: str) -> Path:
-    """Resolve a CLI file beneath the invocation directory, without symlink escape."""
+def _contained_cli_file(value: str) -> BinaryIO:
+    """Open a CLI file beneath the invocation directory, without symlink escape."""
     allowed_root = Path.cwd().resolve(strict=True)
     try:
         candidate = (allowed_root / value).resolve(strict=True)
@@ -60,7 +61,7 @@ def _contained_cli_file(value: str) -> Path:
         )
     if not candidate.is_file():
         raise argparse.ArgumentTypeError(f"{value!r} is not a regular file")
-    return candidate
+    return argparse.FileType("rb")(str(candidate))
 
 
 def _safe_member_name(name: str, root: str) -> str | None:
@@ -117,12 +118,12 @@ def _parse_manifest(data: bytes) -> tuple[dict[str, str], dict[str, ManifestRow]
 
 
 def _read_archive(
-    tarball: Path, root: str
+    tarball: BinaryIO, root: str
 ) -> tuple[dict[str, tuple[tarfile.TarInfo, bytes]], list[str]]:
     files: dict[str, tuple[tarfile.TarInfo, bytes]] = {}
     errors: list[str] = []
     try:
-        with tarfile.open(tarball, mode="r:gz") as archive:
+        with tarfile.open(fileobj=tarball, mode="r:gz") as archive:
             seen_names: set[str] = set()
             for member in archive.getmembers():
                 if member.name in seen_names:
@@ -161,16 +162,16 @@ def _read_archive(
                     continue
                 files[relative] = (member, extracted.read())
     except (OSError, tarfile.TarError) as exc:
-        errors.append(f"failed to open {tarball}: {exc}")
+        errors.append(f"failed to open tarball: {exc}")
     return files, errors
 
 
 def check_tarball(
-    tarball: Path,
+    tarball: BinaryIO,
     version: str,
     target: str,
     source_sha: str,
-    standalone_binary: Path,
+    standalone_binary: BinaryIO,
 ) -> list[str]:
     errors: list[str] = []
     root = f"aletheia-{version}"
@@ -179,12 +180,10 @@ def check_tarball(
         return [f"unsupported release target: {target}"]
     if re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
         return ["expected source commit must be a 40-hex SHA"]
-    if not tarball.is_file():
-        return [f"missing tarball {tarball}"]
     try:
-        standalone_digest = hashlib.sha256(standalone_binary.read_bytes()).hexdigest()
+        standalone_digest = hashlib.sha256(standalone_binary.read()).hexdigest()
     except OSError as exc:
-        return [f"failed to hash standalone binary {standalone_binary}: {exc}"]
+        return [f"failed to hash standalone binary: {exc}"]
 
     files, archive_errors = _read_archive(tarball, root)
     errors.extend(archive_errors)
@@ -273,13 +272,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
-    errors = check_tarball(
-        args.tarball,
-        args.version,
-        args.target,
-        args.source_sha,
-        args.standalone_binary,
-    )
+    try:
+        errors = check_tarball(
+            args.tarball,
+            args.version,
+            args.target,
+            args.source_sha,
+            args.standalone_binary,
+        )
+    finally:
+        args.tarball.close()
+        args.standalone_binary.close()
     if errors:
         for error in errors:
             print(f"release-tarball: {error}", file=sys.stderr)

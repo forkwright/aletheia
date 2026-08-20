@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -12,6 +13,7 @@ from pathlib import Path
 
 SCRIPT_PATH = Path(__file__).parent / "check-release-artifact-routing.py"
 REPO_ROOT = SCRIPT_PATH.parents[1]
+TRUSTED_FIXTURE_PARENT = REPO_ROOT.resolve(strict=True)
 SPEC = importlib.util.spec_from_file_location("check_release_routing", SCRIPT_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"failed to load {SCRIPT_PATH}")
@@ -26,6 +28,30 @@ def expect(condition: bool, message: str) -> None:
         FAILURES.append(message)
 
 
+def fixture_root(raw_path: str) -> Path:
+    safe_name = os.path.basename(raw_path)
+    candidate = (TRUSTED_FIXTURE_PARENT / safe_name).resolve(strict=True)
+    if candidate.parent != TRUSTED_FIXTURE_PARENT or not candidate.is_dir():
+        raise ValueError(f"fixture root escaped trusted parent: {raw_path!r}")
+    return candidate
+
+
+def fixture_path(root: Path, relative: Path) -> Path:
+    if relative.is_absolute() or not relative.parts:
+        raise ValueError(f"fixture path must be repository-relative: {relative}")
+    safe_root_name = os.path.basename(os.fspath(root))
+    safe_parts = [os.path.basename(part) for part in relative.parts]
+    if any(
+        safe != original or safe in {"", ".", ".."}
+        for safe, original in zip(safe_parts, relative.parts, strict=True)
+    ):
+        raise ValueError(f"unsafe fixture path: {relative}")
+    candidate = (TRUSTED_FIXTURE_PARENT / safe_root_name).joinpath(*safe_parts)
+    if candidate.parent != root and root not in candidate.parents:
+        raise ValueError(f"fixture path escaped its root: {relative}")
+    return candidate
+
+
 def copy_fixture(root: Path) -> None:
     for relative in (
         CHECKER.RELEASE_PLEASE,
@@ -38,13 +64,13 @@ def copy_fixture(root: Path) -> None:
         CHECKER.CROSS_INSTALLER,
         *CHECKER.CONSUMER_DOCS,
     ):
-        destination = root / relative
+        destination = fixture_path(root, relative)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(REPO_ROOT / relative, destination)
 
 
 def mutate_text(root: Path, relative: Path, old: str, new: str) -> None:
-    path = root / relative
+    path = fixture_path(root, relative)
     text = path.read_text(encoding="utf-8")
     if old not in text:
         raise RuntimeError(f"fixture mutation source not found in {relative}: {old!r}")
@@ -52,8 +78,10 @@ def mutate_text(root: Path, relative: Path, old: str, new: str) -> None:
 
 
 def run_mutation(mutator: object) -> list[str]:
-    with tempfile.TemporaryDirectory(prefix="aletheia-release-routing-") as tmp:
-        root = Path(tmp)
+    with tempfile.TemporaryDirectory(
+        prefix=".release-routing-", dir=TRUSTED_FIXTURE_PARENT
+    ) as tmp:
+        root = fixture_root(tmp)
         copy_fixture(root)
         mutator(root)
         return CHECKER.check_repo(root)
@@ -184,9 +212,44 @@ def test_text_mutations_fail() -> None:
         (
             "missing auditable decode",
             CHECKER.RELEASE,
-            'rust-audit-info "$binary"',
-            'printf "{}" > "$RUNNER_TEMP/auditable-info.json"',
-            "artifact build lacks rust-audit-info",
+            'rust-audit-info "$binary" > "$audit_info"',
+            'printf "{}" > "$audit_info"',
+            "auditable evidence handoff is not exact",
+        ),
+        (
+            "unsafe fixed auditable output",
+            CHECKER.RELEASE,
+            'audit_dir=$(mktemp -d "$GITHUB_WORKSPACE/.release-audit.XXXXXX")',
+            'audit_dir="$GITHUB_WORKSPACE"',
+            "auditable evidence handoff is not exact",
+        ),
+        (
+            "unexported auditable evidence",
+            CHECKER.RELEASE,
+            "printf 'AUDITABLE_INFO=%s\\n' \"$audit_info\" >> \"$GITHUB_ENV\"",
+            "printf 'AUDITABLE_INFO=%s\\n' \"$audit_info\"",
+            "auditable evidence handoff is not exact",
+        ),
+        (
+            "external auditable evidence",
+            CHECKER.RELEASE,
+            'audit_info="$audit_dir/auditable-info.json"',
+            'audit_info="$RUNNER_TEMP/auditable-info.json"',
+            "auditable evidence handoff is not exact",
+        ),
+        (
+            "wrong auditable evidence export",
+            CHECKER.RELEASE,
+            "printf 'AUDITABLE_INFO=%s\\n' \"$audit_info\" >> \"$GITHUB_ENV\"",
+            "printf 'AUDITABLE_INFO=%s\\n' \"$binary\" >> \"$GITHUB_ENV\"",
+            "auditable evidence handoff is not exact",
+        ),
+        (
+            "step-local auditable evidence override",
+            CHECKER.RELEASE,
+            "env:\n          VERSION: ${{ steps.version.outputs.version }}\n        run: |\n          scripts/check-auditable-info.py",
+            "env:\n          VERSION: ${{ steps.version.outputs.version }}\n          AUDITABLE_INFO: $BINARY\n        run: |\n          scripts/check-auditable-info.py",
+            "binary SBOM comparison lacks the exact evidence handoff",
         ),
         (
             "directory-mode binary SBOM",
@@ -278,6 +341,13 @@ def test_text_mutations_fail() -> None:
             "pre-build must be the scalar copied-script form",
         ),
         (
+            "cross installer redirect downgrade",
+            CHECKER.CROSS_INSTALLER,
+            "curl --proto '=https' --proto-redir '=https'",
+            "curl",
+            "cross-image install lacks",
+        ),
+        (
             "manual all-tags push",
             Path("docs/RELEASING.md"),
             "git push origin main\ngit push origin refs/tags/v0.11.0",
@@ -304,6 +374,13 @@ def test_text_mutations_fail() -> None:
             'gh release view "$version"',
             'gh release inspect "$version"',
             "exact verified download lacks",
+        ),
+        (
+            "release download redirect downgrade",
+            CHECKER.DEPLOY,
+            "curl --proto '=https' --proto-redir '=https'",
+            "curl",
+            "downloads must remain HTTPS-only",
         ),
         (
             "rollback mode loss",

@@ -11,7 +11,8 @@ trap 'rm -rf -- "$tmpdir"' EXIT HUP INT TERM
 apt-get update
 DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates curl xz-utils
-curl -fsSL --retry 3 --output "${tmpdir}/${archive}" "$url"
+curl --proto '=https' --proto-redir '=https' -fsSL --retry 3 \
+    --output "${tmpdir}/${archive}" "$url"
 printf '%s  %s\n' "$digest" "${tmpdir}/${archive}" | sha256sum -c -
 tar -xJf "${tmpdir}/${archive}" -C "$tmpdir"
 install -m 0755 \

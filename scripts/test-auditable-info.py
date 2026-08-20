@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 from copy import deepcopy
@@ -46,11 +47,13 @@ GOOD = {
 FAILURES: list[str] = []
 
 
+def expect(condition: bool, message: str) -> None:
+    if not condition:
+        FAILURES.append(message)
+
+
 def run(value: object) -> list[str]:
-    with tempfile.TemporaryDirectory(prefix="auditable-info-") as tmp:
-        path = Path(tmp) / "info.json"
-        path.write_text(json.dumps(value), encoding="utf-8")
-        return CHECKER.check_info(path, VERSION)
+    return CHECKER.check_info(value, VERSION)
 
 
 def expect_error(value: object, fragment: str) -> None:
@@ -60,28 +63,23 @@ def expect_error(value: object, fragment: str) -> None:
 
 
 def check_sboms(*, include_tokio: bool) -> list[str]:
-    with tempfile.TemporaryDirectory(prefix="auditable-info-sbom-") as tmp:
-        root = Path(tmp)
-        info = root / "info.json"
-        cdx = root / "binary.cdx.json"
-        spdx = root / "binary.spdx.json"
-        info.write_text(json.dumps(GOOD), encoding="utf-8")
-        components = [
-            {"name": "aletheia", "version": VERSION},
-            {"name": "serde", "version": "1.0.0"},
-        ]
-        packages = [
-            {"name": "aletheia", "versionInfo": VERSION},
-            {"name": "serde", "versionInfo": "1.0.0"},
-        ]
-        if include_tokio:
-            components.append({"name": "tokio", "version": "1.2.0"})
-            packages.append({"name": "tokio", "versionInfo": "1.2.0"})
-        cdx.write_text(json.dumps({"components": components}), encoding="utf-8")
-        spdx.write_text(json.dumps({"packages": packages}), encoding="utf-8")
-        return CHECKER.check_info(
-            info, VERSION, cyclonedx=cdx, spdx=spdx
-        )
+    components = [
+        {"name": "aletheia", "version": VERSION},
+        {"name": "serde", "version": "1.0.0"},
+    ]
+    packages = [
+        {"name": "aletheia", "versionInfo": VERSION},
+        {"name": "serde", "versionInfo": "1.0.0"},
+    ]
+    if include_tokio:
+        components.append({"name": "tokio", "version": "1.2.0"})
+        packages.append({"name": "tokio", "versionInfo": "1.2.0"})
+    return CHECKER.check_info(
+        GOOD,
+        VERSION,
+        cyclonedx={"components": components},
+        spdx={"packages": packages},
+    )
 
 
 def check_duplicate_runtime_identity() -> list[str]:
@@ -95,37 +93,56 @@ def check_duplicate_runtime_identity() -> list[str]:
         }
     )
     value["packages"][0]["dependencies"].append(4)
-    with tempfile.TemporaryDirectory(prefix="auditable-info-sbom-") as tmp:
+    return CHECKER.check_info(
+        value,
+        VERSION,
+        cyclonedx={
+            "components": [
+                {"name": "aletheia", "version": VERSION},
+                {"name": "serde", "version": "1.0.0"},
+                {"name": "tokio", "version": "1.2.0"},
+            ]
+        },
+        spdx={
+            "packages": [
+                {"name": "aletheia", "versionInfo": VERSION},
+                {"name": "serde", "versionInfo": "1.0.0"},
+                {"name": "tokio", "versionInfo": "1.2.0"},
+            ]
+        },
+    )
+
+
+def test_cli_json_must_remain_beneath_invocation_directory() -> None:
+    with tempfile.TemporaryDirectory(prefix="auditable-info-cli-") as tmp:
         root = Path(tmp)
-        info = root / "info.json"
-        cdx = root / "binary.cdx.json"
-        spdx = root / "binary.spdx.json"
-        info.write_text(json.dumps(value), encoding="utf-8")
-        cdx.write_text(
-            json.dumps(
-                {
-                    "components": [
-                        {"name": "aletheia", "version": VERSION},
-                        {"name": "serde", "version": "1.0.0"},
-                        {"name": "tokio", "version": "1.2.0"},
-                    ]
-                }
-            ),
-            encoding="utf-8",
-        )
-        spdx.write_text(
-            json.dumps(
-                {
-                    "packages": [
-                        {"name": "aletheia", "versionInfo": VERSION},
-                        {"name": "serde", "versionInfo": "1.0.0"},
-                        {"name": "tokio", "versionInfo": "1.2.0"},
-                    ]
-                }
-            ),
-            encoding="utf-8",
-        )
-        return CHECKER.check_info(info, VERSION, cyclonedx=cdx, spdx=spdx)
+        allowed = root / "allowed"
+        allowed.mkdir()
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=allowed, delete=False
+        ) as inside_handle:
+            json.dump(GOOD, inside_handle)
+            inside = Path(inside_handle.name)
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=root, delete=False
+        ) as outside_handle:
+            json.dump(GOOD, outside_handle)
+            outside = Path(outside_handle.name)
+        (allowed / "escape-link").symlink_to(outside)
+
+        original_cwd = Path.cwd()
+        try:
+            os.chdir(allowed)
+            decoded = CHECKER._contained_cli_json(inside.name)
+            expect(decoded == GOOD, "contained CLI JSON should decode")
+            for value in ("../" + outside.name, str(outside), "escape-link", "."):
+                try:
+                    CHECKER._contained_cli_json(value)
+                except CHECKER.argparse.ArgumentTypeError:
+                    continue
+                FAILURES.append(f"unsafe CLI JSON path was accepted: {value}")
+        finally:
+            os.chdir(original_cwd)
 
 
 def main() -> int:
@@ -183,6 +200,8 @@ def main() -> int:
     unknown_kind = deepcopy(GOOD)
     unknown_kind["packages"][3]["kind"] = "mystery"
     expect_error(unknown_kind, "unsupported dependency kind")
+
+    test_cli_json_must_remain_beneath_invocation_directory()
 
     if FAILURES:
         print(f"FAIL: {len(FAILURES)} auditable-info assertions", file=sys.stderr)

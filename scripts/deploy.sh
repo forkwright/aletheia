@@ -407,8 +407,10 @@ download_binary() {
 
     local url="https://github.com/${repo}/releases/download/${version}/${versioned_asset}"
     local checksum_url="${url}.sha256"
-    if curl -fsSL --max-time 120 --output "$tmp_bin" -- "$url" 2>/dev/null \
-        && curl -fsSL --max-time 120 --output "$tmp_checksum" -- "$checksum_url" 2>/dev/null; then
+    if curl --proto '=https' --proto-redir '=https' -fsSL --max-time 120 \
+        --output "$tmp_bin" -- "$url" 2>/dev/null \
+        && curl --proto '=https' --proto-redir '=https' -fsSL --max-time 120 \
+            --output "$tmp_checksum" -- "$checksum_url" 2>/dev/null; then
         if install_verified_download; then
             log "Downloaded and verified binary via curl: ${BINARY_SRC}"
             return 0

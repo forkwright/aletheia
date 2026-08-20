@@ -8,9 +8,8 @@ import json
 import shutil
 import sys
 import tempfile
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 _SCRIPT_PATH = Path(__file__).parent / "check-release-versioning.py"
 
@@ -271,6 +270,53 @@ def test_release_identity_binds_tag_metadata_and_binary(root: Path) -> None:
     expect(
         any("--version returned" in error for error in errors),
         f"binary/version mismatch should fail: {errors}",
+    )
+
+    with tempfile.TemporaryDirectory(dir=root.parent) as external_tmp:
+        marker = root / "outside-binary-ran"
+        outside = Path(external_tmp) / "aletheia"
+        outside.write_text(
+            "#!/usr/bin/env sh\n"
+            f"printf ran > '{marker}'\n"
+            "printf 'aletheia 1.2.3\\n'\n",
+            encoding="utf-8",
+        )
+        outside.chmod(0o755)
+        for candidate in (outside, root / "outside-link"):
+            if candidate != outside:
+                candidate.symlink_to(outside)
+            errors = CHECKER.check_release_identity(root, "v1.2.3", candidate)
+            expect(
+                any(
+                    fragment in error
+                    for error in errors
+                    for fragment in ("escapes the repository", "symlinks")
+                ),
+                f"unsafe release binary path was accepted: {candidate}: {errors}",
+            )
+            expect(
+                not marker.exists(),
+                f"unsafe release binary executed before rejection: {candidate}",
+            )
+
+    invalid_root = root / "invalid-repository"
+    invalid_root.mkdir()
+    invalid_marker = root / "invalid-metadata-binary-ran"
+    invalid_binary = invalid_root / "aletheia"
+    invalid_binary.write_text(
+        "#!/usr/bin/env sh\n"
+        f"printf ran > '{invalid_marker}'\n"
+        "printf 'aletheia 1.2.3\\n'\n",
+        encoding="utf-8",
+    )
+    invalid_binary.chmod(0o755)
+    errors = CHECKER.check_release_identity(
+        invalid_root, "v1.2.3", invalid_binary
+    )
+    expect(errors, "invalid repository metadata should fail release identity")
+    expect(
+        not invalid_marker.exists(),
+        "release binary executed despite invalid repository metadata",
     )
 
 

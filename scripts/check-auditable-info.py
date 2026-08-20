@@ -10,22 +10,35 @@ from collections import Counter
 from pathlib import Path
 
 
-def _load_json(path: Path, label: str) -> tuple[dict | None, list[str]]:
+def _contained_cli_json(value: str) -> object:
+    """Decode one JSON file beneath the invocation directory."""
+    allowed_root = Path.cwd().resolve(strict=True)
     try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return None, [f"unreadable {label}: {exc}"]
-    if not isinstance(value, dict):
-        return None, [f"{label} root must be an object"]
-    return value, []
+        candidate = (allowed_root / value).resolve(strict=True)
+    except OSError as exc:
+        raise argparse.ArgumentTypeError(f"invalid file {value!r}: {exc}") from exc
+    if allowed_root not in candidate.parents:
+        raise argparse.ArgumentTypeError(
+            f"{value!r} resolves outside invocation directory {allowed_root}"
+        )
+    if not candidate.is_file():
+        raise argparse.ArgumentTypeError(f"{value!r} is not a regular file")
+
+    handle = argparse.FileType("r", encoding="utf-8")(str(candidate))
+    try:
+        return json.load(handle)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise argparse.ArgumentTypeError(f"unreadable JSON {value!r}: {exc}") from exc
+    finally:
+        handle.close()
 
 
 def _sbom_inventory(
-    path: Path, kind: str
+    document: object, kind: str
 ) -> tuple[Counter[tuple[str, str]], list[str]]:
-    document, errors = _load_json(path, f"{kind} SBOM")
-    if document is None:
-        return Counter(), errors
+    errors: list[str] = []
+    if not isinstance(document, dict):
+        return Counter(), [f"{kind} SBOM root must be an object"]
     if kind == "CycloneDX":
         raw_packages = document.get("components")
         if not isinstance(raw_packages, list):
@@ -53,16 +66,12 @@ def _sbom_inventory(
 
 
 def check_info(
-    path: Path,
+    value: object,
     expected_version: str,
-    cyclonedx: Path | None = None,
-    spdx: Path | None = None,
+    cyclonedx: object | None = None,
+    spdx: object | None = None,
 ) -> list[str]:
     errors: list[str] = []
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        return [f"unreadable decoded audit data: {exc}"]
     if not isinstance(value, dict):
         return ["decoded audit data root must be an object"]
     packages = value.get("packages")
@@ -159,10 +168,10 @@ def check_info(
         and isinstance(package.get("name"), str)
         and isinstance(package.get("version"), str)
     )
-    for sbom_path, kind in ((cyclonedx, "CycloneDX"), (spdx, "SPDX")):
-        if sbom_path is None:
+    for sbom, kind in ((cyclonedx, "CycloneDX"), (spdx, "SPDX")):
+        if sbom is None:
             continue
-        inventory, inventory_errors = _sbom_inventory(sbom_path, kind)
+        inventory, inventory_errors = _sbom_inventory(sbom, kind)
         errors.extend(inventory_errors)
         missing = expected_inventory - inventory
         if missing:
@@ -178,10 +187,10 @@ def check_info(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("json", type=Path)
+    parser.add_argument("json", type=_contained_cli_json)
     parser.add_argument("version")
-    parser.add_argument("--cyclonedx", type=Path)
-    parser.add_argument("--spdx", type=Path)
+    parser.add_argument("--cyclonedx", type=_contained_cli_json)
+    parser.add_argument("--spdx", type=_contained_cli_json)
     args = parser.parse_args()
     errors = check_info(
         args.json,

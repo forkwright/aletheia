@@ -6,9 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tomllib
 from pathlib import Path
 
-import tomllib
 import yaml
 
 RELEASE_PLEASE = Path(".github/workflows/release-please.yml")
@@ -329,7 +329,6 @@ def _check_release(workflow: dict) -> list[str]:
     for required in (
         "cargo auditable build --locked",
         "cross build --locked",
-        'rust-audit-info "$binary" > "$RUNNER_TEMP/auditable-info.json"',
         "check-auditable-info.py",
         '--cyclonedx "$BINARY.cdx.json"',
         '--spdx "$BINARY.spdx.json"',
@@ -338,6 +337,20 @@ def _check_release(workflow: dict) -> list[str]:
             errors.append(f"{RELEASE}: artifact build lacks {required}")
     if "cross auditable" in build_text:
         errors.append(f"{RELEASE}: cross auditable runs on the host instead of the image")
+    decode = _find_step(
+        jobs.get("build", {}), "Verify embedded auditable dependency graph"
+    )
+    decode_run = str(decode.get("run", "")) if isinstance(decode, dict) else ""
+    for required in (
+        'audit_dir=$(mktemp -d "$GITHUB_WORKSPACE/.release-audit.XXXXXX")',
+        'audit_info="$audit_dir/auditable-info.json"',
+        'rust-audit-info "$binary" > "$audit_info"',
+        "printf 'AUDITABLE_INFO=%s\\n' \"$audit_info\" >> \"$GITHUB_ENV\"",
+        '"$audit_info" "$VERSION"',
+    ):
+        if required not in decode_run:
+            errors.append(f"{RELEASE}: auditable evidence handoff is not exact")
+            break
     for step_name in ("Generate CycloneDX SBOM", "Generate SPDX SBOM"):
         step = _find_step(jobs.get("build", {}), step_name)
         step_with = step.get("with", {}) if isinstance(step, dict) else {}
@@ -351,11 +364,15 @@ def _check_release(workflow: dict) -> list[str]:
             )
     bind_sbom = _find_step(jobs.get("build", {}), "Bind SBOM package inventories to the binary")
     bind_env = bind_sbom.get("env", {}) if isinstance(bind_sbom, dict) else {}
+    bind_run = str(bind_sbom.get("run", "")) if isinstance(bind_sbom, dict) else ""
     if (
         not isinstance(bind_env, dict)
-        or bind_env.get("VERSION") != "${{ steps.version.outputs.version }}"
+        or bind_env != {"VERSION": "${{ steps.version.outputs.version }}"}
+        or '"$AUDITABLE_INFO"' not in bind_run
     ):
-        errors.append(f"{RELEASE}: binary SBOM comparison lacks the exact version")
+        errors.append(
+            f"{RELEASE}: binary SBOM comparison lacks the exact evidence handoff"
+        )
     return errors
 
 
@@ -518,6 +535,7 @@ def _check_cross_contract(root: Path) -> list[str]:
         "4a4f0c124543c065f03d89aee26550305143c6e4af3e46270dbabefeb79895d2",
         "/usr/local/bin/cargo-auditable",
         'exec /rust/bin/cargo auditable "$@"',
+        "--proto '=https' --proto-redir '=https'",
     ):
         if required not in installer:
             errors.append(f"{CROSS_INSTALLER}: cross-image install lacks {required}")
@@ -549,6 +567,8 @@ def _check_consumers(root: Path) -> list[str]:
     ):
         if required not in deploy:
             errors.append(f"{DEPLOY}: exact verified download lacks {required}")
+    if deploy.count("--proto '=https' --proto-redir '=https'") < 2:
+        errors.append(f"{DEPLOY}: binary and checksum downloads must remain HTTPS-only")
     if "Download failed; proceeding with local build" in deploy:
         errors.append(f"{DEPLOY}: explicit release download silently source-builds")
     verify_at = deploy.find('scripts/verify-sha256.sh')

@@ -15,12 +15,12 @@ import datetime as dt
 import hashlib
 import json
 import math
+import os
 import re
 import sys
+import tomllib
 from pathlib import Path, PurePosixPath
 from typing import Any
-
-import tomllib
 
 SCHEMA_VERSION = 1
 CRATES = ("symbolon", "organon", "episteme", "krites", "nous")
@@ -92,6 +92,33 @@ def read_exit(path: Path, label: str) -> tuple[int | None, str | None]:
     return value, None
 
 
+def resolve_repo_relative(
+    repo_root: Path, raw: Any, label: str
+) -> tuple[Path | None, str | None]:
+    """Resolve one canonical, non-symlinked path beneath the audited tree."""
+    if not isinstance(raw, str) or not raw or raw != raw.strip() or "\\" in raw:
+        return None, f"{label} must be a canonical repository-relative path"
+    pure = PurePosixPath(raw)
+    if (
+        pure.is_absolute()
+        or not pure.parts
+        or ".." in pure.parts
+        or pure.as_posix() != raw
+    ):
+        return None, f"{label} must be a canonical repository-relative path: {raw!r}"
+    try:
+        root = repo_root.resolve(strict=True)
+        lexical = root.joinpath(*pure.parts)
+        resolved = lexical.resolve(strict=True)
+    except OSError as error:
+        return None, f"{label} cannot be resolved: {raw!r}: {error}"
+    if resolved == root or not resolved.is_relative_to(root):
+        return None, f"{label} escapes the audited repository: {raw!r}"
+    if resolved != lexical:
+        return None, f"{label} contains a symlink: {raw!r}"
+    return resolved, None
+
+
 def load_policy(path: Path, repo_root: Path) -> tuple[dict[str, Any], list[str]]:
     errors: list[str] = []
     try:
@@ -161,8 +188,14 @@ def load_policy(path: Path, repo_root: Path) -> tuple[dict[str, Any], list[str]]
         if not isinstance(crate_path, str) or not crate_path:
             errors.append(f"crates.{crate}.path must be a nonempty string")
             continue
-        path = repo_root / crate_path
-        if not path.is_dir() or not (path / "Cargo.toml").is_file():
+        resolved_crate, crate_path_error = resolve_repo_relative(
+            repo_root, crate_path, f"crates.{crate}.path"
+        )
+        if crate_path_error is not None:
+            errors.append(crate_path_error)
+        elif resolved_crate is None or not resolved_crate.is_dir() or not (
+            resolved_crate / "Cargo.toml"
+        ).is_file():
             errors.append(f"crates.{crate}.path is not a crate: {crate_path}")
         if not isinstance(features, list) or not all(
             isinstance(feature, str) and feature for feature in features
@@ -175,14 +208,22 @@ def load_policy(path: Path, repo_root: Path) -> tuple[dict[str, Any], list[str]]
             continue
         for raw in critical_paths:
             candidate = PurePosixPath(raw)
-            if candidate.is_absolute() or ".." in candidate.parts:
-                errors.append(f"crates.{crate} has unsafe critical path {raw!r}")
+            resolved_critical, critical_error = resolve_repo_relative(
+                repo_root, raw, f"crates.{crate} critical path"
+            )
+            if critical_error is not None:
+                errors.append(critical_error)
                 continue
-            if not (repo_root / raw).exists():
-                errors.append(f"crates.{crate} critical path does not exist: {raw}")
             if not candidate.is_relative_to(PurePosixPath(crate_path)):
                 errors.append(
                     f"crates.{crate} critical path escapes its crate: {raw}"
+                )
+            elif resolved_crate is not None and (
+                resolved_critical is None
+                or not resolved_critical.is_relative_to(resolved_crate)
+            ):
+                errors.append(
+                    f"crates.{crate} critical path resolves outside its crate: {raw}"
                 )
 
     toolchain_path = repo_root / "rust-toolchain.toml"
@@ -316,9 +357,14 @@ def normalize_mutant_path(raw: str, crate_path: str) -> str | None:
 
 
 def read_crate_version(repo_root: Path, crate_path: str) -> tuple[str | None, str | None]:
+    resolved_crate, path_error = resolve_repo_relative(
+        repo_root, crate_path, "crate path"
+    )
+    if path_error is not None or resolved_crate is None:
+        return None, path_error or "crate path could not be resolved"
     try:
         crate_manifest = tomllib.loads(
-            (repo_root / crate_path / "Cargo.toml").read_text(encoding="utf-8")
+            (resolved_crate / "Cargo.toml").read_text(encoding="utf-8")
         )
         raw_version = crate_manifest["package"]["version"]
         if isinstance(raw_version, str) and raw_version:
@@ -338,14 +384,67 @@ def read_crate_version(repo_root: Path, crate_path: str) -> tuple[str | None, st
 def scan_tautological_docs(repo_root: Path, crate_path: str) -> tuple[list[dict[str, Any]], list[str]]:
     findings: list[dict[str, Any]] = []
     errors: list[str] = []
-    src = repo_root / crate_path / "src"
-    for path in sorted(src.rglob("*.rs")):
+    resolved_root = repo_root.resolve(strict=True)
+    resolved_crate, path_error = resolve_repo_relative(
+        resolved_root, crate_path, "crate path"
+    )
+    if path_error is not None or resolved_crate is None:
+        return [], [path_error or "crate path could not be resolved"]
+    lexical_src = resolved_crate / "src"
+    try:
+        src = lexical_src.resolve(strict=True)
+    except OSError as error:
+        return [], [f"cannot resolve source root for {crate_path}: {error}"]
+    if (
+        lexical_src.is_symlink()
+        or src != lexical_src
+        or not src.is_dir()
+        or not src.is_relative_to(resolved_crate)
+    ):
+        return [], [f"crate source root is unsafe or missing: {crate_path}/src"]
+    source_paths: list[Path] = []
+
+    def record_walk_error(error: OSError) -> None:
+        location = error.filename or os.fspath(src)
+        errors.append(f"cannot traverse source directory {location}: {error}")
+
+    for directory, dirnames, filenames in os.walk(
+        src, followlinks=False, onerror=record_walk_error
+    ):
+        parent = Path(directory)
+        dirnames.sort()
+        for dirname in list(dirnames):
+            child = parent / dirname
+            try:
+                resolved_child = child.resolve(strict=True)
+            except OSError as error:
+                errors.append(f"cannot resolve source directory {child}: {error}")
+                dirnames.remove(dirname)
+                continue
+            if child.is_symlink() or not resolved_child.is_relative_to(src):
+                errors.append(
+                    f"source directory is a symlink or escapes its crate: {child}"
+                )
+                dirnames.remove(dirname)
+        source_paths.extend(
+            parent / filename for filename in sorted(filenames) if filename.endswith(".rs")
+        )
+
+    for path in source_paths:
         try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeError) as error:
-            errors.append(f"cannot read {path}: {error}")
+            resolved_path = path.resolve(strict=True)
+        except OSError as error:
+            errors.append(f"cannot resolve {path}: {error}")
             continue
-        relative = path.relative_to(repo_root).as_posix()
+        if path.is_symlink() or not resolved_path.is_relative_to(src):
+            errors.append(f"source path is a symlink or escapes its crate: {path}")
+            continue
+        try:
+            text = resolved_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            errors.append(f"cannot read {resolved_path}: {error}")
+            continue
+        relative = resolved_path.relative_to(resolved_root).as_posix()
         for lineno, line in enumerate(text.splitlines(), 1):
             stripped = line.lstrip()
             if stripped.startswith(TAUTOLOGICAL_PREFIXES):

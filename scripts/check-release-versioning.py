@@ -11,10 +11,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-
-import tomllib
 
 LOGGER = logging.getLogger("check-release-versioning")
 ROOT_RELEASE_PACKAGE = "."
@@ -648,6 +647,24 @@ def version_from_tag(tag: str) -> str:
     return version
 
 
+def contained_release_binary(repo_root: Path, binary: Path) -> tuple[Path | None, str | None]:
+    """Resolve an executable candidate without permitting a repository escape."""
+    try:
+        root = repo_root.resolve(strict=True)
+        lexical = binary if binary.is_absolute() else root / binary
+        lexical = lexical.absolute()
+        resolved = lexical.resolve(strict=True)
+    except OSError as exc:
+        return None, f"release binary {binary}: cannot be resolved: {exc}"
+    if resolved == root or not resolved.is_relative_to(root):
+        return None, f"release binary {binary}: path escapes the repository"
+    if resolved != lexical:
+        return None, f"release binary {binary}: symlinks are not permitted"
+    if not resolved.is_file():
+        return None, f"release binary {binary}: path is not a regular file"
+    return resolved, None
+
+
 def check_release_identity(
     repo_root: Path, tag: str, binary: Path | None = None
 ) -> list[str]:
@@ -668,12 +685,17 @@ def check_release_identity(
             f"version {workspace_release!r}"
         )
 
-    if binary is None:
+    if binary is None or errors:
+        return errors
+
+    resolved_binary, binary_error = contained_release_binary(repo_root, binary)
+    if binary_error is not None or resolved_binary is None:
+        errors.append(binary_error or f"release binary {binary}: invalid path")
         return errors
 
     try:
         result = subprocess.run(
-            [str(binary), "--version"],
+            [str(resolved_binary), "--version"],
             cwd=repo_root,
             text=True,
             capture_output=True,
@@ -807,8 +829,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if command == "verify-release":
-        binary = args.binary.resolve() if args.binary is not None else None
-        errors = check_release_identity(repo_root, args.tag, binary)
+        errors = check_release_identity(repo_root, args.tag, args.binary)
         if errors:
             LOGGER.error("release identity check failed:")
             for error in errors:
