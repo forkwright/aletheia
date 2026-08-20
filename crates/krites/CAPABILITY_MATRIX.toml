@@ -1,11 +1,37 @@
 # krites capability-coverage matrix (wave 0.4 of the retirement plan).
 #
 # One row per capability the crate exposes: every `SysOp` variant, every
-# `DataValue` variant, every public item at the `Db`/crate-root boundary, and
-# every ranked capability named in the plan's Appendix A. `unmapped` --
-# present in source but absent from this file -- is a build failure, checked
-# by scripts/check-krites-capability-matrix.py in CI. A row with no matching
-# source item (stale) fails the same way, so drift is caught both directions.
+# `DataValue` variant, every public item at the `Db`/crate-root boundary,
+# every `DEFAULT_FIXED_RULES` registry key, every `Storage`/`StoreTx` trait
+# method, and every ranked capability named in the plan's Appendix A.
+# `unmapped` -- present in source but absent from this file -- is a build
+# failure, checked by scripts/check-krites-capability-matrix.py in CI. A row
+# with no matching source item (stale) fails the same way, so drift is caught
+# both directions.
+#
+# `gate_test` records a candidate test as a `<binary-id>::<test path>` id
+# (what `cargo nextest list` prints).
+# The required hosted gate resolves every pointer against compiler-derived
+# nextest output for the exact selection it then executes, and fails on one
+# that names no filter-matching test or names an `#[ignore]`d one. `"none"` is
+# legal and means UNPOINTED -- an honestly unpointed row is worth more than a
+# pointer at a test that does not exercise the capability, and the count is
+# printed rather than buried.
+#
+# WARNING(what a pointer proves): only that the named test exists and is
+# runnable in the listed test world. Membership does not mechanically couple
+# the test to this capability or prove the row's `gate` sentence -- several
+# gates name conformance behaviour no current test checks. A green required
+# hosted job proves the listed test world passed, not that this row's candidate
+# exercised its capability.
+#
+# `[[capability_set]]` covers the populations too large for one row each: 139
+# scalar functions, 138 DSL-reachable op names, 25 aggregations, 25
+# aggregation names. Members are re-derived from source every run and compared
+# for EXACT equality -- a recorded member gone from source is a dropped
+# capability; a source member missing from the record is an unrecorded one.
+# These replace prose counts ("All 22 fixed-rule algorithms", "~102 functions
+# consuming Num") that named nothing measurable and that no check could read.
 #
 # WHY(appendix_a rows): the plan (canon: kanon
 # projects/aletheia/phases/05g-krites-overhaul/RETIREMENT-PLAN.md, Appendix A)
@@ -26,11 +52,11 @@
 # figure only after re-running its own call_sites_method, never by
 # incrementing -- an incremented number agrees with itself while being wrong.
 #
-# `call_sites = -1` is the ONE documented exception: "not measured", legal
-# only when `call_sites_method` states why -- prefixed `not measured:` /
-# `not separately measured:` (too generic a token/type to grep meaningfully)
-# or `covered under <other-row-id>; not separately re-measured` (a sibling
-# row already counts it). -1 is never a stand-in for a guessed 0.
+# `call_sites = -1` means "not measured" and is legal only for the exact row
+# ids and covered-row relationships owned by the checker. `call_sites_method`
+# retains the human reason -- too generic a token/type to grep meaningfully,
+# or one exact sibling row already owns the measurement -- but matrix prose
+# cannot authorize a new exception. -1 is never a stand-in for a guessed 0.
 #
 # dest_wave values: "wave-0".."wave-12" per PLAN.md Sec 4/Sec 7; "sovereign"
 # for code that already carries forward unrewritten (PLAN.md Sec 4 totals);
@@ -51,10 +77,11 @@ id = "sysop-compact"
 category = "sysop"
 item = "SysOp::Compact"
 source = "crates/krites/src/parse/sys/mod.rs:26"
-exec_site = "crates/krites/src/runtime/sys.rs:80"
+exec_site = "crates/krites/src/runtime/sys.rs:112"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs"
 gate = "`::compact` completes and the `export_relations` snapshot taken immediately after is identical to the one taken immediately before (Appendix A row: Compact/DescribeRelation)."
+gate_test = "krites::storage::fjall_backend::tests::compact_system_operation_invokes_fjall_compaction"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::compact' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero-call-site, not named as such in Appendix A -- report to T0."
@@ -64,10 +91,11 @@ id = "sysop-list-columns"
 category = "sysop"
 item = "SysOp::ListColumns"
 source = "crates/krites/src/parse/sys/mod.rs:28"
-exec_site = "crates/krites/src/runtime/sys.rs:217"
+exec_site = "crates/krites/src/runtime/sys.rs:249"
 dest_wave = "wave-1"
 dest_module = "episteme/knowledge_store/migration.rs (column_probe, Sec 8.3)"
 gate = "`column_probe()`: live column set from `::columns` equals `new_columns` exactly, driving resume-at-8 vs. full rebuild (Sec 8.3)."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_secondary_index_created_query_planner_uses_index"
 call_sites = 10
 call_sites_method = "grep -rn -- '[\"'\\''`]::columns' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Second consumer beyond the migration sweep: crates/episteme/src/consolidation/engine.rs:821."
@@ -77,10 +105,11 @@ id = "sysop-list-indices"
 category = "sysop"
 item = "SysOp::ListIndices"
 source = "crates/krites/src/parse/sys/mod.rs:30"
-exec_site = "crates/krites/src/runtime/sys.rs:218"
+exec_site = "crates/krites/src/runtime/sys.rs:250"
 dest_wave = "wave-1"
 dest_module = "episteme/knowledge_store/migration.rs (index enumeration, Sec 8.3)"
 gate = "Index enumeration taken live via `::indices`, never a caller-supplied spec list; an unexpected index fails the migration (Sec 8.3, B26)."
+gate_test = "krites::runtime::tests::indexing::multi_index_vec"
 call_sites = 7
 call_sites_method = "grep -rn -- '[\"'\\''`]::indices' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero-call-site, not named as such in Appendix A -- report to T0."
@@ -90,10 +119,11 @@ id = "sysop-list-relations"
 category = "sysop"
 item = "SysOp::ListRelations"
 source = "crates/krites/src/parse/sys/mod.rs:32"
-exec_site = "crates/krites/src/runtime/sys.rs:90"
+exec_site = "crates/krites/src/runtime/sys.rs:122"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs"
 gate = "`::relations` lists exactly the live relation set (temp-store names excluded per current semantics)."
+gate_test = "krites::integration_io_and_misc::list_relations_includes_created_relation"
 call_sites = 7
 call_sites_method = "grep -rn -- '[\"'\\''`]::relations' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -102,10 +132,11 @@ id = "sysop-list-running"
 category = "sysop"
 item = "SysOp::ListRunning"
 source = "crates/krites/src/parse/sys/mod.rs:34"
-exec_site = "crates/krites/src/runtime/sys.rs:238"
+exec_site = "crates/krites/src/runtime/sys.rs:270"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs (query registry)"
 gate = "A long-running query appears in `ListRunning` with a stable id (Appendix A row: Query registry)."
+gate_test = "none"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::running' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -114,10 +145,11 @@ id = "sysop-list-fixed-rules"
 category = "sysop"
 item = "SysOp::ListFixedRules"
 source = "crates/krites/src/parse/sys/mod.rs:36"
-exec_site = "crates/krites/src/runtime/sys.rs:91"
+exec_site = "crates/krites/src/runtime/sys.rs:123"
 dest_wave = "wave-5"
 dest_module = "fixed_rule registry (pairs with register_fixed_rule)"
 gate = "A registered `FixedRule` name appears in `::fixed_rules` output (Appendix A row: register_fixed_rule, wave 5)."
+gate_test = "none"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::fixed_rules' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero-call-site, not named as such in Appendix A -- report to T0."
@@ -127,10 +159,11 @@ id = "sysop-kill-running"
 category = "sysop"
 item = "SysOp::KillRunning"
 source = "crates/krites/src/parse/sys/mod.rs:38"
-exec_site = "crates/krites/src/runtime/sys.rs:239"
+exec_site = "crates/krites/src/runtime/sys.rs:271"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs (query registry)"
 gate = "`KillRunning(id)` terminates the running query and the caller observes `QueryKilled` as a class, never a string (Appendix A row: Query registry)."
+gate_test = "none"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::kill' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "The unanchored grep for '::kill' also hits libc::kill (crates/melete/src/dream/lock.rs:349) -- confirmed unrelated on inspection, excluded from this count."
@@ -140,10 +173,11 @@ id = "sysop-explain"
 category = "sysop"
 item = "SysOp::Explain"
 source = "crates/krites/src/parse/sys/mod.rs:40"
-exec_site = "crates/krites/src/runtime/sys.rs:73"
+exec_site = "crates/krites/src/runtime/sys.rs:105"
 dest_wave = "wave-10"
 dest_module = "query engine (magic-set rewrite + stratified compile)"
 gate = "`::explain` output is frozen as its own vector class, independent of row-result vectors (Sec 3 wave 0.5); a plan change is visible and intentional, never silent."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_secondary_index_created_query_planner_uses_index"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::explain' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero external DSL call sites (unanchored '::explain' matches are all a different feature -- episteme's recall::explain, e.g. crates/pylon/src/handlers/knowledge/search.rs -- confirmed false positives on inspection). Not named zero-call-site anywhere in Appendix A -- report to T0."
@@ -153,10 +187,11 @@ id = "sysop-remove-relation"
 category = "sysop"
 item = "SysOp::RemoveRelation"
 source = "crates/krites/src/parse/sys/mod.rs:42"
-exec_site = "crates/krites/src/runtime/sys.rs:101"
+exec_site = "crates/krites/src/runtime/sys.rs:133"
 dest_wave = "wave-8"
 dest_module = "relation/relation_crud.rs"
 gate = "`destroy_relation` refuses a relation with attached indices (relation_crud.rs:196-202, Sec 8.2 step 5 precondition); persisted key ranges release only after the call returns."
+gate_test = "krites::public_api_queries_and_hnsw::relation_crud_lifecycle"
 call_sites = 18
 call_sites_method = "grep -rn -- '[\"'\\''`]::remove' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -165,10 +200,11 @@ id = "sysop-rename-relation"
 category = "sysop"
 item = "SysOp::RenameRelation"
 source = "crates/krites/src/parse/sys/mod.rs:44"
-exec_site = "crates/krites/src/runtime/sys.rs:219"
+exec_site = "crates/krites/src/runtime/sys.rs:251"
 dest_wave = "wave-1"
 dest_module = "episteme/knowledge_store/migration.rs (atomic swap, Sec 8.1)"
 gate = "`::rename` is a single-transaction, O(1) atomic swap; sub-relation index metadata keyed `{name}:{k}` renames too, closing B26 (relation/index_management.rs:213-254 vs relation_crud.rs:210-213)."
+gate_test = "none"
 call_sites = 10
 call_sites_method = "grep -rn -- '[\"'\\''`]::rename' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "The current (pre-wave-1) migration.rs does not yet use ::rename at all -- it is the mechanism wave 1 INTRODUCES (Sec 8.1-8.2), not one exercised by any live path today. Its correctness in production conditions is unproven by existing usage, which is exactly why Sec 8.4's crash-injection matrix carries the whole correctness argument -- report to T0 as a scope-relevant finding, not merely a zero-call-site curiosity."
@@ -178,10 +214,11 @@ id = "sysop-show-trigger"
 category = "sysop"
 item = "SysOp::ShowTrigger"
 source = "crates/krites/src/parse/sys/mod.rs:46"
-exec_site = "crates/krites/src/runtime/sys.rs:258"
+exec_site = "crates/krites/src/runtime/sys.rs:290"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs (triggers)"
 gate = "Put/rm/replace trigger scripts round-trip through `::show_triggers` in registration order (Appendix A row: Triggers)."
+gate_test = "none"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::show_triggers' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -190,10 +227,11 @@ id = "sysop-set-triggers"
 category = "sysop"
 item = "SysOp::SetTriggers"
 source = "crates/krites/src/parse/sys/mod.rs:48"
-exec_site = "crates/krites/src/runtime/sys.rs:279"
+exec_site = "crates/krites/src/runtime/sys.rs:311"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs (triggers)"
 gate = "Put/rm/replace scripts fire in declared order on the matching operation, inside the mutating transaction; a failing trigger aborts the mutation (Appendix A row: Triggers)."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_trigger_set_on_put_reverse_relation_synced"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::set_triggers' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -202,10 +240,11 @@ id = "sysop-set-access-level"
 category = "sysop"
 item = "SysOp::SetAccessLevel"
 source = "crates/krites/src/parse/sys/mod.rs:50"
-exec_site = "crates/krites/src/runtime/sys.rs:289"
+exec_site = "crates/krites/src/runtime/sys.rs:321"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs (access levels)"
 gate = "Each of Hidden/ReadOnly/Protected/Normal rejects exactly the operation set it rejects today, asserted against relation_crud.rs:203-208 and index_management.rs:234-239 (Appendix A row: Access levels)."
+gate_test = "none"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::access_level' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -214,10 +253,11 @@ id = "sysop-create-index"
 category = "sysop"
 item = "SysOp::CreateIndex"
 source = "crates/krites/src/parse/sys/mod.rs:52"
-exec_site = "crates/krites/src/runtime/sys.rs:140"
+exec_site = "crates/krites/src/runtime/sys.rs:172"
 dest_wave = "wave-8"
 dest_module = "relation/index_management.rs (standard B-tree index)"
 gate = "A standard B-tree index round-trips: created columns are queryable and the index-scan row set is identical to a full-scan-then-filter over the same predicate."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_short_index_created_on_single_column_query_planner_uses_it"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::index create' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero external call sites -- appears NOWHERE in Appendix A, not even as part of the RemoveIndex/B26 discussion. Report to T0: this is a capability the coverage matrix found that the plan's Appendix A never names."
@@ -227,10 +267,11 @@ id = "sysop-create-vector-index"
 category = "sysop"
 item = "SysOp::CreateVectorIndex"
 source = "crates/krites/src/parse/sys/mod.rs:54"
-exec_site = "crates/krites/src/runtime/sys.rs:152"
+exec_site = "crates/krites/src/runtime/sys.rs:184"
 dest_wave = "wave-4"
 dest_module = "HNSW (relation/index_management.rs create_hnsw_index)"
 gate = "E04/E05: exactly one canary node (level=1, all-Null tuple key), byte-compatible; insert -> close -> reopen -> search recall vs. the E25 exact-kNN oracle."
+gate_test = "krites::integration_queries::hnsw_vector_insert_and_search_in_memory"
 call_sites = 1
 call_sites_method = "grep -rn -- '[\"'\\''`]::hnsw create' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "1 measured site: episteme/src/knowledge_store/mod.rs:264 (hnsw_ddl, the format! that builds the DSL string). The pattern deliberately does not match mod.rs:46's `//! ::hnsw create ...` doc-comment example -- no leading quote/backtick before the keyword there, so the quote-anchor excludes it correctly."
@@ -240,10 +281,11 @@ id = "sysop-create-fts-index"
 category = "sysop"
 item = "SysOp::CreateFtsIndex"
 source = "crates/krites/src/parse/sys/mod.rs:56"
-exec_site = "crates/krites/src/runtime/sys.rs:164"
+exec_site = "crates/krites/src/runtime/sys.rs:196"
 dest_wave = "wave-3"
 dest_module = "Storage trait + BM25/FTS index"
 gate = "F02 zero-guard: finite score, never NaN/Inf, on a cold index plus a zero-df term; golden BM25 fixtures frozen before the port."
+gate_test = "krites::integration_queries::fts_index_create_search_drop"
 call_sites = 3
 call_sites_method = "grep -rn -- '[\"'\\''`]::fts create' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -252,10 +294,11 @@ id = "sysop-create-minhash-lsh-index"
 category = "sysop"
 item = "SysOp::CreateMinHashLshIndex"
 source = "crates/krites/src/parse/sys/mod.rs:58"
-exec_site = "crates/krites/src/runtime/sys.rs:176"
+exec_site = "crates/krites/src/runtime/sys.rs:208"
 dest_wave = "wave-11"
 dest_module = "runtime/minhash_lsh.rs (478 lines, third first-class index type)"
 gate = "Build an index over a seeded corpus, assert Jaccard-estimate error bounds vs. exact pairwise Jaccard; band/row parameters from n_gram/n_perm/false_positive_weight/false_negative_weight reproduce the Simpson's-rule optimum; delete + re-add leaves estimates stable (Appendix A row: MinHash LSH index)."
+gate_test = "krites::runtime::tests::indexing::when_lsh_index_created_exact_match_found_across_thresholds"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::lsh create' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -264,10 +307,11 @@ id = "sysop-remove-index"
 category = "sysop"
 item = "SysOp::RemoveIndex"
 source = "crates/krites/src/parse/sys/mod.rs:60"
-exec_site = "crates/krites/src/runtime/sys.rs:188"
+exec_site = "crates/krites/src/runtime/sys.rs:220"
 dest_wave = "wave-8"
 dest_module = "relation/index_management.rs (pairs with CreateIndex; the B26 sub-relation-rename hazard site)"
 gate = "Removing an index releases its persisted key range and its `{name}:{k}` sub-relation metadata row together -- never leaving one behind (B26)."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_secondary_index_created_query_planner_uses_index"
 call_sites = 16
 call_sites_method = "sum of quote-anchored grep for '::index drop', '::hnsw drop', '::fts drop', '::lsh drop' across crates/ excluding crates/krites/ (3+3+7+3)"
 notes = "Wave 1's recovery sweep enumerates every index kind before a staging swap, so all four drop forms now have sites (3+3+7+3). No form is zero-call-site any more."
@@ -277,10 +321,11 @@ id = "sysop-describe-relation"
 category = "sysop"
 item = "SysOp::DescribeRelation"
 source = "crates/krites/src/parse/sys/mod.rs:62"
-exec_site = "crates/krites/src/runtime/sys.rs:136"
+exec_site = "crates/krites/src/runtime/sys.rs:168"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs"
 gate = "`DescribeRelation` round-trips the comment (Appendix A row: Compact, DescribeRelation)."
+gate_test = "none"
 call_sites = 0
 call_sites_method = "grep -rn -- '[\"'\\''`]::describe' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -303,6 +348,7 @@ source = "crates/krites/src/data/value.rs:192"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Sorts before every other variant; byte-identity of encoding (Sec 6.1)."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_null_sorts_before_everything"
 call_sites = 53
 call_sites_method = "grep -rn 'DataValue::Null\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -314,6 +360,7 @@ source = "crates/krites/src/data/value.rs:194"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding (Sec 6.1)."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_leaf"
 call_sites = 22
 call_sites_method = "grep -rn 'DataValue::Bool\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -325,6 +372,7 @@ source = "crates/krites/src/data/value.rs:196"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding, including integer-vs-float ordering (Sec 6.1); per-op differential in wave 7 for the ~102 functions consuming Num."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_num"
 call_sites = 3
 call_sites_method = "grep -rn 'DataValue::Num\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -336,6 +384,7 @@ source = "crates/krites/src/data/value.rs:198"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding via CompactString inline storage (Sec 6.1)."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_preserves_sort_order_strings"
 call_sites = 401
 call_sites_method = "grep -rn 'DataValue::Str\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -347,6 +396,7 @@ source = "crates/krites/src/data/value.rs:201"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding via serde_bytes; raw byte sequence round-trips unchanged (Sec 6.1)."
+gate_test = "krites::data::tests::memcmp::encode_decode_bytes"
 call_sites = 1
 call_sites_method = "grep -rn 'DataValue::Bytes\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see. Not flagged in Appendix A -- report to T0."
@@ -359,6 +409,7 @@ source = "crates/krites/src/data/value.rs:203"
 dest_wave = "wave-6"
 dest_module = "data/value.rs (UuidWrapper)"
 gate = "Chronological v1-UUID field ordering preserved exactly: UuidWrapper::cmp compares (time_hi, time_mid, time_low, rest), not the RFC byte layout."
+gate_test = "krites::data::tests::memcmp::encode_decode_uuid_roundtrips_correctly"
 call_sites = 0
 call_sites_method = "grep -rn 'DataValue::Uuid\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see. Not flagged in Appendix A -- report to T0."
@@ -371,9 +422,10 @@ source = "crates/krites/src/data/value.rs:205"
 dest_wave = "wave-6"
 dest_module = "data/value.rs (RegexWrapper, engine-internal)"
 gate = "Never serializes (serde impl returns a custom error on attempt, by design); Hash/Ord compare the source pattern string only, never compiled regex state."
+gate_test = "krites::data::tests::functions::string_ops::test_regex"
+notes = "Doc-comment-declared engine-internal (never appears in user-facing query results); zero external sites is expected by design, not a gap. Human review observes that the candidate constructs DataValue::Regex and exercises regex ops; pointer membership itself does not prove that coupling, and the serde-refusal half of the gate is asserted nowhere."
 call_sites = 0
 call_sites_method = "grep -rn 'DataValue::Regex\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
-notes = "Doc-comment-declared engine-internal (never appears in user-facing query results); zero external sites is expected by design, not a gap."
 
 [[capability]]
 id = "datavalue-list"
@@ -383,6 +435,7 @@ source = "crates/krites/src/data/value.rs:207"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding for an ordered sequence (Sec 6.1); Set (wave 6) coerces to List at the output boundary."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_nested"
 call_sites = 3
 call_sites_method = "grep -rn 'DataValue::List\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -394,6 +447,7 @@ source = "crates/krites/src/data/value.rs:209"
 dest_wave = "wave-6"
 dest_module = "data/value.rs (engine-internal)"
 gate = "Deduplicated ordered set coerces to List at the output boundary with element order preserved."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_empty_set"
 call_sites = 0
 call_sites_method = "grep -rn 'DataValue::Set\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Doc-comment-declared engine-internal; zero external sites is expected by design, not a gap."
@@ -406,6 +460,7 @@ source = "crates/krites/src/data/value.rs:211"
 dest_wave = "wave-6"
 dest_module = "data/value.rs (Vector payload); cross-checked at wave-4 (HNSW)"
 gate = "Typed floating-point vector byte-encoding stable; dimension sourced from the embedding provider's reported dim, not a config constant (Appendix A row: HNSW durable entry point, E47)."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_empty_vectors"
 call_sites = 9
 call_sites_method = "grep -rn 'DataValue::Vec\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -417,6 +472,7 @@ source = "crates/krites/src/data/value.rs:213"
 dest_wave = "wave-6"
 dest_module = "data/value.rs + data/json.rs"
 gate = "Recorded-vector oracle only, never upstream (data/tests/json.rs is 27.8% verbatim -- krites already diverged there); round-trip through encode/decode preserves the value; ordering vs. other variants stays byte-stable (Appendix A row: DataValue::Json + data/json.rs)."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_json"
 call_sites = 1
 call_sites_method = "grep -rn 'DataValue::Json\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Zero literal-constructor sites measured; likely reached via From/Into conversions this grep cannot see."
@@ -429,6 +485,7 @@ source = "crates/krites/src/data/value.rs:215"
 dest_wave = "wave-6"
 dest_module = "data/value.rs (Validity, ValidityTs); also wave-9 (grammar) and wave-10 (query engine)"
 gate = "ValidityTs encoding is byte-identical and memcmp(encode(a), encode(b)) == a.cmp(b) holds with the reversed (Reverse<i64>) ordering; N16 bitemporal sentinel byte-match on supersession (Appendix A row: Time-travel / Validity)."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_leaf"
 call_sites = 0
 call_sites_method = "grep -rn 'DataValue::Validity\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "One of the plan's original five zero-call-site unmapped items (B7); now named. Engine-internal per doc comment -- expected zero external constructor sites."
@@ -441,6 +498,7 @@ source = "crates/krites/src/data/value.rs:217"
 dest_wave = "wave-6"
 dest_module = "data/value.rs (engine-internal sentinel)"
 gate = "Sorts after every other variant; used as the upper-bound key in range scans -- wave-10 range-scan queries against the bound remain correct."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_bot_sorts_after_everything"
 call_sites = 1
 call_sites_method = "grep -rn 'DataValue::Bot\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Doc-comment-declared engine-internal; zero external sites is expected by design, not a gap."
@@ -463,6 +521,7 @@ source = "crates/krites/src/lib.rs:33"
 dest_wave = "sovereign"
 dest_module = "error.rs (one of the 8 already-sovereign snafu error modules, Sec 4 totals)"
 gate = "Error class (typed variant), not the string, is the oracle (Sec 6.1); krites::Error variants (lib.rs:73-104 convert_internal) map 1:1 to episteme's structural match (knowledge_store/mod.rs:1376-1397)."
+gate_test = "none"
 call_sites = -1
 call_sites_method = "not measured: 'Error'/'Result' are too generic to grep meaningfully; correctness is verified by the typed-variant match at knowledge_store/mod.rs:1376-1397, not a call-site count"
 
@@ -474,6 +533,7 @@ source = "crates/krites/src/lib.rs:34"
 dest_wave = "wave-10"
 dest_module = "sovereign today (query_cache.rs, Sec 4 totals); at risk from the wave-10 plan-store redesign"
 gate = "Hit/miss counters retained on the plan store: a repeated identical script increments hits, a schema-epoch bump increments misses (Appendix A row: QueryCacheStats, B25)."
+gate_test = "krites::db_cache_tests::cache_tracks_misses_and_hits"
 call_sites = 0
 call_sites_method = "grep -rn 'QueryCacheStats' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -485,6 +545,7 @@ source = "crates/krites/src/lib.rs:39"
 dest_wave = "sovereign"
 dest_module = "async_surface.rs (282 sovereign lines, Sec 4 totals)"
 gate = "Async results equal sync results for the same script under concurrency, asserted at wave 11 against the recorded wave-0.5 boundary trace (Appendix A row: AsyncDb)."
+gate_test = "krites::async_surface::tests::async_run_matches_blocking_run"
 call_sites = 0
 call_sites_method = "grep -rn 'AsyncDb' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -496,6 +557,7 @@ source = "crates/krites/src/lib.rs:41"
 dest_wave = "wave-6"
 dest_module = "data/value.rs (the re-exported type; its 13 variants are the datavalue category rows above)"
 gate = "Byte-identity of encoding across all 13 variants (Sec 6.1); see the datavalue category rows for per-variant gates."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_nested"
 call_sites = -1
 call_sites_method = "not separately measured: too generic a token to grep meaningfully at the type level; see per-variant datavalue rows"
 
@@ -507,6 +569,7 @@ source = "crates/krites/src/lib.rs:41"
 dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Same gate as datavalue-validity: byte-identical encoding, memcmp order matches Ord with the reversed key."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_leaf"
 call_sites = -1
 call_sites_method = "covered under datavalue-validity; not separately re-measured"
 
@@ -518,6 +581,7 @@ source = "crates/krites/src/lib.rs:41"
 dest_wave = "wave-6"
 dest_module = "data/relation.rs (Vector payload of DataValue::Vec)"
 gate = "Same gate as datavalue-vec: byte-encoding stable, dimension sourced from the embedding provider."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_empty_vectors"
 call_sites = -1
 call_sites_method = "covered under datavalue-vec; not separately re-measured"
 
@@ -529,6 +593,7 @@ source = "crates/krites/src/lib.rs:42"
 dest_wave = "wave-5"
 dest_module = "fixed_rule/ (graph algorithms extension point)"
 gate = "A test-only external FixedRule registers, is applied via `<~`, receives arity-checked inputs, and writes to the temp store (Appendix A row: register_fixed_rule)."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_custom_fixed_rule_registered_executes_with_correct_output"
 call_sites = 0
 call_sites_method = "grep -rn 'FixedRuleInputRelation\\|FixedRulePayload' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -540,6 +605,7 @@ source = "crates/krites/src/lib.rs:43"
 dest_wave = "wave-11"
 dest_module = "runtime/callback.rs"
 gate = "Delivery ordering and coalescing recorded at the Db boundary (wave 0.5) is reproduced by wave 11's callback path; any replacement change-feed exposes callbacks as an ordering-identical adapter (Appendix A row: register_callback / CallbackOp)."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_callback_registered_receives_all_operation_events"
 call_sites = 0
 call_sites_method = "grep -rn 'CallbackOp' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -551,6 +617,7 @@ source = "crates/krites/src/lib.rs:45"
 dest_wave = "wave-10"
 dest_module = "query engine (semi-naive fixpoint evaluation)"
 gate = "EpochLimitExceeded fires at exactly DEFAULT_MAX_EVALUATION_EPOCHS on a generated deep-recursion program, matching the recorded vector (kill criterion 7)."
+gate_test = "krites::query::eval::query_budget_tests::epoch_limit_exceeded_is_reported_with_epoch_limit_reason"
 call_sites = 0
 call_sites_method = "grep -rn 'DEFAULT_MAX_EVALUATION_EPOCHS' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -562,6 +629,7 @@ source = "crates/krites/src/lib.rs:45"
 dest_wave = "wave-1b"
 dest_module = "storage/{mem,temp}.rs (durability knobs)"
 gate = "Each PersistMode produces its declared post-crash visibility (Appendix A row: DbConfig / PersistMode)."
+gate_test = "krites::storage::fjall_backend::tests::persistence_across_restarts"
 call_sites = 80
 call_sites_method = "grep -rn 'with_config(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme/mneme wrapper methods of the same name)"
 
@@ -573,6 +641,8 @@ source = "crates/krites/src/lib.rs:45"
 dest_wave = "wave-10"
 dest_module = "query engine (row-result contract)"
 gate = "Row multiset for unordered queries; row sequence only where the script requests an order (Sec 3 wave 0.5, B17). Freezing an unordered result as a sequence is a kill-criterion violation."
+gate_test = "krites::public_api_fts_io_misc::named_rows_json_roundtrip"
+notes = "Human review observes that the candidate covers the type and its headers/rows round-trip; pointer membership itself does not prove that coupling. It does NOT assert this row's gate: no current test distinguishes an unordered result compared as a multiset from one frozen as a sequence, which is the B17 kill-criterion clause. That assertion arrives with the wave-0.5 recorder."
 call_sites = -1
 call_sites_method = "not separately measured: NamedRows is the return type of Db::run/run_read_only, covered by those rows' measurement"
 
@@ -584,6 +654,7 @@ source = "crates/krites/src/lib.rs:45"
 dest_wave = "wave-1b"
 dest_module = "storage/{mem,temp}.rs"
 gate = "Same gate as api-db-config: each PersistMode produces its declared post-crash visibility."
+gate_test = "krites::storage::fjall_backend::tests::default_persist_mode_is_buffer"
 call_sites = -1
 call_sites_method = "covered under api-db-config; not separately re-measured"
 
@@ -591,10 +662,11 @@ call_sites_method = "covered under api-db-config; not separately re-measured"
 id = "api-script-mutability"
 category = "public_api"
 item = "ScriptMutability"
-source = "crates/krites/src/lib.rs:45"
+source = "crates/krites/src/lib.rs:46"
 dest_wave = "wave-11"
 dest_module = "runtime/sys.rs (ReadOnlyViolationSnafu enforcement)"
 gate = "Every mutating SysOp arm rejects an Immutable script identically to today -- all ReadOnlyViolationSnafu sites in runtime/sys.rs (Compact, RemoveRelation, CreateIndex, CreateVectorIndex, CreateFtsIndex, CreateMinHashLshIndex, RemoveIndex, RenameRelation, SetTriggers, SetAccessLevel: 10 of the 19 SysOp arms)."
+gate_test = "krites::integration_io_and_misc::immutable_mode_rejects_mutation"
 call_sites = 62
 call_sites_method = "grep -rn 'ScriptMutability' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Not zero-call-site: episteme imports and constructs ScriptMutability directly (crate::engine::ScriptMutability) and passes it into Db::run/run_read_only at every DDL/query call site, e.g. knowledge_store/migration.rs:94,96 and knowledge_store/derived_rules.rs:23,460. Load-bearing, not merely wave-boundary-adjacent."
@@ -607,6 +679,7 @@ source = "crates/krites/src/lib.rs:46"
 dest_wave = "wave-11"
 dest_module = "MultiTransaction extension"
 gate = "A multi-statement transaction containing ::create + :put + ::rename commits atomically once MultiTransaction is extended to accept sys-ops (Appendix A row: MultiTransaction)."
+gate_test = "krites::runtime::tests::triggers_callbacks::multi_transaction_write_guard_blocks_schema_mutation_until_commit"
 call_sites = 0
 call_sites_method = "grep -rn 'TransactionPayload' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -617,7 +690,8 @@ item = "FjallStorage"
 source = "crates/krites/src/lib.rs:49"
 dest_wave = "sovereign"
 dest_module = "storage/fjall_backend.rs (Sec 4 totals)"
-gate = "Wave-1b mem-vs-fjall differential across all 15 Storage trait methods stays green as an unmodified oracle side."
+gate = "Wave-1b mem-vs-fjall differential across all 16 Storage/StoreTx trait methods (4 + 12; the storage_method rows below are the enumeration) stays green as an unmodified oracle side."
+gate_test = "krites::storage::fjall_backend::tests::persistence_across_restarts"
 call_sites = 0
 call_sites_method = "grep -rn 'FjallStorage' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -629,6 +703,7 @@ source = "crates/krites/src/lib.rs:50"
 dest_wave = "wave-1b"
 dest_module = "storage/mem.rs"
 gate = "Kept as the differential counterparty proving the fjall backend and the trait contract agree, plus the wave-1 crash-matrix control (Appendix A row: storage/mem.rs)."
+gate_test = "krites::public_api_fts_io_misc::export_import_relations"
 call_sites = 0
 call_sites_method = "grep -rn 'MemStorage' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "Appendix A frames this as load-bearing precisely because it backs every fast episteme unit test via KnowledgeStore::open_mem_with_config -- a different symbol, so this grep (the type name itself) reads zero. Not a contradiction; see notes on this row's counting method."
@@ -641,6 +716,7 @@ source = "crates/krites/src/lib.rs:51"
 dest_wave = "n/a"
 dest_module = "ndarray (third-party re-export)"
 gate = "Not owned code; DataValue::Vec (wave 6) is the only krites-owned surface around it -- no independent gate."
+gate_test = "none"
 call_sites = -1
 call_sites_method = "not measured: third-party re-export, not a krites capability"
 
@@ -648,10 +724,11 @@ call_sites_method = "not measured: third-party re-export, not a krites capabilit
 id = "api-poison"
 category = "public_api"
 item = "Poison"
-source = "crates/krites/src/lib.rs:435"
+source = "crates/krites/src/lib.rs:496"
 dest_wave = "wave-11"
 dest_module = "runtime/db.rs (cross-checked at wave-10)"
 gate = "A cooperative cancel token is honoured by the executor, by the index searches, and by the index builds -- HNSW, FTS, LSH and B-tree -- which check it once per INDEX_BUILD_POISON_CADENCE rows, so wind-down is bounded to one batch. Index builds register a running-query handle, so ::running lists them and ::kill reaches them. A cancelled build returns before commit_tx, so its transaction is dropped whole: the next open finds no index rather than a partial one (Appendix A row: Poison / cancellation). D08: the poison boundary aborts after a structured log. Asserted in runtime/tests/indexing.rs -- a killed HNSW build, a killed FTS reindex, a killed build reopened from disk, and an uncancelled multi-batch build that still completes."
+gate_test = "krites::runtime::db::poison_tests::fresh_poison_passes_check"
 call_sites = 0
 call_sites_method = "grep -rn '\\bPoison\\b' crates/ --include='*.rs' | grep -v ^crates/krites/ | grep -vP '^\\S+:[0-9]+:\\s*//'"
 notes = "Bare 'Poison' is a comment-only mention outside krites (crud.rs:22,23, prose about 'the Poison flag'), never a code call site -- the trailing grep -vP excludes comment lines so the measured figure matches the real code usage, not a text-search false positive."
@@ -660,10 +737,11 @@ notes = "Bare 'Poison' is a comment-only mention outside krites (crud.rs:22,23, 
 id = "api-db-open-mem"
 category = "public_api"
 item = "Db::open_mem"
-source = "crates/krites/src/lib.rs:169"
+source = "crates/krites/src/lib.rs:194"
 dest_wave = "wave-1b"
 dest_module = "storage/mem.rs"
 gate = "Same gate as api-mem-storage."
+gate_test = "krites::public_api_fts_io_misc::export_import_relations"
 call_sites = 130
 call_sites_method = "grep -rn 'open_mem(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
 notes = "Floor lowered 131 -> 130 when aletheia#4661 deleted MemoryServer::open_in_memory, the only non-test-gated open_mem() consumer in the workspace: a public constructor that handed out a transient knowledge store. Re-verified the capability is still reachable before lowering -- the remaining 130 sites are live test consumers across episteme, nous, graphe, symbolon and pylon, so this decrement is one deliberate deletion, not a capability losing its last consumer."
@@ -672,10 +750,11 @@ notes = "Floor lowered 131 -> 130 when aletheia#4661 deleted MemoryServer::open_
 id = "api-db-open-fjall"
 category = "public_api"
 item = "Db::open_fjall"
-source = "crates/krites/src/lib.rs:180"
+source = "crates/krites/src/lib.rs:205"
 dest_wave = "sovereign"
 dest_module = "storage/fjall_backend.rs"
 gate = "Insertion point for wave 1's pre-migration filesystem-level snapshot, taken BEFORE this call in the startup path (Sec 8.5) -- not inside migration.rs, which cannot re-open a keyspace this process already holds."
+gate_test = "krites::storage::fjall_backend::tests::persistence_across_restarts"
 call_sites = 48
 call_sites_method = "grep -rn 'open_fjall(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from episteme wrapper methods of the same name)"
 
@@ -683,10 +762,11 @@ call_sites_method = "grep -rn 'open_fjall(' crates/ --include='*.rs' | grep -v ^
 id = "api-db-with-cache"
 category = "public_api"
 item = "Db::with_cache"
-source = "crates/krites/src/lib.rs:196"
+source = "crates/krites/src/lib.rs:221"
 dest_wave = "sovereign"
 dest_module = "query_cache.rs"
 gate = "Same gate as api-query-cache."
+gate_test = "krites::db_cache_tests::cache_tracks_misses_and_hits"
 call_sites = 26
 call_sites_method = "grep -rn 'with_cache(' crates/ --include='*.rs' | grep -v ^crates/krites/  (proxy: not disambiguated from same-named wrapper methods)"
 
@@ -694,10 +774,11 @@ call_sites_method = "grep -rn 'with_cache(' crates/ --include='*.rs' | grep -v ^
 id = "api-db-with-config"
 category = "public_api"
 item = "Db::with_config"
-source = "crates/krites/src/lib.rs:203"
+source = "crates/krites/src/lib.rs:228"
 dest_wave = "wave-1b"
 dest_module = "storage/{mem,temp}.rs"
 gate = "Same gate as api-db-config."
+gate_test = "krites::storage::fjall_backend::tests::default_persist_mode_is_buffer"
 call_sites = -1
 call_sites_method = "covered under api-db-config; not separately re-measured"
 
@@ -705,10 +786,11 @@ call_sites_method = "covered under api-db-config; not separately re-measured"
 id = "api-db-with-rule-store"
 category = "public_api"
 item = "Db::with_rule_store"
-source = "crates/krites/src/lib.rs:214"
+source = "crates/krites/src/lib.rs:239"
 dest_wave = "sovereign"
 dest_module = "hot_reload.rs (507 sovereign lines, Sec 4 totals)"
 gate = "V03: a malformed operator-edited ruleset leaves the previous ruleset active; watcher-task death surfaces as a distinct detectable signal (Appendix A row: with_rule_store hot-reload)."
+gate_test = "krites::hot_reload::tests::hot_reload_preserves_old_ruleset_on_parse_error"
 call_sites = 0
 call_sites_method = "grep -rn 'with_rule_store(' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -716,10 +798,11 @@ call_sites_method = "grep -rn 'with_rule_store(' crates/ --include='*.rs' | grep
 id = "api-db-cache-stats"
 category = "public_api"
 item = "Db::cache_stats"
-source = "crates/krites/src/lib.rs:228"
+source = "crates/krites/src/lib.rs:289"
 dest_wave = "sovereign"
 dest_module = "query_cache.rs"
 gate = "Same gate as api-query-cache."
+gate_test = "krites::db_cache_tests::cache_stats_none_without_cache"
 call_sites = 0
 call_sites_method = "grep -rn 'cache_stats(' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -727,10 +810,11 @@ call_sites_method = "grep -rn 'cache_stats(' crates/ --include='*.rs' | grep -v 
 id = "api-db-run"
 category = "public_api"
 item = "Db::run"
-source = "crates/krites/src/lib.rs:236"
+source = "crates/krites/src/lib.rs:297"
 dest_wave = "wave-10"
 dest_module = "query engine (primary script execution entrypoint; central wave-0.5 recorder target)"
 gate = "Full recorded-vector replay + fuzz corpus, row multiset + explicit-order sequences + error classes (Sec 4 wave 10)."
+gate_test = "krites::integration_queries::db_create_run_query_verify_results"
 call_sites = -1
 call_sites_method = "not separately measured: the wave-0.5 recorder intercepts every public Db method, this being the highest-traffic one; a substring grep for 'run(' is too generic to be meaningful"
 
@@ -738,10 +822,11 @@ call_sites_method = "not separately measured: the wave-0.5 recorder intercepts e
 id = "api-db-run-read-only"
 category = "public_api"
 item = "Db::run_read_only"
-source = "crates/krites/src/lib.rs:254"
+source = "crates/krites/src/lib.rs:315"
 dest_wave = "wave-10"
 dest_module = "query engine"
 gate = "Same gate as api-db-run, plus: enforces Immutable mutability identically to today."
+gate_test = "krites::integration_io_and_misc::immutable_mode_rejects_mutation"
 call_sites = -1
 call_sites_method = "not separately measured: substring grep for 'run_read_only(' collides with episteme wrapper methods of the same name; see api-db-run"
 
@@ -749,22 +834,24 @@ call_sites_method = "not separately measured: substring grep for 'run_read_only(
 id = "api-db-export-relations"
 category = "public_api"
 item = "Db::export_relations"
-source = "crates/krites/src/lib.rs:263"
+source = "crates/krites/src/lib.rs:324"
 dest_wave = "wave-1"
 dest_module = "the crash matrix's comparison mechanism (Sec 8.4)"
 gate = "Wave 1 makes this load-bearing: round-trip identity on the full seeded corpus (Appendix A row: export_relations / import_relations)."
+gate_test = "krites::public_api_fts_io_misc::export_import_relations"
 call_sites = 3
 call_sites_method = "grep -rn 'export_relations(' crates/ --include='*.rs' | grep -v ^crates/krites/"
-notes = "Appendix A: 'zero production call sites, exercised only by crates/integration-tests/tests/engine_facade.rs:57,70' -- this grep's single hit is that test file; consistent."
+notes = "Appendix A's 'zero production call sites' still holds: all three measured sites are test code -- crates/integration-tests/tests/engine_facade.rs:57, crates/episteme/src/knowledge_store/tests/migration_atomicity.rs:37, and crates/episteme/src/knowledge_store/migration_atomic.rs:806, the last inside that file's own `#[cfg(test)] mod tests` (opens at :722). Appendix A's narrower claim that engine_facade.rs is the ONLY exerciser is what drifted."
 
 [[capability]]
 id = "api-db-import-relations"
 category = "public_api"
 item = "Db::import_relations"
-source = "crates/krites/src/lib.rs:277"
+source = "crates/krites/src/lib.rs:338"
 dest_wave = "wave-1"
 dest_module = "the crash matrix's comparison mechanism (Sec 8.4)"
 gate = "Same gate as api-db-export-relations."
+gate_test = "krites::public_api_fts_io_misc::export_import_relations"
 call_sites = 1
 call_sites_method = "grep -rn 'import_relations(' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -772,10 +859,11 @@ call_sites_method = "grep -rn 'import_relations(' crates/ --include='*.rs' | gre
 id = "api-db-register-fixed-rule"
 category = "public_api"
 item = "Db::register_fixed_rule"
-source = "crates/krites/src/lib.rs:287"
+source = "crates/krites/src/lib.rs:348"
 dest_wave = "wave-5"
 dest_module = "fixed_rule/"
 gate = "Same gate as api-fixed-rule-trait."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_custom_fixed_rule_registered_executes_with_correct_output"
 call_sites = 0
 call_sites_method = "grep -rn 'register_fixed_rule(' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -783,10 +871,11 @@ call_sites_method = "grep -rn 'register_fixed_rule(' crates/ --include='*.rs' | 
 id = "api-db-register-callback"
 category = "public_api"
 item = "Db::register_callback"
-source = "crates/krites/src/lib.rs:307"
+source = "crates/krites/src/lib.rs:368"
 dest_wave = "wave-11"
 dest_module = "runtime/callback.rs"
 gate = "Same gate as api-callback-op."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_callback_registered_receives_all_operation_events"
 call_sites = 0
 call_sites_method = "grep -rn 'register_callback(' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -794,10 +883,11 @@ call_sites_method = "grep -rn 'register_callback(' crates/ --include='*.rs' | gr
 id = "api-db-multi-transaction"
 category = "public_api"
 item = "Db::multi_transaction"
-source = "crates/krites/src/lib.rs:324"
+source = "crates/krites/src/lib.rs:385"
 dest_wave = "wave-11"
 dest_module = "MultiTransaction"
 gate = "Same gate as api-transaction-payload."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_multi_transaction_committed_all_rows_persisted"
 call_sites = 0
 call_sites_method = "grep -rn 'multi_transaction(' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -805,21 +895,24 @@ call_sites_method = "grep -rn 'multi_transaction(' crates/ --include='*.rs' | gr
 id = "api-multi-transaction-error"
 category = "public_api"
 item = "MultiTransactionError (WorkerPanicked, SendFailed, Query)"
-source = "crates/krites/src/lib.rs:352"
+source = "crates/krites/src/lib.rs:413"
 dest_wave = "wave-11"
 dest_module = "MultiTransaction"
 gate = "Error class oracle (Sec 6.1): each variant maps 1:1 to a distinguishable failure mode of the multi-transaction background worker."
+gate_test = "krites::runtime::tests::basic_queries::multi_transaction_reports_worker_termination_as_typed_error"
 call_sites = 0
 call_sites_method = "grep -rn 'MultiTransactionError' crates/ --include='*.rs' | grep -v ^crates/krites/"
+notes = "The recorded candidate exercises WorkerPanicked only. SendFailed and Query have no separate candidate in this bundled row, and the checker does not establish the row's three-variant error-class oracle."
 
 [[capability]]
 id = "api-multi-transaction-struct"
 category = "public_api"
 item = "MultiTransaction (transact, commit, abort)"
-source = "crates/krites/src/lib.rs:368,379,404,413"
+source = "crates/krites/src/lib.rs:429,446,471,480"
 dest_wave = "wave-11"
 dest_module = "MultiTransaction"
-gate = "Same gate as api-transaction-payload; INVARIANT preserved: send -> recv -> send -> recv, never pipelined (both channels capacity 1, per lib.rs:363-365 comment)."
+gate = "Same gate as api-transaction-payload; INVARIANT preserved: send -> recv -> send -> recv, never pipelined (both channels capacity 1, per the capacity-1 channel comment at lib.rs:425)."
+gate_test = "krites::public_api_queries_and_hnsw::multi_transaction_runs_query_and_commits"
 call_sites = 1
 call_sites_method = "grep -rn 'MultiTransaction\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -844,6 +937,7 @@ source = "PLAN.md Appendix A row 1 (SysOp::CreateMinHashLshIndex, parse/sys/mod.
 dest_wave = "wave-11"
 overlaps_with = "sysop-create-minhash-lsh-index"
 gate = "Named wave-11 gate: build an index over a seeded corpus, assert Jaccard-estimate error bounds vs exact pairwise Jaccard; band/row parameters from n_gram/n_perm/false_positive_weight/false_negative_weight reproduce the Simpson's-rule optimum; delete + re-add leaves estimates stable."
+gate_test = "krites::runtime::tests::indexing::when_lsh_index_created_exact_match_found_across_thresholds"
 
 [[capability]]
 id = "appendix-a-validity"
@@ -853,6 +947,7 @@ source = "PLAN.md Appendix A row 2 (datalog.pest:76,225; data/value.rs:145,155; 
 dest_wave = "wave-6"
 overlaps_with = "datavalue-validity"
 gate = "Wave 6: ValidityTs encoding is byte-identical and memcmp(encode(a), encode(b)) == a.cmp(b) holds with the reversed ordering. Wave 9: @ clause parses at all four attachment sites. Wave 10: an as-of query at t returns the row set current at t, and a supersession at t+1 does not change it."
+gate_test = "krites::data::tests::validity::temporal_validity_ranges_assert_retract_and_query_correctly"
 
 [[capability]]
 id = "appendix-a-triggers"
@@ -862,6 +957,7 @@ source = "PLAN.md Appendix A row 3 (SysOp::ShowTrigger :40, SetTriggers :42)"
 dest_wave = "wave-11"
 overlaps_with = "sysop-show-trigger, sysop-set-triggers"
 gate = "Wave 11: put/rm/replace scripts fire in declared order on the matching operation, fire inside the mutating transaction, and a failing trigger aborts the mutation."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_trigger_set_on_put_reverse_relation_synced"
 
 [[capability]]
 id = "appendix-a-access-levels"
@@ -871,6 +967,7 @@ source = "PLAN.md Appendix A row 4 (SysOp::SetAccessLevel :44; runtime/relation/
 dest_wave = "wave-11"
 overlaps_with = "sysop-set-access-level"
 gate = "Wave 11: each of Hidden/ReadOnly/Protected/Normal rejects exactly the operation set it rejects today, asserted against the two enforcement sites."
+gate_test = "none"
 
 [[capability]]
 id = "appendix-a-query-registry"
@@ -880,6 +977,7 @@ source = "PLAN.md Appendix A row 5 (SysOp::ListRunning :28, KillRunning :32)"
 dest_wave = "wave-11"
 overlaps_with = "sysop-list-running, sysop-kill-running"
 gate = "Wave 11: a long-running query appears in ListRunning with a stable id; KillRunning(id) terminates it and the caller observes QueryKilled (class, not string)."
+gate_test = "none"
 
 [[capability]]
 id = "appendix-a-compact-describe"
@@ -889,6 +987,7 @@ source = "PLAN.md Appendix A row 6 (:20, :56)"
 dest_wave = "wave-11"
 overlaps_with = "sysop-compact, sysop-describe-relation"
 gate = "Wave 11: Compact completes and leaves an identical export_relations snapshot; DescribeRelation round-trips the comment."
+gate_test = "krites::storage::fjall_backend::tests::compact_system_operation_invokes_fjall_compaction"
 
 [[capability]]
 id = "appendix-a-datavalue-json"
@@ -898,6 +997,7 @@ source = "PLAN.md Appendix A row 7"
 dest_wave = "wave-6"
 overlaps_with = "datavalue-json"
 gate = "Wave 6/8: recorded-vector oracle only; round-trip through encode/decode preserves the value; ordering vs other variants is byte-stable."
+gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_json"
 
 [[capability]]
 id = "appendix-a-multi-transaction"
@@ -907,6 +1007,7 @@ source = "PLAN.md Appendix A row 8 (transact.rs:302, parse/mod.rs:235-246)"
 dest_wave = "wave-11"
 overlaps_with = "api-transaction-payload, api-multi-transaction-struct"
 gate = "Kept and extended in wave 11 to accept sys-ops. Wave 11 gate: a multi-statement transaction containing ::create + :put + ::rename commits atomically; visibility semantics recorded at the Db boundary in wave 0.5."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_multi_transaction_committed_all_rows_persisted"
 
 [[capability]]
 id = "appendix-a-callback"
@@ -916,6 +1017,7 @@ source = "PLAN.md Appendix A row 9"
 dest_wave = "wave-11"
 overlaps_with = "api-callback-op, api-db-register-callback"
 gate = "Wave 0.5 records delivery ordering and coalescing at the Db boundary. Wave 11 asserts the recorded trace. Any change feed that replaces the shape must expose callbacks as an adapter with identical ordering."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_callback_registered_receives_all_operation_events"
 
 [[capability]]
 id = "appendix-a-register-fixed-rule"
@@ -925,6 +1027,7 @@ source = "PLAN.md Appendix A row 10"
 dest_wave = "wave-5"
 overlaps_with = "api-fixed-rule-trait, api-db-register-fixed-rule, sysop-list-fixed-rules"
 gate = "Wave 5: a test-only external FixedRule registers, is applied via <~, receives its arity-checked inputs, and writes to the temp store."
+gate_test = "krites::runtime::tests::triggers_callbacks::when_custom_fixed_rule_registered_executes_with_correct_output"
 
 [[capability]]
 id = "appendix-a-fixed-rule-algos"
@@ -933,6 +1036,8 @@ item = "All 22 fixed-rule algorithms"
 source = "PLAN.md Appendix A row 11 (episteme/src/graph_intelligence.rs:202,206; episteme/src/query/queries.rs:447-448)"
 dest_wave = "wave-5"
 gate = "Per-algorithm reference-semantics property test, not krites-output comparison: Dijkstra vs Bellman-Ford agreement; Prim vs Kruskal MST weight equality; PageRank convergence + sum-to-1; SCC vs independent Tarjan; BFS/DFS reachability closure."
+gate_test = "krites::fixed_rule::tests::wave5_reference_semantics::dijkstra_agrees_with_bellman_ford"
+notes = "The plan's \"22\" is a prose count that matches nothing measurable: DEFAULT_FIXED_RULES holds 26 keys over 21 distinct rule types across 18 algorithm files plus 3 utilities. The fixed_rule category below is the enumeration that count was standing in for, one checked row per registry key; this row keeps the plan's wording verbatim because that is what the appendix_a mirror is for, and its pointer covers only the one algorithm the named property test compares."
 
 [[capability]]
 id = "appendix-a-async-db"
@@ -942,6 +1047,7 @@ source = "PLAN.md Appendix A row 12 (282 sovereign lines)"
 dest_wave = "sovereign"
 overlaps_with = "api-async-db"
 gate = "Wave 0.5 boundary recording; wave 11 asserts async results equal sync results for the same script under concurrency."
+gate_test = "krites::async_surface::tests::async_run_matches_blocking_run"
 
 [[capability]]
 id = "appendix-a-hot-reload"
@@ -951,6 +1057,7 @@ source = "PLAN.md Appendix A row 13 (507 sovereign lines)"
 dest_wave = "sovereign"
 overlaps_with = "api-db-with-rule-store"
 gate = "V03: a malformed operator-edited ruleset leaves the previous ruleset active; watcher-task death surfaces as a distinct detectable signal."
+gate_test = "krites::hot_reload::tests::hot_reload_preserves_old_ruleset_on_parse_error"
 
 [[capability]]
 id = "appendix-a-export-import-relations"
@@ -960,6 +1067,7 @@ source = "PLAN.md Appendix A row 14 (crates/integration-tests/tests/engine_facad
 dest_wave = "wave-1"
 overlaps_with = "api-db-export-relations, api-db-import-relations"
 gate = "Wave 1 makes them load-bearing (the crash matrix's comparison mechanism). Round-trip identity on the full seeded corpus."
+gate_test = "krites::public_api_fts_io_misc::export_import_relations"
 
 [[capability]]
 id = "appendix-a-poison"
@@ -969,6 +1077,7 @@ source = "PLAN.md Appendix A row 15"
 dest_wave = "wave-11"
 overlaps_with = "api-poison"
 gate = "Wave 10/11: a cooperative cancel token is honoured by the executor and by long index operations (HNSW build, FTS reindex), asserted by cancelling mid-build and observing bounded wind-down."
+gate_test = "krites::runtime::db::poison_tests::wall_clock_timeout_reports_wall_clock_reason"
 
 [[capability]]
 id = "appendix-a-db-config-persist-mode"
@@ -978,6 +1087,7 @@ source = "PLAN.md Appendix A row 16"
 dest_wave = "wave-1b"
 overlaps_with = "api-db-config, api-persist-mode, api-db-with-config"
 gate = "Wave 0.5 records durability observations at the boundary; wave 1b asserts each PersistMode produces its declared post-crash visibility."
+gate_test = "krites::storage::fjall_backend::tests::persistence_across_restarts"
 
 [[capability]]
 id = "appendix-a-query-cache-stats"
@@ -987,6 +1097,7 @@ source = "PLAN.md Appendix A row 17"
 dest_wave = "wave-10"
 overlaps_with = "api-query-cache"
 gate = "Counters retained on the plan store; a repeated identical script increments hits, a schema-epoch bump increments misses."
+gate_test = "krites::query_cache::tests::stats_track_hits_and_misses"
 
 [[capability]]
 id = "appendix-a-storage-mem"
@@ -996,6 +1107,7 @@ source = "PLAN.md Appendix A row 18 (KnowledgeStore::open_mem_with_config, mod.r
 dest_wave = "wave-1b"
 overlaps_with = "api-mem-storage, api-db-open-mem"
 gate = "Kept: it backs every fast episteme unit test and is the differential counterparty proving the fjall backend and the trait contract agree, plus the wave-1 crash-matrix control. Removing it removes an oracle."
+gate_test = "krites::public_api_fts_io_misc::export_import_relations"
 
 [[capability]]
 id = "appendix-a-swapvec"
@@ -1004,6 +1116,7 @@ item = "swapvec disk-spill in TempCollector"
 source = "PLAN.md Appendix A row 19"
 dest_wave = "wave-8"
 gate = "Deferred, not dropped. The >=50k-chunk corpus run under active compaction measures peak join memory; if it exceeds budget, spill-to-disk returns as a temp-store capability."
+gate_test = "none"
 
 [[capability]]
 id = "appendix-a-geiton-adaptive-search"
@@ -1012,6 +1125,7 @@ item = "geiton-class adaptive exact-vs-graph search"
 source = "PLAN.md Appendix A row 20"
 dest_wave = "wave-4"
 gate = "Sec 6.2 performance floor: search latency at small n must not regress against the recorded baseline, measured separately from recall."
+gate_test = "krites::runtime::hnsw::adaptive::tests::exact_knn_finds_the_true_nearest_neighbour"
 
 [[capability]]
 id = "appendix-a-magic-sets-seminaive"
@@ -1020,6 +1134,7 @@ item = "Magic-set rewriting + semi-naive evaluation"
 source = "PLAN.md Appendix A row 21"
 dest_wave = "wave-10"
 gate = "Sec 6.2: recursive-rule fixpoint floor on a generated deep-recursion program."
+gate_test = "krites::query::eval::query_budget_tests::epoch_limit_exceeded_is_reported_with_epoch_limit_reason"
 
 [[capability]]
 id = "appendix-a-hnsw-entry-point"
@@ -1029,6 +1144,7 @@ source = "PLAN.md Appendix A row 22"
 dest_wave = "wave-4"
 overlaps_with = "sysop-create-vector-index"
 gate = "E04 structural (exactly one canary node, level=1, all-Null tuple key, byte-compatible during Program A). E05 with close/reopen: insert N -> close -> reopen -> search vs E25 oracle; delete entry-point-adjacent subset -> close -> reopen -> search -> recall floor. Open-time cost assertion. E24 orphan consistency wired to scheduled maintenance, not left dead_code."
+gate_test = "krites::runtime::hnsw::put::tests::exactly_one_all_null_entry_point_marker"
 
 [[capability]]
 id = "appendix-a-fts-zero-guards"
@@ -1038,6 +1154,7 @@ source = "PLAN.md Appendix A row 23"
 dest_wave = "wave-3"
 overlaps_with = "sysop-create-fts-index"
 gate = "Cold/empty index + zero-df term produces a finite score, never NaN/Inf; avgdl.max(1.0) clamp present."
+gate_test = "none"
 
 [[capability]]
 id = "appendix-a-coverage-accounting"
@@ -1046,6 +1163,7 @@ item = "Coverage accounting (F18-F22 / SC-17)"
 source = "PLAN.md Appendix A row 24"
 dest_wave = "wave-3"
 gate = "The query surface returns a typed error carrying mismatch counts and a fix command."
+gate_test = "none"
 
 [[capability]]
 id = "appendix-a-fold-stopwords"
@@ -1054,6 +1172,7 @@ item = "Fold table + stopword lists"
 source = "PLAN.md Appendix A row 25"
 dest_wave = "wave-2a-2b"
 gate = "Fold table regenerated from Unicode UCD, all 1,489 match arms identical over a full BMP sweep. Stopword lists vendored unchanged with attribution: token-multiset identity, 21,706/21,706 literals present, plus byte-identical token streams over a 50k-document corpus."
+gate_test = "none"
 
 [[capability]]
 id = "appendix-a-tristate-verdict"
@@ -1063,6 +1182,7 @@ source = "PLAN.md Appendix A row 26"
 dest_wave = "wave-0"
 dest_module = "wave-0.5 conformance harness contract (Sec 3, Sec 6.3, Sec 6.4)"
 gate = "Unverifiable never collapses to Clean in any aggregation; a harness crash with discarded stderr reports Unverifiable."
+gate_test = "none"
 notes = "No current krites call site -- this is a harness-behavior convention the wave-0.5 recorder and every later wave's conformance runner must implement, not a type or function krites exposes today."
 
 [[capability]]
@@ -1072,6 +1192,7 @@ item = "Presence<T> (SC-12)"
 source = "PLAN.md Appendix A row 27"
 dest_wave = "wave-6"
 gate = "Absent | Empty | Present(T) makes the S27-class silent-drop (an entire table vanishing from every query) unrepresentable at adopting seams."
+gate_test = "none"
 
 [[capability]]
 id = "appendix-a-fixture-isolation"
@@ -1081,6 +1202,7 @@ source = "PLAN.md Appendix A row 28"
 dest_wave = "wave-0"
 dest_module = "cross-cutting: every wave's test suite, verified by the wave-0.5 harness convention"
 gate = "Test fixtures leave the live repo unchanged; asserted by a clean git status after the suite."
+gate_test = "none"
 notes = "No current krites call site; a testing-hygiene lesson (R14) this program's own test suites must honor throughout, not a krites-owned type."
 
 [[capability]]
@@ -1091,6 +1213,7 @@ source = "PLAN.md Appendix A row 29"
 dest_wave = "wave-0"
 dest_module = "wave-0.5 conformance harness (recorded-vector mismatch reporting)"
 gate = "Errata match is anchored, not substring-loose; a near-miss needle reports no match rather than a wrong one."
+gate_test = "none"
 notes = "No current krites or fleet call site found (grep for 'errata'/'folio' across crates/ returns nothing) -- a prospective testing-lesson code (R23) with no source referent yet; mapped to the wave-0.5 harness as the nearest applicable mechanism. Report to T0: this row cannot be grounded in current source the way the other 32 can."
 
 [[capability]]
@@ -1101,6 +1224,7 @@ source = "PLAN.md Appendix A row 30"
 dest_wave = "wave-0"
 dest_module = "wave-0.5 conformance harness (round-trip-identity pattern, generalized)"
 gate = "Round-trip identity on the full folio corpus."
+gate_test = "none"
 notes = "No current krites or fleet call site found (grep for 'folio' across crates/ returns nothing). Read as the general round-trip-identity PATTERN this program's harness must apply wherever it verifies round-trips (export_relations/import_relations wave 1, DataValue encode/decode wave 6), not a literal folio/page type in this crate. Report to T0: this row cannot be grounded in current source the way the other 32 can."
 
 [[capability]]
@@ -1111,16 +1235,18 @@ source = "PLAN.md Appendix A row 31"
 dest_wave = "wave-0"
 dest_module = "wave-0.5 harness pattern; generalizes to Sec 2's soak_expires_at_commit_count ledger expiry"
 gate = "Expiry is expired | live | unknown; unknown never collapses to live."
+gate_test = "none"
 notes = "No current krites call site; nearest applicable krites mechanism is the ledger's soak-expiry field (Sec 2), which does not yet exist (introduced by wave 0.1, a sibling wave-0 artifact this matrix does not own)."
 
 [[capability]]
 id = "appendix-a-cross-partition-atomic-write"
 category = "appendix_a"
 item = "Cross-partition atomic write"
-source = "PLAN.md Appendix A row 32 (storage/mem.rs:145-162, storage/fjall_backend.rs:307-330)"
+source = "PLAN.md Appendix A row 32 (storage/mem.rs:168-191, storage/fjall_backend.rs:307-330)"
 dest_wave = "wave-1b"
 overlaps_with = "api-mem-storage, api-fjall-storage"
-gate = "del_range_from_persisted records into the writer delta, not the base map; asserted by the wave-1b mem-vs-fjall differential across all 15 trait methods."
+gate = "del_range_from_persisted records into the writer delta, not the base map; asserted by the wave-1b mem-vs-fjall differential across all 16 Storage/StoreTx trait methods."
+gate_test = "none"
 
 [[capability]]
 id = "appendix-a-forensic-snapshot-read"
@@ -1131,15 +1257,17 @@ dest_wave = "wave-1"
 dest_module = "episteme startup path, pre-migration snapshot (Sec 8.5)"
 overlaps_with = "api-db-open-fjall"
 gate = "Snapshot opens the copy with flush_workers(0).compaction_workers(0) and never the live source; verified-restorable count comparison per partition."
+gate_test = "none"
 
 [[capability]]
 id = "api-db-attach-rule-store"
 category = "public_api"
 item = "Db::attach_rule_store"
-source = "crates/krites/src/lib.rs:253"
+source = "crates/krites/src/lib.rs:267"
 dest_wave = "wave-1b"
 dest_module = "hot_reload.rs"
 gate = "Hot-reload watcher attaches a rule directory and reloads .mnm fixed rules on change; gated behind the hot-reload feature, so the wave that owns hot_reload.rs owns this."
+gate_test = "krites::hot_reload::tests::sys_ops_still_parse_with_a_populated_rule_store"
 call_sites = 2
 call_sites_method = "grep -rn 'attach_rule_store(' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
@@ -1147,10 +1275,913 @@ call_sites_method = "grep -rn 'attach_rule_store(' crates/ --include='*.rs' | gr
 id = "api-cancellation-reason"
 category = "public_api"
 item = "CancellationReason"
-source = "crates/krites/src/lib.rs:44"
+source = "crates/krites/src/lib.rs:45"
 dest_wave = "sovereign"
 dest_module = "runtime/db.rs (native Aletheia addition, #4511 QueryBudget/cancellation work -- not present in the CozoDB original, so there is nothing to migrate)"
 gate = "Poison::check() and Error::cancellation_reason() agree on cause: Killed only when set_killed() was the trigger, WallClock only when the timeout deadline elapsed, even across repeated check() calls after the first (crates/krites/src/runtime/db.rs poison_tests)."
+gate_test = "krites::runtime::db::poison_tests::explicit_kill_reports_killed_reason"
 call_sites = 2
 call_sites_method = "grep -rn 'CancellationReason' crates/ --include='*.rs' | grep -v ^crates/krites/"
 notes = "New capability introduced in #4511; zero-or-few external call sites is expected at introduction, not a gap."
+
+# ---------------------------------------------------------------------------
+# category = "fixed_rule" -- every key of DEFAULT_FIXED_RULES,
+# fixed_rule/mod.rs:783-914. The registry KEY is the capability: a script
+# names a rule by that string, so an alias (`DFS` beside `DepthFirstSearch`)
+# is its own row -- deleting one breaks every script that spells it that way
+# and nothing else in the crate notices. Appendix A's single "All 22
+# fixed-rule algorithms" row named a count that matches nothing measurable:
+# the registry holds 26 keys over 21 distinct rule types across 18 algorithm
+# files plus 3 utilities.
+# call_sites_method: grep for the DSL application form `<~ Name(`,
+# workspace-wide, excluding crates/krites/. 24 of 26 measure zero, which is
+# why call-site counting cannot protect this category and why every row
+# carries a gate_test or is honestly marked unpointed.
+# ---------------------------------------------------------------------------
+
+[[capability]]
+id = "fixed-rule-bfs"
+category = "fixed_rule"
+item = "BFS"
+source = "crates/krites/src/fixed_rule/mod.rs:829"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/bfs.rs (alias of BreadthFirstSearch)"
+gate = "Reachability closure: a linear chain reaches its target at the expected depth, and a never-satisfiable condition returns no rows (Appendix A row 11: BFS/DFS reachability closure)."
+gate_test = "krites::fixed_rule::tests::path_algorithms::test_bfs_when_condition_never_true_returns_empty"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*BFS\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-betweenness-centrality"
+category = "fixed_rule"
+item = "BetweennessCentrality"
+source = "crates/krites/src/fixed_rule/mod.rs:809"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/all_pairs_shortest_path.rs"
+gate = "Interior nodes of a path graph score above endpoints and a single edge scores zero, computed from the all-pairs shortest-path accumulation."
+gate_test = "krites::fixed_rule::tests::path_algorithms::test_betweenness_centrality_when_path_graph_interior_nodes_are_higher"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*BetweennessCentrality\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-breadth-first-search"
+category = "fixed_rule"
+item = "BreadthFirstSearch"
+source = "crates/krites/src/fixed_rule/mod.rs:824"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/bfs.rs (long-form name; BFS is the alias)"
+gate = "Same gate as the BFS row; this spelling must resolve to the same rule."
+gate_test = "none"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*BreadthFirstSearch\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-closeness-centrality"
+category = "fixed_rule"
+item = "ClosenessCentrality"
+source = "crates/krites/src/fixed_rule/mod.rs:804"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/all_pairs_shortest_path.rs"
+gate = "Scores are non-negative on a path graph and on a single edge, computed from the all-pairs shortest-path accumulation."
+gate_test = "krites::fixed_rule::tests::path_algorithms::test_closeness_centrality_when_path_graph_all_scores_non_negative"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*ClosenessCentrality\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-clustering-coefficients"
+category = "fixed_rule"
+item = "ClusteringCoefficients"
+source = "crates/krites/src/fixed_rule/mod.rs:794"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/triangles.rs"
+gate = "Every node of K4 has coefficient 1 and a single edge yields no triangles."
+gate_test = "krites::fixed_rule::tests::connectivity_misc::test_clustering_coefficients_when_k4_every_node_has_cc_one"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*ClusteringCoefficients\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-community-detection-louvain"
+category = "fixed_rule"
+item = "CommunityDetectionLouvain"
+source = "crates/krites/src/fixed_rule/mod.rs:889"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/louvain.rs"
+gate = "Every node of a two-triangle graph receives a community label; a single edge labels both endpoints."
+gate_test = "krites::fixed_rule::tests::connectivity_misc::test_louvain_when_single_edge_both_nodes_labeled"
+call_sites = 1
+call_sites_method = "grep -rEn '<~\\s*CommunityDetectionLouvain\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-connected-components"
+category = "fixed_rule"
+item = "ConnectedComponents"
+source = "crates/krites/src/fixed_rule/mod.rs:869"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/strongly_connected_components.rs (StronglyConnectedComponent::new(false))"
+gate = "Weak connectivity: a directed star is one component and two triangles are two (Appendix A row 11: SCC vs independent Tarjan)."
+gate_test = "krites::fixed_rule::tests::connectivity_misc::test_connected_components_when_directed_star_returns_single_component"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*ConnectedComponents\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-constant"
+category = "fixed_rule"
+item = "Constant"
+source = "crates/krites/src/fixed_rule/mod.rs:912"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/utilities/constant.rs"
+gate = "Inline data (`rel[a, b] <- [[...]]`) is compiled into a Constant fixed rule at parse/query/program.rs:271 -- the relation's rows arrive in the program unchanged."
+gate_test = "none"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*Constant\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-dfs"
+category = "fixed_rule"
+item = "DFS"
+source = "crates/krites/src/fixed_rule/mod.rs:819"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/dfs.rs (alias of DepthFirstSearch)"
+gate = "Reachability closure: a linear chain finds its target and an unreachable target returns no rows (Appendix A row 11: BFS/DFS reachability closure)."
+gate_test = "krites::fixed_rule::tests::path_algorithms::test_dfs_when_linear_chain_finds_target"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*DFS\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-degree-centrality"
+category = "fixed_rule"
+item = "DegreeCentrality"
+source = "crates/krites/src/fixed_rule/mod.rs:799"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/degree_centrality.rs"
+gate = "A directed star's hub has zero in-degree and an isolated node has zero degree -- the direction-sensitive counting, not just a total."
+gate_test = "krites::fixed_rule::tests::centrality_spanning::test_degree_centrality_when_directed_star_hub_has_zero_in_degree"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*DegreeCentrality\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-depth-first-search"
+category = "fixed_rule"
+item = "DepthFirstSearch"
+source = "crates/krites/src/fixed_rule/mod.rs:814"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/dfs.rs (long-form name; DFS is the alias)"
+gate = "Same gate as the DFS row; this spelling must resolve to the same rule."
+gate_test = "none"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*DepthFirstSearch\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-kcore"
+category = "fixed_rule"
+item = "KCore"
+source = "crates/krites/src/fixed_rule/mod.rs:904"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/kcore.rs"
+gate = "A clique plus a pendant assigns the correct core number per node; a disconnected graph is cored per component."
+gate_test = "krites::fixed_rule::tests::connectivity_misc::test_kcore_when_clique_plus_pendant_assigns_correct_cores"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*KCore\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-kshortest-path-yen"
+category = "fixed_rule"
+item = "KShortestPathYen"
+source = "crates/krites/src/fixed_rule/mod.rs:849"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/yen.rs"
+gate = "Two available paths are returned in cost order; fewer paths than k returns all available rather than padding."
+gate_test = "krites::fixed_rule::tests::connectivity_misc::test_yen_when_two_paths_returns_both_in_cost_order"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*KShortestPathYen\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-label-propagation"
+category = "fixed_rule"
+item = "LabelPropagation"
+source = "crates/krites/src/fixed_rule/mod.rs:894"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/label_propagation.rs"
+gate = "Every node is labelled on a disconnected graph and on a single edge -- no node is dropped by the propagation sweep."
+gate_test = "krites::fixed_rule::tests::centrality_spanning::test_label_propagation_when_disconnected_graph_all_nodes_labeled"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*LabelPropagation\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-minimum-spanning-forest-kruskal"
+category = "fixed_rule"
+item = "MinimumSpanningForestKruskal"
+source = "crates/krites/src/fixed_rule/mod.rs:859"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/kruskal.rs"
+gate = "A connected graph returns n-1 edges and a disconnected one returns a spanning forest; MST weight equals Prim's (Appendix A row 11: Prim vs Kruskal MST weight equality)."
+gate_test = "krites::fixed_rule::tests::centrality_spanning::test_kruskal_when_connected_graph_returns_n_minus_1_edges"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*MinimumSpanningForestKruskal\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-minimum-spanning-tree-prim"
+category = "fixed_rule"
+item = "MinimumSpanningTreePrim"
+source = "crates/krites/src/fixed_rule/mod.rs:854"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/prim.rs"
+gate = "MST weight equals Kruskal's on the same connected graph (Appendix A row 11: Prim vs Kruskal MST weight equality)."
+gate_test = "krites::fixed_rule::tests::centrality_spanning::test_prim_when_connected_graph_returns_same_cost_as_kruskal"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*MinimumSpanningTreePrim\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-page-rank"
+category = "fixed_rule"
+item = "PageRank"
+source = "crates/krites/src/fixed_rule/mod.rs:884"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/pagerank.rs"
+gate = "Scores converge, sum to 1, and rank a star's sink highest (Appendix A row 11: PageRank convergence + sum-to-1)."
+gate_test = "krites::fixed_rule::tests::centrality_spanning::test_pagerank_when_cycle_scores_are_approximately_uniform"
+call_sites = 1
+call_sites_method = "grep -rEn '<~\\s*PageRank\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-random-walk"
+category = "fixed_rule"
+item = "RandomWalk"
+source = "crates/krites/src/fixed_rule/mod.rs:899"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/random_walk.rs"
+gate = "A cycle graph produces a path of the requested length and a dead end produces a shorter one -- bounded, not padded."
+gate_test = "krites::fixed_rule::tests::centrality_spanning::test_random_walk_when_cycle_graph_path_has_expected_length"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*RandomWalk\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-reciprocal-rank-fusion"
+category = "fixed_rule"
+item = "ReciprocalRankFusion"
+source = "crates/krites/src/fixed_rule/mod.rs:916"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/utilities/rrf.rs"
+gate = "Rank-1 contribution and absent-signal-is-zero hold, and ranks are assigned in descending score order."
+gate_test = "none"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*ReciprocalRankFusion\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-reorder-sort"
+category = "fixed_rule"
+item = "ReorderSort"
+source = "crates/krites/src/fixed_rule/mod.rs:908"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/utilities/reorder_sort.rs"
+gate = "A constant list or an OP_LIST application over row-referencing exprs reorders and sorts the input relation by the named keys."
+gate_test = "none"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*ReorderSort\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-scc"
+category = "fixed_rule"
+item = "SCC"
+source = "crates/krites/src/fixed_rule/mod.rs:879"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/strongly_connected_components.rs (alias of StronglyConnectedComponents)"
+gate = "Same gate as the StronglyConnectedComponents row; this spelling must resolve to the same rule."
+gate_test = "none"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*SCC\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-shortest-path-astar"
+category = "fixed_rule"
+item = "ShortestPathAStar"
+source = "crates/krites/src/fixed_rule/mod.rs:844"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/astar.rs"
+gate = "A zero heuristic reproduces Dijkstra's cost exactly, a direct edge returns its weight, and no path returns infinity."
+gate_test = "krites::fixed_rule::tests::path_algorithms::test_astar_when_direct_edge_returns_edge_weight"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*ShortestPathAStar\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-shortest-path-bfs"
+category = "fixed_rule"
+item = "ShortestPathBFS"
+source = "crates/krites/src/fixed_rule/mod.rs:834"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/shortest_path_bfs.rs"
+gate = "A direct edge is a two-node path, a known path returns three nodes, and a disconnected pair returns null."
+gate_test = "krites::fixed_rule::tests::connectivity_misc::test_shortest_path_bfs_when_direct_edge_path_has_two_nodes"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*ShortestPathBFS\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-shortest-path-dijkstra"
+category = "fixed_rule"
+item = "ShortestPathDijkstra"
+source = "crates/krites/src/fixed_rule/mod.rs:839"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/shortest_path_dijkstra.rs"
+gate = "Costs agree with Bellman-Ford on the same graph, self-path cost is zero, and the triangle inequality holds (Appendix A row 11: Dijkstra vs Bellman-Ford agreement)."
+gate_test = "krites::fixed_rule::tests::path_algorithms::test_shortest_path_dijkstra_when_disconnected_returns_no_path"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*ShortestPathDijkstra\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-strongly-connected-components"
+category = "fixed_rule"
+item = "StronglyConnectedComponents"
+source = "crates/krites/src/fixed_rule/mod.rs:874"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/strongly_connected_components.rs (StronglyConnectedComponent::new(true))"
+gate = "A DAG makes every node its own component and two disjoint cycles are two components; agrees with brute-force reachability (Appendix A row 11: SCC vs independent Tarjan)."
+gate_test = "krites::fixed_rule::tests::connectivity_misc::test_scc_when_dag_each_node_is_its_own_component"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*StronglyConnectedComponents\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+[[capability]]
+id = "fixed-rule-top-sort"
+category = "fixed_rule"
+item = "TopSort"
+source = "crates/krites/src/fixed_rule/mod.rs:864"
+dest_wave = "wave-5"
+dest_module = "fixed_rule/algos/top_sort.rs"
+gate = "The ordering respects every edge of a DAG and returns all nodes with contiguous indices."
+gate_test = "krites::fixed_rule::tests::connectivity_misc::test_top_sort_when_dag_ordering_respects_all_edges"
+call_sites = 0
+call_sites_method = "grep -rEn '<~\\s*TopSort\\(' crates/ --include='*.rs' | grep -v ^crates/krites/"
+
+# ---------------------------------------------------------------------------
+# category = "storage_method" -- every method of the Storage and StoreTx
+# traits, storage/mod.rs. 16 methods, not the 15 the api-fjall-storage and
+# appendix-a-cross-partition-atomic-write gates used to assert: 4 on Storage
+# and 12 on StoreTx. The wave-1b mem-vs-fjall differential is defined over
+# exactly this set, so a miscount is a differential that silently skips a
+# method.
+# call_sites: -1 for the whole category. Both traits are pub(crate)
+# (lib.rs:52), so no call site outside crates/krites/ can exist by
+# construction, and an internal `.get(`/`.put(` grep matches every BTreeMap
+# in the crate rather than the trait. What a rewrite could narrow here is a
+# per-backend implementation, and that is what this category's bidirectional
+# check against the trait bodies covers.
+# ---------------------------------------------------------------------------
+
+[[capability]]
+id = "storage-batch-put"
+category = "storage_method"
+item = "Storage::batch_put"
+source = "crates/krites/src/storage/mod.rs:49"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "A batch write is atomic and its keys are visible together, never partially."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "storage-range-compact"
+category = "storage_method"
+item = "Storage::range_compact"
+source = "crates/krites/src/storage/mod.rs:40"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "`::compact` over a range releases the space its removed keys held -- measured as disk-space shrink, not as a call that returned Ok."
+gate_test = "krites::storage::fjall_backend::tests::compact_system_operation_invokes_fjall_compaction"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "storage-storage-kind"
+category = "storage_method"
+item = "Storage::storage_kind"
+source = "crates/krites/src/storage/mod.rs:33"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "Backend identity string, used to branch behaviour that differs between mem and fjall."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "storage-transact"
+category = "storage_method"
+item = "Storage::transact"
+source = "crates/krites/src/storage/mod.rs:36"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "A read transaction sees a point-in-time snapshot and a write transaction is serialised against it; the wave-1b mem-vs-fjall differential asserts both sides agree."
+gate_test = "krites::storage::fjall_backend::tests::range_scan_streams_first_result_before_counting_full_range"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-commit"
+category = "storage_method"
+item = "StoreTx::commit"
+source = "crates/krites/src/storage/mod.rs:95"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "Committed writes are visible to a subsequent transaction; an aborted transaction leaves none."
+gate_test = "krites::storage::fjall_backend::tests::range_scan_streams_first_result_before_counting_full_range"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-del"
+category = "storage_method"
+item = "StoreTx::del"
+source = "crates/krites/src/storage/mod.rs:83"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "A deleted key is absent from the same transaction and after commit."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-del-range-from-persisted"
+category = "storage_method"
+item = "StoreTx::del_range_from_persisted"
+source = "crates/krites/src/storage/mod.rs:86"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "Only the point-in-time snapshot is scanned: a key this same transaction newly put is NOT part of the persisted view the range is defined against (Appendix A row 32: the delta, not the base map)."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-exists"
+category = "storage_method"
+item = "StoreTx::exists"
+source = "crates/krites/src/storage/mod.rs:91"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "Presence agrees with `get(...).is_some()` including for a key shadowed by a pending delete."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-get"
+category = "storage_method"
+item = "StoreTx::get"
+source = "crates/krites/src/storage/mod.rs:61"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "Read-your-own-writes inside a transaction, and the pre-transaction value outside it."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-par-put"
+category = "storage_method"
+item = "StoreTx::par_put"
+source = "crates/krites/src/storage/mod.rs:74"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "A parallel put on a backend that supports it is equivalent to the serial one; on a backend that does not, it errors (mem returns TransactionFailed)."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-put"
+category = "storage_method"
+item = "StoreTx::put"
+source = "crates/krites/src/storage/mod.rs:65"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "A written key is readable in the same transaction and durable after commit."
+gate_test = "krites::storage::fjall_backend::tests::range_scan_streams_first_result_before_counting_full_range"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-range-count"
+category = "storage_method"
+item = "StoreTx::range_count"
+source = "crates/krites/src/storage/mod.rs:158"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "The count equals the number of items a full range scan yields, after a partial scan has already been dropped."
+gate_test = "krites::storage::fjall_backend::tests::range_scan_streams_first_result_before_counting_full_range"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-range-scan"
+category = "storage_method"
+item = "StoreTx::range_scan"
+source = "crates/krites/src/storage/mod.rs:149"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "Raw key/value pairs stream in key order, first result available before the whole range is walked."
+gate_test = "krites::storage::fjall_backend::tests::range_scan_streams_first_result_before_counting_full_range"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-range-scan-tuple"
+category = "storage_method"
+item = "StoreTx::range_scan_tuple"
+source = "crates/krites/src/storage/mod.rs:104"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "Decoded tuples over a key range, in key order, matching a full scan filtered to the same range."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-range-skip-scan-tuple"
+category = "storage_method"
+item = "StoreTx::range_skip_scan_tuple"
+source = "crates/krites/src/storage/mod.rs:134"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "Skip-scan returns the same tuple set as the plain range scan over the equivalent range, at fewer seeks."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+[[capability]]
+id = "store-tx-supports-par-put"
+category = "storage_method"
+item = "StoreTx::supports_par_put"
+source = "crates/krites/src/storage/mod.rs:68"
+dest_wave = "wave-1b"
+dest_module = "storage/mod.rs (trait) + storage/{mem,temp,fjall_backend}.rs (implementations)"
+gate = "Reports whether the backend accepts `par_put`; a backend that says false must reject the call rather than silently accept it."
+gate_test = "none"
+call_sites = -1
+call_sites_method = "not measured: Storage/StoreTx are pub(crate) at crates/krites/src/lib.rs:52, so no call site outside crates/krites/ can exist; the implementations are what a rewrite could narrow and this category's bidirectional trait check covers them"
+
+# ---------------------------------------------------------------------------
+# [[capability_set]] -- the populations too large for one row each. Members
+# are re-derived from source on every run and compared for EXACT equality:
+# a recorded member missing from source is a dropped capability, and a
+# source member missing from the record is an unrecorded one. Regenerate
+# with scripts/check-krites-capability-matrix.py's own extractors -- never
+# by hand, and never by deleting the member the checker just named.
+# ---------------------------------------------------------------------------
+
+[[capability_set]]
+id = "aggregation-dsl-names"
+source = "crates/krites/src/data/aggr/mod.rs  `parse_aggr` match arms"
+dest_wave = "wave-7"
+gate = "Every recorded name still resolves through `parse_aggr`: an aggregation that stays defined while its DSL name is deleted is unreachable from every script, which no implementation-side check would notice."
+members = [
+  "and",
+  "bit_and",
+  "bit_or",
+  "bit_xor",
+  "choice",
+  "choice_rand",
+  "collect",
+  "count",
+  "count_unique",
+  "group_count",
+  "intersection",
+  "latest_by",
+  "max",
+  "mean",
+  "min",
+  "min_cost",
+  "or",
+  "product",
+  "shortest",
+  "smallest_by",
+  "std_dev",
+  "sum",
+  "union",
+  "unique",
+  "variance",
+]
+
+[[capability_set]]
+id = "aggregations"
+source = "crates/krites/src/data/aggr/**  `define_aggr!(NAME, ...)`"
+dest_wave = "wave-7"
+gate = "Per-aggregation differential: each recorded aggregation still exists and folds a seeded multiset to the recorded value, including the meet-semilattice arms that also implement `meet_init`."
+members = [
+  "AGGR_AND",
+  "AGGR_BIT_AND",
+  "AGGR_BIT_OR",
+  "AGGR_BIT_XOR",
+  "AGGR_CHOICE",
+  "AGGR_CHOICE_RAND",
+  "AGGR_COLLECT",
+  "AGGR_COUNT",
+  "AGGR_COUNT_UNIQUE",
+  "AGGR_GROUP_COUNT",
+  "AGGR_INTERSECTION",
+  "AGGR_LATEST_BY",
+  "AGGR_MAX",
+  "AGGR_MEAN",
+  "AGGR_MIN",
+  "AGGR_MIN_COST",
+  "AGGR_OR",
+  "AGGR_PRODUCT",
+  "AGGR_SHORTEST",
+  "AGGR_SMALLEST_BY",
+  "AGGR_STD_DEV",
+  "AGGR_SUM",
+  "AGGR_UNION",
+  "AGGR_UNIQUE",
+  "AGGR_VARIANCE",
+]
+
+[[capability_set]]
+id = "scalar-function-dsl-names"
+source = "crates/krites/src/data/expr/op.rs  `get_op` match arms"
+dest_wave = "wave-7"
+gate = "Every recorded name still resolves through `get_op`. The count is deliberately one BELOW the defined-op set: `OP_REGEX` is reachable only through the eager-compilation rewrite at data/expr/op.rs:302, never by name, and would be invisible to a name-only enumeration."
+members = [
+  "abs",
+  "acos",
+  "acosh",
+  "add",
+  "and",
+  "append",
+  "asin",
+  "asinh",
+  "assert",
+  "atan",
+  "atan2",
+  "atanh",
+  "bit_and",
+  "bit_not",
+  "bit_or",
+  "bit_xor",
+  "ceil",
+  "chars",
+  "chunks",
+  "chunks_exact",
+  "coalesce",
+  "concat",
+  "cos",
+  "cos_dist",
+  "cosh",
+  "decode_base64",
+  "deg_to_rad",
+  "difference",
+  "div",
+  "dump_json",
+  "encode_base64",
+  "ends_with",
+  "eq",
+  "exp",
+  "exp2",
+  "first",
+  "floor",
+  "format_timestamp",
+  "from_substrings",
+  "ge",
+  "get",
+  "gt",
+  "haversine",
+  "haversine_deg_input",
+  "int_range",
+  "intersection",
+  "ip_dist",
+  "is_bytes",
+  "is_finite",
+  "is_float",
+  "is_in",
+  "is_infinite",
+  "is_int",
+  "is_json",
+  "is_list",
+  "is_nan",
+  "is_null",
+  "is_num",
+  "is_string",
+  "is_uuid",
+  "is_vec",
+  "json",
+  "json_object",
+  "json_to_scalar",
+  "l2_dist",
+  "l2_normalize",
+  "last",
+  "le",
+  "length",
+  "list",
+  "ln",
+  "log10",
+  "log2",
+  "lowercase",
+  "lt",
+  "max",
+  "maybe_get",
+  "min",
+  "minus",
+  "mod",
+  "mul",
+  "negate",
+  "neq",
+  "now",
+  "now_micros",
+  "or",
+  "pack_bits",
+  "parse_json",
+  "parse_timestamp",
+  "pow",
+  "prepend",
+  "rad_to_deg",
+  "rand_bernoulli",
+  "rand_choose",
+  "rand_float",
+  "rand_int",
+  "rand_uuid_v1",
+  "rand_uuid_v4",
+  "rand_vec",
+  "regex_extract",
+  "regex_extract_first",
+  "regex_matches",
+  "regex_replace",
+  "regex_replace_all",
+  "remove_json_path",
+  "reverse",
+  "round",
+  "set_json_path",
+  "signum",
+  "sin",
+  "sinh",
+  "slice",
+  "slice_string",
+  "sorted",
+  "sqrt",
+  "starts_with",
+  "str_includes",
+  "sub",
+  "t2s",
+  "tan",
+  "tanh",
+  "to_bool",
+  "to_float",
+  "to_int",
+  "to_string",
+  "to_unity",
+  "to_uuid",
+  "trim",
+  "trim_end",
+  "trim_start",
+  "unicode_normalize",
+  "union",
+  "unpack_bits",
+  "uppercase",
+  "uuid_timestamp",
+  "validity",
+  "vec",
+  "windows",
+]
+
+[[capability_set]]
+id = "scalar-functions"
+source = "crates/krites/src/data/functions/**  `define_op!(NAME, ...)`"
+dest_wave = "wave-7"
+gate = "Per-op differential (Sec 6.1, the wave-7 obligation datavalue-num's gate names): each recorded op still exists and returns the recorded output for the recorded inputs."
+members = [
+  "OP_ABS",
+  "OP_ACOS",
+  "OP_ACOSH",
+  "OP_ADD",
+  "OP_AND",
+  "OP_APPEND",
+  "OP_ASIN",
+  "OP_ASINH",
+  "OP_ASSERT",
+  "OP_ATAN",
+  "OP_ATAN2",
+  "OP_ATANH",
+  "OP_BIT_AND",
+  "OP_BIT_NOT",
+  "OP_BIT_OR",
+  "OP_BIT_XOR",
+  "OP_CEIL",
+  "OP_CHARS",
+  "OP_CHUNKS",
+  "OP_CHUNKS_EXACT",
+  "OP_COALESCE",
+  "OP_CONCAT",
+  "OP_COS",
+  "OP_COSH",
+  "OP_COS_DIST",
+  "OP_DECODE_BASE64",
+  "OP_DEG_TO_RAD",
+  "OP_DIFFERENCE",
+  "OP_DIV",
+  "OP_DUMP_JSON",
+  "OP_ENCODE_BASE64",
+  "OP_ENDS_WITH",
+  "OP_EQ",
+  "OP_EXP",
+  "OP_EXP2",
+  "OP_FIRST",
+  "OP_FLOOR",
+  "OP_FORMAT_TIMESTAMP",
+  "OP_FROM_SUBSTRINGS",
+  "OP_GE",
+  "OP_GET",
+  "OP_GT",
+  "OP_HAVERSINE",
+  "OP_HAVERSINE_DEG_INPUT",
+  "OP_INTERSECTION",
+  "OP_INT_RANGE",
+  "OP_IP_DIST",
+  "OP_IS_BYTES",
+  "OP_IS_FINITE",
+  "OP_IS_FLOAT",
+  "OP_IS_IN",
+  "OP_IS_INFINITE",
+  "OP_IS_INT",
+  "OP_IS_JSON",
+  "OP_IS_LIST",
+  "OP_IS_NAN",
+  "OP_IS_NULL",
+  "OP_IS_NUM",
+  "OP_IS_STRING",
+  "OP_IS_UUID",
+  "OP_IS_VEC",
+  "OP_JSON",
+  "OP_JSON_OBJECT",
+  "OP_JSON_TO_SCALAR",
+  "OP_L2_DIST",
+  "OP_L2_NORMALIZE",
+  "OP_LAST",
+  "OP_LE",
+  "OP_LENGTH",
+  "OP_LIST",
+  "OP_LN",
+  "OP_LOG10",
+  "OP_LOG2",
+  "OP_LOWERCASE",
+  "OP_LT",
+  "OP_MAX",
+  "OP_MAYBE_GET",
+  "OP_MIN",
+  "OP_MINUS",
+  "OP_MOD",
+  "OP_MUL",
+  "OP_NEGATE",
+  "OP_NEQ",
+  "OP_NOW",
+  "OP_NOW_MICROS",
+  "OP_OR",
+  "OP_PACK_BITS",
+  "OP_PARSE_JSON",
+  "OP_PARSE_TIMESTAMP",
+  "OP_POW",
+  "OP_PREPEND",
+  "OP_RAD_TO_DEG",
+  "OP_RAND_BERNOULLI",
+  "OP_RAND_CHOOSE",
+  "OP_RAND_FLOAT",
+  "OP_RAND_INT",
+  "OP_RAND_UUID_V1",
+  "OP_RAND_UUID_V4",
+  "OP_RAND_VEC",
+  "OP_REGEX",
+  "OP_REGEX_EXTRACT",
+  "OP_REGEX_EXTRACT_FIRST",
+  "OP_REGEX_MATCHES",
+  "OP_REGEX_REPLACE",
+  "OP_REGEX_REPLACE_ALL",
+  "OP_REMOVE_JSON_PATH",
+  "OP_REVERSE",
+  "OP_ROUND",
+  "OP_SET_JSON_PATH",
+  "OP_SIGNUM",
+  "OP_SIN",
+  "OP_SINH",
+  "OP_SLICE",
+  "OP_SLICE_STRING",
+  "OP_SORTED",
+  "OP_SQRT",
+  "OP_STARTS_WITH",
+  "OP_STR_INCLUDES",
+  "OP_SUB",
+  "OP_T2S",
+  "OP_TAN",
+  "OP_TANH",
+  "OP_TO_BOOL",
+  "OP_TO_FLOAT",
+  "OP_TO_INT",
+  "OP_TO_STRING",
+  "OP_TO_UNITY",
+  "OP_TO_UUID",
+  "OP_TRIM",
+  "OP_TRIM_END",
+  "OP_TRIM_START",
+  "OP_UNICODE_NORMALIZE",
+  "OP_UNION",
+  "OP_UNPACK_BITS",
+  "OP_UPPERCASE",
+  "OP_UUID_TIMESTAMP",
+  "OP_VALIDITY",
+  "OP_VEC",
+  "OP_WINDOWS",
+]

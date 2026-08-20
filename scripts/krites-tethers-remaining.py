@@ -75,28 +75,40 @@ Lines:
      (which fails outright, unconditionally, when the snapshot is absent):
      main() runs that check before loading anything below, so this script
      never reaches a total without it having already passed.
-  4. CAPABILITY_MATRIX.toml capabilities with no gate_test pointer. The
-     field does not exist in the schema yet, so this line counts every row
-     that lacks it -- honestly the full row count today, but a per-row
-     filter, not a fixed len(rows): the first row that legitimately gains a
-     gate_test pointer moves this line, which len(rows) never could. Checked
-     first against the matrix's OWN source-derived categories -- reusing
+  4. CAPABILITY_MATRIX.toml capabilities with no gate_test pointer -- a row
+     with no recorded runnable-test candidate. `gate_test`
+     names the candidate as a `<binary-id>::<test path>` id; this no-cargo
+     inventory can validate only that shape. The required hosted gate
+     separately resolves every recorded pointer against compiler-derived,
+     filter-matching `cargo nextest list` output and executes that same test
+     selection.
+     `"none"` and an absent field both count as unpointed: the honest state
+     of a capability with no recorded candidate. Checked first against
+     the matrix's OWN source-derived categories -- reusing
      check-krites-capability-matrix.py's extract_sysop_variants /
-     extract_datavalue_variants / extract_lib_public_api / check_category /
-     check_appendix_a, not a second reimplementation of that mapping -- so a
-     row deleted to shrink this count is caught the same way a deleted
-     ledger row is caught in line 1.
+     extract_datavalue_variants / extract_lib_public_api /
+     extract_fixed_rule_names / extract_storage_methods / check_category /
+     check_appendix_a / check_capability_sets, not a second reimplementation
+     of that mapping -- so a row deleted to shrink this count is caught the
+     same way a deleted ledger row is caught in line 1.
+
+     WARNING: resolution by the required hosted nextest check proves only that
+     the named test exists, is runnable, and belongs to the listed world that
+     the job executes. It does NOT mechanically couple the test to this row's
+     capability or prove the `gate` sentence is asserted. Reaching 0 on this
+     line means every capability records a runnable-test candidate, not that
+     any capability has disappearance detection or semantic verification.
   5. GitHub issues, from a tracked set, labelled as compromising the
      provenance mechanism itself rather than a single file's measurement.
      No GitHub label captures exactly this set (checked live, every run --
      see TRACKED_MECHANISM_ISSUES below for what was found and why this
      line's cardinality stays reviewer-enforced beyond what is checked). A
      CLOSED issue counts as resolved only when GitHub's stateReason is
-     COMPLETED; a NOT_PLANNED ("wontfix") close reads identically to still
-     OPEN, because a close-without-a-fix is exactly the wording this line's
-     own code comment always promised would not satisfy it. The closing
-     reference (linked PR/commit, when any) is printed for every tracked
-     issue so a reviewer can see what actually closed it.
+     COMPLETED and the issue's current ClosedEvent names a merged PR as its
+     closer. A NOT_PLANNED ("wontfix") or bare manual close reads identically
+     to still OPEN, because a close bit is not proof of the repair this line
+     claims. The closing reference is printed for every tracked issue so a
+     reviewer can inspect what closed it.
 
 Usage:
     python3 scripts/krites-tethers-remaining.py [--json]
@@ -129,7 +141,7 @@ from typing import NoReturn
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from krites_provenance_lib import (  # noqa: E402
+from krites_provenance_lib import (
     KRITES_DIR,
     LEDGER_PATH,
     NOTICE_PATH,
@@ -188,11 +200,15 @@ def _load_sibling_module(path: Path, name: str) -> ModuleType:
     # traceback, which is the failure this guard exists to prevent -- a checker
     # that dies untidily reads as broken tooling rather than as a refusal.
     except Exception as exc:  # noqa: BLE001
-        refuse(f"could not load {path} for reuse -- its checks cannot be applied: {exc}")
+        refuse(
+            f"could not load {path} for reuse -- its checks cannot be applied: {exc}"
+        )
     return module
 
 
-_capmatrix = _load_sibling_module(SIBLING_CAPABILITY_CHECK, "krites_capability_matrix_check")
+_capmatrix = _load_sibling_module(
+    SIBLING_CAPABILITY_CHECK, "krites_capability_matrix_check"
+)
 
 # INVARIANT: the only legal way a member leaves this tuple is a live GitHub
 # query confirming it CLOSED with stateReason COMPLETED (checked below,
@@ -241,6 +257,71 @@ class IssueStatus:
     state_reason: str | None
     labels: tuple[str, ...] = field(default_factory=tuple)
     closing_refs: tuple[str, ...] = field(default_factory=tuple)
+    merged_closing_refs: tuple[str, ...] = field(default_factory=tuple)
+
+
+_ISSUE_CLOSURE_TIMELINE_QUERY = """
+query($owner:String!,$repo:String!,$number:Int!){
+  repository(owner:$owner,name:$repo){
+    issue(number:$number){
+      timelineItems(itemTypes:[CLOSED_EVENT,REOPENED_EVENT],last:100){
+        totalCount
+        nodes{
+          __typename
+          ... on ClosedEvent{
+            createdAt
+            closer{
+              __typename
+              ... on PullRequest{url state merged mergedAt}
+            }
+          }
+          ... on ReopenedEvent{createdAt}
+        }
+      }
+    }
+  }
+}
+""".strip()
+
+
+def _merged_current_closer(payload: dict) -> tuple[str, ...]:
+    """Return the PR only when it owns the issue's current close event."""
+    try:
+        timeline = payload["data"]["repository"]["issue"]["timelineItems"]
+        total = timeline["totalCount"]
+        nodes = timeline["nodes"]
+    except (KeyError, TypeError) as error:
+        raise TypeError("issue closure timeline has an unexpected shape") from error
+    if (
+        not isinstance(total, int)
+        or isinstance(total, bool)
+        or not isinstance(nodes, list)
+    ):
+        raise TypeError("issue closure timeline count/nodes have unexpected types")
+    if total != len(nodes):
+        raise ValueError(
+            f"issue closure timeline was truncated: {len(nodes)} of {total} events"
+        )
+    if not nodes:
+        return ()
+    latest = nodes[-1]
+    if not isinstance(latest, dict):
+        raise TypeError("issue closure timeline contains a non-object event")
+    if latest.get("__typename") != "ClosedEvent":
+        return ()
+    closer = latest.get("closer")
+    if not isinstance(closer, dict) or closer.get("__typename") != "PullRequest":
+        return ()
+    if (
+        closer.get("state") != "MERGED"
+        or closer.get("merged") is not True
+        or not isinstance(closer.get("mergedAt"), str)
+        or not closer["mergedAt"]
+        or not isinstance(closer.get("url"), str)
+        or not closer["url"]
+    ):
+        return ()
+    return (closer["url"],)
 
 
 def _run_sibling_validator(script: Path) -> None:
@@ -291,10 +372,12 @@ def _validate_ledger_completeness(rows: list[dict]) -> None:
     extra = sorted(p for p in ledger_paths - src_paths if p is not None)
     if missing or extra:
         detail = [
-            f"{LEDGER_PATH} does not exactly match crates/krites/src/ "
-            "(iter_src_files(), the same completeness boundary check-krites-provenance.py's "
-            "check_completeness uses) -- refusing to count lines 1/2 against a ledger that cannot "
-            "be trusted to enumerate the real tree."
+            (
+                f"{LEDGER_PATH} does not exactly match crates/krites/src/ "
+                "(iter_src_files(), the same completeness boundary "
+                "check-krites-provenance.py's check_completeness uses) -- refusing to count "
+                "lines 1/2 against a ledger that cannot be trusted to enumerate the real tree."
+            )
         ]
         if missing:
             detail.append(f"  source files with no ledger row: {missing}")
@@ -313,9 +396,20 @@ def _validate_capability_matrix_completeness(rows: list[dict]) -> None:
         "datavalue", _capmatrix.extract_datavalue_variants(), rows, "data/value.rs"
     )
     errors += _capmatrix.check_category(
-        "public_api", _capmatrix.extract_lib_public_api(), rows, "lib.rs"
+        "public_api",
+        _capmatrix.extract_lib_public_api(),
+        rows,
+        "lib.rs",
+        allowed_bundles=_capmatrix.PUBLIC_API_SOURCE_BUNDLES,
+    )
+    errors += _capmatrix.check_category(
+        "fixed_rule", _capmatrix.extract_fixed_rule_names(), rows, "fixed_rule/mod.rs"
+    )
+    errors += _capmatrix.check_category(
+        "storage_method", _capmatrix.extract_storage_methods(), rows, "storage/mod.rs"
     )
     errors += _capmatrix.check_appendix_a(rows)
+    errors += _capmatrix.check_capability_sets(_capmatrix.load_capability_sets())
     if errors:
         refuse(
             f"{CAPABILITY_MATRIX_PATH} does not validate against its own source-derived categories "
@@ -380,7 +474,9 @@ def line_3_license_artifacts(meta: dict, rows: list[dict]) -> Line:
     else:
         absent.append(license_label)
 
-    notice_label = f"{NOTICE_PATH.relative_to(REPO_ROOT)} (CozoDB/MPL attribution section)"
+    notice_label = (
+        f"{NOTICE_PATH.relative_to(REPO_ROOT)} (CozoDB/MPL attribution section)"
+    )
     expected_notice = render_notice(meta, rows)
     # WHY an absent NOTICE.md is its own case rather than folded into the drift
     # comparison below: deleting the file and hand-editing it to drop the
@@ -430,7 +526,9 @@ def line_3_license_artifacts(meta: dict, rows: list[dict]) -> Line:
         else []
     )
     if snapshot_files:
-        present.append(f"{UPSTREAM_SNAPSHOT_ROOT.relative_to(REPO_ROOT)}/ ({len(snapshot_files)} files)")
+        present.append(
+            f"{UPSTREAM_SNAPSHOT_ROOT.relative_to(REPO_ROOT)}/ ({len(snapshot_files)} files)"
+        )
     else:
         absent.append(f"{UPSTREAM_SNAPSHOT_ROOT.relative_to(REPO_ROOT)}/")
 
@@ -449,41 +547,57 @@ def line_3_license_artifacts(meta: dict, rows: list[dict]) -> Line:
     )
 
 
+def _is_unpointed(row: dict) -> bool:
+    # SAFETY: must match check-krites-capability-matrix.py's GATE_TEST_UNPOINTED
+    # exactly. A row this file counts as pointed while the checker treats it as
+    # unpointed would let the total drop without the pointer ever being resolved.
+    value = row.get("gate_test")
+    return not isinstance(value, str) or value.strip().lower() in {"", "none"}
+
+
 def line_4_no_gate_test(rows: list[dict]) -> Line:
-    unpointed = [r for r in rows if not r.get("gate_test")]
+    unpointed = [r for r in rows if _is_unpointed(r)]
     have_gate_test = len(rows) - len(unpointed)
-    if have_gate_test == 0:
-        detail = (
-            f"{len(rows)} [[capability]] rows total; 'gate_test' is not a field in the schema yet, "
-            "so 0 rows carry it -- every row is honestly unpointed, not defaulted to 0"
-        )
-    else:
-        detail = (
-            f"{have_gate_test} of {len(rows)} [[capability]] rows carry a 'gate_test' pointer; "
-            f"{len(unpointed)} do not -- this line is a per-row filter, so it moves as rows gain one"
-        )
+    by_category: dict[str, int] = {}
+    for row in unpointed:
+        category = row.get("category", "<missing>")
+        by_category[category] = by_category.get(category, 0) + 1
     return Line(
         label="4. CAPABILITY_MATRIX.toml capabilities with no gate_test pointer",
         source=(
-            f"{CAPABILITY_MATRIX_PATH.relative_to(REPO_ROOT)} -- per-row filter on a truthy "
-            "'gate_test' field, row set verified against its own source-derived categories "
-            "(reusing check-krites-capability-matrix.py) before this line is computed"
+            f"{CAPABILITY_MATRIX_PATH.relative_to(REPO_ROOT)} -- per-row filter on a "
+            "syntactically validated 'gate_test' field, with the row set verified against "
+            "its own source-derived categories. Existence and ignored state are intentionally "
+            "outside this no-cargo count and belong to the required hosted nextest check"
         ),
         count=len(unpointed),
-        detail=detail,
+        detail=(
+            f"{have_gate_test} of {len(rows)} [[capability]] rows record a well-shaped "
+            f"'gate_test' candidate; {len(unpointed)} do not, by category: {by_category}. "
+            "This line measures recorded candidates only; the hosted gate owns resolution and "
+            "execution, and neither count proves the row's gate sentence is asserted"
+        ),
     )
 
 
 def _gh_issue_status(number: int) -> IssueStatus | None:
-    """Return this issue's live state/stateReason/labels/closing references,
-    or None if the query could not be completed. WARNING: None must never be
-    read as 0 or as resolved by the caller -- it means the state is
-    genuinely unknown."""
+    """Return live issue state plus the PR, if any, owning its current close.
+
+    ``closedByPullRequestsReferences`` is retained only as reviewer context;
+    the GraphQL ClosedEvent/ReopenedEvent timeline owns causal completion.
+    None means a query/proof failure and must never read as zero or resolved.
+    """
     try:
         result = subprocess.run(
             [
-                "gh", "issue", "view", str(number), "--repo", GH_REPO,
-                "--json", "state,stateReason,labels,closedByPullRequestsReferences",
+                "gh",
+                "issue",
+                "view",
+                str(number),
+                "--repo",
+                GH_REPO,
+                "--json",
+                "state,stateReason,labels,closedByPullRequestsReferences",
             ],
             capture_output=True,
             text=True,
@@ -491,7 +605,10 @@ def _gh_issue_status(number: int) -> IssueStatus | None:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"gh issue view {number} --repo {GH_REPO} failed to run: {exc}", file=sys.stderr)
+        print(
+            f"gh issue view {number} --repo {GH_REPO} failed to run: {exc}",
+            file=sys.stderr,
+        )
         return None
     if result.returncode != 0:
         print(
@@ -503,9 +620,14 @@ def _gh_issue_status(number: int) -> IssueStatus | None:
     try:
         payload = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
-        print(f"gh issue view {number} --repo {GH_REPO} returned unparsable JSON: {exc}", file=sys.stderr)
+        print(
+            f"gh issue view {number} --repo {GH_REPO} returned unparsable JSON: {exc}",
+            file=sys.stderr,
+        )
         return None
-    labels = tuple(sorted(entry.get("name", "") for entry in payload.get("labels") or []))
+    labels = tuple(
+        sorted(entry.get("name", "") for entry in payload.get("labels") or [])
+    )
     # NOTE: gh's closedByPullRequestsReferences nests {name, owner: {login}},
     # not a flattened nameWithOwner -- url is already the fully-qualified,
     # always-correct form and needs no reassembly.
@@ -513,11 +635,55 @@ def _gh_issue_status(number: int) -> IssueStatus | None:
         ref.get("url", f"#{ref.get('number')}")
         for ref in payload.get("closedByPullRequestsReferences") or []
     )
+    owner, repo = GH_REPO.split("/", 1)
+    try:
+        timeline_result = subprocess.run(
+            [
+                "gh",
+                "api",
+                "graphql",
+                "-f",
+                f"query={_ISSUE_CLOSURE_TIMELINE_QUERY}",
+                "-F",
+                f"owner={owner}",
+                "-F",
+                f"repo={repo}",
+                "-F",
+                f"number={number}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        print(
+            f"gh closure timeline query for #{number} failed to run: {exc}",
+            file=sys.stderr,
+        )
+        return None
+    if timeline_result.returncode != 0:
+        print(
+            f"gh closure timeline query for #{number} exited "
+            f"{timeline_result.returncode}: {timeline_result.stderr.strip()}",
+            file=sys.stderr,
+        )
+        return None
+    try:
+        timeline_payload = json.loads(timeline_result.stdout)
+        merged_refs = _merged_current_closer(timeline_payload)
+    except (json.JSONDecodeError, TypeError, ValueError) as exc:
+        print(
+            f"gh closure timeline query for #{number} was invalid: {exc}",
+            file=sys.stderr,
+        )
+        return None
     return IssueStatus(
         state=payload.get("state"),
         state_reason=payload.get("stateReason") or None,
         labels=labels,
         closing_refs=refs,
+        merged_closing_refs=merged_refs,
     )
 
 
@@ -529,7 +695,13 @@ def _issue_disposition(status: IssueStatus) -> str:
     # identically to still OPEN.
     if status.state != "CLOSED":
         return "unresolved"
-    if (status.state_reason or "").upper() == "NOT_PLANNED":
+    if (status.state_reason or "").upper() != "COMPLETED":
+        return "unresolved"
+    # A state bit is still the maker grading its own completion.  Require the
+    # tracker-owned join to the PR that closed the issue so a bare manual close
+    # cannot lower this load-bearing count.  A non-PR completion needs a
+    # separately typed proof mechanism before it can count here.
+    if not status.merged_closing_refs:
         return "unresolved"
     return "resolved"
 
@@ -537,14 +709,22 @@ def _issue_disposition(status: IssueStatus) -> str:
 def _original_tracked_issue_numbers() -> frozenset[int]:
     try:
         result = subprocess.run(
-            ["git", "-C", str(REPO_ROOT), "show", f"{TRACKED_ISSUES_ANCHOR_COMMIT}:scripts/krites-tethers-remaining.py"],
+            [
+                "git",
+                "-C",
+                str(REPO_ROOT),
+                "show",
+                f"{TRACKED_ISSUES_ANCHOR_COMMIT}:scripts/krites-tethers-remaining.py",
+            ],
             capture_output=True,
             text=True,
             timeout=30,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        refuse(f"could not read the anchor commit {TRACKED_ISSUES_ANCHOR_COMMIT}: {exc}")
+        refuse(
+            f"could not read the anchor commit {TRACKED_ISSUES_ANCHOR_COMMIT}: {exc}"
+        )
         # NOTE: refuse() exits, so this is unreachable and exists only so the
         # type checker sees the branch terminate. Chained from `exc` so that if
         # refuse() is ever changed to return, the original cause survives.
@@ -569,8 +749,9 @@ def _original_tracked_issue_numbers() -> frozenset[int]:
 def _validate_tracked_issue_removals() -> list[int]:
     """Every issue number present in TRACKED_ISSUES_ANCHOR_COMMIT's tuple but
     absent from TRACKED_MECHANISM_ISSUES today must be independently
-    verified, via a live gh query, to be genuinely CLOSED with stateReason
-    COMPLETED -- the only legitimate way a member leaves this set. Returns
+    verified, via a live gh query, to be CLOSED with stateReason COMPLETED and
+    joined to a merged closing PR -- the only typed proof currently admitted for a
+    member leaving this set. Returns
     the numbers whose gh query failed (contributes to line 5's UNKNOWN
     state, same as any other gh outage); refuses outright the moment a
     removed member is confirmed NOT legitimately closed, since that is a
@@ -587,9 +768,11 @@ def _validate_tracked_issue_removals() -> list[int]:
         if _issue_disposition(status) != "resolved":
             refuse(
                 f"#{number} was removed from TRACKED_MECHANISM_ISSUES but GitHub reports "
-                f"state={status.state!r} stateReason={status.state_reason!r} -- a member may only "
-                "leave this tuple once genuinely CLOSED as COMPLETED, never by editing the tuple "
-                "down to make line 5 read lower"
+                f"state={status.state!r} stateReason={status.state_reason!r} "
+                f"closing_refs={status.closing_refs!r} "
+                f"merged_closing_refs={status.merged_closing_refs!r} -- a member may "
+                "only leave this tuple once CLOSED as COMPLETED with a merged closing "
+                "PR, never by editing the tuple down to make line 5 read lower"
             )
     return failed
 
@@ -597,14 +780,18 @@ def _validate_tracked_issue_removals() -> list[int]:
 def line_5_open_mechanism_issues() -> Line:
     removal_query_failed = _validate_tracked_issue_removals()
 
-    statuses: dict[int, IssueStatus | None] = {n: _gh_issue_status(n) for n in TRACKED_MECHANISM_ISSUES}
+    statuses: dict[int, IssueStatus | None] = {
+        n: _gh_issue_status(n) for n in TRACKED_MECHANISM_ISSUES
+    }
     failed = sorted(removal_query_failed)
     failed += sorted(n for n, s in statuses.items() if s is None)
     source = (
         f"gh issue view <N> --repo {GH_REPO} --json state,stateReason,labels,"
-        f"closedByPullRequestsReferences, for N in {TRACKED_MECHANISM_ISSUES}; every number present "
-        f"in commit {TRACKED_ISSUES_ANCHOR_COMMIT[:12]}'s tuple but absent from it today is verified "
-        "CLOSED+COMPLETED before this line runs"
+        "closedByPullRequestsReferences plus the issue's ClosedEvent/ReopenedEvent "
+        f"GraphQL timeline, for N in {TRACKED_MECHANISM_ISSUES}; every number present "
+        f"in commit {TRACKED_ISSUES_ANCHOR_COMMIT[:12]}'s tuple but absent from it "
+        "today is verified CLOSED+COMPLETED with a merged PR owning the current "
+        "close event before this line runs"
     )
     if failed:
         return Line(
@@ -619,7 +806,11 @@ def line_5_open_mechanism_issues() -> Line:
             ),
         )
 
-    unresolved = sorted(n for n, s in statuses.items() if s is not None and _issue_disposition(s) != "resolved")
+    unresolved = sorted(
+        n
+        for n, s in statuses.items()
+        if s is not None and _issue_disposition(s) != "resolved"
+    )
     no_krites_label = sorted(
         n for n, s in statuses.items() if s is not None and "krites" not in s.labels
     )
@@ -628,6 +819,7 @@ def line_5_open_mechanism_issues() -> Line:
             "state": s.state,
             "state_reason": s.state_reason,
             "closing_refs": list(s.closing_refs),
+            "merged_closing_refs": list(s.merged_closing_refs),
         }
         for n, s in statuses.items()
         if s is not None
@@ -655,7 +847,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--json", action="store_true", help="emit the breakdown as JSON")
+    parser.add_argument(
+        "--json", action="store_true", help="emit the breakdown as JSON"
+    )
     args = parser.parse_args()
 
     # INVARIANT: no total is emitted unless the sibling validators that
@@ -685,7 +879,12 @@ def main() -> int:
         payload = {
             "necessary_not_sufficient": __doc__.strip(),
             "lines": [
-                {"label": ln.label, "source": ln.source, "count": ln.count, "detail": ln.detail}
+                {
+                    "label": ln.label,
+                    "source": ln.source,
+                    "count": ln.count,
+                    "detail": ln.detail,
+                }
                 for ln in lines
             ],
             "total": None if unknown else measured_total,
@@ -703,7 +902,9 @@ def main() -> int:
             print(f"    {ln.detail}")
             print()
         if unknown:
-            print(f"TOTAL: UNKNOWN ({len(unknown)} of {len(lines)} line(s) could not be measured)")
+            print(
+                f"TOTAL: UNKNOWN ({len(unknown)} of {len(lines)} line(s) could not be measured)"
+            )
         else:
             print(f"TOTAL: {measured_total}")
 
