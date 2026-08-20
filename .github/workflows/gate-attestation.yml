@@ -40,6 +40,7 @@
 # hybrid-gate.yml, which generalizes exactly that stage list — cover only
 # fmt/check/clippy/nextest. They never touch check-test-tier-features.py,
 # release-feature-policy.py, check/test-release-versioning.py, the
+# release-only substance-audit policy and receipt classifier, the
 # poiesis-slides/poiesis-sheet feature-combination checks, or the fuzz-target
 # compile check, so a Gate-Passed trailer cannot attest to them and the
 # reusable workflow has no way to run them. Naively swapping this whole file
@@ -88,6 +89,16 @@
 name: Gate Attestation
 
 on:
+  # WHY(#5422): the release workflow must execute this exact gate rather than
+  # maintaining a weaker copy. release_mode disables the docs-only exemption:
+  # a version-only release commit still has to prove the source tree it ships.
+  workflow_call:
+    inputs:
+      release_mode:
+        description: Force the full canonical gate for a release candidate
+        required: false
+        default: false
+        type: boolean
   pull_request:
     branches: [main]
   push:
@@ -157,7 +168,7 @@ jobs:
       # first day — cold-cache headroom was too thin (audit for kanon#10081).
       full_gate_timeout_minutes: 90
       ai_attribution_check: true
-      docs_only_exemption: true
+      docs_only_exemption: ${{ !inputs.release_mode }}
     secrets: inherit
 
   attestation-verify:
@@ -323,6 +334,16 @@ jobs:
         run: |
           scripts/check-release-versioning.py
           scripts/test-release-versioning.py
+          scripts/check-release-artifact-routing.py
+          scripts/test-release-artifact-routing.py
+          scripts/test-release-assets.py
+          scripts/test-release-tarball.py
+          scripts/test-release-attestations.py
+          scripts/test-verify-sha256.sh
+          scripts/test-deploy-download.sh
+          python3 scripts/test-auditable-info.py
+          scripts/substance-audit.py validate
+          scripts/test-substance-audit.py
 
       - name: Diaporeia MCP inventory generator tests
         run: scripts/test-diaporeia-mcp-inventory.py
@@ -417,7 +438,8 @@ jobs:
       # Runs here, not as a standalone workflow — gate-coverage-scripts
       # feeds the required `gate` check, so a standalone workflow (the
       # prior shape) could report failure without ever blocking a merge.
-      # --base-ref: on `push` (post-merge to main), `origin/main` already
+      # --base-ref: release calls compare the immutable release commit with
+      # its parent. On an ordinary `push` (post-merge to main), `origin/main` already
       # IS the just-pushed commit by checkout time, so comparing against it
       # is a self-comparison no-op that can never detect a regression —
       # `github.event.before` (the pre-push SHA) is used on that trigger
@@ -426,7 +448,7 @@ jobs:
       - name: Check krites provenance ledger
         run: |
           python3 scripts/check-krites-provenance.py \
-            --base-ref "${{ github.event_name == 'push' && github.event.before || format('origin/{0}', github.base_ref || 'main') }}"
+            --base-ref "${{ inputs.release_mode && format('{0}^', github.sha) || github.event_name == 'push' && github.event.before || format('origin/{0}', github.base_ref || 'main') }}"
 
       - name: Krites provenance checker self-tests
         run: scripts/test-krites-provenance.py

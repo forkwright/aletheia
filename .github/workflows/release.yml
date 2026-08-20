@@ -13,13 +13,130 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing draft release tag to retry from its exact ref
+        required: true
+        type: string
+      release_sha:
+        description: Exact commit named by the existing tag
+        required: true
+        type: string
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag_name || github.ref_name }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+  GH_REPO: ${{ github.repository }}
+  RELEASE_SHA: ${{ inputs.release_sha || github.sha }}
+  RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
+
 jobs:
+  release-identity:
+    # WHY(#5427): reject a stale/mismatched tag before the canonical gate or
+    # security workflows compile anything. The shared hybrid gate has no ref
+    # input, so the exact-tag dispatch SHA must also equal github.sha.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Bind release inputs to the exact tag event
+        env:
+          CALLER_REF: ${{ github.ref }}
+          CALLER_SHA: ${{ github.sha }}
+        run: |
+          if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ || "$RELEASE_SHA" != "$CALLER_SHA" ]]; then
+            echo "::error::release SHA ${RELEASE_SHA} does not equal caller SHA ${CALLER_SHA}"
+            exit 1
+          fi
+          if [[ "$CALLER_REF" != "refs/tags/${RELEASE_TAG}" ]]; then
+            echo "::error::release must run at refs/tags/${RELEASE_TAG}, received ${CALLER_REF}"
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
+
+      - name: Verify tag, Cargo, manifest, and checkout identity
+        run: |
+          scripts/check-release-versioning.py verify-release --tag "$RELEASE_TAG"
+          tag_commit="$(git rev-list -n 1 "$RELEASE_TAG")"
+          checked_out="$(git rev-parse HEAD)"
+          if [[ "$tag_commit" != "$RELEASE_SHA" || "$checked_out" != "$RELEASE_SHA" ]]; then
+            echo "::error::${RELEASE_TAG}=${tag_commit}, checkout=${checked_out}, expected=${RELEASE_SHA}"
+            exit 1
+          fi
+
+  canonical-gate:
+    # WHY(#5422): one gate owner. A release runs the same hybrid gate,
+    # repo-specific coverage, and aggregate verdict as a PR, with the
+    # docs-only exemption disabled for the version-only release commit.
+    needs: [release-identity]
+    uses: ./.github/workflows/gate-attestation.yml
+    permissions:
+      contents: read
+    with:
+      release_mode: true
+    secrets: inherit
+
+  canonical-security:
+    # WHY(#5422): release readiness includes the same dependency and secret
+    # scans whose cargo audit/cargo deny contexts protect main.
+    needs: [release-identity]
+    uses: ./.github/workflows/security.yml
+    with:
+      release_sha: ${{ inputs.release_sha || github.sha }}
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    secrets: inherit
+
+  prepare-release:
+    needs: [canonical-gate, canonical-security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # Release Please creates this draft before the tagged dispatch. A direct
+      # operator tag has no release object, so create the same draft shape.
+      # Published releases are immutable input here: never upload into one.
+      - name: Require a draft release object
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          expected_prerelease=false
+          if [[ "$RELEASE_TAG" == *-* ]]; then
+            expected_prerelease=true
+          fi
+          if release_json="$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,tagName 2>/dev/null)"; then
+            if [[ "$(jq -r '.isDraft' <<<"$release_json")" != "true" ]]; then
+              echo "::error::${RELEASE_TAG} is already public; refusing to mutate it"
+              exit 1
+            fi
+          else
+            prerelease_args=()
+            if [[ "$expected_prerelease" == "true" ]]; then
+              prerelease_args+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" --draft --verify-tag \
+              --title "$RELEASE_TAG" --generate-notes "${prerelease_args[@]}"
+          fi
+          gh release edit "$RELEASE_TAG" --prerelease="$expected_prerelease"
+          release_json="$(gh release view "$RELEASE_TAG" --json isDraft,isPrerelease,tagName)"
+          test "$(jq -r '.isDraft' <<<"$release_json")" = "true"
+          test "$(jq -r '.isPrerelease' <<<"$release_json")" = "$expected_prerelease"
+
   test:
+    needs: [prepare-release]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -29,6 +146,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
       - name: Check desktop CI path filter covers proskenion path deps
         run: scripts/check-desktop-ci-paths.py
       - name: Check proskenion theatron pins
@@ -46,6 +164,7 @@ jobs:
     # WHY: release feature coverage is derived from Cargo metadata so new
     # optional surfaces are checked unless they are explicitly excluded in the
     # policy manifest.
+    needs: [prepare-release]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -57,6 +176,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - name: Load Cargo metadata
         run: cargo metadata --format-version 1 --no-deps > metadata.json
@@ -85,6 +205,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
       - name: Configure git credentials for fleet deps
         uses: ./.github/actions/fleet-git-credentials
         with:
@@ -115,6 +236,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
       - name: Configure git credentials for fleet deps
         uses: ./.github/actions/fleet-git-credentials
         with:
@@ -137,7 +259,7 @@ jobs:
   build:
     needs: [test, feature-check, no-default-recipes]
     permissions:
-      contents: write
+      contents: read
       attestations: write
       id-token: write
     strategy:
@@ -154,17 +276,16 @@ jobs:
           # WHY: native macOS build on Apple Silicon runner gets Metal
           # support for candle (local embeddings) without cross-compile.
           - target: aarch64-apple-darwin
-            os: macos-14
+            os: macos-15
             artifact: aletheia-macos-aarch64
             cross: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    env:
-      CARGO_TERM_COLOR: always
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
 
       - name: Configure git credentials for fleet deps
         uses: ./.github/actions/fleet-git-credentials
@@ -173,11 +294,15 @@ jobs:
 
       - name: Extract version from tag
         id: version
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+        run: echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
           targets: ${{ matrix.target }}
+
+      - uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2.85.13
+        with:
+          tool: rust-audit-info@0.5.4
 
       # WHY(#4945): records the ACTUAL resolved compiler rather than repeating
       # rust-toolchain.toml's pin — the two should agree, but this is the
@@ -200,15 +325,25 @@ jobs:
 
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo auditable build --release --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cargo auditable build --locked --release --target "$BUILD_TARGET" --features recall,embed-candle
         env:
           BUILD_TARGET: ${{ matrix.target }}
 
       - name: Build (cross)
         if: ${{ matrix.cross }}
-        run: cross auditable build --release --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cross build --locked --release --target "$BUILD_TARGET" --features recall,embed-candle
         env:
           BUILD_TARGET: ${{ matrix.target }}
+
+      - name: Verify embedded auditable dependency graph
+        run: |
+          binary="target/${BUILD_TARGET}/release/aletheia"
+          rust-audit-info "$binary" > "$RUNNER_TEMP/auditable-info.json"
+          scripts/check-auditable-info.py \
+            "$RUNNER_TEMP/auditable-info.json" "$VERSION"
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          VERSION: ${{ steps.version.outputs.version }}
 
       - name: Package tarball
         id: artifact
@@ -228,6 +363,7 @@ jobs:
           PACKAGE_FEATURES="recall,embed-candle" \
           PACKAGE_RUSTC="${{ steps.rustc-version.outputs.version }}" \
           PACKAGE_CROSS_VERSION="${{ matrix.cross && '0.2.5' || 'n/a (native build)' }}" \
+          PACKAGE_SOURCE_COMMIT="$RELEASE_SHA" \
           python3 - <<'PY'
           import hashlib
           import os
@@ -240,7 +376,7 @@ jobs:
           target = os.environ["PACKAGE_TARGET"]
           artifact = os.environ["PACKAGE_ARTIFACT"]
           features = os.environ["PACKAGE_FEATURES"]
-          source_commit = os.environ.get("GITHUB_SHA", "")
+          source_commit = os.environ["PACKAGE_SOURCE_COMMIT"]
           rustc_version = os.environ["PACKAGE_RUSTC"]
           cross_version = os.environ["PACKAGE_CROSS_VERSION"]
 
@@ -282,18 +418,24 @@ jobs:
           BUILD_TARGET: ${{ matrix.target }}
 
       - name: Inspect tarball contents
-        run: scripts/check-release-tarball.sh "$TARBALL" "$VERSION" "$BUILD_TARGET"
+        run: scripts/check-release-tarball.sh "$TARBALL" "$VERSION" "$BUILD_TARGET" "$RELEASE_SHA" "$BINARY"
         env:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD_TARGET: ${{ matrix.target }}
 
-      # WHY here: this is the last point before the artifact can be published.
+      # WHY here: this is the last point before the artifact can be staged.
       # check-release-tarball.sh above inspects the tarball's CONTENTS; nothing
       # yet establishes that the binary inside actually runs on the runner that
       # built it. Both matrix targets produce a natively-runnable binary, so a
       # failure here is real rather than a cross-compilation artifact.
       - name: Smoke test the release binary
         run: scripts/smoke-test.sh --binary "$BINARY"
+
+      - name: Verify binary version matches tag and manifests
+        run: |
+          scripts/check-release-versioning.py verify-release \
+            --tag "$RELEASE_TAG" \
+            --binary "$BINARY"
 
       - name: Generate checksums (Linux)
         if: runner.os == 'Linux'
@@ -307,24 +449,13 @@ jobs:
           shasum -a 256 "$TARBALL" > "$TARBALL.sha256"
           shasum -a 256 "$BINARY" > "$BINARY.sha256"
 
-      - name: Upload release assets
-        run: |
-          gh release upload "${GITHUB_REF#refs/tags/}" \
-            "$TARBALL" \
-            "$TARBALL.sha256" \
-            "$BINARY" \
-            "$BINARY.sha256" \
-            --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # WHY: scan the cargo-auditable binary itself (path:) so syft reads its
+      # WHY: scan the cargo-auditable binary itself (file:) so syft reads its
       # embedded dependency manifest — the SBOM must describe the attested
       # subject (the binary), not the source tree.
       - name: Generate CycloneDX SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          path: ${{ steps.artifact.outputs.bin }}
+          file: ${{ steps.artifact.outputs.bin }}
           format: cyclonedx-json
           output-file: ${{ steps.artifact.outputs.bin }}.cdx.json
           upload-artifact: false
@@ -333,20 +464,21 @@ jobs:
       - name: Generate SPDX SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          path: ${{ steps.artifact.outputs.bin }}
+          file: ${{ steps.artifact.outputs.bin }}
           format: spdx-json
           output-file: ${{ steps.artifact.outputs.bin }}.spdx.json
           upload-artifact: false
           upload-release-assets: false
 
-      - name: Upload SBOMs
-        run: |
-          gh release upload "${GITHUB_REF#refs/tags/}" \
-            "$BINARY.cdx.json" \
-            "$BINARY.spdx.json" \
-            --clobber
+      - name: Bind SBOM package inventories to the binary
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          scripts/check-auditable-info.py \
+            "$RUNNER_TEMP/auditable-info.json" \
+            "$VERSION" \
+            --cyclonedx "$BINARY.cdx.json" \
+            --spdx "$BINARY.spdx.json"
 
       - name: Attest binary provenance
         id: attest-provenance
@@ -371,9 +503,8 @@ jobs:
       # WHY: step outputs are passed through env vars, not interpolated into the
       # run block, so the shell never embeds untrusted ${{ }} expansion (GitHub
       # Actions expression-injection hardening).
-      - name: Upload attestation bundles
+      - name: Stage validated platform assets
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PROVENANCE_BUNDLE: ${{ steps.attest-provenance.outputs.bundle-path }}
           CDX_BUNDLE: ${{ steps.attest-cyclonedx-sbom.outputs.bundle-path }}
           SPDX_BUNDLE: ${{ steps.attest-spdx-sbom.outputs.bundle-path }}
@@ -381,22 +512,39 @@ jobs:
           cp "$PROVENANCE_BUNDLE" "$BINARY.provenance.intoto.jsonl"
           cp "$CDX_BUNDLE" "$BINARY.cdx.intoto.jsonl"
           cp "$SPDX_BUNDLE" "$BINARY.spdx.intoto.jsonl"
-          gh release upload "${GITHUB_REF#refs/tags/}" \
+          mkdir release-stage
+          cp \
+            "$TARBALL" \
+            "$TARBALL.sha256" \
+            "$BINARY" \
+            "$BINARY.sha256" \
+            "$BINARY.cdx.json" \
+            "$BINARY.spdx.json" \
             "$BINARY.provenance.intoto.jsonl" \
             "$BINARY.cdx.intoto.jsonl" \
             "$BINARY.spdx.intoto.jsonl" \
-            --clobber
+            release-stage/
+
+      - name: Upload staged platform assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-${{ matrix.artifact }}
+          path: release-stage/
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
   sbom:
     needs: [test, feature-check]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
 
       - name: Configure git credentials for fleet deps
         uses: ./.github/actions/fleet-git-credentials
@@ -405,13 +553,9 @@ jobs:
 
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:
-          artifact-name: aletheia-sbom.spdx.json
           output-file: aletheia-sbom.spdx.json
-
-      - name: Attach Anchore SBOM to release
-        run: gh release upload "${GITHUB_REF#refs/tags/}" aletheia-sbom.spdx.json --clobber
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          upload-artifact: false
+          upload-release-assets: false
 
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -424,7 +568,130 @@ jobs:
       - name: Generate CycloneDX SBOM
         run: scripts/generate-sbom.sh
 
-      - name: Attach CycloneDX SBOM to release
-        run: gh release upload "${GITHUB_REF#refs/tags/}" bom.cdx.json --clobber
+      - name: Stage workspace SBOMs
+        run: |
+          mkdir release-stage
+          cp aletheia-sbom.spdx.json bom.cdx.json release-stage/
+
+      - name: Upload staged workspace SBOMs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-workspace-sboms
+          path: release-stage/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-release:
+    # WHY(#5423): this is the sole public-release mutation. Every producer
+    # above writes only short-lived Actions artifacts; any upstream failure
+    # leaves a repairable draft with no public partial asset set.
+    needs: [build, sbom]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
+
+      - name: Download every staged release asset
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Validate the complete staged contract
+        run: |
+          scripts/check-release-assets.py \
+            --directory release-assets \
+            --tag "$RELEASE_TAG"
+          version="${RELEASE_TAG#v}"
+          scripts/check-release-tarball.sh \
+            "release-assets/aletheia-linux-x86_64-${version}.tar.gz" \
+            "$version" x86_64-unknown-linux-musl "$RELEASE_SHA" \
+            "release-assets/aletheia-linux-x86_64-${version}"
+          scripts/check-release-tarball.sh \
+            "release-assets/aletheia-macos-aarch64-${version}.tar.gz" \
+            "$version" aarch64-apple-darwin "$RELEASE_SHA" \
+            "release-assets/aletheia-macos-aarch64-${version}"
+          scripts/check-release-attestations.py \
+            --directory release-assets \
+            --tag "$RELEASE_TAG" \
+            --source-sha "$RELEASE_SHA" \
+            --repo "$GITHUB_REPOSITORY"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload the complete set to the draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_json="$(gh release view "$RELEASE_TAG" --json isDraft,tagName)"
+          if [[ "$(jq -r '.isDraft' <<<"$release_json")" != "true" ]]; then
+            echo "::error::${RELEASE_TAG} is public; refusing to mutate its assets"
+            exit 1
+          fi
+          remote_refs="$(git ls-remote --tags origin \
+            "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}")"
+          direct="$(awk '$2 !~ /\^\{\}$/ { print $1 }' <<<"$remote_refs")"
+          peeled="$(awk '$2 ~ /\^\{\}$/ { print $1 }' <<<"$remote_refs")"
+          live_tag_commit="${peeled:-$direct}"
+          if [[ ! "$live_tag_commit" =~ ^[0-9a-f]{40}$ || "$live_tag_commit" != "$RELEASE_SHA" ]]; then
+            echo "::error::live ${RELEASE_TAG}=${live_tag_commit:-missing}, expected=${RELEASE_SHA}"
+            exit 1
+          fi
+          mapfile -d '' assets < <(find release-assets -maxdepth 1 -type f -print0 | sort -z)
+          gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+
+      - name: Round-trip the draft assets before publication
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir downloaded-assets
+          gh release download "$RELEASE_TAG" --dir downloaded-assets --pattern '*'
+          scripts/check-release-assets.py \
+            --directory downloaded-assets \
+            --tag "$RELEASE_TAG"
+          version="${RELEASE_TAG#v}"
+          scripts/check-release-tarball.sh \
+            "downloaded-assets/aletheia-linux-x86_64-${version}.tar.gz" \
+            "$version" x86_64-unknown-linux-musl "$RELEASE_SHA" \
+            "downloaded-assets/aletheia-linux-x86_64-${version}"
+          scripts/check-release-tarball.sh \
+            "downloaded-assets/aletheia-macos-aarch64-${version}.tar.gz" \
+            "$version" aarch64-apple-darwin "$RELEASE_SHA" \
+            "downloaded-assets/aletheia-macos-aarch64-${version}"
+          scripts/check-release-attestations.py \
+            --directory downloaded-assets \
+            --tag "$RELEASE_TAG" \
+            --source-sha "$RELEASE_SHA" \
+            --repo "$GITHUB_REPOSITORY"
+          release_json="$(gh release view "$RELEASE_TAG" --json isDraft,tagName)"
+          if [[ "$(jq -r '.isDraft' <<<"$release_json")" != "true" ]]; then
+            echo "::error::${RELEASE_TAG} ceased to be a draft before final publication"
+            exit 1
+          fi
+
+      - name: Publish the verified draft
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_json="$(gh release view "$RELEASE_TAG" --json isDraft,tagName)"
+          if [[ "$(jq -r '.isDraft' <<<"$release_json")" != "true" ]]; then
+            echo "::error::${RELEASE_TAG} ceased to be a draft before publication"
+            exit 1
+          fi
+          remote_refs="$(git ls-remote --tags origin \
+            "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}")"
+          direct="$(awk '$2 !~ /\^\{\}$/ { print $1 }' <<<"$remote_refs")"
+          peeled="$(awk '$2 ~ /\^\{\}$/ { print $1 }' <<<"$remote_refs")"
+          live_tag_commit="${peeled:-$direct}"
+          if [[ ! "$live_tag_commit" =~ ^[0-9a-f]{40}$ || "$live_tag_commit" != "$RELEASE_SHA" ]]; then
+            echo "::error::live ${RELEASE_TAG}=${live_tag_commit:-missing}, expected=${RELEASE_SHA}"
+            exit 1
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --verify-tag

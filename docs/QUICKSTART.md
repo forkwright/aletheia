@@ -56,7 +56,8 @@ aletheia --version
 Download the tarball from the [releases page](https://github.com/forkwright/aletheia/releases) instead of building from source:
 
 ```bash
-VERSION=$(curl -s https://api.github.com/repos/forkwright/aletheia/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
+TAG=$(curl -fsSL https://api.github.com/repos/forkwright/aletheia/releases/latest | grep '"tag_name":' | cut -d'"' -f4)
+VERSION="${TAG#v}"
 case "$(uname -s)-$(uname -m)" in
   Linux-x86_64) ASSET=aletheia-linux-x86_64 ;;
   Darwin-arm64) ASSET=aletheia-macos-aarch64 ;;
@@ -65,14 +66,20 @@ case "$(uname -s)-$(uname -m)" in
     exit 1
     ;;
 esac
-curl -L "https://github.com/forkwright/aletheia/releases/download/${VERSION}/${ASSET}-${VERSION}.tar.gz" \
-  -o aletheia.tar.gz
-tar xzf aletheia.tar.gz
+TARBALL="${ASSET}-${VERSION}.tar.gz"
+curl -fLO "https://github.com/forkwright/aletheia/releases/download/${TAG}/${TARBALL}"
+curl -fLO "https://github.com/forkwright/aletheia/releases/download/${TAG}/${TARBALL}.sha256"
+if command -v sha256sum >/dev/null 2>&1; then
+  sha256sum -c "${TARBALL}.sha256"
+else
+  shasum -a 256 -c "${TARBALL}.sha256"
+fi
+tar xzf "$TARBALL"
 cd "aletheia-${VERSION}"
 sudo cp aletheia /usr/local/bin/
 ```
 
-To pin a specific release, replace the `VERSION=$(curl ...)` line with `VERSION=vX.Y.Z` where `X.Y.Z` matches the desired [release tag](https://github.com/forkwright/aletheia/releases).
+To pin a specific release, replace the `TAG=$(curl ...)` line with `TAG=vX.Y.Z`; keep `VERSION="${TAG#v}"` so the tag and bare asset version remain distinct.
 
 ---
 

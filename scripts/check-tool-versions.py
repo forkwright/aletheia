@@ -9,11 +9,11 @@ manifest and every site together, then this check confirms they agree.
 
 from __future__ import annotations
 
-import sys
-import tomllib
 import logging
+import sys
 from pathlib import Path
 
+import tomllib
 
 LOGGER = logging.getLogger("check-tool-versions")
 
@@ -21,14 +21,23 @@ LOGGER = logging.getLogger("check-tool-versions")
 # call-site shape (an install-action `tool:` value, a `cargo install --version`
 # flag, a shell variable assignment) is a property of HOW each tool is
 # installed, not of its version — six tools, six shapes, not worth a
-# templating DSL in the TOML for a set this size.
-TOOL_MATCH_TEMPLATES: dict[str, str] = {
-    "nextest": "nextest@{version}",
-    "cargo-audit": "cargo-audit@{version}",
-    "cargo-fuzz": "cargo-fuzz --locked --version {version}",
-    "cross": "cross --locked --version {version}",
-    "cargo-cyclonedx": 'CARGO_CYCLONEDX_VERSION="{version}"',
-    "uv": 'version: "{version}"',
+# templating DSL in the TOML for a set this size. A tool may have more than
+# one honest installation spelling (host Cargo versus a cross-image script).
+TOOL_MATCH_TEMPLATES: dict[str, tuple[str, ...]] = {
+    "nextest": ("nextest@{version}",),
+    "cargo-audit": ("cargo-audit@{version}",),
+    "cargo-fuzz": ("cargo-fuzz --locked --version {version}",),
+    "cross": ("cross --locked --version {version}",),
+    "cargo-auditable": (
+        "cargo-auditable --locked --version {version}",
+        'cargo_auditable_version="{version}"',
+    ),
+    "cargo-mutants": ("cargo-mutants --version {version}",),
+    "rust-audit-info": ("rust-audit-info@{version}",),
+    "trufflehog": ("version: {version}",),
+    "gitleaks": ("GITLEAKS_VERSION: {version}",),
+    "cargo-cyclonedx": ('CARGO_CYCLONEDX_VERSION="{version}"',),
+    "uv": ('version: "{version}"',),
 }
 
 
@@ -38,8 +47,8 @@ def load_toml(path: Path) -> dict:
 
 
 def check_tool(repo_root: Path, name: str, entry: dict) -> list[str]:
-    template = TOOL_MATCH_TEMPLATES.get(name)
-    if template is None:
+    templates = TOOL_MATCH_TEMPLATES.get(name)
+    if templates is None:
         return [f"{name}: no match template registered in check-tool-versions.py"]
 
     version = entry.get("version")
@@ -49,7 +58,7 @@ def check_tool(repo_root: Path, name: str, entry: dict) -> list[str]:
     if not sites:
         return [f"{name}: manifest entry missing 'sites'"]
 
-    needle = template.format(version=version)
+    needles = tuple(template.format(version=version) for template in templates)
     errors: list[str] = []
     for site in sites:
         site_path = repo_root / site
@@ -57,9 +66,9 @@ def check_tool(repo_root: Path, name: str, entry: dict) -> list[str]:
             errors.append(f"{name}: site {site} does not exist")
             continue
         content = site_path.read_text(encoding="utf-8")
-        if needle not in content:
+        if not any(needle in content for needle in needles):
             errors.append(
-                f"{name}: {site} does not contain the pinned literal {needle!r} "
+                f"{name}: {site} does not contain a pinned literal from {needles!r} "
                 f"(manifest says {version})"
             )
     return errors

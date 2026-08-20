@@ -8,7 +8,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 _SCRIPT_PATH = Path(__file__).parent / "check-tool-versions.py"
 
 
@@ -59,6 +58,33 @@ def test_check_tool_fails_when_literal_missing(root: Path) -> None:
     )
 
 
+def test_check_tool_accepts_each_honest_install_spelling(root: Path) -> None:
+    host = root / "host.yml"
+    image = root / "image.sh"
+    host.write_text(
+        "cargo install cargo-auditable --locked --version 0.7.4\n",
+        encoding="utf-8",
+    )
+    image.write_text('cargo_auditable_version="0.7.4"\n', encoding="utf-8")
+    entry = {"version": "0.7.4", "sites": ["host.yml", "image.sh"]}
+    errors = CHECKER.check_tool(root, "cargo-auditable", entry)
+    expect(errors == [], f"both auditable install spellings should pass: {errors!r}")
+
+
+def test_check_tool_accepts_pinned_cargo_mutants(root: Path) -> None:
+    site = root / "substance.yml"
+    site.write_text(
+        "cargo install --locked cargo-mutants --version 27.1.0\n",
+        encoding="utf-8",
+    )
+    errors = CHECKER.check_tool(
+        root,
+        "cargo-mutants",
+        {"version": "27.1.0", "sites": ["substance.yml"]},
+    )
+    expect(errors == [], f"pinned cargo-mutants install should pass: {errors!r}")
+
+
 def test_check_tool_fails_when_site_missing(root: Path) -> None:
     errors = CHECKER.check_tool(
         root, "cross", {"version": "0.2.5", "sites": ["does-not-exist.yml"]}
@@ -103,6 +129,8 @@ def main() -> int:
     for test_fn in (
         test_check_tool_passes_when_literal_present,
         test_check_tool_fails_when_literal_missing,
+        test_check_tool_accepts_each_honest_install_spelling,
+        test_check_tool_accepts_pinned_cargo_mutants,
         test_check_tool_fails_when_site_missing,
         test_check_tool_rejects_unregistered_tool_name,
         test_check_fuzz_nightly_passes_when_date_present,

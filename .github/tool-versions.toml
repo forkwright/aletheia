@@ -28,6 +28,29 @@ sites = [".github/workflows/fuzz.yml"]
 version = "0.2.5"
 sites = [".github/workflows/release.yml"]
 
+[tools.cargo-auditable]
+version = "0.7.4"
+sites = [
+    ".github/workflows/release.yml",
+    "scripts/install-cargo-auditable-cross.sh",
+]
+
+[tools.cargo-mutants]
+version = "27.1.0"
+sites = [".github/workflows/substance-audit.yml"]
+
+[tools.rust-audit-info]
+version = "0.5.4"
+sites = [".github/workflows/release.yml"]
+
+[tools.trufflehog]
+version = "3.97.0"
+sites = [".github/workflows/security.yml"]
+
+[tools.gitleaks]
+version = "8.24.3"
+sites = [".github/workflows/security.yml"]
+
 [tools.cargo-cyclonedx]
 version = "0.5.9"
 sites = ["scripts/generate-sbom.sh"]

@@ -42,63 +42,106 @@ scripts/check-cargo-publish-policy.py
    version-bump PR that updates `.release-please-manifest.json` and `Cargo.toml`
 3. Review and merge the release PR after the normal PR gates pass. Release
    automation does not receive a gate waiver by author identity.
-4. release-please creates a git tag (`vX.Y.Z`) and GitHub Release
-5. The tag triggers `.github/workflows/release.yml`:
-   - Verifies proskenion's standalone theatron pins match the root workspace
-   - Runs `cargo test --workspace --exclude proskenion` and optional
-     feature-flag compile checks
-   - Builds release binaries for the supported targets (see [Supported platforms](#supported-platforms))
-   - Packages the binary with public license, security, docs, examples, and
-     manifest files
-   - Inspects the tarball before upload so missing required contents fail the
-     release job
-   - Generates SHA256 checksums per binary
-   - Generates and attaches an SBOM (SPDX)
-   - Uploads everything to the GitHub Release
+4. Release Please creates an exact `vX.Y.Z` tag and a **draft** GitHub
+   Release. Its repository-token tag does not trigger a tag-push workflow, so
+   `.github/workflows/release-please.yml` explicitly dispatches
+   `.github/workflows/release.yml` at that tag with the emitted tag and SHA.
+5. The release workflow:
+   - Rejects any tag, Cargo version, Release Please manifest, checkout, or
+     caller-SHA mismatch before compilation.
+   - Runs the canonical gate and security workflows, with the release commit's
+     docs-only gate exemption disabled.
+   - Runs release-specific tests and feature-policy compile checks.
+   - Builds and packages both supported targets (see
+     [Supported platforms](#supported-platforms)).
+   - Stages binaries, tarballs, checksums, SBOMs, and attestation bundles as
+     short-lived Actions artifacts; producer jobs never upload to the Release.
+   - At one final barrier, requires the exact 20-file inventory, recomputes
+     outer checksums and every tar-manifest hash/mode/size, verifies the six
+     signed attestations against the binary, source SHA, and release workflow,
+     and proves the signed SBOM predicates equal the released SBOM files.
+   - Uploads the complete set to the draft, downloads and revalidates that
+     exact set, then publishes the draft as the final fallible operation.
 
-## Substance audit (maintainer-only, manual checklist)
+A direct maintainer `v*` tag push enters the same workflow. When no draft
+Release exists, the workflow creates one only after identity, gate, and
+security checks succeed; it then uses the same staging and publication barrier.
 
-This step is not part of a contributor's PR gate — it never runs in CI and never blocks a normal
-PR. It applies only when the maintainer merges the periodic release-please version-bump PR, and
-requires the maintainer's own `kanon` CLI (a private tool; see [CLAUDE.md](../CLAUDE.md)'s
-maintainer-only section). A contributor opening a PR does not need to read the rest of this
-section.
-
-Before merging the release-please PR, run the substance audit against the
-security-critical and execution-critical crates. This is a required manual step —
-not an automated gate. Include the audit result or a link to recorded output in
-the release PR description before merging.
+If an infrastructure failure interrupts the handoff after the draft and tag
+exist, retry the artifact workflow from the exact tag rather than from `main`:
 
 ```bash
-# Install once per machine (see CLAUDE.md § Mutation testing).
-cargo install cargo-mutants
-
-# Audit each crate. `kanon audit substance` runs three detectors:
-#   1. mutation          — cargo-mutants on the crate
-#   2. always_default_config — config knobs that equal their documented default
-#   3. tautological_doc  — "/// Returns the X" style doc comments
-kanon audit substance crates/symbolon       --json > audit-symbolon.json
-kanon audit substance crates/organon        --json > audit-organon.json
-kanon audit substance crates/episteme       --json > audit-episteme.json
-kanon audit substance crates/krites         --json > audit-krites.json
-kanon audit substance crates/nous           --json > audit-nous.json
+TAG=v0.40.0
+SHA="$(git rev-list -n 1 "$TAG")"
+gh workflow run release.yml --ref "$TAG" \
+  -f tag_name="$TAG" \
+  -f release_sha="$SHA"
 ```
 
-Treat findings per crate:
+This recovery is for transient runner or API failures against unchanged tagged
+code. A deterministic failure in the tagged workflow requires a separately
+reviewed abort-and-recut decision; never move the existing release tag to make
+new code appear under the same version.
 
-- **Security-critical (release blocker):** any FAIL on `crates/symbolon/`
-  (auth, JWT, credentials) or `crates/organon/src/sandbox/` (Landlock +
-  seccomp policy). Fix before tagging.
-- **Execution-critical (release blocker):** any FAIL on
-  `crates/episteme/src/recall.rs` (6-factor scoring),
-  `crates/episteme/src/conflict.rs` (fact-conflict resolution), or
-  `crates/krites/src/fixed_rule/algos/` (graph algorithms). Fix before
-  tagging.
-- **Advisory (file an issue, do not block):** FAILs on other crates. The
-  substance gap is real - track it - but shipping can proceed.
+## Substance audit (maintainer-only release qualification)
 
-Skip the mutation detector for the fast-path with `--no-mutations` when
-only the config scan and tautological-doc detectors are needed.
+This is not a contributor PR check and is not a branch-protection context.
+It applies only to the periodic Release Please version-bump PR. Before merging
+that PR, the maintainer must require a `PASS` or `PASS_WITH_ADVISORIES` receipt
+for its exact head SHA in the PR body. The receipt is a procedural release
+condition; GitHub does not mechanically require it for ordinary PRs.
+
+Dispatch the trusted-main workflow with the current Release Please PR and
+head:
+
+```bash
+PR=1234  # Replace with the sole open release-please--branches--main PR.
+SHA="$(gh pr view "$PR" --repo forkwright/aletheia --json headRefOid --jq .headRefOid)"
+gh workflow run substance-audit.yml --repo forkwright/aletheia --ref main \
+  -f release_pr="$PR" \
+  -f expected_sha="$SHA" \
+  -f advisory_issues_json='{}'
+```
+
+`.github/workflows/substance-audit.yml` rejects a foreign, stale, non-release,
+or non-current-main head before executing it. Five isolated hosted jobs build
+the exact private Kanon version, scrub its source and credentials, then run a
+locked baseline and mutation audit for `symbolon`, `organon`, `episteme`,
+`krites`, and `nous`. Kanon and cargo-mutants binaries are never uploaded.
+The exact crate features, critical paths, tool versions, timeouts, and receipt
+retention live in `scripts/substance-audit-policy.toml`; do not duplicate them
+in a release checklist.
+
+The classifier reads raw cargo-mutants outcomes and a complete source scan,
+not Kanon's sampled evidence text:
+
+- A missed or timed-out mutant, or a tautological doc, under a policy critical
+  path blocks the release. This includes all Symbolon source, Organon's
+  sandbox, Episteme's `src/recall/` and `src/conflict.rs`, and Krites's fixed
+  graph algorithms.
+- `NEEDS_HUMAN`, a baseline/tool/schema/timeout failure, incomplete evidence,
+  or a dirty audited tree blocks the release.
+- Findings outside critical paths are advisory only after each advisory class
+  names an open `forkwright/aletheia` issue. The repeated
+  `always_default_config` scan is one workspace advisory, not five crate
+  findings.
+
+If the first run discovers unowned advisories, file the issue or issues, then
+re-adjudicate its immutable per-crate artifacts without repeating mutation
+testing:
+
+```bash
+SOURCE_RUN_ID=123456789
+gh workflow run substance-audit.yml --repo forkwright/aletheia --ref main \
+  -f release_pr="$PR" \
+  -f expected_sha="$SHA" \
+  -f source_run_id="$SOURCE_RUN_ID" \
+  -f advisory_issues_json='{"mutation:nous":"https://github.com/forkwright/aletheia/issues/123"}'
+```
+
+The aggregate step rechecks the live PR head and base before replacing its
+bounded receipt marker. Any Release Please regeneration or main advance makes
+the old receipt stale and requires a fresh five-crate audit.
 
 ## Supported platforms
 
@@ -107,7 +150,7 @@ The release matrix is authoritative in `.github/workflows/release.yml`. Current 
 | Target | Runner | Method | Artifact |
 |--------|--------|--------|----------|
 | `x86_64-unknown-linux-musl` | `ubuntu-latest` | `cross` (static musl) | `aletheia-linux-x86_64` |
-| `aarch64-apple-darwin` | `macos-14` | Native cargo build | `aletheia-macos-aarch64` |
+| `aarch64-apple-darwin` | `macos-15` | Native cargo build | `aletheia-macos-aarch64` |
 
 NOTE: musl produces a fully static binary with no glibc or runtime deps, suitable for any Linux 3.10+ regardless of distro.
 
@@ -123,12 +166,19 @@ scripts/bump-version.sh 0.11.0
 git add -A
 git commit -m "chore: release 0.11.0"
 git tag v0.11.0
-git push origin main --tags
+git push origin main
+git push origin refs/tags/v0.11.0
 ```
 
-The tag push triggers the release workflow.
+The tag push triggers the release workflow, which creates a draft Release when
+needed and publishes only after the complete artifact contract passes.
 
 ## Hotfix process
+
+Only branch directly from a tag that already contains this release workflow.
+For an older assetless tag, first backport the current release workflows,
+validators, and bump script through review; otherwise the new tag executes the
+old tag's broken publication path.
 
 ```bash
 # Branch from the release tag
@@ -137,12 +187,18 @@ git checkout -b hotfix/0.10.1 v0.10.0
 # Apply fix, commit
 git commit -m "fix(scope): description"
 
-# Tag and push
+# Advance every version owner, commit, then push the branch and exact tag
+scripts/bump-version.sh 0.10.1
+git add Cargo.toml Cargo.lock crates/theatron/proskenion/Cargo.lock \
+  .release-please-manifest.json
+git commit -m "chore(main): release 0.10.1"
 git tag v0.10.1
-git push origin hotfix/0.10.1 --tags
+git push origin hotfix/0.10.1
+git push origin refs/tags/v0.10.1
 ```
 
-The tag push builds binaries the same way. Merge the hotfix branch back to `main` afterwards.
+The tag push builds binaries through the same path when that path exists in the
+tagged tree. Merge the hotfix branch back to `main` afterwards.
 
 ## Binary verification
 
@@ -164,25 +220,31 @@ feature set, provenance/SBOM asset names, and SHA256, mode, and size for each
 packaged file except the manifest itself.
 
 ```bash
-# Download binary and checksum (Linux x86_64)
-gh release download v0.10.0 -p 'aletheia-linux-x86_64*'
+# Download one exact binary and its checksum (Linux x86_64)
+TAG=v0.40.0
+VERSION="${TAG#v}"
+ASSET="aletheia-linux-x86_64-${VERSION}"
+gh release download "$TAG" -p "$ASSET" -p "${ASSET}.sha256"
 
 # Verify
-sha256sum -c aletheia-linux-x86_64.sha256
+sha256sum -c "${ASSET}.sha256"
 ```
 
 The release attaches multiple SBOM artifacts with distinct subjects:
 
 | Artifact | Subject | Format | Attested |
 |----------|---------|--------|----------|
-| `aletheia-linux-x86_64.spdx.json` | Linux x86_64 binary | SPDX | Yes (per-binary) |
-| `aletheia-linux-x86_64.cdx.json` | Linux x86_64 binary | CycloneDX | Yes (per-binary) |
-| `aletheia-macos-aarch64.spdx.json` | macOS ARM64 binary | SPDX | Yes (per-binary) |
-| `aletheia-macos-aarch64.cdx.json` | macOS ARM64 binary | CycloneDX | Yes (per-binary) |
-| `aletheia-sbom.spdx.json` | Full source workspace (Anchore) | SPDX | Informational only |
-| `bom.cdx.json` | Full source workspace (cargo-cyclonedx) | CycloneDX | Informational only |
+| `aletheia-linux-x86_64-${VERSION}.spdx.json` | Linux x86_64 binary | SPDX | Yes (per-binary) |
+| `aletheia-linux-x86_64-${VERSION}.cdx.json` | Linux x86_64 binary | CycloneDX | Yes (per-binary) |
+| `aletheia-macos-aarch64-${VERSION}.spdx.json` | macOS ARM64 binary | SPDX | Yes (per-binary) |
+| `aletheia-macos-aarch64-${VERSION}.cdx.json` | macOS ARM64 binary | CycloneDX | Yes (per-binary) |
+| `aletheia-sbom.spdx.json` | Aletheia package dependency closure (Anchore) | SPDX | Informational only |
+| `bom.cdx.json` | Aletheia package dependency closure (cargo-cyclonedx) | CycloneDX | Informational only |
 
-Per-binary SBOMs are attested and scoped to the linked binary artifact. Workspace SBOMs cover all Cargo dependencies regardless of which binary they end up in.
+Per-binary SBOMs are attested and scoped to the linked binary artifact. The
+informational package SBOMs describe the main `aletheia` package's dependency
+closure; individual crate CycloneDX files remain build outputs rather than
+release assets.
 
 ## Supply chain
 
@@ -201,5 +263,5 @@ Per-binary SBOMs are attested and scoped to the linked binary artifact. Workspac
   permission failures as green.
 - `deny.toml` enforces license policy and advisory checks
 - `Cargo.lock` is committed and pinned
-- All GitHub Actions are pinned to version tags (no `@main` references)
+- All GitHub Actions are pinned to immutable commit SHAs (no `@main` references)
 - Anchore SBOM generated on every release

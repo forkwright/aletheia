@@ -15,6 +15,13 @@
 name: Security
 
 on:
+  workflow_call:
+    inputs:
+      release_sha:
+        description: Exact release commit to scan
+        required: false
+        default: ""
+        type: string
   pull_request:
     branches: [main]
   push:
@@ -30,7 +37,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  # WHY(#5422): this workflow is nested below Release Please for releases.
+  # A distinct suffix prevents collision with the outer orchestrator and the
+  # canonical hybrid gate, which evaluate github.workflow in that same caller.
+  group: ${{ github.workflow }}-security-${{ inputs.release_sha || github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -49,6 +59,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false # PROJECT: security hardening — never expose token to steps
+          ref: ${{ inputs.release_sha || github.sha }}
       - name: Configure git credentials for fleet deps
         uses: ./.github/actions/fleet-git-credentials
         with:
@@ -79,6 +90,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
       - name: Configure git credentials for fleet deps
         uses: ./.github/actions/fleet-git-credentials
         with:
@@ -122,6 +134,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
       # WHY(exclude Lob): the Lob detector matches
       # `\b((live|test)_[a-zA-Z0-9_]{35})\b` -- a character class that
       # INCLUDES underscore -- so any `test_`-prefixed identifier whose
@@ -139,6 +152,11 @@ jobs:
       - name: TruffleHog secret scan
         uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
         with:
+          # WHY: A release call must scan the exact release history even when its
+          # outer event was a tag push with an empty commits array.
+          base: ""
+          head: ${{ inputs.release_sha }}
+          version: 3.97.0
           extra_args: --only-verified --exclude-detectors=Lob
 
   gitleaks:
@@ -150,8 +168,36 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
       - name: Gitleaks scan
         uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_VERSION: 8.24.3
+
+      # WHY: The action intentionally exits before scanning when a tag-push payload
+      # has zero commits. Its install step still places the pinned CLI on PATH,
+      # so the retained direct-tag route follows with an explicit full-history
+      # scan. workflow_dispatch already makes the pinned action scan full history;
+      # repeating it would deterministically consume this 15-minute job budget.
+      - name: Gitleaks release-history scan
+        if: inputs.release_sha != '' && github.event_name == 'push'
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ || "$(git rev-parse HEAD)" != "$RELEASE_SHA" ]]; then
+            echo "::error::secret-scan checkout does not match release SHA"
+            exit 1
+          fi
+          if [[ "$(git rev-parse --is-shallow-repository)" != "false" ]]; then
+            echo "::error::release secret scan requires complete git history"
+            exit 1
+          fi
+          gitleaks git \
+            --config .gitleaks.toml \
+            --exit-code 2 \
+            --log-opts="--full-history ${RELEASE_SHA}" \
+            --redact \
+            --verbose \
+            .

@@ -55,7 +55,9 @@ jobs:
           EOF
 
       - name: Validate automation PR gate policy
-        run: python3 scripts/check-automation-pr-gates.py
+        run: |
+          python3 scripts/check-automation-pr-gates.py
+          python3 scripts/check-release-artifact-routing.py
 
       # WHY report-only: fetch-depth:0 + a short timeout + no filter is a risk
       # SIGNATURE, not a defect -- gate-coverage-scripts carries it
