@@ -241,10 +241,13 @@ fn write_entry(
     name: &str,
     content: &str,
 ) -> Result<(), PptxError> {
-    zip.start_file(name, SimpleFileOptions::default())
-        .map_err(|e| PptxError::Pptx {
-            message: e.to_string(),
-        })?;
+    zip.start_file(
+        name,
+        SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT),
+    )
+    .map_err(|e| PptxError::Pptx {
+        message: e.to_string(),
+    })?;
     zip.write_all(content.as_bytes())
         .map_err(|e| PptxError::Pptx {
             message: e.to_string(),

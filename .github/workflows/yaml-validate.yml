@@ -78,6 +78,14 @@ jobs:
       - name: No maintainer notes in published schema descriptions
         run: python3 scripts/check-schema-descriptions.py
 
+      # WHY(zip determinism): `SimpleFileOptions::default()` stamps
+      # OffsetDateTime::now_utc() into every ZIP local file header, so two emissions of
+      # identical content differ in bytes 10-13 once they cross a second boundary. That
+      # failed `pptx_byte_stable_across_runs` and took the required `gate` context down
+      # on the 0.40.0 release head -- a true positive that reproduces roughly never.
+      - name: ZIP entries carry a fixed timestamp, not a wall clock
+        run: python3 scripts/check-zip-determinism.py
+
       - name: Validate automation PR gate policy
         run: |
           python3 scripts/check-automation-pr-gates.py
