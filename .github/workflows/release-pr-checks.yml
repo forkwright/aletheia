@@ -1,0 +1,65 @@
+# WHY(#6806): release-please creates its PR with GITHUB_TOKEN, and GitHub raises no
+# workflow-triggering events for that token. Every release PR therefore arrives with its
+# required contexts ABSENT rather than red, and branch protection holds a PR with a
+# missing context forever -- nothing to re-run, nothing to approve. Measured across two
+# repos in one day: five release PRs, all of them, none recoverable without a human
+# noticing and closing/reopening by hand.
+#
+# A missing check is worse than a failing one. A red check advertises itself; an absent
+# one looks exactly like a PR that has not finished. Releases stopped, and the only
+# symptom was a PR that appeared to be waiting on CI.
+#
+# workflow_dispatch is the one GITHUB_TOKEN-created event GitHub deliberately allows to
+# start another workflow -- release-please.yml already depends on that to dispatch
+# release.yml at a new tag. Dispatching the gating workflows at the release BRANCH puts
+# check runs on that branch's head SHA, which is the PR's head SHA, which is what branch
+# protection reads.
+#
+# WHY a schedule and not a hook on every push to main: release-please force-pushes the
+# release branch on every main push, so a per-push dispatch would restart the ~90-minute
+# gate each time and, during a busy period, never reach a verdict while occupying a
+# runner continuously. An hourly sweep coalesces -- each tick sees only the current head.
+# Gate Attestation's concurrency group is ref-keyed for non-push events, so successive
+# dispatches at the same branch cancel each other and at most one release-branch gate is
+# ever in flight.
+name: Release PR checks
+
+on:
+  schedule:
+    # NOTE: hourly at :17, off the top of the hour where the daily security and
+    # weekly CodeQL crons sit.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  heal:
+    name: a release PR has its required checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      # actions: write to dispatch the gating workflows; pull-requests: read to find
+      # the open release PR and its head SHA. Nothing here writes to a PR.
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): this job runs one Python script that only talks to the API.
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Self-test the healer
+        run: python3 -m unittest discover -s scripts/tests -p 'test_release_pr_checks.py'
+
+      - name: Dispatch any required-context workflow with no run at the release head
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/release_pr_checks.py
