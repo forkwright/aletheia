@@ -73,6 +73,8 @@ clawd
 *.jpeg
 *.gif
 *.svg
+# The app icon is a tracked source asset, not a downloaded binary.
+!assets/aletheia-proskenion.svg
 *.mp3
 *.mp4
 *.zip
