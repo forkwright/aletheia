@@ -5975,6 +5975,7 @@ dependencies = [
 name = "organon"
 version = "0.39.0"
 dependencies = [
+ "aletheia-lexica",
  "eidos",
  "energeia",
  "fjall",

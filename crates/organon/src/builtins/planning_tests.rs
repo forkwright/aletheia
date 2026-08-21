@@ -628,3 +628,131 @@ async fn plan_verify_criteria_dispatches_to_service() {
         "response should include verification status"
     );
 }
+
+/// WHY(#6742): `aletheia-lexica::adjectives` encoded the fleet writing standard and had
+/// no consumer anywhere in the workspace -- a vocabulary built for a check nobody wired.
+/// These are that check.
+mod unfalsifiable_criteria {
+    use super::super::{contains_word, unverifiable_met_criteria};
+
+    fn criteria(items: &[(&str, &str)]) -> String {
+        let entries: Vec<String> = items
+            .iter()
+            .map(|(text, status)| format!(r#"{{"criterion":"{text}","status":"{status}"}}"#))
+            .collect();
+        format!("[{}]", entries.join(","))
+    }
+
+    #[test]
+    fn a_met_criterion_that_cannot_be_measured_is_refused() {
+        let refusal = unverifiable_met_criteria(&criteria(&[("the ingest path is robust", "met")]))
+            .expect("an unfalsifiable adjective on a met criterion must be refused");
+        assert!(
+            refusal.contains("robust"),
+            "the refusal must name the word: {refusal}"
+        );
+        assert!(
+            refusal.contains("the ingest path is robust"),
+            "and the criterion it appears in: {refusal}"
+        );
+    }
+
+    #[test]
+    fn a_measurable_met_criterion_passes() {
+        assert!(
+            unverifiable_met_criteria(&criteria(&[(
+                "ingest completes 10k facts in under 3s",
+                "met",
+            )]))
+            .is_none()
+        );
+    }
+
+    /// WHY only `met` is refused: writing an aspirational criterion is legitimate, and
+    /// reporting one honestly as unmet is exactly what should happen. Refusing these
+    /// would push callers to reword rather than to measure.
+    #[test]
+    fn the_same_words_are_allowed_on_a_criterion_not_claimed_as_met() {
+        for status in ["not-met", "partially-met"] {
+            assert!(
+                unverifiable_met_criteria(&criteria(&[("the ingest path is robust", status)]))
+                    .is_none(),
+                "status {status} must not be refused"
+            );
+        }
+    }
+
+    #[test]
+    fn every_word_in_the_shared_vocabulary_is_actually_enforced() {
+        // WHY over the whole list rather than one sample: this is the wiring the issue
+        // is about. A consumer that reads the list but matches only some of it would
+        // pass a single-word test and leave the rest orphaned exactly as before.
+        for adjective in aletheia_lexica::adjectives::UNFALSIFIABLE_ADJECTIVES {
+            let text = format!("the system is {adjective}");
+            assert!(
+                unverifiable_met_criteria(&criteria(&[(&text, "met")])).is_some(),
+                "{adjective} is in the vocabulary but is not enforced"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unparseable_payload_is_not_this_guard_s_problem() {
+        // WHY: reporting a JSON error here would send the caller to the wrong problem.
+        // The service owns payload validation; this guard owns one claim.
+        assert!(unverifiable_met_criteria("{not json").is_none());
+        assert!(unverifiable_met_criteria("").is_none());
+    }
+
+    #[test]
+    fn a_substring_of_a_longer_word_does_not_match() {
+        // "unscalable" asserts the OPPOSITE of "scalable". A plain `contains` would
+        // refuse a criterion for saying the honest thing.
+        assert!(!contains_word("the design is unscalable", "scalable"));
+        assert!(contains_word("the design is scalable", "scalable"));
+    }
+
+    #[test]
+    fn a_hyphenated_entry_matches_whole_and_not_by_half() {
+        assert!(contains_word(
+            "we shipped a world-class result",
+            "world-class"
+        ));
+        // WHY: a regex `\b` treats the hyphen as a boundary, so a `world-class` pattern
+        // built that way would fire on the "class" in an unrelated phrase.
+        assert!(!contains_word("the class hierarchy is deep", "world-class"));
+    }
+
+    #[test]
+    fn matching_is_case_insensitive() {
+        assert!(contains_word("The System Is ROBUST", "robust"));
+    }
+}
+
+/// WHY(#6742) a separate module: clippy caught the first implementation slicing a
+/// string by byte offset, which panics when an offset lands inside a multi-byte
+/// character. Criteria text is arbitrary input and `to_lowercase` can change a
+/// string's byte length, so this is a real panic and not a style note.
+mod unfalsifiable_matching_is_unicode_safe {
+    use super::super::contains_word;
+
+    #[test]
+    fn non_ascii_text_does_not_panic() {
+        for text in [
+            "die Architektur ist robust",
+            "システムは robust です",
+            "l'approche est robuste — mais pas robust",
+            "🤖 robust",
+            "—robust—",
+        ] {
+            let _ = contains_word(text, "robust");
+        }
+    }
+
+    #[test]
+    fn a_word_adjacent_to_non_ascii_still_matches() {
+        assert!(contains_word("die Architektur ist robust", "robust"));
+        assert!(contains_word("—robust—", "robust"));
+        assert!(!contains_word("robuste", "robust"));
+    }
+}

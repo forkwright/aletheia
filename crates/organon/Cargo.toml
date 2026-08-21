@@ -120,6 +120,10 @@ prometheus-client = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 regex = { workspace = true }
+# WHY(#6742): `plan_verify_criteria` reads UNFALSIFIABLE_ADJECTIVES. That list encoded
+# the fleet writing standard and had no consumer anywhere in the workspace -- built for
+# a check that was never wired.
+aletheia-lexica = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }
