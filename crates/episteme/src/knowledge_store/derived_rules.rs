@@ -359,7 +359,11 @@ impl KnowledgeStore {
 
     /// Atomically increment the global derived-rule source revision.
     ///
-    /// Returns the new revision value.
+    /// Returns the value *after* the increment, not the one it replaced --
+    /// `mark_derived_rules_dirty` stamps watermarks with it, so a caller
+    /// passing the pre-increment value would mark them dirty at a revision
+    /// that is already current. The distinction is worth stating because the
+    /// `bump`/`fetch_add` family is split on which side it hands back.
     fn bump_derived_source_revision(&self) -> crate::error::Result<i64> {
         let current = self.current_derived_source_revision()?;
         let next = current.saturating_add(1);
