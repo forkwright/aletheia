@@ -1316,7 +1316,9 @@ mod tests {
     use tempfile::TempDir;
     use thesauros::loader::load_packs;
 
-    use super::{build_recall_source_registry, prosoche_task_def, resolve_pack_paths};
+    use super::{
+        build_recall_source_registry, prosoche_task_def, resolve_pack_paths, sandbox_config,
+    };
 
     static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
