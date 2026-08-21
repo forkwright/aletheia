@@ -30,6 +30,46 @@ def load_workflow(path: str) -> dict:
     return data
 
 
+def workflow_run_references(workflows_dir: Path) -> list[tuple[str, str]]:
+    """Every (referencing file, referenced workflow NAME) across `on.workflow_run`.
+
+    WHY(#6806) this is checked: `workflow_run.workflows` matches on a workflow's `name:`
+    field, as a plain string. Rename the target and the reference silently stops firing
+    -- no error, no warning, just a trigger that never runs again. That is the same
+    shape as every other defect this file guards: absent rather than red.
+    """
+    references = []
+    for path in sorted(workflows_dir.glob("*.yml")):
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, yaml.YAMLError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        # PyYAML parses a bare `on:` key as the boolean True.
+        triggers = data.get("on") or data.get(True) or {}
+        if not isinstance(triggers, dict):
+            continue
+        run_on = triggers.get("workflow_run") or {}
+        if not isinstance(run_on, dict):
+            continue
+        for name in run_on.get("workflows") or []:
+            references.append((path.name, str(name)))
+    return references
+
+
+def declared_workflow_names(workflows_dir: Path) -> set[str]:
+    names = set()
+    for path in sorted(workflows_dir.glob("*.yml")):
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, yaml.YAMLError):
+            continue
+        if isinstance(data, dict) and isinstance(data.get("name"), str):
+            names.add(data["name"])
+    return names
+
+
 def job_step_text(job: dict) -> str:
     """Concatenate every step's run/if/name/uses/env text for substring checks."""
     chunks = [str(job.get("if", "")), str(job.get("env", ""))]
@@ -120,6 +160,16 @@ def test_fixture_paths() -> list[str]:
 
 def main() -> int:
     errors: list[str] = []
+
+    workflows_dir = ROOT / ".github" / "workflows"
+    declared = declared_workflow_names(workflows_dir)
+    for referrer, referenced in workflow_run_references(workflows_dir):
+        if referenced not in declared:
+            errors.append(
+                f"{referrer}: on.workflow_run references a workflow named "
+                f"{referenced!r}, which no workflow declares. `workflow_run` matches on "
+                "the `name:` field as a plain string, so this trigger will never fire."
+            )
 
     # Automatic Analysis ignores sonar-project.properties and requires its
     # source/test roots to be literal paths. Keep the guarded scope keys and

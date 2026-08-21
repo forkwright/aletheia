@@ -25,6 +25,21 @@
 name: Release PR checks
 
 on:
+  # WHY(#6806) workflow_run and not a schedule alone: release-please FORCE-PUSHES the
+  # release branch on every push to main, and each new head arrives with its runs held
+  # again. Measured while merging a queue of PRs -- the branch regenerated and went
+  # straight back to one visible check within minutes of being healed. An hourly sweep
+  # cannot win that race: by the time it ticks, the head it examined no longer exists.
+  #
+  # This fires when Release Please itself finishes, so the healer runs against the head
+  # that was just created, once per regeneration. `workflow_run` executes in the default
+  # branch's context with repository permissions and is NOT subject to the approval gate
+  # that holds the release PR's own runs -- which is what makes it usable here.
+  workflow_run:
+    workflows: ["Release Please"]
+    types: [completed]
+  # Kept as a backstop, not the primary path: it is the only trigger that still fires if
+  # Release Please itself fails, is disabled, or is renamed out from under the line above.
   schedule:
     # NOTE: hourly at :17, off the top of the hour where the daily security and
     # weekly CodeQL crons sit.
@@ -35,8 +50,12 @@ permissions:
   contents: read
 
 concurrency:
+  # WHY cancel-in-progress here, where the earlier version said false: with
+  # workflow_run, two regenerations in quick succession would otherwise queue two
+  # sweeps, and the older one would act on a head that no longer exists. The newest
+  # sweep is always the correct one.
   group: ${{ github.workflow }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   heal:
