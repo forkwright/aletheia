@@ -402,6 +402,23 @@ mod tests {
         r
     }
 
+    /// The current value of one exact label series, or 0 when it is absent.
+    ///
+    /// WHY(#6931) tests need this at all: most assertions in this module scope
+    /// themselves with a `_test_`-prefixed label value, so no other test can touch the
+    /// same series. Two cannot -- `record_sandbox_mode` and `record_sandbox_unconfigured`
+    /// take REAL label values, and the metric families are process-global statics that
+    /// `fresh_registry` does not isolate. Under nextest (one process per test) nothing
+    /// else increments them and an absolute `... 1` assertion holds; under `cargo test`
+    /// it does not, which is how a suite that CI calls green blocked every leg of the
+    /// release substance audit on `baseline tests exited 101`.
+    fn counter_value(out: &str, series: &str) -> u64 {
+        out.lines()
+            .find_map(|line| line.strip_prefix(series))
+            .and_then(|rest| rest.trim().parse().ok())
+            .unwrap_or(0)
+    }
+
     fn encode(r: &MetricsRegistry) -> String {
         let mut buf = String::new();
         #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
@@ -552,25 +569,58 @@ mod tests {
 
     #[test]
     fn register_and_record_sandbox_mode() {
+        const SERIES: &str =
+            "aletheia_sandbox_mode_total{enforcement=\"enforcing\",egress=\"deny\"}";
         let r = fresh_registry();
+        let before = counter_value(&encode(&r), SERIES);
         record_sandbox_mode(SandboxEnforcement::Enforcing, EgressPolicy::Deny);
-        let out = encode(&r);
-        assert!(
-            out.contains(
-                "aletheia_sandbox_mode_total{enforcement=\"enforcing\",egress=\"deny\"} 1"
-            ),
-            "got: {out}"
+        let after = counter_value(&encode(&r), SERIES);
+        assert_eq!(
+            after - before,
+            1,
+            "recording must increment exactly this series, exactly once"
         );
     }
 
     #[test]
     fn register_and_record_sandbox_unconfigured() {
+        const SERIES: &str = "aletheia_sandbox_mode_total{enforcement=\"none\",egress=\"none\"}";
         let r = fresh_registry();
+        let before = counter_value(&encode(&r), SERIES);
         record_sandbox_unconfigured();
-        let out = encode(&r);
-        assert!(
-            out.contains("aletheia_sandbox_mode_total{enforcement=\"none\",egress=\"none\"} 1"),
-            "got: {out}"
+        let after = counter_value(&encode(&r), SERIES);
+        assert_eq!(
+            after - before,
+            1,
+            "recording must increment exactly this series, exactly once"
+        );
+    }
+
+    /// WHY(#6931) this guard: the delta assertions above would also pass if the two
+    /// recorders wrote to the SAME series, since each would see its own +1. That is the
+    /// one way the rewrite could have been wrong while looking right, and it is exactly
+    /// the distinction the metric exists to make -- an unconfigured sandbox is not an
+    /// enforcing one.
+    #[test]
+    fn the_two_sandbox_recorders_write_to_different_series() {
+        const ENFORCING: &str =
+            "aletheia_sandbox_mode_total{enforcement=\"enforcing\",egress=\"deny\"}";
+        const UNCONFIGURED: &str =
+            "aletheia_sandbox_mode_total{enforcement=\"none\",egress=\"none\"}";
+        let r = fresh_registry();
+        let before_enforcing = counter_value(&encode(&r), ENFORCING);
+        record_sandbox_unconfigured();
+        assert_eq!(
+            counter_value(&encode(&r), ENFORCING),
+            before_enforcing,
+            "recording an unconfigured sandbox must not touch the enforcing series"
+        );
+        let before_unconfigured = counter_value(&encode(&r), UNCONFIGURED);
+        record_sandbox_mode(SandboxEnforcement::Enforcing, EgressPolicy::Deny);
+        assert_eq!(
+            counter_value(&encode(&r), UNCONFIGURED),
+            before_unconfigured,
+            "recording an enforcing sandbox must not touch the unconfigured series"
         );
     }
 
