@@ -1,0 +1,40 @@
+# WHY: `scripts/tests/` had no collector. Four workflows each ran unittest with a
+# `-p` pattern naming their own single test file, so a test added for any other
+# script was committed, passed locally, and was never run by CI -- the failure
+# mode where a check exists and certifies nothing.
+#
+# Discovering the directory with the default `test*.py` pattern means a new
+# scripts/tests file is collected by existing it. The per-script workflows keep
+# their own runs: those are scoped to a job that also does the check itself, and
+# a test running twice costs seconds.
+name: Script tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: every scripts/tests file runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): pure-Python unit tests over scripts/ -- no build and no
+          # history walk, so blobs on demand are enough.
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Discover and run every test under scripts/tests
+        run: python3 -m unittest discover -s scripts/tests -v

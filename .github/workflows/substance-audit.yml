@@ -78,6 +78,9 @@ jobs:
           persist-credentials: false
           ref: ${{ github.sha }}
 
+      - name: Self-test the audit script before spending the matrix
+        run: python3 -m unittest discover -s scripts/tests
+
       - name: Validate policy and derive the five-crate matrix
         id: policy
         run: |

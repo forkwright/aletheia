@@ -62,6 +62,74 @@ TAUTOLOGICAL_PREFIXES = (
     "/// Get the ",
     "/// Set the ",
 )
+# WHY these exclusions exist: the prefix match above tests a SHAPE, not whether a
+# sentence restates its item's name. On its own it reported 116 findings across
+# episteme, krites and nous, of which at most ~14 were plausibly tautological.
+#
+# The largest false-positive class is structural rather than incidental. rustdoc
+# convention -- and this workspace's own `missing_errors_doc` posture -- render an
+# `# Errors` section as "Returns <error> if <condition>", so the check flagged
+# documentation for being written the way the project requires. A gate that
+# reports conformance as a defect trains readers to ignore it, and the release
+# process then demands an owning issue for the noise.
+#
+# A doc line still carries information when it names a concrete type or function
+# in a code span or intra-doc link, or when it states a condition. Neither test
+# proves a sentence is substantive -- this remains a proxy -- but both remove
+# populations that are certainly not tautologies.
+#
+# The decisive test is not the prefix at all: a doc line is tautological when its
+# content words add nothing to the item's own name. That needs the item, so the
+# scan carries the pending doc block forward to the next signature and compares
+# the two. "Get the BFS hop count for a fact" above `fn bfs_hop_count` says
+# nothing the name does not; "Returns the filename stem, or the last two path
+# components for deeper paths" above `fn short_name` does.
+DOC_SECTION_HEADING = "/// # "
+INFORMATIVE_SECTIONS = ("errors", "panics", "safety")
+CONDITION_WORDS = re.compile(r"\b(if|when|unless|otherwise|depending on)\b")
+CODE_OR_LINK = re.compile(r"`[^`]+`|\[[^\]]+\]")
+ITEM_NAME = re.compile(
+    r"^\s*(?:pub(?:\([^)]*\))?\s+)?(?:async\s+|const\s+|unsafe\s+|extern\s+\"[^\"]*\"\s+)*"
+    r"(?:fn|struct|enum|trait|type|const|static)\s+([A-Za-z_][A-Za-z0-9_]*)"
+)
+# Words that carry no information in either a name or a sentence, so their
+# presence on one side and absence on the other means nothing.
+DOC_STOPWORDS = frozenset(
+    """a an and as at by for from in into of on or the this that these those to
+    with its it returns return gets get sets set new value values""".split()
+)
+
+
+def _content_words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z0-9]+", text.lower()) if w not in DOC_STOPWORDS}
+
+
+def _covered_by(word: str, name_words: set[str]) -> bool:
+    """True when `word` adds nothing to a name already containing it, or its stem.
+
+    WHY the prefix rule: an identifier abbreviates where prose does not --
+    `agent_config` is documented as "the agent configuration", `len` as "the
+    length". Exact set containment misses those, which is the difference between
+    a check that catches the obvious cases and one that catches almost nothing.
+    Four characters is short enough to pair cfg/config and len/length, long
+    enough that `set` does not swallow `settings`.
+    """
+    if word in name_words:
+        return True
+    return any(
+        len(shorter) >= 4 and longer.startswith(shorter)
+        for other in name_words
+        for shorter, longer in ((word, other), (other, word))
+    )
+
+
+def _restates_name(doc_text: str, item_name: str) -> bool:
+    """True when the doc adds no content word the item name does not already carry."""
+    doc_words = _content_words(doc_text)
+    if not doc_words:
+        return True
+    name_words = _content_words(item_name.replace("_", " "))
+    return all(_covered_by(word, name_words) for word in doc_words)
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 ISSUE_RE = re.compile(r"^https://github\.com/forkwright/aletheia/issues/([1-9][0-9]*)$")
 RUN_URL_RE = re.compile(
@@ -399,6 +467,12 @@ def validate_workflow_contract(policy: dict[str, Any], repo_root: Path) -> list[
             "uses",
             "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
         ),
+        # WHY the self-test precedes policy validation: the matrix below is
+        # budgeted at 330 minutes, and the classifier it depends on is the thing
+        # most likely to be wrong. Failing here costs seconds. Its position is
+        # pinned like every other step so a later edit cannot quietly move the
+        # cheap check after the expensive one.
+        ("name", "Self-test the audit script before spending the matrix"),
         ("name", "Validate policy and derive the five-crate matrix"),
         ("name", "Bind the open Release Please PR to current main"),
         ("name", "Validate the immutable release comparison"),
@@ -1126,12 +1200,36 @@ def scan_tautological_docs(repo_root: Path, crate_path: str) -> tuple[list[dict[
             errors.append(f"cannot read {resolved_path}: {error}")
             continue
         relative = resolved_path.relative_to(resolved_root).as_posix()
+        section: str | None = None
+        pending: list[tuple[int, str]] = []
         for lineno, line in enumerate(text.splitlines(), 1):
             stripped = line.lstrip()
-            if stripped.startswith(TAUTOLOGICAL_PREFIXES):
-                findings.append(
-                    {"path": relative, "line": lineno, "text": stripped.strip()}
+            if stripped.startswith("///"):
+                if stripped.startswith(DOC_SECTION_HEADING):
+                    section = stripped.removeprefix(DOC_SECTION_HEADING).strip().lower()
+                    continue
+                if (
+                    stripped.startswith(TAUTOLOGICAL_PREFIXES)
+                    and section not in INFORMATIVE_SECTIONS
+                    and not CONDITION_WORDS.search(stripped)
+                    and not CODE_OR_LINK.search(stripped)
+                ):
+                    pending.append((lineno, stripped.strip()))
+                continue
+            if stripped.startswith("#[") or not stripped:
+                # An attribute or blank line sits between the doc and its item
+                # without ending either.
+                continue
+            match = ITEM_NAME.match(stripped)
+            if match is not None:
+                name = match.group(1)
+                findings.extend(
+                    {"path": relative, "line": num, "text": body}
+                    for num, body in pending
+                    if _restates_name(body, name)
                 )
+            section = None
+            pending = []
     return findings, errors
 
 
