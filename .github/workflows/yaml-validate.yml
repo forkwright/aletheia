@@ -68,6 +68,16 @@ jobs:
       - name: Domain-id suppressions may only decrease
         run: python3 scripts/check-domain-id-suppressions.py
 
+      # WHY(schemars): a `///` on a JsonSchema type is projected verbatim into the
+      # generated schema's `description`, so it is published API -- read by an MCP
+      # client, a generated SDK, a docs page. STANDARDS.md separately REQUIRES
+      # comments to carry structured tags, so a maintainer writing `/// WHY: ...` on
+      # a schema field follows one rule and leaks by the other, with nothing at the
+      # point of writing revealing the conflict. 28 such types here and zero tags
+      # today: a baseline of zero is the cheapest moment to pin it.
+      - name: No maintainer notes in published schema descriptions
+        run: python3 scripts/check-schema-descriptions.py
+
       - name: Validate automation PR gate policy
         run: |
           python3 scripts/check-automation-pr-gates.py
