@@ -628,6 +628,7 @@ mod candidate_fetch_tests {
 }
 
 #[cfg(all(test, feature = "knowledge-store"))]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod relevance_fetch_tests {
     use std::sync::Arc;
 
