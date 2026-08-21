@@ -64,12 +64,51 @@ def main() -> int:
     if spanned != [(2, "Closes #3, #4")]:
         failures.append(f"code-span blanking shifted attribution: {spanned}")
 
+    # A closing keyword inside a sentence closes the issue anyway (#4719, #6908).
+    # Both bodies below are the real ones that did it.
+    prose_reject = [
+        "## This does not close #4719",
+        "I was about to\nclose #6908 on it.",
+        "I was about to close #6908 on it.",
+        "This PR closes #55 and adds tests.",
+        "The change here\nfixes #77 as a side effect.",
+    ]
+    prose_accept = [
+        "Closes #123",
+        "- Closes #123",
+        "1. Closes #123",
+        "Some prose.\n\nCloses #123",
+        "Refs #6908",
+        "Related: #123 covers the other half.",
+        "Write `Closes #123` at the start of a line.",
+        "```\nCloses #123\n```",
+    ]
+    for body in prose_reject:
+        if not CHECK.prose_keywords(body):
+            failures.append(f"prose keyword should have been REJECTED: {body!r}")
+    for body in prose_accept:
+        found = CHECK.prose_keywords(body)
+        if found:
+            failures.append(f"prose keyword should have been ACCEPTED: {body!r} ({found})")
+
+    # WHY the wrapped case matters most: a hard-wrapped body puts arbitrary
+    # words at a line start, so a line-based rule reads "close #6908 on it" as
+    # deliberate. It is the second line of "I was about to close #6908 on it",
+    # and it is exactly how #6908 was closed.
+    wrapped = CHECK.prose_keywords("I was about to\nclose #6908 on it.")
+    if wrapped != [(2, "close #6908 on it.")]:
+        failures.append(f"wrapped prose keyword attribution: {wrapped}")
+
     if failures:
         for failure in failures:
             print(f"FAIL: {failure}", file=sys.stderr)
         return 1
 
-    print(f"OK: {len(REJECT)} rejected, {len(ACCEPT)} accepted, attribution correct")
+    print(
+        f"OK: {len(REJECT)} rejected, {len(ACCEPT)} accepted, "
+        f"{len(prose_reject)} prose rejected, {len(prose_accept)} prose accepted, "
+        "attribution correct"
+    )
     return 0
 
 
