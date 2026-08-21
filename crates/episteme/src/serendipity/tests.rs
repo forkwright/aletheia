@@ -226,10 +226,24 @@ fn explore_from_cross_community_paths_rank_higher() {
 
     let paths = explore_from(&graph, "rust", &config);
 
-    if paths.len() >= 2 {
+    // WHY(#6917) the precondition is asserted rather than guarded: this ran as
+    // `if paths.len() >= 2 { .. }`, so a regression that returned zero or one
+    // path skipped the assertion and turned the test GREEN -- under a name
+    // claiming it checks that paths rank higher.
+    assert!(
+        paths.len() >= 2,
+        "the fixture must yield at least two paths for ranking to mean anything, got {}",
+        paths.len()
+    );
+    // WHY every adjacent pair, not just the first: checking `paths[0] >=
+    // paths[1]` alone passes on a list that is unsorted from the second element
+    // on, which is most of the ways a sort can break.
+    for pair in paths.windows(2) {
         assert!(
-            paths[0].interest_score >= paths[1].interest_score,
-            "paths should be ranked by interest score"
+            pair[0].interest_score >= pair[1].interest_score,
+            "paths must be ranked by descending interest score, found {} before {}",
+            pair[0].interest_score,
+            pair[1].interest_score
         );
     }
 }
