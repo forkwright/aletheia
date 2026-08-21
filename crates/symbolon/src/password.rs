@@ -10,7 +10,13 @@ use crate::error::{self, Result};
 
 /// Hash a password with Argon2id (OWASP-recommended defaults).
 ///
-/// Returns the PHC-formatted hash string suitable for storage.
+/// The encoded PHC value carries the Argon2 parameters and a fresh
+/// OS-generated salt needed by [`verify_password`], so repeated hashes of the
+/// same password intentionally produce different storage values.
+///
+/// # Errors
+///
+/// Fails if Argon2 cannot hash or encode the password.
 pub(crate) fn hash_password(password: &SecretString) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();

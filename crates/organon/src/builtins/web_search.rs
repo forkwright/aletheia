@@ -63,14 +63,17 @@ struct BraveResult {
     description: String,
 }
 
-/// Resolve `BRAVE_SEARCH_ENDPOINT`'s host and check it against `gate` before
-/// connecting.
+/// Apply `gate` to `BRAVE_SEARCH_ENDPOINT` before connecting.
+///
+/// `Deny` short-circuits, `Allow` deliberately skips DNS, and `Allowlist`
+/// resolves and checks every candidate address.
 ///
 /// WHY: the endpoint is a fixed constant, not attacker-controlled input, but
 /// `egress = "allowlist"`/`"deny"` must still apply -- an operator who set
 /// `egress = "deny"` expects no network tool to reach out, fixed-destination
-/// or not (#5071). Pinning also guards against DNS poisoning of the search
-/// provider's hostname.
+/// or not (#5071). This preflight does not pin the resolver answer; the
+/// post-connect peer check can reject a response but cannot retract the
+/// request or its subscription token (#5229).
 async fn check_egress_endpoint(gate: &EgressGate) -> std::result::Result<(), String> {
     let url: reqwest::Url = BRAVE_SEARCH_ENDPOINT
         .parse()
@@ -154,10 +157,12 @@ impl ToolExecutor for WebSearchExecutor {
                 Err(e) => return Ok(ToolResult::error(format!("search failed: {e}"))),
             };
 
-            // SECURITY(#5229): re-validate the address the connection
-            // actually landed on, closing the DNS-rebinding gap between the
-            // pre-connect resolution above and reqwest's own connect-time
-            // resolution.
+            // SECURITY(#5229): inspect the address the connection actually
+            // used before accepting the response. This can reject a private
+            // or policy-disallowed rebound peer before response handling, but
+            // the request (including the subscription token) has already been
+            // sent; preventing request-side exposure requires pinning the
+            // validated address.
             if let Err(e) = check_egress_remote_addr(&self.egress, response.remote_addr()) {
                 return Ok(ToolResult::error(e));
             }

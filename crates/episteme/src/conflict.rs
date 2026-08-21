@@ -143,9 +143,14 @@ pub enum ConflictAction {
 /// to the configured LLM provider.
 #[cfg(any(feature = "mneme-engine", test))]
 pub(crate) trait ConflictClassifier: Send + Sync {
-    /// Classify the relationship between an existing fact and a new fact.
+    /// Request one conflict label for an ordered `(existing, new)` fact pair.
     ///
-    /// Returns a raw string that will be parsed into a [`ConflictClassification`].
+    /// After trimming and case-folding, the response must begin with
+    /// `CONTRADICTS`, `REFINES`, `SUPPLEMENTS`, or `UNRELATED`; trailing
+    /// explanation is tolerated by [`ConflictClassification::parse`]. Provider
+    /// failures propagate as [`ConflictError`], while an unrecognized label
+    /// makes the caller fail closed instead of treating uncertainty as
+    /// `Unrelated`.
     fn classify(
         &self,
         existing_content: &str,
@@ -423,10 +428,17 @@ fn build_classification_prompt(
     (system, user_message)
 }
 
-/// Classify new fact against candidates using the LLM provider.
+/// Examine likely conflicts in descending cosine-similarity order.
 ///
-/// Returns the classification for the highest-similarity candidate,
-/// or `None` if there are no candidates.
+/// At most [`DEFAULT_MAX_LLM_CALLS_PER_FACT`] candidates are classified. The
+/// first label stronger than `Unrelated` wins, and its original slice index is
+/// preserved so resolution acts on the same stored fact. Empty input performs
+/// no classifier call and yields `None`; an unrecognized response aborts the
+/// scan immediately under the zero-tolerance policy.
+///
+/// If every examined pair is `Unrelated`, the current sentinel is
+/// `(Unrelated, 0)`; that index does not identify a similarity winner and is
+/// irrelevant to the resulting insert action.
 #[cfg(any(feature = "mneme-engine", test))]
 pub(crate) fn classify_against_candidates(
     classifier: &dyn ConflictClassifier,

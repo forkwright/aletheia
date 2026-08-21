@@ -122,10 +122,11 @@ impl RecallWeights {
 
     /// Whether the graph intelligence recall pipeline should run.
     ///
-    /// Returns `false` when the relationship proximity weight is effectively
-    /// zero, meaning graph traversal results would be multiplied by zero and
-    /// discarded. Callers should skip expensive graph operations (BFS,
-    /// `PageRank`, Louvain) when this returns `false`.
+    /// The pipeline is active when relationship proximity or graph importance
+    /// reaches `f64::EPSILON`. Callers may skip expensive graph operations
+    /// (BFS, `PageRank`, Louvain) only when neither comparison succeeds.
+    /// Weights are not validated here; negative values and `NaN` therefore do
+    /// not activate the pipeline.
     #[must_use]
     pub(crate) fn graph_recall_active(&self) -> bool {
         self.relationship_proximity >= f64::EPSILON || self.graph_importance >= f64::EPSILON
@@ -288,7 +289,14 @@ impl RecallEngine {
         }
     }
 
-    /// Set the max access count for frequency normalization.
+    /// Calibrate the denominator of logarithmic access-frequency scoring.
+    ///
+    /// `count` is the access count that scores exactly `1.0` under
+    /// `ln(1 + accesses) / ln(1 + count)`. It is a scale, not a cap: larger
+    /// access counts score above `1.0`. This builder performs no validation, so
+    /// callers must provide a finite value at least `1.0`; smaller positive
+    /// values can round `1.0 + count` back to `1.0`, making the logarithmic
+    /// denominator zero and the score non-finite.
     #[must_use]
     #[instrument(skip(self))]
     #[cfg_attr(not(test), expect(dead_code, reason = "recall engine scoring methods"))]
@@ -565,8 +573,8 @@ impl RecallEngine {
     /// Apply a graph-enhanced scorer when graph recall is active,
     /// otherwise return the base score unchanged.
     ///
-    /// PERF: skips the `enhance` closure entirely when the relationship
-    /// proximity weight is zero.
+    /// PERF: skips the `enhance` closure entirely when neither graph-related
+    /// weight reaches the activation threshold.
     #[must_use]
     fn graph_enhanced(&self, base: f64, enhance: impl FnOnce(f64) -> f64) -> f64 {
         if self.weights.graph_recall_active() {
@@ -581,7 +589,12 @@ impl RecallEngine {
     /// Superset of [`score_epistemic_tier`](Self::score_epistemic_tier): calling with `importance=0.0`
     /// produces the same result as the base scorer.
     ///
-    /// Returns the base tier score directly when graph recall weight is zero.
+    /// The shared graph gate is active when relationship proximity or graph
+    /// importance reaches `f64::EPSILON`. With neither enabled, the base tier
+    /// score is preserved without evaluating enrichment. When active, clamped
+    /// importance multiplies the base by `1.0..=1.5` and the final result is
+    /// capped at `1.0`; zero importance remains an identity operation for the
+    /// normalized base tier scores.
     #[must_use]
     #[instrument(skip(self))]
     #[cfg_attr(
@@ -600,7 +613,11 @@ impl RecallEngine {
     /// Superset of [`score_relationship_proximity`](Self::score_relationship_proximity): calling with `same_cluster=false`
     /// produces the same result as the base scorer.
     ///
-    /// Returns the base hop score directly when graph recall weight is zero.
+    /// With the shared graph gate disabled, the base hop score is preserved.
+    /// When active, same-community membership raises scores below `0.3` to that
+    /// floor; another community, or an existing score at least `0.3`, remains
+    /// unchanged. An unconnected same-community entity therefore receives weak
+    /// proximity rather than a fabricated direct-path score.
     #[must_use]
     #[instrument(skip(self))]
     #[cfg_attr(
@@ -623,7 +640,10 @@ impl RecallEngine {
     /// Superset of [`score_access_frequency`](Self::score_access_frequency): calling with `chain_length=0`
     /// produces the same result as the base scorer.
     ///
-    /// Returns the base access score directly when graph recall weight is zero.
+    /// With the shared graph gate disabled, the logarithmic access score is
+    /// preserved. When active, each predecessor adds `0.05`, the bonus
+    /// saturates at `0.20` after four predecessors, and the combined score is
+    /// capped at `1.0`. A zero-length chain is an identity operation.
     #[must_use]
     #[instrument(skip(self))]
     #[cfg_attr(not(test), expect(dead_code, reason = "recall engine scoring methods"))]
@@ -634,11 +654,14 @@ impl RecallEngine {
         })
     }
 
-    /// Compute the graph importance score from normalized `PageRank`.
+    /// Normalize a cached `PageRank` signal for weighted recall.
     ///
-    /// Returns the importance value clamped to [0.0, 1.0].
-    /// When no graph data is available, importance is 0.0 and this
-    /// returns 0.0, producing no boost.
+    /// Finite values are bounded to `[0.0, 1.0]` so an out-of-range graph score
+    /// cannot dominate the weighted sum. Search enrichment supplies the
+    /// maximum `PageRank` among a fact's associated entities and uses `0.0`
+    /// when graph data is missing or lookup fails, making absent context
+    /// neutral. `NaN` is not sanitized by [`f64::clamp`] and propagates, so
+    /// callers must provide a finite score.
     #[must_use]
     #[instrument(skip(self))]
     pub fn score_graph_importance(&self, importance: f64) -> f64 {
@@ -694,19 +717,19 @@ impl RecallEngine {
         1.0 / (1.0 + (-x).exp())
     }
 
-    /// Compute the evidence-coverage score for a candidate.
+    /// Convert sparse, per-round gap evidence into a normalized recall factor.
     ///
-    /// Returns the confidence from the `EvidenceGapTracker`'s answered set
-    /// when the candidate's `source_id` appears in `answered_ids`, or 0.0
-    /// when the ID is absent (meaning the candidate does not directly answer
-    /// a known gap).
+    /// `answered_ids` maps source IDs to lexical-coverage confidence from the
+    /// evidence-gap tracker. With an evidence-coverage weight below
+    /// `f64::EPSILON`, scoring short-circuits before consulting the map.
+    /// Otherwise a matching source contributes its finite confidence clamped
+    /// to `[0.0, 1.0]`, while an absent source contributes `0.0`.
+    /// `NaN` confidence propagates through [`f64::clamp`], so callers must
+    /// supply finite map values.
     ///
-    /// Callers running iterative retrieval (`MemR3` style) should supply the
-    /// per-round answered map; callers not using evidence-gap tracking should
-    /// omit this call (weights default to 0.0 so omitting it is equivalent).
-    ///
-    /// Returns 0.0 immediately when `RecallWeights::evidence_coverage` is
-    /// effectively zero.
+    /// This keeps non-iterative retrieval and unanswered gaps neutral while
+    /// allowing an evidence-covered candidate to outrank an otherwise equal
+    /// one.
     #[must_use]
     #[instrument(skip(self, answered_ids))]
     pub fn score_evidence_coverage(
