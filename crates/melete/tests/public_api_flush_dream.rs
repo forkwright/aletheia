@@ -365,12 +365,15 @@ mod dream {
         };
         let source: Arc<dyn TranscriptSource> = Arc::new(FixedSource(vec![transcript]));
         let gate = Arc::new(GatedTarget::new());
-        // WHY the cast is not redundant: `Arc::clone` is an associated function,
+        // WHY the intermediate binding: `Arc::clone` is an associated function,
         // so inference flows inward and fixes `T` from the expected type rather
-        // than offering a coercion site. Without it this is
-        // `&Arc<GatedTarget>` where `&Arc<dyn ConsolidationTarget>` is wanted.
-        let target: Arc<dyn ConsolidationTarget> =
-            Arc::clone(&gate) as Arc<dyn ConsolidationTarget>;
+        // than offering an unsized-coercion site -- assigning its result
+        // straight to `Arc<dyn ConsolidationTarget>` is an E0308. An `as` cast
+        // fixes that and then trips `clippy::as_conversions`, which `-D warnings`
+        // makes an error. Naming the concrete type first gives the coercion its
+        // site on the following line, with no cast at all.
+        let concrete: Arc<GatedTarget> = Arc::clone(&gate);
+        let target: Arc<dyn ConsolidationTarget> = concrete;
         let provider: Arc<dyn LlmProvider> = Arc::new(
             MockProvider::new("## Summary\ns\n## Key Decisions\n- done")
                 .models(&["claude-sonnet-4-20250514"]),
