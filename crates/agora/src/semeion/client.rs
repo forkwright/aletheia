@@ -85,6 +85,14 @@ impl SignalClient {
     ) -> Result<Self> {
         let base = normalize_url(base_url);
 
+        reqwest::Url::parse(&base).map_err(|source| {
+            error::InvalidUrlSnafu {
+                url: base.clone(),
+                reason: source.to_string(),
+            }
+            .build()
+        })?;
+
         // WHY(#5199): `normalize_url` below says "signal-cli daemon is loopback-only",
         // and nothing made that true -- it only ever detected whether a scheme was
         // present. An operator setting `channels.signal.accounts.<id>.httpHost` to a LAN
@@ -95,20 +103,17 @@ impl SignalClient {
         // `hermeneus::openai`, not a second implementation: HTTPS to any host is fine,
         // plaintext only to loopback. signal-cli speaks no TLS, so in practice this
         // means the daemon must be local -- which is what the comment already claimed.
+        //
+        // It runs after the parse above, not before: an unparseable base URL is
+        // malformed, and reporting "insecure transport" for it names the wrong defect.
+        // `SignalClient::new("")` normalises to a bare scheme, which this would reject
+        // as non-loopback only because there is no host in it to inspect.
         if !koina::http::is_secure_or_plaintext_loopback_url(&base) {
             return Err(error::InsecureTransportSnafu {
                 url: koina::http::transport_url_for_diagnostic(&base),
             }
             .build());
         }
-
-        reqwest::Url::parse(&base).map_err(|source| {
-            error::InvalidUrlSnafu {
-                url: base.clone(),
-                reason: source.to_string(),
-            }
-            .build()
-        })?;
 
         let client = reqwest::Client::builder()
             .timeout(rpc_timeout)
@@ -385,6 +390,7 @@ mod tests {
     /// loopback literal and resolves to whatever its owner chooses.
     #[test]
     fn plaintext_to_a_non_loopback_host_is_refused() {
+        install_crypto_provider();
         for url in [
             "192.168.1.50:8080",
             "http://192.168.1.50:8080",
@@ -405,6 +411,7 @@ mod tests {
     /// Loopback over plaintext is the intended deployment and must keep working.
     #[test]
     fn plaintext_to_loopback_is_accepted() {
+        install_crypto_provider();
         for url in [
             "localhost:8080",
             "127.0.0.1:9000",
@@ -425,6 +432,7 @@ mod tests {
     /// here is content crossing the network in the clear; TLS answers that threat.
     #[test]
     fn https_to_a_remote_host_is_still_accepted() {
+        install_crypto_provider();
         assert!(SignalClient::new("https://signal.example.com").is_ok());
     }
 
