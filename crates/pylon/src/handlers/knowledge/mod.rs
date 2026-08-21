@@ -138,8 +138,10 @@ fn validate_entity_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
 /// GET /api/v1/knowledge/facts
 ///
 /// List facts with sorting, filtering, and pagination.
-/// When the knowledge store is absent or unavailable, the endpoint returns an
-/// empty fact list.
+///
+/// An empty list means the store holds no matching facts. A store that is not
+/// configured, or that fails the query, is reported as 503 or 500 -- never as an
+/// empty list, which a caller cannot distinguish from having no memory at all.
 #[utoipa::path(
     get,
     path = "/api/v1/knowledge/facts",
@@ -158,6 +160,8 @@ fn validate_entity_sort_order(sort: &str, order: &str) -> Result<(), ApiError> {
         (status = 200, description = "Fact list with total count"),
         (status = 400, description = "Invalid sort or order parameter", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -180,7 +184,7 @@ pub async fn list_facts(
     validate_sort_order(&query.sort, &query.order)?;
     query.order = query.order.to_ascii_lowercase();
 
-    let mut facts = get_stored_facts(&state, &policy, &query).await;
+    let mut facts = get_stored_facts(&state, &policy, &query).await?;
 
     if let Some(ref filter) = query.filter {
         let filter_lower = filter.to_lowercase();
@@ -306,6 +310,8 @@ pub async fn get_fact(
     responses(
         (status = 200, description = "Entity list with total count"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -321,7 +327,7 @@ pub async fn list_entities(
     validate_entity_sort_order(&query.sort, &query.order)?;
     query.order = query.order.to_ascii_lowercase();
 
-    let mut entities = get_stored_entities(&state);
+    let mut entities = get_stored_entities(&state)?;
     let visible_entities = visible_entity_ids(&state, &policy)?;
     if let Some(ref allowed) = visible_entities {
         entities.retain(|entity| allowed.contains(entity.id.as_str()));

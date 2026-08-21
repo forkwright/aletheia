@@ -89,7 +89,13 @@ async fn knowledge_read_route_accepts_valid_bearer_token_in_token_mode() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::OK);
+    // WHY 503 and not 200: this fixture configures no knowledge store, so the handler
+    // now reports the store as unavailable rather than answering with an empty list.
+    // The subject of this test is the AUTH layer, and reaching the handler at all is
+    // what proves the token was accepted -- a rejected token stops at 401, before any
+    // of this. Asserting the exact status keeps that distinction visible; asserting
+    // merely "not 401" would also pass if the route vanished.
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[tokio::test]
@@ -104,7 +110,9 @@ async fn knowledge_read_route_allows_missing_bearer_token_in_none_mode() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), StatusCode::OK);
+    // See above: 503 is the storeless fixture answering, which is only reachable once
+    // the request has passed the auth layer this test is about.
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 /// Error path: `list_facts` with invalid order parameter returns 400 Bad Request.
@@ -239,17 +247,30 @@ async fn entity_relationships_without_knowledge_store_returns_503() {
     assert_eq!(body["error"]["code"], "service_unavailable");
 }
 
-/// Error path: `list_entities` returns empty list when knowledge store not enabled.
+/// Error path: `list_entities` reports 503 when the knowledge store is not enabled.
 #[tokio::test]
-async fn list_entities_without_knowledge_store_returns_empty() {
+async fn list_entities_without_knowledge_store_returns_503() {
     let (app, _dir) = app().await;
     let resp = app
         .oneshot(authed_get("/api/v1/knowledge/entities"))
         .await
         .unwrap();
 
-    // This endpoint returns empty array when store not available
-    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
     let body = body_json(resp).await;
-    assert!(body["entities"].is_array());
+    assert_eq!(body["error"]["code"], "service_unavailable");
+}
+
+/// Error path: `list_facts` reports 503 when the knowledge store is not enabled.
+#[tokio::test]
+async fn list_facts_without_knowledge_store_returns_503() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/knowledge/facts"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "service_unavailable");
 }

@@ -44,7 +44,13 @@ pub(super) async fn load_facts(app: &mut App) {
             app.layout.memory.loading = false;
         }
         Err(e) => {
+            // WHY(#6821) a toast rather than a debug line: the server now distinguishes
+            // "the store holds no facts" from "there is no store", and that distinction
+            // is worth nothing if the client renders both as an empty panel. A debug log
+            // reaches nobody watching the TUI, which is where the wrong conclusion --
+            // that the agent has forgotten everything -- actually gets drawn.
             tracing::debug!("failed to load facts: {e}");
+            handle_action_result(app, format!("failed to load facts: {e}"));
             app.layout.memory.loading = false;
         }
     }
@@ -119,8 +125,16 @@ pub(super) async fn load_graph_data(app: &mut App) {
     let mut entities: Vec<MemoryEntity> = Vec::new();
     let mut relationships: Vec<MemoryRelationship> = Vec::new();
 
-    if let Ok(resp) = client.knowledge_entities().await {
-        entities = resp.entities.into_iter().map(MemoryEntity::from).collect();
+    match client.knowledge_entities().await {
+        Ok(resp) => {
+            entities = resp.entities.into_iter().map(MemoryEntity::from).collect();
+        }
+        Err(e) => {
+            // Same reason as load_facts: an unreachable store and an empty one drew the
+            // same blank graph, so the operator had no way to tell them apart.
+            tracing::debug!("failed to load entities: {e}");
+            handle_action_result(app, format!("failed to load entities: {e}"));
+        }
     }
 
     // WHY: fetch all relationships by iterating entities; the API exposes per-entity endpoints.
