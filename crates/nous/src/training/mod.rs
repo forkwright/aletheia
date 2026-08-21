@@ -46,7 +46,7 @@
 //! turns that would teach the model to reproduce degenerate outputs.
 
 use std::collections::{BTreeMap, HashSet};
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -125,14 +125,6 @@ pub enum TrainingCaptureError {
     /// Failed to serialize the training manifest.
     #[snafu(display("failed to serialize training manifest: {source}"))]
     SerializeManifest { source: serde_json::Error },
-
-    /// Failed to rename temporary manifest file.
-    #[snafu(display("failed to rename {} to {}: {source}", from.display(), to.display()))]
-    RenameManifest {
-        from: PathBuf,
-        to: PathBuf,
-        source: std::io::Error,
-    },
 
     /// Failed to read the training manifest file that exists on disk.
     #[snafu(display("failed to read training manifest {}: {source}", path.display()))]
@@ -532,23 +524,15 @@ impl TrainingManifest {
     fn persist(&self, manifest_path: &Path) -> Result<()> {
         let json = serde_json::to_string_pretty(self).context(SerializeManifestSnafu)?;
 
-        let tmp_path = manifest_path.with_extension("json.tmp");
-
-        // WHY: std::fs::write is disallowed by project lint config.
-        // Use OpenOptions for explicit create-truncate-write.
-        let mut file = OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .open(&tmp_path)
-            .context(PersistManifestSnafu { path: &tmp_path })?;
-        file.write_all(json.as_bytes())
-            .context(PersistManifestSnafu { path: &tmp_path })?;
-
-        fs::rename(&tmp_path, manifest_path).context(RenameManifestSnafu {
-            from: &tmp_path,
-            to: manifest_path,
-        })?;
+        // WHY(#5351): the shared helper, not a local tmp-open/rename -- it performs the
+        // same atomic write and creates the temp file at 0600, so the manifest is never
+        // briefly world-readable. The manifest names every shard and counts the rows in
+        // each, which is a map of the corpus even when the corpus itself is protected.
+        koina::fs::write_restricted(manifest_path, json.as_bytes()).context(
+            PersistManifestSnafu {
+                path: manifest_path,
+            },
+        )?;
 
         Ok(())
     }
@@ -625,7 +609,7 @@ impl TrainingCapture {
         koina::fs::reject_path_override(&config.path).context(PathEscapesRootSnafu)?;
 
         let dir = instance_root.join(&config.path);
-        fs::create_dir_all(&dir).context(CreateDirSnafu { path: &dir })?;
+        koina::fs::create_dir_all_restricted(&dir).context(CreateDirSnafu { path: &dir })?;
 
         // WHY(#5385): re-check via canonicalization now that `dir` exists —
         // catches a symlink placed inside the instance root that resolves
@@ -925,11 +909,8 @@ impl TrainingCapture {
             }
         }
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.current_shard)
-            .context(OpenFileSnafu {
+        let mut file =
+            koina::fs::open_append_restricted(&self.current_shard).context(OpenFileSnafu {
                 path: &self.current_shard,
             })?;
 
@@ -1006,10 +987,10 @@ impl TrainingCapture {
     /// aid, and losing it must not block the pipeline or, worse, cause the
     /// row to fall through into the corpus.
     fn write_quarantine(&self, line: &str, session_id: &str) {
-        let appended = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.quarantine_path)
+        // WHY(#5351) restricted like the shards: a quarantined row is screened-out
+        // content, not redacted content -- it is the raw conversation that failed the
+        // screen, so it is the most sensitive file in the directory, not the least.
+        let appended = koina::fs::open_append_restricted(&self.quarantine_path)
             .and_then(|mut f| writeln!(f, "{line}"));
         if let Err(e) = appended {
             warn!(

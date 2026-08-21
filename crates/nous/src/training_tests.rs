@@ -1281,3 +1281,79 @@ mod decontamination_policy {
         );
     }
 }
+
+/// The corpus on disk must not be readable by other users on the box.
+///
+/// WHY end-to-end rather than trusting the koina unit tests: those prove the helpers
+/// produce 0600/0700, not that this code path CALLS them. The defect being fixed was
+/// never that a helper was wrong -- `write_restricted` already existed and was already
+/// correct -- it was that six sites in this module did not use one. A test that stops at
+/// the helper would have passed throughout the entire life of the defect.
+///
+/// The discriminating power depends on the ambient umask not already being restrictive:
+/// under `umask 077` the unfixed code also produces 0600. That is the right trade rather
+/// than a gap to close by calling umask(2) here, because `umask 077` is equally the
+/// condition under which the defect cannot be exploited -- this goes red in exactly the
+/// environments where the bug is real, and setting the umask would be process-global and,
+/// under `cargo test`'s thread-per-test model, would change what every other test writes.
+#[cfg(unix)]
+#[test]
+fn shard_and_directory_created_with_owner_only_permissions() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    fn mode_of(path: &std::path::Path) -> u32 {
+        std::fs::metadata(path)
+            .unwrap_or_else(|e| panic!("stat {}: {e}", path.display()))
+            .permissions()
+            .mode()
+            & 0o777
+    }
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = test_config_no_pii("training", 50 * 1024 * 1024);
+    let mut capture = TrainingCapture::new(dir.path(), &config).expect("new");
+
+    let record = TrainingRecord {
+        schema_version: TRAINING_RECORD_SCHEMA_VERSION,
+        session_id: "ses-perm".to_owned(),
+        nous_id: "syn".to_owned(),
+        user_message: "Hello".to_owned(),
+        assistant_response: "Hi there!".to_owned(),
+        model: "claude-opus-4-20250514".to_owned(),
+        provider: Some("anthropic".to_owned()),
+        tokens: 150,
+        cost_usd: Some(0.002),
+        provider_duration_ms: 500,
+        timestamp: Timestamp::UNIX_EPOCH,
+        turn_type: Some("discussion".to_owned()),
+        is_correction: Some(false),
+        fact_types: None,
+        quality_score: Some(0.9),
+        quality_score_formula_version: Some(QUALITY_SCORE_FORMULA_VERSION),
+        quality_score_components: None,
+        tool_outcomes: None,
+        recall_signals: None,
+        tool_surface_hashes: Vec::new(),
+        pii_redacted: false,
+        pii_filter_applied: false,
+        pii_redaction_count: 0,
+        pii_policy_ref: None,
+        decontamination_policy: None,
+        decontamination_verdict: None,
+        classifier_version: None,
+    };
+    capture.write_record(&record).expect("write");
+
+    assert_eq!(
+        mode_of(capture.dir()),
+        0o700,
+        "the training directory must not be enterable by other users; a 0600 shard \
+         inside a 0755 directory still exposes its name, size and mtime, and lets \
+         anyone with write access to the directory replace it"
+    );
+    assert_eq!(
+        mode_of(capture.file_path()),
+        0o600,
+        "the JSONL shard holds raw conversation content and must be owner-only"
+    );
+}
