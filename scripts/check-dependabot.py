@@ -198,6 +198,38 @@ def coverage(entry: dict, repo_root: Path):
     return True, f"cargo: all {len(actual)} resolution root(s) listed"
 
 
+def report(ok: bool, message: str) -> bool:
+    """Log one result at the level its verdict deserves; return whether it failed."""
+    (LOGGER.info if ok else LOGGER.error)("check-dependabot: %s", message)
+    return not ok
+
+
+def evaluate(entries: list[dict], prs: list[dict], now, baseline, coverage_only: bool) -> bool:
+    """Run every applicable check over `entries`; return True when any failed."""
+    failures = False
+    for entry in entries:
+        if not coverage_only:
+            failures |= report(*liveness(entry, prs, now, baseline))
+        if entry["package-ecosystem"] == "cargo":
+            failures |= report(*coverage(entry, REPO_ROOT))
+    return failures
+
+
+def explain_coverage_failure() -> None:
+    LOGGER.error("")
+    LOGGER.error("dependabot.yml's own WARNING says a new excluded workspace needs a")
+    LOGGER.error("row and that nothing fails when one is missing. This is that check.")
+
+
+def explain_liveness_failure() -> None:
+    LOGGER.error("")
+    LOGGER.error("A dependabot ecosystem that produces nothing is indistinguishable")
+    LOGGER.error("from one with nothing to do. That is why this check exists: cargo")
+    LOGGER.error("went quiet for 113 days across 135 direct dependencies and nothing")
+    LOGGER.error("noticed. Check Insights -> Dependency graph -> Dependabot for the")
+    LOGGER.error("update-run log, which names the failure directly.")
+
+
 def main(argv: list[str] | None = None) -> int:
     # WHY the split: COVERAGE is a property of the repository's own content, so it
     # belongs at PR time where the person who introduced the gap can fix it. LIVENESS
@@ -206,38 +238,22 @@ def main(argv: list[str] | None = None) -> int:
     # how a check gets routed around.
     coverage_only = "--coverage-only" in (argv if argv is not None else sys.argv[1:])
 
-    now = dt.datetime.now(dt.timezone.utc)
     entries = declared_ecosystems(CONFIG)
-    prs = [] if coverage_only else dependabot_prs()
-    baseline = None if coverage_only else config_touched_at()
+    failures = evaluate(
+        entries,
+        [] if coverage_only else dependabot_prs(),
+        dt.datetime.now(dt.timezone.utc),
+        None if coverage_only else config_touched_at(),
+        coverage_only,
+    )
 
-    failures = False
-    for entry in entries:
-        if not coverage_only:
-            ok, message = liveness(entry, prs, now, baseline)
-            (LOGGER.info if ok else LOGGER.error)("check-dependabot: %s", message)
-            failures |= not ok
-
-        if entry["package-ecosystem"] == "cargo":
-            ok, message = coverage(entry, REPO_ROOT)
-            (LOGGER.info if ok else LOGGER.error)("check-dependabot: %s", message)
-            failures |= not ok
-
-    if failures and coverage_only:
-        LOGGER.error("")
-        LOGGER.error("dependabot.yml's own WARNING says a new excluded workspace needs a")
-        LOGGER.error("row and that nothing fails when one is missing. This is that check.")
-        return 1
-
-    if failures:
-        LOGGER.error("")
-        LOGGER.error("A dependabot ecosystem that produces nothing is indistinguishable")
-        LOGGER.error("from one with nothing to do. That is why this check exists: cargo")
-        LOGGER.error("went quiet for 113 days across 135 direct dependencies and nothing")
-        LOGGER.error("noticed. Check Insights -> Dependency graph -> Dependabot for the")
-        LOGGER.error("update-run log, which names the failure directly.")
-        return 1
-    return 0
+    if not failures:
+        return 0
+    if coverage_only:
+        explain_coverage_failure()
+    else:
+        explain_liveness_failure()
+    return 1
 
 
 if __name__ == "__main__":

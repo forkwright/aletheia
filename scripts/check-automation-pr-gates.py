@@ -84,6 +84,14 @@ def workflow_run_text(workflow: dict) -> str:
     return "\n".join(job_step_text(job) for job in workflow.get("jobs", {}).values())
 
 
+# The two keys whose value is the derived test inventory. Named once: they appeared
+# four times each, and a fifth spelling would have diverged silently.
+SONAR_EXCLUSIONS_KEY = "sonar.exclusions"
+SONAR_TEST_INCLUSIONS_KEY = "sonar.test.inclusions"
+SONAR_SCOPE_KEYS = (SONAR_EXCLUSIONS_KEY, SONAR_TEST_INCLUSIONS_KEY)
+SONAR_PROPERTIES = ROOT / ".sonarcloud.properties"
+
+
 def load_properties(path: Path) -> dict[str, str]:
     """Read the deliberately simple key=value Sonar configuration."""
     properties: dict[str, str] = {}
@@ -118,42 +126,51 @@ def test_fixture_paths() -> list[str]:
     )
 
 
-def rewrite_sonar_test_scope(sonar_path: Path) -> bool:
-    """Write the derived test inventory into `.sonarcloud.properties`.
+def rewritten_sonar_scope(text: str, inventory: list[str]) -> str | None:
+    """Return `.sonarcloud.properties` with the derived inventory, or None if unchanged.
 
     WHY a mode and not a manual edit: the inventory is already DERIVED here, by
     `test_fixture_paths`. Everything downstream of that -- both key values -- is a
-    mechanical transcription of a 27-entry comma-joined list that a human retypes each
-    time a test file is added, and gets wrong. The check knew the right answer well
-    enough to print it in the failure; it just would not write it. That is a check that
-    has all of a fix and withholds it.
+    mechanical transcription of a comma-joined list that a human retypes each time a
+    test file is added, and gets wrong. The check knew the right answer well enough to
+    print it in the failure; it just would not write it.
 
-    Returns True when the file changed.
+    WHY pure, taking text rather than a path: the write below targets a module constant,
+    so no caller can steer it at a file of their choosing, and the interesting behaviour
+    is testable without touching a filesystem at all.
     """
-    lines = sonar_path.read_text(encoding="utf-8").splitlines(keepends=True)
-    inventory = ",".join(test_fixture_paths())
+    joined = ",".join(inventory)
     rewritten = []
     changed = False
-    for line in lines:
-        for key in ("sonar.exclusions", "sonar.test.inclusions"):
+    for line in text.splitlines(keepends=True):
+        for key in SONAR_SCOPE_KEYS:
             if line.startswith(f"{key}="):
-                replacement = f"{key}={inventory}\n"
+                replacement = f"{key}={joined}\n"
                 changed |= replacement != line
                 line = replacement
                 break
         rewritten.append(line)
-    if changed:
-        sonar_path.write_text("".join(rewritten), encoding="utf-8")
-    return changed
+    return "".join(rewritten) if changed else None
+
+
+def fix_sonar_test_scope() -> bool:
+    """Write the derived inventory into this repository's `.sonarcloud.properties`."""
+    path = SONAR_PROPERTIES
+    rewritten = rewritten_sonar_scope(
+        path.read_text(encoding="utf-8"), test_fixture_paths()
+    )
+    if rewritten is None:
+        return False
+    path.write_text(rewritten, encoding="utf-8")
+    return True
 
 
 def main() -> int:
     if "--fix-sonar-scope" in sys.argv[1:]:
-        sonar_path = ROOT / ".sonarcloud.properties"
-        if rewrite_sonar_test_scope(sonar_path):
-            print(f"rewrote the test inventory in {sonar_path.name}")
+        if fix_sonar_test_scope():
+            print(f"rewrote the test inventory in {SONAR_PROPERTIES.name}")
         else:
-            print(f"{sonar_path.name} test inventory already matches")
+            print(f"{SONAR_PROPERTIES.name} test inventory already matches")
         return 0
 
     errors: list[str] = []
@@ -162,18 +179,13 @@ def main() -> int:
     # source/test roots to be literal paths. Keep the guarded scope keys and
     # explicit test inventory complete and disjoint so a broad filter cannot
     # hide production or let fixture-only path mutation affect the rating.
-    sonar_path = ROOT / ".sonarcloud.properties"
+    sonar_path = SONAR_PROPERTIES
     try:
         sonar = load_properties(sonar_path)
     except (OSError, UnicodeError, ValueError) as error:
         errors.append(f"cannot read Automatic Analysis scope: {error}")
     else:
-        expected_keys = {
-            "sonar.sources",
-            "sonar.tests",
-            "sonar.exclusions",
-            "sonar.test.inclusions",
-        }
+        expected_keys = {"sonar.sources", "sonar.tests", *SONAR_SCOPE_KEYS}
         if set(sonar) != expected_keys:
             errors.append(
                 ".sonarcloud.properties must contain exactly the guarded scope "
@@ -181,10 +193,10 @@ def main() -> int:
             )
         expected_tests = test_fixture_paths()
         configured_tests = sorted(
-            filter(None, sonar.get("sonar.test.inclusions", "").split(","))
+            filter(None, sonar.get(SONAR_TEST_INCLUSIONS_KEY, "").split(","))
         )
         source_exclusions = sorted(
-            filter(None, sonar.get("sonar.exclusions", "").split(","))
+            filter(None, sonar.get(SONAR_EXCLUSIONS_KEY, "").split(","))
         )
         if sonar.get("sonar.sources") != ".":
             errors.append(".sonarcloud.properties sonar.sources must be '.'")
@@ -205,12 +217,7 @@ def main() -> int:
             )
         if any(
             wildcard in sonar.get(key, "")
-            for key in (
-                "sonar.sources",
-                "sonar.tests",
-                "sonar.exclusions",
-                "sonar.test.inclusions",
-            )
+            for key in ("sonar.sources", "sonar.tests", *SONAR_SCOPE_KEYS)
             for wildcard in ("*", "?")
         ):
             errors.append(
