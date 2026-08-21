@@ -391,10 +391,12 @@ mod tests {
 
     #[test]
     fn loss_not_confirmed_below_attempt_threshold() {
-        let past = Instant::now()
-            .checked_sub(LOSS_CONFIRM_WINDOW)
-            .unwrap_or_else(Instant::now);
-        assert!(!loss_confirmed(1, Some(past)));
+        // The window gate must be satisfied for this to isolate the attempt
+        // gate. `unwrap_or_else(Instant::now)` would leave both gates unmet and
+        // the test would still pass, proving less than its name claims.
+        let past = Instant::now().checked_sub(LOSS_CONFIRM_WINDOW);
+        assert!(past.is_some(), "the window gate must be satisfiable");
+        assert!(!loss_confirmed(1, past));
     }
 
     #[test]
@@ -404,11 +406,16 @@ mod tests {
 
     #[test]
     fn loss_confirmed_past_both_gates() {
-        let past = Instant::now()
-            .checked_sub(LOSS_CONFIRM_WINDOW)
-            .unwrap_or_else(Instant::now);
-        if past.elapsed() >= LOSS_CONFIRM_WINDOW {
-            assert!(loss_confirmed(LOSS_CONFIRM_ATTEMPTS, Some(past)));
-        }
+        // WHY(#6908): this asserted inside `if past.elapsed() >= WINDOW`, over a
+        // `past` that fell back to `Instant::now()` when `checked_sub` failed.
+        // Both together meant a clock near its origin produced a test that
+        // asserted nothing and still reported success. A check that passes when
+        // it did not run is worse than one that is absent.
+        let past = Instant::now().checked_sub(LOSS_CONFIRM_WINDOW);
+        assert!(
+            past.is_some(),
+            "the monotonic clock must be at least LOSS_CONFIRM_WINDOW past its origin"
+        );
+        assert!(loss_confirmed(LOSS_CONFIRM_ATTEMPTS, past));
     }
 }

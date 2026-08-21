@@ -398,15 +398,23 @@ mod tests {
         let mut app = test_app();
         app.dashboard.agents.push(test_agent("syn", "Syn"));
 
+        // WHY(#6908) the bracket: the property is that `started_at` is stamped
+        // when the event is handled, and bracketing the call proves exactly
+        // that. Comparing its `elapsed()` against a five-second budget measured
+        // how busy the runner was, and could fail while the code was correct.
+        let before = std::time::Instant::now();
         handle_sse_tool_called(&mut app, "syn".into(), "read_file".to_string());
+        let after = std::time::Instant::now();
 
         let tool = app.dashboard.agents[0]
             .active_tool
             .as_ref()
             .expect("active_tool should be set");
         assert_eq!(tool.name, "read_file");
-        // started_at should be very recent
-        assert!(tool.started_at.elapsed().as_secs() < 5);
+        assert!(
+            tool.started_at >= before && tool.started_at <= after,
+            "started_at must be stamped while the event is handled"
+        );
     }
 
     #[test]
