@@ -35,19 +35,27 @@ class BranchSelection(unittest.TestCase):
 
 
 class Healing(unittest.TestCase):
-    def _heal_with(self, run_states: dict[str, list[str]]) -> list[str]:
-        """Drive `heal` with a stub `gh`, returning the workflows it dispatched.
+    def _heal_with(
+        self, held: list[int], run_counts: dict[str, int]
+    ) -> tuple[list[int], list[str]]:
+        """Drive `heal` with a stub `gh`.
 
-        `run_states` maps a workflow to the run states GitHub reports at the head --
-        e.g. `["success"]`, `["action_required"]`, or `[]` for none at all.
+        `held` is the run ids GitHub reports as awaiting approval at the head;
+        `run_counts` maps a required workflow to how many runs exist at that head.
         """
+        approved: list[int] = []
         dispatched: list[str] = []
 
         def fake_gh(*args: str) -> str:
-            if args[0] == "api" and "/runs?" in args[1]:
+            if args[0] == "api" and args[1] == "-X":
+                approved.append(int(args[3].split("/runs/")[1].split("/approve")[0]))
+                return ""
+            if args[0] == "api" and "/workflows/" in args[1] and "/runs?" in args[1]:
                 workflow = args[1].split("/workflows/")[1].split("/runs")[0]
-                return __import__("json").dumps(run_states[workflow])
-            if args[0] == "api":
+                return str(run_counts[workflow])
+            if args[0] == "api" and "/actions/runs?" in args[1]:
+                return __import__("json").dumps(held)
+            if args[0] == "api" and "/workflows/" in args[1]:
                 return "active"
             if args[0] == "workflow" and args[1] == "run":
                 dispatched.append(args[2])
@@ -56,64 +64,62 @@ class Healing(unittest.TestCase):
 
         with mock.patch.object(rpc, "gh", side_effect=fake_gh):
             returned = rpc.heal(RELEASE_PR)
-        self.assertEqual(returned, dispatched)
-        return dispatched
+        self.assertEqual(returned, (approved, dispatched))
+        return approved, dispatched
 
-    def test_a_release_pr_with_no_runs_gets_every_workflow_dispatched(self) -> None:
-        """The whole point: the PR arrived with its required contexts absent."""
-        dispatched = self._heal_with(dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, []))
-        self.assertEqual(dispatched, list(rpc.REQUIRED_CONTEXT_WORKFLOWS))
+    def test_held_runs_are_approved(self) -> None:
+        """The operation that actually unblocks the PR.
 
-    def test_a_release_pr_that_already_has_runs_is_left_alone(self) -> None:
-        """WHY it matters that this is idempotent: it runs on a schedule. Dispatching
-        every tick would replace a finished verdict with a pending one forever."""
-        dispatched = self._heal_with(
-            dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, ["success"])
+        Approving populates the PR's `statusCheckRollup`, which is the list branch
+        protection reads. Measured on #6902: rollup 0 -> 32 on approving 25 held runs.
+        """
+        approved, dispatched = self._heal_with(
+            held=[11, 22, 33],
+            run_counts=dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, 1),
         )
+        self.assertEqual(approved, [11, 22, 33])
         self.assertEqual(dispatched, [])
 
-    def test_only_the_missing_workflow_is_dispatched(self) -> None:
-        states = dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, ["success"])
-        states["security.yml"] = []
-        dispatched = self._heal_with(states)
+    def test_a_held_run_is_approved_and_NOT_dispatched(self) -> None:
+        """The inversion this correction turns on.
+
+        The previous version treated a held run as absent and dispatched a second run
+        beside it. That run's check runs attach to the COMMIT and never reach the PR's
+        rollup, so the PR stayed blocked while the tool reported it healed. Held is a
+        reason to approve; it was never a reason to dispatch.
+        """
+        approved, dispatched = self._heal_with(
+            held=[7],
+            run_counts=dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, 1),
+        )
+        self.assertEqual(approved, [7])
+        self.assertEqual(
+            dispatched, [], "a run that exists must be approved, never duplicated"
+        )
+
+    def test_a_workflow_with_no_run_at_all_is_dispatched(self) -> None:
+        """The one case dispatch still serves: there is nothing to approve."""
+        counts = dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, 1)
+        counts["security.yml"] = 0
+        approved, dispatched = self._heal_with(held=[], run_counts=counts)
+        self.assertEqual(approved, [])
         self.assertEqual(dispatched, ["security.yml"])
 
-    def test_a_run_HELD_FOR_APPROVAL_is_not_a_verdict(self) -> None:
-        """The defect this whole file previously encoded. Release-please PRs get their
-        runs CREATED and then held awaiting approval, and GitHub reports no check for a
-        held run -- so asking "does a run exist" answered yes while the PR stayed
-        blocked. Measured on #6902: 25 held runs at the head, one visible check."""
-        dispatched = self._heal_with(
-            dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, ["action_required"])
+    def test_nothing_to_do_is_a_no_op(self) -> None:
+        """WHY idempotence matters: this runs on a schedule and on every regeneration."""
+        approved, dispatched = self._heal_with(
+            held=[], run_counts=dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, 1)
         )
-        self.assertEqual(dispatched, list(rpc.REQUIRED_CONTEXT_WORKFLOWS))
-
-    def test_a_held_run_beside_a_real_one_still_counts_as_a_verdict(self) -> None:
-        """WHY: a superseded generation leaves held runs behind. If ANY run at the head
-        is doing or has done something, the checks are on their way and dispatching
-        would only add noise."""
-        dispatched = self._heal_with(
-            dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, ["action_required", "in_progress"])
-        )
-        self.assertEqual(dispatched, [])
-
-    def test_a_failed_run_counts_as_a_verdict(self) -> None:
-        """WHY not success-only: a red gate is a real verdict. Replacing it with a fresh
-        pending run would make a failing release look unfinished, which is the exact
-        confusion this tool exists to remove."""
-        with mock.patch.object(rpc, "gh", return_value='["failure"]'):
-            self.assertTrue(rpc.has_verdict_for("gate-attestation.yml", "a" * 40))
-
-    def test_no_runs_at_all_is_not_a_verdict(self) -> None:
-        with mock.patch.object(rpc, "gh", return_value="[]"):
-            self.assertFalse(rpc.has_verdict_for("gate-attestation.yml", "a" * 40))
+        self.assertEqual((approved, dispatched), ([], []))
 
     def test_a_workflow_that_cannot_be_dispatched_is_an_error(self) -> None:
         """WHY loud: a renamed or disabled workflow makes this tool silently stop
         healing -- absent rather than red, the same shape as the defect it fixes."""
 
         def fake_gh(*args: str) -> str:
-            if args[0] == "api" and "/runs?" in args[1]:
+            if args[0] == "api" and "/workflows/" in args[1] and "/runs?" in args[1]:
+                return "0"
+            if args[0] == "api" and "/actions/runs?" in args[1]:
                 return "[]"
             if args[0] == "api":
                 return "disabled_manually"
@@ -131,8 +137,28 @@ class Reporting(unittest.TestCase):
 
     def test_an_undispatchable_workflow_fails_the_job(self) -> None:
         with mock.patch.object(rpc, "open_release_prs", return_value=[RELEASE_PR]), \
+             mock.patch.object(rpc, "rollup_size", return_value=5), \
              mock.patch.object(rpc, "heal", side_effect=RuntimeError("gone")):
             self.assertEqual(rpc.main(), 1)
+
+    def test_an_empty_rollup_after_healing_is_a_FAILURE(self) -> None:
+        """The correction, asserted.
+
+        The previous version returned 0 for having dispatched something, whether or not
+        the PR gained a single check. It therefore announced a repair it had not made.
+        An empty rollup means branch protection still sees nothing, so the release is
+        still stuck -- and that must be red, not green.
+        """
+        with mock.patch.object(rpc, "open_release_prs", return_value=[RELEASE_PR]), \
+             mock.patch.object(rpc, "rollup_size", return_value=0), \
+             mock.patch.object(rpc, "heal", return_value=([1, 2], ["security.yml"])):
+            self.assertEqual(rpc.main(), 1)
+
+    def test_a_populated_rollup_after_healing_is_success(self) -> None:
+        with mock.patch.object(rpc, "open_release_prs", return_value=[RELEASE_PR]), \
+             mock.patch.object(rpc, "rollup_size", side_effect=[0, 32]), \
+             mock.patch.object(rpc, "heal", return_value=([1, 2], [])):
+            self.assertEqual(rpc.main(), 0)
 
     def test_one_broken_pr_does_not_stop_the_others(self) -> None:
         """WHY: two repos cut releases from the same schedule. A sweep that aborted on
@@ -140,13 +166,14 @@ class Reporting(unittest.TestCase):
         other = dict(RELEASE_PR, number=7000)
         seen: list[int] = []
 
-        def fake_heal(pr: dict[str, str]) -> list[str]:
+        def fake_heal(pr: dict[str, str]) -> tuple[list[int], list[str]]:
             seen.append(pr["number"])
             if pr["number"] == 6902:
                 raise RuntimeError("gone")
-            return ["security.yml"]
+            return ([], ["security.yml"])
 
         with mock.patch.object(rpc, "open_release_prs", return_value=[RELEASE_PR, other]), \
+             mock.patch.object(rpc, "rollup_size", return_value=9), \
              mock.patch.object(rpc, "heal", side_effect=fake_heal):
             self.assertEqual(rpc.main(), 1)
         self.assertEqual(seen, [6902, 7000])
