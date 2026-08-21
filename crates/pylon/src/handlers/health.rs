@@ -314,6 +314,68 @@ fn gateway_security_check(auth_mode: &str, bind: &str) -> HealthCheck {
 ///
 /// WHY(#5322): operator diagnostics should surface whether the Prometheus
 /// scrape endpoint is in a safe posture for the configured bind address.
+/// Report what the sandbox configuration would actually enforce.
+///
+/// WHY(#5232) all three and not egress alone: an operator asking "is this sandboxed"
+/// wants the whole answer. Reporting egress by itself invites the reading that the other
+/// two are fine, which is the same defect in a smaller frame -- a partial answer that
+/// looks complete.
+///
+/// This is a preflight classification of the CONFIGURATION, not proof that a given
+/// child's `pre_exec` installation succeeded. The message says so, because a health
+/// endpoint that overstates what it verified is worse than one that reports nothing.
+fn sandbox_check(sandbox: &organon::sandbox::SandboxConfig) -> HealthCheck {
+    use organon::sandbox::GuaranteeStatus;
+
+    let guarantees = organon::sandbox::diagnostic_guarantees(sandbox);
+    let each = [
+        ("landlock", guarantees.landlock),
+        ("seccomp", guarantees.seccomp),
+        ("egress", guarantees.egress),
+    ];
+
+    // Unavailable blocks execution in enforcing mode; Degraded lets it continue with the
+    // guarantee unmet. Unrestricted is not a fault -- it means the guarantee was never
+    // asked for, and reporting a deliberate `egress=allow` as a warning would train
+    // operators to ignore this check.
+    let status = if each.iter().any(|(_, s)| *s == GuaranteeStatus::Unavailable) {
+        "fail"
+    } else if each.iter().any(|(_, s)| *s == GuaranteeStatus::Degraded) {
+        "warn"
+    } else {
+        "pass"
+    };
+
+    let unmet: Vec<&str> = each
+        .iter()
+        .filter(|(_, s)| matches!(s, GuaranteeStatus::Degraded | GuaranteeStatus::Unavailable))
+        .map(|(name, _)| *name)
+        .collect();
+
+    let message = if unmet.is_empty() {
+        "sandbox guarantees are as configured (preflight classification, not proof of \
+         per-child enforcement)"
+            .to_owned()
+    } else {
+        format!(
+            "sandbox guarantee(s) not enforced as configured: {}. This is a preflight \
+             classification of the configuration, not proof of per-child enforcement.",
+            unmet.join(", ")
+        )
+    };
+
+    HealthCheck {
+        name: "sandbox".to_owned(),
+        status: status.to_owned(),
+        message: Some(message),
+        details: Some(serde_json::json!({
+            "landlock": guarantees.landlock.to_string(),
+            "seccomp": guarantees.seccomp.to_string(),
+            "egress": guarantees.egress.to_string(),
+        })),
+    }
+}
+
 fn metrics_exposure_check(
     mode: taxis::config::MetricsMode,
     detailed: bool,
@@ -1377,6 +1439,7 @@ struct FlatSubsystemChecks {
     credential_runtime: HealthCheck,
     embedding: HealthCheck,
     metrics: HealthCheck,
+    sandbox: HealthCheck,
 }
 
 /// Run every existing flat check function once (SSOT: the same computation
@@ -1417,6 +1480,8 @@ async fn gather_flat_subsystem_checks(state: &HealthState) -> FlatSubsystemCheck
         &state.oikos.data().to_string_lossy(),
     );
 
+    let sandbox = sandbox_check(&state.config.read().await.sandbox);
+
     FlatSubsystemChecks {
         prosoche,
         gateway,
@@ -1429,6 +1494,7 @@ async fn gather_flat_subsystem_checks(state: &HealthState) -> FlatSubsystemCheck
         credential_runtime,
         embedding,
         metrics,
+        sandbox,
     }
 }
 
@@ -1517,6 +1583,17 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
             Some(
                 "Review `/metrics` exposure mode; avoid `public` with `detailed=true` on \
                  non-loopback binds.",
+            ),
+        ),
+        subsystem_from_check(
+            checks.sandbox,
+            "sandbox",
+            "Tool Sandbox",
+            "crates/organon::sandbox",
+            generated_at,
+            Some(
+                "Review `sandbox.enforcement` and `sandbox.egress`; a degraded guarantee \
+                 means tools run without the restriction the config asks for.",
             ),
         ),
         subsystem_event_bus(state, generated_at).await,
@@ -2033,6 +2110,51 @@ mod tests {
     use hermeneus::provider::ProviderRegistry;
 
     use super::*;
+
+    /// A guarantee that was never requested is not a fault.
+    ///
+    /// WHY pinned: `egress = allow` classifies as `Unrestricted`, and reporting that as
+    /// a warning would mean every deliberately-unrestricted deployment shows a permanent
+    /// yellow. A check that is always warning is one nobody reads, which costs more than
+    /// it buys the first time a real degradation appears beside it.
+    #[test]
+    fn an_unrequested_guarantee_is_not_reported_as_a_fault() {
+        use organon::sandbox::GuaranteeStatus;
+
+        // Struct-update rather than mutate-after-default: `field_reassign_with_default`
+        // is denied, and this is the shape the rest of the tree already uses.
+        let config = organon::sandbox::SandboxConfig {
+            egress: organon::sandbox::EgressPolicy::Allow,
+            ..organon::sandbox::SandboxConfig::default()
+        };
+
+        let guarantees = organon::sandbox::diagnostic_guarantees(&config);
+        assert_eq!(
+            guarantees.egress,
+            GuaranteeStatus::Unrestricted,
+            "egress=allow must classify as Unrestricted, not as a degradation"
+        );
+
+        let check = sandbox_check(&config);
+        assert!(
+            !check.message.unwrap().contains("egress"),
+            "an unrequested guarantee must not appear in the unmet list"
+        );
+    }
+
+    /// Every guarantee is reported, not just the one with an exfiltration story.
+    #[test]
+    fn all_three_guarantees_appear_in_the_details() {
+        let check = sandbox_check(&organon::sandbox::SandboxConfig::default());
+        let details = check.details.expect("sandbox check must carry details");
+        for key in ["landlock", "seccomp", "egress"] {
+            assert!(
+                details.get(key).is_some_and(|v| v.is_string()),
+                "{key} must be reported; a partial answer reads as a complete one"
+            );
+        }
+        assert_eq!(check.name, "sandbox");
+    }
 
     #[test]
     fn health_state_has_all_required_fields() {

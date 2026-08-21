@@ -15,6 +15,6 @@ pub use config::{
     SandboxPolicy,
 };
 pub use policy::{
-    EgressDenied, EgressGate, apply_sandbox, check_egress, check_egress_remote_addr,
-    probe_landlock_abi,
+    EgressDenied, EgressGate, GuaranteeStatus, SandboxGuarantees, apply_sandbox, check_egress,
+    check_egress_remote_addr, diagnostic_guarantees, probe_landlock_abi,
 };

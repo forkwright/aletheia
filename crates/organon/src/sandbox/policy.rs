@@ -18,15 +18,17 @@
 )]
 
 use std::net::{IpAddr, SocketAddr};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use koina::http::{HostResolver, is_private_ip};
 
-use super::config::{EgressPolicy, SandboxConfig, SandboxEnforcement, SandboxPolicy};
+use super::config::{
+    EgressPolicy, SandboxConfig, SandboxConfigExt, SandboxEnforcement, SandboxPolicy,
+};
 
 /// Status of a sandbox guarantee for operator diagnostics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum GuaranteeStatus {
+pub enum GuaranteeStatus {
     /// The guarantee is enforced for this execution.
     Active,
     /// The guarantee is requested but cannot be fully enforced; execution continues.
@@ -50,13 +52,13 @@ impl std::fmt::Display for GuaranteeStatus {
 
 /// Per-guarantee status for a sandbox policy.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct SandboxGuarantees {
+pub struct SandboxGuarantees {
     /// Filesystem access restriction via Landlock.
-    pub(crate) landlock: GuaranteeStatus,
+    pub landlock: GuaranteeStatus,
     /// Dangerous syscall blocking via seccomp.
-    pub(crate) seccomp: GuaranteeStatus,
+    pub seccomp: GuaranteeStatus,
     /// Network egress restriction.
-    pub(crate) egress: GuaranteeStatus,
+    pub egress: GuaranteeStatus,
 }
 
 /// Check whether an IP address is loopback.
@@ -787,6 +789,29 @@ static LANDLOCK_ABI: std::sync::LazyLock<Option<i32>> = std::sync::LazyLock::new
 /// [`apply_sandbox`] rejects `Unavailable` guarantees in enforcing mode and
 /// logs degraded ones in permissive mode. This is a preflight classification,
 /// not proof that child-side `pre_exec` installation will succeed.
+/// The sandbox guarantees a given configuration would provide, for diagnostics.
+///
+/// WHY(#5232) this exists at all: `probe_guarantees` classified landlock, seccomp and
+/// egress as Active/Degraded/Unavailable/Unrestricted, `apply_sandbox` logged the result
+/// at `info` and dropped it, and the types were `pub(crate)` and unexported. An operator
+/// asking "is this sandboxed" had to read the process log; nothing could answer over an
+/// API. The classification already existed -- only a way to reach it was missing.
+///
+/// # Workspace independence
+///
+/// The workspace path and allowed roots passed to `build_policy` do not affect the
+/// result: the classification reads `enforcement`, `egress` and `egress_allowlist`, all
+/// config-level, and never the filesystem. `diagnostic_guarantees_do_not_depend_on_the_
+/// workspace` pins that, so a future change making the classification path-sensitive
+/// fails there rather than silently returning a verdict about the wrong directory.
+///
+/// This is a preflight classification of what the configuration WOULD enforce, not proof
+/// that a particular child's `pre_exec` installation succeeded.
+#[must_use]
+pub fn diagnostic_guarantees(config: &SandboxConfig) -> SandboxGuarantees {
+    probe_guarantees(&config.build_policy(Path::new("/"), &[]))
+}
+
 #[cfg(target_os = "linux")]
 #[must_use]
 fn probe_guarantees(policy: &SandboxPolicy) -> SandboxGuarantees {
