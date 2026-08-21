@@ -28,13 +28,20 @@ data/
 # Seed eval datasets are part of the shipped example instance
 !instance.example/data/
 !instance.example/data/**
+# koina's model seed is compiled in via include_str! and validated by its
+# build script, so it must survive any gitignore-filtered copy of the tree.
+!crates/koina/data/
+!crates/koina/data/**
 
 # === Cargo build output ===
 /target/
 tui/target/
 fuzz/target/
 fuzz/artifacts/
-fuzz/Cargo.lock
+# WHY fuzz/Cargo.lock is NOT ignored: it is committed so the fuzz targets build
+# reproducibly under --locked. The rule ignoring it was left in place after the
+# file was force-added, which made it invisible to every tool that walks by
+# gitignore rather than by the index.
 .cargo/*
 # cargo-mutants local runs; baseline reports live on release branches only.
 mutants.out/

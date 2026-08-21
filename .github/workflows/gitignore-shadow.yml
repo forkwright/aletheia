@@ -1,0 +1,42 @@
+# WHY: git does not apply ignore rules to files already in the index, so a
+# tracked-and-ignored file is invisible to every everyday command -- clean
+# `git status`, `git check-ignore` reports "not ignored", commits and diffs
+# normally. It only surfaces when a tool walks the tree by ignore rules instead
+# of the index, and then the file is silently absent.
+#
+# That is how the first Release Substance Audit failed on all five crates:
+# `crates/koina/data/model-seed.toml` was matched by a broad `data/` rule whose
+# negations never covered it, cargo-mutants copies gitignore-filtered, and
+# koina's build script could not find the seed in any copied tree.
+name: Gitignore shadow
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: no tracked file is matched by an ignore rule
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): this job reads the index and the ignore rules only --
+          # no build, no history walk, and it never opens a tracked file's
+          # contents. blob:none is sufficient and avoids fetching the tree.
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Check no tracked file is shadowed by an ignore rule
+        run: python3 scripts/check-gitignore-shadow.py
