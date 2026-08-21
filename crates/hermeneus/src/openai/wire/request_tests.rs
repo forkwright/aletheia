@@ -331,3 +331,93 @@ fn output_format_text_maps_to_response_format_text() {
     let json = serde_json::to_value(&wire).unwrap();
     assert_eq!(json["response_format"]["type"], "text");
 }
+
+/// A schema request routed to Responses must reach the wire, not a log line.
+///
+/// WHY(#5373) the wire shape is asserted field by field rather than "text is present":
+/// Chat Completions and Responses nest the same information differently. Chat wraps it
+/// -- `response_format: { type, json_schema: { name, schema, strict } }` -- and Responses
+/// does not -- `text: { format: { type, name, schema, strict } }`. Reusing the Chat type
+/// here would serialise, typecheck, and be rejected by the API, so the flattening is the
+/// property worth pinning.
+#[test]
+fn responses_carries_a_json_schema_request_onto_the_wire() {
+    let req = CompletionRequest {
+        model: "gpt-5".to_owned(),
+        messages: vec![Message {
+            role: Role::User,
+            content: Content::Text("extract the fields".to_owned()),
+            cache_breakpoint: false,
+        }],
+        max_tokens: 128,
+        output_format: Some(OutputFormat::JsonSchema {
+            name: "extraction".to_owned(),
+            schema: serde_json::json!({
+                "type": "object",
+                "properties": { "city": { "type": "string" } }
+            }),
+            strict: Some(true),
+        }),
+        ..Default::default()
+    };
+
+    let wire = ResponsesRequest::from_request(&req, None).unwrap();
+    let json = serde_json::to_value(&wire).unwrap();
+
+    assert_eq!(json["text"]["format"]["type"], "json_schema");
+    assert_eq!(json["text"]["format"]["name"], "extraction");
+    assert_eq!(json["text"]["format"]["strict"], true);
+    assert_eq!(
+        json["text"]["format"]["schema"]["properties"]["city"]["type"],
+        "string"
+    );
+    assert!(
+        json["text"]["format"]["json_schema"].is_null(),
+        "Responses puts name/schema/strict beside `type`; the Chat Completions nesting \
+         under `json_schema` is a different API and would be rejected"
+    );
+}
+
+#[test]
+fn responses_maps_a_plain_text_output_format() {
+    let req = CompletionRequest {
+        model: "gpt-5".to_owned(),
+        messages: vec![Message {
+            role: Role::User,
+            content: Content::Text("just talk".to_owned()),
+            cache_breakpoint: false,
+        }],
+        max_tokens: 128,
+        output_format: Some(OutputFormat::Text),
+        ..Default::default()
+    };
+
+    let wire = ResponsesRequest::from_request(&req, None).unwrap();
+    let json = serde_json::to_value(&wire).unwrap();
+
+    assert_eq!(json["text"]["format"]["type"], "text");
+}
+
+/// No output format asked for means no `text` key at all.
+///
+/// WHY pinned: `text` is `skip_serializing_if = "Option::is_none"`, and a request that
+/// never asked for structured output must not start sending one. Every existing caller
+/// is in this case, so a regression here changes every request rather than a few.
+#[test]
+fn responses_omits_text_when_no_output_format_was_requested() {
+    let req = CompletionRequest {
+        model: "gpt-5".to_owned(),
+        messages: vec![Message {
+            role: Role::User,
+            content: Content::Text("hello".to_owned()),
+            cache_breakpoint: false,
+        }],
+        max_tokens: 128,
+        ..Default::default()
+    };
+
+    let wire = ResponsesRequest::from_request(&req, None).unwrap();
+    let json = serde_json::to_value(&wire).unwrap();
+
+    assert!(json.get("text").is_none(), "no schema asked for, none sent");
+}
