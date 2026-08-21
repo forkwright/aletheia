@@ -217,7 +217,10 @@ pub(crate) fn rewrite_zip(
             .map_err(|e| format!("failed to read zip entry {name}: {e}"))?;
         let payload = remaining.remove(name.as_str()).unwrap_or(bytes.as_slice());
         output
-            .start_file(&name, SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT))
+            .start_file(
+                &name,
+                SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT),
+            )
             .map_err(|e| format!("failed to write zip entry {name}: {e}"))?;
         output
             .write_all(payload)
@@ -226,7 +229,10 @@ pub(crate) fn rewrite_zip(
 
     for (name, bytes) in remaining {
         output
-            .start_file(name, SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT))
+            .start_file(
+                name,
+                SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT),
+            )
             .map_err(|e| format!("failed to write zip entry {name}: {e}"))?;
         output
             .write_all(bytes)
