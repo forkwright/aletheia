@@ -14,7 +14,7 @@ test-full = "full test tier fixtures"
 path = "crates/aletheia"
 layer = "cli"
 purpose = "Aletheia cognitive agent runtime"
-depends_on = ["agora", "aletheia-routing", "dianoia", "diaporeia", "dokimion", "energeia", "episteme", "gnosis", "hermeneus", "koilon", "koina", "melete", "mneme", "nous", "oikonomos", "organon", "pylon", "symbolon", "taxis", "thesauros"]
+depends_on = ["agora", "aletheia-routing", "dianoia", "diaporeia", "dokimion", "energeia", "episteme", "gnosis", "hermeneus", "koilon", "koina", "melete", "mneme", "nous", "oikonomos", "organon", "poiesis-inspect", "pylon", "symbolon", "taxis", "thesauros"]
 used_by = []
 dev_depends_on = []
 
@@ -392,7 +392,7 @@ path = "crates/poiesis/inspect"
 layer = "tool"
 purpose = "Text extraction from PDF, XLSX, and PPTX documents"
 depends_on = ["poiesis-ooxml-parse"]
-used_by = ["organon", "poiesis"]
+used_by = ["aletheia", "organon", "poiesis"]
 features = {}
 dev_depends_on = ["poiesis-core", "poiesis-doc", "poiesis-sheet"]
 

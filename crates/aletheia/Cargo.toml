@@ -82,6 +82,11 @@ taxis = { path = "../taxis" }
 fjall = { version = "3", default-features = false, features = ["lz4"] }
 hermeneus = { path = "../hermeneus" }
 organon = { path = "../organon", features = ["poiesis"] }
+# WHY(#6751) direct and not through organon: `aletheia ingest` decodes PDFs itself, and
+# reaching a decoder through the tool-registry crate that merely also uses it would be a
+# dependency on the wrong thing. This adds no transitive weight -- the `poiesis` feature
+# above already pulls this crate and `pdf_extract` into the binary.
+poiesis-inspect = { path = "../poiesis/inspect" }
 mneme = { path = "../mneme" }
 nous = { path = "../nous" }
 symbolon = { path = "../symbolon" }

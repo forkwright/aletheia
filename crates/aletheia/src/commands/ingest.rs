@@ -66,7 +66,7 @@ pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> R
         let store = mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
             .whatever_context("failed to open knowledge store")?;
 
-        run_direct(args, &store)
+        run_direct(args, &store).await
     }
 
     #[cfg(not(feature = "recall"))]
@@ -159,10 +159,9 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
     let mut errored: Vec<(PathBuf, String)> = Vec::new();
 
     for file in &files {
-        let content = match tokio::fs::read_to_string(file).await {
+        let content = match read_ingest_text(file).await {
             Ok(c) => c,
-            Err(e) => {
-                let msg = format!("failed to read {}: {e}", file.display());
+            Err(msg) => {
                 tracing::warn!(file = %file.display(), error = %msg, "ingest skipping file");
                 eprintln!("[warn] {}: {msg}", file.display());
                 errored.push((file.clone(), msg));
@@ -306,7 +305,7 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
 }
 
 #[cfg(feature = "recall")]
-fn run_direct(
+async fn run_direct(
     args: &IngestArgs,
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<()> {
@@ -322,7 +321,7 @@ fn run_direct(
     let mut errored: Vec<(PathBuf, String)> = Vec::new();
 
     for file in &files {
-        match process_file(file, args, store) {
+        match process_file(file, args, store).await {
             Ok((inserted, skipped)) => {
                 total_inserted += inserted;
                 total_skipped += skipped;
@@ -354,13 +353,17 @@ fn run_direct(
 }
 
 #[cfg(feature = "recall")]
-fn process_file(
+async fn process_file(
     file: &Path,
     args: &IngestArgs,
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<(usize, usize)> {
-    let content = std::fs::read_to_string(file)
-        .with_whatever_context(|_| format!("failed to read {}", file.display()))?;
+    // WHY(#6751) the same PDF decode as the async path: this is the second read site,
+    // and fixing only one would make `aletheia ingest` support PDFs on one code path
+    // and fail on invalid UTF-8 on the other, which reads as an intermittent bug.
+    let content = read_ingest_text(file)
+        .await
+        .map_err(crate::error::Error::msg)?;
 
     let format_str = if args.format == "auto" {
         detect_format(file).unwrap_or("text")
@@ -459,8 +462,36 @@ fn detect_format(path: &Path) -> Option<&'static str> {
 fn is_supported_extension(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
-        Some("md" | "markdown" | "txt" | "text" | "json" | "jsonl")
+        Some("md" | "markdown" | "txt" | "text" | "json" | "jsonl" | "pdf")
     )
+}
+
+/// Read a file's text, decoding a PDF rather than failing on its bytes.
+///
+/// WHY(#6751) this exists rather than a `parse_format` arm: `IngestFormat` names how
+/// text is CHUNKED -- markdown, plain text, json, jsonl. A PDF is not a chunking
+/// strategy, it is a container that yields text, so it belongs at the read boundary and
+/// the format stays whatever the extracted text is. That is also why nothing here
+/// touches pylon's ingest endpoint: its `content` field is a `String` over JSON, so a
+/// PDF cannot reach it at all and rejecting `"pdf"` there is correct.
+///
+/// Before this, `read_to_string` on a PDF failed on invalid UTF-8, so the operator got
+/// "stream did not contain valid UTF-8" for a file the workspace can read perfectly
+/// well one crate away.
+async fn read_ingest_text(file: &Path) -> std::result::Result<String, String> {
+    if file.extension().and_then(|e| e.to_str()) == Some("pdf") {
+        let bytes = tokio::fs::read(file)
+            .await
+            .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
+        // WHY `extract_pdf_text` and not `inspect_pdf`: the latter caps its output at
+        // 100 lines because it summarises. Ingesting that would record the first
+        // hundred lines of a PDF as the whole document.
+        return poiesis_inspect::extract_pdf_text(&bytes)
+            .map_err(|e| format!("failed to extract text from {}: {e}", file.display()));
+    }
+    tokio::fs::read_to_string(file)
+        .await
+        .map_err(|e| format!("failed to read {}: {e}", file.display()))
 }
 
 #[cfg(test)]
@@ -637,8 +668,8 @@ mod tests {
     /// files still go through. Uses dry-run so no store insert happens —
     /// the failure surface being tested is the parse step (`ingest_content`),
     /// which fires before the store call in `process_file`.
-    #[test]
-    fn run_direct_dry_run_continues_after_bad_file() {
+    #[tokio::test]
+    async fn run_direct_dry_run_continues_after_bad_file() {
         #[cfg(feature = "recall")]
         {
             let dir = tempfile::tempdir().unwrap();
@@ -663,7 +694,7 @@ mod tests {
                 token: None,
             };
 
-            let result = run_direct(&args, &store);
+            let result = run_direct(&args, &store).await;
             assert!(
                 result.is_ok(),
                 "run_direct should not propagate a per-file parse error; got {result:?}"
@@ -676,8 +707,8 @@ mod tests {
     /// counting facts via the store would require a `CozoScript` query the
     /// public surface doesn't expose, which is out-of-scope for this fix.
     /// The dry-run case above covers the parse-error continuance contract.
-    #[test]
-    fn run_direct_live_continues_after_bad_file() {
+    #[tokio::test]
+    async fn run_direct_live_continues_after_bad_file() {
         #[cfg(feature = "recall")]
         {
             let dir = tempfile::tempdir().unwrap();
@@ -701,7 +732,7 @@ mod tests {
                 token: None,
             };
 
-            let result = run_direct(&args, &store);
+            let result = run_direct(&args, &store).await;
             assert!(
                 result.is_ok(),
                 "run_direct should return Ok despite the bad file: {result:?}"

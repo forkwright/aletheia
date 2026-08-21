@@ -85,6 +85,23 @@ pub fn inspect_pdf(bytes: &[u8]) -> Result<PdfSummary> {
     pdf::inspect_pdf_impl(bytes)
 }
 
+/// Extract a PDF's full text, uncapped.
+///
+/// WHY(#6751) this exists beside [`inspect_pdf`]: that function summarises, and caps its
+/// output at 100 non-empty lines. A consumer that stores the document's content needs
+/// all of it -- a capped extraction ingested as if whole records the first hundred lines
+/// of a PDF as the document, and the `truncated` flag that would have said so lives on a
+/// struct such a caller has no reason to keep.
+///
+/// # Errors
+///
+/// Returns an error if the input bytes cannot be parsed as a valid PDF or if text
+/// extraction fails.
+#[instrument(skip_all, fields(bytes = bytes.len()))]
+pub fn extract_pdf_text(bytes: &[u8]) -> Result<String> {
+    pdf::extract_pdf_text_impl(bytes)
+}
+
 /// Extract text from an XLSX workbook.
 ///
 /// # Errors
