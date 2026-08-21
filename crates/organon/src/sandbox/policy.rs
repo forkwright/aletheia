@@ -882,7 +882,7 @@ fn egress_guarantee_status(policy: &SandboxPolicy, seccomp: GuaranteeStatus) -> 
 
 /// Query Landlock ABI availability in the parent before child sandbox setup.
 ///
-/// On Linux x86_64 and aarch64 this issues the documented
+/// On Linux `x86_64` and `aarch64` this issues the documented
 /// `landlock_create_ruleset(..., LANDLOCK_CREATE_RULESET_VERSION)` probe
 /// without creating a ruleset. A positive kernel result is exposed as its
 /// highest ABI level. Unsupported architectures, disabled or unavailable
