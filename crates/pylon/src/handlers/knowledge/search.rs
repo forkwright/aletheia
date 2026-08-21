@@ -49,7 +49,8 @@ async fn score_facts_for_query(
         .build());
     }
 
-    let all_facts = get_relevant_stored_facts(state, policy, q, candidate_fetch_limit(limit)).await;
+    let all_facts =
+        get_relevant_stored_facts(state, policy, q, candidate_fetch_limit(limit)).await?;
     let engine = build_recall_engine(state).await;
 
     Ok(mneme::recall::explain::explain_recall(
@@ -67,7 +68,7 @@ async fn get_relevant_stored_facts(
     policy: &super::KnowledgeReadPolicy<'_>,
     query_text: &str,
     limit: usize,
-) -> Vec<mneme::knowledge::Fact> {
+) -> Result<Vec<mneme::knowledge::Fact>, ApiError> {
     #[cfg(feature = "knowledge-store")]
     if let Some(store) = state.knowledge_store.clone() {
         let fetch_limit = i64::try_from(limit.min(MAX_CANDIDATE_FETCH)).unwrap_or(i64::MAX);
@@ -97,18 +98,36 @@ async fn get_relevant_stored_facts(
             },
         )
         .await;
-        match result {
-            Ok(Ok(facts)) => return policy.filter_facts(facts),
-            Ok(Err(e)) => tracing::warn!(error = %e, "failed to query relevant knowledge facts"),
-            Err(e) => tracing::warn!(error = %e, "knowledge relevance query task panicked"),
-        }
+        // WHY a query failure is 500 and an absent store is 503: they are different
+        // conditions and the sibling `get_entity_relationships` already draws the line
+        // here. 503 says the capability is not configured -- a deployment fact, stable
+        // until someone changes it. 500 says the store is there and broke, which is a
+        // bug report. Collapsing them would leave a caller retrying a 503 forever.
+        return match result {
+            Ok(Ok(facts)) => Ok(policy.filter_facts(facts)),
+            Ok(Err(e)) => Err(ApiError::Internal {
+                message: format!("failed to query relevant knowledge facts: {e}"),
+                location: snafu::location!(),
+            }),
+            Err(e) => Err(ApiError::Internal {
+                message: format!("knowledge relevance query task panicked: {e}"),
+                location: snafu::location!(),
+            }),
+        };
     }
     #[cfg(not(feature = "knowledge-store"))]
     {
         let _ = (state, policy, query_text, limit);
         std::future::ready(()).await;
     }
-    Vec::new()
+    // WHY(#6821) an error rather than an empty Vec: "the store holds nothing" and "there
+    // is no store" are different answers, and a caller given `[]` for both cannot tell
+    // that its memory is unreachable. It renders as a blank panel either way, which is
+    // exactly how an operator concludes the agent has forgotten everything.
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not enabled on this server".to_owned(),
+        location: snafu::location!(),
+    })
 }
 
 async fn build_recall_engine(state: &KnowledgeState) -> mneme::recall::RecallEngine {
@@ -142,6 +161,8 @@ async fn build_recall_engine(state: &KnowledgeState) -> mneme::recall::RecallEng
         (status = 200, description = "Search results ranked by relevance", body = SearchResponse),
         (status = 400, description = "Invalid query or limit", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -202,6 +223,8 @@ pub async fn search(
         (status = 200, description = "Explainable recall scoring report", body = ExplainResponse),
         (status = 400, description = "Invalid query or limit", body = crate::error::ErrorResponse),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -297,6 +320,8 @@ pub async fn explain(
     responses(
         (status = 200, description = "Fact activity timeline with total count"),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 500, description = "Knowledge store query failed", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not enabled on this server", body = crate::error::ErrorResponse),
     ),
     security(("bearer_auth" = []))
 )]
@@ -326,7 +351,7 @@ pub async fn timeline(
         offset: 0,
         include_forgotten: false,
     };
-    let facts = get_stored_facts(&state, &policy, &timeline_query).await;
+    let facts = get_stored_facts(&state, &policy, &timeline_query).await?;
     let mut events: Vec<TimelineEvent> = Vec::new();
 
     for fact in &facts {
@@ -378,7 +403,7 @@ pub(super) async fn get_stored_facts(
     state: &KnowledgeState,
     policy: &super::KnowledgeReadPolicy<'_>,
     query: &FactsQuery,
-) -> Vec<mneme::knowledge::Fact> {
+) -> Result<Vec<mneme::knowledge::Fact>, ApiError> {
     #[cfg(feature = "knowledge-store")]
     if let Some(store) = state.knowledge_store.clone() {
         let fetch_limit = i64::try_from((query.offset + query.limit).min(MAX_CANDIDATE_FETCH))
@@ -392,33 +417,56 @@ pub(super) async fn get_stored_facts(
             None => store.list_all_facts(fetch_limit),
         })
         .await;
-        match result {
-            Ok(Ok(facts)) => return policy.filter_facts(facts),
-            Ok(Err(e)) => tracing::warn!(error = %e, "failed to query knowledge store"),
-            Err(e) => tracing::warn!(error = %e, "knowledge store query task panicked"),
-        }
+        return match result {
+            Ok(Ok(facts)) => Ok(policy.filter_facts(facts)),
+            Ok(Err(e)) => Err(ApiError::Internal {
+                message: format!("failed to query knowledge store: {e}"),
+                location: snafu::location!(),
+            }),
+            Err(e) => Err(ApiError::Internal {
+                message: format!("knowledge store query task panicked: {e}"),
+                location: snafu::location!(),
+            }),
+        };
     }
     #[cfg(not(feature = "knowledge-store"))]
     {
         let _ = (state, policy, query);
         std::future::ready(()).await;
     }
-    Vec::new()
+    // WHY(#6821) an error rather than an empty Vec: "the store holds nothing" and "there
+    // is no store" are different answers, and a caller given `[]` for both cannot tell
+    // that its memory is unreachable. It renders as a blank panel either way, which is
+    // exactly how an operator concludes the agent has forgotten everything.
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not enabled on this server".to_owned(),
+        location: snafu::location!(),
+    })
 }
 
-pub(super) fn get_stored_entities(state: &KnowledgeState) -> Vec<mneme::knowledge::Entity> {
+pub(super) fn get_stored_entities(
+    state: &KnowledgeState,
+) -> Result<Vec<mneme::knowledge::Entity>, ApiError> {
     #[cfg(feature = "knowledge-store")]
     if let Some(ref store) = state.knowledge_store {
-        match store.list_entities() {
-            Ok(entities) => return entities,
-            Err(e) => {
-                tracing::warn!(error = %e, "failed to query knowledge store entities");
-            }
-        }
+        return match store.list_entities() {
+            Ok(entities) => Ok(entities),
+            Err(e) => Err(ApiError::Internal {
+                message: format!("failed to query knowledge store entities: {e}"),
+                location: snafu::location!(),
+            }),
+        };
     }
     #[cfg(not(feature = "knowledge-store"))]
     let _ = state;
-    Vec::new()
+    // WHY(#6821) an error rather than an empty Vec: "the store holds nothing" and "there
+    // is no store" are different answers, and a caller given `[]` for both cannot tell
+    // that its memory is unreachable. It renders as a blank panel either way, which is
+    // exactly how an operator concludes the agent has forgotten everything.
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not enabled on this server".to_owned(),
+        location: snafu::location!(),
+    })
 }
 
 #[cfg(feature = "knowledge-store")]
@@ -697,7 +745,9 @@ mod relevance_fetch_tests {
             include_forgotten: true,
         };
 
-        let native = get_stored_facts(&state, &policy, &native_query).await;
+        let native = get_stored_facts(&state, &policy, &native_query)
+            .await
+            .expect("configured store must answer");
         assert!(
             native
                 .iter()
@@ -705,7 +755,9 @@ mod relevance_fetch_tests {
             "native-sort cap unexpectedly included the old target fact"
         );
 
-        let relevant = get_relevant_stored_facts(&state, &policy, "needle", fetch_limit).await;
+        let relevant = get_relevant_stored_facts(&state, &policy, "needle", fetch_limit)
+            .await
+            .expect("configured store must answer");
         assert!(
             relevant
                 .iter()
