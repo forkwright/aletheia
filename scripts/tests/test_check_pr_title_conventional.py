@@ -4,6 +4,7 @@ import importlib.util
 import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -93,6 +94,33 @@ class TitleShape(unittest.TestCase):
     def test_a_scope_containing_a_slash_is_accepted(self) -> None:
         """WHY: `pylon/skene` is a scope this repo already uses."""
         self.ok("fix(pylon/skene): approval events cross sessions")
+
+
+class RegexIsLinear(unittest.TestCase):
+    def test_a_long_whitespace_title_does_not_backtrack(self) -> None:
+        """SECURITY: a PR title is attacker-supplied. The first spelling of the
+        near-miss matcher put `\\s*` around two optional groups, so on a run of N
+        spaces with no colon the engine tried every way of splitting that run across
+        three unbounded quantifiers -- super-linear, i.e. a denial of service against
+        the job. SonarCloud caught it; nothing else here would have.
+
+        The bound is deliberately loose. Linear finishes in microseconds and the
+        vulnerable form does not finish at all, so anything that separates the two
+        without flaking on a loaded runner is enough.
+        """
+        adversarial = "fix" + " " * 20_000 + "x"
+        start = time.perf_counter()
+        ct.violation(adversarial, TYPES)
+        elapsed = time.perf_counter() - start
+        self.assertLess(elapsed, 1.0, f"took {elapsed:.3f}s -- the matcher backtracks")
+
+    def test_the_near_miss_message_still_works_after_the_rewrite(self) -> None:
+        """WHY paired with the one above: collapsing whitespace to make the matcher
+        linear could just as easily have made it match nothing, and a matcher that
+        never fires passes a timing test perfectly."""
+        problem = ct.violation("Fix   (recall)  : something", TYPES)
+        self.assertIsNotNone(problem)
+        self.assertIn("lowercase", problem or "")
 
 
 class ThisRepositoryParses(unittest.TestCase):

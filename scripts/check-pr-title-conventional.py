@@ -66,7 +66,14 @@ def violation(title: str, types: list[str]) -> str | None:
     if match is None:
         # A capitalised or spaced type is the common near-miss, and the generic
         # message reads as though the whole shape were wrong. Say which half is.
-        loose = re.match(r"^\s*(?P<type>[A-Za-z]+)\s*(?:\([^()\n]*\))?\s*!?\s*:", title)
+        #
+        # SECURITY: whitespace is collapsed FIRST and every optional here matches at
+        # most one character. The obvious spelling -- `\s*` around two optional groups
+        # -- is super-linear: on a title of N spaces and no colon, the engine tries
+        # every way of splitting that run across three unbounded quantifiers. A PR
+        # title is attacker-supplied, so that is a denial of service, not a slow regex.
+        compact = " ".join(title.split())
+        loose = re.match(r"^(?P<type>[A-Za-z]+) ?(?:\([^()\n]*\))? ?!? ?:", compact)
         if loose is not None:
             found = loose.group("type")
             if found.lower() in types:

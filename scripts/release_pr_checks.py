@@ -146,7 +146,11 @@ def main() -> int:
             dispatched = heal(pr)
         except RuntimeError as error:
             failures = True
-            LOGGER.error("release-pr-checks: %s", error)
+            # WHY exception() and not error(): this is the branch where a declared
+            # workflow could not be reached, and losing the traceback would leave the
+            # job saying only that something failed -- the shape of unreadable failure
+            # this whole area exists to remove.
+            LOGGER.exception("release-pr-checks: %s", error)
             continue
         if dispatched:
             LOGGER.warning(
