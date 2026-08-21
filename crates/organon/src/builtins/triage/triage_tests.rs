@@ -362,7 +362,10 @@ async fn scan_requires_services() {
         tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
     };
 
-    let executor = IssueScanExecutor;
+    let executor = IssueScanExecutor::new(crate::sandbox::EgressGate::new(
+        crate::sandbox::EgressPolicy::Allow,
+        &[],
+    ));
     let input = ToolInput {
         name: ToolName::new("issue_scan").expect("valid"),
         tool_use_id: "toolu_3".to_owned(),
@@ -375,4 +378,67 @@ async fn scan_requires_services() {
         result.content.text_summary().contains("not configured"),
         "should say services not configured"
     );
+}
+
+/// SECURITY(#6916): `repo` is model-supplied and used to be interpolated with `format!`.
+///
+/// These drive `issues_url` directly rather than the executor, because the property
+/// under test is where the request POINTS -- observable from the URL, and not
+/// observable from a request that never leaves the process in a unit test.
+mod url_construction {
+    use super::super::issues_url;
+
+    #[test]
+    fn a_normal_repo_builds_the_documented_path() {
+        let url = issues_url("forkwright/aletheia", None, None, 30).expect("builds");
+        assert_eq!(url.host_str(), Some("api.github.com"));
+        assert_eq!(
+            url.path(),
+            "/repos/forkwright/aletheia/issues",
+            "the base URL's empty leading segment must not survive as a doubled slash"
+        );
+    }
+
+    #[test]
+    fn a_repo_carrying_a_query_delimiter_cannot_rewrite_the_query() {
+        let url = issues_url("a/b?state=closed&per_page=100", None, None, 30).expect("builds");
+        assert_eq!(url.host_str(), Some("api.github.com"));
+        assert_eq!(
+            url.query_pairs()
+                .find(|(k, _)| k == "state")
+                .map(|(_, v)| v.into_owned()),
+            Some("open".to_owned()),
+            "an injected state= must stay inside the path, not override the real one"
+        );
+        assert!(
+            url.path().contains("%3F"),
+            "the `?` must be percent-encoded into the path, got {}",
+            url.path()
+        );
+    }
+
+    #[test]
+    fn a_repo_carrying_dot_dot_cannot_climb_out_of_the_repos_path() {
+        let url = issues_url("../../orgs/forkwright", None, None, 30).expect("builds");
+        assert!(
+            url.path().starts_with("/repos/"),
+            "the request must stay under /repos/, got {}",
+            url.path()
+        );
+    }
+
+    #[test]
+    fn a_label_carrying_an_ampersand_cannot_add_a_parameter() {
+        let url = issues_url("a/b", Some("bug&per_page=100"), None, 30).expect("builds");
+        let per_page: Vec<String> = url
+            .query_pairs()
+            .filter(|(k, _)| k == "per_page")
+            .map(|(_, v)| v.into_owned())
+            .collect();
+        assert_eq!(
+            per_page,
+            vec!["30".to_owned()],
+            "an injected per_page must not become a second parameter"
+        );
+    }
 }
