@@ -9,11 +9,13 @@ nothing verified that a given call site actually reached it. Three sites did not
          `general` client. reqwest strips only Authorization, Cookie,
          Proxy-Authorization and WWW-Authenticate across a cross-host redirect, so a
          custom token header rode along to whatever host a response named.
-  #6921  AcademicSource did the same with the Semantic Scholar `x-api-key`, and is
-         now routed -- which is why it is absent from every dict below rather than
-         sanctioned. A routed site simply has no `.send()` left to account for.
-  #6916  triage interpolates an LLM-supplied `repo` argument into a URL and sends it
-         on the same client with no egress check at all.
+  #6921  AcademicSource did the same with the Semantic Scholar `x-api-key`.
+  #6916  triage interpolated an LLM-supplied `repo` argument into a URL and sent it on
+         the same client with no egress check at all -- so `egress = "deny"` did not
+         stop that tool reaching the network.
+
+All three are routed now. They are named here because the check's value is not the
+current list; it is that a fourth cannot appear unnoticed.
 
 Each was found by reading, one at a time, each search wider than the last. That is the
 signature of an unbounded population rather than three unlucky call sites -- so the
@@ -93,8 +95,10 @@ EXEMPT = {
 
 # Known-unprotected, tracked, not yet corrected. An entry must name an open issue --
 # see the note in main() for why that is checked rather than trusted.
-TRACKED = {
-    "crates/organon/src/builtins/triage/mod.rs": 6916,
+TRACKED: dict[str, int] = {
+    # Empty on purpose, and not dead machinery: this is where the NEXT unrouted site
+    # goes while its fix is in flight. The entries that were here -- #6910, #6921,
+    # #6916 -- are gone because they are routed, not because they were forgiven.
 }
 
 
