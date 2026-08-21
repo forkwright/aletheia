@@ -37,6 +37,18 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Signal daemon base URL is plaintext to a host that is not loopback.
+    #[snafu(display(
+        "refusing plaintext signal transport to a non-loopback host: {url}. \
+         signal-cli speaks no TLS, so a remote httpHost sends message content \
+         across the network in the clear. Use a loopback host, or https."
+    ))]
+    InsecureTransport {
+        url: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// No Signal account configured for the requested operation.
     #[snafu(display("no signal account: {account_id}"))]
     NoAccount {
@@ -67,6 +79,7 @@ impl koina::error_class::Classifiable for Error {
             Self::Http { .. } => ErrorClass::Unknown,
             Self::Rpc { .. }
             | Self::InvalidUrl { .. }
+            | Self::InsecureTransport { .. }
             | Self::NoAccount { .. }
             | Self::Json { .. } => ErrorClass::Permanent,
         }

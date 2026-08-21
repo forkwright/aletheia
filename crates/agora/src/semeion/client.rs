@@ -59,7 +59,9 @@ impl SignalClient {
     ///
     /// # Errors
     ///
-    /// Returns [`super::error::Error::InvalidUrl`] if the normalized URL cannot be
+    /// Returns [`super::error::Error::InsecureTransport`] if the normalized URL is
+    /// plaintext to a host that is not loopback,
+    /// [`super::error::Error::InvalidUrl`] if the normalized URL cannot be
     /// parsed, or [`super::error::Error::Http`] if the HTTP client cannot be
     /// constructed.
     pub fn new(base_url: &str) -> Result<Self> {
@@ -70,7 +72,9 @@ impl SignalClient {
     ///
     /// # Errors
     ///
-    /// Returns [`super::error::Error::InvalidUrl`] if the normalized URL cannot be
+    /// Returns [`super::error::Error::InsecureTransport`] if the normalized URL is
+    /// plaintext to a host that is not loopback,
+    /// [`super::error::Error::InvalidUrl`] if the normalized URL cannot be
     /// parsed, or [`super::error::Error::Http`] if the HTTP client cannot be
     /// constructed.
     pub fn with_timeouts(
@@ -80,6 +84,24 @@ impl SignalClient {
         receive_timeout: Duration,
     ) -> Result<Self> {
         let base = normalize_url(base_url);
+
+        // WHY(#5199): `normalize_url` below says "signal-cli daemon is loopback-only",
+        // and nothing made that true -- it only ever detected whether a scheme was
+        // present. An operator setting `channels.signal.accounts.<id>.httpHost` to a LAN
+        // address or a public name got a working client that POSTed the JSON-RPC payload,
+        // and every Signal message flowing through it, over unauthenticated cleartext.
+        //
+        // The guard is the one #5055 established for the identical class in
+        // `hermeneus::openai`, not a second implementation: HTTPS to any host is fine,
+        // plaintext only to loopback. signal-cli speaks no TLS, so in practice this
+        // means the daemon must be local -- which is what the comment already claimed.
+        if !koina::http::is_secure_or_plaintext_loopback_url(&base) {
+            return Err(error::InsecureTransportSnafu {
+                url: koina::http::transport_url_for_diagnostic(&base),
+            }
+            .build());
+        }
+
         reqwest::Url::parse(&base).map_err(|source| {
             error::InvalidUrlSnafu {
                 url: base.clone(),
@@ -353,6 +375,58 @@ mod tests {
     use organon::testing::install_crypto_provider;
 
     use super::*;
+
+    /// A LAN or public host over plaintext must not produce a working client.
+    ///
+    /// WHY these hosts specifically: `normalize_url` prepends plain `http://` to a bare
+    /// `host:port`, so the ordinary way to misconfigure this -- writing `httpHost` as an
+    /// IP or a name -- produces exactly these URLs. The suffix case is the one a
+    /// string-prefix check would wave through: `127.0.0.1.evil.example` starts with a
+    /// loopback literal and resolves to whatever its owner chooses.
+    #[test]
+    fn plaintext_to_a_non_loopback_host_is_refused() {
+        for url in [
+            "192.168.1.50:8080",
+            "http://192.168.1.50:8080",
+            "signal.example.com:8080",
+            "http://signal.example.com:8080",
+            "http://127.0.0.1.evil.example:8080",
+            "http://10.0.0.7:8080",
+        ] {
+            let result = SignalClient::new(url);
+            assert!(
+                matches!(result, Err(error::Error::InsecureTransport { .. })),
+                "{url} must be refused as insecure transport, got {:?}",
+                result.map(|_| "a working client"),
+            );
+        }
+    }
+
+    /// Loopback over plaintext is the intended deployment and must keep working.
+    #[test]
+    fn plaintext_to_loopback_is_accepted() {
+        for url in [
+            "localhost:8080",
+            "127.0.0.1:9000",
+            "http://localhost:8080",
+            "[::1]:8080",
+        ] {
+            assert!(
+                SignalClient::new(url).is_ok(),
+                "{url} is the loopback daemon this client exists to talk to"
+            );
+        }
+    }
+
+    /// HTTPS to any host stays allowed -- the guard is about cleartext, not about reach.
+    ///
+    /// WHY pinned as its own test: `public_api_semeion.rs` already asserts this, and a
+    /// stricter guard that refused every non-loopback host would break it. The threat
+    /// here is content crossing the network in the clear; TLS answers that threat.
+    #[test]
+    fn https_to_a_remote_host_is_still_accepted() {
+        assert!(SignalClient::new("https://signal.example.com").is_ok());
+    }
 
     #[test]
     fn url_normalization() {
