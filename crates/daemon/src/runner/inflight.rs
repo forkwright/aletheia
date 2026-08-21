@@ -226,6 +226,23 @@ impl TaskRunner {
                             "self-prompt dispatched successfully"
                         );
                     }
+                    // WHY(#6830) skipped is separated from failed here: until the
+                    // outcome started surviving `execute_self_prompt_with_cancel`,
+                    // this arm was unreachable and every dispatch looked successful.
+                    // Now that it is reachable, folding a skip into it would record a
+                    // background FAILURE every time no bridge is configured -- a
+                    // deliberate no-op reported as a fault, which is the same
+                    // conflation `TaskOutcome` exists to prevent, in the other
+                    // direction.
+                    Ok(r) if r.outcome == TaskOutcome::Skipped => {
+                        let output = r.output.as_deref().map(super::redact_task_text);
+                        tracing::info!(
+                            nous_id = %nous_id,
+                            source_task = %task_id_owned,
+                            output = ?output,
+                            "self-prompt skipped"
+                        );
+                    }
                     Ok(r) => {
                         let output = r.output.as_deref().map(super::redact_task_text);
                         tracing::warn!(
