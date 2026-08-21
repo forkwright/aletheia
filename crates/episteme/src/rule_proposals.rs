@@ -396,10 +396,23 @@ mod tests {
         obs.extend(make_obs("grep", &ToolOutcome::Success, 3)); // 70% failure
 
         let proposals = propose_rules(&obs, DEFAULT_MIN_OBSERVATIONS, DEFAULT_MIN_CONFIDENCE);
-        if proposals.len() >= 2 {
+
+        // WHY(#6917) the precondition is asserted rather than guarded: this ran
+        // as `if proposals.len() >= 2 { .. }`, and the fixture above builds two
+        // tools with distinct failure rates precisely so two proposals exist to
+        // sort. A regression returning one or none skipped the assertion and
+        // the test still passed.
+        assert!(
+            proposals.len() >= 2,
+            "the fixture's two tools must yield two proposals to sort, got {}",
+            proposals.len()
+        );
+        for pair in proposals.windows(2) {
             assert!(
-                proposals[0].confidence >= proposals[1].confidence,
-                "proposals should be sorted by confidence descending"
+                pair[0].confidence >= pair[1].confidence,
+                "proposals must be sorted by descending confidence, found {} before {}",
+                pair[0].confidence,
+                pair[1].confidence
             );
         }
     }
