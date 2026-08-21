@@ -15,6 +15,7 @@
 //! official JSON search API (only the Instant Answer endpoint, which rarely
 //! returns web results).
 
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::future::Future;
 use std::pin::Pin;
@@ -25,9 +26,10 @@ use serde::Deserialize;
 use koina::http::TokioHostResolver;
 use koina::id::ToolName;
 
+use crate::builtins::http_client::{SafeRequest, send_with_safe_redirects};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
-use crate::sandbox::{EgressGate, SandboxConfig, check_egress, check_egress_remote_addr};
+use crate::sandbox::{EgressGate, SandboxConfig};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -63,39 +65,35 @@ struct BraveResult {
     description: String,
 }
 
-/// Apply `gate` to `BRAVE_SEARCH_ENDPOINT` before connecting.
-///
-/// `Deny` short-circuits, `Allow` deliberately skips DNS, and `Allowlist`
-/// resolves and checks every candidate address.
-///
-/// WHY: the endpoint is a fixed constant, not attacker-controlled input, but
-/// `egress = "allowlist"`/`"deny"` must still apply -- an operator who set
-/// `egress = "deny"` expects no network tool to reach out, fixed-destination
-/// or not (#5071). This preflight does not pin the resolver answer; the
-/// post-connect peer check can reject a response but cannot retract the
-/// request or its subscription token (#5229).
-async fn check_egress_endpoint(gate: &EgressGate) -> std::result::Result<(), String> {
-    let url: reqwest::Url = BRAVE_SEARCH_ENDPOINT
-        .parse()
-        .map_err(|e| format!("invalid search endpoint: {e}"))?;
-    let host = url.host_str().ok_or("search endpoint has no host")?;
-    let port = url.port_or_known_default().unwrap_or(443);
-    check_egress(gate, host, port, &TokioHostResolver).await
-}
-
 #[expect(
     clippy::result_large_err,
     reason = "ToolResult grew by receipt field; boxing would change public API"
 )]
+/// Take the SSRF-safe client, whose redirects are disabled.
+///
+/// SECURITY(#6910): this tool sends `X-Subscription-Token`, and reqwest strips
+/// only `Authorization`, `Cookie`, `Proxy-Authorization` and `WWW-Authenticate`
+/// across a cross-host redirect -- a custom header rides along to whatever host
+/// the response names. On the general client, whose default policy follows ten
+/// redirects with no per-hop revalidation, that hands the credential to an
+/// attacker-chosen destination. `send_with_safe_redirects` drives the chain
+/// itself and puts every hop through the same egress checkpoint `http_request`
+/// uses, which is why it needs the client that does not redirect on its own.
 fn require_http_client(ctx: &ToolContext) -> std::result::Result<reqwest::Client, ToolResult> {
     ctx.services
         .as_deref()
-        .map(|s| s.http_clients.general.clone())
+        .map(|s| s.http_clients.ssrf_safe.clone())
         .ok_or_else(|| ToolResult::error("tool services not configured"))
 }
 
 struct WebSearchExecutor {
     egress: EgressGate,
+}
+
+impl WebSearchExecutor {
+    fn new(egress: EgressGate) -> Self {
+        Self { egress }
+    }
 }
 
 impl ToolExecutor for WebSearchExecutor {
@@ -131,41 +129,52 @@ impl ToolExecutor for WebSearchExecutor {
                 Err(r) => return Ok(r),
             };
 
-            if let Err(e) = check_egress_endpoint(&self.egress).await {
-                return Ok(ToolResult::error(e));
-            }
+            let mut url: reqwest::Url = match BRAVE_SEARCH_ENDPOINT.parse() {
+                Ok(u) => u,
+                Err(e) => {
+                    return Ok(ToolResult::error(format!("invalid search endpoint: {e}")));
+                }
+            };
+            url.query_pairs_mut()
+                .append_pair("q", query)
+                .append_pair("count", &count.to_string());
 
-            let response = client
-                .get(BRAVE_SEARCH_ENDPOINT)
-                .query(&[("q", query), ("count", &count.to_string())])
-                .header("X-Subscription-Token", api_key)
-                .header("Accept", "application/json")
-                .header(
-                    "User-Agent",
-                    concat!(
-                        "aletheia/",
-                        env!("CARGO_PKG_VERSION"),
-                        " (organon web_search)"
-                    ),
+            let mut headers = HashMap::new();
+            headers.insert("X-Subscription-Token".to_owned(), api_key);
+            headers.insert("Accept".to_owned(), "application/json".to_owned());
+            headers.insert(
+                "User-Agent".to_owned(),
+                concat!(
+                    "aletheia/",
+                    env!("CARGO_PKG_VERSION"),
+                    " (organon web_search)"
                 )
-                .timeout(std::time::Duration::from_secs(20))
-                .send()
-                .await;
+                .to_owned(),
+            );
 
-            let response = match response {
+            // SECURITY(#6910, #5071, #5229): every hop -- the first request and
+            // any redirect the endpoint names -- goes through the same egress
+            // checkpoint and internal-address revalidation `http_request` uses.
+            // The separate pre-flight this replaces validated only the fixed
+            // endpoint and then left the client to follow redirects on its own,
+            // carrying `X-Subscription-Token` to wherever they led.
+            let response = match send_with_safe_redirects(
+                &client,
+                SafeRequest {
+                    method: reqwest::Method::GET,
+                    url: url.as_str(),
+                    headers: &headers,
+                    body: None,
+                    timeout: std::time::Duration::from_secs(20),
+                },
+                &TokioHostResolver,
+                &self.egress,
+            )
+            .await
+            {
                 Ok(r) => r,
                 Err(e) => return Ok(ToolResult::error(format!("search failed: {e}"))),
             };
-
-            // SECURITY(#5229): inspect the address the connection actually
-            // used before accepting the response. This can reject a private
-            // or policy-disallowed rebound peer before response handling, but
-            // the request (including the subscription token) has already been
-            // sent; preventing request-side exposure requires pinning the
-            // validated address.
-            if let Err(e) = check_egress_remote_addr(&self.egress, response.remote_addr()) {
-                return Ok(ToolResult::error(e));
-            }
 
             let status = response.status();
             if !status.is_success() {
@@ -214,7 +223,7 @@ impl ToolExecutor for WebSearchExecutor {
 /// Returns an error if `web_search` is already registered.
 pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
     let egress = EgressGate::from_config(sandbox);
-    registry.register(web_search_def(), Box::new(WebSearchExecutor { egress }))?;
+    registry.register(web_search_def(), Box::new(WebSearchExecutor::new(egress)))?;
     Ok(())
 }
 
@@ -324,9 +333,7 @@ mod tests {
     }
 
     fn test_executor() -> WebSearchExecutor {
-        WebSearchExecutor {
-            egress: EgressGate::new(crate::sandbox::EgressPolicy::Allow, &[]),
-        }
+        WebSearchExecutor::new(EgressGate::new(crate::sandbox::EgressPolicy::Allow, &[]))
     }
 
     #[tokio::test]
@@ -335,9 +342,8 @@ mod tests {
         // before ever attempting to reach Brave Search, even when an API key
         // is configured.
         let ctx = mock_ctx();
-        let executor = WebSearchExecutor {
-            egress: EgressGate::new(crate::sandbox::EgressPolicy::Deny, &[]),
-        };
+        let executor =
+            WebSearchExecutor::new(EgressGate::new(crate::sandbox::EgressPolicy::Deny, &[]));
         let input = ToolInput {
             name: ToolName::new("web_search").expect("valid"),
             tool_use_id: "toolu_deny".to_owned(),
