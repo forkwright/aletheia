@@ -112,7 +112,6 @@ poiesis-deck = { path = "../poiesis/deck", optional = true }
 poiesis-printer-chromium = { path = "../poiesis/printer-chromium", optional = true }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
-base64 = { workspace = true }
 getrandom = "0.4"
 indexmap = { workspace = true }
 hmac = { workspace = true }

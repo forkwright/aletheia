@@ -59,7 +59,7 @@ pub fn encode(input: &[u8]) -> String {
 /// Returns [`DecodeError`] if the input contains invalid characters,
 /// has an invalid length, or has malformed padding.
 pub fn decode(input: &str) -> Result<Vec<u8>, DecodeError> {
-    decode_inner(input, false, true)
+    decode_inner(input, Accept::Standard, Padding::Required)
 }
 
 /// Encode bytes to URL-safe base64 (with `-`, `_`, no padding).
@@ -81,7 +81,29 @@ pub fn encode_url_safe_no_pad(input: &[u8]) -> String {
 /// Returns [`DecodeError`] if the input contains invalid characters
 /// or has an invalid length.
 pub fn decode_url_safe_no_pad(input: &str) -> Result<Vec<u8>, DecodeError> {
-    decode_inner(input, true, false)
+    decode_inner(input, Accept::Either, Padding::Optional)
+}
+
+/// Decode URL-safe base64, rejecting anything that is not exactly that.
+///
+/// Unlike [`decode_url_safe_no_pad`], this refuses `+`, `/` and any `=` padding, so
+/// exactly one string decodes to any given byte sequence.
+///
+/// WHY(#6847) a strict variant exists at all: the lenient decoder is right for inputs
+/// produced elsewhere -- a JWT segment or a PKCE verifier from another implementation --
+/// where failing on a `=` nobody meant is worse than accepting it. It is wrong wherever
+/// the encoded string is itself an identity. An HMAC receipt is the case that forced
+/// this: under lenient decoding both `<tag>` and `<tag>=` verify against the same MAC,
+/// so a receipt that a ledger keyed by string has never seen still passes verification.
+/// That is not a forgery -- the MAC still has to match -- but it does mean "verified"
+/// and "is the receipt we issued" stop being the same statement.
+///
+/// # Errors
+///
+/// Returns [`DecodeError`] if the input contains a character outside the URL-safe
+/// alphabet, carries padding, or has an invalid length.
+pub fn decode_url_safe_no_pad_strict(input: &str) -> Result<Vec<u8>, DecodeError> {
+    decode_inner(input, Accept::UrlSafeStrict, Padding::Forbidden)
 }
 
 /// Encode with a given alphabet and optional padding.
@@ -153,18 +175,40 @@ fn sextet_to_char(alphabet: &[u8; 64], six_bits: u32) -> char {
 }
 
 /// Decode base64 with configurable alphabet and padding requirements.
-fn decode_inner(
-    input: &str,
-    allow_url_safe: bool,
-    require_pad: bool,
-) -> Result<Vec<u8>, DecodeError> {
+/// Which characters a decoder accepts for sextets 62 and 63.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Accept {
+    /// `+` and `/` only -- RFC 4648 section 4.
+    Standard,
+    /// `-` and `_` only -- RFC 4648 section 5, with no cross-alphabet aliasing.
+    UrlSafeStrict,
+    /// Either alphabet. Deliberate leniency, for input produced elsewhere.
+    Either,
+}
+
+/// What a decoder does about trailing `=`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Padding {
+    /// The input must be padded to a multiple of four.
+    Required,
+    /// Padding is accepted and ignored.
+    Optional,
+    /// Any padding is an error, so one byte sequence has exactly one encoding.
+    Forbidden,
+}
+
+fn decode_inner(input: &str, accept: Accept, padding: Padding) -> Result<Vec<u8>, DecodeError> {
     let bytes = input.as_bytes();
 
     // WHY: split data from trailing '=' padding before decoding.
     let data_end = bytes.iter().rposition(|&b| b != b'=').map_or(0, |i| i + 1);
     let padding_len = bytes.len().saturating_sub(data_end);
 
-    if require_pad {
+    if padding == Padding::Forbidden && padding_len > 0 {
+        return InvalidPaddingSnafu.fail();
+    }
+
+    if padding == Padding::Required {
         if !bytes.len().is_multiple_of(4) {
             return InvalidLengthSnafu {
                 length: bytes.len(),
@@ -184,7 +228,7 @@ fn decode_inner(
     let mut bits: u32 = 0;
 
     for (pos, &b) in bytes.iter().enumerate().take(data_end) {
-        let v = char_to_sextet(b, allow_url_safe).ok_or_else(|| {
+        let v = char_to_sextet(b, accept).ok_or_else(|| {
             InvalidCharSnafu {
                 ch: char::from(b),
                 position: pos,
@@ -211,15 +255,18 @@ fn decode_inner(
 }
 
 /// Map a single base64 character to its 6-bit value.
-fn char_to_sextet(b: u8, allow_url_safe: bool) -> Option<u8> {
+fn char_to_sextet(b: u8, accept: Accept) -> Option<u8> {
     match b {
         b'A'..=b'Z' => Some(b - b'A'),
         b'a'..=b'z' => Some(b - b'a' + 26),
         b'0'..=b'9' => Some(b - b'0' + 52),
-        b'+' => Some(62),
-        b'/' => Some(63),
-        b'-' if allow_url_safe => Some(62),
-        b'_' if allow_url_safe => Some(63),
+        // Reject the wrong alphabet first, then map what is left. Splitting it this
+        // way keeps 62 and 63 to one arm each -- spelling them per-character gave two
+        // pairs of identical bodies.
+        b'+' | b'/' if accept == Accept::UrlSafeStrict => None,
+        b'-' | b'_' if accept == Accept::Standard => None,
+        b'+' | b'-' => Some(62),
+        b'/' | b'_' => Some(63),
         _ => None,
     }
 }
@@ -228,6 +275,67 @@ fn char_to_sextet(b: u8, allow_url_safe: bool) -> Option<u8> {
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
     use super::*;
+
+    /// SECURITY(#6847): the strict decoder exists so one byte sequence has exactly one
+    /// encoding. Wherever the encoded string is itself an identity -- an HMAC receipt a
+    /// ledger is keyed by -- lenient decoding makes "verified" and "is the string we
+    /// issued" stop being the same statement.
+    mod strict_url_safe {
+        use super::*;
+
+        #[test]
+        fn round_trips_the_url_safe_alphabet() {
+            // 0xFB 0xFF exercises both sextet-62 and sextet-63 positions.
+            let bytes = [0xFBu8, 0xFF, 0xBF];
+            let encoded = encode_url_safe_no_pad(&bytes);
+            assert_eq!(decode_url_safe_no_pad_strict(&encoded).unwrap(), bytes);
+        }
+
+        #[test]
+        fn refuses_the_standard_alphabet() {
+            // The same bytes in the standard alphabet, which the lenient decoder takes.
+            let standard = encode(&[0xFBu8, 0xFF, 0xBF]);
+            assert!(standard.contains('+') || standard.contains('/'));
+            assert!(decode_url_safe_no_pad_strict(standard.trim_end_matches('=')).is_err());
+            assert!(decode_url_safe_no_pad(standard.trim_end_matches('=')).is_ok());
+        }
+
+        #[test]
+        fn refuses_padding() {
+            let encoded = encode_url_safe_no_pad(b"f");
+            assert!(decode_url_safe_no_pad_strict(&encoded).is_ok());
+            assert!(decode_url_safe_no_pad_strict(&format!("{encoded}=")).is_err());
+            assert!(decode_url_safe_no_pad_strict(&format!("{encoded}==")).is_err());
+        }
+
+        #[test]
+        fn one_encoding_per_byte_sequence() {
+            // The property the whole variant exists for, stated directly: no second
+            // spelling of the same bytes survives. The lenient decoder accepts three.
+            let bytes = b"receipt";
+            let canonical = encode_url_safe_no_pad(bytes);
+            let variants = [
+                format!("{canonical}="),
+                canonical.replace('-', "+").replace('_', "/"),
+            ];
+            for variant in variants {
+                if variant == canonical {
+                    continue;
+                }
+                assert!(
+                    decode_url_safe_no_pad_strict(&variant).is_err(),
+                    "strict decoding must refuse the alternative spelling {variant}"
+                );
+            }
+            assert_eq!(decode_url_safe_no_pad_strict(&canonical).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn standard_decode_still_refuses_the_url_safe_alphabet() {
+        // Guards the direction the Accept refactor could have broken silently.
+        assert!(decode("-_").is_err());
+    }
 
     #[test]
     fn rfc4648_empty() {

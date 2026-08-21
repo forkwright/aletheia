@@ -13,7 +13,7 @@ workspace = true
 
 [features]
 default = []
-keyring = ["dep:keyring"]
+keyring = ["dep:keyring", "dep:keyring-core"]
 test-support = []
 test-core = []
 test-full = []
@@ -21,6 +21,11 @@ test-full = []
 [dependencies]
 koina = { path = "../koina", features = ["fjall"] }
 keyring = { version = "4", optional = true }
+# WHY a direct dependency rather than reaching through `keyring`: keyring 4 re-exports
+# only `Error` and `Result` from keyring-core, not the mock store this crate's tests
+# install. It is already in the tree as keyring's own dependency, so this pins the
+# version we are actually compiling against rather than whichever one resolution picks.
+keyring-core = { version = "1", optional = true }
 argon2 = { version = "0.5", features = ["std"] }
 blake3 = "1"
 fjall = { version = "3", default-features = false, features = ["lz4"] }

@@ -5975,7 +5975,6 @@ dependencies = [
 name = "organon"
 version = "0.39.0"
 dependencies = [
- "base64 0.23.1",
  "eidos",
  "energeia",
  "fjall",
@@ -9041,6 +9040,7 @@ dependencies = [
  "hmac 0.13.0",
  "jiff",
  "keyring",
+ "keyring-core",
  "koina",
  "prometheus-client",
  "rand 0.10.2",

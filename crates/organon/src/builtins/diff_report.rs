@@ -99,10 +99,7 @@ impl ToolExecutor for DiffReportExecutor {
 }
 
 fn base64_decode(s: &str) -> std::result::Result<Vec<u8>, String> {
-    use base64::{Engine as _, engine::general_purpose};
-    general_purpose::STANDARD
-        .decode(s)
-        .map_err(|e| e.to_string())
+    koina::base64::decode(s).map_err(|e| e.to_string())
 }
 
 fn col_index_to_letter(col: u32) -> String {

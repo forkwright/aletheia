@@ -1,102 +1,32 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-// WHY: The default mock backend shipped by `keyring` 3.x uses `EntryOnly`
-// persistence — each `Entry::new(service, user)` call produces a *fresh*
-// MockCredential with independent state. That breaks round-trips for our
-// provider, whose `store` and `get_credential` methods each construct a new
-// `Entry`. To exercise real persistence semantics (what every real backend
-// offers) we install a test-only `CredentialBuilder` keyed on
-// (service, user) into a process-global HashMap. Because the builder is
-// installed exactly once and each test uses unique identifiers, parallel
-// execution stays safe.
-
-use std::any::Any;
-use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
-
-use keyring::credential::{
-    Credential as KeyringCredential, CredentialApi, CredentialBuilder, CredentialBuilderApi,
-    CredentialPersistence,
-};
-use keyring::error::Error as KeyringError;
+use std::sync::OnceLock;
 
 use koina::credential::{CredentialProvider, CredentialSource};
 
 use super::*;
 
-// ── test-only in-memory backend ──
-
-type BackendStore = Mutex<HashMap<(String, String), Vec<u8>>>;
-
-fn backend_store() -> &'static BackendStore {
-    static STORE: OnceLock<BackendStore> = OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-#[derive(Debug)]
-struct TestCredential {
-    service: String,
-    user: String,
-}
-
-impl CredentialApi for TestCredential {
-    fn set_secret(&self, secret: &[u8]) -> Result<(), KeyringError> {
-        let mut map = backend_store().lock().expect("backend lock poisoned");
-        map.insert((self.service.clone(), self.user.clone()), secret.to_vec());
-        Ok(())
-    }
-
-    fn get_secret(&self) -> Result<Vec<u8>, KeyringError> {
-        let map = backend_store().lock().expect("backend lock poisoned");
-        match map.get(&(self.service.clone(), self.user.clone())) {
-            Some(v) => Ok(v.clone()),
-            None => Err(KeyringError::NoEntry),
-        }
-    }
-
-    fn delete_credential(&self) -> Result<(), KeyringError> {
-        let mut map = backend_store().lock().expect("backend lock poisoned");
-        match map.remove(&(self.service.clone(), self.user.clone())) {
-            Some(_) => Ok(()),
-            None => Err(KeyringError::NoEntry),
-        }
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
-#[derive(Debug)]
-struct TestBuilder;
-
-impl CredentialBuilderApi for TestBuilder {
-    fn build(
-        &self,
-        _target: Option<&str>,
-        service: &str,
-        user: &str,
-    ) -> Result<Box<KeyringCredential>, KeyringError> {
-        Ok(Box::new(TestCredential {
-            service: service.to_owned(),
-            user: user.to_owned(),
-        }))
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn persistence(&self) -> CredentialPersistence {
-        CredentialPersistence::ProcessOnly
-    }
-}
-
+/// Install a mock credential store, once per process.
+///
+/// WHY this replaced ~85 lines of hand-rolled mock: keyring 3.x's shipped mock used
+/// `EntryOnly` persistence -- each `Entry::new(service, user)` produced a *fresh*
+/// credential with independent state, which breaks a round-trip for a provider whose
+/// `store` and `get_credential` each construct a new `Entry`. This crate therefore
+/// carried its own `CredentialBuilder` over a process-global `HashMap` to get
+/// persistence.
+///
+/// keyring-core 1.0's mock store already has that property: `mock::Store::build` looks
+/// up an existing credential by (service, user) and returns the same one. The reason
+/// the bespoke backend existed is gone, so it is gone too.
+///
+/// WHY installed exactly once and never unset: the store is process-global. Each test
+/// uses unique identifiers, so parallel execution stays safe -- but a test that reset
+/// it would pull the backend out from under any test running beside it.
 fn install_test_backend() {
     static INSTALLED: OnceLock<()> = OnceLock::new();
     INSTALLED.get_or_init(|| {
-        let boxed: Box<CredentialBuilder> = Box::new(TestBuilder);
-        keyring::set_default_credential_builder(boxed);
+        let store = keyring_core::mock::Store::new().expect("mock store must build");
+        keyring_core::set_default_store(store);
     });
 }
 
