@@ -10,10 +10,16 @@ name: No AI Attribution
 on:
   pull_request:
     branches: [main]
+    # WHY(#6874) `edited`: the PR BODY is squashed into the merge commit, and without
+    # this the check never re-runs after a body edit. A marker added by editing the
+    # description after the last push was scanned by nothing at all -- the same hole
+    # the title guard already closes by listing these four types.
+    types: [opened, edited, synchronize, reopened]
 
+# WHY(#6874) no `pull-requests: read`: the title and body are read from the event
+# payload rather than the API, so this workflow needs no token scope for them at all.
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -45,66 +51,23 @@ jobs:
           filter: blob:none
           persist-credentials: false
 
-      - name: Scan PR body and title for attribution markers
+      - name: Self-test the scanner
+        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_attribution_markers.py'
+
+      # WHY(#6874) one step over title, body and commits: the shell version fetched
+      # title and body through `gh` (GraphQL) and exited 1 whether it found a marker or
+      # could not reach GitHub. A GraphQL degradation reddened every open PR with a 503
+      # and no scan output, and maintainers went hunting a marker that did not exist --
+      # three times in one day, across four PRs, while the commit-scanning gate passed
+      # on the same commits. The two disagreed purely on transport availability.
+      #
+      # The subject now comes from GITHUB_EVENT_PATH, which is on disk before the job
+      # starts, so there is no fetch to fail. An unreadable subject exits 2 and a marker
+      # exits 1, with different messages: both non-zero, because a check that cannot
+      # read its subject must never report clean, but the red now says which happened.
+      - name: Scan PR title, body and commits for attribution markers
         if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PATTERN_FILE: .github/no-ai-attribution-patterns.txt
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-
-          if [ ! -s "$PATTERN_FILE" ]; then
-            echo "::error::Missing attribution pattern source: ${PATTERN_FILE}"
-            exit 1
-          fi
-
-          BODY=$(gh pr view "$PR_NUMBER" --json body --jq .body)
-          TITLE=$(gh pr view "$PR_NUMBER" --json title --jq .title)
-
-          fail=0
-
-          if printf '%s' "$BODY" | grep -niE -f "$PATTERN_FILE"; then
-            echo "::error::PR body contains attribution marker(s) above."
-            echo "::error::Remove the marker(s) from the PR body and push or edit again."
-            fail=1
-          fi
-
-          if printf '%s' "$TITLE" | grep -niE -f "$PATTERN_FILE"; then
-            echo "::error::PR title contains attribution marker(s) above."
-            fail=1
-          fi
-
-          if [ "$fail" -ne 0 ]; then
-            exit 1
-          fi
-
-          echo "PR body and title clean of attribution markers."
-
-      - name: Scan PR commits for attribution markers
-        if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.user.login != 'release-please[bot]' && github.event.pull_request.user.login != 'github-actions[bot]' }}
-        env:
-          PATTERN_FILE: .github/no-ai-attribution-patterns.txt
-        run: |
-          set -euo pipefail
-
-          if [ ! -s "$PATTERN_FILE" ]; then
-            echo "::error::Missing attribution pattern source: ${PATTERN_FILE}"
-            exit 1
-          fi
-
-          commits=$(git log --format="%H" "origin/${{ github.base_ref }}..HEAD")
-          fail=0
-          for sha in $commits; do
-            message=$(git log -1 --format="%B" "$sha")
-            if printf '%s' "$message" | grep -niE -f "$PATTERN_FILE"; then
-              echo "::error::Commit $sha contains attribution marker(s) above."
-              fail=1
-            fi
-          done
-          if [ "$fail" -ne 0 ]; then
-            echo "::error::Reword or rebase the offending commit(s) and push again."
-            exit 1
-          fi
-
-          echo "All PR commits clean of attribution markers."
+          BASE_REF: ${{ github.base_ref }}
+        run: python3 scripts/check-attribution-markers.py --commits
