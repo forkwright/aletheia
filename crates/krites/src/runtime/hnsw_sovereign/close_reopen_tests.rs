@@ -1,4 +1,4 @@
-//! E05 (close/reopen recall) and the open-time cost assertion.
+//! E05 (close/reopen recall) and the bounded initialization-I/O assertion.
 //!
 //! Needs the `storage-fjall` feature — an in-memory index can't meaningfully
 //! test "close the Db and reopen it". Both tests exercise the whole public
@@ -12,10 +12,19 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 use crate::DataValue;
+use crate::data::tuple::{Tuple, TupleT};
+use crate::data::value::ValidityTs;
+use crate::error::InternalResult;
 use crate::runtime::db::ScriptMutability;
-use crate::storage::fjall_backend::{FjallStorage, new_krites_fjall};
+use crate::runtime::relation::RelationId;
+use crate::storage::error::StorageResult;
+use crate::storage::fjall_backend::{
+    FjallStorage, FjallTx, initialize_krites_storage, new_krites_fjall, open_krites_fjall_storage,
+};
+use crate::storage::{Storage, StoreTx};
 
 type TestDb = crate::runtime::db::Db<FjallStorage>;
 
@@ -63,7 +72,10 @@ fn insert_all(db: &TestDb, ids: impl Iterator<Item = usize>) {
     }
 }
 
-fn search(db: &TestDb, query: [f32; 4], k: usize) -> Vec<i64> {
+fn search<S>(db: &crate::runtime::db::Db<S>, query: [f32; 4], k: usize) -> Vec<i64>
+where
+    S: for<'s> Storage<'s>,
+{
     let res = db
         .run_script(
             &format!(
@@ -233,15 +245,184 @@ fn average_recall(db: &TestDb, queries: &[[f32; 4]], present: &[usize], k: usize
     }
 }
 
-/// Open-time cost assertion: opening a fjall-backed index must not scale
-/// with how many vectors it holds. A scan-on-open shortcut (rebuilding an
-/// in-process graph at open time — the self-owned shape this module
-/// deliberately does not take; every read goes through `SessionTx` against
-/// the stored index relation) would make a much larger index open
-/// proportionally slower; the store-resident design must open in roughly
-/// constant time regardless of index size.
+#[derive(Clone)]
+struct InitializationTracingStorage {
+    inner: FjallStorage,
+    accesses: Arc<Mutex<Vec<InitializationAccess>>>,
+}
+
+struct InitializationTracingTx<'s> {
+    inner: FjallTx<'s>,
+    accesses: Arc<Mutex<Vec<InitializationAccess>>>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum InitializationAccess {
+    Transaction { write: bool },
+    Get { key: Vec<u8>, for_update: bool },
+    Put,
+    SupportsParallelPut,
+    ParallelPut,
+    Delete,
+    PersistedRangeDelete,
+    Exists,
+    Commit,
+    TupleRangeScan,
+    ValidityRangeScan,
+    RawRangeScan,
+    RangeCount,
+    Compact,
+    BatchPut,
+}
+
+fn record_access(accesses: &Mutex<Vec<InitializationAccess>>, access: InitializationAccess) {
+    accesses.lock().unwrap().push(access);
+}
+
+impl<'s> Storage<'s> for InitializationTracingStorage {
+    type Tx = InitializationTracingTx<'s>;
+
+    fn storage_kind(&self) -> &'static str {
+        self.inner.storage_kind()
+    }
+
+    fn transact(&'s self, write: bool) -> StorageResult<Self::Tx> {
+        record_access(&self.accesses, InitializationAccess::Transaction { write });
+        Ok(InitializationTracingTx {
+            inner: self.inner.transact(write)?,
+            accesses: Arc::clone(&self.accesses),
+        })
+    }
+
+    fn range_compact(&'s self, lower: &[u8], upper: &[u8]) -> StorageResult<()> {
+        record_access(&self.accesses, InitializationAccess::Compact);
+        self.inner.range_compact(lower, upper)
+    }
+
+    fn batch_put<'a>(
+        &'a self,
+        data: Box<dyn Iterator<Item = StorageResult<(Vec<u8>, Vec<u8>)>> + 'a>,
+    ) -> StorageResult<()> {
+        record_access(&self.accesses, InitializationAccess::BatchPut);
+        self.inner.batch_put(data)
+    }
+}
+
+impl<'s> StoreTx<'s> for InitializationTracingTx<'s> {
+    fn get(&self, key: &[u8], for_update: bool) -> StorageResult<Option<Vec<u8>>> {
+        record_access(
+            &self.accesses,
+            InitializationAccess::Get {
+                key: key.to_vec(),
+                for_update,
+            },
+        );
+        self.inner.get(key, for_update)
+    }
+
+    fn put(&mut self, key: &[u8], val: &[u8]) -> StorageResult<()> {
+        record_access(&self.accesses, InitializationAccess::Put);
+        self.inner.put(key, val)
+    }
+
+    fn supports_par_put(&self) -> bool {
+        record_access(&self.accesses, InitializationAccess::SupportsParallelPut);
+        self.inner.supports_par_put()
+    }
+
+    fn par_put(&self, key: &[u8], val: &[u8]) -> StorageResult<()> {
+        record_access(&self.accesses, InitializationAccess::ParallelPut);
+        self.inner.par_put(key, val)
+    }
+
+    fn del(&mut self, key: &[u8]) -> StorageResult<()> {
+        record_access(&self.accesses, InitializationAccess::Delete);
+        self.inner.del(key)
+    }
+
+    fn del_range_from_persisted(&mut self, lower: &[u8], upper: &[u8]) -> StorageResult<()> {
+        record_access(&self.accesses, InitializationAccess::PersistedRangeDelete);
+        self.inner.del_range_from_persisted(lower, upper)
+    }
+
+    fn exists(&self, key: &[u8], for_update: bool) -> StorageResult<bool> {
+        record_access(&self.accesses, InitializationAccess::Exists);
+        self.inner.exists(key, for_update)
+    }
+
+    fn commit(&mut self) -> StorageResult<()> {
+        record_access(&self.accesses, InitializationAccess::Commit);
+        self.inner.commit()
+    }
+
+    fn range_scan_tuple<'a>(
+        &'a self,
+        lower: &[u8],
+        upper: &[u8],
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a>
+    where
+        's: 'a,
+    {
+        record_access(&self.accesses, InitializationAccess::TupleRangeScan);
+        self.inner.range_scan_tuple(lower, upper)
+    }
+
+    fn range_skip_scan_tuple<'a>(
+        &'a self,
+        lower: &[u8],
+        upper: &[u8],
+        valid_at: ValidityTs,
+    ) -> Box<dyn Iterator<Item = InternalResult<Tuple>> + 'a> {
+        record_access(&self.accesses, InitializationAccess::ValidityRangeScan);
+        self.inner.range_skip_scan_tuple(lower, upper, valid_at)
+    }
+
+    fn range_scan<'a>(
+        &'a self,
+        lower: &[u8],
+        upper: &[u8],
+    ) -> Box<dyn Iterator<Item = InternalResult<(Vec<u8>, Vec<u8>)>> + 'a>
+    where
+        's: 'a,
+    {
+        record_access(&self.accesses, InitializationAccess::RawRangeScan);
+        self.inner.range_scan(lower, upper)
+    }
+
+    fn range_count<'a>(&'a self, lower: &[u8], upper: &[u8]) -> StorageResult<usize>
+    where
+        's: 'a,
+    {
+        record_access(&self.accesses, InitializationAccess::RangeCount);
+        self.inner.range_count(lower, upper)
+    }
+}
+
+fn initialize_with_access_trace(
+    path: &Path,
+) -> (
+    crate::runtime::db::Db<InitializationTracingStorage>,
+    Arc<Mutex<Vec<InitializationAccess>>>,
+) {
+    // WHY: Fjall recovery legitimately replays its journal and opens its LSM tables.
+    // Open the backend first so those storage-engine costs are outside the
+    // boundary this test observes; only Krites initialization is counted.
+    let storage = open_krites_fjall_storage(path).unwrap();
+    let accesses = Arc::new(Mutex::new(Vec::new()));
+    let counted = InitializationTracingStorage {
+        inner: storage,
+        accesses: Arc::clone(&accesses),
+    };
+    let db = initialize_krites_storage(counted).unwrap();
+    (db, accesses)
+}
+
+/// Krites initialization must not read an HNSW graph into process memory.
+/// A scan-on-open shortcut would either invoke a range operation or issue one
+/// point read per graph record. The store-resident design has the same fixed
+/// access signature regardless of how many vectors the index contains.
 #[test]
-fn open_time_does_not_scale_with_index_size() {
+fn initialization_storage_access_is_independent_of_index_size() {
     let small_dir = tempfile::tempdir().unwrap();
     let large_dir = tempfile::tempdir().unwrap();
     let small_n = 15;
@@ -253,25 +434,43 @@ fn open_time_does_not_scale_with_index_size() {
         insert_all(&db, 0..n);
     }
 
-    let small_elapsed = {
-        let start = std::time::Instant::now();
-        let _db = open(small_dir.path());
-        start.elapsed()
-    };
-    let large_elapsed = {
-        let start = std::time::Instant::now();
-        let _db = open(large_dir.path());
-        start.elapsed()
-    };
+    let expected = vec![
+        InitializationAccess::Transaction { write: true },
+        InitializationAccess::Get {
+            key: vec![DataValue::Null].encode_as_key(RelationId::SYSTEM),
+            for_update: false,
+        },
+        InitializationAccess::Get {
+            key: vec![DataValue::Null, DataValue::from("STORAGE_VERSION")]
+                .encode_as_key(RelationId::SYSTEM),
+            for_update: false,
+        },
+        InitializationAccess::Commit,
+    ];
+    let (_small_db, small_accesses) = initialize_with_access_trace(small_dir.path());
+    let (large_db, large_accesses) = initialize_with_access_trace(large_dir.path());
 
-    // 40x more vectors; a generous 15x latitude on the ratio absorbs CI
-    // timing noise while still failing a genuine O(n) scan-on-open (which
-    // would track much closer to 40x).
-    let ratio = large_elapsed.as_secs_f64() / small_elapsed.as_secs_f64().max(0.0005);
+    assert_eq!(
+        small_accesses.lock().unwrap().as_slice(),
+        expected.as_slice(),
+        "unexpected small-index initialization storage accesses"
+    );
+    assert_eq!(
+        large_accesses.lock().unwrap().as_slice(),
+        expected.as_slice(),
+        "unexpected large-index initialization storage accesses"
+    );
+
+    // WHY: The probe must see the real graph range access used
+    // by an HNSW search, otherwise a missing instrumentation path could make
+    // the initialization assertion false-green.
+    large_accesses.lock().unwrap().clear();
+    assert!(!search(&large_db, vec_for(0), 10).is_empty());
     assert!(
-        ratio < 15.0,
-        "open() took {ratio:.1}x longer on a {}x larger index ({large_elapsed:?} vs {small_elapsed:?}) \
-         — looks like a scan-on-open, not a store-resident O(1) open",
-        large_n / small_n,
+        large_accesses
+            .lock()
+            .unwrap()
+            .contains(&InitializationAccess::TupleRangeScan),
+        "storage-access probe did not observe an HNSW graph scan"
     );
 }

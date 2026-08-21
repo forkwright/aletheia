@@ -1,0 +1,43 @@
+schema_version = 1
+
+[tools]
+kanon_tag = "v0.13.0"
+kanon_commit = "6795565b0ae3368faa0b710608dfeabe1f70fafb"
+kanon_version = "0.13.0"
+kanon_rust = "1.97.1"
+cargo_mutants_version = "27.1.0"
+
+[execution]
+mutant_jobs = 4
+per_mutant_timeout_seconds = 300
+wall_timeout_minutes = 330
+job_timeout_minutes = 360
+artifact_retention_days = 90
+
+[crates.symbolon]
+path = "crates/symbolon"
+features = ["keyring"]
+critical_paths = ["crates/symbolon/src"]
+
+[crates.organon]
+path = "crates/organon"
+features = []
+critical_paths = ["crates/organon/src/sandbox"]
+
+[crates.episteme]
+path = "crates/episteme"
+features = ["storage-fjall"]
+critical_paths = [
+    "crates/episteme/src/recall",
+    "crates/episteme/src/conflict.rs",
+]
+
+[crates.krites]
+path = "crates/krites"
+features = []
+critical_paths = ["crates/krites/src/fixed_rule/algos"]
+
+[crates.nous]
+path = "crates/nous"
+features = []
+critical_paths = []

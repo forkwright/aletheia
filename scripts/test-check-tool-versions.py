@@ -8,7 +8,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 _SCRIPT_PATH = Path(__file__).parent / "check-tool-versions.py"
 
 
@@ -59,6 +58,33 @@ def test_check_tool_fails_when_literal_missing(root: Path) -> None:
     )
 
 
+def test_check_tool_accepts_each_honest_install_spelling(root: Path) -> None:
+    host = root / "host.yml"
+    image = root / "image.sh"
+    host.write_text(
+        "cargo install cargo-auditable --locked --version 0.7.4\n",
+        encoding="utf-8",
+    )
+    image.write_text('cargo_auditable_version="0.7.4"\n', encoding="utf-8")
+    entry = {"version": "0.7.4", "sites": ["host.yml", "image.sh"]}
+    errors = CHECKER.check_tool(root, "cargo-auditable", entry)
+    expect(errors == [], f"both auditable install spellings should pass: {errors!r}")
+
+
+def test_check_tool_accepts_pinned_cargo_mutants(root: Path) -> None:
+    site = root / "substance.yml"
+    site.write_text(
+        "cargo install --locked cargo-mutants --version 27.1.0\n",
+        encoding="utf-8",
+    )
+    errors = CHECKER.check_tool(
+        root,
+        "cargo-mutants",
+        {"version": "27.1.0", "sites": ["substance.yml"]},
+    )
+    expect(errors == [], f"pinned cargo-mutants install should pass: {errors!r}")
+
+
 def test_check_tool_fails_when_site_missing(root: Path) -> None:
     errors = CHECKER.check_tool(
         root, "cross", {"version": "0.2.5", "sites": ["does-not-exist.yml"]}
@@ -68,6 +94,35 @@ def test_check_tool_fails_when_site_missing(root: Path) -> None:
         "does not exist" in errors[0] if errors else False,
         "error should say the site file does not exist",
     )
+
+
+def test_check_tool_rejects_site_escape(root: Path) -> None:
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=root.parent, delete=True
+    ) as outside:
+        outside.write("with:\n  tool: nextest@0.9.143\n")
+        outside.flush()
+        outside_path = Path(outside.name)
+        link = root / "site-link.yml"
+        link.symlink_to(outside_path)
+        for site in (
+            str(outside_path),
+            f"../{outside_path.name}",
+            "site-link.yml",
+        ):
+            errors = CHECKER.check_tool(
+                root,
+                "nextest",
+                {"version": "0.9.143", "sites": [site]},
+            )
+            expect(
+                len(errors) == 1
+                and any(
+                    fragment in errors[0]
+                    for fragment in ("canonical", "escapes", "symlink")
+                ),
+                f"unsafe tool site {site!r} was accepted: {errors!r}",
+            )
 
 
 def test_check_tool_rejects_unregistered_tool_name(root: Path) -> None:
@@ -99,14 +154,32 @@ def test_check_fuzz_nightly_fails_when_date_stale(root: Path) -> None:
     expect(len(errors) == 1, f"expected one error for a stale date, got {errors!r}")
 
 
+def test_check_fuzz_nightly_rejects_site_escape(root: Path) -> None:
+    errors = CHECKER.check_fuzz_nightly(
+        root,
+        {
+            "nightly_date": "2026-08-15",
+            "sites": [str(_SCRIPT_PATH)],
+        },
+    )
+    expect(
+        len(errors) == 1 and "canonical" in errors[0],
+        f"fuzz site escape was accepted: {errors!r}",
+    )
+
+
 def main() -> int:
     for test_fn in (
         test_check_tool_passes_when_literal_present,
         test_check_tool_fails_when_literal_missing,
+        test_check_tool_accepts_each_honest_install_spelling,
+        test_check_tool_accepts_pinned_cargo_mutants,
         test_check_tool_fails_when_site_missing,
+        test_check_tool_rejects_site_escape,
         test_check_tool_rejects_unregistered_tool_name,
         test_check_fuzz_nightly_passes_when_date_present,
         test_check_fuzz_nightly_fails_when_date_stale,
+        test_check_fuzz_nightly_rejects_site_escape,
     ):
         run_isolated(test_fn)
 
