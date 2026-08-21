@@ -127,9 +127,17 @@ fn daemon_output_mode(mode: DaemonRunnerOutputMode) -> DaemonOutputMode {
 /// leaves a source unset) must not register it, so `memory_search` reaches
 /// no third party until an operator turns one on.
 #[cfg(feature = "recall")]
+/// Build the external recall-source registry.
+///
+/// SECURITY(#6921): `http_client` must have redirects DISABLED, and `egress` is applied
+/// to every hop. `AcademicSource` sends an `x-api-key`, and reqwest strips only
+/// Authorization, Cookie, Proxy-Authorization and WWW-Authenticate across a cross-host
+/// redirect -- so on a redirect-following client that key reached whatever host a
+/// response named.
 fn build_recall_source_registry(
     config: &AletheiaConfig,
     http_client: &Arc<reqwest::Client>,
+    egress: &organon::sandbox::EgressGate,
 ) -> crate::recall_sources::RecallSourceRegistry {
     let mut registry = crate::recall_sources::RecallSourceRegistry::new();
 
@@ -142,7 +150,11 @@ fn build_recall_source_registry(
             None
         });
         registry.register(Arc::new(
-            crate::recall_sources::academic::AcademicSource::new(Arc::clone(http_client), api_key),
+            crate::recall_sources::academic::AcademicSource::new(
+                Arc::clone(http_client),
+                api_key,
+                egress.clone(),
+            ),
         ));
     }
 
@@ -700,9 +712,20 @@ impl RuntimeBuilder {
         let vector_search: Option<Arc<dyn nous::recall::VectorSearch>> = None;
 
         #[cfg(feature = "recall")]
+        // SECURITY(#6921): redirects disabled here on purpose --
+        // `send_with_safe_redirects` inside the source drives the chain so every hop
+        // is revalidated. A client that followed them itself would hand back an
+        // already-redirected response and skip the checkpoint.
         let recall_source_registry = Arc::new(build_recall_source_registry(
             &self.config,
-            &Arc::new(reqwest::Client::new()),
+            &Arc::new(
+                reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .timeout(std::time::Duration::from_secs(30))
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new()),
+            ),
+            &organon::sandbox::EgressGate::from_config(&sandbox_config(&self.config)),
         ));
 
         #[cfg(feature = "recall")]
@@ -1293,7 +1316,9 @@ mod tests {
     use tempfile::TempDir;
     use thesauros::loader::load_packs;
 
-    use super::{build_recall_source_registry, prosoche_task_def, resolve_pack_paths};
+    use super::{
+        build_recall_source_registry, prosoche_task_def, resolve_pack_paths, sandbox_config,
+    };
 
     static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -1460,8 +1485,11 @@ mod tests {
             "default RecallSourcesConfig must be disabled"
         );
 
-        let registry =
-            build_recall_source_registry(&config, &std::sync::Arc::new(reqwest::Client::new()));
+        let registry = build_recall_source_registry(
+            &config,
+            &std::sync::Arc::new(reqwest::Client::new()),
+            &organon::sandbox::EgressGate::from_config(&sandbox_config(&config)),
+        );
 
         // llm_context is local (no network); academic is the only
         // network-backed source and must be absent from the count.
@@ -1481,8 +1509,11 @@ mod tests {
         let mut config = AletheiaConfig::default();
         config.recall_sources.academic.enabled = true;
 
-        let registry =
-            build_recall_source_registry(&config, &std::sync::Arc::new(reqwest::Client::new()));
+        let registry = build_recall_source_registry(
+            &config,
+            &std::sync::Arc::new(reqwest::Client::new()),
+            &organon::sandbox::EgressGate::from_config(&sandbox_config(&config)),
+        );
 
         assert_eq!(
             registry.source_count(),
