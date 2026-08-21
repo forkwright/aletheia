@@ -283,8 +283,17 @@ const SUBPROCESS_WAIT: Duration = Duration::from_secs(10);
 async fn wait_for_pid_file(path: &std::path::Path) -> u32 {
     let deadline = Instant::now() + SUBPROCESS_WAIT;
     loop {
-        if let Ok(contents) = std::fs::read_to_string(path) {
-            return contents.trim().parse().expect("pid file contains pid");
+        // WHY the parse is part of the wait condition: `read_to_string` succeeds
+        // the moment `fake df` creates the file, which is before it writes the
+        // pid into it. Treating a create-but-not-yet-written file as "ready"
+        // and unwrapping the parse is a race that fails with
+        // `ParseIntError { kind: Empty }`. It survived only because the previous
+        // loop parked the runtime thread on a blocking sleep and rarely observed
+        // the window.
+        if let Ok(contents) = std::fs::read_to_string(path)
+            && let Ok(pid) = contents.trim().parse::<u32>()
+        {
+            return pid;
         }
         assert!(Instant::now() < deadline, "fake df did not write pid file");
         // WHY: a blocking sleep here would park the runtime thread the spawned

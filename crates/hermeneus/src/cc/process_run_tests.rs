@@ -523,23 +523,25 @@ async fn run_completion_subprocess_killed_on_future_drop() {
         .await
     });
 
+    // WHY(#6908) the parse is inside the wait: the file exists from the moment
+    // the fake binary creates it, which is before it writes the pid. Breaking on
+    // `exists()` and unwrapping the parse afterwards is a race that fails with
+    // `ParseIntError { kind: Empty }` -- the same one that surfaced in
+    // `crates/daemon/src/prosoche_tests.rs` once its loop stopped parking the
+    // runtime thread and started observing the window.
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        if pid_path_clone.exists() {
-            break;
+    let pid: u32 = loop {
+        if let Ok(contents) = fs::read_to_string(&pid_path_clone)
+            && let Ok(pid) = contents.trim().parse::<u32>()
+        {
+            break pid;
         }
         assert!(
             std::time::Instant::now() < deadline,
             "timed out waiting for subprocess PID file"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-
-    let pid: u32 = fs::read_to_string(&pid_path_clone)
-        .unwrap()
-        .trim()
-        .parse()
-        .unwrap();
+    };
 
     handle.abort();
 
@@ -586,23 +588,25 @@ async fn run_streaming_subprocess_killed_on_future_drop() {
         .await
     });
 
+    // WHY(#6908) the parse is inside the wait: the file exists from the moment
+    // the fake binary creates it, which is before it writes the pid. Breaking on
+    // `exists()` and unwrapping the parse afterwards is a race that fails with
+    // `ParseIntError { kind: Empty }` -- the same one that surfaced in
+    // `crates/daemon/src/prosoche_tests.rs` once its loop stopped parking the
+    // runtime thread and started observing the window.
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        if pid_path_clone.exists() {
-            break;
+    let pid: u32 = loop {
+        if let Ok(contents) = fs::read_to_string(&pid_path_clone)
+            && let Ok(pid) = contents.trim().parse::<u32>()
+        {
+            break pid;
         }
         assert!(
             std::time::Instant::now() < deadline,
             "timed out waiting for subprocess PID file"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-
-    let pid: u32 = fs::read_to_string(&pid_path_clone)
-        .unwrap()
-        .trim()
-        .parse()
-        .unwrap();
+    };
 
     handle.abort();
 
