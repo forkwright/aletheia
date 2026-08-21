@@ -150,9 +150,15 @@ def main() -> int:
         LOGGER.error('by a body reading "This does not close #4719"; #6908 by one')
         LOGGER.error('reading "I was about to close #6908 on it".')
         LOGGER.error("")
-        LOGGER.error("If you mean to close it, put the keyword at the start of a line:")
+        LOGGER.error("If you mean to close it, start a paragraph or list item with it:")
         LOGGER.error("  Closes #123")
-        LOGGER.error("If you do not, refer to the issue by number alone: #123")
+        LOGGER.error("")
+        LOGGER.error("If you are QUOTING one -- describing this rule, or citing a body")
+        LOGGER.error("that tripped it -- put it in a code span, which is already")
+        LOGGER.error("blanked before scanning and which GitHub does not act on either:")
+        LOGGER.error("  the body read `close #123` mid-sentence")
+        LOGGER.error("")
+        LOGGER.error("Otherwise refer to the issue by number alone: #123")
     return 1
 
 

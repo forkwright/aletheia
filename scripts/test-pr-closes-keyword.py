@@ -74,6 +74,12 @@ def main() -> int:
         "The change here\nfixes #77 as a side effect.",
     ]
     prose_accept = [
+        # WHY these three: a body DOCUMENTING this rule has to quote the shapes
+        # that trip it, and the escape is the code span the comma rule already
+        # relies on. #6918's own body failed this check until it used them.
+        '**#4719** was closed by a body reading `This does not close #4719`',
+        "GitHub will `close #55` either way.",
+        "```\nI was about to close #6908 on it.\n```",
         "Closes #123",
         "- Closes #123",
         "1. Closes #123",
