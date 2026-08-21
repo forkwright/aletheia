@@ -234,42 +234,7 @@ impl ToolExecutor for IssueTriageExecutor {
                 )));
             }
 
-            let mut staged: Vec<StagedPrompt> = Vec::new();
-            for result in &scored {
-                let prompt_content = generate_prompt(&result.issue, repo);
-                let filename = format!(
-                    "{}-{}.md",
-                    result.issue.number,
-                    slugify(&result.issue.title),
-                );
-                let path = staging.join(&filename);
-
-                if let Err(e) = tokio::fs::write(&path, &prompt_content).await {
-                    tracing::warn!(
-                        issue = result.issue.number,
-                        error = %e,
-                        "failed to write staged prompt"
-                    );
-                    continue;
-                }
-
-                let priority = compute_priority_score(result);
-                tracing::info!(
-                    issue = result.issue.number,
-                    relevance = result.relevance,
-                    priority_score = priority,
-                    filename = %filename,
-                    rationale = %result.rationale,
-                    "staged prompt generated"
-                );
-
-                staged.push(StagedPrompt {
-                    filename: filename.clone(),
-                    issue_number: result.issue.number,
-                    priority_score: priority,
-                    staged_path: path.display().to_string(),
-                });
-            }
+            let staged = stage_prompts(&scored, repo, &staging).await;
 
             let summary = format_triage_summary(&staged, &scored);
             Ok(ToolResult::text(summary))
@@ -359,6 +324,131 @@ impl ToolExecutor for IssueApproveExecutor {
 }
 
 // ── Helper functions ──
+
+/// Write one prompt file per scored issue, returning those that landed.
+///
+/// WHY separate from the executor: this is the only part that touches the filesystem,
+/// and an issue whose file fails to write is SKIPPED rather than failing the batch --
+/// a rule worth being visible in a signature rather than buried in the middle of a
+/// hundred-line function.
+async fn stage_prompts(
+    scored: &[RelevanceResult],
+    repo: &str,
+    staging: &std::path::Path,
+) -> Vec<StagedPrompt> {
+    let mut staged: Vec<StagedPrompt> = Vec::new();
+    for result in scored {
+        let prompt_content = generate_prompt(&result.issue, repo);
+        let filename = format!(
+            "{}-{}.md",
+            result.issue.number,
+            slugify(&result.issue.title),
+        );
+        let path = staging.join(&filename);
+
+        if let Err(e) = tokio::fs::write(&path, &prompt_content).await {
+            tracing::warn!(
+                issue = result.issue.number,
+                error = %e,
+                "failed to write staged prompt"
+            );
+            continue;
+        }
+
+        let priority = compute_priority_score(result);
+        tracing::info!(
+            issue = result.issue.number,
+            relevance = result.relevance,
+            priority_score = priority,
+            filename = %filename,
+            rationale = %result.rationale,
+            "staged prompt generated"
+        );
+
+        staged.push(StagedPrompt {
+            filename: filename.clone(),
+            issue_number: result.issue.number,
+            priority_score: priority,
+            staged_path: path.display().to_string(),
+        });
+    }
+    staged
+}
+
+/// Turn the GitHub issues payload into typed issues.
+///
+/// WHY separate from `fetch_issues`: that function is the outbound request and its
+/// egress checkpoint; this is decoding. Keeping them together put both concerns past
+/// the 100-line lint, and the fix worth having is the seam, not a suppression.
+fn parse_issues(items: Vec<serde_json::Value>) -> Vec<GitHubIssue> {
+    let mut issues = Vec::new();
+    for item in items {
+        // WHY: the GitHub issues API includes PRs; skip them.
+        if item.get("pull_request").is_some() {
+            continue;
+        }
+
+        let number = item
+            .get("number")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0);
+        let title = item
+            .get("title")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let body = item
+            .get("body")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let author = item
+            .get("user")
+            .and_then(|u| u.get("login"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let created_at = item
+            .get("created_at")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_owned();
+        let milestone = item
+            .get("milestone")
+            .and_then(|m| m.get("title"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned);
+
+        let labels: Vec<String> = item
+            .get("labels")
+            .and_then(serde_json::Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|l| l.get("name").and_then(serde_json::Value::as_str))
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let priority_label = labels
+            .iter()
+            .find(|l| l.starts_with("priority/") || l.starts_with('P'))
+            .cloned();
+
+        issues.push(GitHubIssue {
+            number,
+            title,
+            body,
+            labels,
+            milestone,
+            author,
+            created_at,
+            priority_label,
+        });
+    }
+
+    issues
+}
 
 /// Build the issues URL for `repo`, encoding every model-supplied part.
 ///
@@ -473,73 +563,7 @@ async fn fetch_issues(
         .await
         .map_err(|e| format!("failed to parse GitHub response: {e}"))?;
 
-    let mut issues = Vec::new();
-    for item in items {
-        // WHY: the GitHub issues API includes PRs; skip them.
-        if item.get("pull_request").is_some() {
-            continue;
-        }
-
-        let number = item
-            .get("number")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0);
-        let title = item
-            .get("title")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("")
-            .to_owned();
-        let body = item
-            .get("body")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("")
-            .to_owned();
-        let author = item
-            .get("user")
-            .and_then(|u| u.get("login"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("")
-            .to_owned();
-        let created_at = item
-            .get("created_at")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or("")
-            .to_owned();
-        let milestone = item
-            .get("milestone")
-            .and_then(|m| m.get("title"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned);
-
-        let labels: Vec<String> = item
-            .get("labels")
-            .and_then(serde_json::Value::as_array)
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|l| l.get("name").and_then(serde_json::Value::as_str))
-                    .map(str::to_owned)
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let priority_label = labels
-            .iter()
-            .find(|l| l.starts_with("priority/") || l.starts_with('P'))
-            .cloned();
-
-        issues.push(GitHubIssue {
-            number,
-            title,
-            body,
-            labels,
-            milestone,
-            author,
-            created_at,
-            priority_label,
-        });
-    }
-
-    Ok(issues)
+    Ok(parse_issues(items))
 }
 
 /// Find a staged prompt by ID (issue number prefix or filename).
