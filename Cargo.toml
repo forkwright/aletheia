@@ -241,9 +241,21 @@ pem = "4"
 
 # FFI / System
 libc = { version = "0.2", default-features = false }
+# WHY "std" is explicit: `default-features = false` drops it, and without it rustix
+# compiles its no_std polyfill, where `BorrowedFd` is rustix's OWN type. Passing
+# `std::os::fd::BorrowedFd` from `File::as_fd()` then fails with "the trait bound
+# `std::os::fd::BorrowedFd<'_>: rustix::fd::AsFd` is not satisfied" -- an error that
+# names two types with the same path and reads as a version conflict.
+#
+# A full workspace build hid this: `crates/daemon` declared `std` on its own copy of the
+# dependency, and feature unification handed it to every other consumer. Anything built
+# in isolation -- which is what `feature-check` does -- got the polyfill instead. It
+# surfaced as `feature-check (melete, test-core)` failing on the v0.40.0 release run,
+# with melete's flock call the only visible symptom of a workspace-level omission.
 rustix = { version = "1", default-features = false, features = [
     "fs",
     "mm",
+    "std",
     "thread",
 ] }
 
