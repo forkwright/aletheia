@@ -1,0 +1,50 @@
+# WHY(#6916): `send_with_safe_redirects` puts every hop of an outbound request through
+# the egress policy and internal-address revalidation. It is correct and tested, and
+# nothing verified that a given call site reached it. Three did not — #6910 (web_search's
+# Brave token), #6921 (AcademicSource's api-key), and triage's LLM-supplied repo argument
+# — each found by reading, one at a time, each search wider than the last.
+#
+# The tools' wiring to the safe path is not observable by test: the private-address guard
+# refuses a loopback first hop, so no local listener can drive a multi-hop request through
+# a tool's real call path. This check is the structural substitute named in #6916.
+name: Egress send sites
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: every outbound request is routed, exempted or tracked
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): this job greps Rust sources for a call shape. No build, no
+          # history walk — blobs on demand are enough.
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Self-test the check
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_egress_send_sites.py'
+
+      - name: Check every outbound send site is accounted for
+        env:
+          # WHY the token: a TRACKED entry names an issue, and the check confirms that
+          # issue is still open rather than trusting the number. Closing it without
+          # landing the fix would otherwise convert a known defect into a silent
+          # exemption. Read-only scope; the check fails open if GitHub is unreachable.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/check-egress-send-sites.py
