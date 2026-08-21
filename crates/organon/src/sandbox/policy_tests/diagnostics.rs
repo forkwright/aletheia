@@ -118,3 +118,42 @@ fn probe_guarantees_reflects_unenforceable_allowlist() {
         "a loopback-only allowlist entry is within the mechanism's real capability"
     );
 }
+
+/// The diagnostic entry point must not depend on which workspace it is asked about.
+///
+/// WHY(#5232) this is a test and not a comment: `diagnostic_guarantees` passes a
+/// placeholder path to `build_policy`, which is correct only because the classification
+/// reads `enforcement`, `egress` and `egress_allowlist` and never the filesystem. That
+/// is a property of code elsewhere, and nothing re-checks it -- exactly the shape of
+/// assumption that goes stale silently. If a future change makes the classification
+/// path-sensitive, this fails here, rather than the health endpoint quietly reporting a
+/// verdict about a directory nobody asked about.
+#[test]
+fn diagnostic_guarantees_do_not_depend_on_the_workspace() {
+    for config in [SandboxConfig::default(), SandboxConfig::disabled()] {
+        let from_root = probe_guarantees(&config.build_policy(std::path::Path::new("/"), &[]));
+        let from_elsewhere = probe_guarantees(
+            &config.build_policy(std::path::Path::new("/nonexistent/workspace"), &[]),
+        );
+        let via_entry_point = diagnostic_guarantees(&config);
+
+        assert_eq!(
+            (from_root.landlock, from_root.seccomp, from_root.egress),
+            (
+                from_elsewhere.landlock,
+                from_elsewhere.seccomp,
+                from_elsewhere.egress
+            ),
+            "the guarantee classification must not vary with the workspace path"
+        );
+        assert_eq!(
+            (
+                via_entry_point.landlock,
+                via_entry_point.seccomp,
+                via_entry_point.egress
+            ),
+            (from_root.landlock, from_root.seccomp, from_root.egress),
+            "diagnostic_guarantees must agree with probe_guarantees"
+        );
+    }
+}
