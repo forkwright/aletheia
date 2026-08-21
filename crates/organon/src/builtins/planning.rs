@@ -387,6 +387,10 @@ impl ToolExecutor for PlanVerifyCriteriaExecutor {
             let phase_id = extract_str(&input.arguments, "phase_id", &input.name)?;
             let criteria = extract_str(&input.arguments, "criteria", &input.name)?;
 
+            if let Some(refusal) = unverifiable_met_criteria(criteria) {
+                return Ok(ToolResult::error(refusal));
+            }
+
             match planning
                 .verify_criteria(project_id, phase_id, criteria)
                 .await
@@ -396,6 +400,75 @@ impl ToolExecutor for PlanVerifyCriteriaExecutor {
             }
         })
     }
+}
+
+/// Refuse a criterion marked `met` whose text cannot be verified by evidence.
+///
+/// WHY(#6742) this tool and not a docs lint: its stated job is to verify success
+/// criteria *with evidence*, and "the system is robust" admits no evidence. Marking
+/// such a criterion `met` is a false capability claim, which is the one thing this
+/// tool exists to prevent. `aletheia-lexica::adjectives` encoded exactly that
+/// vocabulary and had no consumer anywhere in the workspace -- the list was built for
+/// a check nobody wired, and this is that check.
+///
+/// WHY only `met`: writing an aspirational criterion is legitimate, and so is
+/// reporting one as `not-met` or `partially-met` -- those are statements of intent or
+/// of shortfall. Only `met` asserts that verification happened. Refusing the others
+/// would block honest reporting of an inherited criterion, which would push callers
+/// to reword rather than to measure.
+///
+/// Returns the refusal message, or None when nothing is being falsely certified. An
+/// unparseable `criteria` payload returns None: this guard is not the JSON validator,
+/// and reporting a parse error here would send the caller to the wrong problem.
+fn unverifiable_met_criteria(criteria: &str) -> Option<String> {
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(criteria).ok()?;
+    let mut offences = Vec::new();
+    for entry in &parsed {
+        if entry.get("status").and_then(serde_json::Value::as_str) != Some("met") {
+            continue;
+        }
+        let Some(text) = entry.get("criterion").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        for adjective in aletheia_lexica::adjectives::UNFALSIFIABLE_ADJECTIVES {
+            if contains_word(text, adjective) {
+                offences.push(format!("  \"{text}\" -- \"{adjective}\""));
+                break;
+            }
+        }
+    }
+    if offences.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "cannot mark a criterion `met` when its text is not verifiable by evidence:\n{}\n\n         These adjectives assert a quality with no measurement attached, so no evidence \
+         can establish them and none can refute them. Restate each as the thing you \
+         actually measured -- a number, a threshold, an observed behaviour -- or report \
+         it as `partially-met` or `not-met`, which are honest about an unmeasured claim.",
+        offences.join("\n")
+    ))
+}
+
+/// Whether `needle` appears in `haystack` as a whole word, case-insensitively.
+///
+/// WHY tokenise rather than search for a substring: "scalable" is a substring of
+/// "unscalable", which asserts the opposite, so a `contains` would refuse a criterion
+/// for saying the honest thing.
+///
+/// WHY the splitter keeps `-`: the vocabulary has hyphenated entries like
+/// "world-class". Splitting on every non-alphanumeric would break that into two
+/// tokens and match the "class" of an unrelated phrase; a regex `\b` has the same
+/// problem, since it treats a hyphen as a boundary.
+///
+/// WHY no byte indexing: the earlier version walked `find` offsets and sliced around
+/// them, which panics when an offset lands inside a multi-byte character. Criteria
+/// text is arbitrary input, and `to_lowercase` can change a string's byte length.
+fn contains_word(haystack: &str, needle: &str) -> bool {
+    let need = needle.to_lowercase();
+    haystack
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric() && c != '-')
+        .any(|token| token.trim_matches('-') == need)
 }
 
 struct PlanStepFailExecutor;
