@@ -1135,7 +1135,12 @@ pub(super) fn build_signal_provider(
         let cli_path_label = cli_path
             .as_ref()
             .map_or_else(|| "external".to_owned(), |path| path.display().to_string());
-        let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port); // SAFE: signal-cli daemon, defaults to localhost
+        // WHY(#5199) no longer "SAFE: defaults to localhost": the default was never the
+        // question -- an operator who overrode `httpHost` got plaintext to wherever they
+        // pointed it. `SignalClient::with_timeouts` now refuses a non-loopback plaintext
+        // host, and the Err arm below skips that account with a warning, exactly as a
+        // bad `cli_path` is skipped.
+        let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port);
         match SignalClient::with_timeouts(&base_url, rpc_timeout, health_timeout, receive_timeout) {
             Ok(client) => {
                 provider.add_account(provider_account_id, client, account_cfg.auto_start);
