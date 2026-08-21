@@ -874,9 +874,12 @@ mod audit_surfaced_mutants {
         // denies `as` conversions -- and the assertion below validates the constant,
         // so a wrong bit pattern fails loudly instead of silently weakening the test.
         let epsilon_as_f32 = f32::from_bits(0x2580_0000);
+        // Bit patterns, not values: the claim IS bit-exactness, and `float_cmp` is
+        // right that a strict `==` on floats is usually a mistake. Saying it this way
+        // states the actual requirement rather than suppressing the lint that noticed.
         assert_eq!(
-            f64::from(epsilon_as_f32),
-            f64::EPSILON,
+            f64::from(epsilon_as_f32).to_bits(),
+            f64::EPSILON.to_bits(),
             "the fixture is only meaningful if f32 represents f64::EPSILON exactly"
         );
 
