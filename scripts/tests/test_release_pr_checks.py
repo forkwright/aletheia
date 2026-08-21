@@ -35,14 +35,18 @@ class BranchSelection(unittest.TestCase):
 
 
 class Healing(unittest.TestCase):
-    def _heal_with(self, run_counts: dict[str, int]) -> list[str]:
-        """Drive `heal` with a stub `gh`, returning the workflows it dispatched."""
+    def _heal_with(self, run_states: dict[str, list[str]]) -> list[str]:
+        """Drive `heal` with a stub `gh`, returning the workflows it dispatched.
+
+        `run_states` maps a workflow to the run states GitHub reports at the head --
+        e.g. `["success"]`, `["action_required"]`, or `[]` for none at all.
+        """
         dispatched: list[str] = []
 
         def fake_gh(*args: str) -> str:
             if args[0] == "api" and "/runs?" in args[1]:
                 workflow = args[1].split("/workflows/")[1].split("/runs")[0]
-                return str(run_counts[workflow])
+                return __import__("json").dumps(run_states[workflow])
             if args[0] == "api":
                 return "active"
             if args[0] == "workflow" and args[1] == "run":
@@ -57,27 +61,52 @@ class Healing(unittest.TestCase):
 
     def test_a_release_pr_with_no_runs_gets_every_workflow_dispatched(self) -> None:
         """The whole point: the PR arrived with its required contexts absent."""
-        dispatched = self._heal_with(dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, 0))
+        dispatched = self._heal_with(dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, []))
         self.assertEqual(dispatched, list(rpc.REQUIRED_CONTEXT_WORKFLOWS))
 
     def test_a_release_pr_that_already_has_runs_is_left_alone(self) -> None:
         """WHY it matters that this is idempotent: it runs on a schedule. Dispatching
         every tick would replace a finished verdict with a pending one forever."""
-        dispatched = self._heal_with(dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, 1))
+        dispatched = self._heal_with(
+            dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, ["success"])
+        )
         self.assertEqual(dispatched, [])
 
     def test_only_the_missing_workflow_is_dispatched(self) -> None:
-        counts = dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, 1)
-        counts["security.yml"] = 0
-        dispatched = self._heal_with(counts)
+        states = dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, ["success"])
+        states["security.yml"] = []
+        dispatched = self._heal_with(states)
         self.assertEqual(dispatched, ["security.yml"])
 
-    def test_a_failed_run_counts_as_present(self) -> None:
-        """WHY presence rather than success: a red gate is a real verdict. Replacing it
-        with a fresh pending run would make a failing release look unfinished, which is
-        the exact confusion this tool exists to remove."""
-        with mock.patch.object(rpc, "gh", return_value="3"):
-            self.assertTrue(rpc.has_run_for("gate-attestation.yml", "a" * 40))
+    def test_a_run_HELD_FOR_APPROVAL_is_not_a_verdict(self) -> None:
+        """The defect this whole file previously encoded. Release-please PRs get their
+        runs CREATED and then held awaiting approval, and GitHub reports no check for a
+        held run -- so asking "does a run exist" answered yes while the PR stayed
+        blocked. Measured on #6902: 25 held runs at the head, one visible check."""
+        dispatched = self._heal_with(
+            dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, ["action_required"])
+        )
+        self.assertEqual(dispatched, list(rpc.REQUIRED_CONTEXT_WORKFLOWS))
+
+    def test_a_held_run_beside_a_real_one_still_counts_as_a_verdict(self) -> None:
+        """WHY: a superseded generation leaves held runs behind. If ANY run at the head
+        is doing or has done something, the checks are on their way and dispatching
+        would only add noise."""
+        dispatched = self._heal_with(
+            dict.fromkeys(rpc.REQUIRED_CONTEXT_WORKFLOWS, ["action_required", "in_progress"])
+        )
+        self.assertEqual(dispatched, [])
+
+    def test_a_failed_run_counts_as_a_verdict(self) -> None:
+        """WHY not success-only: a red gate is a real verdict. Replacing it with a fresh
+        pending run would make a failing release look unfinished, which is the exact
+        confusion this tool exists to remove."""
+        with mock.patch.object(rpc, "gh", return_value='["failure"]'):
+            self.assertTrue(rpc.has_verdict_for("gate-attestation.yml", "a" * 40))
+
+    def test_no_runs_at_all_is_not_a_verdict(self) -> None:
+        with mock.patch.object(rpc, "gh", return_value="[]"):
+            self.assertFalse(rpc.has_verdict_for("gate-attestation.yml", "a" * 40))
 
     def test_a_workflow_that_cannot_be_dispatched_is_an_error(self) -> None:
         """WHY loud: a renamed or disabled workflow makes this tool silently stop
@@ -85,7 +114,7 @@ class Healing(unittest.TestCase):
 
         def fake_gh(*args: str) -> str:
             if args[0] == "api" and "/runs?" in args[1]:
-                return "0"
+                return "[]"
             if args[0] == "api":
                 return "disabled_manually"
             raise AssertionError(f"unexpected gh call: {args}")
