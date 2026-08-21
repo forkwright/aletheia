@@ -66,7 +66,7 @@ pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> R
         let store = mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
             .whatever_context("failed to open knowledge store")?;
 
-        run_direct(args, &store)
+        run_direct(args, &store).await
     }
 
     #[cfg(not(feature = "recall"))]
@@ -305,7 +305,7 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
 }
 
 #[cfg(feature = "recall")]
-fn run_direct(
+async fn run_direct(
     args: &IngestArgs,
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<()> {
@@ -321,7 +321,7 @@ fn run_direct(
     let mut errored: Vec<(PathBuf, String)> = Vec::new();
 
     for file in &files {
-        match process_file(file, args, store) {
+        match process_file(file, args, store).await {
             Ok((inserted, skipped)) => {
                 total_inserted += inserted;
                 total_skipped += skipped;
@@ -353,7 +353,7 @@ fn run_direct(
 }
 
 #[cfg(feature = "recall")]
-fn process_file(
+async fn process_file(
     file: &Path,
     args: &IngestArgs,
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
@@ -361,7 +361,9 @@ fn process_file(
     // WHY(#6751) the same PDF decode as the async path: this is the second read site,
     // and fixing only one would make `aletheia ingest` support PDFs on one code path
     // and fail on invalid UTF-8 on the other, which reads as an intermittent bug.
-    let content = read_ingest_text_blocking(file).map_err(crate::error::Error::msg)?;
+    let content = read_ingest_text(file)
+        .await
+        .map_err(crate::error::Error::msg)?;
 
     let format_str = if args.format == "auto" {
         detect_format(file).unwrap_or("text")
@@ -476,17 +478,6 @@ fn is_supported_extension(path: &Path) -> bool {
 /// Before this, `read_to_string` on a PDF failed on invalid UTF-8, so the operator got
 /// "stream did not contain valid UTF-8" for a file the workspace can read perfectly
 /// well one crate away.
-/// The blocking twin of [`read_ingest_text`], for the synchronous ingest path.
-fn read_ingest_text_blocking(file: &Path) -> std::result::Result<String, String> {
-    if file.extension().and_then(|e| e.to_str()) == Some("pdf") {
-        let bytes =
-            std::fs::read(file).map_err(|e| format!("failed to read {}: {e}", file.display()))?;
-        return poiesis_inspect::extract_pdf_text(&bytes)
-            .map_err(|e| format!("failed to extract text from {}: {e}", file.display()));
-    }
-    std::fs::read_to_string(file).map_err(|e| format!("failed to read {}: {e}", file.display()))
-}
-
 async fn read_ingest_text(file: &Path) -> std::result::Result<String, String> {
     if file.extension().and_then(|e| e.to_str()) == Some("pdf") {
         let bytes = tokio::fs::read(file)
@@ -677,8 +668,8 @@ mod tests {
     /// files still go through. Uses dry-run so no store insert happens —
     /// the failure surface being tested is the parse step (`ingest_content`),
     /// which fires before the store call in `process_file`.
-    #[test]
-    fn run_direct_dry_run_continues_after_bad_file() {
+    #[tokio::test]
+    async fn run_direct_dry_run_continues_after_bad_file() {
         #[cfg(feature = "recall")]
         {
             let dir = tempfile::tempdir().unwrap();
@@ -703,7 +694,7 @@ mod tests {
                 token: None,
             };
 
-            let result = run_direct(&args, &store);
+            let result = run_direct(&args, &store).await;
             assert!(
                 result.is_ok(),
                 "run_direct should not propagate a per-file parse error; got {result:?}"
@@ -716,8 +707,8 @@ mod tests {
     /// counting facts via the store would require a `CozoScript` query the
     /// public surface doesn't expose, which is out-of-scope for this fix.
     /// The dry-run case above covers the parse-error continuance contract.
-    #[test]
-    fn run_direct_live_continues_after_bad_file() {
+    #[tokio::test]
+    async fn run_direct_live_continues_after_bad_file() {
         #[cfg(feature = "recall")]
         {
             let dir = tempfile::tempdir().unwrap();
@@ -741,7 +732,7 @@ mod tests {
                 token: None,
             };
 
-            let result = run_direct(&args, &store);
+            let result = run_direct(&args, &store).await;
             assert!(
                 result.is_ok(),
                 "run_direct should return Ok despite the bad file: {result:?}"
