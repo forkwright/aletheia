@@ -108,12 +108,15 @@ fn pack_entry(
     name: &str,
     data: &[u8],
 ) -> Result<(), ThemeError> {
-    zip.start_file(name, SimpleFileOptions::default())
-        .map_err(|e| ThemeError::ZipWrite {
-            sink: "pptx".into(),
-            entry: name.into(),
-            message: e.to_string(),
-        })?;
+    zip.start_file(
+        name,
+        SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT),
+    )
+    .map_err(|e| ThemeError::ZipWrite {
+        sink: "pptx".into(),
+        entry: name.into(),
+        message: e.to_string(),
+    })?;
     zip.write_all(data).map_err(|e| ThemeError::ZipWrite {
         sink: "pptx".into(),
         entry: name.into(),
@@ -360,6 +363,39 @@ mod tests {
         let a = emit_base_pptx(&protos()).expect("first");
         let b = emit_base_pptx(&protos()).expect("second");
         assert_eq!(a, b, "two emissions must match byte-for-byte");
+    }
+
+    /// Every ZIP entry carries the fixed epoch, not a wall clock.
+    ///
+    /// WHY this exists alongside `pptx_byte_stable_across_runs`: that test only
+    /// catches the defect when its two emissions straddle a second boundary, so it
+    /// passes almost always and fails unreproducibly. It DID fail -- on the 0.40.0
+    /// release head, taking the required `gate` context with it.
+    ///
+    /// This asserts the cause instead of the symptom, so it fails every time on
+    /// unfixed code. `SimpleFileOptions::default()` sets `last_modified_time` to
+    /// `DateTime::default_for_write()`, which is `OffsetDateTime::now_utc()` when the
+    /// zip crate's `time` feature is on. `DateTime::DEFAULT` is the ZIP epoch:
+    /// datepart `0b0000_0000_0010_0001` = 33, timepart 0.
+    ///
+    /// A ZIP local file header is: signature(4) version(2) flags(2) method(2)
+    /// modtime(2) moddate(2) -- so the timestamp is bytes 10..14, each a
+    /// little-endian u16.
+    #[test]
+    fn pptx_entries_carry_the_fixed_epoch_not_a_wall_clock() {
+        let bytes = emit_base_pptx(&protos()).expect("emit");
+
+        assert_eq!(
+            &bytes[0..4],
+            &[0x50, 0x4b, 0x03, 0x04],
+            "expected a ZIP local file header at offset 0"
+        );
+        assert_eq!(
+            &bytes[10..14],
+            &[0, 0, 33, 0],
+            "modtime/moddate must be the 1980 ZIP epoch; a nonzero time field is a \
+             wall clock, which makes the archive non-reproducible"
+        );
     }
 
     #[test]

@@ -55,7 +55,7 @@ impl Renderer for OdtRenderer {
 
         zip.start_file(
             "mimetype",
-            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored),
+            SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT).compression_method(zip::CompressionMethod::Stored),
         )
         .map_err(|e| OdtError::Zip {
             message: e.to_string(),
@@ -82,7 +82,7 @@ fn write_entry(
     name: &str,
     content: &str,
 ) -> Result<(), OdtError> {
-    zip.start_file(name, SimpleFileOptions::default())
+    zip.start_file(name, SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT))
         .map_err(|e| OdtError::Zip {
             message: e.to_string(),
         })?;

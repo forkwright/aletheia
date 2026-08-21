@@ -339,7 +339,7 @@ mod tests {
 
         let cursor = std::io::Cursor::new(Vec::new());
         let mut zip = ZipWriter::new(cursor);
-        zip.start_file("word/document.xml", SimpleFileOptions::default())
+        zip.start_file("word/document.xml", SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT))
             .expect("start document.xml entry");
         zip.write_all(document_xml).expect("write document.xml");
         zip.finish().expect("finish zip").into_inner()

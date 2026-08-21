@@ -83,12 +83,15 @@ fn pack_entry(
     name: &str,
     data: &[u8],
 ) -> Result<(), ThemeError> {
-    zip.start_file(name, SimpleFileOptions::default())
-        .map_err(|e| ThemeError::ZipWrite {
-            sink: "reference_docx".into(),
-            entry: name.into(),
-            message: e.to_string(),
-        })?;
+    zip.start_file(
+        name,
+        SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT),
+    )
+    .map_err(|e| ThemeError::ZipWrite {
+        sink: "reference_docx".into(),
+        entry: name.into(),
+        message: e.to_string(),
+    })?;
     zip.write_all(data).map_err(|e| ThemeError::ZipWrite {
         sink: "reference_docx".into(),
         entry: name.into(),

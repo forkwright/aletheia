@@ -163,7 +163,7 @@ mod tests {
         let mut cursor = std::io::Cursor::new(Vec::new());
         let mut zip = ZipWriter::new(&mut cursor);
         let options =
-            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT).compression_method(zip::CompressionMethod::Deflated);
 
         zip.start_file("xl/workbook.xml", options)
             .expect("start workbook.xml");
@@ -203,7 +203,7 @@ mod tests {
         let mut cursor = std::io::Cursor::new(Vec::new());
         let mut zip = ZipWriter::new(&mut cursor);
         let options =
-            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT).compression_method(zip::CompressionMethod::Deflated);
 
         zip.start_file("ppt/slides/slide1.xml", options)
             .expect("start slide1.xml");
@@ -224,7 +224,7 @@ mod tests {
         let mut cursor = std::io::Cursor::new(Vec::new());
         let mut zip = ZipWriter::new(&mut cursor);
         let options =
-            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT).compression_method(zip::CompressionMethod::Deflated);
 
         for (number, text) in slides {
             let slide = format!(
@@ -291,7 +291,7 @@ mod tests {
         let mut cursor = std::io::Cursor::new(Vec::new());
         let mut zip = ZipWriter::new(&mut cursor);
         let options =
-            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT).compression_method(zip::CompressionMethod::Deflated);
         for name in [
             "ppt/slideLayouts/slideLayout1.xml",
             "ppt/slideMasters/slideMaster1.xml",
@@ -432,7 +432,7 @@ mod tests {
         let mut cursor = std::io::Cursor::new(Vec::new());
         let mut zip = ZipWriter::new(&mut cursor);
         let options =
-            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+            SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT).compression_method(zip::CompressionMethod::Deflated);
 
         zip.start_file("[Content_Types].xml", options)
             .expect("start [Content_Types].xml");

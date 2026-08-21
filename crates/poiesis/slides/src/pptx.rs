@@ -241,7 +241,7 @@ fn write_entry(
     name: &str,
     content: &str,
 ) -> Result<(), PptxError> {
-    zip.start_file(name, SimpleFileOptions::default())
+    zip.start_file(name, SimpleFileOptions::default().last_modified_time(zip::DateTime::DEFAULT))
         .map_err(|e| PptxError::Pptx {
             message: e.to_string(),
         })?;
