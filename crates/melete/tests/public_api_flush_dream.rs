@@ -107,7 +107,7 @@ mod contradiction_log {
 mod dream {
     use std::path::PathBuf;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use hermeneus::provider::LlmProvider;
     use hermeneus::test_utils::MockProvider;
@@ -178,17 +178,14 @@ mod dream {
     /// load rather than the spawn.
     struct GatedTarget {
         merges: AtomicUsize,
-        release: std::sync::Mutex<Option<std::sync::mpsc::Receiver<()>>>,
-        opener: std::sync::mpsc::Sender<()>,
+        released: AtomicBool,
     }
 
     impl GatedTarget {
         fn new() -> Self {
-            let (opener, rx) = std::sync::mpsc::channel();
             Self {
                 merges: AtomicUsize::new(0),
-                release: std::sync::Mutex::new(Some(rx)),
-                opener,
+                released: AtomicBool::new(false),
             }
         }
 
@@ -197,7 +194,7 @@ mod dream {
         }
 
         fn release(&self) {
-            let _ = self.opener.send(());
+            self.released.store(true, Ordering::SeqCst);
         }
     }
 
@@ -209,15 +206,14 @@ mod dream {
             _session_id: &str,
         ) -> std::result::Result<MergeReport, std::io::Error> {
             // Block BEFORE counting, so `merges() == 0` is guaranteed for as
-            // long as the gate is shut. The timeout is a hang guard: without it
-            // a regression would wedge the suite instead of failing it.
-            if let Some(rx) = self
-                .release
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .as_ref()
-            {
-                let _ = rx.recv_timeout(std::time::Duration::from_secs(30));
+            // long as the gate is shut. The deadline is a hang guard: without it
+            // a regression would wedge the suite instead of failing it. Polling
+            // here parks a blocking-pool thread rather than a runtime worker,
+            // because `merge_flush` reaches this target through `run_store_op`
+            // -> `tokio::task::spawn_blocking`.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            while !self.released.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(5));
             }
             self.merges.fetch_add(1, Ordering::SeqCst);
             Ok(MergeReport {
@@ -369,8 +365,7 @@ mod dream {
         };
         let source: Arc<dyn TranscriptSource> = Arc::new(FixedSource(vec![transcript]));
         let gate = Arc::new(GatedTarget::new());
-        let target: Arc<dyn ConsolidationTarget> =
-            Arc::clone(&gate) as Arc<dyn ConsolidationTarget>;
+        let target: Arc<dyn ConsolidationTarget> = Arc::clone(&gate);
         let provider: Arc<dyn LlmProvider> = Arc::new(
             MockProvider::new("## Summary\ns\n## Key Decisions\n- done")
                 .models(&["claude-sonnet-4-20250514"]),
