@@ -9040,6 +9040,7 @@ dependencies = [
  "hmac 0.13.0",
  "jiff",
  "keyring",
+ "keyring-core",
  "koina",
  "prometheus-client",
  "rand 0.10.2",
