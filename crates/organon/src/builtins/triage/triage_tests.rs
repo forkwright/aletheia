@@ -90,7 +90,8 @@ fn tool_definitions_are_valid() {
 #[test]
 fn registration_succeeds() {
     let mut registry = crate::registry::ToolRegistry::new();
-    register(&mut registry).expect("registration should succeed");
+    register(&mut registry, &crate::sandbox::SandboxConfig::default())
+        .expect("registration should succeed");
 
     let scan_name = ToolName::new("issue_scan").expect("valid");
     let triage_name = ToolName::new("issue_triage").expect("valid");
@@ -110,8 +111,9 @@ fn registration_succeeds() {
 #[test]
 fn no_duplicate_registration() {
     let mut registry = crate::registry::ToolRegistry::new();
-    register(&mut registry).expect("first registration");
-    let err = register(&mut registry).expect_err("duplicate should fail");
+    register(&mut registry, &crate::sandbox::SandboxConfig::default()).expect("first registration");
+    let err = register(&mut registry, &crate::sandbox::SandboxConfig::default())
+        .expect_err("duplicate should fail");
     assert!(
         err.to_string().contains("duplicate"),
         "error should mention duplicate: {err}"
@@ -302,7 +304,8 @@ async fn approve_rejects_out_of_workspace_queue_dir() {
 #[test]
 fn edit_tools_absent_from_read_only_and_verify_only_policy_surfaces() {
     let mut registry = crate::registry::ToolRegistry::new();
-    register(&mut registry).expect("registration should succeed");
+    register(&mut registry, &crate::sandbox::SandboxConfig::default())
+        .expect("registration should succeed");
 
     let read_only =
         registry.definitions_for_policy(&ToolGroupPolicy::groups(vec![ToolGroupId::Read]));
