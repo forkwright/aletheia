@@ -493,19 +493,52 @@ mod tests {
         );
     }
 
+    /// State stays exact at 15K items.
+    ///
+    /// WHY(#6911 class) no wall-clock bound: this asserted `elapsed < 10ms` for 15,000
+    /// pushes, which on a shared runner measures the RUNNER. nextest runs it beside
+    /// 12,000 other tests competing for the same cores, and it reddened an unrelated
+    /// PR at 25.8ms -- a 2.6x overshoot that is ordinary contention, not a regression.
+    /// A check that fails for two reasons and cannot say which teaches everyone to
+    /// re-run it.
+    ///
+    /// WHY the amortized claim needs no test: `push_item` is `Vec::push` twice plus a
+    /// `last()`. It touches only the tail, so the O(1) property is structural rather
+    /// than something this suite could lose. A wall-clock bound could not have
+    /// distinguished a regression from a busy runner in any case.
+    ///
+    /// WHAT survives is the part a large N actually buys over the 1,000-item
+    /// `push_item_amortized` beside it: prefix sums stay exact at a scale where the
+    /// running total outgrows the `u16` the heights are stored in, so a `prefix_sums`
+    /// element narrower than `u64` would wrap here and nowhere smaller.
+    ///
+    /// The heights are deliberately larger than that sibling's `i % 5 + 1`. At an
+    /// average of 3 lines, 15,000 items total 45,000 -- which is BELOW `u16::MAX` and
+    /// exercises nothing. I wrote it that way first and the guard below caught it.
     #[test]
-    fn benchmark_push_item_amortized() {
+    fn state_stays_exact_at_fifteen_thousand_items() {
         let mut vs = VirtualScroll::new();
-        let start = std::time::Instant::now();
+        let mut expected_total = 0u64;
         for i in 0u16..15_000 {
-            vs.push_item(i % 5 + 1);
+            let height = (i % 5 + 1) * 10;
+            vs.push_item(height);
+            expected_total += u64::from(height);
         }
-        let elapsed = start.elapsed();
 
-        // 15K pushes should complete in well under 10ms
+        assert_eq!(vs.len(), 15_000);
+        assert_eq!(
+            vs.total_height(),
+            expected_total,
+            "the running total must not wrap or drift across 15K pushes"
+        );
         assert!(
-            elapsed.as_millis() < 10,
-            "push_item too slow for 15K items: {elapsed:?}"
+            expected_total > u64::from(u16::MAX),
+            "the fixture is only meaningful past u16::MAX; got {expected_total}"
+        );
+        assert_eq!(
+            vs.prefix_sums.len(),
+            15_001,
+            "one prefix sum per item, plus the leading zero"
         );
     }
 }
