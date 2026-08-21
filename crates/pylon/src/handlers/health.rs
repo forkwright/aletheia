@@ -2149,7 +2149,7 @@ mod tests {
         let details = check.details.expect("sandbox check must carry details");
         for key in ["landlock", "seccomp", "egress"] {
             assert!(
-                details.get(key).is_some_and(|v| v.is_string()),
+                details.get(key).is_some_and(serde_json::Value::is_string),
                 "{key} must be reported; a partial answer reads as a complete one"
             );
         }
