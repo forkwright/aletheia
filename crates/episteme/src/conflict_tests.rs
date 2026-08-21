@@ -833,3 +833,131 @@ fn classification_serde_roundtrip() {
         );
     }
 }
+
+/// Mutants surviving the release substance audit, killed here.
+///
+/// WHY a named module: run `32456630380` evaluated 323 of episteme's mutants and
+/// reported 17 `MissedMutant` blockers, every one in this file's subject. Each test
+/// below names the exact mutation it kills, so a later reader can tell an
+/// intentional boundary from an accident -- and so that removing one is a visible
+/// choice rather than a quiet loss of coverage.
+mod audit_surfaced_mutants {
+    use super::*;
+
+    /// Kills: `replace < with ==` at the `denom < f64::EPSILON` guard.
+    ///
+    /// A zero vector makes `denom` exactly 0.0, which is BELOW epsilon but not EQUAL
+    /// to it. Under `==` the guard does not fire, `dot / denom` is `0.0 / 0.0`, and the
+    /// function returns NaN -- which then compares false against every threshold, so a
+    /// degenerate embedding would silently never match anything.
+    #[test]
+    fn a_zero_vector_scores_zero_rather_than_nan() {
+        let score = cosine_similarity(&[0.0, 0.0, 0.0], &[1.0, 2.0, 3.0]);
+        assert!(!score.is_nan(), "a zero vector must not produce NaN");
+        assert!(
+            (score - 0.0).abs() < f64::EPSILON,
+            "expected exactly 0.0, got {score}"
+        );
+    }
+
+    /// Kills: `replace < with <=` at the same guard.
+    ///
+    /// This is the one input where `<` and `<=` disagree, so it is the only thing that
+    /// can distinguish them. `2^-52` IS `f64::EPSILON`, and it is exactly representable
+    /// in f32, so `denom` lands precisely on the boundary: `norm_a.sqrt()` is `2^-52`
+    /// and `norm_b.sqrt()` is 1.0. The guard must NOT fire -- epsilon is a real
+    /// magnitude, not a degenerate one.
+    #[test]
+    fn a_denominator_exactly_at_epsilon_is_not_treated_as_degenerate() {
+        // 2^-52 as an f32 bit pattern: sign 0, exponent 127-52 = 75, mantissa 0.
+        // Written this way rather than `f64::EPSILON as f32` because the workspace
+        // denies `as` conversions -- and the assertion below validates the constant,
+        // so a wrong bit pattern fails loudly instead of silently weakening the test.
+        let epsilon_as_f32 = f32::from_bits(0x2580_0000);
+        // Bit patterns, not values: the claim IS bit-exactness, and `float_cmp` is
+        // right that a strict `==` on floats is usually a mistake. Saying it this way
+        // states the actual requirement rather than suppressing the lint that noticed.
+        assert_eq!(
+            f64::from(epsilon_as_f32).to_bits(),
+            f64::EPSILON.to_bits(),
+            "the fixture is only meaningful if f32 represents f64::EPSILON exactly"
+        );
+
+        let score = cosine_similarity(&[epsilon_as_f32], &[1.0]);
+        assert!(
+            (score - 1.0).abs() < 1e-12,
+            "parallel vectors are similarity 1.0 regardless of magnitude, got {score}"
+        );
+    }
+
+    /// Kills: `replace > with >=` at line 251, the exact-content branch.
+    ///
+    /// On equal confidence the FIRST fact must win. Under `>=` the later duplicate
+    /// replaces it, which is a silent reordering: callers downstream treat position as
+    /// arrival order, and two facts with identical content and confidence are
+    /// indistinguishable except by which one the batch saw first.
+    #[test]
+    fn an_equal_confidence_content_duplicate_keeps_the_first() {
+        let mut first = make_fact("alice lives in berlin", 0.8, vec![1.0, 0.0]);
+        first.subject = "first".to_owned();
+        let mut second = make_fact("alice lives in berlin", 0.8, vec![1.0, 0.0]);
+        second.subject = "second".to_owned();
+
+        let (kept, dropped) = intra_batch_dedup(vec![first, second]);
+
+        assert_eq!(dropped, 1);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(
+            kept[0].subject, "first",
+            "equal confidence must not let a later duplicate displace an earlier one"
+        );
+    }
+
+    /// Kills: `replace > with >=` at line 259, the embedding-similarity branch.
+    ///
+    /// Distinct from the test above: that one dedups on `content ==` and never reaches
+    /// this branch. Here the contents differ, so dedup happens via cosine similarity
+    /// over the threshold, and the same equal-confidence rule has to hold on a
+    /// different line.
+    #[test]
+    fn an_equal_confidence_similar_duplicate_keeps_the_first() {
+        let mut first = make_fact("alice lives in berlin", 0.8, vec![1.0, 0.0]);
+        first.subject = "first".to_owned();
+        let mut second = make_fact("alice resides in berlin", 0.8, vec![1.0, 0.0]);
+        second.subject = "second".to_owned();
+
+        assert!(
+            cosine_similarity(&first.embedding, &second.embedding)
+                >= DEFAULT_INTRA_BATCH_DEDUP_THRESHOLD,
+            "the fixture must dedup via similarity, not via identical content"
+        );
+        assert_ne!(
+            first.content, second.content,
+            "identical content would short-circuit before the branch under test"
+        );
+
+        let (kept, dropped) = intra_batch_dedup(vec![first, second]);
+
+        assert_eq!(dropped, 1);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].subject, "first");
+    }
+
+    /// The other direction, for both branches: a HIGHER confidence duplicate must
+    /// displace the earlier one. Without this, `>` could be replaced by `false` -- the
+    /// tests above would still pass while the replacement rule stopped working.
+    #[test]
+    fn a_higher_confidence_duplicate_does_displace_the_first() {
+        let mut first = make_fact("alice lives in berlin", 0.5, vec![1.0, 0.0]);
+        first.subject = "first".to_owned();
+        let mut second = make_fact("alice lives in berlin", 0.9, vec![1.0, 0.0]);
+        second.subject = "second".to_owned();
+
+        let (kept, dropped) = intra_batch_dedup(vec![first, second]);
+
+        assert_eq!(dropped, 1);
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].subject, "second");
+        assert!((kept[0].confidence - 0.9).abs() < f64::EPSILON);
+    }
+}
