@@ -10,7 +10,6 @@ use std::collections::HashSet;
 use std::io::{Cursor, Read, Write};
 use std::sync::{Arc, RwLock};
 
-use base64::Engine as _;
 use koina::id::{NousId, SessionId, ToolName};
 use poiesis_core::{Block, Document, Metadata, RichText};
 use poiesis_theme::protos;
@@ -55,9 +54,7 @@ fn document_bytes(result: &ToolResult, media_type: &str) -> Vec<u8> {
                     _ => None,
                 })
                 .expect("document block must exist");
-            base64::engine::general_purpose::STANDARD
-                .decode(source)
-                .expect("document block must decode")
+            koina::base64::decode(source).expect("document block must decode")
         }
         other => panic!("expected Blocks content, got {other:?}"),
     }

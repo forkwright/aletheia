@@ -11,7 +11,6 @@
 mod prompt_gen;
 mod scoring;
 
-use std::fmt::Write as _;
 use std::future::Future;
 use std::pin::Pin;
 
@@ -21,8 +20,10 @@ use tracing::instrument;
 
 use koina::id::ToolName;
 
+use crate::builtins::http_client::{SafeRequest, send_with_safe_redirects};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
+use crate::sandbox::{EgressGate, SandboxConfig};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolTag,
@@ -92,7 +93,18 @@ fn require_services(
         .ok_or_else(|| ToolResult::error("tool services not configured"))
 }
 
-struct IssueScanExecutor;
+/// SECURITY(#6916): `repo` is an LLM-supplied argument interpolated into an outbound
+/// URL. The gate is held here rather than read from the context because a tool that
+/// forgets to consult it looks identical to one that consulted it and was allowed.
+struct IssueScanExecutor {
+    egress: EgressGate,
+}
+
+impl IssueScanExecutor {
+    fn new(egress: EgressGate) -> Self {
+        Self { egress }
+    }
+}
 
 impl ToolExecutor for IssueScanExecutor {
     fn execute<'a>(
@@ -112,7 +124,8 @@ impl ToolExecutor for IssueScanExecutor {
             let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(30);
 
             let issues = match fetch_issues(
-                &services.http_clients.general,
+                &services.http_clients.ssrf_safe,
+                &self.egress,
                 repo,
                 label_filter,
                 milestone_filter,
@@ -130,7 +143,16 @@ impl ToolExecutor for IssueScanExecutor {
     }
 }
 
-struct IssueTriageExecutor;
+/// SECURITY(#6916): see [`IssueScanExecutor`] -- same LLM-supplied `repo`, same gate.
+struct IssueTriageExecutor {
+    egress: EgressGate,
+}
+
+impl IssueTriageExecutor {
+    fn new(egress: EgressGate) -> Self {
+        Self { egress }
+    }
+}
 
 impl ToolExecutor for IssueTriageExecutor {
     fn execute<'a>(
@@ -154,7 +176,8 @@ impl ToolExecutor for IssueTriageExecutor {
             let limit = extract_opt_u64(&input.arguments, "limit").unwrap_or(30);
 
             let issues = match fetch_issues(
-                &services.http_clients.general,
+                &services.http_clients.ssrf_safe,
+                &self.egress,
                 repo,
                 label_filter,
                 milestone_filter,
@@ -211,42 +234,7 @@ impl ToolExecutor for IssueTriageExecutor {
                 )));
             }
 
-            let mut staged: Vec<StagedPrompt> = Vec::new();
-            for result in &scored {
-                let prompt_content = generate_prompt(&result.issue, repo);
-                let filename = format!(
-                    "{}-{}.md",
-                    result.issue.number,
-                    slugify(&result.issue.title),
-                );
-                let path = staging.join(&filename);
-
-                if let Err(e) = tokio::fs::write(&path, &prompt_content).await {
-                    tracing::warn!(
-                        issue = result.issue.number,
-                        error = %e,
-                        "failed to write staged prompt"
-                    );
-                    continue;
-                }
-
-                let priority = compute_priority_score(result);
-                tracing::info!(
-                    issue = result.issue.number,
-                    relevance = result.relevance,
-                    priority_score = priority,
-                    filename = %filename,
-                    rationale = %result.rationale,
-                    "staged prompt generated"
-                );
-
-                staged.push(StagedPrompt {
-                    filename: filename.clone(),
-                    issue_number: result.issue.number,
-                    priority_score: priority,
-                    staged_path: path.display().to_string(),
-                });
-            }
+            let staged = stage_prompts(&scored, repo, &staging).await;
 
             let summary = format_triage_summary(&staged, &scored);
             Ok(ToolResult::text(summary))
@@ -337,55 +325,62 @@ impl ToolExecutor for IssueApproveExecutor {
 
 // ── Helper functions ──
 
-/// Fetch open issues from GitHub API.
+/// Write one prompt file per scored issue, returning those that landed.
 ///
-/// # Errors
-///
-/// Returns an error string if the HTTP request or JSON parsing fails.
-#[instrument(skip(client), fields(repo = %repo))]
-async fn fetch_issues(
-    client: &reqwest::Client,
+/// WHY separate from the executor: this is the only part that touches the filesystem,
+/// and an issue whose file fails to write is SKIPPED rather than failing the batch --
+/// a rule worth being visible in a signature rather than buried in the middle of a
+/// hundred-line function.
+async fn stage_prompts(
+    scored: &[RelevanceResult],
     repo: &str,
-    label: Option<&str>,
-    milestone: Option<&str>,
-    limit: u64,
-) -> std::result::Result<Vec<GitHubIssue>, String> {
-    let mut url = format!(
-        "https://api.github.com/repos/{repo}/issues?state=open&per_page={limit}&sort=updated&direction=desc"
-    );
-    if let Some(l) = label {
-        let _ = write!(url, "&labels={l}");
+    staging: &std::path::Path,
+) -> Vec<StagedPrompt> {
+    let mut staged: Vec<StagedPrompt> = Vec::new();
+    for result in scored {
+        let prompt_content = generate_prompt(&result.issue, repo);
+        let filename = format!(
+            "{}-{}.md",
+            result.issue.number,
+            slugify(&result.issue.title),
+        );
+        let path = staging.join(&filename);
+
+        if let Err(e) = tokio::fs::write(&path, &prompt_content).await {
+            tracing::warn!(
+                issue = result.issue.number,
+                error = %e,
+                "failed to write staged prompt"
+            );
+            continue;
+        }
+
+        let priority = compute_priority_score(result);
+        tracing::info!(
+            issue = result.issue.number,
+            relevance = result.relevance,
+            priority_score = priority,
+            filename = %filename,
+            rationale = %result.rationale,
+            "staged prompt generated"
+        );
+
+        staged.push(StagedPrompt {
+            filename: filename.clone(),
+            issue_number: result.issue.number,
+            priority_score: priority,
+            staged_path: path.display().to_string(),
+        });
     }
-    if let Some(m) = milestone {
-        let _ = write!(url, "&milestone={m}");
-    }
+    staged
+}
 
-    let response = client
-        .get(&url)
-        .header("Accept", "application/vnd.github.v3+json")
-        .header(
-            "User-Agent",
-            concat!(
-                "aletheia/",
-                env!("CARGO_PKG_VERSION"),
-                " (github.com/forkwright/aletheia)"
-            ),
-        )
-        .send()
-        .await
-        .map_err(|e| format!("GitHub API request failed: {e}"))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default -- WHY: already handling error path; empty body preferred over propagating a secondary decode error
-        return Err(format!("GitHub API error ({status}): {body}"));
-    }
-
-    let items: Vec<serde_json::Value> = response
-        .json()
-        .await
-        .map_err(|e| format!("failed to parse GitHub response: {e}"))?;
-
+/// Turn the GitHub issues payload into typed issues.
+///
+/// WHY separate from `fetch_issues`: that function is the outbound request and its
+/// egress checkpoint; this is decoding. Keeping them together put both concerns past
+/// the 100-line lint, and the fix worth having is the seam, not a suppression.
+fn parse_issues(items: Vec<serde_json::Value>) -> Vec<GitHubIssue> {
     let mut issues = Vec::new();
     for item in items {
         // WHY: the GitHub issues API includes PRs; skip them.
@@ -452,7 +447,123 @@ async fn fetch_issues(
         });
     }
 
-    Ok(issues)
+    issues
+}
+
+/// Build the issues URL for `repo`, encoding every model-supplied part.
+///
+/// SECURITY(#6916): `repo`, `label` and `milestone` reach here from tool arguments an
+/// LLM chose. Building the URL from segments and query pairs means a value carrying
+/// `..`, `?`, `#` or `&` becomes literal data instead of steering the request; the
+/// `format!` this replaced let such a value rewrite the query string or climb the path.
+///
+/// The host cannot be reached this way -- `repo` lands after the authority, so no
+/// value of it changes where the request goes. Redirects can, which is why the caller
+/// drives them through the egress checkpoint rather than letting reqwest follow them.
+///
+/// # Errors
+///
+/// Returns a message if the compile-time base URL fails to parse or cannot take path
+/// segments -- both build-time defects rather than input errors.
+fn issues_url(
+    repo: &str,
+    label: Option<&str>,
+    milestone: Option<&str>,
+    limit: u64,
+) -> std::result::Result<reqwest::Url, String> {
+    let mut url = reqwest::Url::parse("https://api.github.com/")
+        .map_err(|e| format!("GitHub API base URL is malformed: {e}"))?;
+    {
+        let mut path = url
+            .path_segments_mut()
+            .map_err(|()| "GitHub API base URL cannot have path segments".to_owned())?;
+        // WHY pop_if_empty: the base URL's path is `/`, which is one EMPTY segment.
+        // Pushing onto it would yield `//repos` -- a different path that 404s, and one
+        // that reads as a typo rather than as this subtlety.
+        path.pop_if_empty();
+        path.push("repos");
+        path.extend(repo.split('/'));
+        path.push("issues");
+    }
+    url.query_pairs_mut()
+        .append_pair("state", "open")
+        .append_pair("per_page", &limit.to_string())
+        .append_pair("sort", "updated")
+        .append_pair("direction", "desc");
+    if let Some(l) = label {
+        url.query_pairs_mut().append_pair("labels", l);
+    }
+    if let Some(m) = milestone {
+        url.query_pairs_mut().append_pair("milestone", m);
+    }
+    Ok(url)
+}
+
+/// Fetch open issues from GitHub API.
+///
+/// # Errors
+///
+/// Returns an error string if the HTTP request or JSON parsing fails.
+#[instrument(skip(client, gate), fields(repo = %repo))]
+async fn fetch_issues(
+    client: &reqwest::Client,
+    gate: &EgressGate,
+    repo: &str,
+    label: Option<&str>,
+    milestone: Option<&str>,
+    limit: u64,
+) -> std::result::Result<Vec<GitHubIssue>, String> {
+    // SECURITY(#6916): refuse before the DNS lookup, so `egress = "deny"` blocks this
+    // tool at the same point the child-process path blocks socket creation.
+    gate.check_before_connect().map_err(|e| e.to_string())?;
+
+    let url = issues_url(repo, label, milestone, limit)?;
+
+    let mut headers = std::collections::HashMap::new();
+    headers.insert(
+        "Accept".to_owned(),
+        "application/vnd.github.v3+json".to_owned(),
+    );
+    headers.insert(
+        "User-Agent".to_owned(),
+        concat!(
+            "aletheia/",
+            env!("CARGO_PKG_VERSION"),
+            " (github.com/forkwright/aletheia)"
+        )
+        .to_owned(),
+    );
+
+    // SECURITY(#6916): every hop passes the same egress policy and internal-address
+    // revalidation `http_request` uses. Sending on the general client left this tool
+    // outside the sandbox egress policy entirely -- `egress = "deny"` did not stop it.
+    let response = send_with_safe_redirects(
+        client,
+        SafeRequest {
+            method: reqwest::Method::GET,
+            url: url.as_str(),
+            headers: &headers,
+            body: None,
+            timeout: std::time::Duration::from_secs(30),
+        },
+        &koina::http::TokioHostResolver,
+        gate,
+    )
+    .await
+    .map_err(|e| format!("GitHub API request failed: {e}"))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default -- WHY: already handling error path; empty body preferred over propagating a secondary decode error
+        return Err(format!("GitHub API error ({status}): {body}"));
+    }
+
+    let items: Vec<serde_json::Value> = response
+        .json()
+        .await
+        .map_err(|e| format!("failed to parse GitHub response: {e}"))?;
+
+    Ok(parse_issues(items))
 }
 
 /// Find a staged prompt by ID (issue number prefix or filename).
@@ -774,9 +885,16 @@ fn issue_approve_def() -> ToolDef {
 /// # Errors
 ///
 /// Returns an error if any tool name collides with an already-registered tool.
-pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(issue_scan_def(), Box::new(IssueScanExecutor))?;
-    registry.register(issue_triage_def(), Box::new(IssueTriageExecutor))?;
+pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
+    let egress = EgressGate::from_config(sandbox);
+    registry.register(
+        issue_scan_def(),
+        Box::new(IssueScanExecutor::new(egress.clone())),
+    )?;
+    registry.register(
+        issue_triage_def(),
+        Box::new(IssueTriageExecutor::new(egress)),
+    )?;
     registry.register(issue_approve_def(), Box::new(IssueApproveExecutor))?;
     Ok(())
 }

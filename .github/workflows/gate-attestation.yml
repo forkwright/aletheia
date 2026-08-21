@@ -539,6 +539,19 @@ jobs:
       - name: Aletheia gated-provider feature gate
         run: cargo check -p aletheia --features mcp,energeia,codex-provider,kimi-provider,keyring
 
+      # WHY a SECOND line naming symbolon, when the check above already says `keyring`:
+      # that one is `-p aletheia`, and cargo builds dependencies as libraries only. It
+      # compiles symbolon's lib under the feature and never its TEST targets, which is
+      # where the removed API lived. keyring 3 -> 4 (#6885) broke
+      # `keyring_provider_tests.rs` and merged green, because the only thing in this
+      # repository that compiles that file is the substance audit -- which is how it was
+      # eventually found, two runs and ten hours of runner time later.
+      #
+      # So: the crate that OWNS the gated code, and `--all-targets`. Either alone
+      # reproduces the gap.
+      - name: Symbolon keyring feature gate
+        run: cargo check -p symbolon --features keyring --all-targets
+
       # WHY(#4414): same class of gap as the provider-feature gate above —
       # hybrid-gate's clippy_cmd carries no --all-features, so a feature
       # nobody enables by default rots silently. episteme's ort/onnx-backed

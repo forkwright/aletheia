@@ -270,15 +270,24 @@ pub(crate) async fn execute_self_prompt_with_cancel(
         .send_prompt_with_cancel(nous_id, SELF_PROMPT_SESSION_KEY, prompt, cancel)
         .await
     {
+        // WHY(#6830) the bridge's own classification is returned unchanged: both
+        // production bridges report non-success as `Ok(ExecutionResult::{skipped,
+        // failed})` rather than `Err`, so substituting a hardcoded success here made
+        // every outcome look identical. This result feeds the daemon's backoff and
+        // auto-disable bookkeeping (`runner::inflight` only calls
+        // `record_task_failure` on `Failed`), so a self-prompt that fails on every
+        // invocation -- actor missing, turn erroring, no bridge wired at all --
+        // recorded a clean success stream forever and never entered backoff.
+        //
+        // The old code LOGGED `result.is_success()` and then discarded it, which is
+        // the tell: it observed the real outcome and reported a different one.
         Ok(result) => {
             tracing::info!(
                 nous_id = %nous_id,
-                success = result.is_success(),
-                "self-prompt dispatch succeeded"
+                outcome = ?result.outcome,
+                "self-prompt dispatch returned"
             );
-            Ok(crate::runner::ExecutionResult::success(Some(
-                "self-prompt dispatched".to_owned(),
-            )))
+            Ok(result)
         }
         Err(e) => {
             tracing::warn!(
@@ -497,20 +506,74 @@ mod tests {
         assert!(result.output.expect("has output").contains("no bridge"));
     }
 
+    /// WHY(#6830) this asserts the opposite of what it used to: it previously
+    /// documented the defect as intended behaviour -- "`NoopBridge` reports a skip, but
+    /// the dispatch itself succeeds". Dispatching to a bridge that sends nothing is not
+    /// a success, and calling it one is what let the daemon record a working capability
+    /// that had never worked.
     #[tokio::test]
-    async fn execute_with_noop_bridge_dispatches() {
+    async fn a_noop_bridge_reports_skipped_not_success() {
         let bridge = crate::bridge::NoopBridge;
         let result = execute_self_prompt("test-nous", "investigate disk", Some(&bridge))
             .await
             .expect("should not error");
-        // NOTE: NoopBridge reports a skip, but the dispatch itself succeeds.
-        assert!(result.is_success());
-        assert!(
-            result
-                .output
-                .expect("has output")
-                .contains("self-prompt dispatched")
+        assert_eq!(
+            result.outcome,
+            crate::runner::TaskOutcome::Skipped,
+            "a bridge that sends nothing must not report success"
         );
+        assert!(result.output.expect("has output").contains("no bridge"));
+    }
+
+    /// SECURITY-adjacent(#6830): the three outcomes must survive the call, because the
+    /// daemon's backoff keys on `Failed` specifically. A fix that collapsed Failed into
+    /// Skipped would still pass the test above and still never enter backoff.
+    #[tokio::test]
+    async fn every_bridge_outcome_survives_the_call() {
+        struct FixedOutcomeBridge(crate::runner::ExecutionResult);
+
+        impl crate::bridge::DaemonBridge for FixedOutcomeBridge {
+            fn send_prompt(
+                &self,
+                _nous_id: &str,
+                _session_key: &str,
+                _prompt: &str,
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<
+                            Output = crate::error::Result<crate::runner::ExecutionResult>,
+                        > + Send
+                        + '_,
+                >,
+            > {
+                let result = self.0.clone();
+                Box::pin(async move { Ok(result) })
+            }
+        }
+
+        for expected in [
+            crate::runner::TaskOutcome::Success,
+            crate::runner::TaskOutcome::Failed,
+            crate::runner::TaskOutcome::Skipped,
+        ] {
+            let bridge = FixedOutcomeBridge(crate::runner::ExecutionResult {
+                outcome: expected,
+                output: Some("from the bridge".to_owned()),
+                errors: 0,
+            });
+            let result = execute_self_prompt("test-nous", "prompt", Some(&bridge))
+                .await
+                .expect("should not error");
+            assert_eq!(
+                result.outcome, expected,
+                "the bridge's classification must reach the caller unchanged"
+            );
+            assert_eq!(
+                result.output.as_deref(),
+                Some("from the bridge"),
+                "the bridge's own message is more informative than a fixed one"
+            );
+        }
     }
 
     // -- Session key constant test --
