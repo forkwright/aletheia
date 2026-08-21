@@ -468,6 +468,28 @@ fn is_process_alive(pid: u32) -> bool {
     std::path::Path::new(&format!("/proc/{pid}")).exists()
 }
 
+/// Wait for `pid` to disappear, returning `false` if it is still alive at the deadline.
+///
+/// WHY(#6908): the previous form was `sleep(300ms)` then assert. 300ms is not a
+/// property of the code under test -- it is a guess about how fast a loaded
+/// runner reaps a killed child, and when the guess is wrong the test reports a
+/// leaked process that is merely slow to die. Polling returns as soon as the
+/// process is gone (usually within one interval) and only fails when it truly
+/// never dies.
+#[cfg(target_os = "linux")]
+async fn wait_for_process_death(pid: u32) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        if !is_process_alive(pid) {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn run_completion_subprocess_killed_on_future_drop() {
@@ -501,29 +523,30 @@ async fn run_completion_subprocess_killed_on_future_drop() {
         .await
     });
 
+    // WHY(#6908) the parse is inside the wait: the file exists from the moment
+    // the fake binary creates it, which is before it writes the pid. Breaking on
+    // `exists()` and unwrapping the parse afterwards is a race that fails with
+    // `ParseIntError { kind: Empty }` -- the same one that surfaced in
+    // `crates/daemon/src/prosoche_tests.rs` once its loop stopped parking the
+    // runtime thread and started observing the window.
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        if pid_path_clone.exists() {
-            break;
+    let pid: u32 = loop {
+        if let Ok(contents) = fs::read_to_string(&pid_path_clone)
+            && let Ok(pid) = contents.trim().parse::<u32>()
+        {
+            break pid;
         }
         assert!(
             std::time::Instant::now() < deadline,
             "timed out waiting for subprocess PID file"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-
-    let pid: u32 = fs::read_to_string(&pid_path_clone)
-        .unwrap()
-        .trim()
-        .parse()
-        .unwrap();
+    };
 
     handle.abort();
-    tokio::time::sleep(Duration::from_millis(300)).await;
 
     assert!(
-        !is_process_alive(pid),
+        wait_for_process_death(pid).await,
         "CC completion subprocess (pid={pid}) should be dead after future drop"
     );
 
@@ -565,29 +588,30 @@ async fn run_streaming_subprocess_killed_on_future_drop() {
         .await
     });
 
+    // WHY(#6908) the parse is inside the wait: the file exists from the moment
+    // the fake binary creates it, which is before it writes the pid. Breaking on
+    // `exists()` and unwrapping the parse afterwards is a race that fails with
+    // `ParseIntError { kind: Empty }` -- the same one that surfaced in
+    // `crates/daemon/src/prosoche_tests.rs` once its loop stopped parking the
+    // runtime thread and started observing the window.
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
-    loop {
-        if pid_path_clone.exists() {
-            break;
+    let pid: u32 = loop {
+        if let Ok(contents) = fs::read_to_string(&pid_path_clone)
+            && let Ok(pid) = contents.trim().parse::<u32>()
+        {
+            break pid;
         }
         assert!(
             std::time::Instant::now() < deadline,
             "timed out waiting for subprocess PID file"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-
-    let pid: u32 = fs::read_to_string(&pid_path_clone)
-        .unwrap()
-        .trim()
-        .parse()
-        .unwrap();
+    };
 
     handle.abort();
-    tokio::time::sleep(Duration::from_millis(300)).await;
 
     assert!(
-        !is_process_alive(pid),
+        wait_for_process_death(pid).await,
         "CC streaming subprocess (pid={pid}) should be dead after future drop"
     );
 

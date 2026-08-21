@@ -107,7 +107,7 @@ mod contradiction_log {
 mod dream {
     use std::path::PathBuf;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
     use hermeneus::provider::LlmProvider;
     use hermeneus::test_utils::MockProvider;
@@ -165,6 +165,69 @@ mod dream {
             _since: jiff::Timestamp,
         ) -> std::result::Result<Vec<SessionTranscript>, std::io::Error> {
             Ok(self.0.clone())
+        }
+    }
+
+    /// A [`ConsolidationTarget`] that blocks inside `merge_flush` until released.
+    ///
+    /// WHY(#6908): the property under test is that `on_turn_complete` spawns the
+    /// consolidation instead of awaiting it. Holding the target open makes that
+    /// observable: if `on_turn_complete` returns while `merges` is still zero,
+    /// it cannot have waited for the pipeline. The previous form asserted the
+    /// call returned inside a 500ms wall-clock budget, which measured runner
+    /// load rather than the spawn.
+    struct GatedTarget {
+        merges: AtomicUsize,
+        released: AtomicBool,
+    }
+
+    impl GatedTarget {
+        fn new() -> Self {
+            Self {
+                merges: AtomicUsize::new(0),
+                released: AtomicBool::new(false),
+            }
+        }
+
+        fn merges(&self) -> usize {
+            self.merges.load(Ordering::SeqCst)
+        }
+
+        fn release(&self) {
+            self.released.store(true, Ordering::SeqCst);
+        }
+    }
+
+    impl ConsolidationTarget for GatedTarget {
+        fn merge_flush(
+            &self,
+            _flush: &MemoryFlush,
+            _nous_id: &str,
+            _session_id: &str,
+        ) -> std::result::Result<MergeReport, std::io::Error> {
+            // Block BEFORE counting, so `merges() == 0` is guaranteed for as
+            // long as the gate is shut. The deadline is a hang guard: without it
+            // a regression would wedge the suite instead of failing it. Polling
+            // here parks a blocking-pool thread rather than a runtime worker,
+            // because `merge_flush` reaches this target through `run_store_op`
+            // -> `tokio::task::spawn_blocking`.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+            while !self.released.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            self.merges.fetch_add(1, Ordering::SeqCst);
+            Ok(MergeReport {
+                facts_added: 3,
+                facts_deduped: 1,
+                facts_stale: 0,
+            })
+        }
+        fn mark_contradictions_stale(
+            &self,
+            log: &ContradictionLog,
+            _nous_id: &str,
+        ) -> std::result::Result<usize, std::io::Error> {
+            Ok(log.contradictions.len())
         }
     }
 
@@ -301,21 +364,33 @@ mod dream {
             ],
         };
         let source: Arc<dyn TranscriptSource> = Arc::new(FixedSource(vec![transcript]));
-        let target: Arc<dyn ConsolidationTarget> = Arc::new(CountingTarget::new());
+        let gate = Arc::new(GatedTarget::new());
+        // WHY the intermediate binding: `Arc::clone` is an associated function,
+        // so inference flows inward and fixes `T` from the expected type rather
+        // than offering an unsized-coercion site -- assigning its result
+        // straight to `Arc<dyn ConsolidationTarget>` is an E0308. An `as` cast
+        // fixes that and then trips `clippy::as_conversions`, which `-D warnings`
+        // makes an error. Naming the concrete type first gives the coercion its
+        // site on the following line, with no cast at all.
+        let concrete: Arc<GatedTarget> = Arc::clone(&gate);
+        let target: Arc<dyn ConsolidationTarget> = concrete;
         let provider: Arc<dyn LlmProvider> = Arc::new(
             MockProvider::new("## Summary\ns\n## Key Decisions\n- done")
                 .models(&["claude-sonnet-4-20250514"]),
         );
 
-        // WHY: must return immediately (well under a second). If it blocks
-        // on the consolidation pipeline this timing assertion fails.
-        let start = std::time::Instant::now();
         engine.on_turn_complete(&source, &target, &provider).await;
-        let elapsed = start.elapsed();
-        assert!(
-            elapsed < std::time::Duration::from_millis(500),
-            "on_turn_complete must return quickly, took {elapsed:?}",
+
+        // Returning while the target is still held open is the proof: had
+        // `on_turn_complete` awaited the consolidation, it could not be here
+        // before the merge completed.
+        assert_eq!(
+            gate.merges(),
+            0,
+            "on_turn_complete awaited the consolidation instead of spawning it"
         );
+
+        gate.release();
     }
 }
 

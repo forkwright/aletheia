@@ -1156,7 +1156,6 @@ domains = ["medical"]
         providers.register(Box::new(StuckProvider::clone_ref(&stuck)));
         let svc = SpawnServiceImpl::new(Arc::new(providers), Arc::new(ToolRegistry::new()), oikos);
 
-        let start = tokio::time::Instant::now();
         let result = svc
             .spawn_and_run(
                 SpawnRequest {
@@ -1170,14 +1169,15 @@ domains = ["medical"]
             )
             .await
             .expect("spawn");
-        let elapsed = start.elapsed();
 
+        // WHY(#6908): the property is that the parent returns instead of
+        // blocking on a child that never finishes, and the three assertions
+        // below already carry it -- the parent returned, it returned the
+        // timeout, and the child had started. A wall-clock ceiling on top of
+        // that proved nothing extra: `StuckProvider` never completes, so a
+        // parent that did block would hang the test rather than finish slowly.
         assert!(result.is_error);
         assert!(result.content.contains("timed out"));
-        assert!(
-            elapsed < Duration::from_secs(3),
-            "parent should return promptly after timeout, took {elapsed:?}"
-        );
         assert!(
             stuck.started(),
             "stuck provider should have started the child turn"

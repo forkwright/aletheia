@@ -123,16 +123,22 @@ impl ConsolidationTarget for PanickingTarget {
 /// session keyspace. Sleeping stands in for that scan so the test can observe
 /// whether the call occupies a Tokio worker.
 struct BlockingSource {
+    /// Fired the instant the blocking call begins, so the probe task waits on
+    /// an event rather than on a duration.
+    blocking_started: Arc<tokio::sync::Notify>,
     probe_ran: Arc<std::sync::atomic::AtomicBool>,
     probe_ran_during_block: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// How long [`BlockingSource`] occupies its thread.
+///
+/// WHY(#6908): this is the fixture's blocking window, not a deadline anything
+/// asserts against. The probe used to sleep a shorter duration and the test
+/// inferred ordering from the two durations differing -- which is a race a
+/// loaded runner can lose while the code is correct. Ordering is now a
+/// handshake on [`BlockingSource::blocking_started`], so this value only has to
+/// be long enough to be a realistic block.
 const BLOCKING_SOURCE_MS: u64 = 500;
-
-/// How long the probe task waits before recording that it ran. Must be well
-/// inside [`BLOCKING_SOURCE_MS`] so the probe lands during the blocking window.
-const PROBE_DELAY_MS: u64 = 50;
 
 impl TranscriptSource for BlockingSource {
     fn count_sessions_since(
@@ -146,6 +152,9 @@ impl TranscriptSource for BlockingSource {
         &self,
         _since: jiff::Timestamp,
     ) -> std::result::Result<Vec<SessionTranscript>, std::io::Error> {
+        // A permit is stored even if the probe has not registered yet, so the
+        // handshake cannot be lost to scheduling order.
+        self.blocking_started.notify_one();
         std::thread::sleep(std::time::Duration::from_millis(BLOCKING_SOURCE_MS));
         self.probe_ran_during_block
             .store(self.probe_ran.load(Ordering::SeqCst), Ordering::SeqCst);
@@ -508,7 +517,9 @@ async fn consolidation_store_calls_do_not_occupy_the_async_worker() {
 
     let probe_ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
     let probe_ran_during_block = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let blocking_started = Arc::new(tokio::sync::Notify::new());
     let source: Arc<dyn TranscriptSource> = Arc::new(BlockingSource {
+        blocking_started: Arc::clone(&blocking_started),
         probe_ran: Arc::clone(&probe_ran),
         probe_ran_during_block: Arc::clone(&probe_ran_during_block),
     });
@@ -542,8 +553,12 @@ async fn consolidation_store_calls_do_not_occupy_the_async_worker() {
     // consolidation task. It needs the worker to be free to make progress.
     let probe = {
         let probe_ran = Arc::clone(&probe_ran);
+        let blocking_started = Arc::clone(&blocking_started);
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(PROBE_DELAY_MS)).await;
+            // Waiting on the handshake rather than a duration makes "the probe
+            // ran during the block" an ordering fact. Reaching this line at all
+            // requires a free worker, which is precisely the property asserted.
+            blocking_started.notified().await;
             probe_ran.store(true, Ordering::SeqCst);
         })
     };
