@@ -314,7 +314,10 @@ mod tests {
             // spelling of the same bytes survives. The lenient decoder accepts three.
             let bytes = b"receipt";
             let canonical = encode_url_safe_no_pad(bytes);
-            let variants = [format!("{canonical}="), canonical.replace('-', "+").replace('_', "/")];
+            let variants = [
+                format!("{canonical}="),
+                canonical.replace('-', "+").replace('_', "/"),
+            ];
             for variant in variants {
                 if variant == canonical {
                     continue;
