@@ -148,6 +148,11 @@ The oikos hierarchy is described in [CONFIGURATION.md](CONFIGURATION.md).
 manifest. The table below calls out the primary architecture crates; the full
 generated inventory is `_llm/L1-workspace.md`.
 
+The count is `[workspace] members` in the root `Cargo.toml` -- the same list cargo
+resolves, and the canonical answer to "how many crates". Counting `Cargo.toml` files
+on disk returns 49 and is wrong, because `proskenion` has its own workspace.
+`scripts/check-doc-inventory.py` fails CI when a document disagrees with that list.
+
 ### Crates
 
 | Crate | Directory | Domain | Depends On |

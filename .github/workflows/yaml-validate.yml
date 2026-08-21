@@ -86,6 +86,13 @@ jobs:
       - name: ZIP entries carry a fixed timestamp, not a wall clock
         run: python3 scripts/check-zip-determinism.py
 
+      # WHY(#4526): the crate count is asserted in three public docs and derived by
+      # nothing, so it is right only until someone adds a crate. It is also the first
+      # fact an operator or an agent reads when orienting, which is the worst place for
+      # a number with no owner.
+      - name: Documented crate counts match the workspace
+        run: python3 scripts/check-doc-inventory.py
+
       - name: Validate automation PR gate policy
         run: |
           python3 scripts/check-automation-pr-gates.py
