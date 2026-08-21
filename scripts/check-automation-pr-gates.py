@@ -118,7 +118,44 @@ def test_fixture_paths() -> list[str]:
     )
 
 
+def rewrite_sonar_test_scope(sonar_path: Path) -> bool:
+    """Write the derived test inventory into `.sonarcloud.properties`.
+
+    WHY a mode and not a manual edit: the inventory is already DERIVED here, by
+    `test_fixture_paths`. Everything downstream of that -- both key values -- is a
+    mechanical transcription of a 27-entry comma-joined list that a human retypes each
+    time a test file is added, and gets wrong. The check knew the right answer well
+    enough to print it in the failure; it just would not write it. That is a check that
+    has all of a fix and withholds it.
+
+    Returns True when the file changed.
+    """
+    lines = sonar_path.read_text(encoding="utf-8").splitlines(keepends=True)
+    inventory = ",".join(test_fixture_paths())
+    rewritten = []
+    changed = False
+    for line in lines:
+        for key in ("sonar.exclusions", "sonar.test.inclusions"):
+            if line.startswith(f"{key}="):
+                replacement = f"{key}={inventory}\n"
+                changed |= replacement != line
+                line = replacement
+                break
+        rewritten.append(line)
+    if changed:
+        sonar_path.write_text("".join(rewritten), encoding="utf-8")
+    return changed
+
+
 def main() -> int:
+    if "--fix-sonar-scope" in sys.argv[1:]:
+        sonar_path = ROOT / ".sonarcloud.properties"
+        if rewrite_sonar_test_scope(sonar_path):
+            print(f"rewrote the test inventory in {sonar_path.name}")
+        else:
+            print(f"{sonar_path.name} test inventory already matches")
+        return 0
+
     errors: list[str] = []
 
     # Automatic Analysis ignores sonar-project.properties and requires its
@@ -157,11 +194,14 @@ def main() -> int:
             errors.append(
                 ".sonarcloud.properties sonar.test.inclusions must exactly "
                 f"inventory test fixtures (expected {expected_tests!r})"
+                " -- run `scripts/check-automation-pr-gates.py --fix-sonar-scope`"
+                " rather than transcribing that list by hand"
             )
         if source_exclusions != expected_tests:
             errors.append(
                 ".sonarcloud.properties sonar.exclusions must exactly mirror "
                 "sonar.test.inclusions so source and test scopes are disjoint"
+                " -- `--fix-sonar-scope` writes both"
             )
         if any(
             wildcard in sonar.get(key, "")
