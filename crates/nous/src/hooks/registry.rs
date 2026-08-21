@@ -159,23 +159,39 @@ impl HookRegistry {
     /// Run all `before_compact` hooks in priority order.
     ///
     /// Short-circuits on `HookResult::Abort`.
-    pub(crate) async fn run_before_compact(
-        &self,
-        context: &BeforeCompactionContext<'_>,
-    ) -> HookResult {
+    /// Fire `before_compact` on every hook. Observational: an `Abort` is logged and
+    /// ignored.
+    ///
+    /// WHY(#5083) this returns nothing, where it used to return `HookResult`: the
+    /// pipeline discarded the result with `let _ =`, deliberately -- the suppression
+    /// there read "hook failure must not abort the turn". So a hook could return
+    /// `Abort`, this function would log "before_compact hook aborted compaction", and
+    /// compaction would happen anyway. The log line asserted an action that did not
+    /// occur, which is worse than silence: an operator reading it believes a policy
+    /// hook stopped something.
+    ///
+    /// Observational is the right call rather than enforcing the abort, because
+    /// compaction usually runs BECAUSE the context no longer fits. Refusing it would
+    /// trade a clean compaction for an oversized context that fails later and less
+    /// legibly. `session_start` is enforceable (it returns `GuardRejected`) precisely
+    /// because aborting there ends the turn cleanly, with nothing half-done.
+    ///
+    /// Shaped exactly like [`Self::run_after_compact`], which had already settled this
+    /// for the sibling hook point: return nothing, log the ignored abort at debug, and
+    /// say in the message why it was ignored.
+    pub(crate) async fn run_before_compact(&self, context: &BeforeCompactionContext<'_>) {
         for entry in &self.hooks {
             let result = entry.hook.before_compact(context).await;
             if let HookResult::Abort { ref reason } = result {
-                warn!(
+                debug!(
                     hook = entry.hook.name(),
                     priority = entry.priority,
                     reason = reason.as_str(),
-                    "before_compact hook aborted compaction"
+                    "before_compact hook returned abort (ignored, this hook point is \
+                     observational -- compaction proceeds)"
                 );
-                return result;
             }
         }
-        HookResult::Continue
     }
 
     /// Run all `after_compact` hooks in priority order.
