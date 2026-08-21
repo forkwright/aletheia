@@ -4,14 +4,21 @@
 //! academic literature as part of the recall pipeline, not just via ad-hoc
 //! MCP tools in CC sessions.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use koina::http::TokioHostResolver;
+use organon::builtins::http_client::{SafeRequest, send_with_safe_redirects};
+use organon::sandbox::EgressGate;
 use snafu::ResultExt;
 use tracing::debug;
 
-use super::error::{HttpRequestSnafu, ParseResponseSnafu, RecallSourceError};
+use super::error::{
+    EgressRefusedSnafu, HttpRequestSnafu, ParseResponseSnafu, RecallSourceError,
+    SourceUnavailableSnafu,
+};
 use super::{RecallSource, SourceResult};
 
 const API_BASE: &str = "https://api.semanticscholar.org/graph/v1";
@@ -27,11 +34,28 @@ const PAPER_FIELDS: &str = "paperId,title,abstract,year,citationCount,url";
 pub(crate) struct AcademicSource {
     client: Arc<reqwest::Client>,
     api_key: Option<String>,
+    /// SECURITY(#6921): the egress policy applied to every hop of the query.
+    egress: EgressGate,
 }
 
 impl AcademicSource {
-    pub(crate) fn new(client: Arc<reqwest::Client>, api_key: Option<String>) -> Self {
-        Self { client, api_key }
+    /// Build the source.
+    ///
+    /// SECURITY(#6921): `client` must have redirects DISABLED.
+    /// `send_with_safe_redirects` drives the chain itself so each hop passes the
+    /// egress checkpoint; a client that follows redirects on its own would return an
+    /// already-redirected response and skip that revalidation entirely -- which is how
+    /// this source forwarded `x-api-key` to whatever host a response named.
+    pub(crate) fn new(
+        client: Arc<reqwest::Client>,
+        api_key: Option<String>,
+        egress: EgressGate,
+    ) -> Self {
+        Self {
+            client,
+            api_key,
+            egress,
+        }
     }
 }
 
@@ -46,18 +70,50 @@ impl RecallSource for AcademicSource {
             let endpoint = format!("{API_BASE}/paper/search");
             let clamped_limit = limit.min(100);
 
-            let mut req = self
-                .client
-                .get(&endpoint)
-                .query(&[("query", query), ("fields", PAPER_FIELDS)])
-                .query(&[("limit", clamped_limit)]);
+            // WHY not unwrap: `API_BASE` is a const and this cannot fail in practice,
+            // but the workspace denies unwrap/expect and a truthful error costs one
+            // line. A malformed endpoint is a build-time defect, not an egress refusal.
+            let mut url: reqwest::Url = endpoint.parse().map_err(|_e| {
+                SourceUnavailableSnafu {
+                    message: format!("search endpoint is not a valid URL: {endpoint}"),
+                }
+                .build()
+            })?;
+            url.query_pairs_mut()
+                .append_pair("query", query)
+                .append_pair("fields", PAPER_FIELDS)
+                .append_pair("limit", &clamped_limit.to_string());
 
+            let mut headers = HashMap::new();
             if let Some(ref key) = self.api_key {
-                req = req.header("x-api-key", key);
+                headers.insert("x-api-key".to_owned(), key.clone());
             }
 
-            let response = req.send().await.context(HttpRequestSnafu {
-                endpoint: &endpoint,
+            // SECURITY(#6921, #6910): every hop -- the first request and any redirect
+            // the endpoint names -- goes through the same egress checkpoint and
+            // internal-address revalidation `http_request` uses. Sending on a bare
+            // client meant a redirect carried `x-api-key` to an attacker-chosen host:
+            // reqwest strips only Authorization, Cookie, Proxy-Authorization and
+            // WWW-Authenticate across a cross-host hop, never a custom header.
+            let response = send_with_safe_redirects(
+                &self.client,
+                SafeRequest {
+                    method: reqwest::Method::GET,
+                    url: url.as_str(),
+                    headers: &headers,
+                    body: None,
+                    timeout: std::time::Duration::from_secs(30),
+                },
+                &TokioHostResolver,
+                &self.egress,
+            )
+            .await
+            .map_err(|message| {
+                EgressRefusedSnafu {
+                    endpoint: &endpoint,
+                    message,
+                }
+                .build()
             })?;
 
             let body = response.text().await.context(HttpRequestSnafu {
@@ -187,6 +243,40 @@ mod tests {
         assert!(formatted.contains("We propose a new architecture."));
         assert!(formatted.contains("Citations: 100000"));
         assert!(formatted.contains("https://arxiv.org/abs/1706.03762"));
+    }
+
+    /// SECURITY(#6921): the query must pass the egress checkpoint, not a bare client.
+    ///
+    /// WHY this shape: the checkpoint refuses a `Deny` policy BEFORE resolving DNS, so
+    /// a routed call fails as `EgressRefused` without touching the network. A call that
+    /// went back to `client.send()` would ignore the gate entirely and surface as
+    /// `HttpRequest` -- reaching Semantic Scholar, or failing to. Either way a
+    /// different variant, so this assertion cannot pass on the unrouted code.
+    #[tokio::test]
+    async fn query_is_refused_by_a_deny_egress_policy() {
+        // WHY: reqwest's builder PANICS without an installed rustls provider, before
+        // any request is attempted -- so the test would die constructing the source
+        // rather than reaching the assertion. Err means a dependency installed one
+        // first, which is fine.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
+        let source = AcademicSource::new(
+            Arc::new(
+                reqwest::Client::builder()
+                    .redirect(reqwest::redirect::Policy::none())
+                    .build()
+                    .unwrap(),
+            ),
+            Some("secret-key".to_owned()),
+            EgressGate::new(organon::sandbox::EgressPolicy::Deny, &[]),
+        );
+
+        let error = source.query("transformers", 5).await.unwrap_err();
+
+        assert!(
+            matches!(error, RecallSourceError::EgressRefused { .. }),
+            "a denied egress policy must refuse the query at the checkpoint, got: {error:?}"
+        );
     }
 
     #[test]
