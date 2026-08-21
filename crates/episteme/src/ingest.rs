@@ -362,6 +362,22 @@ mod tests {
 
     #[test]
     fn parse_format_returns_none_for_unknown() {
+        assert_eq!(parse_format("zip"), None);
+    }
+
+    /// PDF is refused here deliberately, not by omission.
+    ///
+    /// WHY(#6751): `IngestFormat` names how text is CHUNKED. A PDF is a container that
+    /// yields text, so it is decoded at the read boundary -- `aletheia ingest` does that
+    /// with `poiesis_inspect::extract_pdf_text` and then ingests the result as text.
+    /// Accepting `"pdf"` here would promise that this crate decodes documents, which it
+    /// does not and should not: it would put a PDF parser behind fact extraction.
+    ///
+    /// This test previously used `"pdf"` as its example of an unknown format, which read
+    /// as though the exclusion had never been considered. The example is now a format
+    /// nothing decodes, and the deliberate case is stated separately.
+    #[test]
+    fn parse_format_refuses_pdf_because_pdf_is_a_container_not_a_chunking() {
         assert_eq!(parse_format("pdf"), None);
     }
 

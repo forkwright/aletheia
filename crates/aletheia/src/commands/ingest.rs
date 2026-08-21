@@ -159,10 +159,9 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
     let mut errored: Vec<(PathBuf, String)> = Vec::new();
 
     for file in &files {
-        let content = match tokio::fs::read_to_string(file).await {
+        let content = match read_ingest_text(file).await {
             Ok(c) => c,
-            Err(e) => {
-                let msg = format!("failed to read {}: {e}", file.display());
+            Err(msg) => {
                 tracing::warn!(file = %file.display(), error = %msg, "ingest skipping file");
                 eprintln!("[warn] {}: {msg}", file.display());
                 errored.push((file.clone(), msg));
@@ -359,8 +358,10 @@ fn process_file(
     args: &IngestArgs,
     store: &std::sync::Arc<mneme::knowledge_store::KnowledgeStore>,
 ) -> Result<(usize, usize)> {
-    let content = std::fs::read_to_string(file)
-        .with_whatever_context(|_| format!("failed to read {}", file.display()))?;
+    // WHY(#6751) the same PDF decode as the async path: this is the second read site,
+    // and fixing only one would make `aletheia ingest` support PDFs on one code path
+    // and fail on invalid UTF-8 on the other, which reads as an intermittent bug.
+    let content = read_ingest_text_blocking(file).map_err(crate::error::Error::msg)?;
 
     let format_str = if args.format == "auto" {
         detect_format(file).unwrap_or("text")
@@ -459,8 +460,47 @@ fn detect_format(path: &Path) -> Option<&'static str> {
 fn is_supported_extension(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
-        Some("md" | "markdown" | "txt" | "text" | "json" | "jsonl")
+        Some("md" | "markdown" | "txt" | "text" | "json" | "jsonl" | "pdf")
     )
+}
+
+/// Read a file's text, decoding a PDF rather than failing on its bytes.
+///
+/// WHY(#6751) this exists rather than a `parse_format` arm: `IngestFormat` names how
+/// text is CHUNKED -- markdown, plain text, json, jsonl. A PDF is not a chunking
+/// strategy, it is a container that yields text, so it belongs at the read boundary and
+/// the format stays whatever the extracted text is. That is also why nothing here
+/// touches pylon's ingest endpoint: its `content` field is a `String` over JSON, so a
+/// PDF cannot reach it at all and rejecting `"pdf"` there is correct.
+///
+/// Before this, `read_to_string` on a PDF failed on invalid UTF-8, so the operator got
+/// "stream did not contain valid UTF-8" for a file the workspace can read perfectly
+/// well one crate away.
+/// The blocking twin of [`read_ingest_text`], for the synchronous ingest path.
+fn read_ingest_text_blocking(file: &Path) -> std::result::Result<String, String> {
+    if file.extension().and_then(|e| e.to_str()) == Some("pdf") {
+        let bytes =
+            std::fs::read(file).map_err(|e| format!("failed to read {}: {e}", file.display()))?;
+        return poiesis_inspect::extract_pdf_text(&bytes)
+            .map_err(|e| format!("failed to extract text from {}: {e}", file.display()));
+    }
+    std::fs::read_to_string(file).map_err(|e| format!("failed to read {}: {e}", file.display()))
+}
+
+async fn read_ingest_text(file: &Path) -> std::result::Result<String, String> {
+    if file.extension().and_then(|e| e.to_str()) == Some("pdf") {
+        let bytes = tokio::fs::read(file)
+            .await
+            .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
+        // WHY `extract_pdf_text` and not `inspect_pdf`: the latter caps its output at
+        // 100 lines because it summarises. Ingesting that would record the first
+        // hundred lines of a PDF as the whole document.
+        return poiesis_inspect::extract_pdf_text(&bytes)
+            .map_err(|e| format!("failed to extract text from {}: {e}", file.display()));
+    }
+    tokio::fs::read_to_string(file)
+        .await
+        .map_err(|e| format!("failed to read {}: {e}", file.display()))
 }
 
 #[cfg(test)]
