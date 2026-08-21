@@ -459,7 +459,6 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     tracing::error!("stream error: {msg}");
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
     app.connection.stream_phase = crate::state::StreamPhase::Error;
-    app.connection.streaming_line_buffer.clear();
     let clean_msg = sanitize_for_display(&msg).into_owned();
     app.viewport.error_toast = Some(ErrorToast::new(clean_msg.clone()));
     app.connection.active_turn_id = None;
@@ -467,9 +466,49 @@ pub(crate) fn handle_stream_error(app: &mut App, msg: String) {
     app.connection.stream_last_event_at = None;
     app.connection.stall_warned = false;
     app.connection.stall_message = None;
-    // WHY: Clear tool calls to remove stale spinners; preserve streaming_text
-    // so the user can read any partial response received before the error.
-    app.connection.streaming_tool_calls.clear();
+
+    // WHY(#6817): commit the partial response the same way `handle_cancel_turn` does.
+    // This used to leave `streaming_text` in place and call it preserved -- and it was,
+    // until `handle_stream_turn_start` cleared it at the next turn. So the text survived
+    // exactly as long as nobody did anything, which is the opposite of durable: a user
+    // who reacted to the error by retrying destroyed the output they were reading.
+    //
+    // The two termination paths had it backwards. A cancel is deliberate and the user
+    // already knows what they lost; an error is not, and is precisely when the partial
+    // output matters -- for review, for `:export`, or as a record of what the agent said
+    // before it broke.
+    if !app.connection.streaming_line_buffer.is_empty() {
+        let remaining = std::mem::take(&mut app.connection.streaming_line_buffer);
+        app.connection.streaming_text.push_str(&remaining);
+    }
+    let partial = std::mem::take(&mut app.connection.streaming_text);
+    let marker = if partial.is_empty() {
+        format!("[stream error: {clean_msg}]")
+    } else {
+        format!("{partial}\n\n[stream error: {clean_msg}]")
+    };
+    let marker_lower = marker.to_lowercase();
+    // WHY tool calls move onto the message rather than being dropped: the cancel path
+    // carries them too, and a partial response whose tool calls vanished reads as though
+    // the agent did less than it did.
+    let tool_calls = std::mem::take(&mut app.connection.streaming_tool_calls);
+    let width = app
+        .viewport
+        .render
+        .virtual_scroll
+        .cached_width()
+        .max(app.viewport.terminal_width.saturating_sub(2).max(1));
+    let h = estimate_message_height(marker.len(), width);
+    app.dashboard.messages.push(ChatMessage {
+        role: "assistant".to_string(),
+        text: marker,
+        text_lower: marker_lower,
+        timestamp: None,
+        model: None,
+        tool_calls,
+        kind: crate::state::MessageKind::default(),
+    });
+    app.viewport.render.virtual_scroll.push_item(h);
     fail_running_ops_tools(app, &clean_msg);
     app.layout.ops.mark_turn_complete();
     if let Some(ref agent_id) = app.dashboard.focused_agent
