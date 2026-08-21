@@ -105,6 +105,35 @@ pub(crate) struct ResponsesRequest<'a> {
     pub stream: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text: Option<ResponsesTextConfig>,
+}
+
+/// Wire representation of `text` for OpenAI Responses.
+///
+/// WHY a separate type from [`WireResponseFormat`] rather than reusing it: the two APIs
+/// nest the same information differently. Chat Completions wraps the schema in a second
+/// object -- `response_format: { type, json_schema: { name, schema, strict } }` -- while
+/// Responses puts those fields beside `type` -- `text: { format: { type, name, schema,
+/// strict } }`. Serialising the Chat shape into the Responses slot produces a body the
+/// API rejects, so the flattening difference is the whole reason this exists.
+#[derive(Debug, Serialize)]
+pub(crate) struct ResponsesTextConfig {
+    pub format: ResponsesTextFormat,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+pub(crate) enum ResponsesTextFormat {
+    #[serde(rename = "json_schema")]
+    JsonSchema {
+        name: String,
+        schema: serde_json::Value,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        strict: Option<bool>,
+    },
+    #[serde(rename = "text")]
+    Text,
 }
 
 /// Wire representation of `response_format` for OpenAI Chat Completions.
@@ -335,12 +364,12 @@ impl<'a> ResponsesRequest<'a> {
             );
         }
 
-        if req.output_format.is_some() {
-            tracing::warn!(
-                "output_format set on request routed to OpenAI Responses provider; \
-                 dropping (Responses text.format not yet mapped in hermeneus)"
-            );
-        }
+        let text = req
+            .output_format
+            .as_ref()
+            .map(|format| ResponsesTextConfig {
+                format: translate_responses_output_format(format),
+            });
 
         let mut instructions = Vec::new();
         if let Some(system) = req.system.as_deref()
@@ -381,6 +410,7 @@ impl<'a> ResponsesRequest<'a> {
                 .map(translate_responses_tool_choice),
             stream,
             user,
+            text,
         })
     }
 }
@@ -612,6 +642,30 @@ fn translate_output_format(format: &OutputFormat) -> WireResponseFormat {
             },
         },
         OutputFormat::Text => WireResponseFormat::Text,
+    }
+}
+
+/// Map an output format onto the Responses `text.format` object.
+///
+/// WHY(#5373) this exists rather than a warning: a structured-output request routed to
+/// Responses was logged and DROPPED, so a caller that asked for a schema was answered
+/// with free-form text and nothing in the response said so. First-party
+/// `providerType = "openai"` defaults to the Responses family, which made that the
+/// common path rather than an edge case -- extraction, memory consolidation and any
+/// tool path expecting parseable output got prose instead, and found out by failing to
+/// parse it somewhere else entirely.
+fn translate_responses_output_format(format: &OutputFormat) -> ResponsesTextFormat {
+    match format {
+        OutputFormat::JsonSchema {
+            name,
+            schema,
+            strict,
+        } => ResponsesTextFormat::JsonSchema {
+            name: name.clone(),
+            schema: schema.clone(),
+            strict: *strict,
+        },
+        OutputFormat::Text => ResponsesTextFormat::Text,
     }
 }
 
