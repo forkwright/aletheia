@@ -3,8 +3,6 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use base64::Engine;
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use hmac::{Hmac, KeyInit, Mac};
 use regex::Regex;
 use sha2::Sha256;
@@ -52,7 +50,7 @@ impl ReceiptSigner {
         mac.update(RECEIPT_SEPARATOR.as_bytes());
         mac.update(ts.to_string().as_bytes());
         let tag = mac.finalize();
-        URL_SAFE_NO_PAD.encode(tag.into_bytes())
+        koina::base64::encode_url_safe_no_pad(&tag.into_bytes())
     }
 
     /// Verify receipt against a tuple. Returns Ok if HMAC matches.
@@ -68,8 +66,11 @@ impl ReceiptSigner {
         result: &str,
         ts: jiff::Timestamp,
     ) -> Result<(), VerifyError> {
-        let decoded = URL_SAFE_NO_PAD
-            .decode(receipt)
+        // SECURITY(#6847): strict, not the lenient decoder. Under leniency both
+        // `<tag>` and `<tag>=` decode to the same bytes and verify against the same
+        // MAC, so a receipt the ledger has never seen still passes -- "verified" and
+        // "is the receipt we issued" would stop being the same statement.
+        let decoded = koina::base64::decode_url_safe_no_pad_strict(receipt)
             .map_err(|source| VerifyError::Decode { source })?;
 
         #[expect(
@@ -291,7 +292,7 @@ pub enum VerifyError {
     #[snafu(display("decode error: {source}"))]
     Decode {
         /// Underlying base64 error.
-        source: base64::DecodeError,
+        source: koina::base64::DecodeError,
     },
 }
 

@@ -129,10 +129,7 @@ impl ToolExecutor for InspectReportExecutor {
 }
 
 fn base64_decode(s: &str) -> std::result::Result<Vec<u8>, String> {
-    use base64::{Engine as _, engine::general_purpose};
-    general_purpose::STANDARD
-        .decode(s)
-        .map_err(|e| e.to_string())
+    koina::base64::decode(s).map_err(|e| e.to_string())
 }
 
 fn inspect_report_def() -> crate::types::ToolDef {
@@ -191,8 +188,6 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use base64::{Engine as _, engine::general_purpose};
-
     use super::*;
     use crate::testing::make_test_context;
 
@@ -212,7 +207,7 @@ mod tests {
             tool_use_id: "tu_docx_00001".to_owned(),
             arguments: serde_json::json!({
                 "format": "docx",
-                "document": general_purpose::STANDARD.encode(&docx_bytes)
+                "document": koina::base64::encode(&docx_bytes)
             }),
         };
 
