@@ -84,7 +84,11 @@ impl FjallDb {
     /// partition initialization fails. Callers should map this into their
     /// crate-specific error type.
     pub fn open(path: &Path, partitions: &[&str]) -> Result<Self, FjallOpenError> {
-        std::fs::create_dir_all(path).map_err(|source| FjallOpenError::CreateDir {
+        // WHY(#5351): an embedded keyspace directory holds whatever its consumer put
+        // there -- here, the DPO extractor's pending conversation state. Owner-only is
+        // the right default for a local database this process creates; a consumer
+        // needing wider access would be the surprise, and would say so.
+        crate::fs::create_dir_all_restricted(path).map_err(|source| FjallOpenError::CreateDir {
             path: path.to_path_buf(),
             source,
         })?;

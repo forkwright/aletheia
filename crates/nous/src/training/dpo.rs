@@ -50,7 +50,6 @@
 //! | `aletheia_dpo_pairs_captured_total` | counter | `nous_id` | Per validated pair written |
 
 use std::collections::HashSet;
-use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -848,7 +847,7 @@ impl DpoWriter {
     /// or [`DpoError::PendingState`] if the durable extractor state store
     /// cannot be opened.
     pub fn new(dir: &Path) -> Result<Self> {
-        std::fs::create_dir_all(dir).context(CreateDirSnafu { path: dir })?;
+        koina::fs::create_dir_all_restricted(dir).context(CreateDirSnafu { path: dir })?;
         let path = dir.join(Self::file_name());
         let extractor = DpoExtractor::open(&dir.join(EXTRACTOR_STATE_DIRNAME))?;
         Ok(Self { path, extractor })
@@ -951,10 +950,7 @@ impl DpoWriter {
         let mut line = serde_json::to_string(pair).context(SerializeSnafu)?;
         line.push('\n');
 
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)
+        let mut file = koina::fs::open_append_restricted(&self.path)
             .context(OpenFileSnafu { path: &self.path })?;
 
         file.write_all(line.as_bytes())
