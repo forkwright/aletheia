@@ -271,6 +271,28 @@ fn is_process_alive(pid: u32) -> bool {
     std::path::Path::new(&format!("/proc/{pid}")).exists()
 }
 
+/// Wait for `pid` to disappear, returning `false` if it is still alive at the deadline.
+///
+/// WHY(#6908): the previous form was `sleep(300ms)` then assert. 300ms is not a
+/// property of the code under test -- it is a guess about how fast a loaded
+/// runner reaps a killed child, and when the guess is wrong the test reports a
+/// leaked process that is merely slow to die. Polling returns as soon as the
+/// process is gone (usually within one interval) and only fails when it truly
+/// never dies.
+#[cfg(target_os = "linux")]
+async fn wait_for_process_death(pid: u32) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    loop {
+        if !is_process_alive(pid) {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
 #[cfg(target_os = "linux")]
 #[tokio::test]
 async fn run_completion_subprocess_killed_on_future_drop() {
@@ -314,10 +336,9 @@ async fn run_completion_subprocess_killed_on_future_drop() {
         .unwrap();
 
     handle.abort();
-    tokio::time::sleep(Duration::from_millis(300)).await;
 
     assert!(
-        !is_process_alive(pid),
+        wait_for_process_death(pid).await,
         "Codex subprocess (pid={pid}) should be dead after future drop"
     );
 

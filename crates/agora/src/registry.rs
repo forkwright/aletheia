@@ -508,34 +508,52 @@ mod tests {
         assert_eq!(ids, vec!["gamma", "alpha", "beta"]);
     }
 
-    #[tokio::test]
-    async fn probe_all_slow_provider_does_not_block_fast_provider() {
-        // WHY: a slow provider must not delay health results for fast providers.
+    // WHY(#6908): `start_paused` puts this test on the virtual clock, so the
+    // mock providers' `tokio::time::sleep` delays advance instantly and the
+    // measured elapsed is exact rather than a reading of runner load.
+    //
+    // WHY two slow providers rather than one: with a single slow provider the
+    // per-probe timeout caps it at 200ms, so sequential and concurrent
+    // execution both total 200ms and no bound can tell them apart. The previous
+    // form asserted `< 800ms` against a stated expectation that "sequential
+    // execution would have taken at least 10s" -- but the 200ms probe timeout
+    // means it would not have, so the assertion could not fail for the reason
+    // it named. Two slow probes make the sequential floor 400ms and the
+    // concurrent total 200ms, which is a difference the assertion can see.
+    #[tokio::test(start_paused = true)]
+    async fn probe_all_slow_providers_do_not_serialize_or_block_a_fast_one() {
         let mut reg = ChannelRegistry::new()
             .with_probe_timeout(Duration::from_millis(200))
             .with_max_concurrent_probes(2);
 
         reg.register(Arc::new(
-            MockProvider::new("slow").with_probe_delay(Duration::from_secs(10)),
+            MockProvider::new("slow-a").with_probe_delay(Duration::from_secs(10)),
         ))
-        .expect("register slow");
+        .expect("register slow-a");
+        reg.register(Arc::new(
+            MockProvider::new("slow-b").with_probe_delay(Duration::from_secs(10)),
+        ))
+        .expect("register slow-b");
         reg.register(Arc::new(MockProvider::new("fast")))
             .expect("register fast");
 
-        let start = std::time::Instant::now();
+        let start = tokio::time::Instant::now();
         let results = reg.probe_all().await;
         let elapsed = start.elapsed();
 
-        assert_eq!(results.len(), 2);
-        assert!(!results["slow"].ok);
-        assert_eq!(results["slow"].error.as_deref(), Some("probe timed out"));
+        assert_eq!(results.len(), 3);
+        assert!(!results["slow-a"].ok);
+        assert!(!results["slow-b"].ok);
+        assert_eq!(results["slow-a"].error.as_deref(), Some("probe timed out"));
+        assert_eq!(results["slow-b"].error.as_deref(), Some("probe timed out"));
         assert!(results["fast"].ok);
 
-        // WHY: sequential execution would have taken at least 10s; concurrent
-        // execution with the 200ms timeout should finish well under a second.
+        // Two 200ms timeouts run back to back would be 400ms; running them
+        // concurrently is 200ms. The bound is derived from the fixture rather
+        // than guessed, and on the virtual clock it is not a load measurement.
         assert!(
-            elapsed < Duration::from_millis(800),
-            "fast provider blocked by slow provider: {elapsed:?}"
+            elapsed < Duration::from_millis(400),
+            "probes serialized instead of running concurrently: {elapsed:?}"
         );
     }
 

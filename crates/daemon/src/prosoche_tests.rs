@@ -271,22 +271,31 @@ async fn disk_usage_percent_times_out_on_hanging_df() {
     );
 }
 
+// WHY(#6908): this deadline is a hang guard, not a performance claim. It bounds
+// a real subprocess spawn plus a file write, so a tight bound buys nothing and
+// fails on a loaded runner while the code is correct. The equivalent helpers in
+// `hermeneus` allow 5s for the same shape; 10s here leaves room for a runner
+// under contention without letting a genuine hang run forever.
+#[cfg(target_os = "linux")]
+const SUBPROCESS_WAIT: Duration = Duration::from_secs(10);
+
 #[cfg(target_os = "linux")]
 async fn wait_for_pid_file(path: &std::path::Path) -> u32 {
-    let deadline = Instant::now() + Duration::from_secs(1);
+    let deadline = Instant::now() + SUBPROCESS_WAIT;
     loop {
         if let Ok(contents) = std::fs::read_to_string(path) {
             return contents.trim().parse().expect("pid file contains pid");
         }
         assert!(Instant::now() < deadline, "fake df did not write pid file");
-        tokio::task::yield_now().await;
-        std::thread::sleep(Duration::from_millis(10));
+        // WHY: a blocking sleep here would park the runtime thread the spawned
+        // child's own task may need to make progress on.
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
 }
 
 #[cfg(target_os = "linux")]
 fn wait_for_linux_process_to_stop(pid: u32) -> Option<char> {
-    let deadline = Instant::now() + Duration::from_secs(1);
+    let deadline = Instant::now() + SUBPROCESS_WAIT;
     loop {
         let state = linux_process_state(pid);
         if state.is_none() || state == Some('Z') {

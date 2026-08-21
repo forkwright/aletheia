@@ -12,7 +12,7 @@
 )]
 
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
@@ -74,14 +74,20 @@ fn result_alias_refers_to_the_public_error_type() {
 
 #[test]
 fn state_constructs_from_real_workspace_dependencies() {
+    // WHY: bracketing the build proves `start_time` was taken during it rather
+    // than defaulted, which is the property this test wants. Comparing its
+    // `elapsed()` against a fixed budget measured runner load instead, and a
+    // loaded runner could fail it while the code was correct (#6908).
+    let before = Instant::now();
     let (state, _jwt, _tmp) = StateBuilder::new().build();
+    let after = Instant::now();
 
     assert_eq!(state.auth_mode, "token");
     assert!(state.auth_facade.is_some());
     assert_eq!(state.none_role, "readonly");
     assert!(
-        state.start_time.elapsed() < Duration::from_secs(5),
-        "start_time should be close to now"
+        state.start_time >= before && state.start_time <= after,
+        "start_time must be sampled while the state is built"
     );
     assert!(!state.shutdown.is_cancelled());
 }

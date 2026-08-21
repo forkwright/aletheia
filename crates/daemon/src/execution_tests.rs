@@ -220,9 +220,15 @@ async fn execute_command_respects_cancellation_token() {
         err.to_string().contains("cancelled"),
         "expected cancelled error, got: {err}"
     );
+    // WHY(#6908): the bound distinguishes "cancellation terminated the command"
+    // from "the command's own `sleep 30` completed and cancellation was noticed
+    // afterwards" -- it is a hang guard against the latter, not a latency claim.
+    // A 2s ceiling read as a latency claim and could fail on a loaded runner
+    // while the code was correct; anything comfortably under 30s carries the
+    // distinction just as well.
     assert!(
-        start.elapsed() < Duration::from_secs(2),
-        "cancelled command should exit quickly, took {:?}",
+        start.elapsed() < Duration::from_secs(10),
+        "cancellation must terminate the command rather than waiting out its 30s sleep, took {:?}",
         start.elapsed()
     );
 }
@@ -243,9 +249,11 @@ async fn execute_command_respects_per_task_timeout() {
         err.to_string().contains("timed out"),
         "expected timeout error, got: {err}"
     );
+    // WHY(#6908): as above -- this separates "the 250ms per-task timeout fired"
+    // from "the command ran its full 30s", which is the property under test.
     assert!(
-        start.elapsed() < Duration::from_secs(2),
-        "timed-out command should exit quickly, took {:?}",
+        start.elapsed() < Duration::from_secs(10),
+        "the per-task timeout must fire rather than the command running to completion, took {:?}",
         start.elapsed()
     );
 }
