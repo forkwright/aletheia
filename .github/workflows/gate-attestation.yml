@@ -103,6 +103,18 @@ on:
     branches: [main]
   push:
     branches: [main]
+  # WHY(#6806): a release PR is opened by GITHUB_TOKEN, which raises no
+  # workflow-triggering events, so the `gate` context this workflow produces is
+  # ABSENT on it rather than red -- and branch protection holds such a PR forever.
+  # workflow_dispatch is the one GITHUB_TOKEN-created event GitHub allows to start
+  # a workflow, so release-pr-checks.yml dispatches this at the release branch.
+  #
+  # The three event-shaped expressions below all degrade correctly here: the
+  # concurrency group falls to `github.ref` (the release branch, distinct from any
+  # PR's `refs/pull/N/merge`), `PR_HEAD_SHA` is empty so attestation-verify reads
+  # HEAD -- which on a branch checkout already IS the tip it wants -- and the
+  # coverage base-ref falls to `origin/main`, the right base for a release branch.
+  workflow_dispatch:
 
 permissions:
   contents: read

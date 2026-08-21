@@ -22,6 +22,20 @@ pub(crate) enum RecallSourceError {
         location: snafu::Location,
     },
 
+    /// The egress checkpoint refused the request before or during the exchange.
+    ///
+    /// WHY a variant of its own rather than `SourceUnavailable`: a refusal here is a
+    /// policy decision about where this process may connect, not a statement that the
+    /// source is down. Collapsing them would make an operator reading the log think
+    /// Semantic Scholar was unreachable.
+    #[snafu(display("egress checkpoint refused the request to {endpoint}: {message}"))]
+    EgressRefused {
+        endpoint: String,
+        message: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     #[snafu(display("{message}"))]
     SourceUnavailable {
         message: String,

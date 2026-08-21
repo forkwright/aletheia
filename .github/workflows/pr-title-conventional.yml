@@ -1,0 +1,49 @@
+# WHY(#6806): this repository squash-merges, so a PR title becomes the commit subject,
+# and that subject is the only thing release-please reads. A title it cannot parse fails
+# NOTHING at merge -- the squash succeeds, and the work simply never reaches the
+# changelog and never moves the version. That is visible only to someone comparing a
+# release against the PRs it contains, which nobody does. Measured over the last 100
+# merged PRs here: 11 unparseable, including four dense batches whose entire contents
+# were invisible to the release that shipped them.
+#
+# Kept apart from pr-title-pii.yml deliberately: that guard is about what a title LEAKS
+# into a public changelog, this one about whether it ARRIVES there at all. Same input,
+# different failure, and each states its own reason.
+name: PR Title Conventional
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventional-title:
+    # WHY(#6806) a check and not a convention: a title release-please cannot parse
+    # fails nothing at merge. The squash succeeds, the work simply never appears in
+    # the changelog and never moves the version, and that is only visible to someone
+    # comparing a release against the PRs it contains. Measured over the last 100
+    # merged PRs here: 11 titles unparseable, including four dense batches whose
+    # entire contents were invisible to the release that shipped them.
+    name: the title reaches the changelog
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Self-test the checker
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_pr_title_conventional.py'
+
+      - name: Check PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/check-pr-title-conventional.py
