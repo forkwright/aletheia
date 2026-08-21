@@ -9,14 +9,13 @@ nothing verified that a given call site actually reached it. Three sites did not
          `general` client. reqwest strips only Authorization, Cookie,
          Proxy-Authorization and WWW-Authenticate across a cross-host redirect, so a
          custom token header rode along to whatever host a response named.
-  #6921  AcademicSource does the same with the Semantic Scholar `x-api-key`; its fix
-         is in flight and it stays TRACKED until that lands.
+  #6921  AcademicSource did the same with the Semantic Scholar `x-api-key`.
   #6916  triage interpolated an LLM-supplied `repo` argument into a URL and sent it on
          the same client with no egress check at all -- so `egress = "deny"` did not
          stop that tool reaching the network.
 
-They are named here because the check's value is not the current list; it is that a
-fourth cannot appear unnoticed.
+All three are routed now. They are named here because the check's value is not the
+current list; it is that a fourth cannot appear unnoticed.
 
 Each was found by reading, one at a time, each search wider than the last. That is the
 signature of an unbounded population rather than three unlucky call sites -- so the
@@ -49,6 +48,26 @@ SCANNED_ROOTS = (
 
 SEND_CALL = re.compile(r"\.send\(\)")
 
+
+def is_comment(line: str) -> bool:
+    """True when the line is entirely a comment and so cannot carry a send call.
+
+    WHY whole-line only, rather than truncating at the first `//`: a line like
+    `client.get("http://host").send()` carries `//` inside a URL literal, and cutting
+    there would hide a real send site. This check's errors must fall on the side of
+    reporting too much. A line whose first non-space characters are `//` has no code
+    on it, so dropping it cannot hide anything.
+
+    WHY it is needed at all: the doc comment on a routed call site explains what the
+    unrouted shape was, and naming `.send()` in that prose made the site report itself
+    as unaccounted-for -- so documenting the rule tripped the rule.
+
+    Block comments are not handled: the scanned crates contain none, and the standards
+    prescribe `//`-style tags. A `/* */` block would produce a false positive here, in
+    the safe direction.
+    """
+    return line.lstrip().startswith("//")
+
 # The checkpoint itself. These ARE the safe path; they cannot route through it.
 SANCTIONED = {
     "crates/organon/src/builtins/http_client.rs": (
@@ -76,8 +95,10 @@ EXEMPT = {
 
 # Known-unprotected, tracked, not yet corrected. An entry must name an open issue --
 # see the note in main() for why that is checked rather than trusted.
-TRACKED = {
-    "crates/aletheia/src/recall_sources/academic.rs": 6921,
+TRACKED: dict[str, int] = {
+    # Empty on purpose, and not dead machinery: this is where the NEXT unrouted site
+    # goes while its fix is in flight. The entries that were here -- #6910, #6921,
+    # #6916 -- are gone because they are routed, not because they were forgiven.
 }
 
 
@@ -96,7 +117,7 @@ def send_sites(repo_root: Path) -> dict[str, list[int]]:
             lines = [
                 number
                 for number, line in enumerate(text.splitlines(), start=1)
-                if SEND_CALL.search(line)
+                if SEND_CALL.search(line) and not is_comment(line)
             ]
             if lines:
                 found[path.relative_to(repo_root).as_posix()] = lines

@@ -29,6 +29,40 @@ class SendSiteDiscovery(unittest.TestCase):
                 found = eg.send_sites(root)
             self.assertEqual(found, {"crates/organon/src/thing.rs": [2]})
 
+    def test_a_send_call_named_in_prose_is_not_a_send_site(self) -> None:
+        """WHY: the doc comment on a routed call site explains the shape it replaced.
+        Naming `.send()` there made the fixed site report itself as unaccounted-for --
+        documenting the rule tripped the rule."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "crates" / "organon" / "src"
+            src.mkdir(parents=True)
+            (src / "documented.rs").write_text(
+                "/// A call that went back to `client.send()` would skip the gate.\n"
+                "// so would this one: c.send()\n"
+                "pub fn f() {}\n",
+                encoding="utf-8",
+            )
+            with mock.patch.object(eg, "SCANNED_ROOTS", ("crates/organon/src",)):
+                found = eg.send_sites(root)
+            self.assertEqual(found, {})
+
+    def test_a_url_containing_a_double_slash_does_not_hide_its_send_call(self) -> None:
+        """WHY: truncating at the first `//` instead of skipping whole-line comments
+        would cut this line inside the URL literal and miss a real site -- the one
+        direction this check must never fail in."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / "crates" / "organon" / "src"
+            src.mkdir(parents=True)
+            (src / "urly.rs").write_text(
+                'pub async fn f(c: &reqwest::Client) { c.get("https://x").send().await; }\n',
+                encoding="utf-8",
+            )
+            with mock.patch.object(eg, "SCANNED_ROOTS", ("crates/organon/src",)):
+                found = eg.send_sites(root)
+            self.assertEqual(found, {"crates/organon/src/urly.rs": [1]})
+
     def test_a_missing_scanned_root_is_an_error_not_an_empty_result(self) -> None:
         """WHY: an empty scan and a scan that found nothing look identical, and the
         first would silently pass this check forever after a directory move."""
