@@ -26,6 +26,14 @@ Runs from two triggers, deliberately:
     only form that still works when it does.
 
 One implementation for both, so the two cannot drift.
+
+WHY dispatch rather than approving the held run: approving keeps the checks in their
+own PR context and is what `kanon ci_hold_sweep` does, but it is not established that a
+workflow's own `GITHUB_TOKEN` may call the approve endpoint, and a self-heal that fails
+silently on permissions would be the same defect again. Dispatch is verified to work --
+`workflow_dispatch` is not subject to the bot-PR approval gate, and release-please.yml
+already depends on that. A dispatched run attaches its check runs to the same head SHA,
+which is what branch protection reads.
 """
 
 from __future__ import annotations
@@ -80,20 +88,35 @@ def open_release_prs() -> list[dict[str, str]]:
     ]
 
 
-def has_run_for(workflow: str, head_sha: str) -> bool:
-    """True when `workflow` already has a run against `head_sha`.
+# A run in this state has been CREATED and is waiting for a human to approve it. It is
+# not a verdict, and GitHub does not report it as a check -- which is why a held release
+# PR looks exactly like one whose checks were never created.
+HELD_FOR_APPROVAL = "action_required"
 
-    WHY presence and not success: a run that FAILED is a real verdict, and
+
+def has_verdict_for(workflow: str, head_sha: str) -> bool:
+    """True when `workflow` has a run at `head_sha` that is doing or has done something.
+
+    WHY not simply "a run exists": the first version of this asked exactly that, and it
+    was a no-op against the failure it was written for. Release-please PRs get their runs
+    CREATED and then held in `action_required` awaiting approval. A held run exists, so
+    "does a run exist" answered yes, so nothing was dispatched -- while the PR stayed
+    blocked, because GitHub reports no check for a held run. Measured on #6902: 25 held
+    runs at the current head, 75 more across superseded heads, and one check visible.
+
+    `action_required` is the absence of a verdict wearing a `conclusion` field.
+
+    WHY success and failure both count: a run that FAILED is a real verdict, and
     re-dispatching would replace it with a fresh pending one -- turning a red release
-    into one that looks unfinished. This tool exists to fix *absence*; a result of any
-    kind means it has nothing to do.
+    into one that looks unfinished. That reasoning was right and is unchanged.
     """
     raw = gh(
         "api",
-        f"repos/{REPO}/actions/workflows/{workflow}/runs?head_sha={head_sha}&per_page=1",
-        "--jq", ".total_count",
+        f"repos/{REPO}/actions/workflows/{workflow}/runs?head_sha={head_sha}&per_page=100",
+        "--jq", "[.workflow_runs[] | .conclusion // .status] | @json",
     )
-    return int(raw.strip() or "0") > 0
+    states = json.loads(raw.strip() or "[]")
+    return any(state != HELD_FOR_APPROVAL for state in states)
 
 
 def assert_dispatchable(workflow: str) -> None:
@@ -123,7 +146,7 @@ def heal(pr: dict[str, str]) -> list[str]:
     """
     dispatched: list[str] = []
     for workflow in REQUIRED_CONTEXT_WORKFLOWS:
-        if has_run_for(workflow, pr["headRefOid"]):
+        if has_verdict_for(workflow, pr["headRefOid"]):
             continue
         assert_dispatchable(workflow)
         dispatch(workflow, pr["headRefName"])
