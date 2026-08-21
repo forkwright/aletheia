@@ -88,35 +88,59 @@ def open_release_prs() -> list[dict[str, str]]:
     ]
 
 
-# A run in this state has been CREATED and is waiting for a human to approve it. It is
-# not a verdict, and GitHub does not report it as a check -- which is why a held release
-# PR looks exactly like one whose checks were never created.
+# A run in this state has been CREATED and is waiting for approval. It is not a verdict,
+# and GitHub reports no check for it -- which is why a held release PR looks exactly like
+# one whose checks were never created.
 HELD_FOR_APPROVAL = "action_required"
 
 
-def has_verdict_for(workflow: str, head_sha: str) -> bool:
-    """True when `workflow` has a run at `head_sha` that is doing or has done something.
+def held_run_ids(head_sha: str) -> list[int]:
+    """Every run at `head_sha` that GitHub created and is holding for approval."""
+    raw = gh(
+        "api",
+        f"repos/{REPO}/actions/runs?head_sha={head_sha}&per_page=100",
+        "--jq",
+        f'[.workflow_runs[] | select(.conclusion == "{HELD_FOR_APPROVAL}") | .id] | @json',
+    )
+    return json.loads(raw.strip() or "[]")
 
-    WHY not simply "a run exists": the first version of this asked exactly that, and it
-    was a no-op against the failure it was written for. Release-please PRs get their runs
-    CREATED and then held in `action_required` awaiting approval. A held run exists, so
-    "does a run exist" answered yes, so nothing was dispatched -- while the PR stayed
-    blocked, because GitHub reports no check for a held run. Measured on #6902: 25 held
-    runs at the current head, 75 more across superseded heads, and one check visible.
 
-    `action_required` is the absence of a verdict wearing a `conclusion` field.
+def approve(run_id: int) -> None:
+    """Release one held run so it both RUNS and COUNTS.
 
-    WHY success and failure both count: a run that FAILED is a real verdict, and
-    re-dispatching would replace it with a fresh pending one -- turning a red release
-    into one that looks unfinished. That reasoning was right and is unchanged.
+    WHY approving is the operation and dispatching is not, stated as a measurement
+    rather than a belief: branch protection reads the PR's `statusCheckRollup`. A
+    `workflow_dispatch` run is attached to the COMMIT, and its check runs appear under
+    that commit while the PR's rollup stays empty. Approving the run GitHub already
+    created for the PR populates the rollup.
+
+    Measured on #6902 at 80aee212: rollup `n=0` with 25 runs held; approving all 25 took
+    it to `n=32` immediately, and `gate`, `cargo audit` and `cargo deny` were among them.
+    Before that, the same PR had its three required contexts SUCCEEDING as commit check
+    runs while `mergeStateStatus` stayed `BLOCKED` across repeated queries -- three green
+    checks that branch protection could not see.
+
+    That is the defect this file was written to fix, reproduced by the fix itself: the
+    healer reported success for dispatching, and dispatching was not the thing that
+    mattered.
+    """
+    gh("api", "-X", "POST", f"repos/{REPO}/actions/runs/{run_id}/approve")
+
+
+def has_run_at(workflow: str, head_sha: str) -> bool:
+    """True when `workflow` has any run at `head_sha`, held or not.
+
+    WHY held now counts, where an earlier version deliberately excluded it: a held run
+    is released by `approve` above, so treating it as absent would dispatch a SECOND,
+    redundant run -- one that cannot populate the rollup anyway. Held is no longer a
+    reason to dispatch; it is a reason to approve.
     """
     raw = gh(
         "api",
         f"repos/{REPO}/actions/workflows/{workflow}/runs?head_sha={head_sha}&per_page=100",
-        "--jq", "[.workflow_runs[] | .conclusion // .status] | @json",
+        "--jq", "[.workflow_runs[] | .id] | length",
     )
-    states = json.loads(raw.strip() or "[]")
-    return any(state != HELD_FOR_APPROVAL for state in states)
+    return int(raw.strip() or "0") > 0
 
 
 def assert_dispatchable(workflow: str) -> None:
@@ -139,19 +163,40 @@ def dispatch(workflow: str, ref: str) -> None:
     gh("workflow", "run", workflow, "--repo", REPO, "--ref", ref)
 
 
-def heal(pr: dict[str, str]) -> list[str]:
-    """Dispatch every required-context workflow with no run at this PR's head.
+def rollup_size(number: str) -> int:
+    """How many checks the PR's OWN rollup reports -- the thing protection reads."""
+    raw = gh(
+        "pr", "view", str(number), "--repo", REPO,
+        "--json", "statusCheckRollup",
+        "--jq", "[.statusCheckRollup[]?] | length",
+    )
+    return int(raw.strip() or "0")
 
-    Returns the workflows dispatched, empty when the PR already has its checks.
+
+def heal(pr: dict[str, str]) -> tuple[list[int], list[str]]:
+    """Approve every held run at this PR's head, then dispatch what has no run at all.
+
+    Returns (approved run ids, dispatched workflows).
     """
+    head = pr["headRefOid"]
+
+    approved = []
+    for run_id in held_run_ids(head):
+        approve(run_id)
+        approved.append(run_id)
+
     dispatched: list[str] = []
     for workflow in REQUIRED_CONTEXT_WORKFLOWS:
-        if has_verdict_for(workflow, pr["headRefOid"]):
+        if has_run_at(workflow, head):
             continue
+        # WHY dispatch survives at all, given it cannot populate the rollup: this branch
+        # is for a workflow with NO run whatsoever, where there is nothing to approve.
+        # It gets the run created; the next tick approves it. Two ticks is slower than
+        # one and is the honest cost of the only trigger GITHUB_TOKEN can pull.
         assert_dispatchable(workflow)
         dispatch(workflow, pr["headRefName"])
         dispatched.append(workflow)
-    return dispatched
+    return approved, dispatched
 
 
 def main() -> int:
@@ -165,8 +210,9 @@ def main() -> int:
         LOGGER.info(
             "release-pr-checks: #%s at %s", pr["number"], pr["headRefOid"][:9]
         )
+        before = rollup_size(pr["number"])
         try:
-            dispatched = heal(pr)
+            approved, dispatched = heal(pr)
         except RuntimeError as error:
             failures = True
             # WHY exception() and not error(): this is the branch where a declared
@@ -175,15 +221,44 @@ def main() -> int:
             # this whole area exists to remove.
             LOGGER.exception("release-pr-checks: %s", error)
             continue
+
+        if approved:
+            LOGGER.warning(
+                "release-pr-checks: #%s had %d run(s) held for approval -- approved",
+                pr["number"], len(approved),
+            )
         if dispatched:
             LOGGER.warning(
-                "release-pr-checks: #%s had no run for %s -- dispatched at %s",
-                pr["number"],
-                ", ".join(dispatched),
-                pr["headRefName"],
+                "release-pr-checks: #%s had no run at all for %s -- dispatched at %s; "
+                "the next tick approves it",
+                pr["number"], ", ".join(dispatched), pr["headRefName"],
             )
-        else:
-            LOGGER.info("release-pr-checks: #%s already has its checks", pr["number"])
+        if not approved and not dispatched:
+            LOGGER.info("release-pr-checks: #%s needed nothing", pr["number"])
+
+        # WHY the outcome and not the action: the previous version reported success for
+        # having dispatched, and dispatching does not populate the rollup that branch
+        # protection reads. It therefore announced a repair it had not made, and the
+        # release PR it "healed" stayed BLOCKED with three green checks nobody could
+        # see. A tool that cannot tell those apart is the defect it was built to fix.
+        #
+        # This is deliberately not a poll-until-green: the rollup carries PENDING checks
+        # the moment they are approved, and waiting for a verdict here would hold a
+        # runner for the length of a full gate.
+        after = rollup_size(pr["number"])
+        if after == 0:
+            failures = True
+            LOGGER.error(
+                "release-pr-checks: #%s still reports NO checks in its rollup "
+                "(approved %d, dispatched %d). Branch protection reads this list, so "
+                "the PR remains unmergeable. This is not a transient: investigate "
+                "whether the token may approve runs.",
+                pr["number"], len(approved), len(dispatched),
+            )
+        elif approved or dispatched:
+            LOGGER.warning(
+                "release-pr-checks: #%s rollup %d -> %d", pr["number"], before, after
+            )
 
     return 1 if failures else 0
 

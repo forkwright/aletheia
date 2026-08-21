@@ -9,11 +9,17 @@
 # one looks exactly like a PR that has not finished. Releases stopped, and the only
 # symptom was a PR that appeared to be waiting on CI.
 #
-# workflow_dispatch is the one GITHUB_TOKEN-created event GitHub deliberately allows to
-# start another workflow -- release-please.yml already depends on that to dispatch
-# release.yml at a new tag. Dispatching the gating workflows at the release BRANCH puts
-# check runs on that branch's head SHA, which is the PR's head SHA, which is what branch
-# protection reads.
+# The operation is APPROVING the runs GitHub already created for the PR, not dispatching
+# new ones. An earlier version of this file dispatched, on the reasoning that a run at
+# the branch head puts check runs on the PR's head SHA "which is what branch protection
+# reads". That last step is false, and it was measured: branch protection reads the PR's
+# `statusCheckRollup`, a dispatched run's check runs attach to the COMMIT, and the two
+# are not the same list. #6902 sat at `mergeStateStatus: BLOCKED` with `gate`,
+# `cargo audit` and `cargo deny` all SUCCEEDING on its head commit and a rollup of two
+# entries. Approving its 25 held runs took the rollup from 0 to 32 at once.
+#
+# Dispatch survives only for a workflow with NO run at all, where there is nothing to
+# approve -- it gets the run created and the next tick approves it.
 #
 # WHY a schedule and not a hook on every push to main: release-please force-pushes the
 # release branch on every main push, so a per-push dispatch would restart the ~90-minute
@@ -78,7 +84,13 @@ jobs:
       - name: Self-test the healer
         run: python3 -m unittest discover -s scripts/tests -p 'test_release_pr_checks.py'
 
-      - name: Dispatch any required-context workflow with no run at the release head
+      - name: Approve the release PR's held runs
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # WHY the PAT first: approving a workflow run needs `actions: write` on a token
+          # GitHub accepts for that endpoint, and GITHUB_TOKEN is documented to be
+          # refused for run approval. The fallback keeps the job runnable in a fork or a
+          # checkout without the secret -- and the script now REPORTS an empty rollup as
+          # a failure rather than declaring success, so a token that cannot approve
+          # surfaces as a red job naming the cause instead of a silent no-op.
+          GH_TOKEN: ${{ secrets.FLEET_REPO_TOKEN || secrets.GITHUB_TOKEN }}
         run: python3 scripts/release_pr_checks.py
