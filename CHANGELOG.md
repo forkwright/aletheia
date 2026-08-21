@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.40.0](https://github.com/forkwright/aletheia/compare/v0.39.0...v0.40.0) (2026-08-21)
+
+
+### Features
+
+* **ci:** a dependabot ecosystem that stops looks like one with nothing to do ([#6926](https://github.com/forkwright/aletheia/issues/6926)) ([3d485a3](https://github.com/forkwright/aletheia/commit/3d485a34bd6ff1df42ae1dc6e332c25ee9a44c7c))
+* **ci:** a doc comment on a JsonSchema type is published API ([#6940](https://github.com/forkwright/aletheia/issues/6940)) ([093c174](https://github.com/forkwright/aletheia/commit/093c17414f0d61b1a370f79a389627dcb55c66eb))
+* **ci:** bound the population of outbound requests that skip the egress checkpoint ([#6922](https://github.com/forkwright/aletheia/issues/6922)) ([ff8817b](https://github.com/forkwright/aletheia/commit/ff8817b23845bdc34ca13661830a0979424f809a))
+* **ci:** domain-id suppressions may only decrease ([#6938](https://github.com/forkwright/aletheia/issues/6938)) ([83125d8](https://github.com/forkwright/aletheia/commit/83125d8238db4d0bd746b64ebb3246b3e1a26d8a))
+* **ci:** SonarCloud's findings were readable all along, by another route ([#6927](https://github.com/forkwright/aletheia/issues/6927)) ([dd9e9b7](https://github.com/forkwright/aletheia/commit/dd9e9b774ebcfdd7c4387c7a5763b340cfca9480))
+* **krites:** check capability inventory and hosted tests ([#6893](https://github.com/forkwright/aletheia/issues/6893)) ([136adf4](https://github.com/forkwright/aletheia/commit/136adf498b18f72922f6cb4d64bb1bfc04c8828a))
+* **organon:** plan_verify_criteria refuses a criterion it cannot verify ([#6939](https://github.com/forkwright/aletheia/issues/6939)) ([b65d09e](https://github.com/forkwright/aletheia/commit/b65d09e439217a4afefafe6faaa41e3f9c205c9e))
+
+
+### Bug Fixes
+
+* **ci:** a closing keyword inside a sentence still closes the issue ([#6918](https://github.com/forkwright/aletheia/issues/6918)) ([aaf4131](https://github.com/forkwright/aletheia/commit/aaf41317616955e898b56fcd85bc8c641648eba8))
+* **ci:** a release PR arrived with its required checks absent, not red ([#6925](https://github.com/forkwright/aletheia/issues/6925)) ([b9a5620](https://github.com/forkwright/aletheia/commit/b9a5620d9c0ea3fd2f93cb228bbf34d83c50195a))
+* **ci:** action_required is the absence of a verdict, not a verdict ([#6936](https://github.com/forkwright/aletheia/issues/6936)) ([1abb67b](https://github.com/forkwright/aletheia/commit/1abb67bbb1ebe81014c1064216d63d15e42f88e6))
+* **ci:** classify release shell fixtures as tests ([#6905](https://github.com/forkwright/aletheia/issues/6905)) ([1756bf3](https://github.com/forkwright/aletheia/commit/1756bf33cc48e91935e0ed42a8f6e2c641ab668c)), closes [#6443](https://github.com/forkwright/aletheia/issues/6443)
+* **ci:** tell an attribution finding apart from an inability to look ([#6928](https://github.com/forkwright/aletheia/issues/6928)) ([275d279](https://github.com/forkwright/aletheia/commit/275d2796a36423557a9d2cb1170d1f775d5e515d))
+* **krites:** make the HNSW reopen gate deterministic ([#6906](https://github.com/forkwright/aletheia/issues/6906)) ([4f8c9e0](https://github.com/forkwright/aletheia/commit/4f8c9e0ce3f0e4cc651c0461990b1c948238e99e))
+* **nous:** the training corpus was written world-readable ([#6943](https://github.com/forkwright/aletheia/issues/6943)) ([9b96d63](https://github.com/forkwright/aletheia/commit/9b96d63ef85b70bdbf35bf7f49e5403a8aa5f4db)), closes [#5351](https://github.com/forkwright/aletheia/issues/5351)
+* **oikonomos:** self-prompt reported Success for every bridge outcome ([#6932](https://github.com/forkwright/aletheia/issues/6932)) ([7310c11](https://github.com/forkwright/aletheia/commit/7310c11fe6dca211ea82b26819e61708f31f4f65))
+* one .gitignore line made every substance-audit mutant unbuildable ([#6912](https://github.com/forkwright/aletheia/issues/6912)) ([4c0fd44](https://github.com/forkwright/aletheia/commit/4c0fd44f303c183e701f349dc37440aef0235e65))
+* **organon:** a metrics test asserted a property of the test runner ([#6933](https://github.com/forkwright/aletheia/issues/6933)) ([ac6dec7](https://github.com/forkwright/aletheia/commit/ac6dec7eeb4a7b1aca768310300065ce0891d461))
+* **organon:** route web_search through the redirect-revalidating send path ([#6915](https://github.com/forkwright/aletheia/issues/6915)) ([be016c1](https://github.com/forkwright/aletheia/commit/be016c1e0ff98e3b8ae70a865b679896d67bd560))
+* **poiesis:** every ZIP we emit carried a wall clock ([#6942](https://github.com/forkwright/aletheia/issues/6942)) ([f7cf4eb](https://github.com/forkwright/aletheia/commit/f7cf4ebe4811a7284b34d7cf58c0f17581649631))
+* **recall:** the Semantic Scholar api-key rode along across redirects ([#6923](https://github.com/forkwright/aletheia/issues/6923)) ([3cd0d79](https://github.com/forkwright/aletheia/commit/3cd0d79a2b8bbc34e54a34d56de6a5f2623a69de))
+* **release:** make artifact publication fail closed ([#6903](https://github.com/forkwright/aletheia/issues/6903)) ([512f87c](https://github.com/forkwright/aletheia/commit/512f87c9d13d60c100ece7be2476d9b7f2a9d179)), closes [#5413](https://github.com/forkwright/aletheia/issues/5413) [#5422](https://github.com/forkwright/aletheia/issues/5422) [#5423](https://github.com/forkwright/aletheia/issues/5423) [#5427](https://github.com/forkwright/aletheia/issues/5427) [#6443](https://github.com/forkwright/aletheia/issues/6443)
+* **substance-audit:** the tautological-doc check flagged a phrasing, not a tautology ([#6913](https://github.com/forkwright/aletheia/issues/6913)) ([ca2d6c0](https://github.com/forkwright/aletheia/commit/ca2d6c0238cbc160a47575c421c8f59975088501))
+* **symbolon:** keyring 3 -&gt; 4 broke a test target nothing in CI compiles ([#6935](https://github.com/forkwright/aletheia/issues/6935)) ([d79e8f6](https://github.com/forkwright/aletheia/commit/d79e8f628d5b5519672e798db2bf189256f09d41))
+* **triage:** the issue tools sat outside the sandbox egress policy ([#6924](https://github.com/forkwright/aletheia/issues/6924)) ([e8166e2](https://github.com/forkwright/aletheia/commit/e8166e219fec5879b407e298dde35c0caefd7975))
+
+
+### Documentation
+
+* **episteme:** say which side of the increment bump_derived_source_revision returns ([#6919](https://github.com/forkwright/aletheia/issues/6919)) ([7bf3047](https://github.com/forkwright/aletheia/commit/7bf304705463b64d290c47a4bf392252d109d1ca))
+* state substance-critical contracts precisely ([#6907](https://github.com/forkwright/aletheia/issues/6907)) ([d2b07b4](https://github.com/forkwright/aletheia/commit/d2b07b48760a0c104e0563da40a80d54a48e6def))
+* **upgrading:** the first instruction could destroy the store it protects ([#6929](https://github.com/forkwright/aletheia/issues/6929)) ([33e191e](https://github.com/forkwright/aletheia/commit/33e191ec66f235d963d784c4860c420cf1fcdfc4))
+
 ## [0.39.0](https://github.com/forkwright/aletheia/compare/v0.38.1...v0.39.0) (2026-08-19)
 
 
