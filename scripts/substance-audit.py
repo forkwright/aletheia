@@ -467,6 +467,12 @@ def validate_workflow_contract(policy: dict[str, Any], repo_root: Path) -> list[
             "uses",
             "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
         ),
+        # WHY the self-test precedes policy validation: the matrix below is
+        # budgeted at 330 minutes, and the classifier it depends on is the thing
+        # most likely to be wrong. Failing here costs seconds. Its position is
+        # pinned like every other step so a later edit cannot quietly move the
+        # cheap check after the expensive one.
+        ("name", "Self-test the audit script before spending the matrix"),
         ("name", "Validate policy and derive the five-crate matrix"),
         ("name", "Bind the open Release Please PR to current main"),
         ("name", "Validate the immutable release comparison"),
