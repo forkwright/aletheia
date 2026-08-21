@@ -35,13 +35,28 @@ impl From<KritesPersistMode> for fjall::PersistMode {
     clippy::result_large_err,
     reason = "InternalResult is the engine-wide error type — boxing deferred to avoid API churn across engine internals"
 )]
+pub fn new_krites_fjall(
+    path: impl AsRef<Path>,
+) -> crate::error::InternalResult<DbCore<FjallStorage>> {
+    initialize_krites_storage(open_krites_fjall_storage(path)?)
+}
+
+/// Opens the Fjall backend without initializing the Krites runtime.
+///
+/// Keeping backend recovery separate from runtime initialization lets tests
+/// observe the storage operations Krites itself performs without conflating
+/// them with Fjall's journal and LSM recovery work.
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalResult is the engine-wide error type — boxing deferred to avoid API churn across engine internals"
+)]
 #[expect(
     clippy::items_after_statements,
     reason = "scoped import keeps snafu::ResultExt close to its only use site"
 )]
-pub fn new_krites_fjall(
+pub(crate) fn open_krites_fjall_storage(
     path: impl AsRef<Path>,
-) -> crate::error::InternalResult<DbCore<FjallStorage>> {
+) -> crate::error::InternalResult<FjallStorage> {
     let path = path.as_ref();
     use snafu::ResultExt as _;
     fs::create_dir_all(path)
@@ -81,6 +96,18 @@ pub fn new_krites_fjall(
         keyspace: Arc::new(keyspace),
         persist_mode: KritesPersistMode::default(),
     };
+    Ok(storage)
+}
+
+/// Initializes a Krites database over an already-open storage backend.
+#[expect(
+    clippy::result_large_err,
+    reason = "InternalResult is the engine-wide error type — boxing deferred to avoid API churn across engine internals"
+)]
+pub(crate) fn initialize_krites_storage<S>(storage: S) -> crate::error::InternalResult<DbCore<S>>
+where
+    S: for<'s> Storage<'s>,
+{
     let ret = DbCore::new(storage)?;
     ret.initialize()?;
     Ok(ret)

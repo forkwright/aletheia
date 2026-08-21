@@ -1143,7 +1143,7 @@ item = "HNSW durable entry point (E04/E05/E24)"
 source = "PLAN.md Appendix A row 22"
 dest_wave = "wave-4"
 overlaps_with = "sysop-create-vector-index"
-gate = "E04 structural (exactly one canary node, level=1, all-Null tuple key, byte-compatible during Program A). E05 with close/reopen: insert N -> close -> reopen -> search vs E25 oracle; delete entry-point-adjacent subset -> close -> reopen -> search -> recall floor. Open-time cost assertion. E24 orphan consistency wired to scheduled maintenance, not left dead_code."
+gate = "E04 structural (exactly one canary node, level=1, all-Null tuple key, byte-compatible during Program A). E05 with close/reopen: insert N -> close -> reopen -> search vs E25 oracle; delete entry-point-adjacent subset -> close -> reopen -> search -> recall floor. After backend recovery, Krites initialization has one write transaction, two metadata point reads, one commit, and no graph-sized storage access regardless of index size. E24 orphan consistency wired to scheduled maintenance, not left dead_code."
 gate_test = "krites::runtime::hnsw::put::tests::exactly_one_all_null_entry_point_marker"
 
 [[capability]]
