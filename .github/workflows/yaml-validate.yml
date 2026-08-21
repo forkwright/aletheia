@@ -83,6 +83,19 @@ jobs:
           python3 scripts/check-automation-pr-gates.py
           python3 scripts/check-release-artifact-routing.py
 
+      # WHY(#6829) here and coverage-only: dependabot.yml's own WARNING says a new
+      # excluded workspace "needs a row here -- nothing fails when one is missing,
+      # which is why both went unnoticed". This is that failure. A directory with its
+      # own Cargo.lock is a separate resolution root, so a scan rooted at `/` updates
+      # none of its dependencies; proskenion, the shipped desktop frontend, was one of
+      # the two that went unnoticed.
+      #
+      # The LIVENESS half of the same script runs on a schedule instead
+      # (dependabot-liveness.yml): it measures a service outside this repository, and
+      # failing a PR for that would redden work none of its authors touched.
+      - name: Every cargo resolution root is covered by dependabot
+        run: python3 scripts/check-dependabot.py --coverage-only
+
       # WHY report-only: fetch-depth:0 + a short timeout + no filter is a risk
       # SIGNATURE, not a defect -- gate-coverage-scripts carries it
       # deliberately (#6757). This surfaces the pattern early instead of

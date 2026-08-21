@@ -124,6 +124,16 @@ def workflow_run_text(workflow: dict) -> str:
     return "\n".join(job_step_text(job) for job in workflow.get("jobs", {}).values())
 
 
+# The two keys whose value is the derived test inventory. Named once: they appeared
+# four times each, and a fifth spelling would have diverged silently.
+SONAR_EXCLUSIONS_KEY = "sonar.exclusions"
+SONAR_TEST_INCLUSIONS_KEY = "sonar.test.inclusions"
+SONAR_SCOPE_KEYS = (SONAR_EXCLUSIONS_KEY, SONAR_TEST_INCLUSIONS_KEY)
+SONAR_SOURCES_KEY = "sonar.sources"
+SONAR_TESTS_KEY = "sonar.tests"
+SONAR_PROPERTIES = ROOT / ".sonarcloud.properties"
+
+
 def load_properties(path: Path) -> dict[str, str]:
     """Read the deliberately simple key=value Sonar configuration."""
     properties: dict[str, str] = {}
@@ -158,7 +168,30 @@ def test_fixture_paths() -> list[str]:
     )
 
 
+def derived_sonar_scope(inventory: list[str]) -> str:
+    """The two scope lines `.sonarcloud.properties` must carry, ready to paste.
+
+    WHY this exists: the inventory is already DERIVED here, by `test_fixture_paths`.
+    Everything downstream is a mechanical transcription of a comma-joined list that a
+    human retypes each time a test file is added, and gets wrong. The check knew the
+    right answer well enough to print it in its failure; it just would not print it in
+    a form anyone could use.
+
+    WHY it prints rather than writes: a writer would have to build its target path from
+    this file's own location, and a tool that rewrites a repository file is a larger
+    thing to trust than one that prints two lines. Redirecting straight back into the
+    file it reads would also truncate it first. Two lines on stdout compose with any
+    editor and cannot destroy anything.
+    """
+    joined = ",".join(inventory)
+    return "\n".join(f"{key}={joined}" for key in SONAR_SCOPE_KEYS)
+
+
 def main() -> int:
+    if "--print-sonar-scope" in sys.argv[1:]:
+        print(derived_sonar_scope(test_fixture_paths()))
+        return 0
+
     errors: list[str] = []
 
     workflows_dir = ROOT / ".github" / "workflows"
@@ -175,18 +208,13 @@ def main() -> int:
     # source/test roots to be literal paths. Keep the guarded scope keys and
     # explicit test inventory complete and disjoint so a broad filter cannot
     # hide production or let fixture-only path mutation affect the rating.
-    sonar_path = ROOT / ".sonarcloud.properties"
+    sonar_path = SONAR_PROPERTIES
     try:
         sonar = load_properties(sonar_path)
     except (OSError, UnicodeError, ValueError) as error:
         errors.append(f"cannot read Automatic Analysis scope: {error}")
     else:
-        expected_keys = {
-            "sonar.sources",
-            "sonar.tests",
-            "sonar.exclusions",
-            "sonar.test.inclusions",
-        }
+        expected_keys = {SONAR_SOURCES_KEY, SONAR_TESTS_KEY, *SONAR_SCOPE_KEYS}
         if set(sonar) != expected_keys:
             errors.append(
                 ".sonarcloud.properties must contain exactly the guarded scope "
@@ -194,33 +222,31 @@ def main() -> int:
             )
         expected_tests = test_fixture_paths()
         configured_tests = sorted(
-            filter(None, sonar.get("sonar.test.inclusions", "").split(","))
+            filter(None, sonar.get(SONAR_TEST_INCLUSIONS_KEY, "").split(","))
         )
         source_exclusions = sorted(
-            filter(None, sonar.get("sonar.exclusions", "").split(","))
+            filter(None, sonar.get(SONAR_EXCLUSIONS_KEY, "").split(","))
         )
-        if sonar.get("sonar.sources") != ".":
-            errors.append(".sonarcloud.properties sonar.sources must be '.'")
-        if sonar.get("sonar.tests") != "scripts":
-            errors.append(".sonarcloud.properties sonar.tests must be 'scripts'")
+        if sonar.get(SONAR_SOURCES_KEY) != ".":
+            errors.append(f".sonarcloud.properties {SONAR_SOURCES_KEY} must be '.'")
+        if sonar.get(SONAR_TESTS_KEY) != "scripts":
+            errors.append(f".sonarcloud.properties {SONAR_TESTS_KEY} must be 'scripts'")
         if configured_tests != expected_tests:
             errors.append(
                 ".sonarcloud.properties sonar.test.inclusions must exactly "
                 f"inventory test fixtures (expected {expected_tests!r})"
+                " -- `scripts/check-automation-pr-gates.py --print-sonar-scope`"
+                " emits both lines ready to paste, rather than transcribing by hand"
             )
         if source_exclusions != expected_tests:
             errors.append(
                 ".sonarcloud.properties sonar.exclusions must exactly mirror "
                 "sonar.test.inclusions so source and test scopes are disjoint"
+                " -- `--print-sonar-scope` emits both"
             )
         if any(
             wildcard in sonar.get(key, "")
-            for key in (
-                "sonar.sources",
-                "sonar.tests",
-                "sonar.exclusions",
-                "sonar.test.inclusions",
-            )
+            for key in (SONAR_SOURCES_KEY, SONAR_TESTS_KEY, *SONAR_SCOPE_KEYS)
             for wildcard in ("*", "?")
         ):
             errors.append(

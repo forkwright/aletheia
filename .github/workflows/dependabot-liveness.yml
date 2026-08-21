@@ -1,0 +1,55 @@
+# WHY(#6829): the cargo ecosystem opened its last PR on 2026-04-24 and then nothing for
+# 113 days, across 135 direct crate dependencies, while `github-actions` ran weekly from
+# the same file. Nothing detected it. There is no red check for a PR that was never
+# opened, and the absence of updates is indistinguishable from having none available.
+#
+# It ended when an unrelated edit to `dependabot.yml` made dependabot re-read the config.
+# Had nobody been editing that file for another reason, it would still be silent -- and
+# the root cause was never established, so this can recur tomorrow with the same silence.
+# That is why the durable correction is observability rather than a fix to the cause.
+#
+# WHY a schedule and not a PR check: liveness is a property of a service outside this
+# repository. Running it on pull requests would redden every open PR for something none
+# of their authors did, which is how a check gets routed around. The COVERAGE half --
+# which is about this repo's own content -- runs at PR time instead, from yaml-validate.
+name: Dependabot liveness
+
+on:
+  schedule:
+    # NOTE: daily at 06:40 CST (12:40 UTC), clear of the 11:00 security cron.
+    - cron: "40 12 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  liveness:
+    name: every declared ecosystem is still producing
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY fetch-depth 0: when an ecosystem has never opened a PR, the check dates
+          # it from dependabot.yml's last commit rather than inventing a baseline. A
+          # shallow clone cannot see that commit, and the check says so rather than
+          # guessing -- but then it reports a clone depth instead of an ecosystem.
+          fetch-depth: 0
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Self-test the check
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_dependabot.py'
+
+      - name: Check every declared ecosystem is still producing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/check-dependabot.py
