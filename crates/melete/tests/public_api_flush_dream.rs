@@ -365,7 +365,12 @@ mod dream {
         };
         let source: Arc<dyn TranscriptSource> = Arc::new(FixedSource(vec![transcript]));
         let gate = Arc::new(GatedTarget::new());
-        let target: Arc<dyn ConsolidationTarget> = Arc::clone(&gate);
+        // WHY the cast is not redundant: `Arc::clone` is an associated function,
+        // so inference flows inward and fixes `T` from the expected type rather
+        // than offering a coercion site. Without it this is
+        // `&Arc<GatedTarget>` where `&Arc<dyn ConsolidationTarget>` is wanted.
+        let target: Arc<dyn ConsolidationTarget> =
+            Arc::clone(&gate) as Arc<dyn ConsolidationTarget>;
         let provider: Arc<dyn LlmProvider> = Arc::new(
             MockProvider::new("## Summary\ns\n## Key Decisions\n- done")
                 .models(&["claude-sonnet-4-20250514"]),
