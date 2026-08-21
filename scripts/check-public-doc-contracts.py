@@ -45,8 +45,13 @@ def markdown_files() -> list[Path]:
 # is not reproducible from a fresh checkout. The `(?<![\w/])` guard keeps relative
 # segments such as `instance/data/` and var-prefixed `$ROOT/data/` from matching;
 # only a path anchored at one of these roots is flagged.
+# WHY `}` in the lookbehind: `${VAR}/data/x` and `$VAR/data/x` are the same path, and
+# without it only the braced spelling was flagged -- `$VAR` ends in a word character, so
+# the unbraced form was already excluded. A rule whose verdict depends on which spelling
+# of an expansion the author chose is arbitrary, and the failure it produces reads as a
+# maintainer path leaking rather than as the rule mis-firing.
 LOCAL_PATH = re.compile(
-    r"(?<![\w/])"
+    r"(?<![\w/}])"
     r"(?:"
     r"(?P<userhome>/(?:home|Users)/(?P<user>[^\s/`\"'<>)]+))"
     r"|/data/[^\s`\"'<>)]+"
