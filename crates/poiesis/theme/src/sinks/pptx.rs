@@ -385,14 +385,18 @@ mod tests {
     fn pptx_entries_carry_the_fixed_epoch_not_a_wall_clock() {
         let bytes = emit_base_pptx(&protos()).expect("emit");
 
+        // WHY `get` rather than a range index: a slice index panics when the archive is
+        // shorter than the header, and a panic reports as "this test crashed" rather
+        // than as the assertion it was standing in for. `get` makes a truncated archive
+        // a distinguishable failure from a wrong timestamp.
         assert_eq!(
-            &bytes[0..4],
-            &[0x50, 0x4b, 0x03, 0x04],
+            bytes.get(0..4),
+            Some([0x50, 0x4b, 0x03, 0x04].as_slice()),
             "expected a ZIP local file header at offset 0"
         );
         assert_eq!(
-            &bytes[10..14],
-            &[0, 0, 33, 0],
+            bytes.get(10..14),
+            Some([0, 0, 33, 0].as_slice()),
             "modtime/moddate must be the 1980 ZIP epoch; a nonzero time field is a \
              wall clock, which makes the archive non-reproducible"
         );
