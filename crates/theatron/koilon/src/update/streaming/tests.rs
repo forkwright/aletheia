@@ -432,10 +432,21 @@ fn stream_error_clears_tool_calls_and_resets_agent() {
 
     handle_stream_error(&mut app, "connection reset".to_string());
 
-    // Partial text preserved for user inspection
-    assert_eq!(app.connection.streaming_text, "partial response");
-    // Tool calls cleared so no stale spinners
+    // WHY(#6817) this asserts the message and not the buffer: the buffer was where the
+    // partial response used to sit, and `handle_stream_turn_start` cleared it at the
+    // next turn -- so "preserved for user inspection" held only until the user did
+    // anything, and retrying after the error was what destroyed the output they were
+    // reading. It is a committed message now, the same as cancel and abort produce.
+    assert_eq!(app.connection.streaming_text, "");
+    assert_eq!(app.dashboard.messages.len(), 1);
+    assert_eq!(
+        app.dashboard.messages[0].text,
+        "partial response\n\n[stream error: connection reset]"
+    );
+    // The streaming buffer is drained; the tool calls moved onto the message rather
+    // than being dropped, so the record shows what the agent had actually done.
     assert!(app.connection.streaming_tool_calls.is_empty());
+    assert_eq!(app.dashboard.messages[0].tool_calls.len(), 1);
     assert_eq!(app.dashboard.agents[0].status, AgentStatus::Idle);
     assert!(app.dashboard.agents[0].active_tool.is_none());
     assert!(app.viewport.error_toast.is_some());
@@ -651,4 +662,46 @@ async fn turn_complete_cross_agent_does_not_pollute_focused_agent() {
     // Streaming state must still be cleared.
     assert!(app.connection.streaming_text.is_empty());
     assert!(app.connection.active_turn_id.is_none());
+}
+
+/// An error with nothing streamed still leaves a record.
+///
+/// WHY(#6817) unconditional, matching `handle_cancel_turn` and
+/// `handle_stream_turn_abort`: the error toast is transient, so if the transcript
+/// carried nothing an exported conversation would show a silent gap where a turn
+/// failed. All three termination paths now commit a terminal record.
+#[test]
+fn stream_error_without_partial_text_still_commits_a_record() {
+    let mut app = test_app();
+    app.connection.active_turn_id = Some("t1".into());
+
+    handle_stream_error(&mut app, "connection reset".to_string());
+
+    assert_eq!(app.dashboard.messages.len(), 1);
+    assert_eq!(
+        app.dashboard.messages[0].text,
+        "[stream error: connection reset]"
+    );
+}
+
+/// The partial response survives the next turn starting.
+///
+/// WHY this is the test that matters: the old behaviour left the text in
+/// `streaming_text`, which reads as preserved right up until
+/// `handle_stream_turn_start` clears it. Any assertion made immediately after the
+/// error passed under both behaviours -- this one does not.
+#[test]
+fn partial_response_survives_the_next_turn_starting() {
+    let mut app = test_app();
+    app.connection.active_turn_id = Some("t1".into());
+    app.connection.streaming_text = "half an answer".to_string();
+
+    handle_stream_error(&mut app, "connection reset".to_string());
+    handle_stream_turn_start(&mut app, "t2".into(), "syn".into());
+
+    assert_eq!(app.dashboard.messages.len(), 1);
+    assert!(
+        app.dashboard.messages[0].text.starts_with("half an answer"),
+        "the partial response must outlive the turn that follows the error"
+    );
 }
