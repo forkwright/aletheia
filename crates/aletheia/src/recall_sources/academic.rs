@@ -254,6 +254,12 @@ mod tests {
     /// different variant, so this assertion cannot pass on the unrouted code.
     #[tokio::test]
     async fn query_is_refused_by_a_deny_egress_policy() {
+        // WHY: reqwest's builder PANICS without an installed rustls provider, before
+        // any request is attempted -- so the test would die constructing the source
+        // rather than reaching the assertion. Err means a dependency installed one
+        // first, which is fine.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
         let source = AcademicSource::new(
             Arc::new(
                 reqwest::Client::builder()
