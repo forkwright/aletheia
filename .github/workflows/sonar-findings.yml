@@ -1,0 +1,68 @@
+# WHY(#6769): `SonarCloud Code Analysis` can fail a PR, and until now nobody working
+# from CI could read why. Every route anyone tried went through Sonar's own API, and
+# every one is closed to an anonymous caller -- three of them answer "Project doesn't
+# exist", and `issues/search` answers `{"total":0}` with no error at all. That last one
+# is why this survived three recurrences: it fails OPEN and QUIETLY, so an agent that
+# queries it concludes "no findings" and merges past a security-rated failure.
+#
+# The findings were reachable the whole time by a route nobody tried: SonarCloud posts
+# them as GitHub check-run ANNOTATIONS, which the GitHub API serves to any caller with a
+# plain GITHUB_TOKEN. On the PR that prompted this, three annotations named exact files
+# and lines, and one was a real ReDoS in a regex over an attacker-supplied PR title. The
+# check was right and actionable every time; only the reading was broken.
+#
+# WHY `check_run` and not `pull_request`: SonarCloud is a GitHub App, not a workflow, so
+# there is no `workflow_run` to hang this off and no moment during a PR run when its
+# verdict exists yet. `check_run: completed` is the event that fires when it lands. The
+# job-level `if` means the dozens of other check runs on a PR skip without consuming a
+# runner.
+#
+# WHY it mirrors the verdict rather than always passing: a green check whose content is
+# hidden in a step summary is a check people stop opening, and this exists precisely
+# because an unreadable verdict gets ignored. A PR with one unexplained red now has one
+# explained red beside it, naming the files and lines. Like SonarCloud itself, this is
+# NOT a required context, so it blocks nothing.
+name: Sonar findings
+
+on:
+  check_run:
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      head_sha:
+        description: Commit whose SonarCloud findings to report
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  checks: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.check_run.head_sha || inputs.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  explain:
+    name: what SonarCloud found
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.check_run.name == 'SonarCloud Code Analysis'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): one Python script that only talks to the GitHub API.
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Self-test the reader
+        run: python3 -m unittest discover -s scripts/tests -p 'test_sonar_findings.py'
+
+      - name: Resolve the verdict to file:line findings
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.check_run.head_sha || inputs.head_sha }}
+        run: python3 scripts/sonar-findings.py 2>&1 | tee -a "$GITHUB_STEP_SUMMARY"; exit "${PIPESTATUS[0]}"
+        shell: bash
