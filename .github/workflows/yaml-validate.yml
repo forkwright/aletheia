@@ -54,6 +54,20 @@ jobs:
           print(f"All {len(files)} YAML file(s) valid")
           EOF
 
+      # WHY(#6755) here rather than in the Rust gate: this counts a token in source
+      # text and compiles nothing, so it belongs with the other cheap structural
+      # checks and fails in seconds on the PR that added the suppression.
+      #
+      # It is a RATCHET, not a budget. `primitive-for-domain-id` is suppressed 200
+      # times, and the count is the finding: #6755 was filed against 188, so the
+      # population grew by twelve while the issue describing it sat open. A
+      # suppression is a claim the lint is wrong here, nothing re-tests that claim,
+      # and #4638 is what a stale one costs -- an unvalidated agent id reached actor
+      # spawn for a full release cycle because its exemption said "not a runtime
+      # domain identifier" and that had stopped being true.
+      - name: Domain-id suppressions may only decrease
+        run: python3 scripts/check-domain-id-suppressions.py
+
       - name: Validate automation PR gate policy
         run: |
           python3 scripts/check-automation-pr-gates.py
