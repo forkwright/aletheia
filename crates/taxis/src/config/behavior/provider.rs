@@ -142,6 +142,9 @@ pub enum ProviderKind {
     /// Requires the `codex-provider` feature flag on hermeneus.
     #[serde(rename = "codex_oauth", alias = "codex-oauth")]
     CodexOauth,
+    /// Kimi CLI subprocess adapter (delegates to the `kimi` CLI).
+    /// Requires the `kimi-provider` feature flag on hermeneus.
+    Kimi,
 }
 
 /// `OpenAI` HTTP API family for `OpenAI` and OpenAI-compatible providers.

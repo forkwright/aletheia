@@ -32,6 +32,14 @@ pub(crate) const KIMI_MODEL_PREFIX: &str = "kimi/";
 /// Configuration for the Kimi subprocess provider.
 #[derive(Debug, Clone)]
 pub struct KimiProviderConfig {
+    /// Registry name for this provider instance.
+    ///
+    /// WHY(#5258) this exists: a declared `[[providers]]` entry is addressed by its
+    /// name, and `name()` used to return a hardcoded `"kimi"`. Two declared kimi
+    /// entries -- a fast one and a careful one, say -- would both have answered to
+    /// "kimi", so neither could be routed to. `CcProviderConfig` has carried a name
+    /// for the same reason.
+    pub name: String,
     /// Path to the `kimi` binary. If `None`, resolved from `PATH`.
     pub kimi_binary: Option<PathBuf>,
     /// Working directory passed to `kimi -w`.
@@ -45,6 +53,7 @@ pub struct KimiProviderConfig {
 impl Default for KimiProviderConfig {
     fn default() -> Self {
         Self {
+            name: "kimi".to_owned(),
             kimi_binary: None,
             working_directory: None,
             default_model: koina::models::names::kimi().to_owned(),
@@ -58,6 +67,7 @@ impl Default for KimiProviderConfig {
 /// Delegates completions to the `kimi` CLI binary via
 /// `--print --afk --yolo --thinking`.
 pub struct KimiProvider {
+    name: String,
     kimi_binary: PathBuf,
     working_directory: PathBuf,
     default_model: String,
@@ -118,6 +128,7 @@ impl KimiProvider {
         );
 
         Ok(Self {
+            name: config.name.clone(),
             kimi_binary,
             working_directory,
             default_model: config.default_model.clone(),
@@ -470,8 +481,8 @@ impl LlmProvider for KimiProvider {
         }
     }
 
-    fn name(&self) -> &'static str {
-        "kimi"
+    fn name(&self) -> &str {
+        &self.name
     }
 
     fn capabilities(&self) -> crate::provider::ProviderCapabilities {
