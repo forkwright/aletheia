@@ -165,7 +165,7 @@ impl HookRegistry {
     /// WHY(#5083) this returns nothing, where it used to return `HookResult`: the
     /// pipeline discarded the result with `let _ =`, deliberately -- the suppression
     /// there read "hook failure must not abort the turn". So a hook could return
-    /// `Abort`, this function would log "before_compact hook aborted compaction", and
+    /// `Abort`, this function would log `before_compact hook aborted compaction`, and
     /// compaction would happen anyway. The log line asserted an action that did not
     /// occur, which is worse than silence: an operator reading it believes a policy
     /// hook stopped something.
