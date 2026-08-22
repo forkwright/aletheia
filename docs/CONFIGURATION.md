@@ -1237,7 +1237,7 @@ LLM provider definitions (#3424, #3414). Ordered list of backends — the provid
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `name` | string | *required* | Operator-facing label for logs and diagnostics (e.g., `"local-qwen"`, `"anthropic-cloud"`). Must be unique across the provider list. |
-| `providerType` | "anthropic" \| "openai" (alias: "open-ai") \| "open-ai-compatible" (alias: "openai-compatible") \| "claude-code" \| "codex_oauth" (alias: "codex-oauth") | *required* | Which concrete provider implementation to instantiate. |
+| `providerType` | "anthropic" \| "openai" (alias: "open-ai") \| "open-ai-compatible" (alias: "openai-compatible") \| "claude-code" \| "codex_oauth" (alias: "codex-oauth") \| "kimi" | *required* | Which concrete provider implementation to instantiate. |
 | `baseUrl` | string | unset | HTTP base URL override. Required for OpenAI-compatible providers (e.g., `http://127.0.0.1:8088/v1` for local llama.cpp). Optional for Anthropic (defaults to `https://api.anthropic.com`). Ignored for subprocess adapters. |
 | `apiKeyEnv` | string | unset | Environment variable name holding the API key. Read at startup via `std::env::var`. Optional for loopback / embedded providers that do not require authentication. |
 | `apiFamily` | "chat-completions" \| "responses" | unset | `OpenAI` API family to use. If omitted, `providerType = "openai"` defaults to `responses`, while `openai-compatible` defaults to `chat-completions` for local/proxy compatibility. Ignored for subprocess adapters. |
