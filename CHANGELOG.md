@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.41.0](https://github.com/forkwright/aletheia/compare/v0.40.0...v0.41.0) (2026-08-21)
+
+
+### Features
+
+* **aletheia:** ingest PDFs, using an extractor that does not cap at 100 ([13f4043](https://github.com/forkwright/aletheia/commit/13f4043992f1b0f528676072ecd673513f2f96c6))
+* **aletheia:** ingest PDFs, using an extractor that does not cap at 100 lines ([#6951](https://github.com/forkwright/aletheia/issues/6951)) ([13f4043](https://github.com/forkwright/aletheia/commit/13f4043992f1b0f528676072ecd673513f2f96c6))
+* **ci:** the crate count in three public docs was derived by nothing ([4e8e19c](https://github.com/forkwright/aletheia/commit/4e8e19c597370a07c9b99b7ce8460a557fa58db2))
+* **ci:** the crate count in three public docs was derived by nothing ([#6949](https://github.com/forkwright/aletheia/issues/6949)) ([4e8e19c](https://github.com/forkwright/aletheia/commit/4e8e19c597370a07c9b99b7ce8460a557fa58db2))
+* **pylon:** the sandbox knew what it was enforcing and told nobody ([603c70a](https://github.com/forkwright/aletheia/commit/603c70ae6416dc38e9ee38d8bc00d224bdb51053))
+* **pylon:** the sandbox knew what it was enforcing and told nobody ([#6947](https://github.com/forkwright/aletheia/issues/6947)) ([603c70a](https://github.com/forkwright/aletheia/commit/603c70ae6416dc38e9ee38d8bc00d224bdb51053))
+
+
+### Bug Fixes
+
+* **agora:** signal-cli's "loopback-only" was a comment, not a check ([b6c00d1](https://github.com/forkwright/aletheia/commit/b6c00d1eb40f888ba236adf0dc1f663bf4bb4ce4))
+* **agora:** signal-cli's "loopback-only" was a comment, not a check ([#6946](https://github.com/forkwright/aletheia/issues/6946)) ([b6c00d1](https://github.com/forkwright/aletheia/commit/b6c00d1eb40f888ba236adf0dc1f663bf4bb4ce4))
+* **ci:** the release healer reported a repair it had not made ([2565fff](https://github.com/forkwright/aletheia/commit/2565fffcec654e704283b3c21a924f0274511fe3))
+* **ci:** the release healer reported a repair it had not made ([#6945](https://github.com/forkwright/aletheia/issues/6945)) ([2565fff](https://github.com/forkwright/aletheia/commit/2565fffcec654e704283b3c21a924f0274511fe3))
+* **deps:** rustix built without std, so melete only compiled beside ([16c5c16](https://github.com/forkwright/aletheia/commit/16c5c166f7300a3c7063a75ec4dafe0b232b2037))
+* **deps:** rustix built without std, so melete only compiled beside daemon ([#6954](https://github.com/forkwright/aletheia/issues/6954)) ([16c5c16](https://github.com/forkwright/aletheia/commit/16c5c166f7300a3c7063a75ec4dafe0b232b2037))
+* **hermeneus:** a schema request to OpenAI Responses was logged and ([a735e93](https://github.com/forkwright/aletheia/commit/a735e939e133225eba769c292980b5270f91effb))
+* **hermeneus:** a schema request to OpenAI Responses was logged and dropped ([#6950](https://github.com/forkwright/aletheia/issues/6950)) ([a735e93](https://github.com/forkwright/aletheia/commit/a735e939e133225eba769c292980b5270f91effb))
+* **koilon:** a stream error threw away the partial response it claimed ([c8811e8](https://github.com/forkwright/aletheia/commit/c8811e808add0b17d0d96534c9ef291e394ff61f))
+* **koilon:** a stream error threw away the partial response it claimed to keep ([#6953](https://github.com/forkwright/aletheia/issues/6953)) ([c8811e8](https://github.com/forkwright/aletheia/commit/c8811e808add0b17d0d96534c9ef291e394ff61f))
+* **pylon:** an unreachable knowledge store answered "you have no memory" ([8d371b8](https://github.com/forkwright/aletheia/commit/8d371b8d135c2594806548c08042b800a121db4c))
+* **pylon:** an unreachable knowledge store answered "you have no memory" ([#6944](https://github.com/forkwright/aletheia/issues/6944)) ([8d371b8](https://github.com/forkwright/aletheia/commit/8d371b8d135c2594806548c08042b800a121db4c))
+
 ## [0.40.0](https://github.com/forkwright/aletheia/compare/v0.39.0...v0.40.0) (2026-08-21)
 
 
