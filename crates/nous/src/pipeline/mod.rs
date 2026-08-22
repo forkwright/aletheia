@@ -1479,8 +1479,7 @@ pub(crate) async fn run_pipeline(
                 messages_before: pre_compact_message_count,
                 tokens_before: pre_compact_tokens,
             };
-            // kanon:ignore RUST/no-silent-result-swallow — hook failure must not abort the turn
-            let _ = hook_registry.run_before_compact(&compact_ctx).await;
+            hook_registry.run_before_compact(&compact_ctx).await;
         }
 
         time_budget.begin_stage("microcompact");

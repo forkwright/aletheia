@@ -252,11 +252,50 @@ async fn session_start_fires_and_can_short_circuit() {
     );
 }
 
+/// A hook that counts `before_compact` calls, so a later hook firing is observable.
+struct CountingCompactHook {
+    count: std::sync::Arc<std::sync::atomic::AtomicU32>,
+}
+
+impl TurnHook for CountingCompactHook {
+    fn name(&self) -> &'static str {
+        "counting_compact"
+    }
+
+    fn before_compact<'a>(
+        &'a self,
+        _context: &'a super::super::BeforeCompactionContext<'_>,
+    ) -> Pin<Box<dyn Future<Output = HookResult> + Send + 'a>> {
+        let c = std::sync::Arc::clone(&self.count);
+        Box::pin(async move {
+            c.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            HookResult::Continue
+        })
+    }
+}
+
+/// `before_compact` is observational: an aborting hook does not stop compaction.
+///
+/// WHY(#5083) this test was inverted: it used to assert that `run_before_compact`
+/// returns `Abort`, and that was true -- of the registry. The pipeline discarded the
+/// result, so the short-circuit it proved changed nothing. A test that stops at the
+/// registry cannot tell "the abort is honoured" from "the abort is computed and thrown
+/// away", and the second is what was happening while this passed.
+///
+/// It now asserts the property that survives the call: hooks registered AFTER the
+/// aborting one still fire. That is what observational means here, and it is false under
+/// the old short-circuiting implementation.
 #[tokio::test]
-async fn before_compact_fires_and_can_short_circuit() {
+async fn before_compact_is_observational_and_does_not_short_circuit() {
+    let count = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
     let mut registry = HookRegistry::new();
-    registry.register(10, Box::new(NoopHook::new("first")));
-    registry.register(20, Box::new(AbortingHook));
+    registry.register(10, Box::new(AbortingHook));
+    registry.register(
+        20,
+        Box::new(CountingCompactHook {
+            count: std::sync::Arc::clone(&count),
+        }),
+    );
 
     let ctx = super::super::BeforeCompactionContext {
         nous_id: "test",
@@ -264,10 +303,13 @@ async fn before_compact_fires_and_can_short_circuit() {
         tokens_before: 1000,
     };
 
-    let result = registry.run_before_compact(&ctx).await;
-    assert!(
-        matches!(result, HookResult::Abort { .. }),
-        "should abort from aborting hook"
+    registry.run_before_compact(&ctx).await;
+
+    assert_eq!(
+        count.load(std::sync::atomic::Ordering::Relaxed),
+        1,
+        "a hook registered after an aborting one must still fire; if this is 0 the \
+         registry is short-circuiting on a result the pipeline ignores"
     );
 }
 
