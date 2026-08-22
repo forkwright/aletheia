@@ -46,6 +46,7 @@ pub(super) fn provider_runtime_errors(config: &AletheiaConfig, oikos: &Oikos) ->
         match entry.kind {
             ProviderKind::ClaudeCode => validate_claude_code_provider(i, entry, oikos, &mut errors),
             ProviderKind::CodexOauth => validate_codex_provider(i, entry, oikos, &mut errors),
+            ProviderKind::Kimi => validate_kimi_provider(i, entry, oikos, &mut errors),
             _ => {}
         }
     }
@@ -76,6 +77,39 @@ fn validate_claude_code_provider(
         let _ = oikos;
         errors.push(format!(
             "providers[{i}] '{}' uses providerType = claude-code, but this aletheia binary was built without the cc-provider feature; rebuild with --features cc-provider or remove the entry",
+            entry.name
+        ));
+    }
+}
+
+/// WHY(#5258) kimi validates like its siblings: a declared subprocess provider that
+/// skipped config-time validation would report a bad binary path as a registration
+/// warning at startup instead of an error at `config check`, which is the surface an
+/// operator actually consults before starting.
+fn validate_kimi_provider(
+    i: usize,
+    entry: &LlmProviderConfig,
+    oikos: &Oikos,
+    errors: &mut Vec<String>,
+) {
+    #[cfg(feature = "kimi-provider")]
+    {
+        validate_enabled_subprocess_provider(
+            i,
+            entry,
+            oikos,
+            "kimi",
+            "kimi",
+            &[".local/bin/kimi", ".kimi/bin/kimi"],
+            errors,
+        );
+    }
+
+    #[cfg(not(feature = "kimi-provider"))]
+    {
+        let _ = oikos;
+        errors.push(format!(
+            "providers[{i}] '{}' uses providerType = kimi, but this aletheia binary was built without the kimi-provider feature; rebuild with --features kimi-provider or remove the entry",
             entry.name
         ));
     }
