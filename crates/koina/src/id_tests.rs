@@ -410,3 +410,26 @@ mod newtype_id_macro {
         assert_eq!(id, back);
     }
 }
+
+#[test]
+fn nous_id_from_str_validates() {
+    // WHY both directions: the macro-generated `FromStr` on the sibling id types is `Infallible` and
+    // accepts anything. A hand-written impl that forgot to validate would still compile, still parse,
+    // and silently make a parsed id weaker than a constructed one.
+    assert_eq!("worker-1".parse::<NousId>().unwrap().as_str(), "worker-1");
+    assert!("Worker_1".parse::<NousId>().is_err());
+    assert!("".parse::<NousId>().is_err());
+    assert!("../etc".parse::<NousId>().is_err());
+}
+
+#[test]
+fn nous_id_from_str_agrees_with_new() {
+    // The two constructors must not diverge: clap will use `FromStr`, everything else uses `new`.
+    for candidate in ["syn", "Syn", "a-b-c", "-lead", "", "with/slash"] {
+        assert_eq!(
+            candidate.parse::<NousId>().is_ok(),
+            NousId::new(candidate).is_ok(),
+            "FromStr and new disagree on {candidate:?}"
+        );
+    }
+}

@@ -2,6 +2,7 @@
 
 use std::borrow::Borrow;
 use std::fmt;
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
@@ -177,6 +178,23 @@ impl AsRef<str> for NousId {
 impl Borrow<str> for NousId {
     fn borrow(&self) -> &str {
         &self.0
+    }
+}
+
+/// WHY a hand-written impl rather than the macro's: the macro's `FromStr` is `Infallible` and
+/// accepts anything, which is exactly what this type exists to prevent. Parsing a `NousId` has to
+/// run the same validation `new` does, or a parsed id is weaker than a constructed one.
+///
+/// WHY it matters beyond tidiness: without `FromStr`, clap cannot use this type, so eight CLI
+/// argument structs carry `nous_id: String` under a suppression reading "clap parses from string,
+/// newtype wouldn't work". That left the CLI as an unvalidated surface for the same field whose
+/// config-load surface was found unvalidated in #4638 — an id with uppercase, an underscore, a
+/// leading hyphen or a path separator reached the runtime unchecked.
+impl FromStr for NousId {
+    type Err = IdError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::new(s)
     }
 }
 
