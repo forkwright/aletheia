@@ -300,7 +300,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2.85.13
+      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
           tool: rust-audit-info@0.5.4
 
