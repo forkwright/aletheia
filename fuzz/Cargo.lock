@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-classify"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "jiff",
  "serde",
@@ -81,11 +81,11 @@ dependencies = [
 
 [[package]]
 name = "aletheia-lexica"
-version = "0.38.1"
+version = "0.42.0"
 
 [[package]]
 name = "aletheia-routing"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "futures",
  "jiff",
@@ -124,12 +124,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrayref"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
-
-[[package]]
 name = "arrayvec"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -152,12 +146,6 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
-
-[[package]]
-name = "base64"
-version = "0.23.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "base64ct"
@@ -188,11 +176,10 @@ dependencies = [
 
 [[package]]
 name = "blake3"
-version = "1.8.6"
+version = "1.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76ae7bad254120e9e4c63bafc385310756f90c484eac0e36b8317cf09cb92a77"
+checksum = "6d9e454fc11f76977dc803893aff6304ed33d6a26efae8696573bea74baa27ae"
 dependencies = [
- "arrayref",
  "arrayvec",
  "cc",
  "cfg-if",
@@ -371,17 +358,16 @@ dependencies = [
 
 [[package]]
 name = "compact_str"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9dfdd1c2274d9aa354115b09dc9a901d6c5576818cdf70d14cae2bdb47df00ab"
+checksum = "79fcda08c33bb58b97008b2cdada6622500e949e060f5913361763121abd2416"
 dependencies = [
  "castaway",
  "cfg-if",
  "itoa",
- "rustversion",
- "ryu",
  "serde",
  "static_assertions",
+ "zmij",
 ]
 
 [[package]]
@@ -590,7 +576,7 @@ dependencies = [
 
 [[package]]
 name = "dianoia"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "jiff",
  "koina",
@@ -641,7 +627,7 @@ checksum = "4c3cf4824e2d5f025c7b531afcb2325364084a16806f6d47fbc1f5fbd9960590"
 
 [[package]]
 name = "eidos"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "jiff",
  "koina",
@@ -693,7 +679,7 @@ dependencies = [
 
 [[package]]
 name = "episteme"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "eidos",
  "graphe",
@@ -926,7 +912,7 @@ dependencies = [
 
 [[package]]
 name = "gnosis"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "cargo_metadata",
  "fjall",
@@ -942,7 +928,7 @@ dependencies = [
 
 [[package]]
 name = "graphe"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "eidos",
  "fjall",
@@ -1002,7 +988,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermeneus"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "jiff",
  "koina",
@@ -1119,7 +1105,7 @@ version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96547c2556ec9d12fb1578c4eaf448b04993e7fb79cbaad930a656880a6bdfa0"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "bytes",
  "futures-channel",
  "futures-util",
@@ -1434,7 +1420,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "fjall",
  "jiff",
@@ -1476,7 +1462,7 @@ dependencies = [
 
 [[package]]
 name = "krites"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "aho-corasick",
  "arc-swap",
@@ -1633,7 +1619,7 @@ dependencies = [
 
 [[package]]
 name = "melete"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "aletheia-lexica",
  "futures",
@@ -1681,7 +1667,7 @@ dependencies = [
 
 [[package]]
 name = "mneme"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "eidos",
  "episteme",
@@ -1737,7 +1723,7 @@ dependencies = [
 
 [[package]]
 name = "nous"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "aletheia-classify",
  "aletheia-lexica",
@@ -1830,9 +1816,9 @@ dependencies = [
 
 [[package]]
 name = "organon"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
- "base64 0.23.1",
+ "aletheia-lexica",
  "eidos",
  "getrandom 0.4.3",
  "gnosis",
@@ -2160,7 +2146,7 @@ version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
 dependencies = [
- "base64 0.22.1",
+ "base64",
  "bytes",
  "futures-core",
  "h2",
@@ -2639,7 +2625,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "symbolon"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2708,7 +2694,7 @@ dependencies = [
 
 [[package]]
 name = "taxis"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "chacha20poly1305",
  "dianoia",
@@ -2741,7 +2727,7 @@ dependencies = [
 
 [[package]]
 name = "thesauros"
-version = "0.38.1"
+version = "0.42.0"
 dependencies = [
  "indexmap",
  "koina",
