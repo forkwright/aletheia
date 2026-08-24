@@ -190,7 +190,7 @@ tracing-test = "0.2"
 prometheus-client = "0.24"
 
 # Types
-compact_str = { version = "0.9", features = ["serde"] }
+compact_str = { version = "0.10", features = ["serde"] }
 indexmap = { version = "2", default-features = false, features = ["serde"] }
 
 # Time
