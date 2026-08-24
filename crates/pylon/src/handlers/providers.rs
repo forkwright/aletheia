@@ -225,6 +225,7 @@ fn provider_kind_wire(kind: taxis::config::ProviderKind) -> String {
         taxis::config::ProviderKind::OpenAiCompatible => "openai-compatible".to_owned(),
         taxis::config::ProviderKind::ClaudeCode => "claude-code".to_owned(),
         taxis::config::ProviderKind::CodexOauth => "codex-oauth".to_owned(),
+        taxis::config::ProviderKind::Kimi => "kimi".to_owned(),
         _ => "unknown".to_owned(),
     }
 }

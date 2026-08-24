@@ -480,6 +480,7 @@ fn register_declared_provider(
         ),
         ProviderKind::ClaudeCode => register_declared_claude_code(registry, entry, oikos),
         ProviderKind::CodexOauth => register_declared_codex(registry, entry, oikos),
+        ProviderKind::Kimi => register_declared_kimi(registry, entry, oikos),
         // WHY: ProviderKind is #[non_exhaustive] so future additions
         // never accidentally break the build. Unknown variants fall
         // through to a clear operator warning.
@@ -850,6 +851,58 @@ fn register_declared_codex(
     warn!(
         provider = %entry.name,
         "Codex OAuth provider declared but codex-provider feature is disabled — skipping"
+    );
+}
+
+/// Register a `[[providers]]` entry of kind `kimi` from its declared settings.
+///
+/// WHY(#5258) this exists where `register_auto_kimi` already did: the auto path builds
+/// `KimiProviderConfig::default()`, so `kimi_binary`, `working_directory`,
+/// `default_model` and `timeout` were reachable in the struct and unreachable from
+/// config. Claude Code and Codex have had a declared path for a while; kimi did not,
+/// and `ProviderKind` had no variant to select one, so an operator could not say which
+/// binary or working directory a kimi provider should use.
+#[cfg(feature = "kimi-provider")]
+fn register_declared_kimi(
+    registry: &mut ProviderRegistry,
+    entry: &taxis::config::LlmProviderConfig,
+    oikos: &Oikos,
+) {
+    use hermeneus::kimi::{KimiProvider, KimiProviderConfig};
+
+    let defaults = KimiProviderConfig::default();
+    let kimi_config = KimiProviderConfig {
+        name: entry.name.clone(),
+        kimi_binary: configured_subprocess_path(oikos, entry.binary.as_deref()),
+        working_directory: configured_subprocess_path(oikos, entry.workdir.as_deref()),
+        default_model: default_model_for_entry(entry, defaults.default_model),
+        timeout: configured_subprocess_timeout(entry, defaults.timeout),
+    };
+    match KimiProvider::new(&kimi_config) {
+        Ok(provider) => {
+            registry.register(Box::new(provider));
+            // SAFETY: logging provider registration status, not credential value
+            info!(provider = %entry.name, "Kimi subprocess provider registered"); // kanon:ignore SECURITY/credential-logging -- logs provider registration, no secret
+        }
+        Err(e) => {
+            warn!(
+                provider = %entry.name,
+                error = %e,
+                "Kimi provider unavailable"
+            );
+        }
+    }
+}
+
+#[cfg(not(feature = "kimi-provider"))]
+fn register_declared_kimi(
+    _registry: &mut ProviderRegistry,
+    entry: &taxis::config::LlmProviderConfig,
+    _oikos: &Oikos,
+) {
+    warn!(
+        provider = %entry.name,
+        "Kimi provider declared but kimi-provider feature is disabled — skipping"
     );
 }
 
