@@ -143,6 +143,9 @@ rayon = { version = "1", default-features = false }
 # Error handling
 snafu = "0.9"
 
+# Cargo workspace introspection (diaporeia repomix packing, gnosis symbol index)
+cargo_metadata = "0.23"
+
 # Serialization
 serde_json = { version = "1", default-features = false, features = ["std"] }
 serde_yaml = { package = "serde_yaml_ng", version = "0.10", default-features = false }
