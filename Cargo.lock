@@ -3063,15 +3063,6 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "font-types"
-version = "0.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39a654f404bbcbd48ea58c617c2993ee91d1cb63727a37bf2323a4edeed1b8c5"
-dependencies = [
- "bytemuck",
-]
-
-[[package]]
-name = "font-types"
 version = "0.11.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b38ad915f6dadd993ced50848a8291a543bd41ca62bc10740d5e64e2ab4cfd7"
@@ -3505,16 +3496,6 @@ dependencies = [
 
 [[package]]
 name = "gif"
-version = "0.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4ae047235e33e2829703574b54fdec96bfbad892062d97fed2f76022287de61b"
-dependencies = [
- "color_quant",
- "weezl",
-]
-
-[[package]]
-name = "gif"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee8cfcc411d9adbbaba82fb72661cc1bcca13e8bba98b364e62b2dba8f960159"
@@ -3540,7 +3521,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "log",
  "peniko",
- "png 0.18.1",
+ "png",
  "skrifa 0.42.1",
  "smallvec",
  "vello_common 0.0.9",
@@ -3842,7 +3823,7 @@ checksum = "a0b3db92c4917aad24ff30d61413a9a7509ae88b27aee1ae34eff881e1d2723a"
 dependencies = [
  "flate2",
  "hayro-syntax",
- "pdf-writer 0.15.0",
+ "pdf-writer",
 ]
 
 [[package]]
@@ -4319,11 +4300,11 @@ dependencies = [
  "bytemuck",
  "byteorder-lite",
  "color_quant",
- "gif 0.14.2",
+ "gif",
  "image-webp",
  "moxcms",
  "num-traits",
- "png 0.18.1",
+ "png",
  "tiff",
  "zune-core",
  "zune-jpeg",
@@ -4865,35 +4846,6 @@ dependencies = [
 
 [[package]]
 name = "krilla"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ddd739cf930f99a70ee89ec51b21fab894b5f142dc9672e0e9a27947b2bc093"
-dependencies = [
- "base64 0.22.1",
- "bumpalo",
- "flate2",
- "float-cmp 0.10.0",
- "gif 0.13.3",
- "image-webp",
- "imagesize 0.14.0",
- "indexmap",
- "once_cell",
- "pdf-writer 0.14.0",
- "png 0.17.16",
- "rustc-hash",
- "rustybuzz",
- "siphasher",
- "skrifa 0.37.0",
- "smallvec",
- "subsetter",
- "tiny-skia-path 0.11.4",
- "xmp-writer",
- "yoke",
- "zune-jpeg",
-]
-
-[[package]]
-name = "krilla"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27da593198b20eeba65caeb73c2bbeec3e53ab08fa549898312ce81c4fce5e33"
@@ -4903,13 +4855,13 @@ dependencies = [
  "comemo",
  "flate2",
  "float-cmp 0.9.0",
- "gif 0.14.2",
+ "gif",
  "hayro-write",
  "image-webp",
  "imagesize 0.14.0",
  "indexmap",
- "pdf-writer 0.15.0",
- "png 0.18.1",
+ "pdf-writer",
+ "png",
  "rayon",
  "rustc-hash",
  "rustybuzz",
@@ -4917,7 +4869,7 @@ dependencies = [
  "skrifa 0.42.1",
  "smallvec",
  "subsetter",
- "tiny-skia-path 0.12.0",
+ "tiny-skia-path",
  "xmp-writer",
  "yoke",
  "zune-jpeg",
@@ -4931,7 +4883,7 @@ checksum = "1237d7c37b16ca9fbc2e72dde13a10d321f9a44aceee35c062bc0a43bfc7ce16"
 dependencies = [
  "flate2",
  "fontdb 0.23.0",
- "krilla 0.8.2",
+ "krilla",
  "resvg 0.47.0",
  "skrifa 0.42.1",
  "smallvec",
@@ -6203,18 +6155,6 @@ dependencies = [
 
 [[package]]
 name = "pdf-writer"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92a79477295a713c2ed425aa82a8b5d20cec3fdee203706cbe6f3854880c1c81"
-dependencies = [
- "bitflags 2.13.1",
- "itoa",
- "memchr",
- "ryu",
-]
-
-[[package]]
-name = "pdf-writer"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5e456864a7a304047bff84977dc6fb162bd956475d40ba50b2dcecaada7f753"
@@ -6484,19 +6424,6 @@ dependencies = [
 
 [[package]]
 name = "png"
-version = "0.17.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82151a2fc869e011c153adc57cf2789ccb8d9906ce52c0b39a6b5697749d7526"
-dependencies = [
- "bitflags 1.3.2",
- "crc32fast",
- "fdeflate",
- "flate2",
- "miniz_oxide",
-]
-
-[[package]]
-name = "png"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60769b8b31b2a9f263dae2776c37b1b28ae246943cf719eb6946a1db05128a61"
@@ -6706,7 +6633,7 @@ dependencies = [
 name = "poiesis-text"
 version = "0.42.0"
 dependencies = [
- "krilla 0.7.0",
+ "krilla",
  "poiesis-core",
  "snafu",
  "zip 8.6.0",
@@ -7632,16 +7559,6 @@ dependencies = [
 
 [[package]]
 name = "read-fonts"
-version = "0.35.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6717cf23b488adf64b9d711329542ba34de147df262370221940dfabc2c91358"
-dependencies = [
- "bytemuck",
- "font-types 0.10.1",
-]
-
-[[package]]
-name = "read-fonts"
 version = "0.39.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4ed38b89c2c77ff968c524145ad65fb010f38af5c7a224b53b81d47ac2daa81"
@@ -7827,7 +7744,7 @@ version = "0.47.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9be183ad6a216aa96f33e4c8033b0988b8b3ea6fd2359d19af5bac4643fd8e81"
 dependencies = [
- "gif 0.14.2",
+ "gif",
  "image-webp",
  "log",
  "pico-args",
@@ -7845,7 +7762,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67e3803f97b999e80cbf7c6ecdd07a8102204d92e1633cf48783720c521196bd"
 dependencies = [
  "bytemuck",
- "gif 0.14.2",
+ "gif",
  "image-webp",
  "log",
  "pico-args",
@@ -8721,16 +8638,6 @@ dependencies = [
 
 [[package]]
 name = "skrifa"
-version = "0.37.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8c31071dedf532758ecf3fed987cdb4bd9509f900e026ab684b4ecb81ea49841"
-dependencies = [
- "bytemuck",
- "read-fonts 0.35.0",
-]
-
-[[package]]
-name = "skrifa"
 version = "0.42.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c34617370ae968efb7161bb2beb517d9084659aae19e24b89e3db25b46e4564"
@@ -9434,19 +9341,8 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "log",
- "png 0.18.1",
- "tiny-skia-path 0.12.0",
-]
-
-[[package]]
-name = "tiny-skia-path"
-version = "0.11.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c9e7fc0c2e86a30b117d0462aa261b72b7a99b7ebd7deb3a14ceda95c5bdc93"
-dependencies = [
- "arrayref",
- "bytemuck",
- "strict-num",
+ "png",
+ "tiny-skia-path",
 ]
 
 [[package]]
@@ -10153,7 +10049,7 @@ dependencies = [
  "palette",
  "percent-encoding",
  "phf 0.13.1",
- "png 0.18.1",
+ "png",
  "rayon",
  "regex",
  "regex-syntax",
@@ -10214,7 +10110,7 @@ dependencies = [
  "image",
  "indexmap",
  "infer",
- "krilla 0.8.2",
+ "krilla",
  "krilla-svg",
  "rustc-hash",
  "serde",
@@ -10596,7 +10492,7 @@ dependencies = [
  "siphasher",
  "strict-num",
  "svgtypes",
- "tiny-skia-path 0.12.0",
+ "tiny-skia-path",
  "ttf-parser",
  "unicode-bidi",
  "unicode-script",
@@ -10625,7 +10521,7 @@ dependencies = [
  "skrifa 0.44.0",
  "strict-num",
  "svgtypes",
- "tiny-skia-path 0.12.0",
+ "tiny-skia-path",
  "unicode-bidi",
  "unicode-script",
  "unicode-vo",
@@ -10729,7 +10625,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "log",
  "peniko",
- "png 0.18.1",
+ "png",
  "smallvec",
  "thiserror 2.0.19",
 ]
@@ -10746,7 +10642,7 @@ dependencies = [
  "hashbrown 0.17.1",
  "log",
  "peniko",
- "png 0.18.1",
+ "png",
  "smallvec",
  "thiserror 2.0.19",
 ]
@@ -10760,7 +10656,7 @@ dependencies = [
  "bytemuck",
  "glifo",
  "hashbrown 0.17.1",
- "png 0.18.1",
+ "png",
  "vello_common 0.0.8",
 ]
 
