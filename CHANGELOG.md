@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.42.0](https://github.com/forkwright/aletheia/compare/v0.41.0...v0.42.0) (2026-08-24)
+
+
+### Features
+
+* **aletheia:** kimi could not be declared, so its config fields were ([fd116db](https://github.com/forkwright/aletheia/commit/fd116db52414361beaba6e2d49515a11ca7ee76d))
+* **aletheia:** kimi could not be declared, so its config fields were unreachable ([#6957](https://github.com/forkwright/aletheia/issues/6957)) ([fd116db](https://github.com/forkwright/aletheia/commit/fd116db52414361beaba6e2d49515a11ca7ee76d))
+* **koina:** give NousId a validating FromStr ([#6960](https://github.com/forkwright/aletheia/issues/6960)) ([5287e20](https://github.com/forkwright/aletheia/commit/5287e207b5ce3af2e127ef981fafd6b0cbf78659))
+
+
+### Bug Fixes
+
+* **nous:** before_compact logged "aborted compaction" and then compacted ([f694a16](https://github.com/forkwright/aletheia/commit/f694a16b4c9d76a2f13ac002513794115b0c5ce5))
+* **nous:** before_compact logged "aborted compaction" and then compacted ([#6955](https://github.com/forkwright/aletheia/issues/6955)) ([f694a16](https://github.com/forkwright/aletheia/commit/f694a16b4c9d76a2f13ac002513794115b0c5ce5))
+* **taxis:** a sensitive key holding an object shielded everything inside ([4f6d3c3](https://github.com/forkwright/aletheia/commit/4f6d3c35e62e9855e946691f51f8c644fac2dec4))
+* **taxis:** a sensitive key holding an object shielded everything inside it ([#6956](https://github.com/forkwright/aletheia/issues/6956)) ([4f6d3c3](https://github.com/forkwright/aletheia/commit/4f6d3c35e62e9855e946691f51f8c644fac2dec4))
+
 ## [0.41.0](https://github.com/forkwright/aletheia/compare/v0.40.0...v0.41.0) (2026-08-21)
 
 
