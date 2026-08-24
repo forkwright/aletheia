@@ -18,7 +18,7 @@ snafu = { workspace = true }
 tracing = { workspace = true }
 
 # XLSX backend
-rust_xlsxwriter = { version = "0.94", optional = true }
+rust_xlsxwriter = { version = "0.98", optional = true }
 
 # ODS backend
 spreadsheet-ods = { version = "1.0", optional = true }
