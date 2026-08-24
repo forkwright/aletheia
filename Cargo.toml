@@ -295,27 +295,27 @@ version = "0.4.0"
 
 [workspace.dependencies.parodos]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.0"
+tag = "v1.6.2"
 version = "1.5.0"
 
 [workspace.dependencies.themelion]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.0"
+tag = "v1.6.2"
 version = "1.5.0"
 
 [workspace.dependencies.skeue]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.0"
+tag = "v1.6.2"
 version = "1.5.0"
 
 [workspace.dependencies.gramma]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.0"
+tag = "v1.6.2"
 version = "1.5.0"
 
 [workspace.dependencies.bathron]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.0"
+tag = "v1.6.2"
 version = "1.5.0"
 # WHY `logging` is here despite pylon — this workspace's only bathron consumer
 # — using just the durable-replace primitive: scripts/check-proskenion-pins.py
@@ -326,7 +326,7 @@ features = ["logging", "atomic-write"]
 
 [workspace.dependencies.keryx]
 git = "https://github.com/forkwright/theatron.git"
-tag = "v1.6.0"
+tag = "v1.6.2"
 version = "1.5.0"
 
 [workspace.dependencies.serde]
