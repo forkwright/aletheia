@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.1](https://github.com/forkwright/aletheia/compare/v0.42.0...v0.42.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* **poiesis-printer-chromium:** align which to 8, matching the rest of the workspace ([#6964](https://github.com/forkwright/aletheia/issues/6964)) ([f061463](https://github.com/forkwright/aletheia/commit/f0614630f35a121751e03edcd33a1e29ba1b5cad))
+
 ## [0.42.0](https://github.com/forkwright/aletheia/compare/v0.41.0...v0.42.0) (2026-08-24)
 
 
