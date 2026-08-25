@@ -590,7 +590,7 @@ mod tests {
     struct CountingRouter {
         provider: &'static str,
         confidence: Option<f64>,
-        decisions: std::sync::Mutex<Vec<String>>,
+        after_action_calls: std::sync::atomic::AtomicUsize,
     }
 
     impl CountingRouter {
@@ -598,15 +598,13 @@ mod tests {
             Self {
                 provider,
                 confidence,
-                decisions: std::sync::Mutex::new(Vec::new()),
+                after_action_calls: std::sync::atomic::AtomicUsize::new(0),
             }
         }
 
-        fn recorded(&self) -> Vec<String> {
-            self.decisions
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .clone()
+        fn calls(&self) -> usize {
+            self.after_action_calls
+                .load(std::sync::atomic::Ordering::Relaxed)
         }
     }
 
@@ -618,13 +616,11 @@ mod tests {
         }
         fn after_action(
             &self,
-            decision: &RoutingDecision,
+            _decision: &RoutingDecision,
             _outcome: &TurnOutcome,
         ) -> Result<(), RouterError> {
-            self.decisions
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .push(decision.provider.to_string());
+            self.after_action_calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             Ok(())
         }
     }
@@ -662,12 +658,13 @@ mod tests {
         assert!(router.after_action(&decision, &outcome).is_ok());
 
         assert_eq!(
-            fallback.recorded(),
-            vec!["fallback".to_owned()],
+            fallback.calls(),
+            1,
             "the fallback handled the request, so the fallback learns"
         );
-        assert!(
-            primary.recorded().is_empty(),
+        assert_eq!(
+            primary.calls(),
+            0,
             "the primary must not receive signal for a decision it did not make"
         );
     }
@@ -687,8 +684,8 @@ mod tests {
         let outcome = TurnOutcome::new(ProviderId::new("primary"), TaskCategory::Bug, true, true);
         assert!(router.after_action(&decision, &outcome).is_ok());
 
-        assert_eq!(primary.recorded(), vec!["primary".to_owned()]);
-        assert!(fallback.recorded().is_empty());
+        assert_eq!(primary.calls(), 1);
+        assert_eq!(fallback.calls(), 0);
     }
 
     // WHY(#5218): a primary that reports no confidence at all falls through
@@ -726,8 +723,8 @@ mod tests {
         let outcome = TurnOutcome::new(ProviderId::new("primary"), TaskCategory::Bug, true, true);
         assert!(router.after_action(&fabricated, &outcome).is_ok());
 
-        assert_eq!(primary.recorded(), vec!["primary".to_owned()]);
-        assert!(fallback.recorded().is_empty());
+        assert_eq!(primary.calls(), 1);
+        assert_eq!(fallback.calls(), 0);
     }
 
     // WHY(#3969): a primary that returns None confidence (e.g. static router)
