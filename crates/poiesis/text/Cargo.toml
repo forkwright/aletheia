@@ -16,7 +16,7 @@ poiesis-core = { path = "../core" }
 snafu = { workspace = true }
 
 # PDF backend
-krilla = { version = "0.7", optional = true }
+krilla = { version = "0.8", optional = true }
 
 # ODT backend
 zip = { version = "8", optional = true }
