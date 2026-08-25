@@ -278,7 +278,7 @@ impl WorkspacePackages {
             })?;
             let package_dir = canonicalize_contained_path(&root, manifest_dir.as_std_path())?;
             if package_dirs
-                .insert(package.name.clone(), package_dir)
+                .insert(package.name.to_string(), package_dir)
                 .is_some()
             {
                 return Err(RepomixPackSnafu {
@@ -286,7 +286,7 @@ impl WorkspacePackages {
                 }
                 .build());
             }
-            name_by_id.insert(package_id, package.name.clone());
+            name_by_id.insert(package_id, package.name.to_string());
         }
 
         let mut deps_by_package = HashMap::new();
