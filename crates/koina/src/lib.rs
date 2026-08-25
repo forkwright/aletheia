@@ -23,7 +23,7 @@ pub mod error_class;
 /// Internal event system coupling metrics and structured logs.
 pub mod event;
 /// Shared fjall storage helpers: database open, temp stores, timestamp formatting.
-#[cfg(feature = "fjall")]
+#[cfg(feature = "fjall-helpers")]
 pub mod fjall;
 /// Restricted filesystem helpers for writing sensitive files.
 pub mod fs;

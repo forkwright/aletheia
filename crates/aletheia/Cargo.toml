@@ -77,7 +77,7 @@ dianoia = { path = "../dianoia" }
 aletheia-routing = { path = "../aletheia-routing" }
 energeia = { path = "../energeia", optional = true }
 oikonomos = { path = "../daemon" }
-koina = { path = "../koina", features = ["fjall"] }
+koina = { path = "../koina", features = ["fjall-helpers"] }
 taxis = { path = "../taxis" }
 fjall = { version = "3", default-features = false, features = ["lz4"] }
 hermeneus = { path = "../hermeneus" }

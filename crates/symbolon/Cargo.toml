@@ -19,7 +19,7 @@ test-core = []
 test-full = []
 
 [dependencies]
-koina = { path = "../koina", features = ["fjall"] }
+koina = { path = "../koina", features = ["fjall-helpers"] }
 keyring = { version = "4", optional = true }
 # WHY a direct dependency rather than reaching through `keyring`: keyring 4 re-exports
 # only `Error` and `Result` from keyring-core, not the mock store this crate's tests

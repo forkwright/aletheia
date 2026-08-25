@@ -19,7 +19,7 @@ test-full = []
 [dependencies]
 aletheia-routing = { path = "../aletheia-routing" }
 episteme = { path = "../episteme", default-features = false }
-koina = { path = "../koina", features = ["fjall"] }
+koina = { path = "../koina", features = ["fjall-helpers"] }
 mneme = { path = "../mneme" }
 taxis = { path = "../taxis" }
 # WHY: axum for webhook trigger listener

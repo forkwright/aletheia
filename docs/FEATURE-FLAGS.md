@@ -51,7 +51,7 @@ Cargo metadata cannot infer.
 | **eidos** | `test-core` | no | - | - |
 | **eidos** | `test-full` | no | - | - |
 | **eidos** | `test-support` | no | `test_fixtures` module (Fact/Entity/Relationship builders) | - |
-| **energeia** | `storage-fjall` | no | fjall storage for dispatch orchestration | `dep:fjall`, `koina/fjall` |
+| **energeia** | `storage-fjall` | no | fjall storage for dispatch orchestration | `dep:fjall`, `koina/fjall-helpers` |
 | **energeia** | `test-core` | no | - | `storage-fjall` |
 | **energeia** | `test-full` | no | - | `test-core` |
 | **episteme** | `default` | **yes** | `graph-algo`, `reranker` | - |
@@ -92,7 +92,7 @@ Cargo metadata cannot infer.
 | **integration-tests** | `test-core` | no | - | `engine-tests` |
 | **integration-tests** | `test-full` | no | - | `test-core` |
 | **koina** | `default` | **yes** | *(empty)* | - |
-| **koina** | `fjall` | no | fjall types / utilities | `dep:fjall`, `dep:tempfile` |
+| **koina** | `fjall-helpers` | no | fjall types / utilities | `dep:fjall`, `dep:tempfile` |
 | **koina** | `test-core` | no | - | - |
 | **koina** | `test-full` | no | - | - |
 | **koina** | `test-support` | no | Test helpers | - |
@@ -228,7 +228,7 @@ Because of this, enabling `recall` in the `aletheia` binary automatically pulls 
 | `mneme/storage-fjall` | `mneme/mneme-engine` + `episteme/storage-fjall` |
 | `episteme/storage-fjall` | `episteme/mneme-engine` + `krites/storage-fjall` |
 | `aletheia/storage-fjall` | `mneme/storage-fjall` |
-| `energeia/storage-fjall` | `dep:fjall` + `koina/fjall` |
+| `energeia/storage-fjall` | `dep:fjall` + `koina/fjall-helpers` |
 
 ### Embedding models (`embed-candle` chain)
 
