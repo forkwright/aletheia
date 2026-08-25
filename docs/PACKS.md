@@ -120,6 +120,9 @@ Tools are shell commands exposed to the LLM as callable functions. The runtime p
 | `groups` | list | `["command"]` | Tool gating groups: `read`, `edit`, `command`, `mcp`, `spawn_subtask`, `plan`, `verify` |
 | `tags` | list | `["execute"]` | Operational tags: `recon`, `edit`, `verify`, `fetch`, `spawn`, `plan`, `execute`, `format` |
 | `reversibility` | string | `irreversible` | One of `fully_reversible`, `reversible`, `partially_reversible`, `irreversible` |
+| `env` | list | `[]` | Environment variable names to pass through from the daemon's environment (see [Environment and secrets](#environment-and-secrets)) |
+| `write_paths` | list | `[]` | Additional directories the tool may write to, relative to the pack root |
+| `egress` | string | `inherit` | Network egress intent: `inherit` (deployment sandbox policy applies) or `none` (deny outbound network for this tool) |
 | `input_schema` | object | none | JSON Schema for input parameters |
 
 Input schema properties support types: `string`, `number`, `integer`, `boolean`, `array`, `object`. Each property has a `description` field and optional `enum` and `default` values.
@@ -141,6 +144,22 @@ Diagnostics also record the exit code, wall-clock duration, and — when the san
 - Paths that resolve outside the pack root are rejected (no traversal)
 - No shell interpolation: commands receive input only via stdin
 - Tools are registered with category `Domain` in the tool registry
+- The subprocess environment is cleared except for a small safe allowlist (`PATH`, `HOME`, `TERM`, ...) plus whatever the tool explicitly declares in `env`
+- The sandbox grants the tool read access to its pack root and exec access to its command; `write_paths` is the only way to add write grants, and `egress = "none"` can only tighten the deployment's network policy, never loosen it
+
+### Environment and secrets
+
+Tool subprocesses start with a cleared environment. A tool that needs a value from the outside — a database URL, an API token — must declare the variable *name* in `env`; the value comes from the daemon's own environment, never from `pack.toml`:
+
+```toml
+[[tools]]
+name = "run_query"
+description = "Execute a read-only SQL query"
+command = "tools/query.sh"
+env = ["DATABASE_URL"]
+```
+
+The operator provides the value on the daemon (for example a systemd `EnvironmentFile`); it never enters the pack, the manifest, or the LLM-visible tool schema. A declared variable that is absent from the daemon environment fails tool registration and degrades the pack's [health](#pack-health) — the tool never runs with a silently missing value.
 
 ## Overlays
 
@@ -213,7 +232,8 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
 
    ```bash
    #!/usr/bin/env bash
-   # Reads JSON from stdin, writes result to stdout
+   # Reads JSON from stdin, writes result to stdout.
+   # DATABASE_URL comes from the daemon environment, declared in pack.toml.
    INPUT=$(cat)
    QUERY=$(echo "$INPUT" | jq -r '.sql')
    psql "$DATABASE_URL" -c "$QUERY"
@@ -221,7 +241,7 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
 
 2. Make it executable: `chmod +x tools/query.sh`
 
-3. Declare it in `pack.toml`:
+3. Declare it in `pack.toml`, including the environment the script needs:
 
    ```toml
    [[tools]]
@@ -229,6 +249,7 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
    description = "Execute a read-only SQL query"
    command = "tools/query.sh"
    timeout = 30000
+   env = ["DATABASE_URL"]
 
    [tools.input_schema]
    required = ["sql"]
@@ -237,6 +258,8 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
    type = "string"
    description = "SQL SELECT statement to execute"
    ```
+
+   Without the `env` declaration the script would run with a cleared environment and `$DATABASE_URL` would be empty — see [Environment and secrets](#environment-and-secrets).
 
 ## Filtering to specific agents
 
