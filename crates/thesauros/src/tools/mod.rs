@@ -21,6 +21,19 @@ use crate::error;
 use crate::loader::LoadedPack;
 use crate::manifest::{PackInputSchema, PackToolDef};
 
+/// A pack tool that failed validation or registration, with the pack and
+/// tool it belongs to so the failure can be folded into
+/// [`crate::health::PackReport`] (#5208).
+#[derive(Debug)]
+pub struct PackToolFailure {
+    /// Name of the pack declaring the tool.
+    pub pack_name: String,
+    /// Name of the tool that failed.
+    pub tool_name: String,
+    /// The underlying validation or registration error.
+    pub error: error::Error,
+}
+
 /// Executes a pack-declared shell script with JSON input on stdin.
 struct ShellToolExecutor {
     command_path: PathBuf,
@@ -143,8 +156,12 @@ fn is_text_file_busy(error: &SubprocessError) -> bool {
 /// Register all tools from loaded packs into the tool registry.
 ///
 /// Validates each tool's command path and schema, then registers it.
-/// Invalid tools are skipped with warnings; errors are collected and returned.
-pub fn register_pack_tools(packs: &[LoadedPack], registry: &mut ToolRegistry) -> Vec<error::Error> {
+/// Invalid tools are skipped with warnings; per-tool failures are returned
+/// with their pack association for health reporting.
+pub fn register_pack_tools(
+    packs: &[LoadedPack],
+    registry: &mut ToolRegistry,
+) -> Vec<PackToolFailure> {
     register_pack_tools_with_sandbox(packs, registry, organon::sandbox::SandboxConfig::default())
 }
 
@@ -158,7 +175,7 @@ pub fn register_pack_tools_with_sandbox(
     packs: &[LoadedPack],
     registry: &mut ToolRegistry,
     sandbox: organon::sandbox::SandboxConfig,
-) -> Vec<error::Error> {
+) -> Vec<PackToolFailure> {
     register_pack_tools_impl(packs, registry, sandbox, None)
 }
 
@@ -173,7 +190,7 @@ pub fn register_pack_tools_with_sandbox_and_limits(
     registry: &mut ToolRegistry,
     sandbox: organon::sandbox::SandboxConfig,
     subprocess_timeout_secs: u64,
-) -> Vec<error::Error> {
+) -> Vec<PackToolFailure> {
     let max_timeout_ms = subprocess_timeout_secs.saturating_mul(1_000);
     register_pack_tools_impl(packs, registry, sandbox, Some(max_timeout_ms))
 }
@@ -183,7 +200,7 @@ fn register_pack_tools_impl(
     registry: &mut ToolRegistry,
     sandbox: organon::sandbox::SandboxConfig,
     max_timeout_ms: Option<u64>,
-) -> Vec<error::Error> {
+) -> Vec<PackToolFailure> {
     let mut errors = Vec::new();
     let runner = SubprocessRunner::new(sandbox);
 
@@ -193,7 +210,7 @@ fn register_pack_tools_impl(
         let errors_before = errors.len();
 
         for tool_def in &pack.manifest.tools {
-            match prepare_tool(
+            let failure = match prepare_tool(
                 tool_def,
                 &pack.root,
                 &pack.manifest.name,
@@ -207,19 +224,22 @@ fn register_pack_tools_impl(
                             pack = %pack.manifest.name,
                             "pack tool registered"
                         );
+                        continue;
                     }
-                    Err(e) => {
-                        let err = error::Error::ToolRegistration {
-                            tool_name: tool_def.name.clone(),
-                            pack_name: pack.manifest.name.clone(),
-                            reason: e.to_string(),
-                            location: snafu::location!(),
-                        };
-                        errors.push(err);
-                    }
+                    Err(e) => error::Error::ToolRegistration {
+                        tool_name: tool_def.name.clone(),
+                        pack_name: pack.manifest.name.clone(),
+                        reason: e.to_string(),
+                        location: snafu::location!(),
+                    },
                 },
-                Err(e) => errors.push(e),
-            }
+                Err(e) => e,
+            };
+            errors.push(PackToolFailure {
+                pack_name: pack.manifest.name.clone(),
+                tool_name: tool_def.name.clone(),
+                error: failure,
+            });
         }
 
         if !pack.manifest.tools.is_empty() {

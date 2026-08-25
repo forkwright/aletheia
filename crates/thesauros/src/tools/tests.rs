@@ -347,9 +347,9 @@ fn register_pack_tools_rejects_unknown_capability_metadata() {
     let errors = register_pack_tools(&[pack], &mut registry);
     assert_eq!(errors.len(), 1);
     assert!(
-        errors[0].to_string().contains("unknown tool group"),
+        errors[0].error.to_string().contains("unknown tool group"),
         "unexpected error: {}",
-        errors[0]
+        errors[0].error
     );
     assert!(registry.definitions().is_empty());
 }
@@ -641,6 +641,57 @@ fn error_count_per_pack_not_cumulative() {
     assert_eq!(registry.definitions()[0].name.as_str(), "good_tool_b");
 }
 
+#[test]
+fn duplicate_tool_name_fails_second_pack_and_degrades_its_health() {
+    // WHY(#5208): PACKS.md used to claim duplicate tool names are "rejected at
+    // startup". The actual policy is first-registration-wins: the duplicate is
+    // skipped, and the failure is recorded so the second pack reports Degraded.
+    let dir_a = setup_pack_dir(&[("tools/dup.sh", "#!/bin/sh\necho a")]);
+    make_executable(&dir_a, "tools/dup.sh");
+    let dir_b = setup_pack_dir(&[("tools/dup.sh", "#!/bin/sh\necho b")]);
+    make_executable(&dir_b, "tools/dup.sh");
+
+    let tool = |name: &str| PackToolDef {
+        name: name.to_owned(),
+        description: "Duplicate tool".to_owned(),
+        command: "tools/dup.sh".to_owned(),
+        timeout: 5000,
+        input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
+    };
+    let pack_a = minimal_loaded_pack(&dir_a, vec![tool("dup_tool")]);
+    let mut pack_b = minimal_loaded_pack(&dir_b, vec![tool("dup_tool")]);
+    pack_b.manifest.name = "pack-b".to_owned();
+
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&[pack_a, pack_b], &mut registry);
+    assert_eq!(failures.len(), 1, "second registration must fail");
+    assert_eq!(failures[0].pack_name, "pack-b");
+    assert_eq!(failures[0].tool_name, "dup_tool");
+    assert_eq!(registry.definitions().len(), 1, "first registration wins");
+
+    let mut report = crate::health::PackReport::default();
+    report.packs.push(crate::health::PackHealth::active(
+        "test-pack".to_owned(),
+        dir_a.path().to_path_buf(),
+    ));
+    report.packs.push(crate::health::PackHealth::active(
+        "pack-b".to_owned(),
+        dir_b.path().to_path_buf(),
+    ));
+    report.record_tool_failures(&failures);
+
+    assert_eq!(report.packs[0].status, crate::health::PackStatus::Active);
+    assert_eq!(report.packs[1].status, crate::health::PackStatus::Degraded);
+    assert!(
+        report.packs[1].issues[0].message.contains("dup_tool"),
+        "health issue should name the failed tool: {}",
+        report.packs[1].issues[0].message
+    );
+}
+
 #[tokio::test]
 async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
     let dir = setup_pack_dir(&[("tools/cat.sh", "#!/bin/sh\ncat")]);
@@ -911,9 +962,9 @@ fn register_with_limits_rejects_zero_timeout() {
 
     assert_eq!(errors.len(), 1, "errors: {errors:?}");
     assert!(
-        matches!(errors[0], error::Error::InvalidToolTimeout { .. }),
+        matches!(errors[0].error, error::Error::InvalidToolTimeout { .. }),
         "expected InvalidToolTimeout, got: {}",
-        errors[0]
+        errors[0].error
     );
     assert!(registry.definitions().is_empty());
 }

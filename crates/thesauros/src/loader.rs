@@ -7,6 +7,7 @@ use snafu::ResultExt;
 use tracing::{info, warn};
 
 use crate::error::{self, Result};
+use crate::health::{PackComponent, PackHealth, PackIssue, PackReport, Severity};
 use crate::manifest::{self, ContextEntry, PackManifest, Priority};
 
 /// Maximum bytes read for a single context file.
@@ -103,10 +104,22 @@ impl LoadedPack {
     }
 }
 
+/// Outcome of loading every configured pack: the successfully loaded packs
+/// plus a structured health record for all of them (#5208).
+#[derive(Debug, Clone, Default)]
+pub struct LoadOutcome {
+    /// Packs that loaded and are active (possibly degraded).
+    pub packs: Vec<LoadedPack>,
+    /// Per-pack health, including packs that failed to load.
+    pub report: PackReport,
+}
+
 /// Load all configured domain packs.
 ///
 /// Reads manifests from each path, resolves context files, and returns loaded packs.
-/// Invalid or missing packs emit warnings and are skipped (graceful degradation).
+/// Invalid or missing packs emit warnings and are skipped (graceful degradation);
+/// the per-pack detail of what was skipped is available through
+/// [`load_packs_with_report`].
 ///
 /// # Blocking I/O
 ///
@@ -115,17 +128,33 @@ impl LoadedPack {
 /// within an async context during normal operation, wrap in
 /// `tokio::task::spawn_blocking`.
 pub fn load_packs(paths: &[PathBuf]) -> Vec<LoadedPack> {
+    load_packs_with_report(paths).packs
+}
+
+/// Load all configured domain packs, returning a structured health report
+/// alongside the successfully loaded packs.
+///
+/// Every configured path gets a [`PackHealth`] entry: `Active` when the pack
+/// and all its context loaded, `Degraded` when it loaded with skips, and
+/// `Failed` when the manifest or a required context entry failed.
+pub fn load_packs_with_report(paths: &[PathBuf]) -> LoadOutcome {
     let mut packs = Vec::with_capacity(paths.len());
+    let mut report = PackReport::default();
 
     for path in paths {
-        match load_single_pack(path) {
-            Ok(pack) => {
+        match load_single_pack_inner(path) {
+            Ok((pack, issues)) => {
                 info!(
                     pack = %pack.manifest.name,
                     sections = pack.sections.len(),
                     path = %path.display(),
                     "domain pack loaded"
                 );
+                let mut health = PackHealth::active(pack.manifest.name.clone(), path.clone());
+                for issue in issues {
+                    health.push_issue(issue);
+                }
+                report.packs.push(health);
                 packs.push(pack);
             }
             Err(e) => {
@@ -134,6 +163,7 @@ pub fn load_packs(paths: &[PathBuf]) -> Vec<LoadedPack> {
                     error = %e,
                     "failed to load domain pack, skipping"
                 );
+                report.packs.push(PackHealth::failed(path.clone(), &e));
             }
         }
     }
@@ -143,28 +173,41 @@ pub fn load_packs(paths: &[PathBuf]) -> Vec<LoadedPack> {
         info!(packs = packs.len(), total_sections, "domain packs loaded");
     }
 
-    packs
+    LoadOutcome { packs, report }
 }
 
 /// Load a single domain pack from a directory.
 fn load_single_pack(pack_root: &Path) -> Result<LoadedPack> {
-    let manifest = manifest::load_manifest(pack_root)?;
-    let sections = resolve_context_sections(pack_root, &manifest)?;
+    load_single_pack_inner(pack_root).map(|(pack, _issues)| pack)
+}
 
-    Ok(LoadedPack {
-        manifest,
-        sections,
-        root: pack_root.to_path_buf(),
-    })
+/// Load a single domain pack, also returning health issues for every
+/// non-fatal skip (missing optional context files).
+fn load_single_pack_inner(pack_root: &Path) -> Result<(LoadedPack, Vec<PackIssue>)> {
+    let manifest = manifest::load_manifest(pack_root)?;
+    let (sections, issues) = resolve_context_sections(pack_root, &manifest)?;
+
+    Ok((
+        LoadedPack {
+            manifest,
+            sections,
+            root: pack_root.to_path_buf(),
+        },
+        issues,
+    ))
 }
 
 /// Resolve all context entries into sections with file contents.
 ///
 /// A resolution/read failure on a `Priority::Required` entry fails the whole
 /// pack (propagated to the caller). Failures on any other priority are
-/// logged and the entry is skipped, so the pack still loads.
-fn resolve_context_sections(pack_root: &Path, manifest: &PackManifest) -> Result<Vec<PackSection>> {
+/// logged, skipped, and recorded as health issues, so the pack still loads.
+fn resolve_context_sections(
+    pack_root: &Path,
+    manifest: &PackManifest,
+) -> Result<(Vec<PackSection>, Vec<PackIssue>)> {
     let mut sections = Vec::with_capacity(manifest.context.len());
+    let mut issues = Vec::new();
 
     for entry in &manifest.context {
         match resolve_single_section(pack_root, entry, &manifest.name) {
@@ -177,11 +220,19 @@ fn resolve_context_sections(pack_root: &Path, manifest: &PackManifest) -> Result
                     error = %e,
                     "failed to resolve context file, skipping"
                 );
+                issues.push(PackIssue {
+                    component: PackComponent::Context,
+                    severity: Severity::Warning,
+                    message: format!(
+                        "context file '{}' skipped (priority {:?}): {e}",
+                        entry.path, entry.priority
+                    ),
+                });
             }
         }
     }
 
-    Ok(sections)
+    Ok((sections, issues))
 }
 
 /// Resolve a single context entry into a section.
@@ -568,5 +619,74 @@ system_prompt_additions = ["Answer in bullet points."]
         let dir = setup_pack(&[("pack.toml", "name = \"root-test\"\nversion = \"1.0\"\n")]);
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.root, dir.path());
+    }
+
+    #[test]
+    fn report_marks_clean_pack_active() {
+        let dir = setup_pack(&[
+            ("pack.toml", full_pack_toml()),
+            ("context/LOGIC.md", "logic"),
+            ("context/GLOSSARY.md", "glossary"),
+        ]);
+
+        let outcome = load_packs_with_report(&[dir.path().to_path_buf()]);
+        assert_eq!(outcome.packs.len(), 1);
+        assert_eq!(outcome.report.packs.len(), 1);
+        let health = &outcome.report.packs[0];
+        assert_eq!(health.name, "test-pack");
+        assert_eq!(health.status, crate::health::PackStatus::Active);
+        assert!(health.issues.is_empty());
+        assert!(!outcome.report.has_failures());
+    }
+
+    #[test]
+    fn report_marks_pack_with_skipped_optional_context_degraded() {
+        let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"exists.md\"\n\n[[context]]\npath = \"missing.md\"\n";
+        let dir = setup_pack(&[("pack.toml", toml), ("exists.md", "content")]);
+
+        let outcome = load_packs_with_report(&[dir.path().to_path_buf()]);
+        assert_eq!(outcome.packs.len(), 1, "pack still loads");
+        let health = &outcome.report.packs[0];
+        assert_eq!(health.status, crate::health::PackStatus::Degraded);
+        assert_eq!(health.issues.len(), 1);
+        assert_eq!(
+            health.issues[0].component,
+            crate::health::PackComponent::Context
+        );
+        assert!(
+            health.issues[0].message.contains("missing.md"),
+            "issue should name the skipped file: {}",
+            health.issues[0].message
+        );
+    }
+
+    #[test]
+    fn report_marks_pack_with_failed_required_context_failed() {
+        let toml = "name = \"strict\"\nversion = \"1.0\"\n\n[[context]]\npath = \"missing.md\"\npriority = \"required\"\n";
+        let dir = setup_pack(&[("pack.toml", toml)]);
+
+        let outcome = load_packs_with_report(&[dir.path().to_path_buf()]);
+        assert!(outcome.packs.is_empty(), "pack must not activate");
+        assert_eq!(outcome.report.packs.len(), 1);
+        assert_eq!(
+            outcome.report.packs[0].status,
+            crate::health::PackStatus::Failed
+        );
+        assert!(outcome.report.has_failures());
+    }
+
+    #[test]
+    fn report_records_invalid_manifest_as_failed() {
+        let dir = setup_pack(&[("pack.toml", "name = \"bad name!\"\nversion = \"1.0\"\n")]);
+
+        let outcome = load_packs_with_report(&[dir.path().to_path_buf()]);
+        assert!(outcome.packs.is_empty());
+        assert_eq!(outcome.report.packs.len(), 1);
+        let health = &outcome.report.packs[0];
+        assert_eq!(health.status, crate::health::PackStatus::Failed);
+        assert_eq!(
+            health.issues[0].component,
+            crate::health::PackComponent::Manifest
+        );
     }
 }

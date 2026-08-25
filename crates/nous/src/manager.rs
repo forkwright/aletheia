@@ -223,6 +223,10 @@ pub struct NousManager {
     #[cfg(feature = "knowledge-store")]
     knowledge_stores: HashMap<String, Arc<KnowledgeStore>>,
     packs: Arc<Vec<LoadedPack>>,
+    /// Structured health of the configured domain packs (#5208): what
+    /// loaded, what degraded, what failed. Read path for future
+    /// daemon/API/desktop surfaces.
+    pack_report: thesauros::health::PackReport,
     router: Option<Arc<crate::cross::CrossNousRouter>>,
     tool_services: Option<Arc<ToolServices>>,
     ready_tx: watch::Sender<bool>,
@@ -284,6 +288,7 @@ impl NousManager {
             // kanon:ignore RUST/no-result-unwrap-or-default — Option<HashMap>; empty map when knowledge-store feature is absent
             knowledge_stores: knowledge_stores.unwrap_or_default(),
             packs,
+            pack_report: thesauros::health::PackReport::default(),
             router,
             tool_services,
             ready_tx,
@@ -331,6 +336,22 @@ impl NousManager {
     pub fn with_empirical_router(mut self, router: Arc<dyn Router>) -> Self {
         self.empirical_router = Some(router);
         self
+    }
+
+    /// Attach the structured domain-pack health report (#5208).
+    ///
+    /// The report is a startup snapshot: packs are loaded once before any
+    /// actor spawns, so their health cannot change underneath a reader.
+    #[must_use]
+    pub fn with_pack_report(mut self, report: thesauros::health::PackReport) -> Self {
+        self.pack_report = report;
+        self
+    }
+
+    /// Structured health of the configured domain packs.
+    #[must_use]
+    pub fn pack_report(&self) -> &thesauros::health::PackReport {
+        &self.pack_report
     }
 
     /// Signal that all actors are spawned and the system is ready for inbound messages.

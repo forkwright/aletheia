@@ -476,15 +476,16 @@ impl RuntimeBuilder {
 
         // WHY: load_packs performs synchronous file I/O; wrap in spawn_blocking
         // so the async runtime thread is not stalled during pack discovery.
-        let loaded_packs = if self.domain_packs {
+        let pack_outcome = if self.domain_packs {
             let packs = resolve_pack_paths(&self.oikos, &self.config.packs);
-            tokio::task::spawn_blocking(move || thesauros::loader::load_packs(&packs))
+            tokio::task::spawn_blocking(move || thesauros::loader::load_packs_with_report(&packs))
                 .await
                 .whatever_context("pack loading task panicked")?
         } else {
-            Vec::new()
+            thesauros::loader::LoadOutcome::default()
         };
-        let packs = Arc::new(loaded_packs);
+        let mut pack_report = pack_outcome.report;
+        let packs = Arc::new(pack_outcome.packs);
 
         let db_path = self.oikos.sessions_db();
         if let Some(parent) = db_path.parent() {
@@ -555,14 +556,46 @@ impl RuntimeBuilder {
         };
 
         if self.domain_packs {
-            let tool_errors = thesauros::tools::register_pack_tools_with_sandbox_and_limits(
+            let tool_failures = thesauros::tools::register_pack_tools_with_sandbox_and_limits(
                 &packs,
                 &mut tool_registry,
                 sandbox_config(&self.config),
                 self.config.tool_limits.subprocess_timeout_secs,
             );
-            for err in &tool_errors {
-                warn!(error = %err, "failed to register pack tool");
+            for failure in &tool_failures {
+                warn!(
+                    pack = %failure.pack_name,
+                    tool = %failure.tool_name,
+                    error = %failure.error,
+                    "failed to register pack tool"
+                );
+            }
+            pack_report.record_tool_failures(&tool_failures);
+
+            // WHY(#5208): a pack can be active, degraded, or failed; the
+            // summary line is the daemon-visible record operators and log
+            // scrapers key on, and pack_report carries the structured detail.
+            let counts = pack_report.status_counts();
+            if counts.failed > 0 || counts.degraded > 0 {
+                warn!(
+                    active = counts.active,
+                    degraded = counts.degraded,
+                    failed = counts.failed,
+                    "domain pack health: some packs are degraded or failed"
+                );
+                for pack in &pack_report.packs {
+                    for issue in &pack.issues {
+                        warn!(
+                            pack = %pack.name,
+                            component = ?issue.component,
+                            severity = ?issue.severity,
+                            "{}",
+                            issue.message,
+                        );
+                    }
+                }
+            } else if counts.active > 0 {
+                info!(active = counts.active, "domain packs fully active");
             }
         }
 
@@ -869,7 +902,8 @@ impl RuntimeBuilder {
             self.config.tool_limits.clone(),
         )
         .with_audit_log(Arc::clone(&audit_log))
-        .with_empirical_router(Arc::clone(&empirical_router));
+        .with_empirical_router(Arc::clone(&empirical_router))
+        .with_pack_report(pack_report);
 
         {
             for agent_def in &self.config.agents.list {
