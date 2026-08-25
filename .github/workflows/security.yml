@@ -128,7 +128,12 @@ jobs:
   secret-scan:
     name: trufflehog secret scan
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # WHY(aletheia#6961-class, measured): the 15-minute budget assumed a warm
+    # trufflehog image pull. The v0.42.2 release run (32892639873) spent 14
+    # minutes pulling ghcr.io/trufflesecurity/trufflehog and was cancelled 55s
+    # into the actual scan. 30 covers a cold pull plus a full-history scan of
+    # this repo with margin; re-measure before raising again.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
