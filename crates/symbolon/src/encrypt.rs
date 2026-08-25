@@ -12,8 +12,7 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use aes_gcm::aead::generic_array::GenericArray;
-use aes_gcm::aead::{Aead, AeadCore, OsRng};
+use aes_gcm::aead::{Aead, Generate as _, Nonce};
 use aes_gcm::{Aes256Gcm, KeyInit};
 
 use crate::util::{base64_decode, base64_encode};
@@ -202,8 +201,8 @@ pub(crate) fn commit_key_file(credential_path: &Path, tmp: &Path) -> std::io::Re
 ///
 /// Returns an `io::Error` if the AEAD primitive fails.
 pub(crate) fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<String> {
-    let cipher = Aes256Gcm::new(GenericArray::from_slice(key));
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let cipher = Aes256Gcm::new(key.into());
+    let nonce = Nonce::<Aes256Gcm>::generate();
 
     let ciphertext_with_tag = cipher
         .encrypt(&nonce, plaintext)
@@ -236,11 +235,13 @@ pub(crate) fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec
 
     let (nonce_bytes, ciphertext_with_tag) = combined.split_at(NONCE_LEN);
 
-    let cipher = Aes256Gcm::new(GenericArray::from_slice(key));
-    let nonce = GenericArray::from_slice(nonce_bytes);
+    let cipher = Aes256Gcm::new(key.into());
+    let nonce = Nonce::<Aes256Gcm>::try_from(nonce_bytes).map_err(|_err| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid nonce length")
+    })?;
 
     let plaintext = cipher
-        .decrypt(nonce, ciphertext_with_tag)
+        .decrypt(&nonce, ciphertext_with_tag)
         .map_err(|_ignored| {
             std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
