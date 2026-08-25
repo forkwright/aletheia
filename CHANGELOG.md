@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.42.2](https://github.com/forkwright/aletheia/compare/v0.42.1...v0.42.2) (2026-08-25)
+
+
+### Bug Fixes
+
+* **ci:** name the major the fetch-metadata pin actually is ([#6983](https://github.com/forkwright/aletheia/issues/6983)) ([8052421](https://github.com/forkwright/aletheia/commit/8052421726d4c18dbb7755af80b725afa4763455))
+* **deps:** adapt all three workspaces to aes-gcm 0.11.1 ([#6986](https://github.com/forkwright/aletheia/issues/6986)) ([0613e56](https://github.com/forkwright/aletheia/commit/0613e5688f7de6a9f80ea0130135f8cc8cea89fd))
+* **diaporeia:** align cargo_metadata to 0.23 and hoist it to the workspace ([#6980](https://github.com/forkwright/aletheia/issues/6980)) ([589308d](https://github.com/forkwright/aletheia/commit/589308d10b64a61b2baa03d5be8f24f5ba100a25))
+* **koina:** rename the fjall feature to fjall-helpers ([#6989](https://github.com/forkwright/aletheia/issues/6989)) ([298f083](https://github.com/forkwright/aletheia/commit/298f0834c66c4910bd54219984240222fc6a75a3))
+
 ## [0.42.1](https://github.com/forkwright/aletheia/compare/v0.42.0...v0.42.1) (2026-08-25)
 
 
