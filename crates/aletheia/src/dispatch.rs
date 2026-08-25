@@ -147,7 +147,17 @@ async fn dispatch_one(
         "dispatching turn"
     );
 
-    let turn_result = match handle.send_turn(&session_key, &msg.text).await {
+    // WHY(#5219): this turn arrived over an external channel — the ingress
+    // marker flows through to the routing-outcome record so channel-origin
+    // turns carry their privacy boundary posture explicitly instead of
+    // silently reading as operator-direct, cloud-default turns.
+    let ingress = aletheia_routing::types::IngressSource::ExternalChannel {
+        channel: Arc::from(msg.channel.as_str()),
+    };
+    let turn_result = match handle
+        .send_turn_with_ingress(&session_key, &msg.text, ingress)
+        .await
+    {
         Ok(result) => result,
         Err(e) => {
             warn!(error = %e, nous_id = %decision.nous_id, "turn failed");

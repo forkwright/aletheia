@@ -282,10 +282,10 @@ mod tests {
     }
 
     #[test]
-    fn from_prompt_defaults_to_feature() {
+    fn from_prompt_marks_unmatched_prompt_unknown() {
         assert_eq!(
             TaskCategory::from_prompt("implement empirical router"),
-            TaskCategory::Feature
+            TaskCategory::Unknown
         );
     }
 
@@ -297,6 +297,7 @@ mod tests {
         assert_eq!(TaskCategory::Docs.to_string(), "docs");
         assert_eq!(TaskCategory::Test.to_string(), "test");
         assert_eq!(TaskCategory::Chore.to_string(), "chore");
+        assert_eq!(TaskCategory::Unknown.to_string(), "unknown");
     }
 
     #[test]
@@ -392,13 +393,16 @@ mod tests {
     #[tokio::test]
     async fn empirical_model_for_prompt_excludes_cloud_candidate_under_local_boundary() {
         let tmp = tempfile::tempdir().unwrap();
+        // WHY(#5217): "implement a feature" has no keyword signal, so it
+        // categorizes as Unknown; the stats below must be keyed "unknown"
+        // for the empirical path to engage at all.
         for _ in 0..10 {
             write_session_line(
                 tmp.path(),
                 "2026-04-17.jsonl",
                 "cloud-model",
                 "success",
-                "feature",
+                "unknown",
             );
         }
         for _ in 0..6 {
@@ -407,7 +411,7 @@ mod tests {
                 "2026-04-17.jsonl",
                 "local-model",
                 "success",
-                "feature",
+                "unknown",
             );
         }
         for _ in 0..4 {
@@ -416,7 +420,7 @@ mod tests {
                 "2026-04-17.jsonl",
                 "local-model",
                 "failed",
-                "feature",
+                "unknown",
             );
         }
 

@@ -14,8 +14,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use aletheia_routing::types::{InterventionStatus, ProviderId, TaskCategory};
-use aletheia_routing::{AfterActionStore, RecordingRouter};
+use aletheia_routing::types::{IngressSource, InterventionStatus, ProviderId, TaskCategory};
+use aletheia_routing::{AfterActionStore, BoundarySource, RecordingRouter, RoutingBoundary};
 
 use super::*;
 
@@ -701,8 +701,11 @@ async fn poor_interactive_outcome_does_not_increase_success_rate() {
     );
 
     // Good turn: no errors, no intervention, within budget.
+    // WHY(#5217): "build a feature" has no keyword signal, so these turns
+    // aggregate under TaskCategory::Unknown rather than the old Feature
+    // default.
     let good = make_turn_result(50, vec![make_tool_call("read_file", false)]);
-    actor.record_router_outcome("s", "build a feature", &good);
+    actor.record_router_outcome("s", "build a feature", &good, None);
 
     // Poor turn: every tool call errored and the loop guard replaced content.
     let mut bad = make_turn_result(
@@ -717,12 +720,12 @@ async fn poor_interactive_outcome_does_not_increase_success_rate() {
          Please provide guidance or clarification to continue.]"
         .to_owned();
     actor.sessions.get_mut("s").unwrap().brake_tripped = true;
-    actor.record_router_outcome("s", "build a feature", &bad);
+    actor.record_router_outcome("s", "build a feature", &bad, None);
 
     let provider = ProviderId::new("test-model");
     for _ in 0..20 {
         if let Some(stats) = store
-            .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
+            .rolling_stats(&provider, &TaskCategory::Unknown, Duration::from_hours(168))
             .await
             .expect("rolling stats query")
         {
@@ -774,7 +777,7 @@ async fn record_router_outcome_keys_on_observed_provider_not_model() {
 
     let mut turn = make_turn_result(50, vec![make_tool_call("read_file", false)]);
     turn.provider_used = Some("anthropic".to_owned());
-    actor.record_router_outcome("s", "build a feature", &turn);
+    actor.record_router_outcome("s", "build a feature", &turn, None);
 
     let observed_provider = ProviderId::new("anthropic");
     let model_as_provider = ProviderId::new("test-model");
@@ -782,7 +785,7 @@ async fn record_router_outcome_keys_on_observed_provider_not_model() {
         if let Some(stats) = store
             .rolling_stats(
                 &observed_provider,
-                &TaskCategory::Feature,
+                &TaskCategory::Unknown,
                 Duration::from_hours(168),
             )
             .await
@@ -796,7 +799,7 @@ async fn record_router_outcome_keys_on_observed_provider_not_model() {
                 store
                     .rolling_stats(
                         &model_as_provider,
-                        &TaskCategory::Feature,
+                        &TaskCategory::Unknown,
                         Duration::from_hours(168)
                     )
                     .await
@@ -810,4 +813,80 @@ async fn record_router_outcome_keys_on_observed_provider_not_model() {
     }
 
     panic!("turn was not recorded under the observed provider");
+}
+
+/// WHY(#5219): a turn arriving over an external channel (agora:
+/// Signal/Matrix) must carry its ingress and the clamped privacy boundary on
+/// the durable routing record — never a silent cloud default.
+#[tokio::test]
+async fn record_router_outcome_marks_external_channel_provenance() {
+    let store = Arc::new(AfterActionStore::in_memory());
+    let router: Arc<dyn aletheia_routing::Router> =
+        Arc::new(RecordingRouter::new(Arc::clone(&store), "test-model"));
+
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.services.router = router;
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+
+    let turn = make_turn_result(50, vec![make_tool_call("read_file", false)]);
+    let ingress = IngressSource::ExternalChannel {
+        channel: Arc::from("signal"),
+    };
+    actor.record_router_outcome("s", "build a feature", &turn, Some(&ingress));
+
+    for _ in 0..20 {
+        let outcomes = store.recent_outcomes().await;
+        if let Some(recorded) = outcomes.first() {
+            assert_eq!(recorded.ingress.channel(), Some("signal"));
+            assert_eq!(recorded.boundary, Some(RoutingBoundary::LocalHosted));
+            assert_eq!(
+                recorded.boundary_source,
+                Some(BoundarySource::ExternalChannelDefault),
+                "an external-channel turn without an explicit boundary must \
+                 record the clamp, not the cloud default"
+            );
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+
+    panic!("external-channel turn was not recorded");
+}
+
+/// WHY(#5219): an operator-direct turn keeps the cloud compatibility default
+/// and the record says the posture came from the default, not a choice.
+#[tokio::test]
+async fn record_router_outcome_marks_operator_default_provenance() {
+    let store = Arc::new(AfterActionStore::in_memory());
+    let router: Arc<dyn aletheia_routing::Router> =
+        Arc::new(RecordingRouter::new(Arc::clone(&store), "test-model"));
+
+    let (mut actor, _tx, _dir) = make_test_actor(PipelineConfig::default());
+    actor.services.router = router;
+    actor.sessions.insert(
+        "s".to_owned(),
+        SessionState::new("ses-1".to_owned(), "s".to_owned(), &test_config()),
+    );
+
+    let turn = make_turn_result(50, vec![make_tool_call("read_file", false)]);
+    actor.record_router_outcome("s", "build a feature", &turn, None);
+
+    for _ in 0..20 {
+        let outcomes = store.recent_outcomes().await;
+        if let Some(recorded) = outcomes.first() {
+            assert_eq!(recorded.ingress, IngressSource::Operator);
+            assert_eq!(recorded.boundary, Some(RoutingBoundary::Cloud));
+            assert_eq!(
+                recorded.boundary_source,
+                Some(BoundarySource::OperatorDefault)
+            );
+            return;
+        }
+        tokio::task::yield_now().await;
+    }
+
+    panic!("operator turn was not recorded");
 }

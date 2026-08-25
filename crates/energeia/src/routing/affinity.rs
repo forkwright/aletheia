@@ -255,7 +255,8 @@ impl AffinityRouter {
                 "affinity router overriding empirical selection"
             );
 
-            let new_base = RoutingDecision::new(affinity_winner.0.clone(), None);
+            let new_base = RoutingDecision::new(affinity_winner.0.clone(), None)
+                .with_request_provenance(features);
             let rationale = format!(
                 "affinity-override: provider={affinity_winner} gap={gap:.3} category={category}",
             );

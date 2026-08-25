@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use aletheia_routing::RoutingDecision;
 use aletheia_routing::types::{
-    BudgetStatus, CompletionStatus, CorrectionStatus, InteractiveOutcome, InterventionStatus,
-    ProviderId, ProviderStatus, TaskCategory, TurnOutcome,
+    BudgetStatus, CompletionStatus, CorrectionStatus, IngressSource, InteractiveOutcome,
+    InterventionStatus, ProviderId, ProviderStatus, RequestFeatures, TaskCategory, TurnOutcome,
 };
 use tracing::warn;
 
@@ -182,6 +182,12 @@ impl NousActor {
     /// intervention, budget) rather than the coarse "non-degraded == success"
     /// heuristic.
     ///
+    /// The outcome record carries the turn's ingress and the privacy boundary
+    /// the routing layer applies for that ingress (#5219): an external-channel
+    /// turn is recorded with the clamped local-hosted posture unless the
+    /// caller explicitly chose a boundary, so channel-origin turns never
+    /// silently read as cloud-default routing.
+    ///
     /// WHY fire-and-forget via the trait: `Router::after_action` is sync and
     /// internally spawns the store write as a background task so the response
     /// path is never blocked by the write lock.
@@ -191,6 +197,7 @@ impl NousActor {
         session_key: &str,
         content: &str,
         turn_result: &TurnResult,
+        ingress: Option<&IngressSource>,
     ) {
         if turn_result.model_used.is_empty() {
             // WHY: degraded-mode turns have no model; skip.
@@ -221,17 +228,36 @@ impl NousActor {
             .unwrap_or(turn_result.model_used.as_str());
         let provider = ProviderId::new(provider_str);
         let model = Some(Arc::from(turn_result.model_used.as_str()));
+
+        let ingress = ingress.cloned().unwrap_or_default();
+        // WHY(#5219): the boundary provenance recorded with this outcome is
+        // the boundary the routing layer applies to requests with this
+        // ingress — for external-channel turns that is the clamped
+        // local-hosted posture, never a silent cloud default. Interactive
+        // model selection itself remains complexity/config-driven; this
+        // record is the audit trail, not a model-selection gate.
+        let features = RequestFeatures::new(
+            vec![provider.clone()],
+            Some(task_category),
+            Some(Arc::from(content)),
+        )
+        .with_ingress(ingress.clone());
+        let applied_boundary = features.applied_boundary();
+
         let outcome = TurnOutcome::with_interactive_outcome(
             provider,
             model,
             task_category,
             true, // is_interactive
             interactive_outcome,
-        );
+        )
+        .with_ingress(ingress)
+        .with_boundary_provenance(applied_boundary);
 
         // WHY: confidence is not available at finalize time (the store was
-        // queried during execute), so the decision carries only the provider.
-        let decision = RoutingDecision::new(provider_str, None);
+        // queried during execute), so the decision carries only the provider
+        // plus the same request provenance recorded on the outcome.
+        let decision = RoutingDecision::new(provider_str, None).with_request_provenance(&features);
 
         if let Err(e) = self.services.router.after_action(&decision, &outcome) {
             tracing::warn!(error = %e, "empirical router after_action failed");

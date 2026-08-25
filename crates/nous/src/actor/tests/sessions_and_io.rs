@@ -676,6 +676,7 @@ async fn finalize_turn_spawns_extraction_for_a_healthy_turn() {
             "no-such-session",
             "user content long enough to pass the extraction gate",
             &result,
+            None,
         )
         .await;
 
@@ -709,6 +710,7 @@ async fn finalize_turn_never_spawns_extraction_for_a_degraded_turn() {
             "no-such-session",
             "user content long enough to pass the extraction gate",
             &result,
+            None,
         )
         .await;
 

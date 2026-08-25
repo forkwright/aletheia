@@ -469,6 +469,7 @@ impl NousActor {
                             session_key,
                             session_id,
                             content,
+                            ingress,
                             span,
                             turn_cancel,
                             reply,
@@ -479,7 +480,7 @@ impl NousActor {
                                     panic_count: self.runtime.pipeline_panic_count,
                                 }.build()));
                             } else {
-                                self.handle_turn(session_key, session_id, content, span, turn_cancel, reply).await;
+                                self.handle_turn(session_key, session_id, content, ingress, span, turn_cancel, reply).await;
                             }
                         }
                         NousMessage::StreamingTurn {
@@ -664,7 +665,10 @@ impl NousActor {
             )
             .await;
 
-        self.finalize_turn(&session_key, &content, &result).await;
+        // WHY: cross-nous turns are internal agent-to-agent traffic, not
+        // external-channel ingress — no ingress marker.
+        self.finalize_turn(&session_key, &content, &result, None)
+            .await;
 
         if expects_reply {
             let reply_content = match &result {

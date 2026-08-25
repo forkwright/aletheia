@@ -89,11 +89,43 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             content: content.into(),
+            ingress: None,
             span: tracing::Span::current(),
             turn_cancel: CancellationToken::new(),
             reply: tx,
         };
         self.send_with_timeout(msg, timeout).await?;
+        rx.await.map_err(|_send_err| {
+            ActorRecvSnafu {
+                message: format!("actor '{}' dropped reply", self.id),
+            }
+            .build()
+        })?
+    }
+
+    /// Send a turn that arrived over an external channel (agora: Signal,
+    /// Matrix, ...), recording its ingress for routing provenance (#5219).
+    ///
+    /// Same semantics as [`send_turn`](Self::send_turn); the ingress marker
+    /// flows to the after-action routing record so channel-origin turns carry
+    /// their privacy boundary posture explicitly.
+    pub async fn send_turn_with_ingress(
+        &self,
+        session_key: impl Into<String>,
+        content: impl Into<String>,
+        ingress: aletheia_routing::types::IngressSource,
+    ) -> error::Result<TurnResult> {
+        let (tx, rx) = oneshot::channel();
+        let msg = NousMessage::Turn {
+            session_key: session_key.into(),
+            session_id: None,
+            content: content.into(),
+            ingress: Some(ingress),
+            span: tracing::Span::current(),
+            turn_cancel: CancellationToken::new(),
+            reply: tx,
+        };
+        self.send_with_timeout(msg, DEFAULT_SEND_TIMEOUT).await?;
         rx.await.map_err(|_send_err| {
             ActorRecvSnafu {
                 message: format!("actor '{}' dropped reply", self.id),
@@ -119,6 +151,7 @@ impl NousHandle {
             session_key: session_key.into(),
             session_id,
             content: content.into(),
+            ingress: None,
             span: tracing::Span::current(),
             turn_cancel,
             reply: tx,
@@ -727,6 +760,7 @@ mod tests {
                     session_key: "main".to_owned(),
                     session_id: None,
                     content: "hello".to_owned(),
+                    ingress: None,
                     span: tracing::Span::current(),
                     turn_cancel: CancellationToken::new(),
                     reply: reply_tx,

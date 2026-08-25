@@ -223,7 +223,7 @@ impl Router for EmpiricalRouter {
                     None
                 }
             };
-            RoutingDecision::new(chosen.0.clone(), confidence)
+            RoutingDecision::new(chosen.0.clone(), confidence).with_request_provenance(features)
         })
     }
 
