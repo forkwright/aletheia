@@ -1382,6 +1382,7 @@ pub(super) fn start_inbound_dispatch(
             Arc::clone(nous_manager),
             Arc::clone(&channel_registry),
             session_store,
+            config.messaging.commands.clone(),
             ready_rx,
         ))
     };

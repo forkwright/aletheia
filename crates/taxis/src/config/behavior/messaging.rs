@@ -51,6 +51,9 @@ pub struct MessagingConfig {
     /// Per-agent outbound-recipient allowlist and default-deny posture,
     /// enforced by `agora::ChannelRegistry::send` before any provider send.
     pub outbound: OutboundMessagePolicy,
+    /// Inbound `!`-command authorization: who may invoke operational
+    /// commands from a channel, and which commands stay public.
+    pub commands: InboundCommandPolicy,
 }
 
 impl Default for MessagingConfig {
@@ -66,6 +69,7 @@ impl Default for MessagingConfig {
             agent_dispatch_timeout_secs: DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS,
             max_concurrent_handlers: 64,
             outbound: OutboundMessagePolicy::default(),
+            commands: InboundCommandPolicy::default(),
         }
     }
 }
@@ -125,6 +129,74 @@ impl OutboundMessagePolicy {
     }
 }
 
+/// Inbound `!`-command authorization policy for external channels.
+///
+/// WHY default-deny (#5193): any inbound message that parses as a `!`
+/// command is intercepted after routing and can enumerate agents, channel
+/// health, models, skills, blackboard entries, and sessions. Wildcard and
+/// default routes make that surface available to broad sender sets, so the
+/// safe default is that only `public_commands` are reachable and the
+/// operational surface requires an explicit `operators` entry naming the
+/// sender.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct InboundCommandPolicy {
+    /// Sender patterns granted the full operator command surface. Each
+    /// entry is `"channel:source"`; either segment may be `"*"`, and the
+    /// source segment may itself contain `:` (e.g. Matrix user IDs) —
+    /// only the first `:` separates the channel.
+    pub operators: Vec<String>,
+    /// Command names any sender may invoke (without the leading `!`).
+    /// Default: `["help", "ping"]` — liveness and discovery reveal no
+    /// fleet state.
+    pub public_commands: Vec<String>,
+    /// Allow every command from any sender. Default: `false` (fail
+    /// closed). Setting this to `true` restores the pre-policy behavior
+    /// and is an explicit operator opt-out.
+    pub default_allow: bool,
+}
+
+impl Default for InboundCommandPolicy {
+    fn default() -> Self {
+        Self {
+            operators: Vec::new(),
+            public_commands: vec!["help".to_owned(), "ping".to_owned()],
+            default_allow: false,
+        }
+    }
+}
+
+impl InboundCommandPolicy {
+    /// Whether `command` (name without the leading `!`) may be invoked by
+    /// `sender` on `channel` under this policy.
+    #[must_use]
+    pub fn allows(&self, command: &str, channel: &str, sender: &str) -> bool {
+        self.is_operator(channel, sender)
+            || self.public_commands.iter().any(|c| c == command)
+    }
+
+    /// Whether `sender` on `channel` holds the operator command tier.
+    #[must_use]
+    pub fn is_operator(&self, channel: &str, sender: &str) -> bool {
+        self.default_allow
+            || self
+                .operators
+                .iter()
+                .any(|pattern| sender_pattern_matches(pattern, channel, sender))
+    }
+}
+
+fn sender_pattern_matches(pattern: &str, channel: &str, sender: &str) -> bool {
+    let Some((channel_pat, source_pat)) = pattern.split_once(':') else {
+        // WHY: a pattern without a channel separator can never match;
+        // treating it as malformed-deny keeps a typo from widening access.
+        return false;
+    };
+    (channel_pat == "*" || channel_pat == channel) && (source_pat == "*" || source_pat == sender)
+}
+
 #[cfg(test)]
 const _: () =
     assert!(DEFAULT_POLL_INTERVAL_MS == agora::semeion::DEFAULT_POLL_INTERVAL.as_secs() * 1_000);
@@ -155,8 +227,8 @@ const _: () =
 // appearing textually after a #[cfg(test)] mod -- so the test module must
 // be the final item in the file.
 #[cfg(test)]
-mod outbound_policy_tests {
-    use super::OutboundMessagePolicy;
+mod policy_tests {
+    use super::{InboundCommandPolicy, OutboundMessagePolicy};
 
     #[test]
     fn default_denies_unconfigured_sender() {
@@ -200,5 +272,81 @@ mod outbound_policy_tests {
         // WHY: default_deny only relaxes "no allowlist entry" -- an
         // unattributed sender is still refused.
         assert!(!policy.allows(None, "+15550100"));
+    }
+
+    #[test]
+    fn inbound_default_denies_operator_commands() {
+        let policy = InboundCommandPolicy::default();
+        assert!(!policy.allows("agents", "signal", "+15550100"));
+        assert!(!policy.allows("blackboard", "matrix", "@mallory:example.org"));
+        assert!(!policy.is_operator("signal", "+15550100"));
+    }
+
+    #[test]
+    fn inbound_default_allows_public_subset() {
+        let policy = InboundCommandPolicy::default();
+        assert!(policy.allows("help", "signal", "+15550100"));
+        assert!(policy.allows("ping", "matrix", "@anyone:example.org"));
+    }
+
+    #[test]
+    fn inbound_operator_entry_grants_full_surface() {
+        let policy = InboundCommandPolicy {
+            operators: vec!["signal:+15550100".to_owned()],
+            ..InboundCommandPolicy::default()
+        };
+        assert!(policy.allows("agents", "signal", "+15550100"));
+        assert!(policy.is_operator("signal", "+15550100"));
+        // WHY: the grant is scoped to the exact channel + sender pair.
+        assert!(!policy.allows("agents", "matrix", "+15550100"));
+        assert!(!policy.allows("agents", "signal", "+15550999"));
+    }
+
+    #[test]
+    fn inbound_operator_wildcards() {
+        let policy = InboundCommandPolicy {
+            operators: vec!["matrix:*".to_owned()],
+            ..InboundCommandPolicy::default()
+        };
+        assert!(policy.allows("channels", "matrix", "@alice:example.org"));
+        assert!(!policy.allows("channels", "signal", "@alice:example.org"));
+    }
+
+    #[test]
+    fn inbound_operator_source_may_contain_colons() {
+        let policy = InboundCommandPolicy {
+            operators: vec!["matrix:@alice:example.org".to_owned()],
+            ..InboundCommandPolicy::default()
+        };
+        assert!(policy.allows("uptime", "matrix", "@alice:example.org"));
+        assert!(!policy.allows("uptime", "matrix", "@bob:example.org"));
+    }
+
+    #[test]
+    fn inbound_malformed_pattern_never_matches() {
+        let policy = InboundCommandPolicy {
+            operators: vec!["no-separator".to_owned()],
+            ..InboundCommandPolicy::default()
+        };
+        assert!(!policy.is_operator("signal", "no-separator"));
+    }
+
+    #[test]
+    fn inbound_default_allow_restores_open_behavior() {
+        let policy = InboundCommandPolicy {
+            default_allow: true,
+            ..InboundCommandPolicy::default()
+        };
+        assert!(policy.allows("blackboard", "signal", "+15550999"));
+    }
+
+    #[test]
+    fn inbound_public_commands_are_configurable() {
+        let policy = InboundCommandPolicy {
+            public_commands: vec!["status".to_owned()],
+            ..InboundCommandPolicy::default()
+        };
+        assert!(policy.allows("status", "signal", "+15550999"));
+        assert!(!policy.allows("help", "signal", "+15550999"));
     }
 }

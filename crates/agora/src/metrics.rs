@@ -30,6 +30,11 @@ struct HandlerFailureLabels {
     channel_id: String,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct CommandDeniedLabels {
+    channel_id: String,
+}
+
 // ── Metric families ──
 
 static CHANNEL_MESSAGES_TOTAL: LazyLock<Family<ChannelMessageLabels, Counter>> =
@@ -41,6 +46,9 @@ static PROVIDER_FAILURES_TOTAL: LazyLock<Family<ProviderFailureLabels, Counter>>
     LazyLock::new(Family::default);
 
 static HANDLER_FAILURES_TOTAL: LazyLock<Family<HandlerFailureLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static COMMAND_DENIED_TOTAL: LazyLock<Family<CommandDeniedLabels, Counter>> =
     LazyLock::new(Family::default);
 
 // ── Registration ──
@@ -66,6 +74,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_handler_failures",
         "Total inbound-message handler task failures",
         HANDLER_FAILURES_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_command_denied",
+        "Total inbound commands denied by the inbound command policy",
+        COMMAND_DENIED_TOTAL.clone(),
     );
 }
 
@@ -100,6 +113,18 @@ pub(crate) fn record_provider_failure(channel_id: &str) {
 pub(crate) fn record_handler_failure(channel_id: &str) {
     HANDLER_FAILURES_TOTAL
         .get_or_create(&HandlerFailureLabels {
+            channel_id: channel_id.to_owned(),
+        })
+        .inc();
+}
+
+/// Record an inbound `!`-command denied by the command policy.
+///
+/// `pub` because the enforcement point lives in the binary's dispatch layer,
+/// outside this crate.
+pub fn record_command_denied(channel_id: &str) {
+    COMMAND_DENIED_TOTAL
+        .get_or_create(&CommandDeniedLabels {
             channel_id: channel_id.to_owned(),
         })
         .inc();
@@ -189,6 +214,17 @@ mod tests {
         let out = encode(&r);
         assert!(
             out.contains("aletheia_handler_failures_total{channel_id=\"_test_handler\"} 1"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_command_denied() {
+        let r = fresh_registry();
+        record_command_denied("_test_channel");
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_command_denied_total{channel_id=\"_test_channel\"} 1"),
             "got: {out}"
         );
     }

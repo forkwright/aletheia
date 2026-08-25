@@ -17,6 +17,7 @@ use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
 use nous::manager::NousManager;
 use organon::types::BlackboardViewer;
+use taxis::config::InboundCommandPolicy;
 
 const COMMAND_RECORD_SCHEMA: &str = "aletheia.agora.command.v1";
 
@@ -30,6 +31,7 @@ pub(crate) fn spawn_dispatcher(
     nous_manager: Arc<NousManager>,
     channel_registry: Arc<ChannelRegistry>,
     session_store: Arc<tokio::sync::Mutex<SessionStore>>,
+    command_policy: InboundCommandPolicy,
     mut ready_rx: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!("message_dispatcher");
@@ -50,6 +52,7 @@ pub(crate) fn spawn_dispatcher(
                 let nous_mgr = Arc::clone(&nous_manager);
                 let channels = Arc::clone(&channel_registry);
                 let session_store = Arc::clone(&session_store);
+                let command_policy = command_policy.clone();
                 let msg_span = tracing::info_span!(
                     "dispatch",
                     channel = %msg.channel,
@@ -57,7 +60,7 @@ pub(crate) fn spawn_dispatcher(
                     account = %msg.account_id.as_deref().unwrap_or("default"),
                 );
                 in_flight.spawn(
-                    dispatch_one(msg, router, nous_mgr, channels, session_store)
+                    dispatch_one(msg, router, nous_mgr, channels, session_store, command_policy)
                         .instrument(msg_span),
                 );
 
@@ -92,6 +95,7 @@ async fn dispatch_one(
     nous_manager: Arc<NousManager>,
     channel_registry: Arc<ChannelRegistry>,
     session_store: Arc<tokio::sync::Mutex<SessionStore>>,
+    command_policy: InboundCommandPolicy,
 ) {
     let Some(decision) = router.resolve(&msg) else {
         warn!(
@@ -120,6 +124,27 @@ async fn dispatch_one(
     // NOTE: `!`-commands are intercepted before reaching the nous agent.
     // Plain turns fall through to send_turn as before.
     if let Some(cmd) = command::parse(&msg.text) {
+        // SECURITY(#5193): the operational command surface (fleet state,
+        // channel health, models, skills, blackboard) is denied unless the
+        // inbound command policy grants this channel+sender. Unknown
+        // commands stay public: their reply leaks nothing beyond the
+        // (policy-filtered) !help hint.
+        if !matches!(cmd, command::Command::Unknown { .. })
+            && !command_policy.allows(cmd.name(), &msg.channel, &msg.sender)
+        {
+            agora::metrics::record_command_denied(&msg.channel);
+            warn!(
+                channel = %msg.channel,
+                command = cmd.name(),
+                "inbound command denied by policy"
+            );
+            let reply_text = format!(
+                "Command '!{}' is not available for this conversation.",
+                cmd.name()
+            );
+            send_reply(&msg, &reply_text, &channel_registry).await;
+            return;
+        }
         handle_command_dispatch(CommandDispatch {
             msg: &msg,
             cmd: &cmd,
@@ -128,6 +153,7 @@ async fn dispatch_one(
             nous_manager: &nous_manager,
             channel_registry: &channel_registry,
             session_store: &session_store,
+            command_policy: &command_policy,
         })
         .await;
         return;
@@ -177,6 +203,7 @@ struct CommandDispatch<'a> {
     nous_manager: &'a NousManager,
     channel_registry: &'a ChannelRegistry,
     session_store: &'a Arc<tokio::sync::Mutex<SessionStore>>,
+    command_policy: &'a InboundCommandPolicy,
 }
 
 struct StartedCommandRecord {
@@ -250,12 +277,14 @@ async fn handle_command_dispatch(dispatch: CommandDispatch<'_>) {
             return;
         }
     };
+    let visible_commands = visible_command_names(dispatch.command_policy, dispatch.msg);
     let reply_text = execute_command(
         dispatch.cmd,
         dispatch.nous_id,
         dispatch.session_key,
         dispatch.nous_manager,
         dispatch.channel_registry,
+        visible_commands,
     )
     .await;
     let delivery = send_reply(dispatch.msg, &reply_text, dispatch.channel_registry).await;
@@ -588,6 +617,19 @@ fn normalize_session_key(raw: &str) -> Result<String, SessionKeyError> {
     Ok(format!("h:{}", hex_lower(&digest)))
 }
 
+/// Command names a sender may see in `!help`: the full surface for
+/// operators, only the public subset otherwise.
+fn visible_command_names(policy: &InboundCommandPolicy, msg: &InboundMessage) -> Vec<String> {
+    if policy.is_operator(&msg.channel, &msg.sender) {
+        command::known_command_names()
+            .into_iter()
+            .map(ToOwned::to_owned)
+            .collect()
+    } else {
+        policy.public_commands.clone()
+    }
+}
+
 /// Build a `CommandContext` and execute a parsed command, returning the reply text.
 #[expect(
     clippy::too_many_lines,
@@ -599,6 +641,7 @@ async fn execute_command(
     session_key: &str,
     nous_manager: &NousManager,
     channel_registry: &ChannelRegistry,
+    visible_commands: Vec<String>,
 ) -> String {
     // Gather current-agent snapshot.
     let current_agent = if let Some(handle) = nous_manager.get(nous_id) {
@@ -740,6 +783,7 @@ async fn execute_command(
         skills,
         blackboard_entries,
         channels,
+        visible_commands,
     };
 
     command::execute(cmd, &ctx)
@@ -956,6 +1000,7 @@ mod tests {
         channel_registry: Arc<ChannelRegistry>,
         session_store: Arc<Mutex<SessionStore>>,
         sent: Arc<Mutex<Vec<SendParams>>>,
+        command_policy: InboundCommandPolicy,
     }
 
     async fn make_dispatch_harness() -> DispatchHarness {
@@ -993,6 +1038,7 @@ mod tests {
             channel_registry: Arc::new(channel_registry),
             session_store,
             sent,
+            command_policy: InboundCommandPolicy::default(),
         }
     }
 
@@ -1008,6 +1054,14 @@ mod tests {
                 Arc::strong_count(&remaining)
             ),
         }
+    }
+
+    /// All command names visible, as an operator-tier sender sees them.
+    fn all_visible() -> Vec<String> {
+        command::known_command_names()
+            .into_iter()
+            .map(ToOwned::to_owned)
+            .collect()
     }
 
     fn command_message(text: &str, timestamp: u64) -> InboundMessage {
@@ -1055,6 +1109,7 @@ mod tests {
             Arc::clone(&harness.nous_manager),
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
         )
         .await;
 
@@ -1090,6 +1145,7 @@ mod tests {
             Arc::clone(&harness.nous_manager),
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
         )
         .await;
 
@@ -1153,6 +1209,7 @@ mod tests {
             Arc::clone(&harness.nous_manager),
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
         )
         .await;
 
@@ -1201,6 +1258,7 @@ mod tests {
             Arc::clone(&harness.nous_manager),
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
         )
         .await;
         dispatch_one(
@@ -1209,6 +1267,7 @@ mod tests {
             Arc::clone(&harness.nous_manager),
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
         )
         .await;
 
@@ -1228,6 +1287,138 @@ mod tests {
             json_str(&record_json(&history[1]), "/event"),
             Some("result")
         );
+
+        shutdown_harness(harness).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn wildcard_route_cannot_run_operator_commands_without_policy_grant() {
+        let harness = make_dispatch_harness().await;
+        let msg = command_message("!agents", 1_709_312_345_700);
+
+        dispatch_one(
+            msg,
+            Arc::clone(&harness.router),
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
+        )
+        .await;
+
+        {
+            let sent = harness.sent.lock().await;
+            assert_eq!(sent.len(), 1);
+            assert!(
+                sent[0].text.contains("not available"),
+                "denied command must get a refusal, not fleet state: {:?}",
+                sent[0].text
+            );
+            assert!(!sent[0].text.contains("agent(s) running"));
+        }
+
+        let store = harness.session_store.lock().await;
+        let session_key =
+            normalize_session_key("signal:+15550100").expect("routed session key is valid");
+        assert!(
+            store
+                .find_session("alice", &session_key)
+                .expect("lookup")
+                .is_none(),
+            "a denied command must not create an audit session"
+        );
+        drop(store);
+
+        shutdown_harness(harness).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn allowlisted_sender_runs_operator_commands() {
+        let mut harness = make_dispatch_harness().await;
+        harness.command_policy.operators = vec!["signal:+15550100".to_owned()];
+        let msg = command_message("!uptime", 1_709_312_345_701);
+
+        dispatch_one(
+            msg,
+            Arc::clone(&harness.router),
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
+        )
+        .await;
+
+        {
+            let sent = harness.sent.lock().await;
+            assert_eq!(sent.len(), 1);
+            assert!(
+                sent[0].text.contains("uptime"),
+                "allowlisted operator command must execute: {:?}",
+                sent[0].text
+            );
+        }
+
+        let history = command_history(&harness).await;
+        assert_eq!(history.len(), 2, "executed command is audited");
+
+        shutdown_harness(harness).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn public_help_hides_operator_command_surface() {
+        let harness = make_dispatch_harness().await;
+        let msg = command_message("!help", 1_709_312_345_702);
+
+        dispatch_one(
+            msg,
+            Arc::clone(&harness.router),
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
+        )
+        .await;
+
+        {
+            let sent = harness.sent.lock().await;
+            assert_eq!(sent.len(), 1);
+            assert!(sent[0].text.contains("!ping"), "{:?}", sent[0].text);
+            assert!(sent[0].text.contains("!help"), "{:?}", sent[0].text);
+            assert!(
+                !sent[0].text.contains("!agents"),
+                "public help must not enumerate operator commands: {:?}",
+                sent[0].text
+            );
+            assert!(!sent[0].text.contains("!blackboard"), "{:?}", sent[0].text);
+        }
+
+        shutdown_harness(harness).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unknown_commands_stay_public() {
+        let harness = make_dispatch_harness().await;
+        let msg = command_message("!frobnicate", 1_709_312_345_703);
+
+        dispatch_one(
+            msg,
+            Arc::clone(&harness.router),
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
+        )
+        .await;
+
+        {
+            let sent = harness.sent.lock().await;
+            assert_eq!(sent.len(), 1);
+            assert!(
+                sent[0].text.contains("!help"),
+                "unknown commands still get the harmless hint: {:?}",
+                sent[0].text
+            );
+        }
 
         shutdown_harness(harness).await;
     }
@@ -1377,6 +1568,7 @@ mod tests {
             "main",
             &mgr,
             &ChannelRegistry::new(),
+            all_visible(),
         )
         .await;
 
@@ -1407,6 +1599,7 @@ mod tests {
             "main",
             &mgr,
             &ChannelRegistry::new(),
+            all_visible(),
         )
         .await;
 
@@ -1463,6 +1656,7 @@ mod tests {
             "main",
             &mgr,
             &ChannelRegistry::new(),
+            all_visible(),
         )
         .await;
 
@@ -1491,6 +1685,7 @@ mod tests {
             "main",
             &mgr,
             &ChannelRegistry::new(),
+            all_visible(),
         )
         .await;
         assert!(
@@ -1504,6 +1699,7 @@ mod tests {
             "main",
             &mgr,
             &ChannelRegistry::new(),
+            all_visible(),
         )
         .await;
         assert!(

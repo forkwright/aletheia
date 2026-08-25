@@ -1203,6 +1203,18 @@ Per-agent outbound-recipient allowlist and default-deny posture, enforced by `ag
 | `allowlist` | map<string, string[]> | {} | Allowed recipients per sending agent: `nous_id` -> recipient patterns. A pattern of exactly `"*"` allows any recipient for that agent; any other pattern must match the recipient exactly. |
 | `defaultDeny` | bool | true | Deny a send when the sending agent has no `allowlist` entry at all. Default: `true` (fail closed) -- an operator who never configured `[messaging.outbound]` blocks every send rather than allowing every send, matching `RecallSourcesConfig`'s network-source default-off posture. |
 
+### messaging.commands
+
+Inbound `!`-command authorization for external channels: who may invoke operational commands, and which commands stay public. Fail-closed by default — an operator who never configures `[messaging.commands]` exposes only the public command subset (`help`, `ping`) to channel senders, regardless of how permissive the route bindings are.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `operators` | string[] | [] | Sender patterns granted the full operator command surface. Each entry is `"channel:source"`; either segment may be `"*"`, and the source segment may itself contain `:` (e.g. Matrix user IDs) — only the first `:` separates the channel. |
+| `publicCommands` | string[] | ["help", "ping"] | Command names (without the leading `!`) any sender may invoke. |
+| `defaultAllow` | bool | false | Allow every command from any sender. Default `false` (fail closed); `true` restores the pre-policy behavior and is an explicit opt-out. |
+
+Non-operator senders see only the public subset in `!help` output; denied commands receive a refusal reply and are counted in the `aletheia_command_denied_total` metric.
+
 ## tuning
 
 Self-tuning feedback loop configuration. WHY configurable: tuning is disabled by default (experimental). The global kill switch and evidence thresholds let operators enable and tune the feedback loop incrementally.

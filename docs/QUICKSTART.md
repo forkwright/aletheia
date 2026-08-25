@@ -343,6 +343,13 @@ nous_id = "pronoea"
 
 4. Restart the server. Send a message to your Signal number.
 
+The `source = "*"` wildcard routes every inbound Signal message to the
+agent. It does **not** grant the operational `!`-command surface: commands
+such as `!agents`, `!channels`, or `!blackboard` are denied unless the
+sender is named in `[messaging.commands] operators` (see
+[CONFIGURATION.md](CONFIGURATION.md#messagingcommands)). Only `!help` and
+`!ping` are public by default.
+
 See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for the supported Signal account fields and multi-account setup. DM/group gating, mention requirements, read receipts, and message chunking are not enforced by the Aletheia runtime today; configure those behaviors in signal-cli directly.
 
 ---

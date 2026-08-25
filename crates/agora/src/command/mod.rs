@@ -110,6 +110,24 @@ const KNOWN_COMMANDS: &[(&str, &str)] = &[
     ),
 ];
 
+/// All known command names (without the leading `!`), in display order.
+///
+/// Used by the dispatch layer to populate `CommandContext::visible_commands`
+/// for senders the inbound command policy grants the operator tier.
+#[must_use]
+pub fn known_command_names() -> Vec<&'static str> {
+    KNOWN_COMMANDS
+        .iter()
+        // NOTE: entries like "!info [agent_id]" carry usage hints; the
+        // command name stops at the first whitespace.
+        .filter_map(|(name, _)| {
+            name.trim_start_matches('!')
+                .split_whitespace()
+                .next()
+        })
+        .collect()
+}
+
 /// Parse an inbound message text into a `Command`.
 ///
 /// Returns `None` when the text does not start with `!`, signalling that the
@@ -268,6 +286,11 @@ pub struct CommandContext {
     pub blackboard_entries: Vec<String>,
     /// Channel health snapshots (empty when probe was not run).
     pub channels: Vec<ChannelSnapshot>,
+    /// Command names (without the leading `!`) this sender may see in
+    /// `!help` output under the inbound command policy. Operators get the
+    /// full list; other senders get only the policy's public subset, so
+    /// the operational surface is not enumerated to arbitrary senders.
+    pub visible_commands: Vec<String>,
 }
 
 /// Execute a parsed command against the given context and return a reply string.
@@ -277,7 +300,7 @@ pub struct CommandContext {
 #[must_use]
 pub fn execute(cmd: &Command, ctx: &CommandContext) -> String {
     match cmd {
-        Command::Help => cmd_help(),
+        Command::Help => cmd_help(ctx),
         Command::Status => cmd_status(ctx),
         Command::Agents => cmd_agents(ctx),
         Command::WhoAmI => cmd_whoami(ctx),
@@ -294,11 +317,22 @@ pub fn execute(cmd: &Command, ctx: &CommandContext) -> String {
     }
 }
 
-fn cmd_help() -> String {
+fn cmd_help(ctx: &CommandContext) -> String {
     let mut out = "Available commands:\n".to_owned();
+    let mut listed = 0_usize;
     for (cmd, desc) in KNOWN_COMMANDS {
+        let Some(name) = cmd.trim_start_matches('!').split_whitespace().next() else {
+            continue;
+        };
+        if !ctx.visible_commands.iter().any(|visible| visible == name) {
+            continue;
+        }
+        listed += 1;
         // kanon:ignore RUST/no-silent-result-swallow WHY: writing to a String is infallible; fmt::Write returns Result for trait uniformity
         let _ = writeln!(out, "  {cmd} — {desc}");
+    }
+    if listed == 0 {
+        return "No commands available.".to_owned();
     }
     out.trim_end().to_owned()
 }
@@ -652,6 +686,10 @@ mod tests {
                 healthy: true,
                 latency_ms: Some(12),
             }],
+            visible_commands: known_command_names()
+                .into_iter()
+                .map(ToOwned::to_owned)
+                .collect(),
         }
     }
 
@@ -663,6 +701,29 @@ mod tests {
         for (cmd, _) in KNOWN_COMMANDS {
             assert!(reply.contains(cmd), "help output missing '{cmd}': {reply}");
         }
+    }
+
+    #[test]
+    fn help_shows_only_visible_commands() {
+        let mut ctx = make_context();
+        ctx.visible_commands = vec!["help".to_owned(), "ping".to_owned()];
+        let reply = execute(&Command::Help, &ctx);
+        assert!(reply.contains("!help"), "{reply}");
+        assert!(reply.contains("!ping"), "{reply}");
+        assert!(
+            !reply.contains("!agents"),
+            "operator surface must not be enumerated to the public: {reply}"
+        );
+        assert!(!reply.contains("!blackboard"), "{reply}");
+        assert!(!reply.contains("!channels"), "{reply}");
+    }
+
+    #[test]
+    fn help_with_no_visible_commands_reports_none() {
+        let mut ctx = make_context();
+        ctx.visible_commands.clear();
+        let reply = execute(&Command::Help, &ctx);
+        assert!(reply.contains("No commands available"), "{reply}");
     }
 
     #[test]
