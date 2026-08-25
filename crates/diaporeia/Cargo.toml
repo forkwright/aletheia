@@ -25,7 +25,7 @@ knowledge-store = ["nous/knowledge-store", "mneme/mneme-engine"]
 
 [dependencies]
 # MCP SDK — pin exact per TECHNOLOGY.md policy
-rmcp = { version = "=1.5.0", features = [
+rmcp = { version = "=3.1.4", features = [
     "client",
     "server",
     "macros",
