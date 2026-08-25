@@ -1,13 +1,13 @@
 {
   "groups": {
-    "W1b_storage_mem_temp": "PLAN.md:108 storage/{mem,temp}.rs",
-    "W2a_fold_table": "PLAN.md:109 ascii-folding table",
-    "W2b_stopwords": "PLAN.md:110 stopword lists",
-    "W3prime_algos_19": "PLAN.md:113,206 19 of 22 graph algorithms (excl. PageRank/Louvain)",
-    "W4prime_hnsw": "PLAN.md:112,208 HNSW",
-    "W5prime_value_model": "PLAN.md:114,209 data/{value,memcmp,tuple,symb}.rs",
-    "W3_storage_trait_fts_index": "PLAN.md:111,222 storage trait + BM25/FTS index, after W1b+W2a/W2b",
-    "W5_live3_algos": "PLAN.md:113,223 PageRank/Louvain/RRF, after the 19"
+    "W1b_storage_mem_temp": "RETIREMENT-PLAN.md:108 storage/{mem,temp}.rs",
+    "W2a_fold_table": "RETIREMENT-PLAN.md:109 ascii-folding table",
+    "W2b_stopwords": "RETIREMENT-PLAN.md:110 stopword lists",
+    "W3prime_algos_19": "RETIREMENT-PLAN.md:113,206 19 of 22 graph algorithms (excl. PageRank/Louvain)",
+    "W4prime_hnsw": "RETIREMENT-PLAN.md:112,208 HNSW",
+    "W5prime_value_model": "RETIREMENT-PLAN.md:114,209 data/{value,memcmp,tuple,symb}.rs",
+    "W3_storage_trait_fts_index": "RETIREMENT-PLAN.md:111,222 storage trait + BM25/FTS index, after W1b+W2a/W2b",
+    "W5_live3_algos": "RETIREMENT-PLAN.md:113,223 PageRank/Louvain/RRF, after the 19"
   },
   "cross_group_edges": [
     {
