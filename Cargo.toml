@@ -187,7 +187,7 @@ tracing-test = "0.2"
 # protobuf dependency (vs. the `prometheus` crate's ~15 transitive deps) by
 # using OpenMetrics text format natively. Exposition remains compatible with
 # standard Prometheus scrapers — they already accept OpenMetrics text.
-prometheus-client = "0.24"
+prometheus-client = "0.25"
 
 # Types
 compact_str = { version = "0.10", features = ["serde"] }
