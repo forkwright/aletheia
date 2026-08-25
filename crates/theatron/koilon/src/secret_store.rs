@@ -29,7 +29,7 @@
 
 use std::path::{Path, PathBuf};
 
-use aes_gcm::aead::{Aead as _, Generate as _, Key, Nonce};
+use aes_gcm::aead::{Aead as _, Generate as _, Nonce};
 use aes_gcm::{Aes256Gcm, KeyInit as _};
 use koina::secret::SecretString;
 use snafu::{ResultExt as _, Snafu};
@@ -335,7 +335,7 @@ fn generate_key() -> Zeroizing<[u8; KEY_LEN]> {
 }
 
 fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<String> {
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let cipher = Aes256Gcm::new(key.into());
     let nonce = Nonce::<Aes256Gcm>::generate();
 
     let ciphertext = cipher
@@ -358,9 +358,11 @@ fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec<u8>> {
     }
 
     let (nonce_bytes, ciphertext) = combined.split_at(NONCE_LEN);
-    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
-    let nonce = Nonce::<Aes256Gcm>::from_slice(nonce_bytes);
-    cipher.decrypt(nonce, ciphertext).map_err(|_err| {
+    let cipher = Aes256Gcm::new(key.into());
+    let nonce = Nonce::<Aes256Gcm>::try_from(nonce_bytes).map_err(|_err| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, "invalid nonce length")
+    })?;
+    cipher.decrypt(&nonce, ciphertext).map_err(|_err| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             "AES-256-GCM authentication failed",
