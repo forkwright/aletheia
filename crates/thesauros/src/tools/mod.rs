@@ -44,6 +44,55 @@ struct ShellToolExecutor {
     expected_identity: FileIdentity,
 }
 
+/// Maximum stderr bytes carried in tool diagnostics.
+///
+/// WHY: diagnostics render into the LLM-visible turn record via
+/// `ToolDiagnostics::to_llm_text`; stderr is recovery signal, not bulk
+/// output, so it is bounded well under `MAX_OUTPUT_BYTES`.
+const MAX_DIAGNOSTIC_STDERR_BYTES: usize = 4 * 1024;
+
+/// Bound and redact captured stderr for diagnostics.
+///
+/// `None` when the stream is empty or whitespace. Redaction runs through
+/// `koina::redact::redact_sensitive` so a tool that echoes a credential
+/// onto stderr does not leak it into the LLM-visible turn record (#5212).
+fn diagnostic_stderr(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let bounded = if trimmed.len() > MAX_DIAGNOSTIC_STDERR_BYTES {
+        let end = trimmed.floor_char_boundary(MAX_DIAGNOSTIC_STDERR_BYTES);
+        format!("{}…[truncated]", trimmed.get(..end).unwrap_or(trimmed))
+    } else {
+        trimmed.to_owned()
+    };
+    Some(koina::redact::redact_sensitive(&bounded))
+}
+
+/// Map a subprocess failure to an error result carrying machine-readable
+/// diagnostics.
+///
+/// WHY(#5212): a sandbox/setup refusal is a different recovery path from a
+/// command that ran and exited non-zero, so setup failures surface as
+/// `sandbox_violations` rather than only a human-readable message.
+fn subprocess_failure(error: &SubprocessError) -> ToolResult {
+    let sandbox_violations = match error {
+        SubprocessError::SandboxSetup(_) => vec![error.to_string()],
+        SubprocessError::Spawn(_)
+        | SubprocessError::Stdin(_)
+        | SubprocessError::Wait(_)
+        | SubprocessError::Timeout(_) => Vec::new(),
+    };
+    let diagnostics = ToolDiagnostics {
+        exit_code: None,
+        stderr: None,
+        sandbox_violations,
+        duration_ms: 0,
+    };
+    ToolResult::error(error.to_string()).with_diagnostics(diagnostics)
+}
+
 impl ToolExecutor for ShellToolExecutor {
     fn execute<'a>(
         &'a self,
@@ -73,7 +122,7 @@ impl ToolExecutor for ShellToolExecutor {
                 run_pack_command_with_retry(self, ctx, json_input.into_bytes(), timeout).await;
             let output_result = match output_result {
                 Ok(output) => output,
-                Err(e) => return Ok(ToolResult::error(e.to_string())),
+                Err(e) => return Ok(subprocess_failure(&e)),
             };
 
             let code = output_result.exit_code;
@@ -98,7 +147,7 @@ impl ToolExecutor for ShellToolExecutor {
 
             let diagnostics = ToolDiagnostics {
                 exit_code: Some(code),
-                stderr: None,
+                stderr: diagnostic_stderr(&output_result.stderr),
                 sandbox_violations: Vec::new(),
                 duration_ms: u64::try_from(output_result.duration.as_millis()).unwrap_or(u64::MAX),
             };

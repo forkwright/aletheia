@@ -523,10 +523,14 @@ async fn shell_executor_nonzero_exit_is_error() {
 }
 
 #[tokio::test]
-async fn shell_executor_keeps_stderr_out_of_llm_visible_result() {
+async fn shell_executor_surfaces_bounded_redacted_stderr_in_diagnostics() {
+    // WHY(#5212): stderr is the agent's recovery signal on failure. It rides
+    // in `diagnostics` (bounded, redacted) — the `content` text still carries
+    // stdout only, so a noisy stderr cannot displace the tool's real output.
     let dir = setup_pack_dir(&[(
         "tools/fail.sh",
-        "#!/bin/sh\necho stdout-only\necho 'SECRET_TOKEN /home/alice/private' >&2\nexit 1",
+        // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction test; not a real credential
+        "#!/bin/sh\necho stdout-only\necho 'auth failed for sk-ant-api03-abcdef123456_789XYZ at /home/alice/private' >&2\nexit 1",
     )]);
     make_executable(&dir, "tools/fail.sh");
 
@@ -544,10 +548,163 @@ async fn shell_executor_keeps_stderr_out_of_llm_visible_result() {
     assert!(result.is_error);
     let text = result.content.text_summary();
     assert!(text.contains("stdout-only"));
-    assert!(!text.contains("SECRET_TOKEN"));
-    assert!(!text.contains("/home/alice/private"));
+    assert!(!text.contains("auth failed"));
+
     let diagnostics = result.diagnostics.expect("diagnostics should be present");
-    assert!(diagnostics.stderr.is_none());
+    let stderr = diagnostics.stderr.expect("stderr should be captured");
+    assert!(
+        stderr.contains("sk-ant-***"),
+        "credential shape must be redacted: {stderr}"
+    );
+    assert!(
+        !stderr.contains("sk-ant-api03-abcdef123456_789XYZ"),
+        "raw credential must not reach diagnostics: {stderr}"
+    );
+    assert!(
+        stderr.contains("/home/alice/private"),
+        "non-secret recovery detail should survive: {stderr}"
+    );
+    assert_eq!(diagnostics.exit_code, Some(1));
+}
+
+#[tokio::test]
+async fn shell_executor_stderr_only_failure_carries_stderr_in_diagnostics() {
+    let dir = setup_pack_dir(&[(
+        "tools/stderr_only.sh",
+        "#!/bin/sh\necho 'relation \"sales\" does not exist' >&2\nexit 2",
+    )]);
+    make_executable(&dir, "tools/stderr_only.sh");
+
+    let executor = test_executor(&dir, "tools/stderr_only.sh", 5000);
+    let input = ToolInput {
+        name: ToolName::new("stderr_only_tool").expect("valid tool name"),
+        tool_use_id: "toolu_stderr_only".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+
+    let result = executor
+        .execute(&input, &test_ctx(&dir))
+        .await
+        .expect("executor should return result");
+    assert!(result.is_error);
+    assert!(
+        result.content.text_summary().contains("status 2"),
+        "empty stdout should yield the generic status message: {}",
+        result.content.text_summary()
+    );
+    let diagnostics = result.diagnostics.expect("diagnostics should be present");
+    assert!(
+        diagnostics
+            .stderr
+            .as_deref()
+            .is_some_and(|s| s.contains("does not exist")),
+        "stderr-only failure must surface stderr for recovery: {diagnostics:?}"
+    );
+}
+
+#[tokio::test]
+async fn shell_executor_spawn_failure_is_an_error_result() {
+    // A syntactically valid script with a nonexistent interpreter fails at
+    // spawn (not at registration: the file itself exists and is executable).
+    let dir = setup_pack_dir(&[(
+        "tools/badinterp.sh",
+        "#!/definitely/not/an/interp\necho unreachable",
+    )]);
+    make_executable(&dir, "tools/badinterp.sh");
+
+    let executor = test_executor(&dir, "tools/badinterp.sh", 5000);
+    let input = ToolInput {
+        name: ToolName::new("badinterp_tool").expect("valid tool name"),
+        tool_use_id: "toolu_badinterp".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+
+    let result = executor
+        .execute(&input, &test_ctx(&dir))
+        .await
+        .expect("execute maps spawn failure to an error result");
+    assert!(result.is_error);
+    assert!(
+        result.content.text_summary().contains("spawn failed"),
+        "spawn failure should be identifiable: {}",
+        result.content.text_summary()
+    );
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn shell_executor_permission_denied_after_registration_is_an_error() {
+    // chmod -x after registration: mode is not part of FileIdentity, so the
+    // swap check passes and the exec itself fails with permission denied.
+    let dir = setup_pack_dir(&[("tools/denied.sh", "#!/bin/sh\necho ok")]);
+    make_executable(&dir, "tools/denied.sh");
+    let executor = test_executor(&dir, "tools/denied.sh", 5000);
+
+    let mut perms = fs::metadata(dir.path().join("tools/denied.sh"))
+        .expect("metadata")
+        .permissions();
+    perms.set_mode(0o644);
+    fs::set_permissions(dir.path().join("tools/denied.sh"), perms).expect("chmod -x");
+
+    let input = ToolInput {
+        name: ToolName::new("denied_tool").expect("valid tool name"),
+        tool_use_id: "toolu_denied".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+
+    let result = executor
+        .execute(&input, &test_ctx(&dir))
+        .await
+        .expect("execute maps EACCES to an error result");
+    assert!(result.is_error);
+    let text = result.content.text_summary();
+    assert!(
+        text.contains("spawn failed") || text.contains("changed since registration"),
+        "permission-denied must surface as an execution failure: {text}"
+    );
+}
+
+#[test]
+fn subprocess_failure_marks_sandbox_setup_as_violation() {
+    let error = SubprocessError::SandboxSetup(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        "seccomp install refused",
+    ));
+    let result = subprocess_failure(&error);
+    assert!(result.is_error);
+    let diagnostics = result.diagnostics.expect("diagnostics should be present");
+    assert_eq!(diagnostics.sandbox_violations.len(), 1);
+    assert!(
+        diagnostics.sandbox_violations[0].contains("seccomp install refused"),
+        "violation should carry the setup denial reason: {:?}",
+        diagnostics.sandbox_violations
+    );
+}
+
+#[test]
+fn subprocess_failure_leaves_spawn_without_violations() {
+    let error = SubprocessError::Spawn(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "no such file",
+    ));
+    let result = subprocess_failure(&error);
+    assert!(result.is_error);
+    let diagnostics = result.diagnostics.expect("diagnostics should be present");
+    assert!(diagnostics.sandbox_violations.is_empty());
+}
+
+#[test]
+fn diagnostic_stderr_bounds_and_trims() {
+    assert!(diagnostic_stderr("  \n").is_none());
+    assert_eq!(diagnostic_stderr(" hello \n").as_deref(), Some("hello"));
+
+    let huge = "x".repeat(MAX_DIAGNOSTIC_STDERR_BYTES + 100);
+    let bounded = diagnostic_stderr(&huge).expect("non-empty stderr");
+    assert!(
+        bounded.ends_with("…[truncated]"),
+        "oversized stderr must be marked truncated"
+    );
+    assert!(bounded.len() <= MAX_DIAGNOSTIC_STDERR_BYTES + 20);
 }
 
 #[test]
