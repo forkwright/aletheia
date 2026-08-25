@@ -19,28 +19,28 @@ rust-version = "1.94"
 [workspace.dependencies.themelion]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 
 [workspace.dependencies.skeue]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 
 [workspace.dependencies.gramma]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 
 [workspace.dependencies.bathron]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 features = ["logging", "atomic-write"]
 
 [workspace.dependencies.keryx]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 
 [package]
 name = "proskenion"
