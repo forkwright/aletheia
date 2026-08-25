@@ -3482,8 +3482,19 @@ workspace = "nous/{agent_id}"
 
         let mut value = serde_json::to_value(sample_agent_file()).unwrap();
         value["nous"]["id"] = serde_json::Value::from("../../../tmp/evil-from-file");
+        let json = serde_json::to_string(&value).unwrap();
+
+        // WHY two assertions: the serde layer must reject the id for the
+        // right reason (the NousId validator), and `import_agent` must
+        // surface that rejection as a parse failure before any I/O.
+        let parse_err = serde_json::from_str::<AgentFile>(&json).unwrap_err();
+        assert!(
+            parse_err.to_string().contains("alphanumeric"),
+            "got: {parse_err}"
+        );
+
         let agent_path = dir.path().join("evil.agent.json");
-        std::fs::write(&agent_path, serde_json::to_string(&value).unwrap()).unwrap();
+        std::fs::write(&agent_path, &json).unwrap();
 
         let args = ImportArgs {
             file: agent_path,
@@ -3497,10 +3508,7 @@ workspace = "nous/{agent_id}"
         };
         let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
         let msg = err.to_string();
-        assert!(
-            msg.contains("failed to parse agent file") && msg.contains("alphanumeric"),
-            "got: {msg}"
-        );
+        assert!(msg.contains("failed to parse agent file"), "got: {msg}");
     }
 
     /// Regression for #4241: a workspace file path with `..` must be
