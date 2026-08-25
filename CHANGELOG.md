@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.3](https://github.com/forkwright/aletheia/compare/v0.42.2...v0.42.3) (2026-08-25)
+
+
+### Documentation
+
+* **krites:** resolve retirement-plan citations + align theatron pin floors ([#6991](https://github.com/forkwright/aletheia/issues/6991)) ([f69c14c](https://github.com/forkwright/aletheia/commit/f69c14ca821daaf0ea658211f05b8370c684b372))
+
 ## [0.42.2](https://github.com/forkwright/aletheia/compare/v0.42.1...v0.42.2) (2026-08-25)
 
 
