@@ -598,6 +598,7 @@ Routes mapping channel sources to nous agents.
 | `nousId` | string | *required* | Nous ID to route to. |
 | `sessionKey` | string | "{source}" | Session key pattern. Supports `{source}`, `{group}`, and `{account}` placeholders (`{account}` expands to the receiving provider account, or `default` when unattributed). |
 | `account` | string | unset | Restrict this binding to the provider account that received the message. When unset, the binding matches any account. |
+| `participants` | string[] | [] | Sender allowlist for this binding. When non-empty, only the listed senders may activate the binding; other senders — including fellow members of a matched group — fall through to lower-priority routes. |
 
 ## feature_flags[]
 
@@ -1549,6 +1550,12 @@ following order (`crates/agora/src/router.rs`):
 3. **Channel default** -- `channel` + `source = "*"`.
 4. **Global default** -- the agent configured with `default: true`.
 5. **No match** -- message is dropped.
+
+At every level a binding's identity legs must also hold: a binding with
+`account` set matches only messages that account received, and a binding
+with a non-empty `participants` list matches only the listed senders. A
+binding whose legs do not hold is skipped, and resolution continues with
+lower-priority routes.
 
 A wildcard `source = "*"` entry before an exact source entry does **not**
 win; the exact source binding always takes precedence. Use the most

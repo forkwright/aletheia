@@ -975,6 +975,7 @@ mod tests {
                 nous_id: "alice".to_owned(),
                 session_key: "signal:{source}".to_owned(),
                 account: None,
+                participants: vec![],
             }],
             None,
         ));

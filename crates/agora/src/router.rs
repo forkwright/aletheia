@@ -47,6 +47,10 @@ pub enum MatchReason {
 /// provider account (`InboundMessage::account_id`); a binding without
 /// `account` matches any account. This keeps identical senders/groups on
 /// different accounts of the same channel distinct.
+///
+/// A binding with a non-empty `participants` list only matches the listed
+/// senders; other senders (including fellow members of a matched group)
+/// fall through to lower-priority routes.
 pub struct MessageRouter {
     bindings: Vec<ChannelBinding>,
     default_nous: Option<String>,
@@ -79,7 +83,7 @@ impl MessageRouter {
         // NOTE: Priority 1: exact group match (channel + group_id)
         if let Some(group_id) = &msg.group_id {
             for b in &self.bindings {
-                if b.channel == msg.channel && b.source == *group_id && account_matches(b, msg) {
+                if b.channel == msg.channel && b.source == *group_id && binding_matches(b, msg) {
                     return Some(RouteDecision {
                         nous_id: &b.nous_id,
                         session_key: expand_session_key(&b.session_key, msg),
@@ -91,7 +95,7 @@ impl MessageRouter {
 
         // NOTE: Priority 2: exact source match (channel + sender)
         for b in &self.bindings {
-            if b.channel == msg.channel && b.source == msg.sender && account_matches(b, msg) {
+            if b.channel == msg.channel && b.source == msg.sender && binding_matches(b, msg) {
                 return Some(RouteDecision {
                     nous_id: &b.nous_id,
                     session_key: expand_session_key(&b.session_key, msg),
@@ -102,7 +106,7 @@ impl MessageRouter {
 
         // NOTE: Priority 3: channel default (source = "*")
         for b in &self.bindings {
-            if b.channel == msg.channel && b.source == "*" && account_matches(b, msg) {
+            if b.channel == msg.channel && b.source == "*" && binding_matches(b, msg) {
                 return Some(RouteDecision {
                     nous_id: &b.nous_id,
                     session_key: expand_session_key(&b.session_key, msg),
@@ -128,6 +132,19 @@ fn account_matches(binding: &ChannelBinding, msg: &InboundMessage) -> bool {
         .account
         .as_deref()
         .is_none_or(|account| Some(account) == msg.account_id.as_deref())
+}
+
+/// A binding with a non-empty `participants` allowlist matches only the
+/// listed senders; anyone else falls through to lower-priority routes, so
+/// mere membership in a configured group grants no route on its own.
+fn participant_allowed(binding: &ChannelBinding, msg: &InboundMessage) -> bool {
+    binding.participants.is_empty() || binding.participants.iter().any(|p| *p == msg.sender)
+}
+
+/// Both binding-level identity legs (account, participant) must hold for a
+/// binding to match.
+fn binding_matches(binding: &ChannelBinding, msg: &InboundMessage) -> bool {
+    account_matches(binding, msg) && participant_allowed(binding, msg)
 }
 
 /// Expand session key template placeholders.
@@ -191,6 +208,7 @@ mod tests {
             nous_id: nous_id.to_owned(),
             session_key: "{source}".to_owned(),
             account: None,
+            participants: vec![],
         }
     }
 
@@ -370,6 +388,8 @@ mod tests {
 
     #[test]
     fn group_binding_matches_regardless_of_sender() {
+        // NOTE: pins the empty-`participants` compatibility behavior: an
+        // unlisted binding stays open to every group participant.
         let router = MessageRouter::new(vec![binding("signal", "group-xyz", "group-nous")], None);
         let msg_a = group_message("+15550100", "group-xyz");
         let msg_b = group_message("+15550199", "group-xyz");
@@ -377,6 +397,84 @@ mod tests {
         let decision_b = router.resolve(&msg_b).expect("should match");
         assert_eq!(decision_a.nous_id, "group-nous");
         assert_eq!(decision_b.nous_id, "group-nous");
+    }
+
+    #[test]
+    fn group_binding_participants_allowlist_is_enforced() {
+        let mut b = binding("signal", "group-xyz", "ops-nous");
+        b.participants = vec!["+15550100".to_owned()];
+        let router = MessageRouter::new(vec![b], None);
+
+        let allowed = group_message("+15550100", "group-xyz");
+        let decision = router.resolve(&allowed).expect("listed participant should match");
+        assert_eq!(decision.nous_id, "ops-nous");
+        assert_eq!(decision.matched_by, MatchReason::GroupBinding);
+
+        let stranger = group_message("+15550999", "group-xyz");
+        assert!(
+            router.resolve(&stranger).is_none(),
+            "unlisted group participant must not activate the binding"
+        );
+    }
+
+    #[test]
+    fn unlisted_participant_falls_through_to_channel_default() {
+        let mut restricted = binding("signal", "group-xyz", "ops-nous");
+        restricted.participants = vec!["+15550100".to_owned()];
+        let router = MessageRouter::new(
+            vec![restricted, binding("signal", "*", "catchall-nous")],
+            None,
+        );
+
+        let stranger = group_message("+15550999", "group-xyz");
+        let decision = router
+            .resolve(&stranger)
+            .expect("channel default should catch unlisted participant");
+        assert_eq!(decision.nous_id, "catchall-nous");
+        assert_eq!(decision.matched_by, MatchReason::ChannelDefault);
+
+        let allowed = group_message("+15550100", "group-xyz");
+        assert_eq!(
+            router.resolve(&allowed).expect("should match").nous_id,
+            "ops-nous"
+        );
+    }
+
+    #[test]
+    fn mixed_privilege_group_members_route_to_different_nous() {
+        let mut operators = binding("signal", "group-xyz", "ops-nous");
+        operators.participants = vec!["+15550100".to_owned()];
+        operators.session_key = "signal:ops:{group}".to_owned();
+        let router = MessageRouter::new(vec![operators, binding("signal", "group-xyz", "guest-nous")], None);
+
+        let operator = group_message("+15550100", "group-xyz");
+        let decision = router.resolve(&operator).expect("operator should match");
+        assert_eq!(decision.nous_id, "ops-nous");
+        assert_eq!(decision.session_key, "signal:ops:group-xyz");
+
+        let guest = group_message("+15550999", "group-xyz");
+        let decision = router.resolve(&guest).expect("guest should match");
+        assert_eq!(decision.nous_id, "guest-nous");
+        assert_eq!(decision.matched_by, MatchReason::GroupBinding);
+    }
+
+    #[test]
+    fn participants_restrict_channel_wildcard_binding() {
+        let mut b = binding("signal", "*", "known-senders-nous");
+        b.participants = vec!["+15550100".to_owned(), "+15550101".to_owned()];
+        let router = MessageRouter::new(vec![b], None);
+
+        let known = dm_message("+15550101");
+        assert_eq!(
+            router.resolve(&known).expect("should match").nous_id,
+            "known-senders-nous"
+        );
+
+        let unknown = dm_message("+15550999");
+        assert!(
+            router.resolve(&unknown).is_none(),
+            "wildcard with participants must not catch unlisted senders"
+        );
     }
 
     #[test]

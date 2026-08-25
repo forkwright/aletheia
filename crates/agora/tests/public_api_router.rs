@@ -30,6 +30,7 @@ fn make_binding(channel: &str, source: &str, nous_id: &str) -> ChannelBinding {
         nous_id: nous_id.to_owned(),
         session_key: "{source}".to_owned(),
         account: None,
+        participants: vec![],
     }
 }
 

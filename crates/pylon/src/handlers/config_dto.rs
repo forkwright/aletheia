@@ -85,6 +85,7 @@ pub struct ChannelBinding {
     pub nous_id: Option<String>,
     pub session_key: Option<String>,
     pub account: Option<String>,
+    pub participants: Option<Vec<String>>,
 }
 
 /// Schema for the `embedding` config section.

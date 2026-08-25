@@ -347,6 +347,16 @@ pub struct ChannelBinding {
     /// collapse onto whichever binding sorts first.
     #[serde(default)]
     pub account: Option<String>,
+    /// Sender allowlist for this binding. When non-empty, only the listed
+    /// senders may activate the binding; other senders fall through to
+    /// lower-priority routes.
+    ///
+    /// WHY: a group binding otherwise lets every participant of a
+    /// configured group drive the agent and its command surface. Listing
+    /// participants makes group membership insufficient on its own.
+    /// Empty preserves the previous any-participant behavior.
+    #[serde(default)]
+    pub participants: Vec<String>,
 }
 
 fn default_session_pattern() -> String {
