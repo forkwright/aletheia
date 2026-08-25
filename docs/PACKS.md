@@ -26,7 +26,7 @@ packs = [
 ]
 ```
 
-Relative paths resolve from the instance root (`$ALETHEIA_ROOT` or `./instance`). Absolute paths are used as-is. Packs load at startup. Invalid or missing packs log warnings and are skipped (graceful degradation).
+Relative paths resolve from the instance root (`$ALETHEIA_ROOT` or `./instance`). Absolute paths are used as-is. Packs load at startup. Invalid or missing packs log warnings and are skipped (graceful degradation); the structured [pack health](#pack-health) report records exactly what was skipped or failed.
 
 ## Manifest: pack.toml
 
@@ -251,10 +251,22 @@ domains = ["healthcare"]
 Packs are loaded in the order they appear in the `packs` config list. When multiple packs match an agent:
 
 - **Context sections**: all matching sections from all packs are included (additive)
-- **Tools**: tool names must be unique across all packs; duplicates are rejected at startup
+- **Tools**: tool names must be unique across all packs. The first registration wins; a later duplicate is skipped with a warning, and the pack that declared it is marked degraded in its [pack health](#pack-health) record
 - **Domain overlays**: merged (union) across all packs for each agent
 
 Packs compose additively and do not override or shadow each other.
+
+## Pack health
+
+Every configured pack gets a structured health record (`thesauros::health::PackHealth`) with one of three states:
+
+| Status | Meaning |
+|--------|---------|
+| `active` | Manifest, all context files, and all tools loaded cleanly |
+| `degraded` | Pack is active, but something declared was skipped or failed: a missing optional context file, a tool that failed validation or registration (including a duplicate name), or a dropped overlay power |
+| `failed` | Pack is not active at all: the manifest was unreadable/invalid, or a `priority = "required"` context file could not be read |
+
+The startup log prints a `domain pack health` summary line with per-status counts, followed by one warning per recorded issue naming the pack, component, and reason. The structured report is available in-process via `NousManager::pack_report()` for control-plane surfaces.
 
 ## See also
 
