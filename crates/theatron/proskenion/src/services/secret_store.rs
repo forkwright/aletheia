@@ -14,8 +14,7 @@
 
 use std::path::{Path, PathBuf};
 
-use aes_gcm::aead::generic_array::GenericArray;
-use aes_gcm::aead::{Aead as _, AeadCore as _, OsRng};
+use aes_gcm::aead::{Aead as _, Generate as _, Key, Nonce};
 use aes_gcm::{Aes256Gcm, KeyInit as _};
 use koina::secret::SecretString;
 use snafu::{ResultExt as _, Snafu};
@@ -341,14 +340,12 @@ fn write_secure_file(path: &Path, bytes: &[u8]) -> Result<(), SecretStoreError> 
 }
 
 fn generate_key() -> Zeroizing<[u8; KEY_LEN]> {
-    let mut key = [0u8; KEY_LEN];
-    aes_gcm::aead::rand_core::RngCore::fill_bytes(&mut OsRng, &mut key);
-    Zeroizing::new(key)
+    Zeroizing::new(<[u8; KEY_LEN]>::generate())
 }
 
 fn encrypt(key: &[u8; KEY_LEN], plaintext: &[u8]) -> std::io::Result<String> {
-    let cipher = Aes256Gcm::new(GenericArray::from_slice(key));
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let nonce = Nonce::<Aes256Gcm>::generate();
 
     let ciphertext = cipher
         .encrypt(&nonce, plaintext)
@@ -370,8 +367,8 @@ fn decrypt(key: &[u8; KEY_LEN], encoded: &str) -> std::io::Result<Vec<u8>> {
     }
 
     let (nonce_bytes, ciphertext) = combined.split_at(NONCE_LEN);
-    let cipher = Aes256Gcm::new(GenericArray::from_slice(key));
-    let nonce = GenericArray::from_slice(nonce_bytes);
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let nonce = Nonce::<Aes256Gcm>::from_slice(nonce_bytes);
     cipher.decrypt(nonce, ciphertext).map_err(|_err| {
         std::io::Error::new(
             std::io::ErrorKind::InvalidData,
