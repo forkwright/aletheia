@@ -77,7 +77,7 @@ pub(crate) mod exec;
 )]
 #[cfg(not(feature = "krites_sovereign_hnsw"))]
 pub(crate) mod hnsw;
-// WHY: wave-4 land-dark selector (PLAN.md Sec2). Only one tree is ever part
+// WHY: wave-4 land-dark selector (RETIREMENT-PLAN.md Sec2). Only one tree is ever part
 // of a given build, so callers of `crate::runtime::hnsw::*` need no changes
 // either way. The default build selects the module above, which means a
 // break in the sovereign tree is invisible unless something builds it

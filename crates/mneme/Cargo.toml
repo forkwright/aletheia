@@ -22,7 +22,7 @@ path = "tests/ts_compat.rs"
 # session store API; mneme-engine layers the Datalog knowledge store on top.
 default = ["graph-algo", "mneme-engine", "portability"]
 graph-algo = ["episteme/graph-algo"]
-# WHY: retirement PLAN.md Sec.2 land-dark/soak/delete -- same passthrough
+# WHY: retirement RETIREMENT-PLAN.md Sec.2 land-dark/soak/delete -- same passthrough
 # shape as graph-algo above, so the sovereign HNSW tree is reachable from
 # mneme's own --workspace selection rather than only krites' crate-scoped
 # test.

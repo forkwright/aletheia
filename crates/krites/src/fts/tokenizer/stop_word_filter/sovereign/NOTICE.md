@@ -36,7 +36,7 @@ This file, plus the vendored license text beside it, is that notice: the
 attribution and the required license text, both actually present at the crate
 distribution boundary, independent of `crates/krites/NOTICE.md`'s CozoDB/MPL
 notice (which continues to cover the `derived/` sibling and every other
-CozoDB-lineage file, correctly, until deletion — PLAN.md §2's soak-then-delete
+CozoDB-lineage file, correctly, until deletion — RETIREMENT-PLAN.md §2's soak-then-delete
 schedule, tracked via that module's own `dual`-status ledger rows).
 
 ## What did not change
@@ -46,7 +46,7 @@ reads from the (still-soaking) `derived/stopwords/` copy rather than
 re-fetching, and the wave-2b PR description records the verification —
 token-multiset identity against both the pre-existing vendored copy and a
 fresh stopwords-iso fetch, 21,707 literals across 58 languages, zero
-additions, zero removals. PLAN.md conflict C4 decided against re-sourcing:
+additions, zero removals. RETIREMENT-PLAN.md conflict C4 decided against re-sourcing:
 re-fetching today could pick up upstream corpus changes since CozoDB's
 original vendoring, trading a measurable retrieval-behavior change across 58
 languages for a licensing benefit this crate does not need (`krites`'

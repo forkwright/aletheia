@@ -17,7 +17,7 @@ graph-algo = []
 async = []
 hot-reload = ["dep:notify", "dep:arc-swap"]
 storage-fjall = ["dep:fjall"]
-# WHY: retirement PLAN.md Sec.2 land-dark/soak/delete -- selects the sovereign HNSW
+# WHY: retirement RETIREMENT-PLAN.md Sec.2 land-dark/soak/delete -- selects the sovereign HNSW
 # implementation (runtime/hnsw_sovereign/) over the CozoDB-derived one (runtime/hnsw/)
 # via a #[path] swap on runtime/mod.rs, off by default during the soak window. The
 # on-disk encoding is byte-identical either way, so the switch is reversible with a
