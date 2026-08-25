@@ -105,7 +105,7 @@ jobs:
         # WHY SHA-pinned: this downloads a binary from the network inside the REQUIRED
         # `cargo audit` job, and a mutable tag can be repointed. Every other action in this
         # repo is SHA-pinned; this was the sole exception.
-        uses: taiki-e/install-action@82cd3e7658a6f96c86c0234aeeda1748937cb0a1 # v2.85.13
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
         with:
           tool: cargo-audit@0.22.2
       - name: cargo audit
@@ -117,7 +117,7 @@ jobs:
 
   osv-scanner:
     name: osv scanner
-    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@8deb546fdb875b9996d27d4950be7312dac076a1
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@6e4298ebc4db23e847df9b2e2de2939d6f066c67
     permissions:
       actions: read
       contents: read
