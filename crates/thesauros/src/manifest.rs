@@ -112,6 +112,27 @@ pub struct PackToolDef {
     /// Reversibility metadata. Defaults to `irreversible`.
     #[serde(default)]
     pub reversibility: Option<String>,
+    /// Environment variable names passed through from the daemon's own
+    /// environment into the tool's subprocess (#5214).
+    ///
+    /// Values never appear in the manifest — the pack declares the *name*,
+    /// the operator provides the value in the daemon's environment (e.g. a
+    /// systemd `EnvironmentFile`). A declared name absent from the daemon
+    /// environment fails tool registration. Anything not declared here is
+    /// stripped from the child environment.
+    #[serde(default)]
+    pub env: Vec<String>,
+    /// Additional directories the tool may write to, relative to the pack
+    /// root. Read access to the pack root and exec access to the command
+    /// itself are already implied; this is the *additive* write contract.
+    #[serde(default)]
+    pub write_paths: Vec<String>,
+    /// Declared network egress intent: `"none"` denies outbound network for
+    /// this tool (tightening the deployment sandbox policy when it is
+    /// enabled). Absent or `"inherit"` leaves the deployment policy
+    /// unchanged. A pack can only narrow egress, never widen it.
+    #[serde(default)]
+    pub egress: Option<String>,
 }
 
 fn default_tool_timeout() -> u64 {
@@ -248,6 +269,36 @@ fn validate_tool_contract(tool: &PackToolDef, issues: &mut Vec<String>) {
             tool.name, tool.command
         ));
     }
+    for var in &tool.env {
+        if !is_valid_env_name(var) {
+            issues.push(format!(
+                "tool '{}' declares invalid environment variable name '{var}'",
+                tool.name
+            ));
+        }
+    }
+    for path in &tool.write_paths {
+        if !is_relative_in_pack_path(Path::new(path)) {
+            issues.push(format!(
+                "tool '{}' write path '{path}' must be a relative path inside the pack root",
+                tool.name
+            ));
+        }
+    }
+    if let Some(egress) = tool.egress.as_deref()
+        && !matches!(egress, "none" | "inherit")
+    {
+        issues.push(format!(
+            "tool '{}' egress '{egress}' is unknown (expected \"none\" or \"inherit\")",
+            tool.name
+        ));
+    }
+}
+
+/// Returns `true` for a syntactically valid environment variable name:
+/// non-empty, no `=` or NUL (which would corrupt `Command::env` handling).
+fn is_valid_env_name(name: &str) -> bool {
+    !name.is_empty() && !name.as_bytes().contains(&b'=') && !name.as_bytes().contains(&0)
 }
 
 /// Validate one overlay's high-impact fields: `agency` must name a known
@@ -673,6 +724,9 @@ timeout = 0
             groups: vec!["read".to_owned()],
             tags: vec!["recon".to_owned()],
             reversibility: Some("fully_reversible".to_owned()),
+            env: Vec::new(),
+            write_paths: Vec::new(),
+            egress: None,
         };
         let json = serde_json::to_string(&tool).unwrap();
         let back: PackToolDef = serde_json::from_str(&json).unwrap();
@@ -800,6 +854,66 @@ model = "  "
         let dir = setup_pack(&[("pack.toml", toml)]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(err.to_string().contains("blank"), "{err}");
+    }
+
+    #[test]
+    fn rejects_invalid_tool_policy_fields() {
+        // WHY(#5214): env names, write paths, and egress intent are part of the
+        // tool contract and fail load-time validation when malformed.
+        let toml = r#"
+name = "policy-pack"
+version = "1.0"
+
+[[tools]]
+name = "bad_env"
+description = "Bad env name"
+command = "tools/x.sh"
+env = ["HAS=VALUE"]
+
+[[tools]]
+name = "bad_write"
+description = "Escaping write path"
+command = "tools/x.sh"
+write_paths = ["../elsewhere"]
+
+[[tools]]
+name = "bad_egress"
+description = "Unknown egress"
+command = "tools/x.sh"
+egress = "everything"
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        let msg = err.to_string();
+        for expected in [
+            "invalid environment variable name 'HAS=VALUE'",
+            "write path '../elsewhere' must be a relative path inside the pack root",
+            "egress 'everything' is unknown",
+        ] {
+            assert!(msg.contains(expected), "missing '{expected}' in: {msg}");
+        }
+    }
+
+    #[test]
+    fn accepts_valid_tool_policy_fields() {
+        let toml = r#"
+name = "policy-pack"
+version = "1.0"
+
+[[tools]]
+name = "query"
+description = "Query with declared policy"
+command = "tools/query.sh"
+env = ["DATABASE_URL"]
+write_paths = ["data", "data/scratch"]
+egress = "none"
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let manifest = load_manifest(dir.path()).unwrap();
+        let tool = &manifest.tools[0];
+        assert_eq!(tool.env, vec!["DATABASE_URL"]);
+        assert_eq!(tool.write_paths, vec!["data", "data/scratch"]);
+        assert_eq!(tool.egress.as_deref(), Some("none"));
     }
 
     #[test]

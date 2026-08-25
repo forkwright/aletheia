@@ -49,7 +49,8 @@ pub struct SubprocessRequest {
     extra_read_paths: Vec<PathBuf>,
     extra_write_paths: Vec<PathBuf>,
     extra_exec_paths: Vec<PathBuf>,
-    extra_env_vars: Vec<&'static str>,
+    extra_env_vars: Vec<String>,
+    deny_egress: bool,
     sandbox_policy: Option<SandboxPolicy>,
 }
 
@@ -67,6 +68,7 @@ impl SubprocessRequest {
             extra_write_paths: Vec::new(),
             extra_exec_paths: Vec::new(),
             extra_env_vars: Vec::new(),
+            deny_egress: false,
             sandbox_policy: None,
         }
     }
@@ -136,8 +138,8 @@ impl SubprocessRequest {
     /// Child environments are cleared by default. Use this only for narrow,
     /// non-secret variables a subprocess genuinely needs.
     #[must_use]
-    pub fn allow_env_var(mut self, var: &'static str) -> Self {
-        self.extra_env_vars.push(var);
+    pub fn allow_env_var(mut self, var: impl Into<String>) -> Self {
+        self.extra_env_vars.push(var.into());
         self
     }
 
@@ -146,11 +148,26 @@ impl SubprocessRequest {
     /// Child environments are cleared by default. Use this only for narrow,
     /// non-secret variables a subprocess genuinely needs.
     #[must_use]
-    pub fn allow_env_vars<I>(mut self, vars: I) -> Self
+    pub fn allow_env_vars<I, S>(mut self, vars: I) -> Self
     where
-        I: IntoIterator<Item = &'static str>,
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
     {
-        self.extra_env_vars.extend(vars);
+        self.extra_env_vars.extend(vars.into_iter().map(Into::into));
+        self
+    }
+
+    /// Deny all network egress for this invocation, even if the deployment's
+    /// sandbox policy would otherwise allow it.
+    ///
+    /// This only ever tightens policy: when the runner builds a sandbox
+    /// policy from the shared config, the request's denial overrides an
+    /// `Allow`/`Allowlist` egress setting to `Deny`. It cannot widen a
+    /// policy, and it has no effect when the sandbox is disabled (no policy
+    /// is built at all in that mode).
+    #[must_use]
+    pub fn deny_egress(mut self) -> Self {
+        self.deny_egress = true;
         self
     }
 
@@ -167,7 +184,7 @@ impl SubprocessRequest {
     }
 
     #[cfg(all(test, feature = "computer-use"))]
-    pub(crate) fn allowed_env_vars_for_test(&self) -> &[&'static str] {
+    pub(crate) fn allowed_env_vars_for_test(&self) -> &[String] {
         &self.extra_env_vars
     }
 
@@ -285,7 +302,7 @@ impl SubprocessRunner {
         for &var in SAFE_ENV_VARS {
             copy_env_var(&mut cmd, var);
         }
-        for &var in &request.extra_env_vars {
+        for var in &request.extra_env_vars {
             copy_env_var(&mut cmd, var);
         }
 
@@ -386,7 +403,12 @@ impl SubprocessRunner {
         sandbox
             .extra_exec_paths
             .extend(request.extra_exec_paths.iter().cloned());
-        sandbox.build_policy(&ctx.workspace, &ctx.allowed_roots)
+        let mut policy = sandbox.build_policy(&ctx.workspace, &ctx.allowed_roots);
+        if request.deny_egress {
+            policy.egress = crate::sandbox::EgressPolicy::Deny;
+            policy.egress_allowlist.clear();
+        }
+        policy
     }
 
     fn policy_for_request(
@@ -403,7 +425,7 @@ impl SubprocessRunner {
     }
 }
 
-fn copy_env_var(cmd: &mut Command, var: &'static str) {
+fn copy_env_var(cmd: &mut Command, var: &str) {
     if var.is_empty() || var.as_bytes().contains(&b'=') || var.as_bytes().contains(&0) {
         tracing::warn!(
             variable = var,
@@ -748,6 +770,29 @@ mod tests {
             "5",
             "RLIMIT_CPU should equal the request's timeout in seconds"
         );
+    }
+
+    #[test]
+    fn deny_egress_tightens_built_policy() {
+        // WHY(#5214): a request-level egress denial only ever tightens the
+        // deployment policy — an `Allow` config becomes `Deny` for this
+        // invocation, never the reverse.
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let runner = SubprocessRunner::new(SandboxConfig {
+            enabled: true,
+            nproc_limit: 4096,
+            ..SandboxConfig::default()
+        });
+        let ctx = test_ctx(dir.path());
+
+        let denied = SubprocessRequest::new("sh", dir.path()).deny_egress();
+        let policy = runner.build_policy(&ctx, &denied);
+        assert_eq!(policy.egress, crate::sandbox::EgressPolicy::Deny);
+        assert!(policy.egress_allowlist.is_empty());
+
+        let open = SubprocessRequest::new("sh", dir.path());
+        let policy = runner.build_policy(&ctx, &open);
+        assert_eq!(policy.egress, crate::sandbox::EgressPolicy::Allow);
     }
 
     #[test]

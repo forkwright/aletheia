@@ -205,7 +205,8 @@ mod tests {
         assert!(
             request
                 .allowed_env_vars_for_test()
-                .contains(&"WAYLAND_DISPLAY"),
+                .iter()
+                .any(|v| v == "WAYLAND_DISPLAY"),
             "capture request should preserve Wayland display env"
         );
         assert!(

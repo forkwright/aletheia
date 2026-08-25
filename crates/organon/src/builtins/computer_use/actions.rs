@@ -129,11 +129,17 @@ mod tests {
             &std::ffi::OsString::from("xdotool")
         );
         assert!(
-            request.allowed_env_vars_for_test().contains(&"DISPLAY"),
+            request
+                .allowed_env_vars_for_test()
+                .iter()
+                .any(|v| v == "DISPLAY"),
             "action request should preserve display env"
         );
         assert!(
-            request.allowed_env_vars_for_test().contains(&"XAUTHORITY"),
+            request
+                .allowed_env_vars_for_test()
+                .iter()
+                .any(|v| v == "XAUTHORITY"),
             "action request should preserve display auth env"
         );
         assert!(

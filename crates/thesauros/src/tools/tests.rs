@@ -64,6 +64,9 @@ fn test_executor(dir: &TempDir, script_relpath: &str, timeout_ms: u64) -> ShellT
         runner: test_runner(),
         timeout_ms,
         expected_identity,
+        env_vars: Vec::new(),
+        write_paths: Vec::new(),
+        deny_egress: false,
     }
 }
 
@@ -283,6 +286,9 @@ fn register_pack_tools_success() {
         groups: Vec::new(),
         tags: Vec::new(),
         reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -314,6 +320,9 @@ fn register_pack_tools_applies_declared_capability_metadata() {
         groups: vec!["read".to_owned()],
         tags: vec!["recon".to_owned(), "fetch".to_owned()],
         reversibility: Some("fully_reversible".to_owned()),
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -340,6 +349,9 @@ fn register_pack_tools_rejects_unknown_capability_metadata() {
         groups: vec!["superuser".to_owned()],
         tags: Vec::new(),
         reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -366,6 +378,9 @@ fn register_pack_tools_skips_missing_command() {
         groups: Vec::new(),
         tags: Vec::new(),
         reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -398,6 +413,9 @@ fn register_pack_tools_skips_bad_schema() {
         groups: Vec::new(),
         tags: Vec::new(),
         reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -763,6 +781,9 @@ fn error_count_per_pack_not_cumulative() {
             groups: Vec::new(),
             tags: Vec::new(),
             reversibility: None,
+            env: Vec::new(),
+            write_paths: Vec::new(),
+            egress: None,
         }],
     );
 
@@ -779,6 +800,9 @@ fn error_count_per_pack_not_cumulative() {
             groups: Vec::new(),
             tags: Vec::new(),
             reversibility: None,
+            env: Vec::new(),
+            write_paths: Vec::new(),
+            egress: None,
         }],
     );
 
@@ -817,6 +841,9 @@ fn duplicate_tool_name_fails_second_pack_and_degrades_its_health() {
         groups: Vec::new(),
         tags: Vec::new(),
         reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack_a = minimal_loaded_pack(&dir_a, vec![tool("dup_tool")]);
     let mut pack_b = minimal_loaded_pack(&dir_b, vec![tool("dup_tool")]);
@@ -1106,6 +1133,9 @@ fn register_with_limits_rejects_zero_timeout() {
         groups: Vec::new(),
         tags: Vec::new(),
         reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1140,6 +1170,9 @@ async fn register_with_limits_clamps_timeout_below_floor() {
         groups: Vec::new(),
         tags: Vec::new(),
         reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1183,6 +1216,9 @@ async fn register_with_limits_clamps_timeout_above_ceiling() {
         groups: Vec::new(),
         tags: Vec::new(),
         reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1226,6 +1262,9 @@ async fn register_with_limits_leaves_in_range_timeout_unclamped() {
         groups: Vec::new(),
         tags: Vec::new(),
         reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1250,6 +1289,201 @@ async fn register_with_limits_leaves_in_range_timeout_unclamped() {
     assert!(
         !result.is_error,
         "a declared timeout already within [1_000ms, ceiling] must pass through unclamped, got: {}",
+        result.content.text_summary()
+    );
+}
+
+// --- #5214: per-tool environment / write-path / egress contract ---
+
+fn tool_def_with_policy(
+    name: &str,
+    command: &str,
+    env: Vec<String>,
+    write_paths: Vec<String>,
+    egress: Option<String>,
+) -> PackToolDef {
+    PackToolDef {
+        name: name.to_owned(),
+        description: "Policy tool".to_owned(),
+        command: command.to_owned(),
+        timeout: 5000,
+        input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
+        env,
+        write_paths,
+        egress,
+    }
+}
+
+#[test]
+#[expect(unsafe_code, reason = "test serializes process environment mutation")]
+fn register_rejects_declared_env_var_missing_from_daemon_environment() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    unsafe {
+        std::env::remove_var("THESAUROS_TEST_MISSING_ENV");
+    }
+
+    let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
+    make_executable(&dir, "tools/echo.sh");
+    let tool = tool_def_with_policy(
+        "needs_env",
+        "tools/echo.sh",
+        vec!["THESAUROS_TEST_MISSING_ENV".to_owned()],
+        Vec::new(),
+        None,
+    );
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&[pack], &mut registry);
+    assert_eq!(failures.len(), 1, "declared-but-absent env must fail");
+    assert!(
+        failures[0]
+            .error
+            .to_string()
+            .contains("THESAUROS_TEST_MISSING_ENV"),
+        "failure must name the missing variable: {}",
+        failures[0].error
+    );
+    assert!(registry.definitions().is_empty());
+}
+
+#[test]
+#[expect(unsafe_code, reason = "test serializes process environment mutation")]
+fn declared_env_var_is_injected_into_subprocess() {
+    let _guard = ENV_LOCK.lock().expect("env lock");
+    unsafe {
+        std::env::set_var("THESAUROS_TEST_DECLARED_ENV", "declared-value");
+    }
+
+    let dir = setup_pack_dir(&[(
+        "tools/env.sh",
+        "#!/bin/sh\nprintf '%s' \"${THESAUROS_TEST_DECLARED_ENV-unset}\"",
+    )]);
+    make_executable(&dir, "tools/env.sh");
+
+    let mut executor = test_executor(&dir, "tools/env.sh", 5000);
+    executor
+        .env_vars
+        .push("THESAUROS_TEST_DECLARED_ENV".to_owned());
+
+    let input = ToolInput {
+        name: ToolName::new("env_tool").expect("valid tool name"),
+        tool_use_id: "toolu_declared_env".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let ctx = test_ctx(&dir);
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("runtime");
+    let result = runtime
+        .block_on(executor.execute(&input, &ctx))
+        .expect("executor should return result");
+
+    unsafe {
+        std::env::remove_var("THESAUROS_TEST_DECLARED_ENV");
+    }
+
+    assert!(!result.is_error);
+    assert_eq!(result.content.text_summary(), "declared-value");
+}
+
+#[test]
+fn register_rejects_write_path_escaping_pack_root() {
+    let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
+    make_executable(&dir, "tools/echo.sh");
+    let tool = tool_def_with_policy(
+        "writes_outside",
+        "tools/echo.sh",
+        Vec::new(),
+        vec!["../outside".to_owned()],
+        None,
+    );
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&[pack], &mut registry);
+    assert_eq!(failures.len(), 1, "escaping write path must fail");
+    assert!(
+        failures[0].error.to_string().contains("write path"),
+        "failure must name the write path contract: {}",
+        failures[0].error
+    );
+    assert!(registry.definitions().is_empty());
+}
+
+#[test]
+fn register_rejects_unknown_egress_intent() {
+    let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
+    make_executable(&dir, "tools/echo.sh");
+    let tool = tool_def_with_policy(
+        "bad_egress",
+        "tools/echo.sh",
+        Vec::new(),
+        Vec::new(),
+        Some("everything".to_owned()),
+    );
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&[pack], &mut registry);
+    assert_eq!(failures.len(), 1, "unknown egress intent must fail");
+    assert!(
+        failures[0]
+            .error
+            .to_string()
+            .contains("unknown egress intent"),
+        "unexpected failure: {}",
+        failures[0].error
+    );
+    assert!(registry.definitions().is_empty());
+}
+
+#[tokio::test]
+async fn register_accepts_egress_none_and_inherit() {
+    let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\ncat")]);
+    make_executable(&dir, "tools/echo.sh");
+    let tools = vec![
+        tool_def_with_policy(
+            "no_network",
+            "tools/echo.sh",
+            Vec::new(),
+            Vec::new(),
+            Some("none".to_owned()),
+        ),
+        tool_def_with_policy(
+            "inherits_policy",
+            "tools/echo.sh",
+            Vec::new(),
+            Vec::new(),
+            Some("inherit".to_owned()),
+        ),
+    ];
+    let pack = minimal_loaded_pack(&dir, tools);
+
+    let mut registry = ToolRegistry::new();
+    // NOTE: sandbox disabled in tests, so the egress = "none" tool logs an
+    // unenforced-intent warning but still registers.
+    let failures = register_pack_tools(&[pack], &mut registry);
+    assert!(failures.is_empty(), "failures: {failures:?}");
+    assert_eq!(registry.definitions().len(), 2);
+
+    let input = ToolInput {
+        name: ToolName::new("no_network").expect("valid tool name"),
+        tool_use_id: "toolu_egress".to_owned(),
+        arguments: serde_json::json!({"ok": true}),
+    };
+    let result = registry
+        .execute(&input, &test_ctx(&dir))
+        .await
+        .expect("execute should return a result");
+    assert!(
+        !result.is_error,
+        "declared egress intent must not break execution: {}",
         result.content.text_summary()
     );
 }
