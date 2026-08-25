@@ -192,11 +192,13 @@ impl MatrixProvider {
             let client = account.client.clone();
             let since = Arc::clone(&account.since);
             let user_id = account.user_id.clone();
+            let account_label = account_id.clone();
             let span = tracing::info_span!("matrix_sync", account = %account_id);
 
             handles.spawn(
                 sync_loop(
                     client,
+                    account_label,
                     tx,
                     interval,
                     since,
@@ -340,6 +342,7 @@ impl std::fmt::Debug for MatrixProvider {
 )]
 async fn sync_loop(
     client: client::MatrixClient,
+    account_id: String,
     tx: mpsc::Sender<InboundMessage>,
     interval: Duration,
     since: Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
@@ -358,7 +361,7 @@ async fn sync_loop(
                 tracing::info!("cancellation received, stopping Matrix sync");
                 return;
             }
-            result = sync_once(&client, &tx, &since, user_id.as_deref()) => {
+            result = sync_once(&client, &tx, &since, user_id.as_deref(), &account_id) => {
                 match result {
                     Ok(()) => {
                         consecutive_failures = 0;
@@ -424,6 +427,7 @@ async fn sync_once(
     tx: &mpsc::Sender<InboundMessage>,
     since: &Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
     own_user_id: Option<&str>,
+    account_id: &str,
 ) -> error::Result<()> {
     let since_token = { since.lock().await.clone() };
     let response = client.sync(since_token.as_deref()).await?;
@@ -439,7 +443,7 @@ async fn sync_once(
 
     for (room_id, room) in &response.rooms.join {
         for event in &room.timeline.events {
-            if let Some(message) = extract_message(room_id, event, own_user_id)
+            if let Some(message) = extract_message(room_id, event, own_user_id, account_id)
                 && tx.send(message).await.is_err()
             {
                 // WHY: the listener has shut down; returning an error lets
@@ -456,6 +460,7 @@ fn extract_message(
     room_id: &str,
     event: &MatrixEvent,
     own_user_id: Option<&str>,
+    account_id: &str,
 ) -> Option<InboundMessage> {
     if event.event_type != "m.room.message" {
         return None;
@@ -484,6 +489,7 @@ fn extract_message(
         sender: sender.to_owned(),
         sender_name: None,
         group_id: Some(room_id.to_owned()),
+        account_id: Some(account_id.to_owned()),
         text: text.to_owned(),
         timestamp: event.origin_server_ts.unwrap_or_else(|| {
             tracing::warn!("Matrix event has no timestamp, defaulting to 0");
@@ -574,11 +580,12 @@ mod tests {
         }))
         .expect("event");
 
-        let msg = extract_message("!room:example.org", &event, Some("@bot:example.org"))
+        let msg = extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary")
             .expect("message");
         assert_eq!(msg.channel, "matrix");
         assert_eq!(msg.sender, "@alice:example.org");
         assert_eq!(msg.group_id.as_deref(), Some("!room:example.org"));
+        assert_eq!(msg.account_id.as_deref(), Some("primary"));
         assert_eq!(msg.text, "hello");
         assert_eq!(msg.timestamp, 100);
     }
@@ -596,7 +603,10 @@ mod tests {
         }))
         .expect("event");
 
-        assert!(extract_message("!room:example.org", &event, Some("@bot:example.org")).is_none());
+        assert!(
+            extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary")
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -700,6 +710,7 @@ mod tests {
         assert_eq!(msg.channel, "matrix");
         assert_eq!(msg.sender, "@alice:example.org");
         assert_eq!(msg.group_id.as_deref(), Some("!room:example.org"));
+        assert_eq!(msg.account_id.as_deref(), Some("primary"));
         assert_eq!(msg.text, "hello from Matrix");
 
         token.cancel();
@@ -776,7 +787,7 @@ mod tests {
         let tx_ref = tx.clone();
         let own_user_id = "@bot:example.org".to_owned();
         let handle = tokio::spawn(async move {
-            sync_once(&client_ref, &tx_ref, &since_ref, Some(&own_user_id)).await
+            sync_once(&client_ref, &tx_ref, &since_ref, Some(&own_user_id), "primary").await
         });
 
         // WHY: wait until sync_once has advanced the cursor; that happens

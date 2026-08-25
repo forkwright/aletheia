@@ -333,12 +333,14 @@ mod proptests {
             "[a-zA-Z0-9+*]{1,20}",
             "[a-z]{2,8}",
             proptest::option::of("[a-z{}]{1,20}"),
+            proptest::option::of("[a-z]{2,8}"),
         )
-            .prop_map(|(channel, source, nous_id, session_key)| ChannelBinding {
+            .prop_map(|(channel, source, nous_id, session_key, account)| ChannelBinding {
                 channel,
                 source,
                 nous_id,
                 session_key: session_key.unwrap_or_else(default_session_pattern),
+                account,
             })
     }
 
@@ -351,6 +353,7 @@ mod proptests {
             prop_assert_eq!(&binding.source, &back.source);
             prop_assert_eq!(&binding.nous_id, &back.nous_id);
             prop_assert_eq!(&binding.session_key, &back.session_key);
+            prop_assert_eq!(&binding.account, &back.account);
         }
     }
 }

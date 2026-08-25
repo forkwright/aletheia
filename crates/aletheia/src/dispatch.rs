@@ -54,6 +54,7 @@ pub(crate) fn spawn_dispatcher(
                     "dispatch",
                     channel = %msg.channel,
                     sender = %msg.sender,
+                    account = %msg.account_id.as_deref().unwrap_or("default"),
                 );
                 in_flight.spawn(
                     dispatch_one(msg, router, nous_mgr, channels, session_store)
@@ -468,6 +469,7 @@ fn command_origin_record(msg: &InboundMessage) -> serde_json::Value {
         "sender": msg.sender.as_str(),
         "sender_name": msg.sender_name.as_deref(),
         "group_id": msg.group_id.as_deref(),
+        "account_id": msg.account_id.as_deref(),
         "thread_id": msg.group_id.as_deref(),
         "conversation_id": conversation_id,
         "timestamp_ms": msg.timestamp,
@@ -744,6 +746,10 @@ async fn execute_command(
 }
 
 /// Send a reply back through the originating channel.
+///
+/// WHY: the reply carries the inbound `account_id` so multi-account
+/// deployments answer from the account that received the message; only an
+/// unattributed inbound message falls back to the provider default account.
 async fn send_reply(
     msg: &InboundMessage,
     text: &str,
@@ -753,7 +759,7 @@ async fn send_reply(
     let params = SendParams {
         to,
         text: text.to_owned(),
-        account_id: None,
+        account_id: msg.account_id.clone(),
         sender_id: None,
         thread_id: None,
         attachments: None,
@@ -968,6 +974,7 @@ mod tests {
                 source: "*".to_owned(),
                 nous_id: "alice".to_owned(),
                 session_key: "signal:{source}".to_owned(),
+                account: None,
             }],
             None,
         ));
@@ -1008,6 +1015,7 @@ mod tests {
             sender: "+15550100".to_owned(),
             sender_name: Some("Alice".to_owned()),
             group_id: None,
+            account_id: None,
             text: text.to_owned(),
             timestamp,
             attachments: vec![],
@@ -1032,6 +1040,42 @@ mod tests {
 
     fn json_str<'a>(value: &'a serde_json::Value, pointer: &str) -> Option<&'a str> {
         value.pointer(pointer).and_then(serde_json::Value::as_str)
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn reply_carries_inbound_account_id() {
+        let harness = make_dispatch_harness().await;
+        let mut msg = command_message("!ping", 1_709_312_345_700);
+        msg.account_id = Some("work".to_owned());
+
+        dispatch_one(
+            msg,
+            Arc::clone(&harness.router),
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+        )
+        .await;
+
+        {
+            let sent = harness.sent.lock().await;
+            assert_eq!(sent.len(), 1);
+            assert_eq!(
+                sent[0].account_id.as_deref(),
+                Some("work"),
+                "reply must leave from the account that received the message"
+            );
+        }
+
+        let history = command_history(&harness).await;
+        let invocation = record_json(&history[0]);
+        assert_eq!(
+            json_str(&invocation, "/origin/account_id"),
+            Some("work"),
+            "command audit must record the receiving account"
+        );
+
+        shutdown_harness(harness).await;
     }
 
     #[tokio::test(flavor = "multi_thread")]

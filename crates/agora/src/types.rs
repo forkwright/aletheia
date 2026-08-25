@@ -129,6 +129,15 @@ pub struct InboundMessage {
     pub sender_name: Option<String>,
     /// Group/conversation identifier (None for DM).
     pub group_id: Option<String>,
+    /// Provider account that RECEIVED this message (multi-account routing).
+    ///
+    /// Identifies which configured account identity accepted the message
+    /// (e.g. which registered Signal number, which Matrix account), so
+    /// identical senders/rooms on different accounts stay distinct and
+    /// replies leave from the receiving account. `None` when the provider
+    /// cannot attribute an account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
     /// Message text content.
     pub text: String,
     /// Unix timestamp in milliseconds.
@@ -219,6 +228,7 @@ mod tests {
             sender: "+1234567890".to_owned(),
             sender_name: Some("Alice".to_owned()),
             group_id: Some("grp123".to_owned()),
+            account_id: Some("acct1".to_owned()),
             text: "hello world".to_owned(),
             timestamp: 1_709_312_345_678,
             attachments: vec!["photo.jpg".to_owned()],
@@ -232,9 +242,31 @@ mod tests {
         assert_eq!(back.sender, msg.sender);
         assert_eq!(back.sender_name, msg.sender_name);
         assert_eq!(back.group_id, msg.group_id);
+        assert_eq!(back.account_id, msg.account_id);
         assert_eq!(back.text, msg.text);
         assert_eq!(back.timestamp, msg.timestamp);
         assert_eq!(back.attachments, msg.attachments);
         assert_eq!(back.raw, msg.raw);
+    }
+
+    #[test]
+    fn inbound_message_account_id_defaults_to_none() {
+        let json = serde_json::json!({
+            "channel": "signal",
+            "sender": "+1234567890",
+            "sender_name": null,
+            "group_id": null,
+            "text": "hello",
+            "timestamp": 100,
+            "attachments": [],
+            "raw": null,
+        });
+        let msg: InboundMessage = serde_json::from_value(json).expect("deserialize");
+        assert_eq!(msg.account_id, None);
+        let serialized = serde_json::to_string(&msg).expect("serialize");
+        assert!(
+            !serialized.contains("account_id"),
+            "None account_id must be omitted: {serialized}"
+        );
     }
 }

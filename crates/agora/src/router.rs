@@ -42,6 +42,11 @@ pub enum MatchReason {
 /// 3. Default for channel: channel + `"*"` → `nous_id`
 /// 4. Global default: the nous with `default: true`
 /// 5. No match → `None`
+///
+/// A binding that sets `account` only matches messages received by that
+/// provider account (`InboundMessage::account_id`); a binding without
+/// `account` matches any account. This keeps identical senders/groups on
+/// different accounts of the same channel distinct.
 pub struct MessageRouter {
     bindings: Vec<ChannelBinding>,
     default_nous: Option<String>,
@@ -74,7 +79,7 @@ impl MessageRouter {
         // NOTE: Priority 1: exact group match (channel + group_id)
         if let Some(group_id) = &msg.group_id {
             for b in &self.bindings {
-                if b.channel == msg.channel && b.source == *group_id {
+                if b.channel == msg.channel && b.source == *group_id && account_matches(b, msg) {
                     return Some(RouteDecision {
                         nous_id: &b.nous_id,
                         session_key: expand_session_key(&b.session_key, msg),
@@ -86,7 +91,7 @@ impl MessageRouter {
 
         // NOTE: Priority 2: exact source match (channel + sender)
         for b in &self.bindings {
-            if b.channel == msg.channel && b.source == msg.sender {
+            if b.channel == msg.channel && b.source == msg.sender && account_matches(b, msg) {
                 return Some(RouteDecision {
                     nous_id: &b.nous_id,
                     session_key: expand_session_key(&b.session_key, msg),
@@ -97,7 +102,7 @@ impl MessageRouter {
 
         // NOTE: Priority 3: channel default (source = "*")
         for b in &self.bindings {
-            if b.channel == msg.channel && b.source == "*" {
+            if b.channel == msg.channel && b.source == "*" && account_matches(b, msg) {
                 return Some(RouteDecision {
                     nous_id: &b.nous_id,
                     session_key: expand_session_key(&b.session_key, msg),
@@ -115,11 +120,22 @@ impl MessageRouter {
     }
 }
 
+/// A binding that names an `account` matches only messages received by that
+/// account; a binding without one matches any account (including messages
+/// whose provider did not attribute an account).
+fn account_matches(binding: &ChannelBinding, msg: &InboundMessage) -> bool {
+    binding
+        .account
+        .as_deref()
+        .is_none_or(|account| Some(account) == msg.account_id.as_deref())
+}
+
 /// Expand session key template placeholders.
 fn expand_session_key(template: &str, msg: &InboundMessage) -> String {
     template
         .replace("{source}", &msg.sender)
         .replace("{group}", msg.group_id.as_deref().unwrap_or("dm"))
+        .replace("{account}", msg.account_id.as_deref().unwrap_or("default"))
 }
 
 /// Determine reply target for outbound response.
@@ -146,6 +162,7 @@ mod tests {
             sender: sender.to_owned(),
             sender_name: None,
             group_id: None,
+            account_id: None,
             text: "hello".to_owned(),
             timestamp: 100,
             attachments: vec![],
@@ -159,6 +176,7 @@ mod tests {
             sender: sender.to_owned(),
             sender_name: None,
             group_id: Some(group_id.to_owned()),
+            account_id: None,
             text: "hello".to_owned(),
             timestamp: 100,
             attachments: vec![],
@@ -172,6 +190,7 @@ mod tests {
             source: source.to_owned(),
             nous_id: nous_id.to_owned(),
             session_key: "{source}".to_owned(),
+            account: None,
         }
     }
 
@@ -368,5 +387,65 @@ mod tests {
         let msg = dm_message("+15550100");
         let decision = router.resolve(&msg).expect("should match");
         assert_eq!(decision.session_key, "fixed-key");
+    }
+
+    #[test]
+    fn account_scoped_binding_matches_only_that_account() {
+        let mut scoped = binding("signal", "+15550100", "work-nous");
+        scoped.account = Some("work".to_owned());
+        let router = MessageRouter::new(vec![scoped], None);
+
+        let mut on_work = dm_message("+15550100");
+        on_work.account_id = Some("work".to_owned());
+        let decision = router.resolve(&on_work).expect("should match");
+        assert_eq!(decision.nous_id, "work-nous");
+
+        let mut on_personal = dm_message("+15550100");
+        on_personal.account_id = Some("personal".to_owned());
+        assert!(
+            router.resolve(&on_personal).is_none(),
+            "same sender on a different account must not match an account-scoped binding"
+        );
+
+        let unattributed = dm_message("+15550100");
+        assert!(
+            router.resolve(&unattributed).is_none(),
+            "message without an account must not match an account-scoped binding"
+        );
+    }
+
+    #[test]
+    fn account_scoped_binding_falls_through_to_unscoped() {
+        let mut scoped = binding("signal", "*", "work-nous");
+        scoped.account = Some("work".to_owned());
+        let router = MessageRouter::new(vec![scoped, binding("signal", "*", "any-nous")], None);
+
+        let mut on_work = dm_message("+15550100");
+        on_work.account_id = Some("work".to_owned());
+        assert_eq!(
+            router.resolve(&on_work).expect("should match").nous_id,
+            "work-nous"
+        );
+
+        let mut on_personal = dm_message("+15550100");
+        on_personal.account_id = Some("personal".to_owned());
+        let decision = router.resolve(&on_personal).expect("should match");
+        assert_eq!(decision.nous_id, "any-nous");
+        assert_eq!(decision.matched_by, MatchReason::ChannelDefault);
+    }
+
+    #[test]
+    fn session_key_account_placeholder() {
+        let mut b = binding("signal", "*", "syn");
+        b.session_key = "signal:{account}:{source}".to_owned();
+        let router = MessageRouter::new(vec![b], None);
+        let mut msg = dm_message("+15550100");
+        msg.account_id = Some("work".to_owned());
+        let decision = router.resolve(&msg).expect("should match");
+        assert_eq!(decision.session_key, "signal:work:+15550100");
+
+        let unattributed = dm_message("+15550100");
+        let decision = router.resolve(&unattributed).expect("should match");
+        assert_eq!(decision.session_key, "signal:default:+15550100");
     }
 }

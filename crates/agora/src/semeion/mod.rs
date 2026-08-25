@@ -204,6 +204,7 @@ impl SignalProvider {
             handles.spawn(
                 poll_loop(
                     signal_client,
+                    account_id,
                     tx,
                     interval,
                     state,
@@ -424,6 +425,7 @@ impl std::fmt::Debug for SignalProvider {
 )]
 async fn poll_loop(
     signal_client: client::SignalClient,
+    account_id: String,
     tx: mpsc::Sender<InboundMessage>,
     interval: Duration,
     state: Arc<Mutex<AccountState>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
@@ -466,7 +468,7 @@ async fn poll_loop(
                 tracing::info!("cancellation received, stopping poll");
                 return;
             }
-            result = signal_client.receive(None) => {
+            result = signal_client.receive(Some(&account_id)) => {
                 match result {
                     Ok(envelopes) => {
                         {
@@ -502,7 +504,7 @@ async fn poll_loop(
                         }
 
                         for env in &envelopes {
-                            if let Some(msg) = envelope::extract_message(env) {
+                            if let Some(msg) = envelope::extract_message(env, Some(&account_id)) {
                                 if tx.send(msg).await.is_err() {
                                     tracing::info!("receiver dropped, stopping poll");
                                     return;
@@ -741,6 +743,7 @@ mod tests {
         let handle = tokio::spawn(
             super::poll_loop(
                 signal_client,
+                "+1111111111".to_owned(),
                 tx,
                 Duration::from_millis(50),
                 account_state,
@@ -756,6 +759,7 @@ mod tests {
             .expect("timeout")
             .expect("message");
         assert_eq!(msg.text, "test msg");
+        assert_eq!(msg.account_id.as_deref(), Some("+1111111111"));
 
         drop(rx);
         let result = tokio::time::timeout(Duration::from_secs(5), handle).await;

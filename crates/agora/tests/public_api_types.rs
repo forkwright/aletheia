@@ -231,6 +231,7 @@ fn inbound_message_construction() {
         sender: "+1234567890".to_owned(),
         sender_name: Some("Alice".to_owned()),
         group_id: Some("group-abc".to_owned()),
+        account_id: Some("acct1".to_owned()),
         text: "Hello!".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec!["photo.jpg".to_owned()],
@@ -241,6 +242,7 @@ fn inbound_message_construction() {
     assert_eq!(msg.sender, "+1234567890");
     assert_eq!(msg.sender_name.as_deref(), Some("Alice"));
     assert_eq!(msg.group_id.as_deref(), Some("group-abc"));
+    assert_eq!(msg.account_id.as_deref(), Some("acct1"));
     assert_eq!(msg.text, "Hello!");
     assert_eq!(msg.timestamp, 1_709_312_345_678);
     assert_eq!(msg.attachments.len(), 1);
@@ -254,6 +256,7 @@ fn inbound_message_serde_roundtrip() {
         sender: "+1234567890".to_owned(),
         sender_name: Some("Bob".to_owned()),
         group_id: None,
+        account_id: None,
         text: "Direct message".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec![],
@@ -267,6 +270,7 @@ fn inbound_message_serde_roundtrip() {
     assert_eq!(restored.sender, original.sender);
     assert_eq!(restored.sender_name, original.sender_name);
     assert_eq!(restored.group_id, original.group_id);
+    assert_eq!(restored.account_id, original.account_id);
     assert_eq!(restored.text, original.text);
     assert_eq!(restored.timestamp, original.timestamp);
     assert_eq!(restored.attachments, original.attachments);

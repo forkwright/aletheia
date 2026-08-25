@@ -333,10 +333,20 @@ pub struct ChannelBinding {
     /// Nous ID to route to.
     // kanon:ignore RUST/primitive-for-domain-id — wire/serde config field: nous_id is a TOML routing string, not a runtime domain identifier
     pub nous_id: String,
-    /// Session key pattern. Supports `{source}` and `{group}` placeholders.
+    /// Session key pattern. Supports `{source}`, `{group}`, and `{account}`
+    /// placeholders (`{account}` expands to the receiving provider account,
+    /// or `default` when the provider did not attribute one).
     #[serde(default = "default_session_pattern")]
     // kanon:ignore RUST/plain-string-secret
     pub session_key: String,
+    /// Restrict this binding to the provider account that received the
+    /// message (multi-account deployments). `None` matches any account.
+    ///
+    /// WHY: identical senders and group IDs on two different accounts are
+    /// distinct conversations; without an account leg in the match they
+    /// collapse onto whichever binding sorts first.
+    #[serde(default)]
+    pub account: Option<String>,
 }
 
 fn default_session_pattern() -> String {

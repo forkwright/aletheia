@@ -29,6 +29,7 @@ fn make_binding(channel: &str, source: &str, nous_id: &str) -> ChannelBinding {
         source: source.to_owned(),
         nous_id: nous_id.to_owned(),
         session_key: "{source}".to_owned(),
+        account: None,
     }
 }
 
@@ -38,6 +39,7 @@ fn make_dm_message(sender: &str) -> InboundMessage {
         sender: sender.to_owned(),
         sender_name: None,
         group_id: None,
+        account_id: None,
         text: "hello".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec![],
@@ -51,6 +53,7 @@ fn make_group_message(sender: &str, group_id: &str) -> InboundMessage {
         sender: sender.to_owned(),
         sender_name: None,
         group_id: Some(group_id.to_owned()),
+        account_id: None,
         text: "group hello".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec![],

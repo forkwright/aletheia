@@ -596,7 +596,8 @@ Routes mapping channel sources to nous agents.
 | `channel` | string | *required* | Channel type (e.g., "signal"). |
 | `source` | string | *required* | Source pattern: phone number, group ID, or "*" for default. |
 | `nousId` | string | *required* | Nous ID to route to. |
-| `sessionKey` | string | "{source}" | Session key pattern. Supports `{source}` and `{group}` placeholders. |
+| `sessionKey` | string | "{source}" | Session key pattern. Supports `{source}`, `{group}`, and `{account}` placeholders (`{account}` expands to the receiving provider account, or `default` when unattributed). |
+| `account` | string | unset | Restrict this binding to the provider account that received the message. When unset, the binding matches any account. |
 
 ## feature_flags[]
 
