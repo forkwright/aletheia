@@ -50,8 +50,7 @@ pub(crate) struct RunArgs {
     pub token: Option<String>,
     /// Nous agent ID to test
     #[arg(long, default_value = "benchmark")]
-    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
-    pub nous_id: String,
+    pub nous_id: koina::id::NousId,
     /// Maximum number of questions to evaluate (useful for smoke tests)
     #[arg(long)]
     pub max_questions: Option<usize>,
@@ -119,8 +118,9 @@ pub(crate) async fn run(args: BenchmarkArgs) -> Result<()> {
 /// Reject obviously-broken inputs before loading datasets or talking to the
 /// server. Otherwise `--timeout 0` / `--max-questions 0` / `--retrieval-k 0`
 /// quietly exit with an empty report (looking like a passing run), and a
-/// malformed `--url` or empty `--nous-id` only surfaces via downstream HTTP
-/// errors that read like a server-down or missing-agent problem.
+/// malformed `--url` only surfaces via downstream HTTP errors that read like
+/// a server-down problem. `--nous-id` is a validated `NousId`, so clap
+/// rejects a malformed id at parse time.
 fn validate_args(args: &RunArgs) -> Result<()> {
     if args.timeout == 0 {
         whatever!(
@@ -134,9 +134,6 @@ fn validate_args(args: &RunArgs) -> Result<()> {
         whatever!(
             "--retrieval-k must be greater than 0 when set (got 0; recall@0 / NDCG@0 are not meaningful)"
         );
-    }
-    if args.nous_id.trim().is_empty() {
-        whatever!("--nous-id must not be empty");
     }
     if let Err(e) = reqwest::Url::parse(&args.url) {
         whatever!("--url is not a valid URL: {e} (got {:?})", args.url);
@@ -263,7 +260,7 @@ async fn run_benchmark(
             });
 
     let config = BenchmarkRunnerConfig {
-        nous_id: args.nous_id.clone(),
+        nous_id: args.nous_id.to_string(),
         session_key_prefix: format!("bench-{}", benchmark.name().to_lowercase()),
         question_timeout: Duration::from_secs(args.timeout),
         max_questions: args.max_questions,
@@ -466,7 +463,7 @@ async fn collect_metadata(
         .filter(|version| !version.is_empty())
         .unwrap_or_else(|| "unknown".to_owned());
 
-    let nous = client.get_nous(&args.nous_id).await.ok();
+    let nous = client.get_nous(args.nous_id.as_str()).await.ok();
     let model = nous
         .as_ref()
         .map_or_else(|| "unknown".to_owned(), |n| n.model.clone());
@@ -475,7 +472,7 @@ async fn collect_metadata(
     BenchmarkMetadata {
         timestamp: jiff::Timestamp::now().to_string(),
         aletheia_version: version,
-        nous_id: args.nous_id.clone(),
+        nous_id: args.nous_id.to_string(),
         model,
         provider,
         benchmark: benchmark.name().to_owned(),
@@ -778,7 +775,7 @@ mod tests {
             dataset: PathBuf::from("/tmp/does-not-matter.json"),
             url: "http://127.0.0.1:18789".to_owned(),
             token: None,
-            nous_id: "benchmark".to_owned(),
+            nous_id: koina::id::NousId::new("benchmark").unwrap(),
             max_questions: None,
             timeout: 120,
             json: false,
@@ -821,22 +818,6 @@ mod tests {
         a.retrieval_k = Some(0);
         let err = validate_args(&a).unwrap_err();
         assert!(err.to_string().contains("--retrieval-k"), "got: {err}");
-    }
-
-    #[test]
-    fn validate_rejects_empty_nous_id() {
-        let mut a = base_args();
-        a.nous_id = String::new();
-        let err = validate_args(&a).unwrap_err();
-        assert!(err.to_string().contains("--nous-id"), "got: {err}");
-    }
-
-    #[test]
-    fn validate_rejects_whitespace_only_nous_id() {
-        let mut a = base_args();
-        a.nous_id = "   ".to_owned();
-        let err = validate_args(&a).unwrap_err();
-        assert!(err.to_string().contains("--nous-id"), "got: {err}");
     }
 
     #[test]

@@ -7,6 +7,7 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use clap::Args;
+use koina::id::NousId;
 use mneme::types::parse_session_or_agent_id;
 use organon::types::WorkingCheckpointStore as _;
 use snafu::prelude::*;
@@ -19,14 +20,6 @@ use crate::error::Result;
 /// retention cap (`nous::working_memory::store`) — the store never holds more
 /// than this per session, so export never asks for more than it could return.
 const WORKING_CHECKPOINT_EXPORT_LIMIT: usize = 20;
-
-fn validate_nous_id(nous_id: &str) -> Result<()> {
-    if nous_id.trim().is_empty() {
-        whatever!("--nous-id must not be empty");
-    }
-    validate_agent_id_for_paths(nous_id, "--nous-id")?;
-    Ok(())
-}
 
 /// Validate an agent ID that will be used to derive on-disk paths.
 ///
@@ -43,7 +36,7 @@ fn validate_agent_id_for_paths(id: &str, source: &str) -> Result<()> {
     if id.contains('\0') {
         whatever!("{source} must not contain NUL bytes");
     }
-    koina::id::NousId::new(id)
+    NousId::new(id)
         .map(|_| ())
         .map_err(|e| crate::error::Error::msg(format!("{source}: {e}")))
 }
@@ -94,8 +87,7 @@ fn validate_workspace_relative_path(path: &str) -> Result<()> {
 #[derive(Debug, Clone, Args)]
 pub(crate) struct ExportArgs {
     /// Agent (nous) ID to export
-    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
-    pub nous_id: String,
+    pub nous_id: NousId,
     /// Output file path (default: `{nous-id}-{date}.agent.json`)
     #[arg(short, long)]
     pub output: Option<PathBuf>,
@@ -156,8 +148,7 @@ pub(crate) struct SeedSkillsArgs {
     pub dir: PathBuf,
     /// Agent (nous) ID to attribute skills to
     #[arg(short, long)]
-    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
-    pub nous_id: String,
+    pub nous_id: NousId,
     /// Overwrite existing skills with the same name
     #[arg(long)]
     pub force: bool,
@@ -170,8 +161,7 @@ pub(crate) struct SeedSkillsArgs {
 pub(crate) struct ExportSkillsArgs {
     /// Agent (nous) ID whose skills to export
     #[arg(short, long)]
-    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
-    pub nous_id: String,
+    pub nous_id: NousId,
     /// Output directory (default: .claude/skills)
     #[arg(short, long, default_value = ".claude/skills")]
     pub output: PathBuf,
@@ -188,8 +178,7 @@ pub(crate) struct ExportSkillsArgs {
 pub(crate) struct ReviewSkillsArgs {
     /// Agent (nous) ID whose pending skills to review
     #[arg(short, long)]
-    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
-    pub nous_id: String,
+    pub nous_id: NousId,
     /// Action: list, approve, reject
     #[arg(short, long, default_value = "list")]
     pub action: String,
@@ -623,13 +612,13 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     let oikos = super::resolve_oikos(instance_root)?;
     let config =
         taxis::loader::load_config(&oikos).whatever_context("failed to load aletheia config")?;
-    let resolved = taxis::config::resolve_nous(&config, &args.nous_id);
+    let resolved = taxis::config::resolve_nous(&config, args.nous_id.as_str());
 
     if !config
         .agents
         .list
         .iter()
-        .any(|agent| agent.id.as_str() == args.nous_id)
+        .any(|agent| agent.id == args.nous_id)
     {
         whatever!("nous agent '{}' not found in configuration", args.nous_id);
     }
@@ -672,7 +661,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     let mut archived_skipped = 0usize;
     let mut truncations: Vec<TruncationRecord> = Vec::new();
     for session in store
-        .list_sessions(Some(&args.nous_id))
+        .list_sessions(Some(args.nous_id.as_str()))
         .whatever_context("failed to list sessions")?
     {
         if !args.archived && session.status != SessionStatus::Active {
@@ -798,7 +787,8 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
         });
     }
 
-    let (knowledge, has_unexported_vectors) = match export_knowledge(&oikos, &args.nous_id) {
+    let (knowledge, has_unexported_vectors) = match export_knowledge(&oikos, args.nous_id.as_str())
+    {
         Ok(pair) => pair,
         Err(err) => {
             if args.allow_partial {
@@ -863,7 +853,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     let output = args
         .output
         .clone()
-        .unwrap_or_else(|| default_export_path(&args.nous_id, &exported_at));
+        .unwrap_or_else(|| default_export_path(args.nous_id.as_str(), &exported_at));
     if output.exists() && !args.force {
         whatever!(
             "output file already exists: {}\nUse --force to overwrite.",
@@ -1381,11 +1371,9 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         );
     }
 
-    // WARNING(#4241): if --target-id is absent, the imported nous.id is
-    // used directly to derive on-disk paths. Validate before any I/O.
-    if args.target_id.is_none() {
-        validate_agent_id_for_paths(&agent_file.nous.id, "imported nous.id")?;
-    }
+    // WHY(#4241): if --target-id is absent, the imported nous.id is
+    // used directly to derive on-disk paths. `NousInfo.id` is a validated
+    // `NousId`, so a malicious id cannot survive agent-file parsing.
     for path in agent_file.workspace.files.keys() {
         validate_workspace_relative_path(path)?;
     }
@@ -1407,7 +1395,7 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
     let nous_id = args
         .target_id
         .clone()
-        .unwrap_or_else(|| agent_file.nous.id.clone());
+        .unwrap_or_else(|| agent_file.nous.id.to_string());
 
     if args.dry_run {
         println!("Dry run — no changes will be made\n");
@@ -1828,9 +1816,8 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
 pub(crate) fn seed_skills(instance_root: Option<&PathBuf>, args: &SeedSkillsArgs) -> Result<()> {
     use mneme::skill::{SkillContent, parse_skill_md, scan_skill_dir};
 
-    validate_nous_id(&args.nous_id)?;
     let dir = &args.dir;
-    let nous_id = &args.nous_id;
+    let nous_id = args.nous_id.as_str();
     let entries = scan_skill_dir(dir)
         .with_whatever_context(|_| format!("failed to scan skill directory: {}", dir.display()))?;
 
@@ -2001,7 +1988,6 @@ pub(crate) async fn export_skills(
     instance_root: Option<&PathBuf>,
     args: &ExportSkillsArgs,
 ) -> Result<()> {
-    validate_nous_id(&args.nous_id)?;
     if let Err(e) = reqwest::Url::parse(&args.url) {
         whatever!("--url is not a valid URL: {e} (got {:?})", args.url);
     }
@@ -2015,7 +2001,7 @@ pub(crate) async fn export_skills(
             Some(root) => Oikos::from_root(root),
             None => Oikos::discover(),
         };
-        let knowledge_path = knowledge_path_for_nous(&oikos, &args.nous_id);
+        let knowledge_path = knowledge_path_for_nous(&oikos, args.nous_id.as_str());
 
         let config = knowledge_config_for_oikos(&oikos);
         let store =
@@ -2026,7 +2012,7 @@ pub(crate) async fn export_skills(
                 )
             })?;
 
-        let nous_id = &args.nous_id;
+        let nous_id = args.nous_id.as_str();
         let facts = store
             .find_skills_for_nous(nous_id, 500)
             .whatever_context("failed to query skills")?;
@@ -2093,7 +2079,6 @@ pub(crate) async fn review_skills(
     instance_root: Option<&PathBuf>,
     args: &ReviewSkillsArgs,
 ) -> Result<()> {
-    validate_nous_id(&args.nous_id)?;
     guard_knowledge_lock(&args.url).await?;
 
     #[cfg(feature = "recall")]
@@ -2105,7 +2090,7 @@ pub(crate) async fn review_skills(
             Some(root) => Oikos::from_root(root),
             None => Oikos::discover(),
         };
-        let knowledge_path = knowledge_path_for_nous(&oikos, &args.nous_id);
+        let knowledge_path = knowledge_path_for_nous(&oikos, args.nous_id.as_str());
 
         let config = knowledge_config_for_oikos(&oikos);
         let store =
@@ -2116,7 +2101,7 @@ pub(crate) async fn review_skills(
                 )
             })?;
 
-        let nous_id = &args.nous_id;
+        let nous_id = args.nous_id.as_str();
         match args.action.as_str() {
             "list" => {
                 let pending = store
@@ -2461,50 +2446,6 @@ mod tests {
     }
 
     #[test]
-    fn validate_nous_id_rejects_empty() {
-        let err = validate_nous_id("").unwrap_err();
-        assert!(
-            err.to_string().contains("--nous-id must not be empty"),
-            "got: {err}"
-        );
-    }
-
-    #[test]
-    fn validate_nous_id_rejects_whitespace_only() {
-        let err = validate_nous_id("   ").unwrap_err();
-        assert!(
-            err.to_string().contains("--nous-id must not be empty"),
-            "got: {err}"
-        );
-    }
-
-    #[test]
-    fn validate_nous_id_accepts_well_formed() {
-        assert!(validate_nous_id("pronoea").is_ok());
-        assert!(validate_nous_id("agent-with-hyphens").is_ok());
-    }
-
-    #[test]
-    fn validate_nous_id_rejects_path_traversal() {
-        let err = validate_nous_id("../escape").unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("--nous-id") && msg.contains("alphanumeric"),
-            "got: {msg}"
-        );
-    }
-
-    #[test]
-    fn validate_nous_id_rejects_absolute_path() {
-        let err = validate_nous_id("/etc/passwd").unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("--nous-id") && msg.contains("alphanumeric"),
-            "got: {msg}"
-        );
-    }
-
-    #[test]
     fn validate_target_id_accepts_absent() {
         assert!(validate_target_id(None).is_ok());
     }
@@ -2650,7 +2591,7 @@ mod tests {
             exported_at: "2026-03-05T12:00:00Z".to_owned(),
             generator: "aletheia-rust/0.10.0".to_owned(),
             nous: NousInfo {
-                id: "imported-agent".to_owned(),
+                id: NousId::new("imported-agent").expect("valid fixture nous id"),
                 name: Some("Imported Agent".to_owned()),
                 model: Some("claude-sonnet-4-6".to_owned()),
                 config: serde_json::json!({"domains": ["general"]}),
@@ -2806,7 +2747,7 @@ workspace = "nous/{agent_id}"
 
         let output = dir.path().join("alice.agent.json");
         let args = ExportArgs {
-            nous_id: "alice".to_owned(),
+            nous_id: NousId::new("alice").expect("valid fixture nous id"),
             output: Some(output.clone()),
             archived: false,
             max_messages: 0,
@@ -2818,7 +2759,7 @@ workspace = "nous/{agent_id}"
 
         let exported: AgentFile =
             serde_json::from_str(&std::fs::read_to_string(output).unwrap()).unwrap();
-        assert_eq!(exported.nous.id, "alice");
+        assert_eq!(exported.nous.id.as_str(), "alice");
         assert_eq!(exported.nous.name.as_deref(), Some("Alice"));
         assert_eq!(
             exported.workspace.files.get("SOUL.md").map(String::as_str),
@@ -2877,7 +2818,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: false,
                 max_messages: 0,
@@ -3012,7 +2953,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: true,
                 max_messages: 0,
@@ -3133,7 +3074,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: false,
                 max_messages: 0,
@@ -3253,7 +3194,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: false,
                 max_messages: 0,
@@ -3320,7 +3261,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: false,
                 max_messages: 0,
@@ -3371,7 +3312,7 @@ workspace = "nous/{agent_id}"
             Some(&dir.path().to_path_buf()),
             &SeedSkillsArgs {
                 dir: skills_dir,
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 force: false,
                 dry_run: false,
             },
@@ -3530,7 +3471,8 @@ workspace = "nous/{agent_id}"
     }
 
     /// Regression for #4241: a `.agent.json` whose `nous.id` contains
-    /// a traversal pattern must be rejected before any I/O.
+    /// a traversal pattern must be rejected before any I/O. `NousInfo.id`
+    /// is a validated `NousId`, so rejection happens at parse time.
     #[test]
     fn import_agent_rejects_traversal_nous_id() {
         let dir = tempfile::tempdir().unwrap();
@@ -3538,11 +3480,10 @@ workspace = "nous/{agent_id}"
         std::fs::create_dir_all(oikos.config()).unwrap();
         std::fs::create_dir_all(oikos.data()).unwrap();
 
-        let mut agent_file = sample_agent_file();
-        agent_file.nous.id = "../../../tmp/evil-from-file".to_owned();
-        let json = serde_json::to_string(&agent_file).unwrap();
+        let mut value = serde_json::to_value(sample_agent_file()).unwrap();
+        value["nous"]["id"] = serde_json::Value::from("../../../tmp/evil-from-file");
         let agent_path = dir.path().join("evil.agent.json");
-        std::fs::write(&agent_path, json).unwrap();
+        std::fs::write(&agent_path, serde_json::to_string(&value).unwrap()).unwrap();
 
         let args = ImportArgs {
             file: agent_path,
@@ -3557,7 +3498,7 @@ workspace = "nous/{agent_id}"
         let err = import_agent(Some(&dir.path().to_path_buf()), &args).unwrap_err();
         let msg = err.to_string();
         assert!(
-            msg.contains("imported nous.id") && msg.contains("alphanumeric"),
+            msg.contains("failed to parse agent file") && msg.contains("alphanumeric"),
             "got: {msg}"
         );
     }
@@ -3868,7 +3809,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: false,
                 max_messages: 0,
@@ -4013,7 +3954,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: false,
                 max_messages: 0,
@@ -4072,7 +4013,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: false,
                 max_messages: 0,
@@ -4241,7 +4182,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export1.clone()),
                 archived: true,
                 max_messages: 0,
@@ -4275,7 +4216,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&dest.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export2.clone()),
                 archived: true,
                 max_messages: 0,
@@ -4309,7 +4250,7 @@ workspace = "nous/{agent_id}"
             exported_at: "2026-03-05T12:00:00Z".to_owned(),
             generator: "aletheia-rust/0.10.0".to_owned(),
             nous: NousInfo {
-                id: "imported-agent".to_owned(),
+                id: NousId::new("imported-agent").expect("valid fixture nous id"),
                 name: Some("Imported Agent".to_owned()),
                 model: Some("claude-sonnet-4-6".to_owned()),
                 config: serde_json::json!({"domains": ["general"]}),
@@ -4560,7 +4501,7 @@ workspace = "nous/{agent_id}"
         let result = export_agent(
             Some(&dir.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(output.clone()),
                 archived: false,
                 max_messages: 0,
@@ -4603,7 +4544,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&dir.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(output.clone()),
                 archived: false,
                 max_messages: 0,
@@ -4644,7 +4585,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&dir.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(output.clone()),
                 archived: false,
                 max_messages: 0,
@@ -4692,7 +4633,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&dir.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(output.clone()),
                 archived: false,
                 max_messages: 0,
@@ -4730,7 +4671,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: false,
                 max_messages: 0,
@@ -4773,7 +4714,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&dir.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(output.clone()),
                 archived: false,
                 max_messages: 2,
@@ -4834,7 +4775,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&dir.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(output.clone()),
                 archived: false,
                 max_messages: 0,
@@ -5063,7 +5004,7 @@ workspace = "nous/{agent_id}"
 
         let output = dir.path().join("alice.agent.json");
         let args = ExportArgs {
-            nous_id: "alice".to_owned(),
+            nous_id: NousId::new("alice").expect("valid fixture nous id"),
             output: Some(output.clone()),
             archived: false,
             max_messages: 0,
@@ -5221,7 +5162,7 @@ workspace = "nous/{agent_id}"
         export_agent(
             Some(&source.path().to_path_buf()),
             &ExportArgs {
-                nous_id: "alice".to_owned(),
+                nous_id: NousId::new("alice").expect("valid fixture nous id"),
                 output: Some(export_path.clone()),
                 archived: false,
                 max_messages: 0,

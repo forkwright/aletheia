@@ -8,7 +8,7 @@ use koina::event::{InternalEvent, LogLevel};
 /// A pipeline stage completed successfully.
 pub(crate) struct StageCompleted {
     /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
     pub(crate) nous_id: String,
     /// Stage name (context, recall, history, guard, execute, finalize).
     pub(crate) stage: &'static str,
@@ -47,7 +47,7 @@ impl InternalEvent for StageCompleted {
 /// A pipeline stage encountered an error.
 pub(crate) struct StageError {
     /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
     pub(crate) nous_id: String,
     /// Stage name.
     pub(crate) stage: &'static str,
@@ -83,7 +83,7 @@ impl InternalEvent for StageError {
 /// A pipeline turn completed.
 pub(crate) struct TurnCompleted {
     /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
     pub(crate) nous_id: String,
     /// Observed model name for the completed turn.
     pub(crate) model: String,
@@ -140,7 +140,7 @@ impl InternalEvent for TurnCompleted {
 /// Post-turn self-audit completed.
 pub(crate) struct SelfAuditCompleted {
     /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
     pub(crate) nous_id: String,
     /// Number of checks run.
     pub(crate) checks: usize,
@@ -176,7 +176,7 @@ impl InternalEvent for SelfAuditCompleted {
 /// Self-tuning proposals were evaluated for operator consumption.
 pub(crate) struct TuningProposalsEvaluated {
     /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
     pub(crate) nous_id: String,
     /// Number of proposal outcomes generated.
     pub(crate) outcomes: usize,
@@ -210,7 +210,7 @@ impl InternalEvent for TuningProposalsEvaluated {
 /// A pipeline stage was skipped (e.g. recall without embedding provider).
 pub(crate) struct StageSkipped {
     /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
     pub(crate) nous_id: String,
     /// Stage name.
     pub(crate) stage: &'static str,
@@ -238,7 +238,7 @@ impl InternalEvent for StageSkipped {
 /// Reflection stage completed with a durable-state outcome.
 pub(crate) struct ReflectionOutcome {
     /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
     pub(crate) nous_id: String,
     /// Reflection outcome status.
     pub(crate) status: &'static str,
@@ -281,7 +281,7 @@ impl InternalEvent for ReflectionOutcome {
 /// A pipeline stage timed out.
 pub(crate) struct StageTimeout {
     /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: metrics/log event carrier fed from the pipeline context's validated actor id, and metric label values must be String; newtype conversion tracked in #6755
     pub(crate) nous_id: String,
     /// Stage name.
     pub(crate) stage: &'static str,

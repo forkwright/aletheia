@@ -56,7 +56,7 @@ pub struct ToolCallRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CorrectionRecord {
     /// Session in which the correction occurred.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: in-memory audit-input record; the session id arrives as a raw string from session metadata in any historical format (UUID, ULID, legacy ses_); conversion tracked in #6755
     pub session_id: String,
     /// Turn number where the operator corrected the nous.
     pub turn_number: u32,
@@ -89,7 +89,7 @@ pub struct SessionContinuityStats {
 #[derive(Debug, Clone, Default)]
 pub struct CheckContext {
     /// Which nous is being audited.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: in-memory audit context populated by the caller from the validated actor id; no external parse boundary; conversion tracked in #6755
     pub nous_id: String,
     /// Recent tool call outcomes for this nous.
     pub recent_tool_calls: Vec<ToolCallRecord>,
@@ -156,7 +156,7 @@ pub struct AuditCheckResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditReport {
     /// Which nous was audited.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: serialized report envelope whose nous id originates from validated actor state; reports must round-trip across versions; conversion tracked in #6755
     pub nous_id: String,
     /// What triggered this audit.
     pub trigger: AuditTrigger,

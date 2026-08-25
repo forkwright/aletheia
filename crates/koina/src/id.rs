@@ -185,11 +185,10 @@ impl Borrow<str> for NousId {
 /// accepts anything, which is exactly what this type exists to prevent. Parsing a `NousId` has to
 /// run the same validation `new` does, or a parsed id is weaker than a constructed one.
 ///
-/// WHY it matters beyond tidiness: without `FromStr`, clap cannot use this type, so eight CLI
-/// argument structs carry `nous_id: String` under a suppression reading "clap parses from string,
-/// newtype wouldn't work". That left the CLI as an unvalidated surface for the same field whose
-/// config-load surface was found unvalidated in #4638 — an id with uppercase, an underscore, a
-/// leading hyphen or a path separator reached the runtime unchecked.
+/// WHY it matters beyond tidiness: with `FromStr`, clap parses CLI arguments straight into a
+/// validated `NousId`, so the command-line surface gets the same check #4638 wired into config
+/// load — an id with uppercase, an underscore, a leading hyphen or a path separator is rejected
+/// at argument-parse time instead of reaching the runtime unchecked.
 impl FromStr for NousId {
     type Err = IdError;
 

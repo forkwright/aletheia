@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 
+use koina::id::NousId;
 use serde::{Deserialize, Serialize};
 
 /// Agent file format version.
@@ -113,7 +114,7 @@ pub struct AgentFile {
     reason = "portability struct fields are self-documenting by name"
 )]
 pub struct NousInfo {
-    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub id: NousId,
     pub name: Option<String>,
     pub model: Option<String>,
     pub config: serde_json::Value,
@@ -155,7 +156,7 @@ pub struct BinaryFileData {
     reason = "portability struct fields are self-documenting by name"
 )]
 pub struct ExportedSession {
-    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: export must round-trip historical session ids (ULID #3101, legacy ses_<24hex>) byte-identically; koina::id::SessionId normalizes on Display, which would rewrite the raw store key on re-export
     pub session_key: String, // kanon:ignore RUST/plain-string-secret - NOTE: lookup slug, not a secret credential
     pub status: String,
     pub session_type: String,
@@ -279,7 +280,7 @@ pub struct MemoryData {
     reason = "portability struct fields are self-documenting by name"
 )]
 pub struct ExportedVector {
-    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: opaque memory-plane key assigned by the embedding store, not an agent/session id; export must round-trip it byte-identically
     pub text: String,
     pub metadata: serde_json::Value,
 }

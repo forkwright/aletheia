@@ -93,7 +93,7 @@ pub type FactSensitivity = String;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilteredFact {
     /// Fact identifier from the knowledge store.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: recall source-plane id copied from RecallFilteredFact — filtered candidates are not always facts (memory updates can target non-fact context ids), so eidos FactId would be wrong; persisted in the append-only audit JSONL, which must round-trip historical rows
     pub id: String,
     /// Sensitivity tier that caused the filter to exclude the fact.
     pub sensitivity: FactSensitivity,
@@ -130,13 +130,13 @@ pub struct PromptAuditRecord {
     /// When the request was assembled (UTC).
     pub timestamp: Timestamp,
     /// Nous agent identifier (e.g. `"syn"`).
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: append-only audit JSONL must round-trip historical rows; the value originates from a config-validated NousId at actor spawn; newtype conversion tracked in #6755
     pub nous_id: String,
     /// Session identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: append-only audit JSONL must round-trip historical rows, including sessions whose ids use ULID (#3101) or legacy ses_ formats that koina::id::SessionId normalizes on Display; conversion tracked in #6755
     pub session_id: String,
     /// Turn identifier (ULID). Stable across actor restarts for a given turn.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: runtime-minted ULID carried in an append-only audit JSONL that must round-trip historical rows; conversion tracked in #6755
     pub turn_id: String,
     /// LLM provider name (`"anthropic"`, `"cc"`, etc.).
     pub provider: String,

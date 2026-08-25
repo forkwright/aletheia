@@ -190,7 +190,7 @@ fn export_subcommand_parses() {
     let cli = Cli::parse_from(["aletheia", "export", "syn", "--archived", "--compact"]);
     match cli.command {
         Some(Command::Export(args)) => {
-            assert_eq!(args.nous_id, "syn", "nous_id should be set");
+            assert_eq!(args.nous_id.as_str(), "syn", "nous_id should be set");
             assert!(args.archived, "archived flag should be set");
             assert!(args.compact, "compact flag should be set");
             assert_eq!(args.max_messages, 500, "max_messages should default to 500");
@@ -212,7 +212,7 @@ fn export_with_output_parses() {
     ]);
     match cli.command {
         Some(Command::Export(args)) => {
-            assert_eq!(args.nous_id, "demiurge", "nous_id should be set");
+            assert_eq!(args.nous_id.as_str(), "demiurge", "nous_id should be set");
             assert_eq!(
                 args.output.expect("export output path should be set"),
                 PathBuf::from("/tmp/backup.agent.json"),
@@ -229,7 +229,7 @@ fn session_create_defaults_parses() {
     let cli = Cli::parse_from(["aletheia", "session-create", "alice"]);
     match cli.command {
         Some(Command::SessionCreate(SessionCreateArgs { nous_id, key })) => {
-            assert_eq!(nous_id, "alice", "nous_id should be set");
+            assert_eq!(nous_id.as_str(), "alice", "nous_id should be set");
             assert_eq!(key, "main", "key should default to main");
         }
         _ => panic!("expected SessionCreate command"),
@@ -241,7 +241,7 @@ fn session_create_with_key_parses() {
     let cli = Cli::parse_from(["aletheia", "session-create", "bob", "--key", "custom-key"]);
     match cli.command {
         Some(Command::SessionCreate(SessionCreateArgs { nous_id, key })) => {
-            assert_eq!(nous_id, "bob", "nous_id should be set");
+            assert_eq!(nous_id.as_str(), "bob", "nous_id should be set");
             assert_eq!(key, "custom-key", "key should be set");
         }
         _ => panic!("expected SessionCreate command"),
