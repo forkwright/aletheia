@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Verify crates/krites/CAPABILITY_MATRIX.toml maps every krites capability.
 
-Wave 0.4 of the krites retirement plan (canon: metis-ops/deliverables/
-krites-replacement/PLAN.md, a sibling repo -- see the "Appendix A" section
-below for why this script cannot read it in CI). `unmapped` -- present in
+Wave 0.4 of the krites retirement plan (canon: forkwright/kanon
+`projects/aletheia/phases/05g-krites-overhaul/RETIREMENT-PLAN.md` — a
+sibling repo; see the "Appendix A" section below for why this script
+cannot read it in CI). `unmapped` -- present in
 source but absent from the matrix -- is a build failure. A matrix row with
 no matching source item (stale) fails the same way, so drift is caught in
 both directions: the matrix cannot silently fall behind source, and it
@@ -28,12 +29,12 @@ THIS repo:
   storage_method every method of the `Storage` and `StoreTx` traits,
                  crates/krites/src/storage/mod.rs.
 
-A sixth category, appendix_a, mirrors PLAN.md's Appendix A table (33 rows
-at authoring time). PLAN.md lives outside this repo, so CI cannot re-parse
-it; --check only verifies the mirror's internal completeness (row count
-floor, required fields, unique ids). Pass --plan-md <path> for an optional,
-non-gating local live-diff when both repos are checked out side by side
-(e.g. on metis, ~/metis-ops next to ~/dev/aletheia or a dispatch worktree).
+A sixth category, appendix_a, mirrors RETIREMENT-PLAN.md's Appendix A table
+(33 rows at authoring time). The plan lives outside this repo, so CI cannot
+re-parse it; --check only verifies the mirror's internal completeness (row
+count floor, required fields, unique ids). Pass --plan-md <path> for an
+optional, non-gating local live-diff when both repos are checked out side
+by side (e.g. the kanon clone next to the aletheia clone).
 
 `[[capability_set]]` covers the populations too large for one row each --
 the ~139 scalar functions and the ~25 aggregations. Each set records its
@@ -81,7 +82,7 @@ is never grounds to drop a row -- see the plan's B7 finding and kill criterion
 
 Usage:
     python3 scripts/check-krites-capability-matrix.py
-    python3 scripts/check-krites-capability-matrix.py --plan-md /path/to/PLAN.md
+    python3 scripts/check-krites-capability-matrix.py --plan-md /path/to/RETIREMENT-PLAN.md
     python3 scripts/check-krites-capability-matrix.py --nextest-list list.json
 """
 
@@ -114,7 +115,7 @@ AGGR_DIR = KRITES_SRC / "data" / "aggr"
 OP_LOOKUP_FILE = KRITES_SRC / "data" / "expr" / "op.rs"
 MATRIX_FILE = KRITES_DIR / "CAPABILITY_MATRIX.toml"
 
-# WHY: matches the plan's own known-count baseline (PLAN.md Appendix A, 33
+# WHY: matches the plan's own known-count baseline (RETIREMENT-PLAN.md Appendix A, 33
 # data rows as of this checker's authoring). A floor, not a ceiling -- the
 # plan may grow rows; it must never silently shrink under this file.
 EXPECTED_APPENDIX_A_ROWS = 33
@@ -1233,7 +1234,7 @@ def check_appendix_a(rows: list[dict]) -> list[str]:
         errors.append(
             f"appendix_a row count {len(cat_rows)} is below the floor "
             f"{EXPECTED_APPENDIX_A_ROWS} -- a plan capability may have been "
-            "dropped from the matrix (PLAN.md Appendix A itself lives outside "
+            "dropped from the matrix (RETIREMENT-PLAN.md Appendix A itself lives outside "
             "this repo and cannot be re-checked from CI; see --plan-md)"
         )
 
@@ -1709,7 +1710,7 @@ def check_file_line_refs(rows: list[dict]) -> list[str]:
     item.
 
     Scoped to the source-derived categories -- appendix_a's `source` cites
-    PLAN.md, a sibling repo CI cannot read (see module docstring), not a
+    RETIREMENT-PLAN.md, a sibling repo CI cannot read (see module docstring), not a
     local file:line, so it's exempt by construction rather than by a
     fragile regex-non-match skip.
 
@@ -1813,7 +1814,7 @@ def check_file_line_refs(rows: list[dict]) -> list[str]:
 
 
 def live_plan_diff(plan_md: Path, rows: list[dict]) -> list[str]:
-    """Best-effort, non-gating: diff PLAN.md's Appendix A table against the
+    """Best-effort, non-gating: diff RETIREMENT-PLAN.md's Appendix A table against the
     matrix's appendix_a rows when the plan repo is locally reachable."""
     if not plan_md.exists():
         return [f"--plan-md {plan_md} does not exist -- skipping live diff"]
@@ -1823,7 +1824,7 @@ def live_plan_diff(plan_md: Path, rows: list[dict]) -> list[str]:
         r"^## Appendix A.*?\n(.*?)^## Appendix B", text, re.DOTALL | re.MULTILINE
     )
     if not m:
-        return ["could not locate '## Appendix A' ... '## Appendix B' span in PLAN.md"]
+        return ["could not locate '## Appendix A' ... '## Appendix B' span in RETIREMENT-PLAN.md"]
 
     plan_rows: list[str] = []
     for line in m.group(1).splitlines():
@@ -1850,7 +1851,7 @@ def live_plan_diff(plan_md: Path, rows: list[dict]) -> list[str]:
     # parenthesized reduces to the empty string before tokenization ever
     # runs, so `toks` is empty, `toks & matrix_tokens` is always empty, and
     # every such row is reported as drift regardless of whether it's
-    # mirrored correctly. Verified against the real PLAN.md: this produced
+    # mirrored correctly. Verified against the real RETIREMENT-PLAN.md: this produced
     # 11 false-positive warnings out of 33 rows; removing the strip drops
     # that to 0 while still flagging a genuinely-unmirrored row (tested by
     # injecting one).
@@ -1858,11 +1859,11 @@ def live_plan_diff(plan_md: Path, rows: list[dict]) -> list[str]:
     for plan_row in plan_rows:
         toks = item_tokens(plan_row)
         if not toks & matrix_tokens:
-            warnings.append(f"PLAN.md Appendix A row not found in matrix: {plan_row!r}")
+            warnings.append(f"RETIREMENT-PLAN.md Appendix A row not found in matrix: {plan_row!r}")
 
     if len(plan_rows) != EXPECTED_APPENDIX_A_ROWS:
         warnings.append(
-            f"PLAN.md Appendix A now has {len(plan_rows)} data rows "
+            f"RETIREMENT-PLAN.md Appendix A now has {len(plan_rows)} data rows "
             f"(matrix was authored against {EXPECTED_APPENDIX_A_ROWS}) -- "
             "re-mirror and bump EXPECTED_APPENDIX_A_ROWS"
         )
@@ -1876,7 +1877,7 @@ def main() -> int:
         "--plan-md",
         type=Path,
         default=None,
-        help="optional local path to PLAN.md for a non-gating live diff",
+        help="optional local path to RETIREMENT-PLAN.md for a non-gating live diff",
     )
     parser.add_argument(
         "--nextest-list",
@@ -1944,7 +1945,7 @@ def main() -> int:
             "\nFix by adding/removing a row in "
             f"{MATRIX_FILE.relative_to(REPO_ROOT)} with a named destination "
             "wave and gate -- an unmapped capability is never dropped "
-            "silently (PLAN.md kill criterion 10).",
+            "silently (RETIREMENT-PLAN.md kill criterion 10).",
             file=sys.stderr,
         )
         return 1

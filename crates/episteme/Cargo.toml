@@ -20,7 +20,7 @@ default = ["graph-algo", "reranker"]
 # declaration. The `?` keeps krites optional: the forward applies only when a
 # feature that pulls krites in (mneme-engine) is already enabled.
 graph-algo = ["krites?/graph-algo"]
-# WHY: retirement PLAN.md Sec.2 land-dark/soak/delete -- consumers must be
+# WHY: retirement RETIREMENT-PLAN.md Sec.2 land-dark/soak/delete -- consumers must be
 # testable against the sovereign HNSW tree (runtime/hnsw_sovereign/) before
 # the default flips, and without this passthrough it is unreachable from any
 # consumer's tests, only from krites' own crate-scoped `-p krites` build. The

@@ -3,9 +3,9 @@
 //! These compare each fixed rule's *observable* output against an
 //! independent reference computed straight from the algorithm's textbook
 //! definition inside the test itself — never against the derived
-//! implementation's internals — so the same file exercises whichever
-//! implementation (`derived` by default, `krites_sovereign_algos_*` under
-//! the land-dark cfg) is compiled in.
+//! implementation's internals. The wave-5 algorithm set landed
+//! sovereign-by-default, so these tests exercise the sovereign
+//! implementations directly.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(

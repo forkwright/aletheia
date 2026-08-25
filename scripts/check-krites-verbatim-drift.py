@@ -112,7 +112,7 @@ CALIBRATED_THRESHOLD = 0.17
 
 # Known-original: files with no genuine upstream lineage (aletheia-authored
 # engine surface sitting inside the derived crate). The calibration set
-# named in PLAN.md wave 0.3.
+# named in RETIREMENT-PLAN.md wave 0.3.
 KNOWN_ORIGINAL_FILES = [
     "storage/fjall_backend.rs",
     "fixed_rule/algos/kcore.rs",
@@ -495,7 +495,7 @@ def run_report(strict: bool) -> int:
     print(f"files scored: {len(rows)}")
     print(f"files above calibrated threshold ({CALIBRATED_THRESHOLD:.4f}): {len(over_threshold)}")
     print("REPORT-ONLY: this run never fails the build unless --strict is passed. See")
-    print("PROMOTION CRITERIA in this script's module docstring / PLAN.md wave 0.3 before")
+    print("PROMOTION CRITERIA in this script's module docstring / RETIREMENT-PLAN.md wave 0.3 before")
     print("ever passing --strict in CI.")
 
     if not strict:

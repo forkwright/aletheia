@@ -2,7 +2,7 @@
 """One-time authoring tool: re-emit the vendored stopwords-iso word lists in a
 freshly authored, single-file, alphabetized layout (`stopwords.rs`).
 
-WHY: PLAN.md wave 2b / conflict C4 forecloses re-sourcing the word data itself
+WHY: RETIREMENT-PLAN.md wave 2b / conflict C4 forecloses re-sourcing the word data itself
 (same reasoning as the sibling `derived/gen_stopwords.py`, which fetches from
 a live URL and is likewise a one-time tool, not a reproducible build step) —
 so this script's *input* is the still-present `../derived/stopwords/*.rs`

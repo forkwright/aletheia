@@ -2,14 +2,14 @@
 # NOTE: soak_expires_at_commit_count = 0 means the file is not in dual
 # NOTE: (land-dark/soak) state. A nonzero value is an ABSOLUTE target: the
 # NOTE: count of `git rev-list --count origin/main` at or past which CI
-# NOTE: fails the build (PLAN.md §2 expiry gate) — not a duration and not
+# NOTE: fails the build (RETIREMENT-PLAN.md §2 expiry gate) — not a duration and not
 # NOTE: relative to when the row entered dual. Extend by explicit ledger edit.
-# NOTE: status = derived | sovereign | dual (PLAN.md §2, §3 wave 0.1); the
+# NOTE: status = derived | sovereign | dual (RETIREMENT-PLAN.md §2, §3 wave 0.1); the
 # NOTE: only legal transition out of derived is derived -> dual -> sovereign,
 # NOTE: CI-enforced (check_status_sequence) — a direct derived -> sovereign
 # NOTE: jump is rejected regardless of verbatim_pct.
 # NOTE: replaced_upstream_path is 'none' except on a sovereign row that still
-# NOTE: has something to measure against: a completed dual soak (PLAN.md §2(c))
+# NOTE: has something to measure against: a completed dual soak (RETIREMENT-PLAN.md §2(c))
 # NOTE: retains its upstream_path here instead of losing it, or a from-scratch
 # NOTE: rewrite with a natural predecessor gets one from
 # NOTE: measure-krites-provenance.py's SOVEREIGN_VERIFY_MAP. verbatim_pct is

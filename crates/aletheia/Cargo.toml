@@ -32,7 +32,7 @@ mcp = ["recall", "dep:diaporeia", "dep:rmcp"]
 recall = ["nous/knowledge-store", "mneme/mneme-engine", "mneme/storage-fjall", "pylon/knowledge-store", "oikonomos/knowledge-store"]
 # fjall storage backend for mneme (LSM-tree, pure Rust, LZ4 compression).
 storage-fjall = ["mneme/storage-fjall"]
-# WHY: retirement PLAN.md Sec.2 land-dark/soak/delete -- forwards to mneme so
+# WHY: retirement RETIREMENT-PLAN.md Sec.2 land-dark/soak/delete -- forwards to mneme so
 # the sovereign HNSW tree is reachable from `cargo test -p aletheia
 # --features krites_sovereign_hnsw`, not only from krites' own crate-scoped
 # test. Same 1:1 passthrough shape as storage-fjall above.

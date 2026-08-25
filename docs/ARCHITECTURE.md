@@ -21,7 +21,7 @@ desktop shell. The compact generated inventory lives in
 [`_llm/L1-workspace.md`](../_llm/L1-workspace.md); this document describes the
 human architecture and invariants.
 
-Key substrate properties as of the 2026-05-08 refresh:
+Key substrate properties:
 
 - **Working-memory continuity:** `nous` injects agent-curated `<key_info>` from
   the previous working checkpoint before recall/history assembly.

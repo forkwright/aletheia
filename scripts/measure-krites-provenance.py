@@ -277,7 +277,7 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "utils.rs": "utils.rs",
 }
 
-# PLAN.md Sec.2 land-dark/soak/delete: paths still in UPSTREAM_MAP with a real
+# RETIREMENT-PLAN.md Sec.2 land-dark/soak/delete: paths still in UPSTREAM_MAP with a real
 # upstream_path (so they measure as "derived" by the branch below) but that
 # now have a sovereign replacement compiled in beside them, selected by a
 # compile-time cfg. Maps path -> soak_expires_at_commit_count (an ABSOLUTE
@@ -290,7 +290,7 @@ UPSTREAM_MAP: dict[str, str | None] = {
 # lineage, ever) but that is nonetheless a from-scratch REPLACEMENT for a
 # specific derived/dual file — a from-scratch rewrite that took over the
 # replaced file's name, or a `*_sovereign/` directory swapped in via cfg
-# beside its dual sibling (PLAN.md §2's land-dark pattern) — rather than a
+# beside its dual sibling (RETIREMENT-PLAN.md §2's land-dark pattern) — rather than a
 # wholly independent addition. The value
 # is the SAME upstream path the replaced file already carries in
 # UPSTREAM_MAP; it becomes the generated row's replaced_upstream_path (never
@@ -402,7 +402,7 @@ SOVEREIGN_VERIFY_MAP: dict[str, str] = {
 
 DUAL_SOAK_WINDOW: dict[str, int] = {
     # wave2a/ascii-folding-table: land-dark PR lands at commit count 2808.
-    # +30 commits is PLAN.md's own Q3 recommended window for low-blast-radius
+    # +30 commits is RETIREMENT-PLAN.md's own Q3 recommended window for low-blast-radius
     # waves (2a, 2b, 5, 7) -- this is a LOW-risk, pure-data wave with a
     # full-BMP-sweep conformance gate already proving equivalence
     # (tests/bmp_equivalence.rs), so there is no soak-observation need beyond
@@ -466,7 +466,7 @@ def unparsable_ledger_message(path: pathlib.Path, exc: Exception) -> str:
 def load_graduated_status(path: pathlib.Path) -> dict[str, tuple[str, int]]:
     """WHY: this script is the ledger's sole regenerator, and it used to
     hardcode every UPSTREAM_MAP-mapped row to 'derived' unconditionally —
-    which silently reverts a PLAN.md §2 land-dark transition (derived ->
+    which silently reverts a RETIREMENT-PLAN.md §2 land-dark transition (derived ->
     dual) on the very next run, since nothing else ever re-asserts 'dual'.
     A row that has already graduated past 'derived' (dual or sovereign, per
     a prior hand-driven transition — see
@@ -729,7 +729,7 @@ def main() -> None:
             continue
 
         # A real lineage path. derived/dual/an-already-graduated-sovereign
-        # row (PLAN.md §2(c): a prior in-place dual -> sovereign transition
+        # row (RETIREMENT-PLAN.md §2(c): a prior in-place dual -> sovereign transition
         # via krites-provenance-transition.py) are all measured against it
         # here -- only which FIELD the number lands in differs by status.
         upstream_text = fetch_upstream(upstream_rel)

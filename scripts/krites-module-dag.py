@@ -49,7 +49,7 @@ KNOWN_SUBSYSTEMS = frozenset(
 )
 ROOT = "root"
 
-# WHY: PLAN.md §0.2 — reproducing these without special-casing is the parser's
+# WHY: RETIREMENT-PLAN.md §0.2 — reproducing these without special-casing is the parser's
 # own correctness check. If either is absent from the output, the parser is
 # wrong, not the plan.
 REQUIRED_EDGES = {
@@ -377,35 +377,35 @@ def parse_file(
 
 
 # --- Wave-scope groups -----------------------------------------------------
-# NOTE: PLAN.md §7 "CONCURRENT FROM DAY 1" streams, resolved to module-path
+# NOTE: RETIREMENT-PLAN.md §7 "CONCURRENT FROM DAY 1" streams, resolved to module-path
 # prefixes (filesystem path with '/' -> '::', minus the .rs extension and
-# any trailing 'mod'). Citations are PLAN.md line numbers as read at the
-# time this table was written; re-verify if PLAN.md's file citations move.
+# any trailing 'mod'). Citations are RETIREMENT-PLAN.md line numbers as read at the
+# time this table was written; re-verify if RETIREMENT-PLAN.md's file citations move.
 DAY1_GROUPS: dict[str, dict] = {
     "W1b_storage_mem_temp": {
         "include": {"storage::mem", "storage::temp"},
         "exclude": set(),
-        "citation": "PLAN.md:108 storage/{mem,temp}.rs",
+        "citation": "RETIREMENT-PLAN.md:108 storage/{mem,temp}.rs",
     },
     "W2a_fold_table": {
         "include": {"fts::tokenizer::ascii_folding_filter"},
         "exclude": set(),
-        "citation": "PLAN.md:109 ascii-folding table",
+        "citation": "RETIREMENT-PLAN.md:109 ascii-folding table",
     },
     "W2b_stopwords": {
         "include": {"fts::tokenizer::stop_word_filter"},
         "exclude": set(),
-        "citation": "PLAN.md:110 stopword lists",
+        "citation": "RETIREMENT-PLAN.md:110 stopword lists",
     },
     "W3prime_algos_19": {
         "include": {"fixed_rule::algos"},
         "exclude": {"fixed_rule::algos::louvain", "fixed_rule::algos::pagerank"},
-        "citation": "PLAN.md:113,206 19 of 22 graph algorithms (excl. PageRank/Louvain)",
+        "citation": "RETIREMENT-PLAN.md:113,206 19 of 22 graph algorithms (excl. PageRank/Louvain)",
     },
     "W4prime_hnsw": {
         "include": {"runtime::hnsw"},
         "exclude": set(),
-        "citation": "PLAN.md:112,208 HNSW",
+        "citation": "RETIREMENT-PLAN.md:112,208 HNSW",
     },
     "W5prime_value_model": {
         "include": {
@@ -415,7 +415,7 @@ DAY1_GROUPS: dict[str, dict] = {
             "data::symb",
         },
         "exclude": set(),
-        "citation": "PLAN.md:114,209 data/{value,memcmp,tuple,symb}.rs",
+        "citation": "RETIREMENT-PLAN.md:114,209 data/{value,memcmp,tuple,symb}.rs",
     },
 }
 
@@ -431,7 +431,7 @@ FOLLOWUP_GROUPS: dict[str, dict] = {
             "fts::tokenizer::ascii_folding_filter",
             "fts::tokenizer::stop_word_filter",
         },
-        "citation": "PLAN.md:111,222 storage trait + BM25/FTS index, after W1b+W2a/W2b",
+        "citation": "RETIREMENT-PLAN.md:111,222 storage trait + BM25/FTS index, after W1b+W2a/W2b",
     },
     "W5_live3_algos": {
         "include": {
@@ -440,7 +440,7 @@ FOLLOWUP_GROUPS: dict[str, dict] = {
             "fixed_rule::utilities::rrf",
         },
         "exclude": set(),
-        "citation": "PLAN.md:113,223 PageRank/Louvain/RRF, after the 19",
+        "citation": "RETIREMENT-PLAN.md:113,223 PageRank/Louvain/RRF, after the 19",
     },
 }
 

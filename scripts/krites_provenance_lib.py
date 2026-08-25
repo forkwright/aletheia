@@ -83,7 +83,7 @@ METHOD_EVIDENCE_PATTERN = re.compile(r"^(#\d+|[0-9a-f]{7,40}|spec:\S+)$")
 
 STATUSES = ("derived", "sovereign", "dual")
 # INVARIANT(P1): the only legal forward status transitions — a row may only
-# leave 'derived' by first sitting in 'dual' (PLAN.md §2 land-dark/soak/
+# leave 'derived' by first sitting in 'dual' (RETIREMENT-PLAN.md §2 land-dark/soak/
 # delete). A direct 'derived' -> 'sovereign' jump, or any transition out of
 # 'sovereign', is a backslide. Checked by check-krites-provenance.py's
 # check_status_sequence against the PR's base ref.
@@ -428,7 +428,7 @@ def nonblank_lines(text: str) -> list[str]:
     # trailing newline splitlines() already drops on its own. A pure
     # re-indentation carries no content change but shifts every line's
     # column position — before this fix, wrapping storage/mem.rs's preserved
-    # copy in `mod derived { }` (a formatting-only PLAN.md land-dark step)
+    # copy in `mod derived { }` (a formatting-only RETIREMENT-PLAN.md land-dark step)
     # dropped its measured verbatim_pct from ~69% to 4.5% as a side effect,
     # because every line gained four leading spaces the upstream file never
     # had and stopped matching character-for-character. Stripping both ends
@@ -509,7 +509,7 @@ def validate_rows(rows: list[dict]) -> None:
             raise LedgerError(f"{path}: status={row['status']} requires a real upstream_path")
         # SAFETY(#6656): replaced_upstream_path is the retained verification target for
         # a 'sovereign' row — the upstream file it is nonetheless measured against
-        # (PLAN.md §2(c): a completed dual soak carries its upstream_path forward here
+        # (RETIREMENT-PLAN.md §2(c): a completed dual soak carries its upstream_path forward here
         # instead of losing it; a from-scratch rewrite with a natural predecessor, e.g.
         # a `_native.rs` file, is measured against that predecessor's own upstream_path
         # via measure-krites-provenance.py's SOVEREIGN_VERIFY_MAP). It is meaningless
@@ -737,14 +737,14 @@ def dump_ledger(meta: dict, rows: list[dict]) -> str:
         "# NOTE: soak_expires_at_commit_count = 0 means the file is not in dual",
         "# NOTE: (land-dark/soak) state. A nonzero value is an ABSOLUTE target: the",
         "# NOTE: count of `git rev-list --count origin/main` at or past which CI",
-        "# NOTE: fails the build (PLAN.md §2 expiry gate) — not a duration and not",
+        "# NOTE: fails the build (RETIREMENT-PLAN.md §2 expiry gate) — not a duration and not",
         "# NOTE: relative to when the row entered dual. Extend by explicit ledger edit.",
-        "# NOTE: status = derived | sovereign | dual (PLAN.md §2, §3 wave 0.1); the",
+        "# NOTE: status = derived | sovereign | dual (RETIREMENT-PLAN.md §2, §3 wave 0.1); the",
         "# NOTE: only legal transition out of derived is derived -> dual -> sovereign,",
         "# NOTE: CI-enforced (check_status_sequence) — a direct derived -> sovereign",
         "# NOTE: jump is rejected regardless of verbatim_pct.",
         "# NOTE: replaced_upstream_path is 'none' except on a sovereign row that still",
-        "# NOTE: has something to measure against: a completed dual soak (PLAN.md §2(c))",
+        "# NOTE: has something to measure against: a completed dual soak (RETIREMENT-PLAN.md §2(c))",
         "# NOTE: retains its upstream_path here instead of losing it, or a from-scratch",
         "# NOTE: rewrite with a natural predecessor gets one from",
         "# NOTE: measure-krites-provenance.py's SOVEREIGN_VERIFY_MAP. verbatim_pct is",
@@ -819,7 +819,7 @@ def render_notice(meta: dict, rows: list[dict]) -> str:
     lines.append("")
     lines.append(
         "A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something "
-        "to measure against — a completed `dual` soak (PLAN.md §2(c)), or a from-scratch rewrite "
+        "to measure against — a completed `dual` soak (RETIREMENT-PLAN.md §2(c)), or a from-scratch rewrite "
         "with a natural predecessor — the ledger retains that predecessor as "
         "`replaced_upstream_path` (shown below as \"cf. `path`\") and keeps measuring against it. "
         "`upstream_path` itself stays `none` on every `sovereign` row either way: this is not an "

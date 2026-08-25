@@ -135,7 +135,7 @@ aletheia-lexica = { path = "crates/aletheia-lexica" }
 rayon = { version = "1", default-features = false }
 
 # theatron substrate (cross-repo git deps)
-# WHY: forkwright/aletheia#3870 — single source of truth for the v1.5.0 pin.
+# WHY: one tag pin keeps all six theatron crates on the same upstream tree — bump them together.
 # Member crates inherit via `<dep> = { workspace = true }`.
 # proskenion is excluded from the workspace (GTK/webkit2gtk) and uses its own
 # standalone [workspace.dependencies] block; pin is mirrored there manually.
@@ -299,27 +299,27 @@ version = "0.4.0"
 [workspace.dependencies.parodos]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 
 [workspace.dependencies.themelion]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 
 [workspace.dependencies.skeue]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 
 [workspace.dependencies.gramma]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 
 [workspace.dependencies.bathron]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 # WHY `logging` is here despite pylon — this workspace's only bathron consumer
 # — using just the durable-replace primitive: scripts/check-proskenion-pins.py
 # compares `features` and `default-features` as part of the pin, so the two
@@ -330,7 +330,7 @@ features = ["logging", "atomic-write"]
 [workspace.dependencies.keryx]
 git = "https://github.com/forkwright/theatron.git"
 tag = "v1.6.2"
-version = "1.5.0"
+version = "1.6.2"
 
 [workspace.dependencies.serde]
 version = "1"
