@@ -11,9 +11,9 @@ use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
-    ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 struct RenderEvalReportExecutor;
@@ -151,6 +151,23 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         render_eval_report_capability_rule(),
         Box::new(RenderEvalReportExecutor),
     )?;
+    registry.declare_capability(
+        koina::id::ToolName::from_static("render_eval_report"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::render_eval_report".to_owned(),
+            // WHY Experimental: this module is behind `#[cfg(feature =
+            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
+            // compiled by default.
+            stability: ToolStability::Experimental,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "rendering runs in memory; a caller-provided out_path writes the PDF \
+                         to disk, overwriting any existing file without retaining its prior \
+                         contents"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

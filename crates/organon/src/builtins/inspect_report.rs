@@ -11,8 +11,8 @@ use poiesis_inspect::{inspect_pdf, inspect_pptx, inspect_xlsx};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolGroupId,
-    ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 struct InspectReportExecutor;
@@ -182,6 +182,20 @@ fn inspect_report_def() -> crate::types::ToolDef {
 
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(inspect_report_def(), Box::new(InspectReportExecutor))?;
+    registry.declare_capability(
+        koina::id::ToolName::from_static("inspect_report"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::inspect_report".to_owned(),
+            // WHY Experimental: this module is behind `#[cfg(feature =
+            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
+            // compiled by default.
+            stability: ToolStability::Experimental,
+            // WHY Supported: the executor extracts text from a base64-supplied
+            // document in memory; nothing is written.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

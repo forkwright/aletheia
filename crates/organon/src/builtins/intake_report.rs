@@ -13,8 +13,8 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 struct IntakeReportExecutor;
@@ -108,5 +108,20 @@ fn intake_report_def() -> ToolDef {
 /// Register the `intake_report` tool into the registry.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(intake_report_def(), Box::new(IntakeReportExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("intake_report"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::intake_report".to_owned(),
+            // WHY Experimental: this module is behind `#[cfg(feature =
+            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
+            // compiled by default.
+            stability: ToolStability::Experimental,
+            // WHY Supported: the executor parses text and renders the scaffold
+            // in memory, returning file contents as text; nothing is written
+            // to disk.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }

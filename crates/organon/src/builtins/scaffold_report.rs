@@ -9,9 +9,9 @@ use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
-    ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
@@ -224,6 +224,23 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         scaffold_report_capability_rule(),
         Box::new(ScaffoldReportExecutor),
     )?;
+    registry.declare_capability(
+        koina::id::ToolName::from_static("scaffold_report"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::scaffold_report".to_owned(),
+            // WHY Experimental: this module is behind `#[cfg(feature =
+            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
+            // compiled by default.
+            stability: ToolStability::Experimental,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "without a directory argument the tool returns a base64 manifest only; \
+                         with directory it creates directories and writes template files, \
+                         overwriting same-named paths without retaining their prior contents"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

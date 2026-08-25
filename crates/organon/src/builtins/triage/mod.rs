@@ -25,8 +25,8 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{EgressGate, SandboxConfig};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use prompt_gen::generate_prompt;
@@ -896,6 +896,44 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
         Box::new(IssueTriageExecutor::new(egress)),
     )?;
     registry.register(issue_approve_def(), Box::new(IssueApproveExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("issue_scan"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::triage".to_owned(),
+            stability: ToolStability::Stable,
+            // WHY Supported: the executor only fetches issues over the
+            // egress-gated HTTP client; no local state is mutated.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
+    registry.declare_capability(
+        ToolName::from_static("issue_triage"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::triage".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "the issue fetch is a read; staged prompt files written under \
+                         staging_dir persist until separately removed"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
+    registry.declare_capability(
+        ToolName::from_static("issue_approve"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::triage".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "relocates a staged prompt file into the queue directory (rename, or \
+                         copy + remove across devices); an existing queue file with the same \
+                         name is overwritten, and the move is not tracked for rollback"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

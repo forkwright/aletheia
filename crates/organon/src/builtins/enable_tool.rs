@@ -11,8 +11,8 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::surface::{ENABLE_TOOL, SurfaceLookup};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use super::workspace::extract_str;
@@ -217,6 +217,20 @@ fn enable_tool_def() -> ToolDef {
 /// Register the `enable_tool` tool into the registry.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(enable_tool_def(), Box::new(EnableToolExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static(ENABLE_TOOL),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::enable_tool".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "activation is an in-memory insert into the session's active_tools set \
+                         that lapses at session end, but no in-session deactivate operation \
+                         exists"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

@@ -595,8 +595,43 @@ pub(crate) fn register(
     sandbox: crate::sandbox::SandboxConfig,
 ) -> Result<()> {
     registry.register(read_def(), Box::new(ReadExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("read"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::workspace".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(write_def(), Box::new(WriteExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("write"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::workspace".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "overwrites or appends to the target file in place and creates parent \
+                         directories; no copy of the prior content is retained"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(edit_def(), Box::new(EditExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("edit"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::workspace".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "rewrites the target file with the replaced span in place; the pre-edit \
+                         content is not retained"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(exec_def(), Box::new(ExecExecutor { sandbox }))?;
     registry.declare_capability(
         ToolName::from_static("exec"), // kanon:ignore RUST/expect

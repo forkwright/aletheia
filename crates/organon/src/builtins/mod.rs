@@ -461,28 +461,25 @@ mod poiesis_default_off_tests {
 /// tools and, when the relevant `--features` flags are set, the
 /// feature-gated ones too.
 ///
-/// Scoped to `Reversibility::Irreversible` tools rather than every
-/// registered tool: that is the side-effect class where "was rollback ever
-/// reviewed" matters most, and it is the bounded, currently-classified set
-/// (see the `declare_capability` calls alongside each of these tools'
-/// `register()` call). A tool newly marked `Irreversible` without also
-/// calling `declare_capability` fails this test with its name, not a
-/// silent gap.
+/// Covers every tool `register_all` registers, not only a reversibility
+/// subset: an undeclared tool reads as `ToolCapabilityMetadata::default()`
+/// (owner `"unassigned"`), which this test treats as a failure naming the
+/// tool. A newly-registered built-in tool that omits a `declare_capability`
+/// call in its module's `register()` fails here -- there is no allowlist.
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod capability_governance_tests {
     use super::*;
-    use crate::types::{Reversibility, UNASSIGNED_TOOL_OWNER};
+    use crate::types::UNASSIGNED_TOOL_OWNER;
 
     #[test]
-    fn all_irreversible_tools_declare_capability_metadata() -> Result<()> {
+    fn all_registered_tools_declare_capability_metadata() -> Result<()> {
         let mut registry = ToolRegistry::new();
         register_all(&mut registry)?;
 
         let undeclared: Vec<&str> = registry
             .definitions()
             .iter()
-            .filter(|def| def.reversibility == Reversibility::Irreversible)
             .map(|def| def.name.as_str())
             .filter(|name| {
                 let name = koina::id::ToolName::new(*name).expect("registered name is valid");
@@ -492,7 +489,7 @@ mod capability_governance_tests {
 
         assert!(
             undeclared.is_empty(),
-            "every Irreversible tool must call ToolRegistry::declare_capability \
+            "every registered built-in tool must call ToolRegistry::declare_capability \
              (see the `register()` function for each tool's module); missing: {undeclared:?}"
         );
         Ok(())

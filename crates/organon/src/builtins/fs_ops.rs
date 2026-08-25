@@ -456,8 +456,49 @@ impl ToolExecutor for RmExecutor {
 /// Register filesystem mutation tools (`mkdir`, `mv`, `cp`, `rm`).
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(mkdir_def(), Box::new(MkdirExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("mkdir"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::fs_ops".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "a created directory is removable via rm, but idempotent success on \
+                         pre-existing paths means the tool records nothing about which \
+                         directories it created"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(mv_def(), Box::new(MvExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("mv"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::fs_ops".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "rename replaces any existing destination and removes the source \
+                         (cross-device fallback is copy + remove); no copy of the pre-move \
+                         state is retained"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(cp_def(), Box::new(CpExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("cp"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::fs_ops".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "copied files are removable at the destination, but an existing \
+                         destination is overwritten without retaining its prior contents"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(rm_def(), Box::new(RmExecutor))?;
     registry.declare_capability(
         ToolName::from_static("rm"), // kanon:ignore RUST/expect

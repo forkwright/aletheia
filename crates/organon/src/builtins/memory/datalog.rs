@@ -10,8 +10,9 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory,
-    ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolTag,
+    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport,
+    ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolStability, ToolTag,
 };
 
 use crate::builtins::workspace::extract_str;
@@ -202,5 +203,16 @@ fn datalog_query_def() -> ToolDef {
 
 pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(datalog_query_def(), Box::new(DatalogQueryExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("datalog_query"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::memory::datalog".to_owned(),
+            stability: ToolStability::Stable,
+            // WHY Supported: mutation keywords are rejected before the query
+            // reaches the engine, so execution is a pure read.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }

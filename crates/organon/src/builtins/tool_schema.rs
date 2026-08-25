@@ -31,8 +31,8 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::surface::{SurfaceAvailability, SurfaceEntryKind, SurfaceLookup};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 // ── Executor ─────────────────────────────────────────────────────────────────
@@ -207,6 +207,15 @@ pub(crate) fn register_with_pairs(
             schemas: Arc::clone(&schemas),
         }),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("tool_schema"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::tool_schema".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.set_tool_schema_snapshot(Some(schemas));
     Ok(())
 }

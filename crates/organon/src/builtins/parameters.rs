@@ -15,8 +15,8 @@ use taxis::registry::{self, ParameterSpec, ParameterTier};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 /// Filter specs against the optional section/affects/tier inputs.
@@ -176,6 +176,15 @@ fn query_parameters_def() -> ToolDef {
 /// Register the `query_parameters` tool into the registry.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(query_parameters_def(), Box::new(QueryParametersExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("query_parameters"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::parameters".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

@@ -17,9 +17,9 @@ use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
-    ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 pub(crate) struct RenderPptxReportExecutor;
@@ -185,7 +185,25 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         render_pptx_report_def(),
         render_pptx_report_capability_rule(),
         Box::new(RenderPptxReportExecutor),
-    )
+    )?;
+    registry.declare_capability(
+        koina::id::ToolName::from_static("render_pptx_report"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::render_pptx_report".to_owned(),
+            // WHY Experimental: this module is behind `#[cfg(feature =
+            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
+            // compiled by default.
+            stability: ToolStability::Experimental,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "rendering runs in memory; a caller-provided out_path writes the PPTX \
+                         to disk, overwriting any existing file without retaining its prior \
+                         contents"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
+    Ok(())
 }
 
 #[cfg(test)]

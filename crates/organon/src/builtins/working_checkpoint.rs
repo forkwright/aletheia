@@ -14,8 +14,8 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 /// Scope of a working checkpoint.
@@ -141,7 +141,21 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(
         working_checkpoint_def(),
         Box::new(UpdateWorkingCheckpointExecutor),
-    )
+    )?;
+    registry.declare_capability(
+        ToolName::from_static("update_working_checkpoint"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::working_checkpoint".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Unsupported {
+                reason: "overwrites the session's persisted working checkpoint; the prior \
+                         checkpoint content is not retained"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
+    Ok(())
 }
 
 #[cfg(test)]

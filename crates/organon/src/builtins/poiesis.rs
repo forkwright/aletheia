@@ -35,9 +35,9 @@ use crate::builtins::workspace::validate_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
-    ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1177,7 +1177,54 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         Box::new(RenderTypstReportExecutor),
     )?;
     registry.register(qa_gate_def(), Box::new(QaGateExecutor))?;
+    declare_capabilities(registry);
     Ok(())
+}
+
+/// Governance metadata for the poiesis report tools.
+///
+/// Split out of [`register`] (rather than interleaved per-tool) purely to
+/// keep that function under clippy's `too_many_lines` threshold;
+/// `declare_capability` is a no-op on an unregistered name, so the only
+/// ordering requirement is that this runs after the `registry.register`
+/// calls above.
+fn declare_capabilities(registry: &mut ToolRegistry) {
+    // WHY Experimental on every tool below: the whole poiesis family is
+    // behind `#[cfg(feature = "poiesis")]` (see
+    // crates/organon/src/builtins/mod.rs) -- not compiled by default.
+    let declare = |registry: &mut ToolRegistry, name: &'static str, rollback: RollbackSupport| {
+        registry.declare_capability(
+            koina::id::ToolName::from_static(name),
+            ToolCapabilityMetadata {
+                owner: "organon::builtins::poiesis".to_owned(),
+                stability: ToolStability::Experimental,
+                rollback,
+                ..ToolCapabilityMetadata::default()
+            },
+        );
+    };
+    declare(
+        registry,
+        "generate_document",
+        RollbackSupport::PartialSupport {
+            reason: "rendering runs in memory; a caller-provided out_path writes the rendered \
+                     bytes to disk, overwriting any existing file without retaining its prior \
+                     contents"
+                .to_owned(),
+        },
+    );
+    declare(registry, "lint_report", RollbackSupport::Supported);
+    declare(registry, "verify_report", RollbackSupport::Supported);
+    declare(
+        registry,
+        "render_typst_report",
+        RollbackSupport::PartialSupport {
+            reason: "rendering runs in memory; a caller-provided out_path writes the PDF to \
+                     disk, overwriting any existing file without retaining its prior contents"
+                .to_owned(),
+        },
+    );
+    declare(registry, "qa_gate", RollbackSupport::Supported);
 }
 
 #[cfg(test)]

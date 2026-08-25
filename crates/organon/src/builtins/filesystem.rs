@@ -16,8 +16,8 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::subprocess::{SubprocessError, SubprocessOutput, SubprocessRequest, SubprocessRunner};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use super::workspace::{
@@ -558,6 +558,17 @@ pub(crate) fn register_with_sandbox(
     registry.register(grep_def(), Box::new(GrepExecutor::new(runner.clone())))?;
     registry.register(find_def(), Box::new(FindExecutor::new(runner)))?;
     registry.register(ls_def(), Box::new(LsExecutor))?;
+    for name in ["grep", "find", "ls"] {
+        registry.declare_capability(
+            ToolName::from_static(name), // kanon:ignore RUST/expect
+            ToolCapabilityMetadata {
+                owner: "organon::builtins::filesystem".to_owned(),
+                stability: ToolStability::Stable,
+                rollback: RollbackSupport::Supported,
+                ..ToolCapabilityMetadata::default()
+            },
+        );
+    }
     Ok(())
 }
 

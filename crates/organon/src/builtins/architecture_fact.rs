@@ -35,9 +35,9 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
-    ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -339,6 +339,20 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         architecture_fact_capability_rule(),
         Box::new(ArchitectureFactExecutor),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("architecture_fact"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::architecture_fact".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "get/list/search are reads; op=put writes or overwrites a fact record \
+                         in the JSON fact store, and the overwritten record's prior content \
+                         is not retained"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

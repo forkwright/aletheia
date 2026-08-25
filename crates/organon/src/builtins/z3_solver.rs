@@ -10,8 +10,8 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use super::workspace::{extract_opt_u64, extract_str};
@@ -164,6 +164,20 @@ fn z3_solver_def() -> ToolDef {
 /// Register the `z3_solver` tool into the registry.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(z3_solver_def(), Box::new(Z3SolverExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("z3_solver"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::z3_solver".to_owned(),
+            // WHY Experimental: this module is behind `#[cfg(feature =
+            // "z3")]` (see crates/organon/src/builtins/mod.rs) -- not
+            // compiled by default.
+            stability: ToolStability::Experimental,
+            // WHY Supported: the executor runs a pure in-process SMT solve
+            // (spawn_blocking over z3); no state is mutated.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

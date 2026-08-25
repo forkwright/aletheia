@@ -30,8 +30,8 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, Reversibility, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput,
-    ToolResult, ToolTag,
+    InputSchema, Reversibility, RollbackSupport, ToolCapabilityMetadata, ToolCategory, ToolContext,
+    ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 /// Readiness status for a single report renderer.
@@ -387,6 +387,21 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         report_runtime_health_def(),
         Box::new(ReportRuntimeHealthExecutor),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("report_runtime_health"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::report_runtime_health".to_owned(),
+            // WHY Experimental: this module is behind `#[cfg(feature =
+            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
+            // compiled by default.
+            stability: ToolStability::Experimental,
+            // WHY Supported: the executor only probes renderer availability
+            // (pandoc/latex/chromium/typst checks) and reports; nothing is
+            // mutated.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 
