@@ -625,9 +625,9 @@ impl DiaporeiaServer {
         .context(SerializationSnafu {})
         .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// List sessions, optionally filtered by nous agent ID.
@@ -675,9 +675,9 @@ impl DiaporeiaServer {
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Send a message to a nous agent session and get the response.
@@ -758,9 +758,9 @@ impl DiaporeiaServer {
         // NOTE: fast — the channel closes when the actor completes.
         let _ = drain.await;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            result.content,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(result.content),
+        ]))
     }
 
     /// Get conversation history for a session.
@@ -815,9 +815,9 @@ impl DiaporeiaServer {
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// List all registered nous agents with their current status.
@@ -869,9 +869,9 @@ impl DiaporeiaServer {
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Get detailed status of a specific nous agent.
@@ -942,9 +942,9 @@ impl DiaporeiaServer {
         .context(SerializationSnafu {})
         .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// List tools available to nous agents.
@@ -1012,9 +1012,9 @@ impl DiaporeiaServer {
         .context(SerializationSnafu {})
         .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Semantic search across the knowledge graph.
@@ -1049,9 +1049,9 @@ impl DiaporeiaServer {
             let json = serde_json::to_string_pretty(&results)
                 .context(SerializationSnafu {})
                 .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -1110,9 +1110,9 @@ impl DiaporeiaServer {
             let json = serde_json::to_string_pretty(&results)
                 .context(SerializationSnafu {})
                 .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -1167,9 +1167,9 @@ impl DiaporeiaServer {
             let json = serde_json::to_string_pretty(&fact)
                 .context(SerializationSnafu {})
                 .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -1285,9 +1285,9 @@ impl DiaporeiaServer {
             }))
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -1371,9 +1371,9 @@ impl DiaporeiaServer {
             }))
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -1423,9 +1423,9 @@ impl DiaporeiaServer {
             }))
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -1457,9 +1457,9 @@ impl DiaporeiaServer {
         let json = serde_json::to_string_pretty(&templates)
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Get a single repomix template definition.
@@ -1488,9 +1488,9 @@ impl DiaporeiaServer {
         }))
         .context(SerializationSnafu {})
         .map_err(rmcp::ErrorData::from)?;
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Pack crate source code into a token-efficient context window.
@@ -1566,9 +1566,9 @@ impl DiaporeiaServer {
         }))
         .context(SerializationSnafu {})
         .map_err(rmcp::ErrorData::from)?;
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Get the runtime configuration with sensitive fields redacted.
@@ -1587,9 +1587,9 @@ impl DiaporeiaServer {
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Store a secret in the session vault.
@@ -1620,9 +1620,9 @@ impl DiaporeiaServer {
 
         vault.store(&params.name, params.value);
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            format!("Secret `{}` stored.", params.name),
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(format!("Secret `{}` stored.", params.name)),
+        ]))
     }
 
     /// List names of secrets stored in the session vault.
@@ -1654,9 +1654,9 @@ impl DiaporeiaServer {
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Remove a secret from the session vault.
@@ -1683,13 +1683,13 @@ impl DiaporeiaServer {
             .map_err(rmcp::ErrorData::from)?;
 
         if vault.remove(&params.name).is_some() {
-            Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                format!("Secret `{}` removed.", params.name),
-            )]))
+            Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(format!("Secret `{}` removed.", params.name)),
+            ]))
         } else {
-            Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                format!("Secret `{}` not found.", params.name),
-            )]))
+            Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(format!("Secret `{}` not found.", params.name)),
+            ]))
         }
     }
 
@@ -1740,9 +1740,9 @@ impl DiaporeiaServer {
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Manage session notes (add, list, delete).
@@ -1802,9 +1802,9 @@ impl DiaporeiaServer {
                             .build(),
                         )
                     })?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                    format!("Note added with ID {note_id}."),
-                )]))
+                Ok(CallToolResult::success(vec![
+                    rmcp::model::ContentBlock::text(format!("Note added with ID {note_id}.")),
+                ]))
             }
             "list" => {
                 let notes = store.get_notes(&session_id).map_err(|e| {
@@ -1816,17 +1816,17 @@ impl DiaporeiaServer {
                     )
                 })?;
                 if notes.is_empty() {
-                    return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        "No notes found for this session.",
-                    )]));
+                    return Ok(CallToolResult::success(vec![
+                        rmcp::model::ContentBlock::text("No notes found for this session."),
+                    ]));
                 }
                 let lines: Vec<String> = notes
                     .iter()
                     .map(|n| format!("[{}] {}: {}", n.id, n.category, n.content))
                     .collect();
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                    lines.join("\n"),
-                )]))
+                Ok(CallToolResult::success(vec![
+                    rmcp::model::ContentBlock::text(lines.join("\n")),
+                ]))
             }
             "delete" => {
                 let note_id = params.note_id.ok_or_else(|| {
@@ -1848,9 +1848,9 @@ impl DiaporeiaServer {
                     )
                 })?;
                 if !notes.iter().any(|n| n.id == note_id) {
-                    return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        format!("Note {note_id} not found."),
-                    )]));
+                    return Ok(CallToolResult::success(vec![
+                        rmcp::model::ContentBlock::text(format!("Note {note_id} not found.")),
+                    ]));
                 }
                 let deleted = store.delete_note(note_id).map_err(|e| {
                     rmcp::ErrorData::from(
@@ -1861,13 +1861,13 @@ impl DiaporeiaServer {
                     )
                 })?;
                 if deleted {
-                    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        format!("Note {note_id} deleted."),
-                    )]))
+                    Ok(CallToolResult::success(vec![
+                        rmcp::model::ContentBlock::text(format!("Note {note_id} deleted.")),
+                    ]))
                 } else {
-                    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        format!("Note {note_id} not found."),
-                    )]))
+                    Ok(CallToolResult::success(vec![
+                        rmcp::model::ContentBlock::text(format!("Note {note_id} not found.")),
+                    ]))
                 }
             }
             other => Err(rmcp::ErrorData::from(
@@ -1950,9 +1950,9 @@ impl DiaporeiaServer {
                             .build(),
                         )
                     })?;
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                    format!("Blackboard entry '{key}' written."),
-                )]))
+                Ok(CallToolResult::success(vec![
+                    rmcp::model::ContentBlock::text(format!("Blackboard entry '{key}' written.")),
+                ]))
             }
             "read" => {
                 let key = params.key.ok_or_else(|| {
@@ -1980,15 +1980,15 @@ impl DiaporeiaServer {
                     )
                 })?;
                 match entry {
-                    Some(e) => Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        format!(
+                    Some(e) => Ok(CallToolResult::success(vec![
+                        rmcp::model::ContentBlock::text(format!(
                             "{} = {} (author: {}, ttl: {}s)",
                             e.key, e.value, e.author_nous_id, e.ttl_seconds
-                        ),
-                    )])),
-                    None => Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        "No entry found.".to_owned(),
-                    )])),
+                        )),
+                    ])),
+                    None => Ok(CallToolResult::success(vec![
+                        rmcp::model::ContentBlock::text("No entry found.".to_owned()),
+                    ])),
                 }
             }
             "list" => {
@@ -2004,9 +2004,9 @@ impl DiaporeiaServer {
                     )
                 })?;
                 if entries.is_empty() {
-                    return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        "Blackboard is empty.",
-                    )]));
+                    return Ok(CallToolResult::success(vec![
+                        rmcp::model::ContentBlock::text("Blackboard is empty."),
+                    ]));
                 }
                 let lines: Vec<String> = entries
                     .iter()
@@ -2017,9 +2017,9 @@ impl DiaporeiaServer {
                         )
                     })
                     .collect();
-                Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                    lines.join("\n"),
-                )]))
+                Ok(CallToolResult::success(vec![
+                    rmcp::model::ContentBlock::text(lines.join("\n")),
+                ]))
             }
             "delete" => {
                 let key = params.key.ok_or_else(|| {
@@ -2039,13 +2039,17 @@ impl DiaporeiaServer {
                     )
                 })?;
                 if deleted {
-                    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        format!("Blackboard entry '{key}' deleted."),
-                    )]))
+                    Ok(CallToolResult::success(vec![
+                        rmcp::model::ContentBlock::text(format!(
+                            "Blackboard entry '{key}' deleted."
+                        )),
+                    ]))
                 } else {
-                    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                        format!("Blackboard entry '{key}' not found."),
-                    )]))
+                    Ok(CallToolResult::success(vec![
+                        rmcp::model::ContentBlock::text(format!(
+                            "Blackboard entry '{key}' not found."
+                        )),
+                    ]))
                 }
             }
             other => Err(rmcp::ErrorData::from(
@@ -2101,9 +2105,9 @@ impl DiaporeiaServer {
             let json = serde_json::to_string_pretty(&results)
                 .context(SerializationSnafu {})
                 .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -2279,9 +2283,9 @@ impl DiaporeiaServer {
             }))
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -2359,9 +2363,9 @@ impl DiaporeiaServer {
             }))
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -2431,9 +2435,9 @@ impl DiaporeiaServer {
             }))
             .context(SerializationSnafu {})
             .map_err(rmcp::ErrorData::from)?;
-            return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-                json,
-            )]));
+            return Ok(CallToolResult::success(vec![
+                rmcp::model::ContentBlock::text(json),
+            ]));
         }
 
         #[cfg(not(feature = "knowledge-store"))]
@@ -2823,7 +2827,6 @@ mod tests {
         );
 
         let result = client
-            .peer()
             .call_tool(CallToolRequestParams::new("session_message").with_arguments(args))
             .await
             .expect("session_message call completes");
@@ -2930,7 +2933,6 @@ mod tests {
             serde_json::Value::String("cross:victim".to_owned()),
         );
         let err = client
-            .peer()
             .call_tool(CallToolRequestParams::new("session_create").with_arguments(args))
             .await
             .expect_err("reserved session key must be rejected");

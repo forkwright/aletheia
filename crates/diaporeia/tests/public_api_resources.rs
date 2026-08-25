@@ -34,7 +34,7 @@ fn test_router(state: &Arc<DiaporeiaState>) -> axum::Router {
         rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default()
             .into(),
         rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default()
-            .with_stateful_mode(false)
+            .with_legacy_session_mode(false)
             .with_json_response(true),
     );
 

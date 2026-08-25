@@ -35,7 +35,7 @@ These are tracked below; the disposition is "accept + track upstream," not
   not include the former `openssl-sys` path.
 - `chrono` remains reachable in the workspace. The `cron` crate vector was
   closed by #3898, but chrono itself is still pulled in by:
-  - `rmcp v1.5.0` (non-optional dep, `mcp` feature in `crates/aletheia`)
+  - `rmcp v3.1.4` (non-optional dep, `mcp` feature in `crates/aletheia`)
   - `lopdf v0.38.0` via `pdf-extract` → `crates/poiesis/inspect`
   - `spreadsheet-ods v1.0.4` → `crates/poiesis/sheet`
   These are external crates with non-optional chrono dependencies that cannot

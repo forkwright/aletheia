@@ -388,13 +388,13 @@ impl ExternalMcpClient {
         name: &str,
         arguments: serde_json::Map<String, serde_json::Value>,
     ) -> Result<CallToolResult> {
-        let peer = {
-            let service = self.service.lock().await;
-            service.peer().clone()
-        };
+        let service = self.service.lock().await;
         let params = CallToolRequestParams::new(name.to_owned()).with_arguments(arguments);
         // WHY(#5757): without a timeout a hung peer stalls an entire agent turn.
-        tokio::time::timeout(CALL_TOOL_TIMEOUT, peer.call_tool(params))
+        // WHY: `RunningService::call_tool` (not `Peer::call_tool_once`) so the
+        // SDK drives any SEP-2322 input_required rounds through the local
+        // client handler instead of surfacing the intermediate result.
+        tokio::time::timeout(CALL_TOOL_TIMEOUT, service.call_tool(params))
             .await
             .map_err(|_e| {
                 TransportSnafu {

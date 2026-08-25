@@ -2,9 +2,7 @@
 //!
 //! Exposes agent workspace files (SOUL.md, IDENTITY.md, etc.) as MCP resources.
 
-use rmcp::model::{
-    RawResourceTemplate, ReadResourceRequestParams, ResourceContents, ResourceTemplate,
-};
+use rmcp::model::{ReadResourceRequestParams, ResourceContents, ResourceTemplate};
 use snafu::ResultExt as _;
 
 use koina::id::NousId;
@@ -39,14 +37,9 @@ pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
     WORKSPACE_FILES
         .iter()
         .map(|(slug, name, desc)| {
-            let raw =
-                RawResourceTemplate::new(format!("aletheia://nous/{{nous_id}}/{slug}"), *name)
-                    .with_description(*desc)
-                    .with_mime_type("text/markdown");
-            ResourceTemplate {
-                raw,
-                annotations: None,
-            }
+            ResourceTemplate::new(format!("aletheia://nous/{{nous_id}}/{slug}"), *name)
+                .with_description(*desc)
+                .with_mime_type("text/markdown")
         })
         .collect()
 }
@@ -150,7 +143,7 @@ mod tests {
     fn resource_templates_uris_use_nous_scheme() {
         let templates = resource_templates();
         for t in &templates {
-            let uri = t.raw.uri_template.as_str();
+            let uri = t.uri_template.as_str();
             assert!(
                 uri.starts_with("aletheia://nous/"),
                 "URI must use aletheia://nous/ scheme: {uri}"
@@ -162,7 +155,7 @@ mod tests {
     fn resource_templates_include_nous_id_placeholder() {
         let templates = resource_templates();
         for t in &templates {
-            let uri = t.raw.uri_template.as_str();
+            let uri = t.uri_template.as_str();
             assert!(
                 uri.contains("{nous_id}"),
                 "URI template must include {{nous_id}}: {uri}"
@@ -175,7 +168,7 @@ mod tests {
         let templates = resource_templates();
         for t in &templates {
             assert_eq!(
-                t.raw.mime_type.as_deref(),
+                t.mime_type.as_deref(),
                 Some("text/markdown"),
                 "workspace files must be served as markdown"
             );
@@ -185,10 +178,7 @@ mod tests {
     #[test]
     fn resource_templates_cover_core_workspace_files() {
         let templates = resource_templates();
-        let uris: Vec<&str> = templates
-            .iter()
-            .map(|t| t.raw.uri_template.as_str())
-            .collect();
+        let uris: Vec<&str> = templates.iter().map(|t| t.uri_template.as_str()).collect();
         for slug in &["soul", "identity", "memory", "goals", "tools"] {
             assert!(
                 uris.iter().any(|u| u.ends_with(slug)),
