@@ -10,8 +10,8 @@ use poiesis_diff::{diff_presentations, diff_workbooks};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolGroupId,
-    ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 struct DiffReportExecutor;
@@ -169,5 +169,19 @@ fn diff_report_def() -> crate::types::ToolDef {
 
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(diff_report_def(), Box::new(DiffReportExecutor))?;
+    registry.declare_capability(
+        koina::id::ToolName::from_static("diff_report"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::diff_report".to_owned(),
+            // WHY Experimental: this module is behind `#[cfg(feature =
+            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
+            // compiled by default.
+            stability: ToolStability::Experimental,
+            // WHY Supported: the executor diffs two base64-supplied documents
+            // entirely in memory; nothing is read from or written to disk.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }

@@ -10,9 +10,9 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
-    ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
+    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use crate::builtins::workspace::extract_str;
@@ -192,5 +192,18 @@ pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
         note_capability_rule(),
         Box::new(NoteExecutor),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("note"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::memory::note".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "action=add persists a session note that action=delete can remove; \
+                         a deleted note is not recoverable through this tool"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }

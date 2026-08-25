@@ -36,8 +36,9 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::subprocess::{SubprocessError, SubprocessRequest, SubprocessRunner};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolDiagnostics, ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolDiagnostics, ToolGroupId, ToolInput, ToolResult,
+    ToolStability, ToolTag,
 };
 
 use super::workspace::{extract_opt_bool, extract_opt_str, extract_opt_u64, extract_str};
@@ -367,6 +368,31 @@ pub(crate) fn register_with_sandbox(
         Box::new(GitBranchExecutor { git: git.clone() }),
     )?;
     registry.register(git_checkout_def(), Box::new(GitCheckoutExecutor { git }))?;
+    for name in ["git_status", "git_log", "git_diff", "git_branch"] {
+        registry.declare_capability(
+            ToolName::from_static(name), // kanon:ignore RUST/expect
+            ToolCapabilityMetadata {
+                owner: "organon::builtins::git_ops".to_owned(),
+                stability: ToolStability::Stable,
+                rollback: RollbackSupport::Supported,
+                ..ToolCapabilityMetadata::default()
+            },
+        );
+    }
+    registry.declare_capability(
+        ToolName::from_static("git_checkout"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::git_ops".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "a branch created with create=true persists until separately deleted, \
+                         and switching back requires knowing the prior ref; the tool never \
+                         passes --force, so uncommitted work is not discarded"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

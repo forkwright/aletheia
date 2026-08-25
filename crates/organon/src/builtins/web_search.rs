@@ -31,8 +31,8 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{EgressGate, SandboxConfig};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use super::workspace::{extract_opt_u64, extract_str};
@@ -224,6 +224,18 @@ impl ToolExecutor for WebSearchExecutor {
 pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<()> {
     let egress = EgressGate::from_config(sandbox);
     registry.register(web_search_def(), Box::new(WebSearchExecutor::new(egress)))?;
+    registry.declare_capability(
+        ToolName::from_static("web_search"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::web_search".to_owned(),
+            stability: ToolStability::Stable,
+            // WHY Supported: the executor issues one egress-gated GET to the
+            // Brave Search API and mutates no local state, so there is
+            // nothing on aletheia's side to roll back.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

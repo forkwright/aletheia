@@ -14,8 +14,8 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 /// Minimal skill body for deserialising knowledge-store JSON without a
@@ -188,5 +188,15 @@ fn skill_read_def() -> ToolDef {
 ///
 /// Returns an error if `skill_read` is already registered.
 pub fn register(registry: &mut ToolRegistry) -> Result<()> {
-    registry.register(skill_read_def(), Box::new(SkillReadExecutor))
+    registry.register(skill_read_def(), Box::new(SkillReadExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("skill_read"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::skill_read".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
+    Ok(())
 }

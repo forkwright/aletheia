@@ -10,9 +10,9 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    BlackboardViewer, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
-    ToolTag,
+    BlackboardViewer, InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport,
+    ToolCallCapability, ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext,
+    ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use crate::builtins::workspace::{extract_opt_u64, extract_str};
@@ -196,5 +196,18 @@ pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
         blackboard_capability_rule(),
         Box::new(BlackboardExecutor),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("blackboard"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::memory::blackboard".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::PartialSupport {
+                reason: "write overwrites a key's prior value without retaining it; delete \
+                         removes an entry permanently (entries otherwise expire by TTL)"
+                    .to_owned(),
+            },
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }

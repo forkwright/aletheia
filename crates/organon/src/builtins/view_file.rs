@@ -11,8 +11,8 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
     DocumentSource, ImageSource, InputSchema, PropertyDef, PropertyType, Reversibility,
-    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolResultBlock,
-    ToolTag,
+    RollbackSupport, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId,
+    ToolInput, ToolResult, ToolResultBlock, ToolStability, ToolTag,
 };
 
 use super::workspace::{extract_opt_u64, extract_str, validate_path};
@@ -243,6 +243,15 @@ fn execute_by_kind(
 /// Register the `view_file` tool.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(view_file_def(), Box::new(ViewFileExecutor))?;
+    registry.declare_capability(
+        koina::id::ToolName::from_static("view_file"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::view_file".to_owned(),
+            stability: ToolStability::Stable,
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

@@ -810,8 +810,8 @@ pub enum RedactionPolicy {
 /// honest "nothing declared yet" state, not a fabricated "safe" one --
 /// `ToolRegistry::declare_capability` is how a tool owner asserts real
 /// values, and `crate::builtins::capability_governance_tests::
-/// all_irreversible_tools_declare_capability_metadata` gates that every
-/// `Reversibility::Irreversible` tool has done so.
+/// all_registered_tools_declare_capability_metadata` gates that every
+/// registered built-in tool has done so.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCapabilityMetadata {
     /// Owning module (e.g. `"organon::builtins::workspace"`). The sentinel

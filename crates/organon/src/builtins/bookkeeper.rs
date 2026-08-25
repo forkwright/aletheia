@@ -447,6 +447,18 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             tool_name: "tamias",
         }),
     )?;
+    registry.declare_capability(
+        ToolName::from_static("tamias"),
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::bookkeeper".to_owned(),
+            // WHY Planned: the executor is BookkeeperStub, which only logs a
+            // warning and returns a not-implemented error -- the schema is
+            // registered so deployments can trial the future tool surface.
+            stability: ToolStability::Planned,
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     registry.register(katharos_def(), Box::new(KatharosExecutor))?;
     registry.declare_capability(
         ToolName::from_static("katharos"),

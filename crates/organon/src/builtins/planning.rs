@@ -7,7 +7,10 @@ use std::sync::Arc;
 use super::workspace::{extract_opt_bool, extract_opt_u64, extract_str};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
-use crate::types::{PlanningPlanInput, PlanningService, ToolContext, ToolInput, ToolResult};
+use crate::types::{
+    PlanningPlanInput, PlanningService, RollbackSupport, ToolCapabilityMetadata, ToolContext,
+    ToolInput, ToolResult, ToolStability,
+};
 
 #[path = "planning_defs.rs"]
 mod defs;
@@ -516,7 +519,105 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         plan_verify_criteria_def(),
         Box::new(PlanVerifyCriteriaExecutor),
     )?;
+    declare_capabilities(registry);
     Ok(())
+}
+
+/// Governance metadata for the planning tools.
+///
+/// Split out of [`register`] (rather than interleaved per-tool) to keep that
+/// function under clippy's `too_many_lines` threshold; `declare_capability`
+/// is a no-op on an unregistered name, so the only ordering requirement is
+/// that this runs after the `registry.register` calls above. All planning
+/// mutations flow through the `PlanningService` trait to the filesystem-backed
+/// project workspace (persisted project state files), which has no general
+/// undo mechanism.
+fn declare_capabilities(registry: &mut ToolRegistry) {
+    let declare = |registry: &mut ToolRegistry, name: &'static str, rollback: RollbackSupport| {
+        registry.declare_capability(
+            koina::id::ToolName::from_static(name),
+            ToolCapabilityMetadata {
+                owner: "organon::builtins::planning".to_owned(),
+                stability: ToolStability::Stable,
+                rollback,
+                ..ToolCapabilityMetadata::default()
+            },
+        );
+    };
+    declare(
+        registry,
+        "plan_create",
+        RollbackSupport::Unsupported {
+            reason: "creates a project workspace directory and persisted state files; no \
+                     delete path exists through this tool"
+                .to_owned(),
+        },
+    );
+    // WHY a loop: plan_research, plan_requirements, and plan_discuss are all
+    // thin lifecycle-transition executors with identical rollback semantics;
+    // one shared declaration keeps this function under clippy's
+    // `too_many_lines` threshold.
+    for name in ["plan_research", "plan_requirements", "plan_discuss"] {
+        declare(
+            registry,
+            name,
+            RollbackSupport::PartialSupport {
+                reason: "persists a lifecycle transition to the project state files; in-band \
+                         inverse transitions exist only out of the verifying state \
+                         (plan_verify's revert_to_*)"
+                    .to_owned(),
+            },
+        );
+    }
+    declare(
+        registry,
+        "plan_roadmap",
+        RollbackSupport::PartialSupport {
+            reason: "add_phase/add_plan append records to the persisted project workspace \
+                     with no removal path; the lifecycle actions share the limited \
+                     revert_to_* inverses"
+                .to_owned(),
+        },
+    );
+    declare(
+        registry,
+        "plan_execute",
+        RollbackSupport::PartialSupport {
+            reason: "pause and resume are mutual inverses, but abandon and \
+                     start_verification move the persisted lifecycle to states with no \
+                     inverse transition"
+                .to_owned(),
+        },
+    );
+    declare(
+        registry,
+        "plan_verify",
+        RollbackSupport::PartialSupport {
+            reason: "revert_to_* restores an earlier lifecycle state, but complete is \
+                     terminal; every transition is persisted to the project state files"
+                .to_owned(),
+        },
+    );
+    declare(registry, "plan_status", RollbackSupport::Supported);
+    declare(
+        registry,
+        "plan_step_complete",
+        RollbackSupport::Unsupported {
+            reason: "marks a plan complete in the persisted project state; no un-complete \
+                     transition exists"
+                .to_owned(),
+        },
+    );
+    declare(
+        registry,
+        "plan_step_fail",
+        RollbackSupport::Unsupported {
+            reason: "records a plan failure with its reason in the persisted project state; \
+                     no inverse transition exists"
+                .to_owned(),
+        },
+    );
+    declare(registry, "plan_verify_criteria", RollbackSupport::Supported);
 }
 
 #[cfg(test)]

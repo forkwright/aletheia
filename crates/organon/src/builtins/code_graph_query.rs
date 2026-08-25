@@ -50,8 +50,8 @@ use koina::id::ToolName;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -371,6 +371,18 @@ fn code_graph_query_def() -> ToolDef {
 /// Register the `code_graph_query` tool into the registry.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(code_graph_query_def(), Box::new(CodeGraphQueryExecutor))?;
+    registry.declare_capability(
+        ToolName::from_static("code_graph_query"), // kanon:ignore RUST/expect
+        ToolCapabilityMetadata {
+            owner: "organon::builtins::code_graph_query".to_owned(),
+            stability: ToolStability::Stable,
+            // WHY Supported: the query ops only read the derived code-graph
+            // index, and op=rebuild rewrites derived index data that is fully
+            // regenerable from source by running rebuild again.
+            rollback: RollbackSupport::Supported,
+            ..ToolCapabilityMetadata::default()
+        },
+    );
     Ok(())
 }
 

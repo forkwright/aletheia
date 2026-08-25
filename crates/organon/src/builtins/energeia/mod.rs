@@ -106,7 +106,7 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
     Ok(())
 }
 
-/// Governance metadata for the energeia tools carrying real side effects.
+/// Governance metadata for the nine energeia tools.
 ///
 /// Split out of [`register`] (rather than interleaved per-tool) purely to
 /// keep that function under clippy's `too_many_lines` threshold -- these
@@ -114,57 +114,103 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
 /// above beyond "the tool must already be registered" (`declare_capability`
 /// is a no-op on an unregistered name).
 fn declare_capabilities(registry: &mut ToolRegistry) {
-    registry.declare_capability(
-        ToolName::from_static("dromeus"),
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::energeia::dispatch".to_owned(),
-            stability: ENERGEIA_STABILITY,
-            rollback: RollbackSupport::Unsupported {
-                reason: "spawns and orchestrates agent sessions per prompt group; their effects \
-                         are not tracked for rollback by this tool"
-                    .to_owned(),
+    let declare = |registry: &mut ToolRegistry,
+                   name: &'static str,
+                   owner: &'static str,
+                   rollback: RollbackSupport| {
+        registry.declare_capability(
+            ToolName::from_static(name),
+            ToolCapabilityMetadata {
+                owner: owner.to_owned(),
+                stability: ENERGEIA_STABILITY,
+                rollback,
+                ..ToolCapabilityMetadata::default()
             },
-            ..ToolCapabilityMetadata::default()
+        );
+    };
+    declare(
+        registry,
+        "dromeus",
+        "organon::builtins::energeia::dispatch",
+        RollbackSupport::Unsupported {
+            reason: "spawns and orchestrates agent sessions per prompt group; their effects \
+                     are not tracked for rollback by this tool"
+                .to_owned(),
         },
     );
-    registry.declare_capability(
-        ToolName::from_static("dokimasia"),
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::energeia::qa".to_owned(),
-            stability: ENERGEIA_STABILITY,
-            rollback: RollbackSupport::Unsupported {
-                reason: "best-effort lesson persistence to the knowledge graph on a Pass/\
-                         NeedsReview verdict has no delete/rollback path"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
+    declare(
+        registry,
+        "dokimasia",
+        "organon::builtins::energeia::qa",
+        RollbackSupport::Unsupported {
+            reason: "best-effort lesson persistence to the knowledge graph on a Pass/\
+                     NeedsReview verdict has no delete/rollback path"
+                .to_owned(),
         },
     );
-    registry.declare_capability(
-        ToolName::from_static("epitropos"),
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::energeia::steward".to_owned(),
-            stability: ENERGEIA_STABILITY,
-            rollback: RollbackSupport::Unsupported {
-                reason: "acts against the live GitHub REST API; effects occur on an external \
-                         system outside aletheia's control"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
+    declare(
+        registry,
+        "epitropos",
+        "organon::builtins::energeia::steward",
+        RollbackSupport::Unsupported {
+            reason: "acts against the live GitHub REST API; effects occur on an external \
+                     system outside aletheia's control"
+                .to_owned(),
         },
     );
-    registry.declare_capability(
-        ToolName::from_static("parateresis"),
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::energeia::observation".to_owned(),
-            stability: ENERGEIA_STABILITY,
-            rollback: RollbackSupport::Unsupported {
-                reason: "appends a sentinel query-observation record to the energeia store; no \
-                         delete/rollback path exists for energeia store writes"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
+    declare(
+        registry,
+        "parateresis",
+        "organon::builtins::energeia::observation",
+        RollbackSupport::Unsupported {
+            reason: "appends a sentinel query-observation record to the energeia store; no \
+                     delete/rollback path exists for energeia store writes"
+                .to_owned(),
         },
+    );
+    // WHY Supported for diorthosis: the executor is a pure computation over
+    // the caller-supplied JSON-encoded QaResult (generate_corrective); no
+    // store, filesystem, or network write occurs.
+    declare(
+        registry,
+        "diorthosis",
+        "organon::builtins::energeia::qa",
+        RollbackSupport::Supported,
+    );
+    declare(
+        registry,
+        "mathesis",
+        "organon::builtins::energeia::observation",
+        RollbackSupport::Unsupported {
+            reason: "action=record appends a lesson to the energeia store via add_lesson; \
+                     no delete/rollback path exists for energeia store writes"
+                .to_owned(),
+        },
+    );
+    // WHY Supported for prographe: the executor renders a prompt-spec
+    // template in memory and its own output reports files_written: [] --
+    // no files are written.
+    declare(
+        registry,
+        "prographe",
+        "organon::builtins::energeia::planning",
+        RollbackSupport::Supported,
+    );
+    // WHY Supported for schedion: the executor computes the frontier on an
+    // in-memory PromptDag; no I/O occurs.
+    declare(
+        registry,
+        "schedion",
+        "organon::builtins::energeia::planning",
+        RollbackSupport::Supported,
+    );
+    // WHY Supported for metron: every report_type renders from read-only
+    // MetricsService queries against the energeia store.
+    declare(
+        registry,
+        "metron",
+        "organon::builtins::energeia::metrics",
+        RollbackSupport::Supported,
     );
 }
 
