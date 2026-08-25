@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "aletheia-classify"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "jiff",
  "serde",
@@ -81,11 +81,11 @@ dependencies = [
 
 [[package]]
 name = "aletheia-lexica"
-version = "0.42.0"
+version = "0.42.1"
 
 [[package]]
 name = "aletheia-routing"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "futures",
  "jiff",
@@ -583,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "dianoia"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "jiff",
  "koina",
@@ -634,7 +634,7 @@ checksum = "4c3cf4824e2d5f025c7b531afcb2325364084a16806f6d47fbc1f5fbd9960590"
 
 [[package]]
 name = "eidos"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "jiff",
  "koina",
@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "episteme"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "eidos",
  "graphe",
@@ -723,7 +723,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -919,7 +919,7 @@ dependencies = [
 
 [[package]]
 name = "gnosis"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "cargo_metadata",
  "fjall",
@@ -935,7 +935,7 @@ dependencies = [
 
 [[package]]
 name = "graphe"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "eidos",
  "fjall",
@@ -995,7 +995,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "hermeneus"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "jiff",
  "koina",
@@ -1427,7 +1427,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "fjall",
  "jiff",
@@ -1469,7 +1469,7 @@ dependencies = [
 
 [[package]]
 name = "krites"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "aho-corasick",
  "arc-swap",
@@ -1626,7 +1626,7 @@ dependencies = [
 
 [[package]]
 name = "melete"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "aletheia-lexica",
  "futures",
@@ -1674,7 +1674,7 @@ dependencies = [
 
 [[package]]
 name = "mneme"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "eidos",
  "episteme",
@@ -1730,7 +1730,7 @@ dependencies = [
 
 [[package]]
 name = "nous"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "aletheia-classify",
  "aletheia-lexica",
@@ -1764,7 +1764,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1823,7 +1823,7 @@ dependencies = [
 
 [[package]]
 name = "organon"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "aletheia-lexica",
  "eidos",
@@ -2011,9 +2011,9 @@ dependencies = [
 
 [[package]]
 name = "prometheus-client"
-version = "0.24.1"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cca3d75b4566b9a29fe1ed623587fb058e826eb329a0be4b7c4da1ebb2d7a6ca"
+checksum = "ba70bf887030e45213b4a95c9b08d5a450b157f87c1d63661ed0847a12fa2aad"
 dependencies = [
  "dtoa",
  "itoa",
@@ -2253,7 +2253,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2310,7 +2310,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2600,7 +2600,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2632,7 +2632,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
 name = "symbolon"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "aes-gcm",
  "argon2",
@@ -2701,7 +2701,7 @@ dependencies = [
 
 [[package]]
 name = "taxis"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "chacha20poly1305",
  "dianoia",
@@ -2729,12 +2729,12 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "thesauros"
-version = "0.42.0"
+version = "0.42.1"
 dependencies = [
  "indexmap",
  "koina",
@@ -3225,7 +3225,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
