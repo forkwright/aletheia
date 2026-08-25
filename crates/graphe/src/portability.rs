@@ -353,7 +353,7 @@ mod tests {
             exported_at: "2026-03-05T12:00:00Z".to_owned(),
             generator: "aletheia-rust/0.10.0".to_owned(),
             nous: NousInfo {
-                id: "syn".to_owned(),
+                id: NousId::new("syn").expect("valid fixture nous id"),
                 name: Some("Syn".to_owned()),
                 model: Some("claude-sonnet-4-6".to_owned()),
                 config: serde_json::json!({"domains": ["general"]}),
