@@ -242,7 +242,7 @@ workspace = "/tmp/alice"
         .unwrap();
 
         let args = SessionCreateArgs {
-            nous_id: "bob".to_owned(),
+            nous_id: NousId::new("bob").unwrap(),
             key: "main".to_owned(),
         };
 
