@@ -342,6 +342,20 @@ jobs:
           cargo metadata --format-version 1 --no-deps > metadata.json
           scripts/release-feature-policy.py --metadata metadata.json validate
 
+      # WHY(#6958): cargo-auditable collects each compiled crate's dependency
+      # tree via `cargo metadata --features <that crate's own features>`, and
+      # cargo applies an unqualified feature name to every workspace member —
+      # a name that is a feature on one crate and a `dep:`-suppressed optional
+      # dependency on another is a hard resolver error. Four draft releases
+      # shipped zero assets because only the tag-triggered build ever ran that
+      # resolution. Replaying it per feature name here (metadata-only, no
+      # compile) fails the class on PRs instead of tagged releases.
+      - name: Test check-feature-namespace.py
+        run: scripts/test-check-feature-namespace.py
+
+      - name: Check feature namespace resolves under cargo metadata
+        run: scripts/check-feature-namespace.py
+
       - name: Release versioning
         run: |
           python3 scripts/check-automation-pr-gates.py

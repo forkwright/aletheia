@@ -38,7 +38,7 @@ aletheia-routing = { path = "../aletheia-routing" }
 aletheia-lexica = { workspace = true }
 dianoia = { path = "../dianoia" }
 hermeneus = { path = "../hermeneus" }
-koina = { path = "../koina", features = ["fjall"] }
+koina = { path = "../koina", features = ["fjall-helpers"] }
 melete = { path = "../melete" }
 mneme = { path = "../mneme" }
 organon = { path = "../organon" }

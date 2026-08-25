@@ -26,7 +26,7 @@ test-full = []
 
 [dependencies]
 eidos = { path = "../eidos" }
-koina = { path = "../koina", features = ["fjall"] }
+koina = { path = "../koina", features = ["fjall-helpers"] }
 fjall = { version = "3", default-features = false, features = ["lz4"] }
 jiff = { workspace = true, features = ["serde"] }
 prometheus-client = { workspace = true }

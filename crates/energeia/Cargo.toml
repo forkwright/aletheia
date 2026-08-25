@@ -14,7 +14,7 @@ workspace = true
 [features]
 test-core = ["storage-fjall"]
 test-full = ["test-core"]
-storage-fjall = ["dep:fjall", "koina/fjall"]
+storage-fjall = ["dep:fjall", "koina/fjall-helpers"]
 
 [dependencies]
 aletheia-routing = { path = "../aletheia-routing" }
