@@ -161,6 +161,10 @@ impl NousActor {
     /// The panic boundary in `execute_turn_with_panic_boundary` ensures
     /// that even if the pipeline panics, the actor remains in a consistent
     /// state and can process subsequent messages.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "turn setup plumbs session, content, ingress, span, cancel, and reply; splitting hides the call shape"
+    )]
     pub(super) async fn handle_turn(
         &mut self,
         session_key: String, // kanon:ignore RUST/plain-string-secret
