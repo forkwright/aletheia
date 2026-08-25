@@ -438,14 +438,7 @@ fn validate_command_path(
     // == "/etc/passwd"`), so this also closes that join-level surprise, not
     // just an early-exit optimization over the canonicalize-based check below.
     let declared = Path::new(command);
-    let is_relative_in_pack = !declared.is_absolute()
-        && declared.components().all(|c| {
-            matches!(
-                c,
-                std::path::Component::Normal(_) | std::path::Component::CurDir
-            )
-        });
-    if !is_relative_in_pack {
+    if !crate::manifest::is_relative_in_pack_path(declared) {
         return Err(error::Error::ToolCommandEscape {
             path: declared.to_path_buf(),
             location: snafu::location!(),

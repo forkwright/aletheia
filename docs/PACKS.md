@@ -78,6 +78,16 @@ domains = ["healthcare", "sql"]
 
 A future `[[reference]]` entry should include at least `path`, `title`, `description`, and `tags`. Optional fields such as `freshness`, `owner`, `format`, and `load_hint = "startup" | "on_demand"` can help runtime loaders choose between prompt injection, search indexing, and tool-mediated retrieval.
 
+### Load-time validation
+
+The manifest contract is validated when the pack loads, before anything activates:
+
+- `name` is 1–64 ASCII alphanumeric/hyphen characters; `version` is non-empty
+- every tool has a valid tool name (alphanumeric, hyphens, underscores), a non-zero `timeout`, and a `command` that is a relative path inside the pack root
+- every overlay's `agency` is one of `unrestricted`, `standard`, `restricted`; `model` and `system_prompt_additions` entries are not blank
+
+All problems are reported together in one `invalid manifest` error; a pack with any violation is not loaded at all (reported as `failed` in [pack health](#pack-health)). Tool `groups`, `tags`, and `reversibility` are validated against the runtime's known values at tool registration — a failure there skips that tool and marks the pack `degraded` instead of rejecting the whole pack.
+
 ## Context entries
 
 Each context entry maps to a file injected into the agent's system prompt at startup.

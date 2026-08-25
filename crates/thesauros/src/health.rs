@@ -254,8 +254,9 @@ mod tests {
             message: "bad tool".to_owned(),
         });
         report.packs.push(degraded);
-        let err = crate::error::Error::InvalidPackVersion {
-            pack: "c".to_owned(),
+        let err = crate::error::Error::ParseManifest {
+            path: PathBuf::from("/packs/c/pack.toml"),
+            reason: "bad toml".to_owned(),
             location: snafu::location!(),
         };
         report

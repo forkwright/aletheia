@@ -185,38 +185,113 @@ pub(crate) fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
     Ok(manifest)
 }
 
-/// Validate pack name, version, and declared tool timeouts.
+/// Validate the manifest contract: pack identity, tool declarations, and
+/// overlay powers.
 ///
-/// Name must be 1--64 characters, alphanumeric and hyphens only.
-/// Version must be non-empty.
-/// Every tool's timeout must be non-zero milliseconds.
+/// All problems are collected into one [`error::Error::InvalidManifest`]
+/// diagnostic instead of failing on the first, so a pack author sees the
+/// full list in a single load attempt. An invalid manifest fails the pack
+/// load; the pack never activates partially.
+///
+/// Tool groups, tags, and reversibility are additionally validated against
+/// organon's types at registration time (`tools::prepare_tool`), where their
+/// parsed values are needed; failures there are recorded in pack health.
 fn validate_manifest(manifest: &PackManifest) -> Result<()> {
+    let mut issues = Vec::new();
+
     if !is_valid_pack_name(&manifest.name) {
-        return Err(error::Error::InvalidPackName {
-            name: manifest.name.clone(),
-            location: snafu::location!(),
-        });
+        issues.push(format!(
+            "invalid pack name '{}': must be 1-64 characters, alphanumeric and hyphens only",
+            manifest.name
+        ));
     }
 
     if manifest.version.is_empty() {
-        return Err(error::Error::InvalidPackVersion {
-            pack: manifest.name.clone(),
-            location: snafu::location!(),
-        });
+        issues.push("pack version is an empty string".to_owned());
     }
 
     for tool in &manifest.tools {
-        if tool.timeout == 0 {
-            return Err(error::Error::InvalidToolTimeout {
-                pack: manifest.name.clone(),
-                tool: tool.name.clone(),
-                timeout: tool.timeout,
-                location: snafu::location!(),
-            });
-        }
+        validate_tool_contract(tool, &mut issues);
     }
 
-    Ok(())
+    for (agent, overlay) in &manifest.overlays {
+        validate_overlay(agent, overlay, &mut issues);
+    }
+
+    if issues.is_empty() {
+        return Ok(());
+    }
+    Err(error::Error::InvalidManifest {
+        pack: manifest.name.clone(),
+        issues,
+        location: snafu::location!(),
+    })
+}
+
+/// Validate one tool declaration's load-time contract: name shape, timeout,
+/// and command-path syntax. Filesystem checks (exists, executable, in-pack
+/// after canonicalization) stay at registration, where a failure degrades
+/// the pack instead of rejecting the whole manifest.
+fn validate_tool_contract(tool: &PackToolDef, issues: &mut Vec<String>) {
+    if let Err(e) = koina::id::ToolName::new(tool.name.as_str()) {
+        issues.push(format!("tool '{}': invalid tool name: {e}", tool.name));
+    }
+    if tool.timeout == 0 {
+        issues.push(format!(
+            "tool '{}' has an invalid timeout of 0ms: must be non-zero",
+            tool.name
+        ));
+    }
+    if !is_relative_in_pack_path(Path::new(&tool.command)) {
+        issues.push(format!(
+            "tool '{}' command '{}' must be a relative path inside the pack root",
+            tool.name, tool.command
+        ));
+    }
+}
+
+/// Validate one overlay's high-impact fields: `agency` must name a known
+/// level (the runtime maps it to iteration limits), and `model` /
+/// `system_prompt_additions` must not be blank placeholders that would apply
+/// as empty overrides.
+fn validate_overlay(agent: &str, overlay: &AgentOverlay, issues: &mut Vec<String>) {
+    if let Some(agency) = overlay.agency.as_deref()
+        && !matches!(agency, "unrestricted" | "standard" | "restricted")
+    {
+        issues.push(format!(
+            "overlay for agent '{agent}': unknown agency '{agency}' \
+             (expected \"unrestricted\", \"standard\", or \"restricted\")"
+        ));
+    }
+    if let Some(model) = overlay.model.as_deref()
+        && model.trim().is_empty()
+    {
+        issues.push(format!(
+            "overlay for agent '{agent}': model override is blank"
+        ));
+    }
+    for addition in &overlay.system_prompt_additions {
+        if addition.trim().is_empty() {
+            issues.push(format!(
+                "overlay for agent '{agent}': system-prompt addition is blank"
+            ));
+        }
+    }
+}
+
+/// Returns `true` when `declared` is a relative path made only of normal and
+/// `.` components — i.e. it cannot escape a pack root when joined to it.
+///
+/// Syntactic check shared by manifest validation (no filesystem access) and
+/// registration-time command validation.
+pub(crate) fn is_relative_in_pack_path(declared: &Path) -> bool {
+    !declared.is_absolute()
+        && declared.components().all(|c| {
+            matches!(
+                c,
+                std::path::Component::Normal(_) | std::path::Component::CurDir
+            )
+        })
 }
 
 /// Returns `true` if the name is 1--64 ASCII alphanumeric/hyphen characters.
@@ -570,9 +645,10 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", toml)]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidToolTimeout { .. }),
-            "expected InvalidToolTimeout, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
+        assert!(err.to_string().contains("invalid timeout"), "{err}");
     }
 
     #[test]
@@ -616,9 +692,10 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", "name = \"\"\nversion = \"1.0\"\n")]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidPackName { .. }),
-            "expected InvalidPackName, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
+        assert!(err.to_string().contains("invalid pack name"), "{err}");
     }
 
     #[test]
@@ -626,8 +703,8 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", "name = \"my pack!\"\nversion = \"1.0\"\n")]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidPackName { .. }),
-            "expected InvalidPackName, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
     }
 
@@ -638,8 +715,8 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", &toml)]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidPackName { .. }),
-            "expected InvalidPackName, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
     }
 
@@ -648,9 +725,81 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", "name = \"my-pack\"\nversion = \"\"\n")]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidPackVersion { .. }),
-            "expected InvalidPackVersion, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
+        assert!(err.to_string().contains("version"), "{err}");
+    }
+
+    #[test]
+    fn aggregates_multiple_validation_problems() {
+        // WHY(#5209): one load must report every contract violation at once,
+        // not force a fix-load-fix loop over independent problems.
+        let toml = r#"
+name = "bad pack!"
+version = ""
+
+[[tools]]
+name = "ok_tool"
+description = "Fine"
+command = "tools/ok.sh"
+timeout = 0
+
+[[tools]]
+name = "bad name"
+description = "Bad name"
+command = "/etc/passwd"
+
+[overlays.analyst]
+agency = "godmode"
+model = "  "
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        let msg = err.to_string();
+        for expected in [
+            "invalid pack name",
+            "version is an empty string",
+            "invalid timeout",
+            "invalid tool name",
+            "relative path inside the pack root",
+            "unknown agency 'godmode'",
+            "model override is blank",
+        ] {
+            assert!(msg.contains(expected), "missing '{expected}' in: {msg}");
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_overlay_agency() {
+        let toml = "name = \"agency-pack\"\nversion = \"1.0\"\n\n[overlays.analyst]\nagency = \"superuser\"\n";
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
+        );
+        assert!(err.to_string().contains("unknown agency"), "{err}");
+    }
+
+    #[test]
+    fn accepts_known_overlay_agency_levels() {
+        for agency in ["unrestricted", "standard", "restricted"] {
+            let toml = format!(
+                "name = \"agency-pack\"\nversion = \"1.0\"\n\n[overlays.analyst]\nagency = \"{agency}\"\n"
+            );
+            let dir = setup_pack(&[("pack.toml", &toml)]);
+            load_manifest(dir.path())
+                .unwrap_or_else(|e| panic!("agency '{agency}' must validate: {e}"));
+        }
+    }
+
+    #[test]
+    fn rejects_blank_prompt_addition() {
+        let toml = "name = \"prompt-pack\"\nversion = \"1.0\"\n\n[overlays.analyst]\nsystem_prompt_additions = [\"  \"]\n";
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(err.to_string().contains("blank"), "{err}");
     }
 
     #[test]
