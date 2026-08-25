@@ -633,7 +633,7 @@ mod tests {
     async fn fallthrough_after_action_reaches_fallback_when_fallback_handled() {
         let primary = Arc::new(CountingRouter::fixed("primary", Some(0.2)));
         let fallback = Arc::new(CountingRouter::fixed("fallback", None));
-        let router = FallthroughRouter::new(Arc::clone(&primary), Arc::clone(&fallback), 0.5);
+        let router = FallthroughRouter::new(primary.clone(), fallback.clone(), 0.5);
 
         let features = RequestFeatures::new(Vec::new(), None, None);
         let decision = router.route(&features).await;
@@ -676,7 +676,7 @@ mod tests {
     async fn fallthrough_after_action_reaches_primary_when_primary_handled() {
         let primary = Arc::new(CountingRouter::fixed("primary", Some(0.9)));
         let fallback = Arc::new(CountingRouter::fixed("fallback", None));
-        let router = FallthroughRouter::new(Arc::clone(&primary), Arc::clone(&fallback), 0.5);
+        let router = FallthroughRouter::new(primary.clone(), fallback.clone(), 0.5);
 
         let features = RequestFeatures::new(Vec::new(), None, None);
         let decision = router.route(&features).await;
@@ -720,7 +720,7 @@ mod tests {
     async fn fallthrough_after_action_defaults_direct_origin_to_primary() {
         let primary = Arc::new(CountingRouter::fixed("primary", Some(0.9)));
         let fallback = Arc::new(CountingRouter::fixed("fallback", None));
-        let router = FallthroughRouter::new(Arc::clone(&primary), Arc::clone(&fallback), 0.5);
+        let router = FallthroughRouter::new(primary.clone(), fallback.clone(), 0.5);
 
         let fabricated = RoutingDecision::new("primary", None);
         let outcome = TurnOutcome::new(ProviderId::new("primary"), TaskCategory::Bug, true, true);
