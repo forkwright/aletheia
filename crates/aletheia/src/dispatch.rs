@@ -1,14 +1,19 @@
-// kanon:ignore RUST/file-too-long WHY: inbound dispatch, command auditing, and dispatch tests share private helpers in one module
+// kanon:ignore RUST/file-too-long WHY: inbound dispatch, command lifecycle records, and dispatch tests share private helpers in one module
 //! Background dispatch loop: routes inbound messages to nous actors.
 
 use std::sync::Arc;
 use std::time::Instant;
 
-use mneme::store::SessionStore;
-use mneme::types::Role;
+use mneme::store::{AppendCommandLifecycleRecord, SessionStore};
+use mneme::types::{
+    CommandDelivery, CommandDeliveryFailureClass, CommandDeliveryStatus, CommandFailureClass,
+    CommandInvocationStatus, CommandLifecycleEvent, CommandResultStatus, RedactedCommand,
+    RedactedCommandOrigin,
+};
 use sha2::{Digest as _, Sha256};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tokio_util::task::TaskTracker;
 use tracing::{Instrument, debug, info, warn};
 
 use agora::command::{self, AgentSnapshot, ChannelSnapshot, CommandContext};
@@ -19,9 +24,9 @@ use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
 use nous::manager::NousManager;
 use organon::types::BlackboardViewer;
-use taxis::config::InboundCommandPolicy;
+use taxis::config::{CommandTier, InboundCommandPolicy};
 
-const COMMAND_RECORD_SCHEMA: &str = "aletheia.agora.command.v1";
+const UNKNOWN_COMMAND_REPLY: &str = "Unknown command.";
 
 /// Everything the dispatcher loop needs beyond the listener itself.
 pub(crate) struct DispatcherParts {
@@ -40,12 +45,13 @@ pub(crate) struct DispatcherParts {
 /// tasks on this path — before, the runtime consumed the receiver directly
 /// and spawned one unbounded task per message.
 pub(crate) fn spawn_dispatcher(
+    task_tracker: &TaskTracker,
     listener: ChannelListener,
     parts: DispatcherParts,
     mut ready_rx: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!("message_dispatcher");
-    tokio::spawn(
+    task_tracker.spawn(
         async move {
             while !*ready_rx.borrow_and_update() {
                 if ready_rx.changed().await.is_err() {
@@ -56,9 +62,10 @@ pub(crate) fn spawn_dispatcher(
             info!("dispatch loop started");
 
             let parts = Arc::new(parts);
-            // WHY: providers can redeliver after restarts, retries, or cursor
-            // resets; a bounded remember-set drops repeat sightings before any
-            // agent work is scheduled.
+            // WHY: providers can redeliver during the current dispatcher
+            // lifetime; this process-local bounded remember-set drops repeat
+            // sightings before any agent work is scheduled. It is not a
+            // restart-safe ingress journal.
             let dedupe = Arc::new(std::sync::Mutex::new(DedupeFilter::with_capacity(
                 agora::dedupe::DEFAULT_DEDUPE_CAPACITY,
             )));
@@ -129,10 +136,61 @@ async fn dispatch_one(
         return;
     };
 
+    // SECURITY(#5193): unknown input is handled before session normalization,
+    // snapshots, and durable command records. Neither the
+    // attacker-controlled name nor arguments leave this branch.
+    let parsed_command = command::parse(&msg.text);
+    if matches!(parsed_command, Some(command::Command::Unknown)) {
+        send_reply(
+            &msg,
+            UNKNOWN_COMMAND_REPLY,
+            ReplyPurpose::Command,
+            &channel_registry,
+        )
+        .await;
+        return;
+    }
+
+    // SECURITY(#5193): authorize known commands before touching a route-derived
+    // session key. Denied and unknown command text receive the same fixed reply,
+    // so malformed route templates cannot become a command-vocabulary oracle.
+    if let Some(cmd) = parsed_command.as_ref()
+        && !command_policy.allows(cmd.name(), decision.command_tier)
+    {
+        agora::metrics::record_command_denied(&msg.channel);
+        warn!(
+            channel = %msg.channel,
+            command = cmd.name(),
+            "inbound command denied by policy"
+        );
+        send_reply(
+            &msg,
+            UNKNOWN_COMMAND_REPLY,
+            ReplyPurpose::Command,
+            &channel_registry,
+        )
+        .await;
+        return;
+    }
+
+    // Help and liveness are public, fixed operations. Keep them independent
+    // of route-template validity, session storage, and private runtime state.
+    if let Some(cmd @ (command::Command::Help | command::Command::Ping)) = parsed_command.as_ref() {
+        let visible_commands = visible_command_names(&command_policy, decision.command_tier);
+        let reply = command_without_runtime_snapshot(cmd, decision.nous_id, "", visible_commands)
+            .unwrap_or_else(|| UNKNOWN_COMMAND_REPLY.to_owned());
+        send_reply(&msg, &reply, ReplyPurpose::Command, &channel_registry).await;
+        return;
+    }
+
     // WHY: Session keys are built from external identifiers by the router's
-    // template expansion. Normalize before any use so logs, command records,
+    // template expansion. Normalize before any use so logs, lifecycle notes,
     // and store lookups never carry raw phone numbers, Matrix IDs, or group IDs.
-    let session_key = match normalize_session_key(&decision.session_key) {
+    let session_key = match normalize_session_key(
+        &msg.channel,
+        msg.account_id.as_deref(),
+        &decision.session_key,
+    ) {
         Ok(key) => key,
         Err(e) => {
             warn!(
@@ -146,28 +204,7 @@ async fn dispatch_one(
 
     // NOTE: `!`-commands are intercepted before reaching the nous agent.
     // Plain turns fall through to send_turn as before.
-    if let Some(cmd) = command::parse(&msg.text) {
-        // SECURITY(#5193): the operational command surface (fleet state,
-        // channel health, models, skills, blackboard) is denied unless the
-        // inbound command policy grants this channel+sender. Unknown
-        // commands stay public: their reply leaks nothing beyond the
-        // (policy-filtered) !help hint.
-        if !matches!(cmd, command::Command::Unknown { .. })
-            && !command_policy.allows(cmd.name(), &msg.channel, &msg.sender)
-        {
-            agora::metrics::record_command_denied(&msg.channel);
-            warn!(
-                channel = %msg.channel,
-                command = cmd.name(),
-                "inbound command denied by policy"
-            );
-            let reply_text = format!(
-                "Command '!{}' is not available for this conversation.",
-                cmd.name()
-            );
-            send_reply(&msg, &reply_text, &channel_registry).await;
-            return;
-        }
+    if let Some(cmd) = parsed_command {
         handle_command_dispatch(CommandDispatch {
             msg: &msg,
             cmd: &cmd,
@@ -177,6 +214,7 @@ async fn dispatch_one(
             channel_registry: &channel_registry,
             session_store: &session_store,
             command_policy: &command_policy,
+            command_tier: decision.command_tier,
         })
         .await;
         return;
@@ -215,7 +253,13 @@ async fn dispatch_one(
         }
     };
 
-    send_reply(&msg, &turn_result.content, &channel_registry).await;
+    send_reply(
+        &msg,
+        &turn_result.content,
+        ReplyPurpose::Turn,
+        &channel_registry,
+    )
+    .await;
 }
 
 struct CommandDispatch<'a> {
@@ -227,26 +271,60 @@ struct CommandDispatch<'a> {
     channel_registry: &'a ChannelRegistry,
     session_store: &'a Arc<tokio::sync::Mutex<SessionStore>>,
     command_policy: &'a InboundCommandPolicy,
+    command_tier: CommandTier,
 }
 
 struct StartedCommandRecord {
     session_id: String,
-    idempotency_key: String,
+    delivery_key: String,
+    origin: RedactedCommandOrigin,
+    command: RedactedCommand,
 }
 
-enum CommandRecordStart {
-    Started {
-        session_id: String,
-        idempotency_key: String,
-    },
-    Duplicate {
-        reply_text: String,
-    },
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReplyPurpose {
+    Turn,
+    Command,
 }
 
-struct ReplyDelivery {
-    status: &'static str,
-    error: Option<String>,
+impl ReplyPurpose {
+    fn tag(self) -> &'static str {
+        match self {
+            Self::Turn => "turn",
+            Self::Command => "command",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReplyDelivery {
+    Sent,
+    Failed(ReplyFailure),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReplyFailure {
+    Provider,
+    Registry,
+}
+
+impl ReplyDelivery {
+    fn audit_record(self) -> CommandDelivery {
+        match self {
+            Self::Sent => CommandDelivery {
+                status: CommandDeliveryStatus::Sent,
+                failure_class: None,
+            },
+            Self::Failed(ReplyFailure::Provider) => CommandDelivery {
+                status: CommandDeliveryStatus::Failed,
+                failure_class: Some(CommandDeliveryFailureClass::ProviderFailure),
+            },
+            Self::Failed(ReplyFailure::Registry) => CommandDelivery {
+                status: CommandDeliveryStatus::Failed,
+                failure_class: Some(CommandDeliveryFailureClass::RegistryFailure),
+            },
+        }
+    }
 }
 
 async fn handle_command_dispatch(dispatch: CommandDispatch<'_>) {
@@ -269,22 +347,7 @@ async fn handle_command_dispatch(dispatch: CommandDispatch<'_>) {
     )
     .await
     {
-        Ok(CommandRecordStart::Started {
-            session_id,
-            idempotency_key,
-        }) => StartedCommandRecord {
-            session_id,
-            idempotency_key,
-        },
-        Ok(CommandRecordStart::Duplicate { reply_text }) => {
-            debug!(
-                nous_id = %dispatch.nous_id,
-                command = dispatch.cmd.name(),
-                "duplicate !-command delivery ignored"
-            );
-            send_reply(dispatch.msg, &reply_text, dispatch.channel_registry).await;
-            return;
-        }
+        Ok(record) => record,
         Err(e) => {
             warn!(
                 error = %e,
@@ -292,15 +355,17 @@ async fn handle_command_dispatch(dispatch: CommandDispatch<'_>) {
                 command = dispatch.cmd.name(),
                 "failed to record !-command invocation"
             );
-            let reply_text = format!(
-                "Command '!{}' was not executed because its session record could not be written.",
-                dispatch.cmd.name()
-            );
-            send_reply(dispatch.msg, &reply_text, dispatch.channel_registry).await;
+            send_reply(
+                dispatch.msg,
+                UNKNOWN_COMMAND_REPLY,
+                ReplyPurpose::Command,
+                dispatch.channel_registry,
+            )
+            .await;
             return;
         }
     };
-    let visible_commands = visible_command_names(dispatch.command_policy, dispatch.msg);
+    let visible_commands = visible_command_names(dispatch.command_policy, dispatch.command_tier);
     let reply_text = execute_command(
         dispatch.cmd,
         dispatch.nous_id,
@@ -310,22 +375,23 @@ async fn handle_command_dispatch(dispatch: CommandDispatch<'_>) {
         visible_commands,
     )
     .await;
-    let delivery = send_reply(dispatch.msg, &reply_text, dispatch.channel_registry).await;
+    let delivery = send_reply(
+        dispatch.msg,
+        &reply_text,
+        ReplyPurpose::Command,
+        dispatch.channel_registry,
+    )
+    .await;
     if let Err(e) = finish_command_record(
         dispatch.session_store,
         &command_record,
-        dispatch.msg,
-        dispatch.cmd,
-        dispatch.nous_id,
-        dispatch.session_key,
-        &reply_text,
-        command_failure_class(dispatch.cmd),
+        None,
         started_at
             .elapsed()
             .as_millis()
             .try_into()
             .unwrap_or(u64::MAX),
-        &delivery,
+        delivery,
     )
     .await
     {
@@ -345,225 +411,135 @@ async fn begin_command_record(
     nous_id: &str,
     session_key: &str,
     model: Option<&str>,
-) -> Result<CommandRecordStart, mneme::error::Error> {
-    let idempotency_key = command_idempotency_key(msg, session_key);
+) -> Result<StartedCommandRecord, mneme::error::Error> {
+    let delivery_key = command_delivery_key(msg, session_key, cmd.name());
     let session_id = koina::id::SessionId::new().to_string();
     let store = session_store.lock().await;
     let session = store.find_or_create_session(&session_id, nous_id, session_key, model, None)?;
-    let history = store.get_history(&session.id, None)?;
-    if let Some(reply_text) = duplicate_command_reply(&history, &idempotency_key, cmd.name()) {
-        return Ok(CommandRecordStart::Duplicate { reply_text });
-    }
+    let origin = command_origin_record(msg);
+    let command = command_record_command(cmd);
+    let event = CommandLifecycleEvent::Invocation {
+        status: CommandInvocationStatus::Started,
+    };
+    store.append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+        session_id: &session.id,
+        delivery_key: &delivery_key,
+        origin: &origin,
+        command: &command,
+        event: &event,
+    })?;
 
-    let content =
-        command_invocation_record(msg, cmd, nous_id, session_key, &idempotency_key).to_string();
-    store.append_message(
-        &session.id,
-        Role::System,
-        &content,
-        None,
-        None,
-        token_estimate(&content),
-    )?;
-
-    Ok(CommandRecordStart::Started {
+    Ok(StartedCommandRecord {
         session_id: session.id,
-        idempotency_key,
+        delivery_key,
+        origin,
+        command,
     })
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "result record mirrors the audit payload shape"
-)]
 async fn finish_command_record(
     session_store: &Arc<tokio::sync::Mutex<SessionStore>>,
     record: &StartedCommandRecord,
-    msg: &InboundMessage,
-    cmd: &command::Command,
-    nous_id: &str,
-    session_key: &str,
-    reply_text: &str,
-    failure_class: Option<&str>,
+    failure_class: Option<CommandFailureClass>,
     duration_ms: u64,
-    delivery: &ReplyDelivery,
+    delivery: ReplyDelivery,
 ) -> Result<(), mneme::error::Error> {
-    let content = command_result_record(
-        msg,
-        cmd,
-        nous_id,
-        session_key,
-        &record.idempotency_key,
-        reply_text,
+    let status = if failure_class.is_some() {
+        CommandResultStatus::Failed
+    } else {
+        CommandResultStatus::Succeeded
+    };
+    let event = CommandLifecycleEvent::Result {
+        status,
         failure_class,
         duration_ms,
-        delivery,
-    )
-    .to_string();
+        delivery: delivery.audit_record(),
+    };
     let store = session_store.lock().await;
-    store.append_message(
-        &record.session_id,
-        Role::System,
-        &content,
-        None,
-        None,
-        token_estimate(&content),
-    )?;
+    store.append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+        session_id: &record.session_id,
+        delivery_key: &record.delivery_key,
+        origin: &record.origin,
+        command: &record.command,
+        event: &event,
+    })?;
     Ok(())
 }
 
-fn duplicate_command_reply(
-    history: &[mneme::types::Message],
-    idempotency_key: &str,
-    command_name: &str,
-) -> Option<String> {
-    let mut pending = false;
-    for message in history.iter().rev() {
-        if message.role != Role::System {
-            continue;
-        }
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(&message.content) else {
-            continue;
-        };
-        if value.get("schema").and_then(serde_json::Value::as_str) != Some(COMMAND_RECORD_SCHEMA)
-            || value
-                .get("idempotency_key")
-                .and_then(serde_json::Value::as_str)
-                != Some(idempotency_key)
-        {
-            continue;
-        }
-        match value.get("event").and_then(serde_json::Value::as_str) {
-            Some("result") => {
-                let reply_text = value
-                    .pointer("/response/reply_text")
-                    .and_then(serde_json::Value::as_str)
-                    .map_or_else(
-                        || format!("Command '!{command_name}' was already handled."),
-                        ToOwned::to_owned,
-                    );
-                return Some(reply_text);
-            }
-            Some("invocation") => pending = true,
-            _ => {} // kanon:ignore RUST/empty-match-arm WHY: unrelated system records do not affect command duplicate detection
-        }
-    }
-
-    pending.then(|| {
-        format!("Command '!{command_name}' is already in progress; duplicate delivery ignored.")
-    })
-}
-
-fn command_invocation_record(
-    msg: &InboundMessage,
-    cmd: &command::Command,
-    nous_id: &str,
-    session_key: &str,
-    idempotency_key: &str,
-) -> serde_json::Value {
-    serde_json::json!({
-        "schema": COMMAND_RECORD_SCHEMA,
-        "event": "invocation",
-        "idempotency_key": idempotency_key,
-        "nous_id": nous_id,
-        "session_key": session_key,
-        "origin": command_origin_record(msg),
-        "command": command_record_command(cmd),
-        "status": "started",
-    })
-}
-
-#[expect(
-    clippy::too_many_arguments,
-    reason = "result record mirrors the audit payload shape"
-)]
-fn command_result_record(
-    msg: &InboundMessage,
-    cmd: &command::Command,
-    nous_id: &str,
-    session_key: &str,
-    idempotency_key: &str,
-    reply_text: &str,
-    failure_class: Option<&str>,
-    duration_ms: u64,
-    delivery: &ReplyDelivery,
-) -> serde_json::Value {
-    let status = if failure_class.is_some() {
-        "failed"
-    } else {
-        "succeeded"
-    };
-    serde_json::json!({
-        "schema": COMMAND_RECORD_SCHEMA,
-        "event": "result",
-        "idempotency_key": idempotency_key,
-        "nous_id": nous_id,
-        "session_key": session_key,
-        "origin": command_origin_record(msg),
-        "command": command_record_command(cmd),
-        "response": {
-            "status": status,
-            "failure_class": failure_class,
-            "duration_ms": duration_ms,
-            "reply_text": reply_text,
-            "delivery": {
-                "status": delivery.status,
-                "error": delivery.error.as_deref(),
-            },
-        },
-    })
-}
-
-fn command_origin_record(msg: &InboundMessage) -> serde_json::Value {
+fn command_origin_record(msg: &InboundMessage) -> RedactedCommandOrigin {
     // WHY: the audit record is durable storage — channel identities go in
     // redacted, matching the log/span posture; the raw identifiers were never
     // needed to answer "which conversation did this command come from" (the
     // hashed session key already pins it).
-    let redacted_sender = agora::redact::identifier(&msg.sender);
-    let redacted_group = msg.group_id.as_deref().map(agora::redact::identifier);
-    let conversation_id = redacted_group
-        .clone()
-        .unwrap_or_else(|| redacted_sender.clone());
-    serde_json::json!({
-        "channel": msg.channel.as_str(),
-        "sender": redacted_sender,
-        "sender_name": msg.sender_name.as_deref().map(|_| "<redacted>"),
-        "group_id": redacted_group.clone(),
-        "account_id": msg.account_id.as_deref().map(agora::redact::identifier),
-        "thread_id": redacted_group,
-        "conversation_id": conversation_id,
-        "timestamp_ms": msg.timestamp,
-    })
-}
-
-fn command_record_command(cmd: &command::Command) -> serde_json::Value {
-    serde_json::json!({
-        "name": cmd.name(),
-        "args_redacted": cmd.redacted_args(),
-    })
-}
-
-fn command_failure_class(cmd: &command::Command) -> Option<&'static str> {
-    match cmd {
-        command::Command::Unknown { .. } => Some("unknown_command"),
-        _ => None,
+    let sender_domain = format!("command-origin-sender:{}", msg.channel);
+    let group_domain = format!("command-origin-group:{}", msg.channel);
+    let account_domain = format!("command-origin-account:{}", msg.channel);
+    let sender = agora::redact::opaque_identifier(&sender_domain, &msg.sender);
+    let group = msg
+        .group_id
+        .as_deref()
+        .map(|value| agora::redact::opaque_identifier(&group_domain, value));
+    let account = msg
+        .account_id
+        .as_deref()
+        .map(|value| agora::redact::opaque_identifier(&account_domain, value));
+    RedactedCommandOrigin {
+        channel: msg.channel.clone(),
+        account_id: account,
+        sender,
+        group_id: group,
+        thread_id: None,
+        conversation_id: command_conversation_id(msg),
+        timestamp_ms: msg.timestamp,
     }
 }
 
-fn command_idempotency_key(msg: &InboundMessage, session_key: &str) -> String {
+/// Stable, opaque identity for the originating conversation.
+///
+/// Direct messages are scoped by sender; group messages by group. Both also
+/// include the provider and logical account so identical wire identifiers on
+/// different channel accounts cannot alias in durable lifecycle records.
+fn command_conversation_id(msg: &InboundMessage) -> String {
     let mut hasher = Sha256::new();
+    hasher.update(b"aletheia.agora.command-conversation.v1\0");
     hash_field(&mut hasher, "channel", &msg.channel);
-    hash_field(&mut hasher, "sender", &msg.sender);
-    hash_field(
-        &mut hasher,
-        "group_id",
-        msg.group_id.as_deref().unwrap_or(""),
-    );
+    hash_optional_field(&mut hasher, "account", msg.account_id.as_deref());
+    match msg.group_id.as_deref() {
+        Some(group_id) => {
+            hash_field(&mut hasher, "kind", "group");
+            hash_field(&mut hasher, "conversation", group_id);
+        }
+        None => {
+            hash_field(&mut hasher, "kind", "direct");
+            hash_field(&mut hasher, "conversation", &msg.sender);
+        }
+    }
+    format!("sha256:{}", hex_lower(&hasher.finalize()))
+}
+
+fn command_record_command(cmd: &command::Command) -> RedactedCommand {
+    RedactedCommand {
+        name: cmd.name().to_owned(),
+        args_redacted: cmd.redacted_args(),
+    }
+}
+
+fn command_delivery_key(msg: &InboundMessage, session_key: &str, command_name: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"aletheia.agora.command-delivery.v1\0");
+    hash_field(&mut hasher, "inbound", &msg.dedupe_key());
     hash_field(&mut hasher, "session_key", session_key);
-    hash_field(&mut hasher, "timestamp_ms", &msg.timestamp.to_string());
-    hash_field(&mut hasher, "text", &msg.text);
+    hash_field(&mut hasher, "command", command_name);
     let digest = hasher.finalize();
     format!("sha256:{}", hex_lower(&digest))
+}
+
+fn reply_idempotency_key(msg: &InboundMessage, purpose: ReplyPurpose) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"aletheia.agora.reply-idempotency.v1\0");
+    hash_field(&mut hasher, "inbound", &msg.dedupe_key());
+    hash_field(&mut hasher, "purpose", purpose.tag());
+    format!("sha256:{}", hex_lower(&hasher.finalize()))
 }
 
 fn hash_field(hasher: &mut Sha256, label: &str, value: &str) {
@@ -573,6 +549,17 @@ fn hash_field(hasher: &mut Sha256, label: &str, value: &str) {
     hasher.update(b"\0");
     hasher.update(value.as_bytes());
     hasher.update(b"\0");
+}
+
+fn hash_optional_field(hasher: &mut Sha256, label: &str, value: Option<&str>) {
+    hash_field(
+        hasher,
+        &format!("{label}.presence"),
+        if value.is_some() { "some" } else { "none" },
+    );
+    if let Some(value) = value {
+        hash_field(hasher, label, value);
+    }
 }
 
 fn hex_lower(bytes: &[u8]) -> String {
@@ -590,11 +577,6 @@ fn hex_digit(nibble: u8) -> char {
         10..=15 => b'a' + (nibble - 10),
         _ => b'?',
     })
-}
-
-fn token_estimate(content: &str) -> i64 {
-    let len = i64::try_from(content.len()).unwrap_or(i64::MAX - 3);
-    len.saturating_add(3) / 4
 }
 
 /// Maximum byte length for a route-expanded session key before normalization.
@@ -628,7 +610,11 @@ impl std::fmt::Display for SessionKeyError {
 /// session while the raw identifier is redacted from logs, command records, and
 /// the store. Invalid expansions (empty, oversized, or containing control bytes)
 /// are rejected before they reach the agent turn.
-fn normalize_session_key(raw: &str) -> Result<String, SessionKeyError> {
+fn normalize_session_key(
+    channel: &str,
+    account_id: Option<&str>,
+    raw: &str,
+) -> Result<String, SessionKeyError> {
     if raw.is_empty() {
         return Err(SessionKeyError::Empty);
     }
@@ -643,21 +629,27 @@ fn normalize_session_key(raw: &str) -> Result<String, SessionKeyError> {
     }
 
     let mut hasher = Sha256::new();
-    hasher.update(raw.as_bytes());
+    hasher.update(b"aletheia.agora.session-key.v1\0");
+    hash_field(&mut hasher, "channel", channel);
+    hash_optional_field(&mut hasher, "account", account_id);
+    hash_field(&mut hasher, "expanded", raw);
     let digest = hasher.finalize();
     Ok(format!("h:{}", hex_lower(&digest)))
 }
 
 /// Command names a sender may see in `!help`: the full surface for
 /// operators, only the public subset otherwise.
-fn visible_command_names(policy: &InboundCommandPolicy, msg: &InboundMessage) -> Vec<String> {
-    if policy.is_operator(&msg.channel, &msg.sender) {
+fn visible_command_names(policy: &InboundCommandPolicy, tier: CommandTier) -> Vec<String> {
+    if tier == CommandTier::Operator {
         command::known_command_names()
             .into_iter()
             .map(ToOwned::to_owned)
             .collect()
     } else {
-        policy.public_commands.clone()
+        policy
+            .public_command_names()
+            .map(ToOwned::to_owned)
+            .collect()
     }
 }
 
@@ -674,8 +666,157 @@ async fn execute_command(
     channel_registry: &ChannelRegistry,
     visible_commands: Vec<String>,
 ) -> String {
-    // Gather current-agent snapshot.
-    let current_agent = if let Some(handle) = nous_manager.get(nous_id) {
+    if let Some(reply) =
+        command_without_runtime_snapshot(cmd, nous_id, session_key, visible_commands.clone())
+    {
+        return reply;
+    }
+
+    let needs_current_agent = matches!(
+        cmd,
+        command::Command::Status
+            | command::Command::Sessions
+            | command::Command::Uptime
+            | command::Command::Model
+            | command::Command::Think
+            | command::Command::Info { agent_id: None }
+    );
+    let current_agent = if needs_current_agent {
+        agent_snapshot(nous_manager, nous_id).await
+    } else {
+        None
+    };
+
+    // Fleet-wide enumeration is deliberately variant-gated. A command such
+    // as `!whoami` or `!blackboard` must not trigger unrelated manager reads.
+    let all_agents = match cmd {
+        command::Command::Agents => {
+            let statuses = nous_manager.list().await;
+            statuses
+                .into_iter()
+                .map(|st| {
+                    let model = nous_manager
+                        .get_config(&st.id)
+                        .map_or_else(String::new, |c| c.generation.model.clone());
+                    let thinking_enabled = nous_manager
+                        .get_config(&st.id)
+                        .is_some_and(|c| c.generation.thinking_enabled);
+                    let thinking_budget = nous_manager
+                        .get_config(&st.id)
+                        .map_or(0, |c| c.generation.thinking_budget);
+                    AgentSnapshot {
+                        id: st.id,
+                        lifecycle: st.lifecycle.to_string(),
+                        session_count: st.session_count,
+                        active_session: st.active_session,
+                        panic_count: st.panic_count,
+                        uptime_secs: st.uptime.as_secs(),
+                        model,
+                        thinking_enabled,
+                        thinking_budget,
+                    }
+                })
+                .collect()
+        }
+        command::Command::Info {
+            agent_id: Some(agent_id),
+        } => agent_snapshot(nous_manager, agent_id)
+            .await
+            .into_iter()
+            .collect(),
+        _ => Vec::new(),
+    };
+
+    // Gather channel health snapshots only for commands that need them.
+    let channels = match cmd {
+        command::Command::Channels => channel_registry
+            .probe_all()
+            .await
+            .into_iter()
+            .map(|(id, probe)| ChannelSnapshot {
+                id,
+                healthy: probe.ok,
+                latency_ms: probe.latency_ms,
+            })
+            .collect(),
+        _ => vec![],
+    };
+
+    #[cfg(feature = "recall")]
+    let skills: Vec<String> = if matches!(cmd, command::Command::Skills) {
+        let store = nous_manager
+            .get_config(nous_id)
+            .and_then(|cfg| nous_manager.knowledge_store_for_cohort(cfg.episteme_cohort.as_ref()));
+        match store {
+            Some(knowledge_store) => match knowledge_store.find_skills_for_nous(nous_id, 50) {
+                Ok(facts) => facts
+                    .iter()
+                    .map(|fact| {
+                        serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
+                            .map_or_else(|_| fact.id.to_string(), |skill| skill.name)
+                    })
+                    .collect(),
+                Err(e) => {
+                    warn!(error = %e, "failed to load skills for nous");
+                    Vec::new()
+                }
+            },
+            None => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+    #[cfg(not(feature = "recall"))]
+    let skills: Vec<String> = Vec::new();
+
+    let blackboard_entries: Vec<String> = if matches!(cmd, command::Command::Blackboard) {
+        match nous_manager.blackboard_store() {
+            Some(blackboard_store) => {
+                // WHY(#5032): scoped to the acting agent — no session id is
+                // available at this chat-command layer (only the hashed
+                // `session_key`, not the store's session UUID), so `Nous`
+                // fails closed on SessionPrivate rows rather than guessing.
+                let viewer = BlackboardViewer::Nous {
+                    nous_id: nous_id.to_owned(),
+                };
+                match blackboard_store.list(&viewer) {
+                    Ok(entries) => entries
+                        .iter()
+                        .map(|entry| {
+                            format!(
+                                "[{}] = {} (by {})",
+                                entry.key, entry.value, entry.author_nous_id
+                            )
+                        })
+                        .collect(),
+                    Err(e) => {
+                        warn!(error = %e, "failed to list blackboard entries");
+                        Vec::new()
+                    }
+                }
+            }
+            None => Vec::new(),
+        }
+    } else {
+        Vec::new()
+    };
+
+    let ctx = CommandContext {
+        current_nous_id: nous_id.to_owned(),
+        session_key: session_key.to_owned(),
+        current_agent,
+        all_agents,
+        skills,
+        blackboard_entries,
+        channels,
+        visible_commands,
+    };
+
+    command::execute(cmd, &ctx)
+}
+
+async fn agent_snapshot(nous_manager: &NousManager, nous_id: &str) -> Option<AgentSnapshot> {
+    if let Some(handle) = nous_manager.get(nous_id) {
         match handle.status().await {
             Ok(st) => {
                 let model = nous_manager
@@ -706,118 +847,34 @@ async fn execute_command(
         }
     } else {
         None
-    };
+    }
+}
 
-    // Gather all-agents snapshot.
-    let all_agents = {
-        let statuses = nous_manager.list().await;
-        statuses
-            .into_iter()
-            .map(|st| {
-                let model = nous_manager
-                    .get_config(&st.id)
-                    .map_or_else(String::new, |c| c.generation.model.clone());
-                let thinking_enabled = nous_manager
-                    .get_config(&st.id)
-                    .is_some_and(|c| c.generation.thinking_enabled);
-                let thinking_budget = nous_manager
-                    .get_config(&st.id)
-                    .map_or(0, |c| c.generation.thinking_budget);
-                AgentSnapshot {
-                    id: st.id,
-                    lifecycle: st.lifecycle.to_string(),
-                    session_count: st.session_count,
-                    active_session: st.active_session,
-                    panic_count: st.panic_count,
-                    uptime_secs: st.uptime.as_secs(),
-                    model,
-                    thinking_enabled,
-                    thinking_budget,
-                }
-            })
-            .collect()
-    };
-
-    // Gather channel health snapshots only for commands that need them.
-    let channels = match cmd {
-        command::Command::Channels => channel_registry
-            .probe_all()
-            .await
-            .into_iter()
-            .map(|(id, probe)| ChannelSnapshot {
-                id,
-                healthy: probe.ok,
-                latency_ms: probe.latency_ms,
-            })
-            .collect(),
-        _ => vec![],
-    };
-
-    #[cfg(feature = "recall")]
-    let skills: Vec<String> = {
-        let store = nous_manager
-            .get_config(nous_id)
-            .and_then(|cfg| nous_manager.knowledge_store_for_cohort(cfg.episteme_cohort.as_ref()));
-        match store {
-            Some(knowledge_store) => match knowledge_store.find_skills_for_nous(nous_id, 50) {
-                Ok(facts) => facts
-                    .iter()
-                    .map(|fact| {
-                        serde_json::from_str::<mneme::skill::SkillContent>(&fact.content)
-                            .map_or_else(|_| fact.id.to_string(), |skill| skill.name)
-                    })
-                    .collect(),
-                Err(e) => {
-                    warn!(error = %e, "failed to load skills for nous");
-                    Vec::new()
-                }
-            },
-            None => Vec::new(),
-        }
-    };
-    #[cfg(not(feature = "recall"))]
-    let skills: Vec<String> = Vec::new();
-
-    let blackboard_entries: Vec<String> = match nous_manager.blackboard_store() {
-        Some(blackboard_store) => {
-            // WHY(#5032): scoped to the acting agent — no session id is
-            // available at this chat-command layer (only the hashed
-            // `session_key`, not the store's session UUID), so `Nous`
-            // fails closed on SessionPrivate rows rather than guessing.
-            let viewer = BlackboardViewer::Nous {
-                nous_id: nous_id.to_owned(),
-            };
-            match blackboard_store.list(&viewer) {
-                Ok(entries) => entries
-                    .iter()
-                    .map(|entry| {
-                        format!(
-                            "[{}] = {} (by {})",
-                            entry.key, entry.value, entry.author_nous_id
-                        )
-                    })
-                    .collect(),
-                Err(e) => {
-                    warn!(error = %e, "failed to list blackboard entries");
-                    Vec::new()
-                }
-            }
-        }
-        None => Vec::new(),
-    };
-
+/// Execute commands whose response needs no runtime or private-store state.
+///
+/// This check runs before agent, knowledge, blackboard, or channel snapshots
+/// are acquired. Public callers therefore cannot use `!help` or `!ping` to
+/// drive privileged reads or couple liveness latency to fleet state.
+fn command_without_runtime_snapshot(
+    cmd: &command::Command,
+    nous_id: &str,
+    session_key: &str,
+    visible_commands: Vec<String>,
+) -> Option<String> {
+    if !matches!(cmd, command::Command::Help | command::Command::Ping) {
+        return None;
+    }
     let ctx = CommandContext {
         current_nous_id: nous_id.to_owned(),
         session_key: session_key.to_owned(),
-        current_agent,
-        all_agents,
-        skills,
-        blackboard_entries,
-        channels,
+        current_agent: None,
+        all_agents: Vec::new(),
+        skills: Vec::new(),
+        blackboard_entries: Vec::new(),
+        channels: Vec::new(),
         visible_commands,
     };
-
-    command::execute(cmd, &ctx)
+    Some(command::execute(cmd, &ctx))
 }
 
 /// Send a reply back through the originating channel.
@@ -828,6 +885,7 @@ async fn execute_command(
 async fn send_reply(
     msg: &InboundMessage,
     text: &str,
+    purpose: ReplyPurpose,
     channel_registry: &ChannelRegistry,
 ) -> ReplyDelivery {
     let to = reply_target(msg);
@@ -838,38 +896,32 @@ async fn send_reply(
     // sends ignore it).
     let params = SendParams {
         to,
-        text: text.to_owned(),
+        // SECURITY(#5193): command responses can contain values read from
+        // operational stores (notably the blackboard). Apply the fleet's
+        // central secret-pattern redactor at the final command-egress boundary;
+        // raw runtime values never reach a provider send request.
+        text: match purpose {
+            ReplyPurpose::Command => koina::redact::redact_sensitive(text),
+            ReplyPurpose::Turn => text.to_owned(),
+        },
         account_id: msg.account_id.clone(),
         sender_id: None,
-        idempotency_key: Some(format!("reply:{}", msg.dedupe_key())),
+        idempotency_key: Some(reply_idempotency_key(msg, purpose)),
         thread_id: None,
         attachments: None,
     };
 
     match channel_registry.send(&msg.channel, &params).await {
-        Ok(result) => {
-            if !result.sent {
-                let error = result.error.unwrap_or_else(|| "unknown".to_owned());
-                warn!(
-                    error = %error,
-                    "failed to send reply"
-                );
-                return ReplyDelivery {
-                    status: "failed",
-                    error: Some(error),
-                };
-            }
-            ReplyDelivery {
-                status: "sent",
-                error: None,
-            }
+        Ok(result) if result.sent => ReplyDelivery::Sent,
+        Ok(_) => {
+            // SECURITY: provider-controlled error text is deliberately not
+            // inspected, logged, or persisted.
+            warn!("provider failed to send channel reply");
+            ReplyDelivery::Failed(ReplyFailure::Provider)
         }
-        Err(e) => {
-            warn!(error = %e, "channel send error");
-            ReplyDelivery {
-                status: "error",
-                error: Some(e.to_string()),
-            }
+        Err(_) => {
+            warn!("channel registry failed to route reply");
+            ReplyDelivery::Failed(ReplyFailure::Registry)
         }
     }
 }
@@ -893,7 +945,7 @@ mod tests {
     use hermeneus::provider::ProviderRegistry;
     use hermeneus::test_utils::MockProvider;
     use mneme::store::SessionStore;
-    use mneme::types::{BlackboardVisibility, Role};
+    use mneme::types::{BlackboardVisibility, COMMAND_LIFECYCLE_SCHEMA, CommandLifecycleRecord};
     use nous::adapters::SessionBlackboardAdapter;
     use nous::config::{NousConfig, NousGenerationConfig, PipelineConfig};
     use nous::manager::NousManager;
@@ -1043,6 +1095,10 @@ mod tests {
     }
 
     async fn make_dispatch_harness() -> DispatchHarness {
+        make_dispatch_harness_with_send_result(SendResult::ok()).await
+    }
+
+    async fn make_dispatch_harness_with_send_result(send_result: SendResult) -> DispatchHarness {
         let (dir, oikos) = make_oikos();
         let session_store = Arc::new(Mutex::new(
             SessionStore::open_in_memory().expect("in-memory session store"),
@@ -1060,12 +1116,13 @@ mod tests {
                 session_key: "signal:{source}".to_owned(),
                 account: None,
                 participants: vec![],
+                command_tier: taxis::config::CommandTier::Public,
             }],
             None,
         ));
         let sent = Arc::new(Mutex::new(Vec::new()));
         let provider: Arc<dyn ChannelProvider> =
-            Arc::new(RecordingChannel::new(Arc::clone(&sent), SendResult::ok()));
+            Arc::new(RecordingChannel::new(Arc::clone(&sent), send_result));
         let mut channel_registry = ChannelRegistry::new();
         channel_registry
             .register(provider)
@@ -1119,27 +1176,39 @@ mod tests {
         }
     }
 
-    async fn command_history(harness: &DispatchHarness) -> Vec<mneme::types::Message> {
+    fn configure_operator_route(harness: &mut DispatchHarness, account_id: &str) {
+        harness.router = Arc::new(MessageRouter::new(
+            vec![ChannelBinding {
+                channel: "signal".to_owned(),
+                source: "+15550100".to_owned(),
+                nous_id: "alice".to_owned(),
+                session_key: "signal:{source}".to_owned(),
+                account: Some(account_id.to_owned()),
+                participants: vec![],
+                command_tier: CommandTier::Operator,
+            }],
+            None,
+        ));
+    }
+
+    async fn command_records(
+        harness: &DispatchHarness,
+        account_id: Option<&str>,
+    ) -> Vec<CommandLifecycleRecord> {
         let store = harness.session_store.lock().await;
-        let session_key =
-            normalize_session_key("signal:+15550100").expect("routed session key is valid");
+        let session_key = normalize_session_key("signal", account_id, "signal:+15550100")
+            .expect("routed session key is valid");
         let session = store
             .find_session("alice", &session_key)
             .expect("find session")
             .expect("session exists");
-        store.get_history(&session.id, None).expect("history")
-    }
-
-    fn record_json(message: &mneme::types::Message) -> serde_json::Value {
-        serde_json::from_str(&message.content).expect("command record json")
-    }
-
-    fn json_str<'a>(value: &'a serde_json::Value, pointer: &str) -> Option<&'a str> {
-        value.pointer(pointer).and_then(serde_json::Value::as_str)
+        store
+            .command_lifecycle_records_for_session(&session.id)
+            .expect("command lifecycle records")
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn reply_carries_inbound_account_id() {
+    async fn public_ping_carries_inbound_account_without_persisting_state() {
         let harness = make_dispatch_harness().await;
         let mut msg = command_message("!ping", 1_709_312_345_700);
         msg.account_id = Some("work".to_owned());
@@ -1165,21 +1234,27 @@ mod tests {
             );
         }
 
-        let history = command_history(&harness).await;
-        let invocation = record_json(&history[0]);
-        assert_eq!(
-            json_str(&invocation, "/origin/account_id"),
-            Some("****"),
-            "command audit must record the receiving account redacted"
+        let store = harness.session_store.lock().await;
+        let session_key = normalize_session_key("signal", Some("work"), "signal:+15550100")
+            .expect("routed session key is valid");
+        assert!(
+            store
+                .find_session("alice", &session_key)
+                .expect("session lookup")
+                .is_none(),
+            "public ping must not create a session or lifecycle record"
         );
+        drop(store);
 
         shutdown_harness(harness).await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn dispatch_records_successful_command_history() {
-        let harness = make_dispatch_harness().await;
-        let msg = command_message("!ping", 1_709_312_345_678);
+    async fn dispatch_records_successful_typed_command_lifecycle() {
+        let mut harness = make_dispatch_harness().await;
+        configure_operator_route(&mut harness, "primary");
+        let mut msg = command_message("!uptime", 1_709_312_345_678);
+        msg.account_id = Some("primary".to_owned());
 
         dispatch_one(
             msg,
@@ -1195,63 +1270,132 @@ mod tests {
         {
             let sent = harness.sent.lock().await;
             assert_eq!(sent.len(), 1);
-            assert!(sent[0].text.contains("Pong"), "{:?}", sent[0].text);
+            assert!(sent[0].text.contains("uptime"), "{:?}", sent[0].text);
         }
 
-        let history = command_history(&harness).await;
-        assert_eq!(history.len(), 2);
-        assert_eq!(history[0].role, Role::System);
-        assert_eq!(history[1].role, Role::System);
+        let records = command_records(&harness, Some("primary")).await;
+        assert_eq!(records.len(), 2);
+        let invocation = &records[0];
+        let result = &records[1];
+        assert_eq!(invocation.schema, COMMAND_LIFECYCLE_SCHEMA);
+        assert!(matches!(
+            invocation.event,
+            CommandLifecycleEvent::Invocation {
+                status: CommandInvocationStatus::Started
+            }
+        ));
+        assert_eq!(invocation.command.name, "uptime");
+        assert_eq!(invocation.origin.channel, "signal");
+        let expected_sender =
+            agora::redact::opaque_identifier("command-origin-sender:signal", "+15550100");
+        assert_eq!(
+            invocation.origin.sender, expected_sender,
+            "command audit must carry an opaque sender handle"
+        );
+        assert!(invocation.origin.conversation_id.starts_with("sha256:"));
+        assert_eq!(invocation.delivery_key, result.delivery_key);
+        let CommandLifecycleEvent::Result {
+            status,
+            failure_class,
+            duration_ms: _,
+            delivery,
+        } = &result.event
+        else {
+            panic!("second lifecycle row must be a result: {result:?}");
+        };
+        assert_eq!(*status, CommandResultStatus::Succeeded);
+        assert_eq!(*failure_class, None);
+        assert_eq!(delivery.status, CommandDeliveryStatus::Sent);
+        assert_eq!(delivery.failure_class, None);
+        let serialized = serde_json::to_string(&records).expect("serialize records");
+        assert!(
+            !serialized.contains("+15550100"),
+            "raw sender must not persist in command lifecycle records: {serialized}"
+        );
+        let store = harness.session_store.lock().await;
+        assert!(
+            store
+                .get_history(&invocation.session_id, None)
+                .expect("conversation history")
+                .is_empty(),
+            "command lifecycle rows must stay out of conversation history"
+        );
+        drop(store);
 
-        let invocation = record_json(&history[0]);
-        let result = record_json(&history[1]);
-        let session_key =
-            normalize_session_key("signal:+15550100").expect("routed session key is valid");
+        shutdown_harness(harness).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn provider_failure_persists_only_stable_failure_class() {
+        let sentinel = "provider-sentinel-secret";
+        let mut harness = make_dispatch_harness_with_send_result(SendResult::err(sentinel)).await;
+        configure_operator_route(&mut harness, "primary");
+        let mut msg = command_message("!uptime", 1_709_312_345_675);
+        msg.account_id = Some("primary".to_owned());
+
+        dispatch_one(
+            msg,
+            Arc::clone(&harness.router),
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
+        )
+        .await;
+
+        let records = command_records(&harness, Some("primary")).await;
+        let CommandLifecycleEvent::Result { delivery, .. } = &records[1].event else {
+            panic!("second lifecycle row must be a result");
+        };
+        assert_eq!(delivery.status, CommandDeliveryStatus::Failed);
         assert_eq!(
-            json_str(&invocation, "/schema"),
-            Some(COMMAND_RECORD_SCHEMA)
+            delivery.failure_class,
+            Some(CommandDeliveryFailureClass::ProviderFailure)
         );
-        assert_eq!(json_str(&invocation, "/event"), Some("invocation"));
-        assert_eq!(json_str(&invocation, "/command/name"), Some("ping"));
-        assert_eq!(json_str(&invocation, "/origin/channel"), Some("signal"));
-        assert_eq!(
-            json_str(&invocation, "/origin/sender"),
-            Some("...0100"),
-            "command audit must carry the redacted sender"
-        );
-        assert_eq!(
-            json_str(&invocation, "/session_key"),
-            Some(session_key.as_str())
-        );
-        assert_eq!(json_str(&result, "/event"), Some("result"));
-        assert_eq!(json_str(&result, "/response/status"), Some("succeeded"));
+        let serialized = serde_json::to_string(&records).expect("serialize records");
         assert!(
-            !history[0].content.contains("+15550100") && !history[1].content.contains("+15550100"),
-            "raw sender must not persist in command audit records: {:?}",
-            history[0].content
-        );
-        assert_eq!(json_str(&result, "/response/delivery/status"), Some("sent"));
-        assert!(
-            result
-                .pointer("/response/duration_ms")
-                .and_then(serde_json::Value::as_u64)
-                .is_some(),
-            "{result}"
-        );
-        assert_eq!(
-            invocation
-                .pointer("/idempotency_key")
-                .and_then(serde_json::Value::as_str),
-            result
-                .pointer("/idempotency_key")
-                .and_then(serde_json::Value::as_str)
+            !serialized.contains(sentinel),
+            "provider-controlled detail must not enter durable records"
         );
 
         shutdown_harness(harness).await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn dispatch_records_failed_command_history_with_redacted_args() {
+    async fn registry_failure_persists_only_stable_failure_class() {
+        let mut harness = make_dispatch_harness().await;
+        configure_operator_route(&mut harness, "primary");
+        harness.channel_registry = Arc::new(ChannelRegistry::new());
+        let mut msg = command_message("!uptime", 1_709_312_345_676);
+        msg.account_id = Some("primary".to_owned());
+
+        dispatch_one(
+            msg,
+            Arc::clone(&harness.router),
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+            harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
+        )
+        .await;
+
+        let records = command_records(&harness, Some("primary")).await;
+        let CommandLifecycleEvent::Result { delivery, .. } = &records[1].event else {
+            panic!("second lifecycle row must be a result");
+        };
+        assert_eq!(delivery.status, CommandDeliveryStatus::Failed);
+        assert_eq!(
+            delivery.failure_class,
+            Some(CommandDeliveryFailureClass::RegistryFailure)
+        );
+
+        shutdown_harness(harness).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unknown_command_is_fixed_and_not_audited() {
         let harness = make_dispatch_harness().await;
         let msg = command_message("!frobnicate --token secret-value target", 1_709_312_345_679);
 
@@ -1269,41 +1413,32 @@ mod tests {
         {
             let sent = harness.sent.lock().await;
             assert_eq!(sent.len(), 1);
-            assert!(sent[0].text.contains("!help"), "{:?}", sent[0].text);
+            assert_eq!(sent[0].text, UNKNOWN_COMMAND_REPLY);
+            assert!(!sent[0].text.contains("frobnicate"));
+            assert!(!sent[0].text.contains("secret-value"));
         }
 
-        let history = command_history(&harness).await;
-        assert_eq!(history.len(), 2);
-        let invocation = record_json(&history[0]);
-        let result = record_json(&history[1]);
-        assert_eq!(json_str(&invocation, "/command/name"), Some("frobnicate"));
-        assert_eq!(
-            json_str(&invocation, "/command/args_redacted"),
-            Some("--token [REDACTED] target")
-        );
-        assert_eq!(json_str(&result, "/response/status"), Some("failed"));
-        assert_eq!(
-            json_str(&result, "/response/failure_class"),
-            Some("unknown_command")
-        );
+        let store = harness.session_store.lock().await;
+        let session_key = normalize_session_key("signal", None, "signal:+15550100")
+            .expect("routed session key is valid");
         assert!(
-            !history[0].content.contains("secret-value"),
-            "{}",
-            history[0].content
+            store
+                .find_session("alice", &session_key)
+                .expect("lookup")
+                .is_none(),
+            "unknown input must not create a session or audit record"
         );
-        assert!(
-            !history[1].content.contains("secret-value"),
-            "{}",
-            history[1].content
-        );
+        drop(store);
 
         shutdown_harness(harness).await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn dispatch_deduplicates_retried_command_delivery() {
-        let harness = make_dispatch_harness().await;
-        let msg = command_message("!ping", 1_709_312_345_680);
+        let mut harness = make_dispatch_harness().await;
+        configure_operator_route(&mut harness, "primary");
+        let mut msg = command_message("!uptime", 1_709_312_345_680);
+        msg.account_id = Some("primary".to_owned());
 
         dispatch_one(
             msg.clone(),
@@ -1334,16 +1469,16 @@ mod tests {
             assert_eq!(sent.len(), 1);
         }
 
-        let history = command_history(&harness).await;
-        assert_eq!(history.len(), 2, "duplicate must not append records");
-        assert_eq!(
-            json_str(&record_json(&history[0]), "/event"),
-            Some("invocation")
-        );
-        assert_eq!(
-            json_str(&record_json(&history[1]), "/event"),
-            Some("result")
-        );
+        let records = command_records(&harness, Some("primary")).await;
+        assert_eq!(records.len(), 2, "duplicate must not append records");
+        assert!(matches!(
+            records[0].event,
+            CommandLifecycleEvent::Invocation { .. }
+        ));
+        assert!(matches!(
+            records[1].event,
+            CommandLifecycleEvent::Result { .. }
+        ));
 
         shutdown_harness(harness).await;
     }
@@ -1428,17 +1563,13 @@ mod tests {
         {
             let sent = harness.sent.lock().await;
             assert_eq!(sent.len(), 1);
-            assert!(
-                sent[0].text.contains("not available"),
-                "denied command must get a refusal, not fleet state: {:?}",
-                sent[0].text
-            );
+            assert_eq!(sent[0].text, UNKNOWN_COMMAND_REPLY);
             assert!(!sent[0].text.contains("agent(s) running"));
         }
 
         let store = harness.session_store.lock().await;
-        let session_key =
-            normalize_session_key("signal:+15550100").expect("routed session key is valid");
+        let session_key = normalize_session_key("signal", None, "signal:+15550100")
+            .expect("routed session key is valid");
         assert!(
             store
                 .find_session("alice", &session_key)
@@ -1452,10 +1583,11 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn allowlisted_sender_runs_operator_commands() {
+    async fn exact_account_route_runs_operator_commands() {
         let mut harness = make_dispatch_harness().await;
-        harness.command_policy.operators = vec!["signal:+15550100".to_owned()];
-        let msg = command_message("!uptime", 1_709_312_345_701);
+        configure_operator_route(&mut harness, "primary");
+        let mut msg = command_message("!uptime", 1_709_312_345_701);
+        msg.account_id = Some("primary".to_owned());
 
         dispatch_one(
             msg,
@@ -1478,8 +1610,8 @@ mod tests {
             );
         }
 
-        let history = command_history(&harness).await;
-        assert_eq!(history.len(), 2, "executed command is audited");
+        let records = command_records(&harness, Some("primary")).await;
+        assert_eq!(records.len(), 2, "executed command is audited");
 
         shutdown_harness(harness).await;
     }
@@ -1513,11 +1645,23 @@ mod tests {
             assert!(!sent[0].text.contains("!blackboard"), "{:?}", sent[0].text);
         }
 
+        let store = harness.session_store.lock().await;
+        let session_key = normalize_session_key("signal", None, "signal:+15550100")
+            .expect("routed session key is valid");
+        assert!(
+            store
+                .find_session("alice", &session_key)
+                .expect("session lookup")
+                .is_none(),
+            "public help must not create a session or lifecycle record"
+        );
+        drop(store);
+
         shutdown_harness(harness).await;
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn unknown_commands_stay_public() {
+    async fn unknown_commands_get_fixed_non_echoing_reply() {
         let harness = make_dispatch_harness().await;
         let msg = command_message("!frobnicate", 1_709_312_345_703);
 
@@ -1535,11 +1679,7 @@ mod tests {
         {
             let sent = harness.sent.lock().await;
             assert_eq!(sent.len(), 1);
-            assert!(
-                sent[0].text.contains("!help"),
-                "unknown commands still get the harmless hint: {:?}",
-                sent[0].text
-            );
+            assert_eq!(sent[0].text, UNKNOWN_COMMAND_REPLY);
         }
 
         shutdown_harness(harness).await;
@@ -1832,7 +1972,8 @@ mod tests {
 
     #[test]
     fn normalize_session_key_hashes_phone_numbers() {
-        let key = normalize_session_key("signal:+15550100").expect("valid phone session key");
+        let key = normalize_session_key("signal", None, "signal:+15550100")
+            .expect("valid phone session key");
         assert!(key.starts_with("h:"), "hashed keys are prefixed: {key}");
         assert!(
             !key.contains("+15550100"),
@@ -1840,14 +1981,39 @@ mod tests {
         );
         assert_eq!(
             key,
-            normalize_session_key("signal:+15550100").expect("stable")
+            normalize_session_key("signal", None, "signal:+15550100").expect("stable")
         );
     }
 
     #[test]
+    fn command_delivery_key_is_scoped_by_session_and_canonical_command() {
+        let msg = command_message("!ping", 1_709_312_345_600);
+        let first = command_delivery_key(&msg, "session-a", "ping");
+        assert_eq!(
+            first,
+            command_delivery_key(&msg, "session-a", "ping"),
+            "the same canonical command identity must be stable"
+        );
+        assert_ne!(first, command_delivery_key(&msg, "session-b", "ping"));
+        assert_ne!(first, command_delivery_key(&msg, "session-a", "help"));
+    }
+
+    #[test]
+    fn reply_idempotency_is_scoped_by_reply_purpose() {
+        let msg = command_message("!ping", 1_709_312_345_601);
+        let command = reply_idempotency_key(&msg, ReplyPurpose::Command);
+        assert_eq!(
+            command,
+            reply_idempotency_key(&msg, ReplyPurpose::Command),
+            "command replay must reuse its original provider key"
+        );
+        assert_ne!(command, reply_idempotency_key(&msg, ReplyPurpose::Turn));
+    }
+
+    #[test]
     fn normalize_session_key_hashes_matrix_ids() {
-        let key =
-            normalize_session_key("matrix:@alice:example.org").expect("valid matrix session key");
+        let key = normalize_session_key("matrix", None, "matrix:@alice:example.org")
+            .expect("valid matrix session key");
         assert!(
             !key.contains("@alice:example.org"),
             "raw matrix id must be redacted: {key}"
@@ -1855,8 +2021,28 @@ mod tests {
     }
 
     #[test]
+    fn normalize_session_key_is_scoped_by_channel_and_account() {
+        let expanded = "shared-template-output";
+        let signal_primary =
+            normalize_session_key("signal", Some("primary"), expanded).expect("valid");
+        let signal_secondary =
+            normalize_session_key("signal", Some("secondary"), expanded).expect("valid");
+        let matrix_primary =
+            normalize_session_key("matrix", Some("primary"), expanded).expect("valid");
+
+        assert_ne!(signal_primary, signal_secondary);
+        assert_ne!(signal_primary, matrix_primary);
+        assert_ne!(
+            normalize_session_key("signal", None, expanded).expect("valid"),
+            normalize_session_key("signal", Some(""), expanded).expect("valid"),
+            "an absent account must not alias an explicitly empty account"
+        );
+    }
+
+    #[test]
     fn normalize_session_key_hashes_group_ids() {
-        let key = normalize_session_key("signal:group-abc!xyz").expect("valid group session key");
+        let key = normalize_session_key("signal", None, "signal:group-abc!xyz")
+            .expect("valid group session key");
         assert!(
             !key.contains("group-abc"),
             "raw group id must be redacted: {key}"
@@ -1865,34 +2051,34 @@ mod tests {
 
     #[test]
     fn normalize_session_key_hashes_path_like_values() {
-        let key = normalize_session_key("webhook:/api/v1/incoming/abc")
+        let key = normalize_session_key("webhook", None, "webhook:/api/v1/incoming/abc")
             .expect("valid path-like session key");
         assert!(!key.contains("/api/v1"), "raw path must be redacted: {key}");
     }
 
     #[test]
     fn normalize_session_key_rejects_empty() {
-        assert!(normalize_session_key("").is_err());
+        assert!(normalize_session_key("signal", None, "").is_err());
     }
 
     #[test]
     fn normalize_session_key_rejects_oversized_keys() {
         let oversized = "x".repeat(MAX_SESSION_KEY_LEN + 1);
         assert!(
-            normalize_session_key(&oversized).is_err(),
+            normalize_session_key("signal", None, &oversized).is_err(),
             "keys over {MAX_SESSION_KEY_LEN} bytes must be rejected"
         );
 
         let at_limit = "y".repeat(MAX_SESSION_KEY_LEN);
         assert!(
-            normalize_session_key(&at_limit).is_ok(),
+            normalize_session_key("signal", None, &at_limit).is_ok(),
             "keys at the limit must be accepted"
         );
     }
 
     #[test]
     fn normalize_session_key_rejects_control_characters() {
-        assert!(normalize_session_key("signal:\0sender").is_err());
-        assert!(normalize_session_key("signal:\nsender").is_err());
+        assert!(normalize_session_key("signal", None, "signal:\0sender").is_err());
+        assert!(normalize_session_key("signal", None, "signal:\nsender").is_err());
     }
 }
