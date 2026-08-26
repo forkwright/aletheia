@@ -564,14 +564,14 @@ async fn shell_executor_nonzero_exit_is_error() {
 
 #[cfg(unix)]
 #[tokio::test]
-async fn shell_executor_surfaces_bounded_redacted_stderr_in_diagnostics() {
-    // WHY(#5212): stderr is the agent's recovery signal on failure. It rides
-    // in `diagnostics` (bounded, redacted) — the `content` text still carries
-    // stdout only, so a noisy stderr cannot displace the tool's real output.
+async fn shell_executor_keeps_stderr_out_of_model_visible_diagnostics() {
+    // SECURITY(#5212): stderr is arbitrary subprocess output. ToolDiagnostics is rendered
+    // into the model turn, so neither credential-shaped nor ordinary private text may cross
+    // that boundary. Operators still receive metadata through the structured warning log.
     let dir = setup_pack_dir(&[(
         "tools/fail.sh",
-        // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by redaction test; not a real credential
-        "#!/bin/sh\necho stdout-only\necho 'auth failed for sk-ant-api03-abcdef123456_789XYZ at /home/alice/private' >&2\nexit 1",
+        // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic key shape used by boundary test; not a real credential
+        "#!/bin/sh\necho stdout-only\necho 'SECRET_TOKEN auth failed for sk-ant-api03-abcdef123456_789XYZ at /home/alice/private' >&2\nexit 1",
     )]);
     make_executable(&dir, "tools/fail.sh");
 
@@ -590,27 +590,17 @@ async fn shell_executor_surfaces_bounded_redacted_stderr_in_diagnostics() {
     let text = result.content.text_summary();
     assert!(text.contains("stdout-only"));
     assert!(!text.contains("auth failed"));
+    assert!(!text.contains("SECRET_TOKEN"));
+    assert!(!text.contains("/home/alice/private"));
 
     let diagnostics = result.diagnostics.expect("diagnostics should be present");
-    let stderr = diagnostics.stderr.expect("stderr should be captured");
-    assert!(
-        stderr.contains("sk-ant-***"),
-        "credential shape must be redacted: {stderr}"
-    );
-    assert!(
-        !stderr.contains("sk-ant-api03-abcdef123456_789XYZ"),
-        "raw credential must not reach diagnostics: {stderr}"
-    );
-    assert!(
-        stderr.contains("/home/alice/private"),
-        "non-secret recovery detail should survive: {stderr}"
-    );
+    assert!(diagnostics.stderr.is_none(), "stderr must remain operator-only");
     assert_eq!(diagnostics.exit_code, Some(1));
 }
 
 #[cfg(unix)]
 #[tokio::test]
-async fn shell_executor_stderr_only_failure_carries_stderr_in_diagnostics() {
+async fn shell_executor_stderr_only_failure_uses_generic_model_message() {
     let dir = setup_pack_dir(&[(
         "tools/stderr_only.sh",
         "#!/bin/sh\necho 'relation \"sales\" does not exist' >&2\nexit 2",
@@ -635,13 +625,7 @@ async fn shell_executor_stderr_only_failure_carries_stderr_in_diagnostics() {
         result.content.text_summary()
     );
     let diagnostics = result.diagnostics.expect("diagnostics should be present");
-    assert!(
-        diagnostics
-            .stderr
-            .as_deref()
-            .is_some_and(|s| s.contains("does not exist")),
-        "stderr-only failure must surface stderr for recovery: {diagnostics:?}"
-    );
+    assert!(diagnostics.stderr.is_none(), "stderr must remain operator-only");
 }
 
 #[cfg(unix)]
@@ -668,7 +652,10 @@ async fn shell_executor_spawn_failure_is_an_error_result() {
         .expect("execute maps spawn failure to an error result");
     assert!(result.is_error);
     assert!(
-        result.content.text_summary().contains("spawn failed"),
+        result
+            .content
+            .text_summary()
+            .contains("process could not start"),
         "spawn failure should be identifiable: {}",
         result.content.text_summary()
     );
@@ -702,7 +689,7 @@ async fn shell_executor_permission_denied_after_registration_is_an_error() {
     assert!(result.is_error);
     let text = result.content.text_summary();
     assert!(
-        text.contains("spawn failed") || text.contains("changed since registration"),
+        text.contains("process could not start") || text.contains("changed since registration"),
         "permission-denied must surface as an execution failure: {text}"
     );
 }
@@ -718,9 +705,13 @@ fn subprocess_failure_marks_sandbox_setup_as_violation() {
     let diagnostics = result.diagnostics.expect("diagnostics should be present");
     assert_eq!(diagnostics.sandbox_violations.len(), 1);
     assert!(
-        diagnostics.sandbox_violations[0].contains("seccomp install refused"),
-        "violation should carry the setup denial reason: {:?}",
+        diagnostics.sandbox_violations[0] == "sandbox_setup_failed",
+        "violation should carry only a stable category: {:?}",
         diagnostics.sandbox_violations
+    );
+    assert!(
+        !result.content.text_summary().contains("seccomp install refused"),
+        "operator error detail must not enter the model-visible result"
     );
 }
 
@@ -734,20 +725,6 @@ fn subprocess_failure_leaves_spawn_without_violations() {
     assert!(result.is_error);
     let diagnostics = result.diagnostics.expect("diagnostics should be present");
     assert!(diagnostics.sandbox_violations.is_empty());
-}
-
-#[test]
-fn diagnostic_stderr_bounds_and_trims() {
-    assert!(diagnostic_stderr("  \n").is_none());
-    assert_eq!(diagnostic_stderr(" hello \n").as_deref(), Some("hello"));
-
-    let huge = "x".repeat(MAX_DIAGNOSTIC_STDERR_BYTES + 100);
-    let bounded = diagnostic_stderr(&huge).expect("non-empty stderr");
-    assert!(
-        bounded.ends_with("…[truncated]"),
-        "oversized stderr must be marked truncated"
-    );
-    assert!(bounded.len() <= MAX_DIAGNOSTIC_STDERR_BYTES + 20);
 }
 
 #[cfg(unix)]

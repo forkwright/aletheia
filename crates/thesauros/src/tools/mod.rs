@@ -50,32 +50,6 @@ struct ShellToolExecutor {
     deny_egress: bool,
 }
 
-/// Maximum stderr bytes carried in tool diagnostics.
-///
-/// WHY: diagnostics render into the LLM-visible turn record via
-/// `ToolDiagnostics::to_llm_text`; stderr is recovery signal, not bulk
-/// output, so it is bounded well under `MAX_OUTPUT_BYTES`.
-const MAX_DIAGNOSTIC_STDERR_BYTES: usize = 4 * 1024;
-
-/// Bound and redact captured stderr for diagnostics.
-///
-/// `None` when the stream is empty or whitespace. Redaction runs through
-/// `koina::redact::redact_sensitive` so a tool that echoes a credential
-/// onto stderr does not leak it into the LLM-visible turn record (#5212).
-fn diagnostic_stderr(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-    let bounded = if trimmed.len() > MAX_DIAGNOSTIC_STDERR_BYTES {
-        let end = trimmed.floor_char_boundary(MAX_DIAGNOSTIC_STDERR_BYTES);
-        format!("{}…[truncated]", trimmed.get(..end).unwrap_or(trimmed))
-    } else {
-        trimmed.to_owned()
-    };
-    Some(koina::redact::redact_sensitive(&bounded))
-}
-
 /// Map a subprocess failure to an error result carrying machine-readable
 /// diagnostics.
 ///
@@ -83,20 +57,26 @@ fn diagnostic_stderr(raw: &str) -> Option<String> {
 /// command that ran and exited non-zero, so setup failures surface as
 /// `sandbox_violations` rather than only a human-readable message.
 fn subprocess_failure(error: &SubprocessError) -> ToolResult {
-    let sandbox_violations = match error {
-        SubprocessError::SandboxSetup(_) => vec![error.to_string()],
-        SubprocessError::Spawn(_)
-        | SubprocessError::Stdin(_)
-        | SubprocessError::Wait(_)
-        | SubprocessError::Timeout(_) => Vec::new(),
+    let (message, sandbox_violations) = match error {
+        SubprocessError::SandboxSetup(_) => (
+            "tool sandbox setup failed",
+            vec!["sandbox_setup_failed".to_owned()],
+        ),
+        SubprocessError::Spawn(_) => ("tool process could not start", Vec::new()),
+        SubprocessError::Stdin(_) => ("tool input delivery failed", Vec::new()),
+        SubprocessError::Wait(_) => ("tool process wait failed", Vec::new()),
+        SubprocessError::Timeout(_) => ("tool command timed out", Vec::new()),
     };
+    // Full OS/sandbox errors belong in the operator log. They can contain paths or other
+    // process detail, so only stable categories cross into model-visible ToolResult fields.
+    tracing::warn!(error = %error, "pack tool subprocess failed");
     let diagnostics = ToolDiagnostics {
         exit_code: None,
         stderr: None,
         sandbox_violations,
         duration_ms: 0,
     };
-    ToolResult::error(error.to_string()).with_diagnostics(diagnostics)
+    ToolResult::error(message).with_diagnostics(diagnostics)
 }
 
 impl ToolExecutor for ShellToolExecutor {
@@ -153,7 +133,11 @@ impl ToolExecutor for ShellToolExecutor {
 
             let diagnostics = ToolDiagnostics {
                 exit_code: Some(code),
-                stderr: diagnostic_stderr(&output_result.stderr),
+                // SECURITY(#5212): ToolDiagnostics renders into the model-visible turn.
+                // Stderr is arbitrary subprocess output and no finite pattern redactor can
+                // prove it secret-free, so keep it out of this surface. The warning above
+                // gives operators the exit code and byte count without copying the content.
+                stderr: None,
                 sandbox_violations: Vec::new(),
                 duration_ms: u64::try_from(output_result.duration.as_millis()).unwrap_or(u64::MAX),
             };

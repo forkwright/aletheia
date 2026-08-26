@@ -134,7 +134,7 @@ Input schema properties support types: `string`, `number`, `integer`, `boolean`,
 2. Runtime serializes arguments to JSON and pipes to the command's stdin
 3. Command writes result to stdout (text or JSON)
 4. Runtime captures stdout as the tool result
-5. Stderr is logged with metadata, and carried in the result's diagnostics (bounded to 4 KiB, redacted for credential shapes) so the agent can distinguish failure modes and recover. It never displaces stdout in the result text
+5. Stderr content is never copied into the model-visible result or diagnostics. Operators receive only structured warning metadata (tool, exit code, byte count); arbitrary subprocess stderr cannot be made safe for the model boundary by pattern redaction
 6. Output is truncated at 50KB
 
 Diagnostics also record the exit code, wall-clock duration, and — when the sandbox itself refuses to start the command — a `sandbox_violations` entry with the setup denial reason, distinguishing "sandbox refused" from "command failed".
