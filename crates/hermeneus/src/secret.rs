@@ -325,7 +325,10 @@ pub fn redact_in_json(value: &mut serde_json::Value) {
             // values would miss it and later schema/debug dumps would retain
             // it. Collapse the object if any key is secret-shaped: rewriting
             // keys individually can collide and silently discard entries.
-            if map.keys().any(|key| looks_like_secret(key)) {
+            if map
+                .keys()
+                .any(|key| looks_like_secret(key) || koina::redact::redact_sensitive(key) != *key)
+            {
                 *value = serde_json::json!({"__redaction__": "[REDACTED]"});
                 return;
             }
@@ -546,6 +549,21 @@ mod tests {
 
         assert_eq!(value, serde_json::json!({"__redaction__": "[REDACTED]"}));
         assert!(!value.to_string().contains(secret_key));
+    }
+
+    #[test]
+    fn redact_collapses_short_and_whitespace_bearing_credential_keys() {
+        for secret_key in [
+            "password=hunter2",
+            "Authorization: Bearer synthetic.dynamic.token",
+        ] {
+            let mut value = serde_json::json!({(secret_key): "ordinary value"});
+
+            redact_in_json(&mut value);
+
+            assert_eq!(value, serde_json::json!({"__redaction__": "[REDACTED]"}));
+            assert!(!value.to_string().contains(secret_key));
+        }
     }
 
     #[test]
