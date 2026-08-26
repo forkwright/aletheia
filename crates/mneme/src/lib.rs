@@ -161,7 +161,7 @@ pub mod types {
         CommandDeliveryStatus, CommandFailureClass, CommandInvocationStatus, CommandLifecycleEvent,
         CommandLifecycleRecord, CommandResultStatus, Message, RedactedCommand,
         RedactedCommandOrigin, Role, Session, SessionMetrics, SessionOrigin, SessionStatus,
-        SessionType, ToolAuditRecord, UsageRecord,
+        SessionType, StoredNousId, StoredSessionId, ToolAuditRecord, UsageRecord,
     };
     pub use graphe::types::{
         ReservedIdPrefixError, ReservedIdPrefixSnafu, ValidatedId, is_reserved_session_prefix,

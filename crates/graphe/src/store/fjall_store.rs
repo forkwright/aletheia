@@ -73,8 +73,8 @@ use crate::types::{
     AgentNote, BlackboardRow, BlackboardVisibility, COMMAND_LIFECYCLE_SCHEMA,
     COMMAND_LIFECYCLE_SCHEMA_VERSION, CommandDeliveryStatus, CommandLifecycleEvent,
     CommandLifecycleRecord, CommandResultStatus, Message, RedactedCommand, RedactedCommandOrigin,
-    Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType, ToolAuditRecord,
-    UsageRecord,
+    Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType, StoredNousId,
+    StoredSessionId, ToolAuditRecord, UsageRecord,
 };
 
 fn storage_error(message: impl Into<String>) -> error::Error {
@@ -2040,7 +2040,7 @@ impl SessionStore {
                 })?;
                 let record = serde_json::from_slice::<CommandLifecycleRecord>(&value)
                     .context(error::StoredJsonSnafu)?;
-                if record.session_id != id {
+                if record.session_id.as_str() != id {
                     return Err(storage_error(format!(
                         "command lifecycle row for '{}' found under session '{id}' prefix",
                         record.session_id
@@ -2896,7 +2896,7 @@ impl SessionStore {
             })?;
             let record = serde_json::from_slice::<CommandLifecycleRecord>(&value)
                 .context(error::StoredJsonSnafu)?;
-            if record.session_id != session_id {
+            if record.session_id.as_str() != session_id {
                 return Err(storage_error(format!(
                     "command lifecycle row for '{}' found under session '{}' prefix",
                     record.session_id, session_id
@@ -3141,10 +3141,14 @@ impl SessionStore {
         if let Some(args) = command.args_redacted.as_deref() {
             command.args_redacted = Some(koina::redact::redact_sensitive(args));
         }
+        let session_id = StoredSessionId::try_from(session.id)
+            .map_err(|message| storage_error(format!("command lifecycle session id: {message}")))?;
+        let nous_id = StoredNousId::try_from(session.nous_id)
+            .map_err(|message| storage_error(format!("command lifecycle agent id: {message}")))?;
         let record = CommandLifecycleRecord {
             id,
-            session_id: session.id,
-            nous_id: session.nous_id,
+            session_id,
+            nous_id,
             schema: spec.schema.to_owned(),
             schema_version: spec.schema_version,
             delivery_key: spec.delivery_key.to_owned(),

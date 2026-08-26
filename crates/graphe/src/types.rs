@@ -506,6 +506,98 @@ pub enum CommandLifecycleEvent {
     },
 }
 
+/// Byte-preserving identifier of the session owning a durable command row.
+///
+/// Session storage has used more than one identifier format over its lifetime.
+/// This wrapper therefore validates that a stored foreign key is non-blank
+/// without normalizing its bytes, so command rows continue to join historical
+/// session rows exactly.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct StoredSessionId(String);
+
+impl StoredSessionId {
+    /// Return the persisted identifier without normalization.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for StoredSessionId {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.trim().is_empty() {
+            return Err("stored session identifier must not be blank".to_owned());
+        }
+        Ok(Self(value))
+    }
+}
+
+impl From<StoredSessionId> for String {
+    fn from(value: StoredSessionId) -> Self {
+        value.0
+    }
+}
+
+impl std::fmt::Display for StoredSessionId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for StoredSessionId {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
+/// Byte-preserving identifier of the agent owning a durable command row.
+///
+/// The value is copied from the command's persisted parent session. Validation
+/// rejects blank foreign keys while retaining historical agent-ID bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct StoredNousId(String);
+
+impl StoredNousId {
+    /// Return the persisted identifier without normalization.
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for StoredNousId {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.trim().is_empty() {
+            return Err("stored agent identifier must not be blank".to_owned());
+        }
+        Ok(Self(value))
+    }
+}
+
+impl From<StoredNousId> for String {
+    fn from(value: StoredNousId) -> Self {
+        value.0
+    }
+}
+
+impl std::fmt::Display for StoredNousId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl AsRef<str> for StoredNousId {
+    fn as_ref(&self) -> &str {
+        self.as_str()
+    }
+}
+
 /// Runtime-owned durable record for one command lifecycle event.
 ///
 /// This type is stored in its own partition. It is not a conversation
@@ -516,9 +608,9 @@ pub struct CommandLifecycleRecord {
     /// Store-assigned chronological identifier.
     pub id: u64,
     /// Session this command event belongs to.
-    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: raw foreign key to Session.id; preserving historical bytes is required for joins
+    pub session_id: StoredSessionId,
     /// Agent that owns the session, derived from the persisted session row.
-    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: copied from the owning persisted Session row so historical values round-trip unchanged
+    pub nous_id: StoredNousId,
     /// Stable schema identifier.
     pub schema: String,
     /// Structured schema version.

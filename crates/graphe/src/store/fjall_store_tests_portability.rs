@@ -765,8 +765,8 @@ fn import_session_bundle_writes_everything_atomically() {
     assert_eq!(command_records.len(), 2);
     assert_eq!(command_records[0].id, 41);
     assert_eq!(command_records[1].id, 42);
-    assert_eq!(command_records[0].session_id, "ses-bundle-1");
-    assert_eq!(command_records[0].nous_id, "syn");
+    assert_eq!(command_records[0].session_id.as_str(), "ses-bundle-1");
+    assert_eq!(command_records[0].nous_id.as_str(), "syn");
     assert_eq!(command_records[0].created_at, "2024-08-01T00:00:01Z");
 
     let ws = store

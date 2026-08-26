@@ -74,8 +74,8 @@ fn append_test_command_lifecycle(store: &SessionStore) -> Vec<CommandLifecycleRe
         "a command event must flush before append returns"
     );
     assert_eq!(first.id, 1);
-    assert_eq!(first.session_id, "ses-command");
-    assert_eq!(first.nous_id, "alice");
+    assert_eq!(first.session_id.as_str(), "ses-command");
+    assert_eq!(first.nous_id.as_str(), "alice");
     assert_eq!(first.schema, COMMAND_LIFECYCLE_SCHEMA);
     assert_eq!(first.schema_version, COMMAND_LIFECYCLE_SCHEMA_VERSION);
     assert_eq!(

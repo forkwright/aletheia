@@ -457,7 +457,7 @@ async fn finish_command_record(
     };
     let store = session_store.lock().await;
     store.append_command_lifecycle_record(&AppendCommandLifecycleRecord {
-        session_id: &record.session_id,
+        session_id: record.session_id.as_str(),
         delivery_key: &record.delivery_key,
         origin: &record.origin,
         command: &record.command,
