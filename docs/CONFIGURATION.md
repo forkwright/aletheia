@@ -596,9 +596,11 @@ Routes mapping channel sources to nous agents. The runtime builds one `MessageRo
 | `channel` | string | *required* | Channel type (e.g., "signal"). |
 | `source` | string | *required* | Source pattern: phone number, group ID, or "*" for default. |
 | `nousId` | string | *required* | Nous ID to route to. |
-| `sessionKey` | string | "{source}" | Session key pattern. Supports `{source}`, `{group}`, and `{account}` placeholders (`{account}` expands to the receiving provider account, or `default` when the provider did not attribute one). |
-| `account` | string | unset | Restrict this binding to the provider account that received the message (multi-account deployments). `None` matches any account. WHY: identical senders and group IDs on two different accounts are distinct conversations; without an account leg in the match they collapse onto whichever binding sorts first. |
-| `participants` | string[] | [] | Sender allowlist for this binding. When non-empty, only the listed senders may activate the binding; other senders fall through to lower-priority routes. WHY: a group binding otherwise lets every participant of a configured group drive the agent and its command surface. Listing participants makes group membership insufficient on its own. Empty preserves the previous any-participant behavior. |
+| `sessionKey` | string | "{channel}:{account}:{group}:{source}" | Session key pattern. Supports `{channel}`, `{source}`, `{group}`, and `{account}` placeholders. `{account}` expands to the stable receiving provider account label, or `default` when the provider did not attribute one; `{group}` expands to `dm` for direct messages. Upgrade note: bindings that omit this field intentionally receive the new account-isolated default key after upgrading. Their prior sessions remain stored under the old key. An explicit custom pattern is retained unchanged. |
+| `account` | string | unset | Restrict this binding to the stable logical account label that received the message (the key under `channels.<provider>.accounts`, not a Signal phone number or other private wire identity). `None` matches any account. WHY: identical senders and group IDs on two different accounts are distinct conversations; without an account leg in the match they collapse onto whichever binding sorts first. |
+| `sourceKind` | "direct" \| "group" | unset | Whether `source` names a direct-message sender or a group ID. `None` preserves legacy matching for public routes. Operator routes must explicitly select `direct` so their identity shape is provable at configuration-validation time. |
+| `participants` | string[] | [] | Sender allowlist for this binding. When non-empty, only the listed senders may activate it. An exact group binding casts a deny shadow, so an unlisted participant cannot fall through to broader routes. WHY: a group binding otherwise lets every participant of a configured group drive the agent and its command surface. Listing participants makes group membership insufficient on its own. A separate open exact-group binding is the explicit guest route. |
+| `commandTier` | "public" \| "operator" | "public" | Command authority granted by this route when its identity constraints prove a sufficiently narrow principal. Only an exact, account-scoped direct-message binding may resolve to [`CommandTier::Operator`]; group, wildcard, and default routes are always clamped to `Public` at runtime. |
 
 ## feature_flags[]
 
@@ -1205,13 +1207,11 @@ Per-agent outbound-recipient allowlist and default-deny posture, enforced by `ag
 
 ### messaging.commands
 
-Inbound `!`-command authorization: who may invoke operational commands from a channel, and which commands stay public. The dispatcher clones this policy at startup, so changes require a process restart before they alter command authority.
+Inbound `!`-command authorization: which commands stay public. Operational authority is carried by the selected channel binding. The dispatcher clones both at startup, so changes require a process restart before they alter command authority.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `operators` | string[] | [] | Sender patterns granted the full operator command surface. Each entry is `"channel:source"`; either segment may be `"*"`, and the source segment may itself contain `:` (e.g. Matrix user IDs) — only the first `:` separates the channel. |
-| `publicCommands` | string[] | ["help", "ping"] | Command names any sender may invoke (without the leading `!`). Default: `["help", "ping"]` — liveness and discovery reveal no fleet state. |
-| `defaultAllow` | bool | false | Allow every command from any sender. Default: `false` (fail closed). Setting this to `true` restores the pre-policy behavior and is an explicit operator opt-out. |
+| `publicCommands` | string[] | ["help", "ping"] | Command names any sender may invoke (without the leading `!`). Default: `["help", "ping"]` — liveness and discovery reveal no fleet state. Configuration may narrow this set, but cannot broaden it beyond the built-in safe commands. |
 
 ## tuning
 

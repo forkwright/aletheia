@@ -75,25 +75,30 @@ Each agent has a workspace under `nous/` with character, operations, and memory 
 
 ### Signal `!`-commands
 
-Send any of these from Signal to control the agent without starting a conversation turn. Type `!help` to see the list at any time.
+`!help` and the fixed `!ping` response are available from any routed
+conversation. Operational commands are shown and accepted only when the
+selected route proves an exact account-scoped direct-message principal with
+`sourceKind = "direct"` and `commandTier = "operator"`.
 
-| Command | What it does |
-|---------|-------------|
-| `!help` | List all available commands |
-| `!status` | Lifecycle and session info for this agent |
-| `!agents` | List all running agents |
-| `!whoami` | Show which agent handles this conversation |
-| `!sessions` | Count sessions tracked by this agent |
-| `!ping` | Round-trip liveness check |
-| `!channels` | List channel providers and health |
-| `!uptime` | Agent uptime and panic-boundary count |
-| `!model` | Show the LLM model configured for this agent |
-| `!skills` | List skills available to this agent |
-| `!blackboard` | Show recent cross-nous blackboard entries |
-| `!think` | Show extended-thinking mode and budget |
-| `!info [agent_id]` | Detail view for an agent (default: current) |
+| Command | Authority | What it does |
+|---------|-----------|--------------|
+| `!help` | Public | List commands available to this route |
+| `!ping` | Public | Fixed liveness response (`Pong.`) |
+| `!status` | Operator | Lifecycle and session info for this agent |
+| `!agents` | Operator | List all running agents |
+| `!whoami` | Operator | Show which agent handles this conversation |
+| `!sessions` | Operator | Count sessions tracked by this agent |
+| `!channels` | Operator | List channel providers and health |
+| `!uptime` | Operator | Agent uptime and panic-boundary count |
+| `!model` | Operator | Show the LLM model configured for this agent |
+| `!skills` | Operator | List skills available to this agent |
+| `!blackboard` | Operator | Show recent cross-nous blackboard entries |
+| `!think` | Operator | Show extended-thinking mode and budget |
+| `!info [agent_id]` | Operator | Detail view for an agent (default: current) |
 
-Commands are intercepted before reaching the agent - they consume no LLM tokens. Unknown `!` commands return a helpful error listing the available set.
+Commands are intercepted before reaching the agent and consume no LLM tokens.
+Unknown and denied commands receive the same fixed `Unknown command.` reply;
+unknown names and arguments are neither echoed nor durably audited.
 
 ## Services
 
