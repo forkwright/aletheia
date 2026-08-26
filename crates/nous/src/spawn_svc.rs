@@ -1073,8 +1073,10 @@ domains = ["medical"]
 
         let provider = ProviderId::new(koina::defaults::DEFAULT_MODEL);
         for _ in 0..20 {
+            // WHY(#5217): the task text ("Build a feature") has no keyword
+            // signal, so the outcome aggregates under Unknown, not Feature.
             if let Some(stats) = store
-                .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
+                .rolling_stats(&provider, &TaskCategory::Unknown, Duration::from_hours(168))
                 .await
                 .expect("rolling stats query")
             {

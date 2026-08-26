@@ -40,8 +40,9 @@ pub mod types;
 pub use router::{BoxFuture, Router};
 pub use store::{AfterActionStore, DEFAULT_ROUTING_WINDOW};
 pub use types::{
-    InteractiveOutcome, ProviderId, RequestFeatures, RouterError, RoutingBoundary, RoutingDecision,
-    TurnOutcome,
+    AppliedBoundary, BoundarySource, DecisionOrigin, DecisionProvenance, FallbackReason,
+    IngressSource, InteractiveOutcome, ProviderId, RequestFeatures, RouterError, RoutingBoundary,
+    RoutingDecision, TurnOutcome,
 };
 
 use std::sync::Arc;
@@ -60,9 +61,11 @@ pub struct NoOpRouter {
 }
 
 impl Router for NoOpRouter {
-    fn route<'a>(&'a self, _features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
+    fn route<'a>(&'a self, features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
         let provider = self.provider.clone();
-        Box::pin(async move { RoutingDecision::new(provider, None) })
+        Box::pin(
+            async move { RoutingDecision::new(provider, None).with_request_provenance(features) },
+        )
     }
 
     fn after_action(
@@ -120,9 +123,11 @@ impl RecordingRouter {
 }
 
 impl Router for RecordingRouter {
-    fn route<'a>(&'a self, _features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
+    fn route<'a>(&'a self, features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
         let provider = self.provider.clone();
-        Box::pin(async move { RoutingDecision::new(provider, None) })
+        Box::pin(
+            async move { RoutingDecision::new(provider, None).with_request_provenance(features) },
+        )
     }
 
     fn after_action(
@@ -260,7 +265,7 @@ impl Router for EmpiricalRouter {
                 }
             };
 
-            RoutingDecision::new(chosen.0, confidence)
+            RoutingDecision::new(chosen.0, confidence).with_request_provenance(features)
         })
     }
 
@@ -291,9 +296,14 @@ impl Router for EmpiricalRouter {
 /// [`crate::EmpiricalRouter`] wrapped as primary over a static fallback on
 /// the interactive nous actor path (see `aletheia::runtime` wiring).
 ///
-/// Both `after_action` calls are forwarded to the primary router only. The
-/// secondary is a read-only fallback; recording against it would corrupt the
-/// primary's training signal.
+/// Every returned decision carries [`DecisionOrigin`] provenance (#5218):
+/// `Primary` when the primary's decision was accepted, or
+/// `Fallback { primary_provider, reason }` naming what the stack fell back
+/// *from* and *why*. `after_action` forwards the outcome to the router that
+/// actually handled the request: a fallback-handled outcome goes to the
+/// fallback (a `NoOpRouter` discards it; a recording fallback learns from
+/// it), so the primary never receives outcome signal for a decision it did
+/// not make.
 pub struct FallthroughRouter {
     /// Primary router — queried first on every `route` call.
     primary: Arc<dyn Router>,
@@ -336,9 +346,27 @@ impl Router for FallthroughRouter {
             // through, letting the secondary handle the request.
             let confidence = decision.confidence.unwrap_or(0.0);
             if confidence >= self.threshold {
-                decision
+                decision.with_origin(types::DecisionOrigin::Primary)
             } else {
-                self.fallback.route(features).await
+                // WHY(#5218): the fallback's decision must say what it fell
+                // back from and why, so after-action attribution and audit
+                // can distinguish "the primary chose this" from "the fallback
+                // handled this because the primary could not".
+                let reason = match decision.confidence {
+                    None => types::FallbackReason::ConfidenceAbsent,
+                    Some(reported) => types::FallbackReason::ConfidenceBelowThreshold {
+                        confidence: reported,
+                        threshold: self.threshold,
+                    },
+                };
+                let primary_provider = decision.provider.clone();
+                self.fallback
+                    .route(features)
+                    .await
+                    .with_origin(types::DecisionOrigin::Fallback {
+                        primary_provider,
+                        reason,
+                    })
             }
         })
     }
@@ -348,9 +376,18 @@ impl Router for FallthroughRouter {
         decision: &RoutingDecision,
         outcome: &TurnOutcome,
     ) -> Result<(), RouterError> {
-        // WHY: only the primary receives after-action records so the learning
-        // signal is not diluted by fallback decisions.
-        self.primary.after_action(decision, outcome)
+        // WHY(#5218): the outcome goes to the router that actually handled
+        // the request. Forwarding a fallback-handled outcome to the primary
+        // taught the primary success or failure for a decision it did not
+        // make, while the fallback never learned. Decisions without
+        // fallthrough provenance (e.g. fabricated at an after-action-only
+        // call site) keep the historical behaviour of landing on the primary.
+        match decision.provenance.origin {
+            types::DecisionOrigin::Fallback { .. } => self.fallback.after_action(decision, outcome),
+            types::DecisionOrigin::Direct | types::DecisionOrigin::Primary => {
+                self.primary.after_action(decision, outcome)
+            }
+        }
     }
 }
 
@@ -544,6 +581,150 @@ mod tests {
             .route(&RequestFeatures::new(Vec::new(), None, None))
             .await;
         assert_eq!(decision.provider.as_ref(), "fallback");
+    }
+
+    // WHY(#5218): after-action attribution must follow the router that
+    // actually handled the request. A fallback-handled outcome recorded
+    // against the primary taught it outcomes for decisions it never made,
+    // while the fallback never learned.
+    struct CountingRouter {
+        provider: &'static str,
+        confidence: Option<f64>,
+        after_action_calls: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CountingRouter {
+        fn fixed(provider: &'static str, confidence: Option<f64>) -> Self {
+            Self {
+                provider,
+                confidence,
+                after_action_calls: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+
+        fn calls(&self) -> usize {
+            self.after_action_calls
+                .load(std::sync::atomic::Ordering::Relaxed)
+        }
+    }
+
+    impl Router for CountingRouter {
+        fn route<'a>(&'a self, _features: &'a RequestFeatures) -> BoxFuture<'a, RoutingDecision> {
+            let provider = self.provider;
+            let confidence = self.confidence;
+            Box::pin(async move { RoutingDecision::new(provider, confidence) })
+        }
+        fn after_action(
+            &self,
+            _decision: &RoutingDecision,
+            _outcome: &TurnOutcome,
+        ) -> Result<(), RouterError> {
+            self.after_action_calls
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn fallthrough_after_action_reaches_fallback_when_fallback_handled() {
+        let primary = Arc::new(CountingRouter::fixed("primary", Some(0.2)));
+        let fallback = Arc::new(CountingRouter::fixed("fallback", None));
+        let router = FallthroughRouter::new(primary.clone(), fallback.clone(), 0.5);
+
+        let features = RequestFeatures::new(Vec::new(), None, None);
+        let decision = router.route(&features).await;
+
+        assert_eq!(decision.provider.as_ref(), "fallback");
+        let types::DecisionOrigin::Fallback {
+            primary_provider,
+            reason,
+        } = &decision.provenance.origin
+        else {
+            panic!(
+                "fallback-handled decision must carry Fallback origin, got {:?}",
+                decision.provenance.origin
+            );
+        };
+        assert_eq!(primary_provider.as_ref(), "primary");
+        assert_eq!(
+            *reason,
+            types::FallbackReason::ConfidenceBelowThreshold {
+                confidence: 0.2,
+                threshold: 0.5,
+            }
+        );
+
+        let outcome = TurnOutcome::new(ProviderId::new("fallback"), TaskCategory::Bug, true, true);
+        assert!(router.after_action(&decision, &outcome).is_ok());
+
+        assert_eq!(
+            fallback.calls(),
+            1,
+            "the fallback handled the request, so the fallback learns"
+        );
+        assert_eq!(
+            primary.calls(),
+            0,
+            "the primary must not receive signal for a decision it did not make"
+        );
+    }
+
+    #[tokio::test]
+    async fn fallthrough_after_action_reaches_primary_when_primary_handled() {
+        let primary = Arc::new(CountingRouter::fixed("primary", Some(0.9)));
+        let fallback = Arc::new(CountingRouter::fixed("fallback", None));
+        let router = FallthroughRouter::new(primary.clone(), fallback.clone(), 0.5);
+
+        let features = RequestFeatures::new(Vec::new(), None, None);
+        let decision = router.route(&features).await;
+
+        assert_eq!(decision.provider.as_ref(), "primary");
+        assert_eq!(decision.provenance.origin, types::DecisionOrigin::Primary);
+
+        let outcome = TurnOutcome::new(ProviderId::new("primary"), TaskCategory::Bug, true, true);
+        assert!(router.after_action(&decision, &outcome).is_ok());
+
+        assert_eq!(primary.calls(), 1);
+        assert_eq!(fallback.calls(), 0);
+    }
+
+    // WHY(#5218): a primary that reports no confidence at all falls through
+    // with ConfidenceAbsent — the reason is part of the durable decision
+    // record, not a log line.
+    #[tokio::test]
+    async fn fallthrough_records_confidence_absent_as_fallback_reason() {
+        let primary = Arc::new(CountingRouter::fixed("primary", None));
+        let fallback = Arc::new(CountingRouter::fixed("fallback", None));
+        let router = FallthroughRouter::new(primary, fallback, 0.5);
+
+        let decision = router
+            .route(&RequestFeatures::new(Vec::new(), None, None))
+            .await;
+
+        let types::DecisionOrigin::Fallback { reason, .. } = &decision.provenance.origin else {
+            panic!(
+                "expected Fallback origin, got {:?}",
+                decision.provenance.origin
+            );
+        };
+        assert_eq!(*reason, types::FallbackReason::ConfidenceAbsent);
+    }
+
+    // WHY(#5218): a decision fabricated by an after-action-only call site
+    // (origin Direct — e.g. nous's finalize-time record) keeps the historical
+    // behaviour of landing on the primary.
+    #[tokio::test]
+    async fn fallthrough_after_action_defaults_direct_origin_to_primary() {
+        let primary = Arc::new(CountingRouter::fixed("primary", Some(0.9)));
+        let fallback = Arc::new(CountingRouter::fixed("fallback", None));
+        let router = FallthroughRouter::new(primary.clone(), fallback.clone(), 0.5);
+
+        let fabricated = RoutingDecision::new("primary", None);
+        let outcome = TurnOutcome::new(ProviderId::new("primary"), TaskCategory::Bug, true, true);
+        assert!(router.after_action(&fabricated, &outcome).is_ok());
+
+        assert_eq!(primary.calls(), 1);
+        assert_eq!(fallback.calls(), 0);
     }
 
     // WHY(#3969): a primary that returns None confidence (e.g. static router)

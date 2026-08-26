@@ -565,7 +565,10 @@ mod tests {
         assert_eq!(outcomes[0]["status"], "success");
         assert_eq!(outcomes[0]["turns"], 10);
         assert_eq!(outcomes[0]["model"], "claude-3-5-sonnet");
-        assert_eq!(outcomes[0]["category"], "feature");
+        // WHY(#5217): the prompt body ("do the thing") has no keyword signal,
+        // so the recorded category is explicitly "unknown", not the old
+        // silent "feature" default.
+        assert_eq!(outcomes[0]["category"], "unknown");
         assert!(outcomes[0]["failure_class"].is_null());
     }
 

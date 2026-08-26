@@ -90,7 +90,7 @@ struct AfterActionSession {
     /// Terminal status string (e.g. `"success"`, `"failed"`, `"stuck"`).
     status: String,
     /// Category tag. Optional in older records; missing is treated as
-    /// `Feature`.
+    /// `Unknown` (#5217) so unclassified work stays out of feature buckets.
     #[serde(default)]
     category: Option<String>,
 }
@@ -742,13 +742,24 @@ struct InteractiveOutcomeLine {
     /// own derived (unrenamed, so case-sensitive-on-the-Rust-identifier)
     /// `Serialize`/`Deserialize` — matches [`AfterActionSession::category`]'s
     /// existing convention on the dispatch side, and the same
-    /// unrecognized-category-degrades-to-`Feature` forward-compatibility
+    /// unrecognized-category-degrades-to-`Unknown` forward-compatibility
     /// applies here (a future `TaskCategory` variant must not turn every
     /// interactive line written before it existed into a malformed line).
     task_category: String,
     success: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     interactive_outcome: Option<InteractiveOutcome>,
+    /// Ingress the turn arrived on (#5219): `"operator"` or
+    /// `"external_channel:<channel>"`. Absent on records written before
+    /// provenance was tracked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ingress: Option<String>,
+    /// Privacy boundary in force for the turn's routing context (#5219).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    boundary: Option<crate::types::RoutingBoundary>,
+    /// How that boundary was chosen (explicit vs policy-derived).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    boundary_source: Option<crate::types::BoundarySource>,
 }
 
 impl InteractiveOutcomeLine {
@@ -759,6 +770,9 @@ impl InteractiveOutcomeLine {
             task_category: outcome.task_category.to_string(),
             success,
             interactive_outcome: outcome.interactive_outcome.clone(),
+            ingress: Some(outcome.ingress.wire_name()),
+            boundary: outcome.boundary,
+            boundary_source: outcome.boundary_source,
         }
     }
 
@@ -864,7 +878,7 @@ fn ingest_record(
         let category = session
             .category
             .as_deref()
-            .map_or(TaskCategory::Feature, parse_category);
+            .map_or(TaskCategory::Unknown, parse_category);
 
         let key = (provider, category);
         let stats = map.entry(key).or_default();
@@ -898,12 +912,13 @@ fn merge_stats(target: &mut RollingStats, source: &RollingStats) {
 
 /// Parse a category string from a JSONL record.
 ///
-/// Returns [`TaskCategory::Feature`] for unrecognised strings so that new
-/// categories added in future PRs degrade gracefully on old store data.
+/// Returns [`TaskCategory::Unknown`] for unrecognised strings (#5217) so that
+/// new categories added in future PRs degrade gracefully on old store data —
+/// into their own visible bucket, not into `Feature`.
 fn parse_category(s: &str) -> TaskCategory {
     match s.parse::<TaskCategory>() {
         Ok(category) => category,
-        Err(_) => TaskCategory::Feature,
+        Err(_) => TaskCategory::Unknown,
     }
 }
 
@@ -1393,6 +1408,184 @@ mod tests {
         assert_eq!(stats.failures, 1);
     }
 
+    // --- #5217: unknown categories stay out of feature buckets ---
+
+    /// Dispatch records with an unrecognized category string aggregate under
+    /// `Unknown`, never `Feature`.
+    #[tokio::test]
+    async fn unrecognized_dispatch_category_buckets_as_unknown() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_jsonl(
+            tmp.path(),
+            "2026-04-17.jsonl",
+            &[
+                session_line("provider-a", "success", "quantum"),
+                session_line("provider-a", "success", "feature"),
+            ],
+        );
+
+        let store = AfterActionStore::new(tmp.path().to_owned());
+        store.refresh().await.unwrap();
+
+        let unknown = store
+            .rolling_stats(
+                &ProviderId::new("provider-a"),
+                &TaskCategory::Unknown,
+                Duration::from_hours(168),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            unknown.total, 1,
+            "the 'quantum' record must bucket as Unknown"
+        );
+
+        let feature = store
+            .rolling_stats(
+                &ProviderId::new("provider-a"),
+                &TaskCategory::Feature,
+                Duration::from_hours(168),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            feature.total, 1,
+            "only the genuine feature record counts as Feature"
+        );
+    }
+
+    /// Dispatch records with no category field at all aggregate under
+    /// `Unknown`, never `Feature`.
+    #[tokio::test]
+    async fn missing_dispatch_category_buckets_as_unknown() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut no_category = session_line("provider-b", "success", "feature");
+        no_category
+            .get_mut("session_outcomes")
+            .unwrap()
+            .get_mut(0)
+            .unwrap()
+            .as_object_mut()
+            .unwrap()
+            .remove("category");
+        write_jsonl(tmp.path(), "2026-04-17.jsonl", &[no_category]);
+
+        let store = AfterActionStore::new(tmp.path().to_owned());
+        store.refresh().await.unwrap();
+
+        assert!(
+            store
+                .rolling_stats(
+                    &ProviderId::new("provider-b"),
+                    &TaskCategory::Unknown,
+                    Duration::from_hours(168),
+                )
+                .await
+                .unwrap()
+                .is_some(),
+            "a record with no category must bucket as Unknown"
+        );
+        assert!(
+            store
+                .rolling_stats(
+                    &ProviderId::new("provider-b"),
+                    &TaskCategory::Feature,
+                    Duration::from_hours(168),
+                )
+                .await
+                .unwrap()
+                .is_none(),
+            "a record with no category must not pollute the Feature bucket"
+        );
+    }
+
+    /// Interactive lines carrying an unrecognized category string read back
+    /// as `Unknown`, and provenance fields written by `record_outcome` are
+    /// durable in the JSONL record (#5217, #5219).
+    #[tokio::test]
+    async fn interactive_line_with_unknown_category_and_provenance_roundtrips() {
+        let tmp = tempfile::tempdir().unwrap();
+        let interactive_dir = tmp.path().join("interactive");
+        std::fs::create_dir_all(&interactive_dir).unwrap();
+        let mut file = std::fs::File::create(interactive_dir.join("2026-04-17.jsonl")).unwrap();
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({
+                "provider": "claude",
+                "task_category": "quantum",
+                "success": true,
+            })
+        )
+        .unwrap();
+        drop(file);
+
+        let store = AfterActionStore::new(tmp.path().to_owned());
+        let outcome = TurnOutcome::new(
+            ProviderId::new("local-model"),
+            TaskCategory::Unknown,
+            true,
+            true,
+        )
+        .with_ingress(crate::types::IngressSource::ExternalChannel {
+            channel: std::sync::Arc::from("signal"),
+        })
+        .with_boundary_provenance(crate::types::AppliedBoundary {
+            boundary: crate::types::RoutingBoundary::LocalHosted,
+            source: crate::types::BoundarySource::ExternalChannelDefault,
+        });
+        store.record_outcome(&outcome).await;
+
+        store.refresh().await.unwrap();
+
+        assert!(
+            store
+                .rolling_stats(
+                    &ProviderId::new("claude"),
+                    &TaskCategory::Unknown,
+                    DEFAULT_ROUTING_WINDOW,
+                )
+                .await
+                .unwrap()
+                .is_some(),
+            "the 'quantum' interactive line must bucket as Unknown"
+        );
+        assert!(
+            store
+                .rolling_stats(
+                    &ProviderId::new("claude"),
+                    &TaskCategory::Feature,
+                    DEFAULT_ROUTING_WINDOW,
+                )
+                .await
+                .unwrap()
+                .is_none(),
+            "the 'quantum' interactive line must not pollute the Feature bucket"
+        );
+
+        // The provenance recorded on the outcome must be durable on disk.
+        let today = jiff::Timestamp::now()
+            .to_zoned(jiff::tz::TimeZone::UTC)
+            .strftime("%Y-%m-%d")
+            .to_string();
+        let content =
+            std::fs::read_to_string(interactive_dir.join(format!("{today}.jsonl"))).unwrap();
+        assert!(
+            content.contains("external_channel:signal"),
+            "durable line must carry the ingress: {content}"
+        );
+        assert!(
+            content.contains("localhosted"),
+            "durable line must carry the applied boundary: {content}"
+        );
+        assert!(
+            content.contains("external_channel_default"),
+            "durable line must carry the boundary source: {content}"
+        );
+    }
+
     // --- In-memory mode ---
 
     #[tokio::test]
@@ -1428,6 +1621,9 @@ mod tests {
                 provider: crate::types::ProviderStatus::Available,
                 explicit_user_rating: None,
             }),
+            ingress: crate::types::IngressSource::default(),
+            boundary: None,
+            boundary_source: None,
         };
         store.record_outcome(&outcome).await;
 

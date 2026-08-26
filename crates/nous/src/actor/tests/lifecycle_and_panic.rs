@@ -309,6 +309,7 @@ async fn send_timeout_fires_when_inbox_full() {
         session_key: "main".to_owned(),
         session_id: None,
         content: "filler".to_owned(),
+        ingress: None,
         span: tracing::Span::current(),
         turn_cancel: tokio_util::sync::CancellationToken::new(),
         reply: reply_tx,
@@ -415,8 +416,10 @@ async fn turn_records_after_action_outcome_in_empirical_store() {
 
     let provider = ProviderId::new("test-model");
     for _ in 0..20 {
+        // WHY(#5217): "Build a feature" has no keyword signal, so the turn
+        // aggregates under Unknown rather than the old Feature default.
         if let Some(stats) = store
-            .rolling_stats(&provider, &TaskCategory::Feature, Duration::from_hours(168))
+            .rolling_stats(&provider, &TaskCategory::Unknown, Duration::from_hours(168))
             .await
             .expect("rolling stats query")
         {

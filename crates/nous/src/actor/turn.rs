@@ -87,6 +87,7 @@ impl NousActor {
         session_key: &str,
         content: &str,
         result: &crate::error::Result<TurnResult>,
+        ingress: Option<&aletheia_routing::types::IngressSource>,
     ) {
         if let Ok(turn_result) = result {
             if let Some(session) = self.sessions.get_mut(session_key) {
@@ -106,7 +107,7 @@ impl NousActor {
             // real success-rate signals. Success is derived from interactive
             // outcome dimensions (tool errors, guard/brake intervention,
             // budget) rather than the coarse "non-degraded == success" proxy.
-            self.record_router_outcome(session_key, content, turn_result);
+            self.record_router_outcome(session_key, content, turn_result, ingress);
 
             // WHY(#5367): every corpus/consolidation side effect below is
             // fed `turn_result.is_degraded()` explicitly. A degraded turn is
@@ -160,11 +161,16 @@ impl NousActor {
     /// The panic boundary in `execute_turn_with_panic_boundary` ensures
     /// that even if the pipeline panics, the actor remains in a consistent
     /// state and can process subsequent messages.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "turn setup plumbs session, content, ingress, span, cancel, and reply; splitting hides the call shape"
+    )]
     pub(super) async fn handle_turn(
         &mut self,
         session_key: String, // kanon:ignore RUST/plain-string-secret
         session_id: Option<String>,
         content: String,
+        ingress: Option<aletheia_routing::types::IngressSource>,
         caller_span: tracing::Span,
         turn_cancel: CancellationToken,
         reply: tokio::sync::oneshot::Sender<crate::error::Result<TurnResult>>,
@@ -183,7 +189,8 @@ impl NousActor {
 
         self.apply_mistake_brake(&session_key, &mut result);
         self.apply_loop_guard(&session_key, &mut result);
-        self.finalize_turn(&session_key, &content, &result).await;
+        self.finalize_turn(&session_key, &content, &result, ingress.as_ref())
+            .await;
 
         // WHY: ignore send error: caller may have dropped the receiver
         if let Err(_e) = reply.send(result) {
@@ -232,7 +239,10 @@ impl NousActor {
 
         self.apply_mistake_brake(&session_key, &mut result);
         self.apply_loop_guard(&session_key, &mut result);
-        self.finalize_turn(&session_key, &content, &result).await;
+        // WHY: streaming turns today arrive from the operator surfaces (HTTP
+        // gateway/TUI); no external-channel ingress is threaded here.
+        self.finalize_turn(&session_key, &content, &result, None)
+            .await;
 
         // WHY: ignore send error: caller may have dropped the receiver
         if let Err(_e) = reply.send(result) {

@@ -22,6 +22,10 @@ pub(crate) enum NousMessage {
         /// a new one, preventing FK constraint failures in finalize and tools.
         session_id: Option<String>,
         content: String,
+        /// Where this turn arrived from (#5219). `None` means operator-direct;
+        /// external-channel ingress (agora: Signal/Matrix) is carried through
+        /// to the routing-outcome record so its privacy posture is auditable.
+        ingress: Option<aletheia_routing::types::IngressSource>,
         /// Caller's tracing span: propagated into the pipeline task for request correlation.
         span: tracing::Span,
         /// Request-scoped turn cancellation token.
