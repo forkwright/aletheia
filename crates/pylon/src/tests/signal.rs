@@ -13,7 +13,8 @@ use taxis::config::AletheiaConfig;
 use taxis::oikos::Oikos;
 
 use crate::server::{
-    shutdown_signal, shutdown_signal_with, spawn_sighup_handler, spawn_sighup_handler_with,
+    apply_sighup_reload, shutdown_signal, shutdown_signal_with, spawn_sighup_handler,
+    spawn_sighup_handler_with,
 };
 use crate::state::AppState;
 use crate::tests::helpers::test_state;
@@ -42,6 +43,57 @@ async fn spawn_sighup_handler_returns_some_and_exits_on_shutdown() {
             .expect("should exit within timeout")
             .expect("should not panic");
     }
+}
+
+#[tokio::test]
+#[cfg(unix)]
+async fn sighup_stages_command_revoke_without_live_policy_swap() {
+    let (state, _dir) = test_state().await;
+    {
+        let mut live = state.config.write().await;
+        live.messaging.commands.default_allow = true;
+        live.messaging
+            .commands
+            .operators
+            .push("matrix:@operator:example.org".to_owned());
+        taxis::loader::write_config(&state.oikos, &live).expect("write live fixture");
+    }
+
+    let mut staged = state.config.read().await.clone();
+    staged.messaging.commands.default_allow = false;
+    staged.messaging.commands.operators.clear();
+    taxis::loader::write_config(&state.oikos, &staged).expect("stage command revoke");
+    let mut config_rx = state.config_tx.subscribe();
+
+    // Exercise the exact helper called by the installed SIGHUP handler; a
+    // process-wide signal would race the test runner's own signal handling.
+    apply_sighup_reload(&state).await;
+
+    assert!(
+        config_rx.has_changed().expect("watch sender remains open"),
+        "a successful SIGHUP reload must notify config subscribers"
+    );
+    let notified = config_rx.borrow_and_update().clone();
+    assert!(
+        notified.messaging.commands.default_allow,
+        "SIGHUP subscribers must receive the effective policy, not the staged revoke"
+    );
+    drop(notified);
+
+    let live = state.config.read().await;
+    assert!(
+        live.messaging.commands.default_allow,
+        "SIGHUP must not claim a dispatcher policy swap that did not occur"
+    );
+    assert_eq!(
+        live.messaging.commands.operators,
+        vec!["matrix:@operator:example.org".to_owned()]
+    );
+    drop(live);
+
+    let persisted = taxis::loader::load_config(&state.oikos).expect("load staged config");
+    assert!(!persisted.messaging.commands.default_allow);
+    assert!(persisted.messaging.commands.operators.is_empty());
 }
 
 // ─── Failure paths ───

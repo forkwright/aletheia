@@ -44,6 +44,56 @@ async fn update_section_bindings_happy_path() {
 }
 
 #[tokio::test]
+async fn update_section_binding_revoke_is_persisted_but_not_reported_live() {
+    let (state, dir) = test_state().await;
+    {
+        let mut config = state.config.write().await;
+        config.bindings.push(taxis::config::ChannelBinding {
+            channel: "signal".to_owned(),
+            source: "+15550100".to_owned(),
+            nous_id: "syn".to_owned(),
+            session_key: "{source}".to_owned(),
+            account: None,
+            participants: Vec::new(),
+        });
+        taxis::loader::write_config(&state.oikos, &config).unwrap();
+    }
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let response = app
+        .oneshot(authed_request(
+            "PUT",
+            "/api/v1/config/bindings",
+            Some(serde_json::json!([])),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_json(response).await;
+    assert_eq!(
+        body["restart_required"],
+        serde_json::json!(["bindings"]),
+        "the revoked route must be reported as staged/restart-required"
+    );
+    assert_eq!(
+        body["config"][0]["source"], "+15550100",
+        "the response must report the still-effective live router snapshot"
+    );
+
+    let live = state.config.read().await;
+    assert_eq!(live.bindings.len(), 1);
+    assert_eq!(live.bindings[0].source, "+15550100");
+    drop(live);
+
+    let oikos = taxis::oikos::Oikos::from_root(dir.path());
+    let staged = taxis::loader::load_config(&oikos).unwrap();
+    assert!(
+        staged.bindings.is_empty(),
+        "the revoke must remain persisted for the next process start"
+    );
+}
+
+#[tokio::test]
 async fn update_section_feature_flags_happy_path() {
     let (app, _dir) = app().await;
     let req = authed_request(
@@ -228,6 +278,62 @@ async fn concurrent_put_and_reload_leave_the_put_visible_and_persisted() {
     let oikos = taxis::oikos::Oikos::from_root(dir.path());
     let staged = taxis::loader::load_config(&oikos).unwrap();
     assert_eq!(staged.embedding.dimension, 512);
+}
+
+#[tokio::test]
+async fn reload_api_stages_command_revoke_without_reporting_it_hot_applied() {
+    let (state, dir) = test_state().await;
+    {
+        let mut live = state.config.write().await;
+        live.messaging.commands.default_allow = true;
+        live.messaging
+            .commands
+            .operators
+            .push("signal:+15550100".to_owned());
+        taxis::loader::write_config(&state.oikos, &live).unwrap();
+    }
+
+    let mut staged = state.config.read().await.clone();
+    staged.messaging.commands.default_allow = false;
+    staged.messaging.commands.operators.clear();
+    taxis::loader::write_config(&state.oikos, &staged).unwrap();
+
+    let app = build_router(Arc::clone(&state), &test_security_config());
+    let response = app
+        .oneshot(authed_request("POST", "/api/v1/config/reload", None))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = body_json(response).await;
+    assert_eq!(body["hot_reloaded"], 0);
+    let restart_required = body["restart_required"].as_array().unwrap();
+    assert_eq!(restart_required.len(), 2);
+    assert!(
+        restart_required
+            .iter()
+            .any(|path| path.as_str() == Some("messaging.commands.defaultAllow"))
+    );
+    assert!(
+        restart_required
+            .iter()
+            .any(|path| path.as_str() == Some("messaging.commands.operators"))
+    );
+
+    let live = state.config.read().await;
+    assert!(
+        live.messaging.commands.default_allow,
+        "the startup dispatcher still holds the old allow policy"
+    );
+    assert_eq!(
+        live.messaging.commands.operators,
+        vec!["signal:+15550100".to_owned()]
+    );
+    drop(live);
+
+    let oikos = taxis::oikos::Oikos::from_root(dir.path());
+    let persisted = taxis::loader::load_config(&oikos).unwrap();
+    assert!(!persisted.messaging.commands.default_allow);
+    assert!(persisted.messaging.commands.operators.is_empty());
 }
 
 #[tokio::test]

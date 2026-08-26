@@ -93,10 +93,6 @@ pub struct SignalProvider {
     buffer_capacity: usize,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
-    /// Whether raw Signal envelopes are attached to inbound messages
-    /// (`MessagingConfig::retain_raw_payloads`); off by default because the
-    /// raw envelope carries personal identifiers.
-    retain_raw_payloads: bool,
 }
 
 impl SignalProvider {
@@ -117,7 +113,6 @@ impl SignalProvider {
             buffer_capacity: capacity,
             circuit_breaker_threshold: CIRCUIT_BREAKER_THRESHOLD,
             halted_health_check_interval: HALTED_HEALTH_CHECK_INTERVAL,
-            retain_raw_payloads: false,
         }
     }
 
@@ -134,7 +129,6 @@ impl SignalProvider {
             halted_health_check_interval: Duration::from_secs(
                 config.halted_health_check_interval_secs,
             ),
-            retain_raw_payloads: config.retain_raw_payloads,
         }
     }
 
@@ -217,7 +211,6 @@ impl SignalProvider {
                     token,
                     self.circuit_breaker_threshold,
                     self.halted_health_check_interval,
-                    self.retain_raw_payloads,
                 )
                 .instrument(span),
             );
@@ -435,10 +428,6 @@ impl std::fmt::Debug for SignalProvider {
     clippy::too_many_lines,
     reason = "single cohesive state machine: halted-state health check + receive success/error branches share lock acquisition order; splitting would risk the lock dance and obscure the connection-state transitions"
 )]
-#[expect(
-    clippy::too_many_arguments,
-    reason = "poll_loop is one state machine; account identity and raw-payload posture ride with the connection state it drives"
-)]
 async fn poll_loop(
     signal_client: client::SignalClient,
     account_id: String,
@@ -448,7 +437,6 @@ async fn poll_loop(
     cancel: CancellationToken,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
-    retain_raw_payloads: bool,
 ) {
     tracing::info!("polling started");
     loop {
@@ -521,11 +509,7 @@ async fn poll_loop(
                         }
 
                         for env in &envelopes {
-                            if let Some(msg) = envelope::extract_message(
-                                env,
-                                Some(&account_id),
-                                retain_raw_payloads,
-                            ) {
+                            if let Some(msg) = envelope::extract_message(env, Some(&account_id)) {
                                 if tx.send(msg).await.is_err() {
                                     tracing::info!("receiver dropped, stopping poll");
                                     return;
@@ -771,7 +755,6 @@ mod tests {
                 token,
                 CIRCUIT_BREAKER_THRESHOLD,
                 HALTED_HEALTH_CHECK_INTERVAL,
-                false,
             )
             .instrument(tracing::info_span!("test_poll_loop")),
         );

@@ -120,7 +120,9 @@ pub struct AletheiaConfig {
     pub data: DataConfig,
     /// Messaging transport configuration (Signal, etc.).
     pub channels: ChannelsConfig,
-    /// Routes mapping channel sources to nous agents.
+    /// Routes mapping channel sources to nous agents. The runtime builds one
+    /// `MessageRouter` snapshot at startup; changes are staged on disk and
+    /// require a process restart before they alter routing authority.
     pub bindings: Vec<ChannelBinding>,
     /// Operator-controlled feature toggles surfaced through the config API.
     #[serde(rename = "feature_flags")]

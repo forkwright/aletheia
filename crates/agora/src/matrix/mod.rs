@@ -160,10 +160,6 @@ pub struct MatrixProvider {
     /// account resumes from its persisted cursor on startup and checkpoints
     /// after every sync batch.
     cursor_store: Option<Arc<dyn CursorStore>>,
-    /// Whether raw Matrix events are attached to inbound messages
-    /// (`MessagingConfig::retain_raw_payloads`); off by default because the
-    /// raw event carries personal identifiers.
-    retain_raw_payloads: bool,
 }
 
 impl MatrixProvider {
@@ -176,7 +172,6 @@ impl MatrixProvider {
             circuit_breaker_threshold: 5,
             halted_health_check_interval: Duration::from_mins(1),
             cursor_store: None,
-            retain_raw_payloads: false,
         }
     }
 
@@ -191,7 +186,6 @@ impl MatrixProvider {
                 config.halted_health_check_interval_secs,
             ),
             cursor_store: None,
-            retain_raw_payloads: config.retain_raw_payloads,
         }
     }
 
@@ -265,7 +259,6 @@ impl MatrixProvider {
             let ingress_state = Arc::clone(&account.ingress_state);
             let circuit_breaker_threshold = self.circuit_breaker_threshold;
             let halted_health_check_interval = self.halted_health_check_interval;
-            let retain_raw_payloads = self.retain_raw_payloads;
             let span = tracing::info_span!(
                 "matrix_sync",
                 account = %crate::redact::identifier(account_id)
@@ -285,7 +278,6 @@ impl MatrixProvider {
                         circuit_breaker_threshold,
                         halted_health_check_interval,
                         cursor_store,
-                        retain_raw_payloads,
                         ingress_state,
                     )
                     .await;
@@ -450,7 +442,6 @@ async fn sync_loop(
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
     cursor_store: Option<Arc<dyn CursorStore>>,
-    retain_raw_payloads: bool,
     ingress_state: Arc<Mutex<MatrixIngressState>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: probe and the account task share one async state cell
 ) {
     tracing::info!("Matrix sync started");
@@ -502,7 +493,7 @@ async fn sync_loop(
                 *ingress_state.lock().await = MatrixIngressState::Stopped;
                 return;
             }
-            result = sync_once(&client, &tx, &since, user_id.as_deref(), &account_id, cursor_store.as_ref(), retain_raw_payloads) => {
+            result = sync_once(&client, &tx, &since, user_id.as_deref(), &account_id, cursor_store.as_ref()) => {
                 match result {
                     Ok(()) => {
                         consecutive_failures = 0;
@@ -653,7 +644,6 @@ async fn sync_once(
     own_user_id: Option<&str>,
     account_id: &str,
     cursor_store: Option<&Arc<dyn CursorStore>>,
-    retain_raw_payloads: bool,
 ) -> error::Result<()> {
     let since_token = { since.lock().await.clone() };
     let response = client.sync(since_token.as_deref()).await?;
@@ -687,8 +677,7 @@ async fn sync_once(
 
     for (room_id, room) in &response.rooms.join {
         for event in &room.timeline.events {
-            if let Some(message) =
-                extract_message(room_id, event, own_user_id, account_id, retain_raw_payloads)
+            if let Some(message) = extract_message(room_id, event, own_user_id, account_id)
                 && tx.send(message).await.is_err()
             {
                 // WHY: the listener has shut down; returning an error lets
@@ -706,7 +695,6 @@ fn extract_message(
     event: &MatrixEvent,
     own_user_id: Option<&str>,
     account_id: &str,
-    retain_raw: bool,
 ) -> Option<InboundMessage> {
     if event.event_type != "m.room.message" {
         return None;
@@ -743,46 +731,11 @@ fn extract_message(
             0
         }),
         attachments,
-        raw: if retain_raw {
-            Some(retained_raw_event(event))
-        } else {
-            None
-        },
+        // WHY(#5198): built-in transports do not expose raw provider
+        // payloads. A future capture path needs an operator-only, governed
+        // storage and retention design rather than an in-message config flag.
+        raw: None,
     })
-}
-
-fn retained_raw_event(event: &MatrixEvent) -> serde_json::Value {
-    let mut content = event.content.extra.clone();
-    if let Some(msgtype) = &event.content.msgtype {
-        content.insert("msgtype".to_owned(), serde_json::json!(msgtype));
-    }
-    if let Some(body) = &event.content.body {
-        content.insert("body".to_owned(), serde_json::json!(body));
-    }
-
-    let mut raw = event.extra.clone();
-    raw.insert(
-        "type".to_owned(),
-        serde_json::json!(event.event_type.as_str()),
-    );
-    raw.insert(
-        "sender".to_owned(),
-        serde_json::json!(event.sender.as_deref()),
-    );
-    raw.insert(
-        "event_id".to_owned(),
-        serde_json::json!(event.event_id.as_deref()),
-    );
-    raw.insert(
-        "origin_server_ts".to_owned(),
-        serde_json::json!(event.origin_server_ts),
-    );
-    raw.insert("content".to_owned(), serde_json::Value::Object(content));
-    raw.insert(
-        "unsigned".to_owned(),
-        serde_json::json!(event.unsigned.as_ref()),
-    );
-    serde_json::Value::Object(raw)
 }
 
 pub(crate) fn encode_path_segment(value: &str) -> String {
@@ -927,7 +880,6 @@ mod tests {
             &event,
             Some("@bot:example.org"),
             "primary",
-            true,
         )
         .expect("message");
         assert_eq!(msg.channel, "matrix");
@@ -937,34 +889,9 @@ mod tests {
         assert_eq!(msg.message_id.as_deref(), Some("$event"));
         assert_eq!(msg.text, "hello");
         assert_eq!(msg.timestamp, 100);
-        assert!(msg.raw.is_some(), "retain_raw=true keeps the raw event");
-    }
-
-    #[test]
-    fn extract_matrix_message_drops_raw_event_unless_opted_in() {
-        let event: MatrixEvent = serde_json::from_value(serde_json::json!({
-            "type": "m.room.message",
-            "sender": "@alice:example.org",
-            "event_id": "$event",
-            "origin_server_ts": 100,
-            "content": {
-                "msgtype": "m.text",
-                "body": "hello"
-            }
-        }))
-        .expect("event");
-
-        let msg = extract_message(
-            "!room:example.org",
-            &event,
-            Some("@bot:example.org"),
-            "primary",
-            false,
-        )
-        .expect("message");
         assert!(
             msg.raw.is_none(),
-            "raw event must be absent by default (opt-in retention)"
+            "built-in Matrix ingestion must never retain the raw event"
         );
     }
 
@@ -986,8 +913,7 @@ mod tests {
                 "!room:example.org",
                 &event,
                 Some("@bot:example.org"),
-                "primary",
-                true
+                "primary"
             )
             .is_none()
         );
@@ -1132,7 +1058,7 @@ mod tests {
         let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let (tx, _rx) = mpsc::channel::<InboundMessage>(4);
 
-        sync_once(&client, &tx, &since, None, "primary", Some(&store), false)
+        sync_once(&client, &tx, &since, None, "primary", Some(&store))
             .await
             .expect("sync_once");
 
@@ -1248,7 +1174,7 @@ mod tests {
         let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(Some("s0".to_owned())));
         let (tx, mut rx) = mpsc::channel::<InboundMessage>(4);
 
-        let error = sync_once(&client, &tx, &since, None, "primary", Some(&store), false)
+        let error = sync_once(&client, &tx, &since, None, "primary", Some(&store))
             .await
             .expect_err("limited timeline");
 
@@ -1304,7 +1230,7 @@ mod tests {
         let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let (tx, mut rx) = mpsc::channel::<InboundMessage>(4);
 
-        let error = sync_once(&client, &tx, &since, None, "primary", Some(&store), false)
+        let error = sync_once(&client, &tx, &since, None, "primary", Some(&store))
             .await
             .expect_err("cursor save");
 
@@ -1548,7 +1474,6 @@ mod tests {
                 Some(&own_user_id),
                 "primary",
                 None,
-                false,
             )
             .await
         });

@@ -15,7 +15,8 @@ neither hot nor cold.
 | Gateway | 0 | 26 | 0 |
 | Agents | 36 | 0 | 0 |
 | Channels | 0 | 6 | 0 |
-| Bindings | 5 | 0 | 0 |
+| Bindings | 0 | 7 | 0 |
+| Messaging authority | 0 | 5 | 0 |
 | Embedding | 3 | 0 | 0 |
 | Data | 1 | 0 | 0 |
 | Maintenance | 24 | 1 | 4 |
@@ -27,7 +28,7 @@ neither hot nor cold.
 | MCP | 3 | 0 | 0 |
 | Local Provider | 4 | 0 | 0 |
 | Packs | 0 | 1 | 0 |
-| **Total** | **91** | **45** | **4** |
+| **Total** | **86** | **57** | **4** |
 
 ---
 
@@ -120,11 +121,23 @@ neither hot nor cold.
 
 | Config path | Hot/Cold | Reason |
 |-------------|----------|--------|
-| `bindings` | Hot | Route mappings read per-request from config snapshot |
-| `bindings[].channel` | Hot | Channel type evaluated per-message |
-| `bindings[].source` | Hot | Source pattern matched per-message |
-| `bindings[].nousId` | Hot | Target agent resolved per-message |
-| `bindings[].sessionKey` | Hot | Session key pattern evaluated per-message |
+| `bindings` | **Cold** | `MessageRouter` captures one complete binding snapshot at startup |
+| `bindings[].channel` | **Cold** | Channel match authority is part of the startup router snapshot |
+| `bindings[].source` | **Cold** | Source match authority is part of the startup router snapshot |
+| `bindings[].nousId` | **Cold** | Target-agent authority is part of the startup router snapshot |
+| `bindings[].sessionKey` | **Cold** | Session routing is part of the startup router snapshot |
+| `bindings[].account` | **Cold** | Receiving-account scope is part of the startup router snapshot |
+| `bindings[].participants` | **Cold** | Sender allowlist authority is part of the startup router snapshot |
+
+### Messaging authority (`messaging.outbound`, `messaging.commands`)
+
+| Config path | Hot/Cold | Reason |
+|-------------|----------|--------|
+| `messaging.outbound.allowlist` | **Cold** | Channel services clone outbound recipient authority at startup |
+| `messaging.outbound.defaultDeny` | **Cold** | Channel services clone the default-deny posture at startup |
+| `messaging.commands.operators` | **Cold** | The command dispatcher clones operator authority at startup |
+| `messaging.commands.publicCommands` | **Cold** | The command dispatcher clones the public-command set at startup |
+| `messaging.commands.defaultAllow` | **Cold** | The command dispatcher clones the default-allow posture at startup |
 
 ### Embedding (`embedding`)
 
@@ -314,6 +327,16 @@ reloaded config instead.
 
 **Note:** The `channels` prefix covers the entire messaging transport configuration. Signal accounts and their connection parameters are established at server startup. Changes to any channel settings require a restart to re-initialize the transport connections.
 
+### Cold field detail: messaging authority
+
+**Note:** `bindings`, `messaging.outbound`, and `messaging.commands` are registry-declared
+cold prefixes. The runtime constructs `MessageRouter` from a binding clone, gives channel
+services an outbound-policy clone, and gives the command dispatcher a command-policy clone
+at startup. PUT, API reload, and SIGHUP persist a changed policy to disk but retain the old
+live config value and report the changed paths as restart-required. This is especially
+important for revocation: the control plane must never say a route, recipient, or command
+permission was removed while the startup object can still exercise it.
+
 ### Cold field detail: `sandbox`
 
 **Note:** The `sandbox` prefix is cold because the runtime copies `config.sandbox` into an `organon::sandbox::SandboxConfig` while building the tool registry. Hot reload only rebuilds actor `NousConfig` values, not the registry or the sandbox config captured by registered tools. A process restart is required to apply sandbox policy changes.
@@ -344,6 +367,9 @@ reloaded config instead.
 - **Gateway rate limiting** (`gateway.rateLimit.*`, including every `perUser.*` field): enabling, disabling, and changing thresholds all require a restart to take effect — a SIGHUP that changes these values is silently unenforced until the process restarts (#5173)
 - **Request limits**: Body size limits (Axum router configuration)
 - **Channel transports**: Signal messenger configuration and account settings
+- **Inbound routing authority**: `bindings` entries, including account and participant scopes
+- **Outbound recipient authority**: `messaging.outbound.*` allowlist and default-deny policy
+- **Inbound command authority**: `messaging.commands.*` operator, public-command, and default-allow policy
 - **Sandbox policies**: Enforcement mode, egress rules, path allowances
 - **External tool registrations**: `[tools.required]` and `[tools.optional]` entries
 - **Domain packs**: Adding, removing, or changing pack paths or pack contents requires a restart to reload manifests, context files, and pack tools from disk. SIGHUP rebuilds actor configs from the startup snapshot only.

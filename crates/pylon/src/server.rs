@@ -483,8 +483,8 @@ pub(crate) fn apply_reload(
 
     let cold = outcome.diff.cold_changes();
 
-    // WHY: Cold changes (gateway.port, gateway.bind, gateway.tls,
-    // gateway.auth.mode, channels, etc.) take effect only after restart.
+    // WHY: Cold changes (gateway listener/auth, channels, bindings, and
+    // messaging authority policies, etc.) take effect only after restart.
     // Writing them to in-memory config misleads subscribers into seeing
     // values the runtime is not actually using.
     let config_to_apply = if cold.is_empty() {
@@ -531,6 +531,33 @@ pub fn spawn_sighup_handler(state: Arc<AppState>) -> Option<tokio::task::JoinHan
     )
 }
 
+/// Re-read staged config and apply the hot subset for one SIGHUP event.
+///
+/// Keeping the disk-read, diff, and live swap in one callable boundary lets
+/// tests exercise the exact SIGHUP mutation path without sending a process-wide
+/// signal into the test runner.
+#[cfg(unix)]
+pub(crate) async fn apply_sighup_reload(state: &Arc<AppState>) {
+    use axum::extract::FromRef;
+
+    // WHY: the write guard spans read -> prepare -> apply. Config PUT uses
+    // the same guard for its whole transaction, so neither path can compute
+    // from a stale snapshot and then overwrite a newer mutation.
+    let mut current = state.config.write().await;
+    match taxis::reload::prepare_reload(&state.oikos, &current) {
+        Ok(outcome) => {
+            if outcome.diff.is_empty() {
+                info!("config reload: no changes detected");
+            } else {
+                apply_reload(&ConfigState::from_ref(state), &mut current, outcome);
+            }
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "config reload failed, keeping current config");
+        }
+    }
+}
+
 /// Core implementation of [`spawn_sighup_handler`] that accepts a pre-built
 /// signal result.  This allows unit tests to inject failure without relying on
 /// OS-level resource exhaustion.
@@ -539,7 +566,6 @@ pub(crate) fn spawn_sighup_handler_with(
     state: Arc<AppState>,
     signal: std::io::Result<tokio::signal::unix::Signal>,
 ) -> Option<tokio::task::JoinHandle<()>> {
-    use axum::extract::FromRef;
     use tracing::Instrument;
 
     let mut sighup = match signal {
@@ -570,28 +596,7 @@ pub(crate) fn spawn_sighup_handler_with(
                             break;
                         }
                         info!("received SIGHUP, reloading config");
-
-                        // WHY: the write guard spans read -> prepare -> apply.
-                        // Config PUT uses the same guard for its whole transaction,
-                        // so neither path can compute from a stale snapshot and then
-                        // overwrite a newer mutation.
-                        let mut current = state.config.write().await;
-                        match taxis::reload::prepare_reload(&state.oikos, &current) {
-                            Ok(outcome) => {
-                                if outcome.diff.is_empty() {
-                                    info!("config reload: no changes detected");
-                                } else {
-                                    apply_reload(
-                                        &ConfigState::from_ref(&state),
-                                        &mut current,
-                                        outcome,
-                                    );
-                                }
-                            }
-                            Err(e) => {
-                                tracing::error!(error = %e, "config reload failed, keeping current config");
-                            }
-                        }
+                        apply_sighup_reload(&state).await;
                     }
                 }
             }

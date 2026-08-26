@@ -51,16 +51,15 @@ pub struct MessagingConfig {
     /// `aletheia_inbound_handler_saturation_total` counter and the
     /// `aletheia_inbound_handlers_in_flight` gauge.
     pub max_concurrent_handlers: usize,
-    /// Retain the raw provider payload (Signal envelope, Matrix event) on
-    /// inbound messages for diagnostics. Default: `false` — raw payloads
-    /// contain personal identifiers and message metadata, so they are
-    /// captured only when an operator explicitly opts in.
-    pub retain_raw_payloads: bool,
     /// Per-agent outbound-recipient allowlist and default-deny posture,
     /// enforced by `agora::ChannelRegistry::send` before any provider send.
+    /// Channel services clone this policy at startup, so changes require a
+    /// process restart before they alter send authority.
     pub outbound: OutboundMessagePolicy,
     /// Inbound `!`-command authorization: which commands stay public.
-    /// Operational authority is carried by the selected channel binding.
+    /// Operational authority is carried by the selected channel binding. The
+    /// dispatcher clones both at startup, so changes require a process restart
+    /// before they alter command authority.
     pub commands: InboundCommandPolicy,
 }
 
@@ -76,7 +75,6 @@ impl Default for MessagingConfig {
             receive_timeout_secs: DEFAULT_RECEIVE_TIMEOUT_SECS,
             agent_dispatch_timeout_secs: DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS,
             max_concurrent_handlers: 64,
-            retain_raw_payloads: false,
             outbound: OutboundMessagePolicy::default(),
             commands: InboundCommandPolicy::default(),
         }
@@ -85,7 +83,8 @@ impl Default for MessagingConfig {
 
 /// Per-agent outbound-recipient allowlist and default-deny posture for
 /// channel sends (the `message` tool, via `MessageService`, into Agora's
-/// `ChannelRegistry::send`).
+/// `ChannelRegistry::send`). Runtime channel services capture a clone at
+/// startup; policy changes are cold until those services are rebuilt.
 ///
 /// WHY default-deny (#4788): outbound messaging is an external side effect
 /// -- reaching a phone number, Signal group, or Matrix room outside
@@ -154,7 +153,9 @@ pub enum CommandTier {
     Operator,
 }
 
-/// Inbound `!`-command authorization for the public command subset.
+/// Inbound `!`-command authorization for the public command subset. The
+/// dispatcher captures a clone at startup; policy changes are cold until it
+/// is rebuilt.
 ///
 /// WHY default-deny (#5193): any inbound message that parses as a `!`
 /// command is intercepted after routing and can enumerate agents, channel
@@ -235,7 +236,20 @@ const _: () =
 // be the final item in the file.
 #[cfg(test)]
 mod policy_tests {
-    use super::{CommandTier, InboundCommandPolicy, OutboundMessagePolicy};
+    use super::{
+        CommandTier, InboundCommandPolicy, MessagingConfig, OutboundMessagePolicy,
+    };
+
+    #[test]
+    fn raw_payload_retention_is_not_a_public_config_switch() {
+        let result = serde_json::from_value::<MessagingConfig>(serde_json::json!({
+            "retainRawPayloads": true
+        }));
+        assert!(
+            result.is_err(),
+            "raw capture needs a governed operator-only design, not a transport config flag"
+        );
+    }
 
     #[test]
     fn default_denies_unconfigured_sender() {

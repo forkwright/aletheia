@@ -294,8 +294,9 @@ pub async fn get_section(
 ///
 /// Re-reads `aletheia.toml` (and env overrides), validates the result, diffs
 /// against the current in-memory config, applies hot-reloadable changes, and
-/// logs what changed. Cold values (port, bind, TLS, auth mode, channels) are
-/// reported but not applied until restart.
+/// logs what changed. Cold values (port, bind, TLS, auth mode, channels,
+/// bindings, and messaging authority policies) are reported but not applied
+/// until restart.
 ///
 /// # Cancel safety
 ///

@@ -461,9 +461,12 @@ mod tests {
             "gateway.cors",
             "gateway.rateLimit",
             "channels",
+            "bindings",
             "providerBehavior.nonStreamingTimeoutSecs",
             "messaging.pollIntervalMs",
             "messaging.bufferCapacity",
+            "messaging.outbound",
+            "messaging.commands",
             "apiLimits.idempotencyCapacity",
             "workspace.root",
             "sandbox",
@@ -482,6 +485,28 @@ mod tests {
             requires_restart("channels.signal.enabled"),
             "channel enabled should require restart"
         );
+    }
+
+    #[test]
+    fn messaging_authority_requires_restart() {
+        // WHY: the router, channel services, and command dispatcher each
+        // capture a clone of these policies at startup. Treating a revoke as
+        // hot would report authority removed while the old authority remained
+        // usable in the running process.
+        for path in [
+            "bindings",
+            "bindings.channel",
+            "messaging.outbound.allowlist",
+            "messaging.outbound.defaultDeny",
+            "messaging.commands.operators",
+            "messaging.commands.publicCommands",
+            "messaging.commands.defaultAllow",
+        ] {
+            assert!(
+                requires_restart(path),
+                "startup-captured messaging authority {path} must require restart"
+            );
+        }
     }
 
     #[test]
@@ -611,6 +636,88 @@ mod tests {
                 .iter()
                 .any(|c| c.path.contains("gateway.port")),
             "gateway.port should appear in cold changes"
+        );
+    }
+
+    #[test]
+    fn authority_revocations_are_cold_and_preserved_in_live_config() {
+        let mut current = AletheiaConfig::default();
+        current.bindings.push(crate::config::ChannelBinding {
+            channel: "signal".to_owned(),
+            source: "+15550100".to_owned(),
+            nous_id: "syn".to_owned(),
+            session_key: "{source}".to_owned(),
+            account: None,
+            participants: Vec::new(),
+        });
+        current.messaging.outbound.default_deny = false;
+        current
+            .messaging
+            .outbound
+            .allowlist
+            .insert("syn".to_owned(), vec!["+15550100".to_owned()]);
+        current.messaging.commands.default_allow = true;
+        current
+            .messaging
+            .commands
+            .operators
+            .push("signal:+15550100".to_owned());
+
+        let mut staged = current.clone();
+        staged.bindings.clear();
+        staged.messaging.outbound.default_deny = true;
+        staged.messaging.outbound.allowlist.clear();
+        staged.messaging.commands.default_allow = false;
+        staged.messaging.commands.operators.clear();
+        staged.messaging.commands.public_commands = vec!["ping".to_owned()];
+
+        let diff = diff_configs(&current, &staged).unwrap_or_else(|e| panic!("diff configs: {e}"));
+        let cold_paths: std::collections::BTreeSet<&str> = diff
+            .cold_changes()
+            .iter()
+            .map(|change| change.path.as_str())
+            .collect();
+        let expected = std::collections::BTreeSet::from([
+            "bindings",
+            "messaging.commands.defaultAllow",
+            "messaging.commands.operators",
+            "messaging.commands.publicCommands",
+            "messaging.outbound.allowlist.syn",
+            "messaging.outbound.defaultDeny",
+        ]);
+        assert_eq!(cold_paths, expected, "every authority revoke must be cold");
+        assert!(
+            diff.hot_changes().is_empty(),
+            "no startup-captured authority revoke may be reported hot-applied"
+        );
+
+        let live = preserve_restart_required_values(&current, &staged, &diff)
+            .unwrap_or_else(|e| panic!("preserve cold values: {e}"));
+        assert_eq!(live.bindings.len(), 1, "live router keeps its old binding");
+        assert_eq!(live.bindings[0].source, "+15550100");
+        assert!(!live.messaging.outbound.default_deny);
+        assert_eq!(
+            live.messaging.outbound.allowlist.get("syn"),
+            Some(&vec!["+15550100".to_owned()])
+        );
+        assert!(live.messaging.commands.default_allow);
+        assert_eq!(
+            live.messaging.commands.operators,
+            vec!["signal:+15550100".to_owned()]
+        );
+        assert_eq!(
+            live.messaging.commands.public_commands,
+            vec!["help".to_owned(), "ping".to_owned()]
+        );
+
+        assert!(staged.bindings.is_empty(), "the revoke remains staged");
+        assert!(staged.messaging.outbound.default_deny);
+        assert!(staged.messaging.outbound.allowlist.is_empty());
+        assert!(!staged.messaging.commands.default_allow);
+        assert!(staged.messaging.commands.operators.is_empty());
+        assert_eq!(
+            staged.messaging.commands.public_commands,
+            vec!["ping".to_owned()]
         );
     }
 

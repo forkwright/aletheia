@@ -73,17 +73,12 @@ pub struct Attachment {
 /// `account_id` is the provider account that received the envelope, carried
 /// through so multi-account deployments can distinguish identical senders.
 ///
-/// `retain_raw` gates attachment of the raw envelope to the message
-/// (`MessagingConfig::retain_raw_payloads`): the raw payload carries
-/// personal identifiers, so it is captured only on explicit operator opt-in.
-///
 /// Returns `None` for sync messages, receipt messages, typing indicators,
 /// data messages with no text, and messages with no identifiable sender.
 #[must_use]
 pub(crate) fn extract_message(
     envelope: &SignalEnvelope,
     account_id: Option<&str>,
-    retain_raw: bool,
 ) -> Option<InboundMessage> {
     let data = envelope.data_message.as_ref()?;
 
@@ -109,12 +104,6 @@ pub(crate) fn extract_message(
         })
         .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option::unwrap_or_default on Option<Vec<_>> chain; no Result involved
 
-    let raw_value = if retain_raw {
-        serde_json::to_value(envelope).ok() // WHY: optional diagnostic data; serialization failure is non-fatal
-    } else {
-        None
-    };
-
     Some(InboundMessage {
         channel: "signal".to_owned(),
         sender: sender.to_owned(),
@@ -130,7 +119,10 @@ pub(crate) fn extract_message(
             0
         }),
         attachments,
-        raw: raw_value,
+        // WHY(#5198): built-in transports do not expose raw provider
+        // payloads. A future capture path needs an operator-only, governed
+        // storage and retention design rather than an in-message config flag.
+        raw: None,
     })
 }
 
@@ -175,7 +167,7 @@ mod tests {
     #[test]
     fn extract_dm_with_text() {
         let env: SignalEnvelope = serde_json::from_value(dm_envelope()).unwrap();
-        let msg = extract_message(&env, Some("+0000000000"), true).unwrap();
+        let msg = extract_message(&env, Some("+0000000000")).unwrap();
 
         assert_eq!(msg.channel, "signal");
         assert_eq!(msg.sender, "+1234567890");
@@ -185,23 +177,16 @@ mod tests {
         assert_eq!(msg.account_id.as_deref(), Some("+0000000000"));
         assert_eq!(msg.timestamp, 1_709_312_345_678);
         assert!(msg.attachments.is_empty());
-        assert!(msg.raw.is_some());
-    }
-
-    #[test]
-    fn raw_envelope_is_dropped_unless_opted_in() {
-        let env: SignalEnvelope = serde_json::from_value(dm_envelope()).unwrap();
-        let msg = extract_message(&env, Some("+0000000000"), false).unwrap();
         assert!(
             msg.raw.is_none(),
-            "raw payload must be absent by default (opt-in retention)"
+            "built-in Signal ingestion must never retain the raw envelope"
         );
     }
 
     #[test]
     fn extract_group_message() {
         let env: SignalEnvelope = serde_json::from_value(group_envelope()).unwrap();
-        let msg = extract_message(&env, None, false).unwrap();
+        let msg = extract_message(&env, None).unwrap();
 
         assert_eq!(msg.sender, "+1234567890");
         assert_eq!(msg.text, "group hello");
@@ -216,7 +201,7 @@ mod tests {
             "syncMessage": {"sentMessage": {}}
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env, None, false).is_none());
+        assert!(extract_message(&env, None).is_none());
     }
 
     #[test]
@@ -227,7 +212,7 @@ mod tests {
             "receiptMessage": {"type": "DELIVERY"}
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env, None, false).is_none());
+        assert!(extract_message(&env, None).is_none());
     }
 
     #[test]
@@ -238,7 +223,7 @@ mod tests {
             "typingMessage": {"action": "STARTED"}
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env, None, false).is_none());
+        assert!(extract_message(&env, None).is_none());
     }
 
     #[test]
@@ -251,7 +236,7 @@ mod tests {
             }
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env, None, false).is_none());
+        assert!(extract_message(&env, None).is_none());
     }
 
     #[test]
@@ -269,7 +254,7 @@ mod tests {
             }
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        let msg = extract_message(&env, None, false).unwrap();
+        let msg = extract_message(&env, None).unwrap();
 
         assert_eq!(msg.attachments.len(), 2);
         assert_eq!(msg.attachments[0], "photo.jpg");
@@ -286,7 +271,7 @@ mod tests {
             }
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env, None, false).is_none());
+        assert!(extract_message(&env, None).is_none());
     }
 
     #[test]
@@ -339,7 +324,7 @@ mod tests {
         assert!(env.timestamp.is_none());
         assert!(env.sync_message.is_none());
 
-        let msg = extract_message(&env, None, false).unwrap();
+        let msg = extract_message(&env, None).unwrap();
         assert_eq!(msg.text, "hi");
         assert_eq!(msg.timestamp, 0); // no timestamp available: warns at runtime
     }
@@ -354,7 +339,7 @@ mod tests {
             }
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        let msg = extract_message(&env, None, false).unwrap();
+        let msg = extract_message(&env, None).unwrap();
         assert_eq!(msg.timestamp, 1_709_000_000_000);
     }
 }

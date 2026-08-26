@@ -589,7 +589,7 @@ Named Matrix accounts keyed by account label.
 
 *(array of tables)*
 
-Routes mapping channel sources to nous agents.
+Routes mapping channel sources to nous agents. The runtime builds one `MessageRouter` snapshot at startup; changes are staged on disk and require a process restart before they alter routing authority.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -1193,11 +1193,10 @@ Agora messaging transport poll, buffer, and circuit-breaker settings. WHY config
 | `receiveTimeoutSecs` | integer | 15 | Timeout in seconds waiting to receive a Semeion response. |
 | `agentDispatchTimeoutSecs` | integer | 300 | Default timeout in seconds for agent-dispatch tool calls. |
 | `maxConcurrentHandlers` | integer | 64 | Maximum concurrent inbound-message handler tasks. Default: 64. Enforced on the live dispatch path; saturation is observable via the `aletheia_inbound_handler_saturation_total` counter and the `aletheia_inbound_handlers_in_flight` gauge. |
-| `retainRawPayloads` | bool | false | Retain the raw provider payload (Signal envelope, Matrix event) on inbound messages for diagnostics. Default: `false` — raw payloads contain personal identifiers and message metadata, so they are captured only when an operator explicitly opts in. |
 
 ### messaging.outbound
 
-Per-agent outbound-recipient allowlist and default-deny posture, enforced by `agora::ChannelRegistry::send` before any provider send.
+Per-agent outbound-recipient allowlist and default-deny posture, enforced by `agora::ChannelRegistry::send` before any provider send. Channel services clone this policy at startup, so changes require a process restart before they alter send authority.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -1206,7 +1205,7 @@ Per-agent outbound-recipient allowlist and default-deny posture, enforced by `ag
 
 ### messaging.commands
 
-Inbound `!`-command authorization: who may invoke operational commands from a channel, and which commands stay public.
+Inbound `!`-command authorization: who may invoke operational commands from a channel, and which commands stay public. The dispatcher clones this policy at startup, so changes require a process restart before they alter command authority.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -1540,6 +1539,11 @@ The Matrix access token is read from the environment variable named by
 config file or logs.
 
 ### bindings
+
+Bindings are routing authority, not a live-swapped data table. The runtime
+builds one `MessageRouter` snapshot at startup. A config PUT or reload persists
+binding changes for the next start and reports them as restart-required; the
+running router continues using its previous snapshot until the process restarts.
 
 ```toml
 [[bindings]]
