@@ -1,8 +1,6 @@
 //! Configuration resources.
 
-use rmcp::model::{
-    RawResourceTemplate, ReadResourceRequestParams, ResourceContents, ResourceTemplate,
-};
+use rmcp::model::{ReadResourceRequestParams, ResourceContents, ResourceTemplate};
 use snafu::ResultExt as _;
 
 use koina::http::CONTENT_TYPE_JSON;
@@ -12,13 +10,11 @@ use crate::state::DiaporeiaState;
 
 /// Build resource templates for config resources.
 pub(crate) fn resource_templates() -> Vec<ResourceTemplate> {
-    let raw = RawResourceTemplate::new("aletheia://config", "Aletheia Configuration")
-        .with_description("Runtime configuration (sensitive fields redacted)")
-        .with_mime_type(CONTENT_TYPE_JSON);
-    vec![ResourceTemplate {
-        raw,
-        annotations: None,
-    }]
+    vec![
+        ResourceTemplate::new("aletheia://config", "Aletheia Configuration")
+            .with_description("Runtime configuration (sensitive fields redacted)")
+            .with_mime_type(CONTENT_TYPE_JSON),
+    ]
 }
 
 /// Read a configuration resource.

@@ -77,7 +77,7 @@ ROLE_RE = re.compile(
     r"Role::(?P<role>\w+)"
 )
 
-# WHY: resource templates are statically defined as tuples or RawResourceTemplate::new calls.
+# WHY: resource templates are statically defined as tuples or ResourceTemplate::new calls.
 # Parse the WORKSPACE_FILES constant for the nous templates and the config resource separately.
 WORKSPACE_FILES_RE = re.compile(
     r'WORKSPACE_FILES:\s*&\[\s*\(&str,\s*&str,\s*&str\)\]\s*=\s*&\[(.*?)\];',
@@ -86,8 +86,11 @@ WORKSPACE_FILES_RE = re.compile(
 WORKSPACE_TUPLE_RE = re.compile(
     r'\(\s*"(?P<slug>[^"]+)"\s*,\s*"(?P<name>[^"]+)"\s*,\s*"(?P<desc>[^"]+)"\s*,?\s*\)',
 )
+# WHY: rmcp 3.x folded the Raw* wrapper types into their flat counterparts, so
+# the constructor is `ResourceTemplate::new`; the `Raw` prefix stays accepted
+# for older call sites.
 RAW_RESOURCE_TEMPLATE_RE = re.compile(
-    r'RawResourceTemplate::new\(\s*"(?P<uri>[^"]+)"\s*,\s*"(?P<name>[^"]+)"\s*\)'
+    r'(?:Raw)?ResourceTemplate::new\(\s*"(?P<uri>[^"]+)"\s*,\s*"(?P<name>[^"]+)"\s*\)'
     r'(?:.*?\.with_description\(\s*"(?P<desc>[^"]+)"\s*\))?',
     re.DOTALL,
 )

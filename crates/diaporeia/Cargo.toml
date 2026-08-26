@@ -25,7 +25,7 @@ knowledge-store = ["nous/knowledge-store", "mneme/mneme-engine"]
 
 [dependencies]
 # MCP SDK — pin exact per TECHNOLOGY.md policy
-rmcp = { version = "=1.5.0", features = [
+rmcp = { version = "=3.1.4", features = [
     "client",
     "server",
     "macros",
@@ -36,11 +36,10 @@ rmcp = { version = "=1.5.0", features = [
 ] }
 # WARNING: rmcp-macros must carry the same exact pin as rmcp. It is a separate
 # crate reached through a caret requirement, so the pin above does not cover it,
-# and its expansion calls rmcp runtime APIs directly -- rmcp-macros 1.8.0 emits
-# `rmcp::handler::server::common::schema_for_input`, which rmcp 1.5.0 does not
-# export. A lock regeneration that moves one without the other breaks every
-# `#[tool]` site with a missing-function error that names neither crate (#6502).
-rmcp-macros = "=1.5.0"
+# and its expansion calls rmcp runtime APIs directly. A lock regeneration that
+# moves one without the other breaks every `#[tool]` site with a
+# missing-function error that names neither crate (#6502).
+rmcp-macros = "=3.1.4"
 schemars = "1"
 
 # HTTP (for streamable HTTP transport Axum integration, and the outbound

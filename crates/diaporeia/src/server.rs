@@ -8,8 +8,8 @@ use std::sync::Arc;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::model::{
     Implementation, InitializeResult, ListResourceTemplatesResult, ListResourcesResult,
-    RawResource, ReadResourceRequestParams, ReadResourceResult, Resource, ResourceTemplate,
-    ServerCapabilities,
+    ReadResourceRequestParams, ReadResourceResponse, ReadResourceResult, Resource,
+    ResourceTemplate, ServerCapabilities,
 };
 use rmcp::tool_handler;
 
@@ -162,11 +162,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
 
         let mut templates: Vec<ResourceTemplate> = resources::nous::resource_templates();
         templates.extend(resources::config::resource_templates());
-        Ok(ListResourceTemplatesResult {
-            resource_templates: templates,
-            next_cursor: None,
-            meta: None,
-        })
+        Ok(ListResourceTemplatesResult::with_all_items(templates))
     }
 
     async fn list_resources(
@@ -181,12 +177,11 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
 
         // WHY(#4635): Advertise the concrete config resource that is already
         // readable via `read_resource`.
-        resources.push(Resource::new(
-            RawResource::new("aletheia://config", "Aletheia Configuration")
+        resources.push(
+            Resource::new("aletheia://config", "Aletheia Configuration")
                 .with_description("Runtime configuration (sensitive fields redacted)")
                 .with_mime_type("application/json"),
-            None,
-        ));
+        );
 
         // WHY(#4635): Enumerate per-agent workspace files, but only advertise
         // files that actually exist so clients do not discover unreadable URIs.
@@ -202,28 +197,23 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
             for (slug, name, description) in resources::nous::WORKSPACE_FILES {
                 let uri = format!("aletheia://nous/{}/{slug}", agent.id);
                 if resources::nous::resource_exists(self.state.oikos.as_ref(), &uri) {
-                    resources.push(Resource::new(
-                        RawResource::new(uri, *name)
+                    resources.push(
+                        Resource::new(uri, *name)
                             .with_description(*description)
                             .with_mime_type("text/markdown"),
-                        None,
-                    ));
+                    );
                 }
             }
         }
 
-        Ok(ListResourcesResult {
-            resources,
-            next_cursor: None,
-            meta: None,
-        })
+        Ok(ListResourcesResult::with_all_items(resources))
     }
 
     async fn read_resource(
         &self,
         params: ReadResourceRequestParams,
         context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> Result<ReadResourceResult, rmcp::ErrorData> {
+    ) -> Result<ReadResourceResponse, rmcp::ErrorData> {
         let uri = params.uri.as_str();
 
         // WHY(#3337): all MCP resources expose internal state (agent workspace
@@ -244,7 +234,7 @@ impl rmcp::handler::server::ServerHandler for DiaporeiaServer {
             ));
         };
 
-        Ok(ReadResourceResult::new(contents))
+        Ok(ReadResourceResult::new(contents).into())
     }
 }
 

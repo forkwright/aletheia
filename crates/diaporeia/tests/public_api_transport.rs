@@ -274,13 +274,15 @@ async fn router_allows_unauthenticated_requests_in_none_mode() {
 
     // WHY: auth_mode = "none" injects anonymous claims and passes through.
     // Without an `Accept: text/event-stream` header, the downstream MCP
-    // service returns 400 Bad Request for GET requests. The 400 proves the
+    // service returns 406 Not Acceptable for GET requests. The 406 proves the
     // middleware passed the request through — a 401 would indicate rejection.
+    // The Host header is required because the MCP service validates it first.
     let response = router
         .oneshot(
             Request::builder()
                 .method("GET")
                 .uri("/mcp")
+                .header(header::HOST, "localhost")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -289,9 +291,9 @@ async fn router_allows_unauthenticated_requests_in_none_mode() {
 
     assert_eq!(
         response.status(),
-        StatusCode::BAD_REQUEST,
+        StatusCode::NOT_ACCEPTABLE,
         "auth_mode=none must pass the request through to the MCP service, \
-         which returns 400 for GET without an event-stream Accept header"
+         which returns 406 for GET without an event-stream Accept header"
     );
 }
 
@@ -324,15 +326,17 @@ async fn router_rejects_delete_without_session_id() {
     let (state, _jwt, _tmp) = StateBuilder::new().auth_mode("none").build();
     let router = streamable_http_router(state);
 
-    // StreamableHttpService's default stateful mode requires a session ID on
+    // StreamableHttpService's default legacy session mode requires a session ID on
     // DELETE. With no `Mcp-Session-Id` header, the downstream service
     // returns 400. This proves the request passed the auth layer in "none"
-    // mode and reached the protocol layer.
+    // mode and reached the protocol layer. The Host header is set because
+    // the MCP service validates it before session handling.
     let response = router
         .oneshot(
             Request::builder()
                 .method("DELETE")
                 .uri("/mcp")
+                .header(header::HOST, "localhost")
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -375,9 +379,9 @@ async fn router_auth_rejection_precedes_method_handling() {
 #[tokio::test(flavor = "multi_thread")]
 async fn router_valid_token_passes_auth_layer_and_reaches_mcp_service() {
     // WHY: a validly-signed Bearer token must clear the auth middleware and
-    // reach the downstream MCP service. The service then rejects with 400
-    // (missing Accept: text/event-stream + application/json) — proving the
-    // request got past auth but failed at protocol negotiation.
+    // reach the downstream MCP service. The service then rejects with 406
+    // (missing Accept: application/json + text/event-stream) — proving the
+    // request got past auth but failed at protocol content negotiation.
     let (state, jwt, _tmp) = StateBuilder::new().auth_mode("token").build();
     let token = issue_token(&jwt, "alice", Role::Operator);
     let router = streamable_http_router(state);
@@ -387,6 +391,7 @@ async fn router_valid_token_passes_auth_layer_and_reaches_mcp_service() {
             Request::builder()
                 .method("POST")
                 .uri("/mcp")
+                .header(header::HOST, "localhost")
                 .header(header::AUTHORIZATION, format!("Bearer {token}"))
                 .body(Body::empty())
                 .unwrap(),
@@ -396,9 +401,9 @@ async fn router_valid_token_passes_auth_layer_and_reaches_mcp_service() {
 
     assert_eq!(
         response.status(),
-        StatusCode::BAD_REQUEST,
+        StatusCode::NOT_ACCEPTABLE,
         "valid Bearer token must clear auth and reach the MCP service, \
-         which rejects empty POSTs with 400 for missing Accept header"
+         which rejects POSTs with 406 for a missing Accept header"
     );
 }
 
@@ -468,7 +473,7 @@ async fn router_in_none_mode_ignores_authorization_header_when_present() {
     // entirely and inject anonymous claims, regardless of what the client
     // sends in the Authorization header. A malformed Bearer value would fail
     // in token mode but must be ignored here — the request still reaches the
-    // downstream service, which returns 400 for a GET without the expected
+    // downstream service, which returns 406 for a GET without the expected
     // event-stream Accept header.
     let (state, _jwt, _tmp) = StateBuilder::new().auth_mode("none").build();
     let router = streamable_http_router(state);
@@ -478,6 +483,7 @@ async fn router_in_none_mode_ignores_authorization_header_when_present() {
             Request::builder()
                 .method("GET")
                 .uri("/mcp")
+                .header(header::HOST, "localhost")
                 .header(header::AUTHORIZATION, "Bearer totally-invalid-garbage")
                 .body(Body::empty())
                 .unwrap(),
@@ -487,8 +493,8 @@ async fn router_in_none_mode_ignores_authorization_header_when_present() {
 
     assert_eq!(
         response.status(),
-        StatusCode::BAD_REQUEST,
+        StatusCode::NOT_ACCEPTABLE,
         "auth_mode=none must ignore Authorization and pass through to the \
-         MCP service (which returns 400 for GET without Accept: text/event-stream)"
+         MCP service (which returns 406 for GET without Accept: text/event-stream)"
     );
 }

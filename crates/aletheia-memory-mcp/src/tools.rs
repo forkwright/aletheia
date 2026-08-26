@@ -951,9 +951,9 @@ impl MemoryServer {
             .context(SerializationSnafu)
             .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// One-hop graph traversal from a seed fact's linked entities.
@@ -1139,9 +1139,9 @@ impl MemoryServer {
         .context(SerializationSnafu)
         .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Enumerate all `fact_type` buckets (topics) with active-fact counts.
@@ -1227,9 +1227,9 @@ impl MemoryServer {
         .context(SerializationSnafu)
         .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Health and scale stats for the knowledge store backing this server.
@@ -1362,9 +1362,9 @@ impl MemoryServer {
             .context(SerializationSnafu)
             .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Create an agent-authored annotation on an existing fact.
@@ -1535,9 +1535,9 @@ impl MemoryServer {
         .context(SerializationSnafu)
         .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Mark one fact as superseded by another.
@@ -1733,9 +1733,9 @@ impl MemoryServer {
         .context(SerializationSnafu)
         .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 
     /// Soft-delete a fact: mark it as forgotten with a reason.
@@ -1852,9 +1852,9 @@ impl MemoryServer {
         .context(SerializationSnafu)
         .map_err(rmcp::ErrorData::from)?;
 
-        Ok(CallToolResult::success(vec![rmcp::model::Content::text(
-            json,
-        )]))
+        Ok(CallToolResult::success(vec![
+            rmcp::model::ContentBlock::text(json),
+        ]))
     }
 }
 

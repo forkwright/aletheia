@@ -32,7 +32,7 @@ fn router_for(server: DiaporeiaServer) -> axum::Router {
         rmcp::transport::streamable_http_server::session::local::LocalSessionManager::default()
             .into(),
         rmcp::transport::streamable_http_server::StreamableHttpServerConfig::default()
-            .with_stateful_mode(false)
+            .with_legacy_session_mode(false)
             .with_json_response(true),
     );
     axum::Router::new().nest_service("/mcp", service)

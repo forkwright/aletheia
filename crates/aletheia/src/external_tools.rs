@@ -955,14 +955,9 @@ mod tests {
 
     #[cfg(feature = "mcp")]
     fn mcp_tool_with_read_only_hint(hint: Option<bool>) -> rmcp::model::Tool {
-        rmcp::model::Tool {
-            name: "probe".into(),
-            annotations: Some(rmcp::model::ToolAnnotations {
-                read_only_hint: hint,
-                ..Default::default()
-            }),
-            ..Default::default()
-        }
+        let annotations = rmcp::model::ToolAnnotations::from_raw(None, hint, None, None, None);
+        rmcp::model::Tool::new_with_raw("probe", None, serde_json::Map::new())
+            .with_annotations(annotations)
     }
 
     #[cfg(feature = "mcp")]
