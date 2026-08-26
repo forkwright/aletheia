@@ -8,7 +8,7 @@ use tracing::{info, warn};
 
 use crate::error::{self, Result};
 use crate::health::{PackComponent, PackHealth, PackInstanceId, PackIssue, PackReport, Severity};
-use crate::manifest::{self, ContextEntry, OverlayPolicy, PackManifest, Priority};
+use crate::manifest::{self, AgentOverlay, ContextEntry, OverlayPolicy, PackManifest, Priority};
 
 /// Maximum bytes read for a single context file.
 ///
@@ -402,58 +402,67 @@ fn apply_overlay_policy(pack: &mut LoadedPack, policy: &OverlayPolicy) -> Vec<Pa
             }
         }
 
-        if overlay.system_prompt_additions.is_empty() {
-            continue;
-        }
-        if !policy.allow_prompt_additions {
-            let count = overlay.system_prompt_additions.len();
-            overlay.system_prompt_additions.clear();
-            issues.push(PackIssue {
-                component: PackComponent::Overlay,
-                severity: Severity::Warning,
-                message: format!(
-                    "overlay for agent '{agent}': {count} system-prompt addition(s) dropped — \
-                     operator opt-in packOverlays.allowPromptAdditions is not set"
-                ),
-            });
-            continue;
-        }
-
-        let cap = policy.max_prompt_additions_bytes;
-        let mut kept = Vec::with_capacity(overlay.system_prompt_additions.len());
-        let mut total = 0usize;
-        let mut dropped = 0usize;
-        for addition in std::mem::take(&mut overlay.system_prompt_additions) {
-            if total.saturating_add(addition.len()) <= cap {
-                total += addition.len();
-                kept.push(addition);
-            } else {
-                dropped += 1;
-            }
-        }
-        overlay.system_prompt_additions = kept;
-        if dropped > 0 {
-            issues.push(PackIssue {
-                component: PackComponent::Overlay,
-                severity: Severity::Warning,
-                message: format!(
-                    "overlay for agent '{agent}': {dropped} system-prompt addition(s) dropped \
-                     over the {cap}-byte packOverlays.maxPromptAdditionBytes cap"
-                ),
-            });
-        }
-        issues.push(PackIssue {
-            component: PackComponent::Overlay,
-            severity: Severity::Info,
-            message: format!(
-                "overlay for agent '{agent}': {} system-prompt addition(s) permitted and retained \
-                 by operator policy ({total} bytes)",
-                overlay.system_prompt_additions.len()
-            ),
-        });
+        apply_prompt_additions_policy(&agent, overlay, policy, &mut issues);
     }
 
     issues
+}
+
+fn apply_prompt_additions_policy(
+    agent: &str,
+    overlay: &mut AgentOverlay,
+    policy: &OverlayPolicy,
+    issues: &mut Vec<PackIssue>,
+) {
+    if overlay.system_prompt_additions.is_empty() {
+        return;
+    }
+    if !policy.allow_prompt_additions {
+        let count = overlay.system_prompt_additions.len();
+        overlay.system_prompt_additions.clear();
+        issues.push(PackIssue {
+            component: PackComponent::Overlay,
+            severity: Severity::Warning,
+            message: format!(
+                "overlay for agent '{agent}': {count} system-prompt addition(s) dropped — \
+                 operator opt-in packOverlays.allowPromptAdditions is not set"
+            ),
+        });
+        return;
+    }
+
+    let cap = policy.max_prompt_additions_bytes;
+    let mut kept = Vec::with_capacity(overlay.system_prompt_additions.len());
+    let mut total = 0usize;
+    let mut dropped = 0usize;
+    for addition in std::mem::take(&mut overlay.system_prompt_additions) {
+        if total.saturating_add(addition.len()) <= cap {
+            total += addition.len();
+            kept.push(addition);
+        } else {
+            dropped += 1;
+        }
+    }
+    overlay.system_prompt_additions = kept;
+    if dropped > 0 {
+        issues.push(PackIssue {
+            component: PackComponent::Overlay,
+            severity: Severity::Warning,
+            message: format!(
+                "overlay for agent '{agent}': {dropped} system-prompt addition(s) dropped \
+                 over the {cap}-byte packOverlays.maxPromptAdditionBytes cap"
+            ),
+        });
+    }
+    issues.push(PackIssue {
+        component: PackComponent::Overlay,
+        severity: Severity::Info,
+        message: format!(
+            "overlay for agent '{agent}': {} system-prompt addition(s) permitted and retained \
+             by operator policy ({total} bytes)",
+            overlay.system_prompt_additions.len()
+        ),
+    });
 }
 
 /// Resolve a single context entry into a section.
