@@ -204,7 +204,7 @@ impl SignalProvider {
                 .clone();
             let span = tracing::info_span!(
                 "signal_poll",
-                account = %crate::redact::identifier(account_id)
+                account = %crate::redact::identifier(&account_id)
             );
 
             handles.spawn(

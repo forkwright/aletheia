@@ -562,11 +562,14 @@ mod tests {
         }
         drop(tx);
 
+        let max_seen_clone = max_seen.clone();
+        let completed_clone = completed.clone();
+
         listener
             .run(move |_msg| {
                 let active = active.clone();
-                let max_seen = max_seen.clone();
-                let completed = completed.clone();
+                let max_seen = max_seen_clone.clone();
+                let completed = completed_clone.clone();
                 let barrier = barrier.clone();
                 async move {
                     let now = active.fetch_add(1, Ordering::SeqCst) + 1;
