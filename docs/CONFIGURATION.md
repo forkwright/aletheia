@@ -1192,7 +1192,7 @@ Agora messaging transport poll, buffer, and circuit-breaker settings. WHY config
 | `healthTimeoutSecs` | integer | 2 | Timeout in seconds for Semeion health-check requests. |
 | `receiveTimeoutSecs` | integer | 15 | Timeout in seconds waiting to receive a Semeion response. |
 | `agentDispatchTimeoutSecs` | integer | 300 | Default timeout in seconds for agent-dispatch tool calls. |
-| `maxConcurrentHandlers` | integer | 64 | Maximum concurrent inbound-message handler tasks. Default: 64. |
+| `maxConcurrentHandlers` | integer | 64 | Maximum concurrent inbound-message handler tasks. Enforced on the live dispatch path; saturation is observable via the `aletheia_inbound_handler_saturation_total` counter and the `aletheia_inbound_handlers_in_flight` gauge. |
 
 ### messaging.outbound
 

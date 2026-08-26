@@ -173,7 +173,11 @@ impl ChannelListener {
                 while handler_set.len() >= self.max_concurrent_handlers {
                     // Each handler task records its own failure, so we only need
                     // to await a slot here.
+                    crate::metrics::record_inbound_handler_saturation();
                     let _ = handler_set.join_next().await;
+                    crate::metrics::set_inbound_handlers_in_flight(
+                        i64::try_from(handler_set.len()).unwrap_or(i64::MAX),
+                    );
                 }
 
                 let span = info_span!(
@@ -205,6 +209,9 @@ impl ChannelListener {
                         crate::metrics::record_handler_failure(&channel_id);
                     }
                 });
+                crate::metrics::set_inbound_handlers_in_flight(
+                    i64::try_from(handler_set.len()).unwrap_or(i64::MAX),
+                );
             }
         }
 
@@ -215,6 +222,9 @@ impl ChannelListener {
                 tracing::warn!(error = %e, "handler task panicked");
                 crate::metrics::record_handler_failure("_unknown");
             }
+            crate::metrics::set_inbound_handlers_in_flight(
+                i64::try_from(handler_set.len()).unwrap_or(i64::MAX),
+            );
         }
 
         // Drain provider/forwarding handles so provider failures are surfaced.
@@ -507,6 +517,71 @@ mod tests {
             .await;
 
         assert_eq!(count.load(std::sync::atomic::Ordering::Relaxed), 3);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn run_caps_concurrent_handlers_at_configured_limit() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let (tx, rx) = mpsc::channel(16);
+        let listener = ChannelListener::from_parts_with_config(rx, JoinSet::new(), 2);
+
+        let active = std::sync::Arc::new(AtomicUsize::new(0));
+        let max_seen = std::sync::Arc::new(AtomicUsize::new(0));
+        let completed = std::sync::Arc::new(AtomicUsize::new(0));
+        // WHY: Barrier(2) forces overlapping handlers to rendezvous; a
+        // serialized (cap-1) run can never release the barrier, and an
+        // uncapped run would push max_seen past 2.
+        let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
+
+        for i in 0_u64..4 {
+            tx.send(InboundMessage {
+                channel: "signal".to_owned(),
+                sender: format!("+{i}"),
+                sender_name: None,
+                group_id: None,
+                account_id: None,
+                message_id: None,
+                text: format!("flood-{i}"),
+                timestamp: i,
+                attachments: vec![],
+                raw: None,
+            })
+            .await
+            .expect("send");
+        }
+        drop(tx);
+
+        listener
+            .run(move |_msg| {
+                let active = active.clone();
+                let max_seen = max_seen.clone();
+                let completed = completed.clone();
+                let barrier = barrier.clone();
+                async move {
+                    let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                    max_seen.fetch_max(now, Ordering::SeqCst);
+                    // WHY: the timeout converts a would-be deadlock (cap
+                    // broken to serialized execution) into a completed
+                    // handler, so the max_seen assertion below reports the
+                    // regression instead of hanging the test.
+                    let _ = tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        barrier.wait(),
+                    )
+                    .await;
+                    active.fetch_sub(1, Ordering::SeqCst);
+                    completed.fetch_add(1, Ordering::SeqCst);
+                }
+            })
+            .await;
+
+        assert_eq!(completed.load(Ordering::SeqCst), 4);
+        assert_eq!(
+            max_seen.load(Ordering::SeqCst),
+            2,
+            "handler concurrency must reach but never exceed the configured cap"
+        );
     }
 
     #[tokio::test]

@@ -1375,18 +1375,23 @@ pub(super) fn start_inbound_dispatch(
             config.messaging.max_concurrent_handlers,
         );
         info!("channel listeners started");
-        let (rx, _poll_handles) = listener.into_receiver();
 
         let default_nous_id = resolve_default_nous_id(&config.agents.list);
         let router = Arc::new(MessageRouter::new(config.bindings.clone(), default_nous_id));
 
+        // WHY: the dispatcher consumes the listener via `run`, which enforces
+        // max_concurrent_handlers and keeps the poll handles alive for the
+        // dispatcher's lifetime; taking the receiver directly used to bypass
+        // the cap and drop the provider tasks at the end of this block.
         Some(crate::dispatch::spawn_dispatcher(
-            rx,
-            router,
-            Arc::clone(nous_manager),
-            Arc::clone(&channel_registry),
-            session_store,
-            config.messaging.commands.clone(),
+            listener,
+            crate::dispatch::DispatcherParts {
+                router,
+                nous_manager: Arc::clone(nous_manager),
+                channel_registry: Arc::clone(&channel_registry),
+                session_store,
+                command_policy: config.messaging.commands.clone(),
+            },
             ready_rx,
         ))
     };

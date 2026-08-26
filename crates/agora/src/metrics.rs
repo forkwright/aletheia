@@ -67,6 +67,10 @@ static INGRESS_DUPLICATES_TOTAL: LazyLock<Family<IngressDuplicateLabels, Counter
 static CURSOR_CHECKPOINTS_TOTAL: LazyLock<Family<CursorCheckpointLabels, Counter>> =
     LazyLock::new(Family::default);
 
+static INBOUND_HANDLERS_IN_FLIGHT: LazyLock<Gauge> = LazyLock::new(Gauge::default);
+
+static INBOUND_HANDLER_SATURATION_TOTAL: LazyLock<Counter> = LazyLock::new(Counter::default);
+
 // ── Registration ──
 
 /// Register this crate's metrics with the shared registry.
@@ -105,6 +109,16 @@ pub fn register(registry: &mut Registry) {
         "aletheia_cursor_checkpoints",
         "Total provider sync cursor checkpoints persisted",
         CURSOR_CHECKPOINTS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_inbound_handlers_in_flight",
+        "Inbound-message handler tasks currently running",
+        INBOUND_HANDLERS_IN_FLIGHT.clone(),
+    );
+    registry.register(
+        "aletheia_inbound_handler_saturation",
+        "Total times inbound dispatch had to wait for a free handler slot",
+        INBOUND_HANDLER_SATURATION_TOTAL.clone(),
     );
 }
 
@@ -172,6 +186,17 @@ pub(crate) fn record_cursor_checkpoint(channel_id: &str) {
             channel_id: channel_id.to_owned(),
         })
         .inc();
+}
+
+/// Set the number of inbound-message handler tasks currently running.
+pub(crate) fn set_inbound_handlers_in_flight(count: i64) {
+    INBOUND_HANDLERS_IN_FLIGHT.set(count);
+}
+
+/// Record that inbound dispatch had to wait for a free handler slot
+/// (the concurrency cap was reached).
+pub(crate) fn record_inbound_handler_saturation() {
+    INBOUND_HANDLER_SATURATION_TOTAL.inc();
 }
 
 /// Serializes tests that read or write `ACTIVE_SUBSCRIPTIONS` to prevent
@@ -271,5 +296,44 @@ mod tests {
             out.contains("aletheia_command_denied_total{channel_id=\"_test_channel\"} 1"),
             "got: {out}"
         );
+    }
+
+    #[test]
+    fn register_and_record_ingress_duplicate() {
+        let r = fresh_registry();
+        record_ingress_duplicate("_test_channel");
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_ingress_duplicates_total{channel_id=\"_test_channel\"} 1"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_cursor_checkpoint() {
+        let r = fresh_registry();
+        record_cursor_checkpoint("_test_channel");
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_cursor_checkpoints_total{channel_id=\"_test_channel\"} 1"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_handler_saturation_and_in_flight() {
+        let r = fresh_registry();
+        record_inbound_handler_saturation();
+        set_inbound_handlers_in_flight(3);
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_inbound_handler_saturation_total 1"),
+            "got: {out}"
+        );
+        assert!(
+            out.contains("aletheia_inbound_handlers_in_flight 3"),
+            "got: {out}"
+        );
+        set_inbound_handlers_in_flight(0);
     }
 }

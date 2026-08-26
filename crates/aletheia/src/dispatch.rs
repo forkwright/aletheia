@@ -7,12 +7,13 @@ use std::time::Instant;
 use mneme::store::SessionStore;
 use mneme::types::Role;
 use sha2::{Digest as _, Sha256};
-use tokio::sync::{mpsc, watch};
-use tokio::task::{JoinHandle, JoinSet};
+use tokio::sync::watch;
+use tokio::task::JoinHandle;
 use tracing::{Instrument, debug, info, warn};
 
 use agora::command::{self, AgentSnapshot, ChannelSnapshot, CommandContext};
 use agora::dedupe::DedupeFilter;
+use agora::listener::ChannelListener;
 use agora::registry::ChannelRegistry;
 use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
@@ -22,17 +23,25 @@ use taxis::config::InboundCommandPolicy;
 
 const COMMAND_RECORD_SCHEMA: &str = "aletheia.agora.command.v1";
 
+/// Everything the dispatcher loop needs beyond the listener itself.
+pub(crate) struct DispatcherParts {
+    pub router: Arc<MessageRouter>,
+    pub nous_manager: Arc<NousManager>,
+    pub channel_registry: Arc<ChannelRegistry>,
+    pub session_store: Arc<tokio::sync::Mutex<SessionStore>>,
+    pub command_policy: InboundCommandPolicy,
+}
+
 /// Spawn a background task that dispatches inbound messages to nous actors.
 ///
-/// Runs until the receiver channel closes (all senders dropped).
-/// Per-message dispatch tasks are tracked in a `JoinSet` and drained on exit.
+/// Runs until the listener's stream closes (all providers stopped).
+/// Dispatch goes through [`ChannelListener::run`], so the configured
+/// `MessagingConfig::max_concurrent_handlers` cap bounds in-flight dispatch
+/// tasks on this path — before, the runtime consumed the receiver directly
+/// and spawned one unbounded task per message.
 pub(crate) fn spawn_dispatcher(
-    mut rx: mpsc::Receiver<InboundMessage>,
-    router: Arc<MessageRouter>,
-    nous_manager: Arc<NousManager>,
-    channel_registry: Arc<ChannelRegistry>,
-    session_store: Arc<tokio::sync::Mutex<SessionStore>>,
-    command_policy: InboundCommandPolicy,
+    listener: ChannelListener,
+    parts: DispatcherParts,
     mut ready_rx: watch::Receiver<bool>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!("message_dispatcher");
@@ -46,7 +55,7 @@ pub(crate) fn spawn_dispatcher(
             }
             info!("dispatch loop started");
 
-            let mut in_flight = JoinSet::new();
+            let parts = Arc::new(parts);
             // WHY: providers can redeliver after restarts, retries, or cursor
             // resets; a bounded remember-set drops repeat sightings before any
             // agent work is scheduled.
@@ -54,50 +63,31 @@ pub(crate) fn spawn_dispatcher(
                 agora::dedupe::DEFAULT_DEDUPE_CAPACITY,
             )));
 
-            while let Some(msg) = rx.recv().await {
-                let router = Arc::clone(&router);
-                let nous_mgr = Arc::clone(&nous_manager);
-                let channels = Arc::clone(&channel_registry);
-                let session_store = Arc::clone(&session_store);
-                let command_policy = command_policy.clone();
-                let dedupe = Arc::clone(&dedupe);
-                let msg_span = tracing::info_span!(
-                    "dispatch",
-                    channel = %msg.channel,
-                    sender = %msg.sender,
-                    account = %msg.account_id.as_deref().unwrap_or("default"),
-                );
-                in_flight.spawn(
-                    dispatch_one(
-                        msg,
-                        router,
-                        nous_mgr,
-                        channels,
-                        session_store,
-                        command_policy,
-                        dedupe,
-                    )
-                    .instrument(msg_span),
-                );
-
-                // WHY: Reap completed tasks periodically to prevent unbounded growth.
-                while let Some(result) = in_flight.try_join_next() {
-                    if let Err(e) = result {
-                        warn!(error = %e, "dispatch task panicked");
+            listener
+                .run(move |msg| {
+                    let parts = Arc::clone(&parts);
+                    let dedupe = Arc::clone(&dedupe);
+                    let msg_span = tracing::info_span!(
+                        "dispatch",
+                        channel = %msg.channel,
+                        sender = %msg.sender,
+                        account = %msg.account_id.as_deref().unwrap_or("default"),
+                    );
+                    async move {
+                        dispatch_one(
+                            msg,
+                            Arc::clone(&parts.router),
+                            Arc::clone(&parts.nous_manager),
+                            Arc::clone(&parts.channel_registry),
+                            Arc::clone(&parts.session_store),
+                            parts.command_policy.clone(),
+                            dedupe,
+                        )
+                        .instrument(msg_span)
+                        .await;
                     }
-                }
-            }
-
-            // WHY: Drain remaining in-flight dispatch tasks before exiting.
-            info!(
-                remaining = in_flight.len(),
-                "dispatch loop draining in-flight tasks"
-            );
-            while let Some(result) = in_flight.join_next().await {
-                if let Err(e) = result {
-                    warn!(error = %e, "dispatch task panicked during drain");
-                }
-            }
+                })
+                .await;
 
             info!("dispatch loop stopped");
         }
@@ -907,7 +897,8 @@ mod tests {
     use organon::types::{BlackboardStore, ToolHttpClients, ToolServices};
     use taxis::config::ChannelBinding;
     use taxis::oikos::Oikos;
-    use tokio::sync::Mutex;
+    use tokio::sync::{Mutex, mpsc};
+    use tokio::task::JoinSet;
 
     use super::*;
 
