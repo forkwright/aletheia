@@ -89,11 +89,7 @@ static SIGNAL_CAPABILITIES: ChannelCapabilities = ChannelCapabilities {
     max_text_length: 2000,
 };
 
-/// Signal channel provider implementing `ChannelProvider`.
-///
-/// Manages multiple Signal accounts, each backed by a `SignalClient`.
-/// Tracks connection state per account with reconnect backoff and
-/// outbound message buffering during disconnection.
+/// One configured Signal account and its private wire identity.
 #[derive(Clone)]
 struct SignalAccount {
     client: client::SignalClient,
@@ -104,6 +100,11 @@ struct SignalAccount {
     auto_start: bool,
 }
 
+/// Signal channel provider implementing `ChannelProvider`.
+///
+/// Manages multiple Signal accounts, each backed by a `SignalClient`.
+/// Tracks connection state per account with reconnect backoff and
+/// outbound message buffering during disconnection.
 pub struct SignalProvider {
     /// Stable logical labels used by routing and inbound attribution.
     accounts: HashMap<String, SignalAccount>,

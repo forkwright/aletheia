@@ -1202,7 +1202,7 @@ pub(super) fn build_signal_provider(
         match SignalClient::with_timeouts(&base_url, rpc_timeout, health_timeout, receive_timeout) {
             Ok(client) => {
                 provider.add_account(
-                    account_id.clone(),
+                    account_id.to_owned(),
                     wire_account,
                     client,
                     account_cfg.auto_start,

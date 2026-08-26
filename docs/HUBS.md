@@ -75,12 +75,14 @@ Navigation index for concepts that touch many components.
 **Components:**
 - `hermeneus::provider::LlmProvider` - trait for `complete()` / `complete_streaming()`
 - `taxis::config::behavior::provider::LlmProviderConfig` - model list, deployment target, cache mode
-- `agora::types::ChannelProvider` - trait for Signal and future channel integrations
+- `agora::types::ChannelProvider` - trait implemented by the first-class Signal and Matrix channel integrations
 
 **Contracts:**
 - `LlmProvider` is object-safe via boxed futures; `ProviderRegistry` tracks per-model health
 - `LlmProviderConfig` includes `deployment_target` (restricts accepted data classifications)
 - `ChannelProvider` is object-safe via `Pin<Box<dyn Future>>` and stored as `Arc<dyn ChannelProvider>`
+- Built-in providers normalize inbound messages with `raw = None`; each provider-account polling task owns its active-subscription gauge contribution
+- Matrix checkpoints an accepted sync batch before forwarding it, then resumes from the persisted cursor after restart
 
 **Known mismatches:** `hermeneus` and `agora` both use "Provider" but are unrelated abstractions (LLM inference vs external messaging).
 
@@ -137,6 +139,7 @@ Navigation index for concepts that touch many components.
 **Contracts:**
 - Agent config cascades through three tiers: `nous/{id}/` → `shared/` → `theke/` (`taxis::cascade`)
 - Each agent has its own tokio actor with sequential turn processing and panic boundary
-- Routing priority: exact group binding > exact source binding > channel wildcard > global default
+- Routing priority: exact group binding > exact direct-message sender > channel wildcard > global default; equal-specificity conflicts fail closed
+- Only an exact account-scoped direct-message binding can grant Operator commands; group, wildcard, and global routes are clamped to Public
 
 **Known mismatches:** none

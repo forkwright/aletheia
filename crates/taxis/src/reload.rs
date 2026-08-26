@@ -496,11 +496,11 @@ mod tests {
         for path in [
             "bindings",
             "bindings.channel",
+            "bindings.sourceKind",
+            "bindings.commandTier",
             "messaging.outbound.allowlist",
             "messaging.outbound.defaultDeny",
-            "messaging.commands.operators",
             "messaging.commands.publicCommands",
-            "messaging.commands.defaultAllow",
         ] {
             assert!(
                 requires_restart(path),
@@ -647,8 +647,10 @@ mod tests {
             source: "+15550100".to_owned(),
             nous_id: "syn".to_owned(),
             session_key: "{source}".to_owned(),
-            account: None,
+            account: Some("primary".to_owned()),
+            source_kind: Some(crate::config::ChannelSourceKind::Direct),
             participants: Vec::new(),
+            command_tier: crate::config::CommandTier::Operator,
         });
         current.messaging.outbound.default_deny = false;
         current
@@ -656,19 +658,10 @@ mod tests {
             .outbound
             .allowlist
             .insert("syn".to_owned(), vec!["+15550100".to_owned()]);
-        current.messaging.commands.default_allow = true;
-        current
-            .messaging
-            .commands
-            .operators
-            .push("signal:+15550100".to_owned());
-
         let mut staged = current.clone();
         staged.bindings.clear();
         staged.messaging.outbound.default_deny = true;
         staged.messaging.outbound.allowlist.clear();
-        staged.messaging.commands.default_allow = false;
-        staged.messaging.commands.operators.clear();
         staged.messaging.commands.public_commands = vec!["ping".to_owned()];
 
         let diff = diff_configs(&current, &staged).unwrap_or_else(|e| panic!("diff configs: {e}"));
@@ -679,8 +672,6 @@ mod tests {
             .collect();
         let expected = std::collections::BTreeSet::from([
             "bindings",
-            "messaging.commands.defaultAllow",
-            "messaging.commands.operators",
             "messaging.commands.publicCommands",
             "messaging.outbound.allowlist.syn",
             "messaging.outbound.defaultDeny",
@@ -695,15 +686,14 @@ mod tests {
             .unwrap_or_else(|e| panic!("preserve cold values: {e}"));
         assert_eq!(live.bindings.len(), 1, "live router keeps its old binding");
         assert_eq!(live.bindings[0].source, "+15550100");
+        assert_eq!(
+            live.bindings[0].command_tier,
+            crate::config::CommandTier::Operator
+        );
         assert!(!live.messaging.outbound.default_deny);
         assert_eq!(
             live.messaging.outbound.allowlist.get("syn"),
             Some(&vec!["+15550100".to_owned()])
-        );
-        assert!(live.messaging.commands.default_allow);
-        assert_eq!(
-            live.messaging.commands.operators,
-            vec!["signal:+15550100".to_owned()]
         );
         assert_eq!(
             live.messaging.commands.public_commands,
@@ -713,8 +703,6 @@ mod tests {
         assert!(staged.bindings.is_empty(), "the revoke remains staged");
         assert!(staged.messaging.outbound.default_deny);
         assert!(staged.messaging.outbound.allowlist.is_empty());
-        assert!(!staged.messaging.commands.default_allow);
-        assert!(staged.messaging.commands.operators.is_empty());
         assert_eq!(
             staged.messaging.commands.public_commands,
             vec!["ping".to_owned()]

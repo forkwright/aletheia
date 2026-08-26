@@ -332,25 +332,60 @@ enabled = true
 
 [channels.signal.accounts.default]
 account = "+15551234567" <!-- pii-allow: NANP 555 reserved-for-fiction number, doc example -->
-http_host = "localhost"
-http_port = 8080
+httpHost = "localhost"
+httpPort = 8080
 
 [[bindings]]
 channel = "signal"
 source = "*"
-nous_id = "pronoea"
+nousId = "pronoea"
+
+# Optional operational-command grant for one exact sender in a direct message.
+[[bindings]]
+channel = "signal"
+account = "default"
+source = "+15557654321" <!-- pii-allow: NANP 555 reserved-for-fiction number, doc example -->
+sourceKind = "direct"
+commandTier = "operator"
+nousId = "pronoea"
 ```
 
 4. Restart the server. Send a message to your Signal number.
 
 The `source = "*"` wildcard routes every inbound Signal message to the
-agent. It does **not** grant the operational `!`-command surface: commands
-such as `!agents`, `!channels`, or `!blackboard` are denied unless the
-sender is named in `[messaging.commands] operators` (see
-[CONFIGURATION.md](CONFIGURATION.md#messagingcommands)). Only `!help` and
-`!ping` are public by default.
+agent but remains at the Public command tier. Only the separate exact,
+account-scoped `sourceKind = "direct"` binding can grant operational commands;
+groups, wildcards, and global defaults cannot. Only `!help` and `!ping` are
+public by default (see [CONFIGURATION.md](CONFIGURATION.md#messagingcommands)).
 
-See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for the supported Signal account fields and multi-account setup. DM/group gating, mention requirements, read receipts, and message chunking are not enforced by the Aletheia runtime today; configure those behaviors in signal-cli directly.
+See [CONFIGURATION.md](CONFIGURATION.md#channelssignal) for the supported Signal account fields and multi-account setup. Bindings enforce account, direct/group, participant, and command-tier authority. Provider-native mention requirements, read receipts, and message chunking remain signal-cli concerns. Normalized ingress never retains the raw provider envelope. Changes to channel accounts, bindings, outbound policy, or command policy require a restart.
+
+### Matrix messaging
+
+Matrix is a first-class channel provider. Put the access token in the named
+environment variable, then configure an account and a route:
+
+```toml
+[channels.matrix]
+enabled = true
+
+[channels.matrix.accounts.default]
+homeserver = "https://matrix.example.org"
+accessTokenEnv = "ALETHEIA_MATRIX_TOKEN"
+userId = "@aletheia:example.org"
+autoStart = true
+
+[[bindings]]
+channel = "matrix"
+account = "default"
+source = "*"
+nousId = "pronoea"
+```
+
+The Matrix sync cursor is checkpointed only after an accepted batch, then
+resumed from the instance data directory on restart. The wildcard route above
+is Public; use the same exact account-scoped direct binding shape shown for
+Signal to grant an individual sender Operator commands.
 
 ---
 
@@ -413,7 +448,7 @@ fuser -k 18789/tcp    # kill the process on that port
 
 ### Auth mode `none` rejects mutations with the default role
 
-When `gateway.auth.mode = "none"`, the role assigned to all requests is controlled by `gateway.auth.none_role`. The compiled default is `"readonly"` -- only dashboard reads will work; sessions, messages, and config changes are rejected. This is deliberate: a browser-facing `auth.mode = "none"` instance must not default to full-privilege access (a page opened in the same browser as the operator could otherwise reach it). Set `none_role` explicitly if you want a no-auth instance to accept mutations.
+When `gateway.auth.mode = "none"`, the role assigned to all requests is controlled by `gateway.auth.noneRole`. The compiled default is `"readonly"` -- only dashboard reads will work; sessions, messages, and config changes are rejected. This is deliberate: a browser-facing `auth.mode = "none"` instance must not default to full-privilege access (a page opened in the same browser as the operator could otherwise reach it). Set `noneRole` explicitly if you want a no-auth instance to accept mutations.
 
 Fix: set the role you actually want in your config:
 

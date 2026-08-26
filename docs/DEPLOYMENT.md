@@ -275,8 +275,8 @@ Then enable in config:
 ```toml
 [gateway.tls]
 enabled = true
-cert_path = "config/tls/cert.pem"
-key_path = "config/tls/key.pem"
+certPath = "config/tls/cert.pem"
+keyPath = "config/tls/key.pem"
 ```
 
 ---
@@ -545,8 +545,8 @@ enabled = true
 
 [channels.signal.accounts.default]
 account = "+1XXXXXXXXXX"
-http_host = "localhost"
-http_port = 8080
+httpHost = "localhost"
+httpPort = 8080
 ```
 
 4. Add a binding to route messages to an agent:
@@ -555,8 +555,26 @@ http_port = 8080
 [[bindings]]
 channel = "signal"
 source = "*"
-nous_id = "main"
+nousId = "main"
 ```
+
+That wildcard route is Public. Grant operational commands only with a
+separate exact sender binding that also names the receiving account and proves
+the message is direct:
+
+```toml
+[[bindings]]
+channel = "signal"
+account = "default"
+source = "+1OPERATORSENDER"
+sourceKind = "direct"
+commandTier = "operator"
+nousId = "main"
+```
+
+Group, wildcard, and global routes remain Public. Built-in providers normalize
+ingress without retaining raw provider payloads. Channel, binding, outbound,
+and command-policy changes are cold and require a process restart.
 
 ---
 
@@ -575,9 +593,15 @@ enabled = true
 [channels.matrix.accounts.default]
 homeserver = "https://matrix.example.org"
 # Name of the environment variable that holds the Matrix access token.
-access_token_env = "ALETHEIA_MATRIX_TOKEN"
-user_id = "@aletheia:example.org"
-auto_start = true
+accessTokenEnv = "ALETHEIA_MATRIX_TOKEN"
+userId = "@aletheia:example.org"
+autoStart = true
+
+[[bindings]]
+channel = "matrix"
+account = "default"
+source = "*"
+nousId = "main"
 ```
 
 See [CONFIGURATION.md](CONFIGURATION.md) for the full `[channels.matrix]` field reference.

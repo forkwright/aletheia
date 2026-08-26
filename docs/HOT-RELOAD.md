@@ -14,9 +14,9 @@ neither hot nor cold.
 |----------|-----------|-------------|----------|
 | Gateway | 0 | 26 | 0 |
 | Agents | 36 | 0 | 0 |
-| Channels | 0 | 6 | 0 |
-| Bindings | 0 | 7 | 0 |
-| Messaging authority | 0 | 5 | 0 |
+| Channels | 0 | 17 | 0 |
+| Bindings | 0 | 9 | 0 |
+| Messaging authority | 0 | 3 | 0 |
 | Embedding | 3 | 0 | 0 |
 | Data | 1 | 0 | 0 |
 | Maintenance | 24 | 1 | 4 |
@@ -28,7 +28,7 @@ neither hot nor cold.
 | MCP | 3 | 0 | 0 |
 | Local Provider | 4 | 0 | 0 |
 | Packs | 0 | 1 | 0 |
-| **Total** | **86** | **57** | **4** |
+| **Total** | **86** | **68** | **4** |
 
 ---
 
@@ -112,10 +112,21 @@ neither hot nor cold.
 |-------------|----------|--------|
 | `channels.signal.enabled` | **Cold** | Signal channel lifecycle managed at startup |
 | `channels.signal.accounts` | **Cold** | Account connections established at startup |
+| `channels.signal.accounts[].name` | **Cold** | Operator-facing account label is captured for startup diagnostics |
 | `channels.signal.accounts[].enabled` | **Cold** | Account state managed at startup |
+| `channels.signal.accounts[].account` | **Cold** | Private signal-cli wire selector is captured when the account is registered |
 | `channels.signal.accounts[].httpHost` | **Cold** | signal-cli connection established at startup |
 | `channels.signal.accounts[].httpPort` | **Cold** | Port binding requires restart |
+| `channels.signal.accounts[].cliPath` | **Cold** | signal-cli startup diagnostic path is resolved once at startup |
 | `channels.signal.accounts[].autoStart` | **Cold** | Receive loop lifecycle managed at startup |
+| `channels.matrix.enabled` | **Cold** | Matrix channel lifecycle managed at startup |
+| `channels.matrix.accounts` | **Cold** | Account clients and sync tasks are established at startup |
+| `channels.matrix.accounts[].enabled` | **Cold** | Account state managed at startup |
+| `channels.matrix.accounts[].homeserver` | **Cold** | Matrix client endpoint captured at startup |
+| `channels.matrix.accounts[].accessTokenEnv` | **Cold** | Credential environment lookup and client authentication happen at startup |
+| `channels.matrix.accounts[].userId` | **Cold** | Self-message filtering identity captured by the account task |
+| `channels.matrix.accounts[].autoStart` | **Cold** | Sync-loop lifecycle managed at startup |
+| `channels.matrix.accounts[].initialSince` | **Cold** | Initial cursor is consumed when the account task starts |
 
 ### Bindings (`bindings`)
 
@@ -127,7 +138,9 @@ neither hot nor cold.
 | `bindings[].nousId` | **Cold** | Target-agent authority is part of the startup router snapshot |
 | `bindings[].sessionKey` | **Cold** | Session routing is part of the startup router snapshot |
 | `bindings[].account` | **Cold** | Receiving-account scope is part of the startup router snapshot |
+| `bindings[].sourceKind` | **Cold** | Direct/group identity shape is part of the startup router snapshot |
 | `bindings[].participants` | **Cold** | Sender allowlist authority is part of the startup router snapshot |
+| `bindings[].commandTier` | **Cold** | Route-bound command authority is part of the startup router snapshot |
 
 ### Messaging authority (`messaging.outbound`, `messaging.commands`)
 
@@ -135,9 +148,7 @@ neither hot nor cold.
 |-------------|----------|--------|
 | `messaging.outbound.allowlist` | **Cold** | Channel services clone outbound recipient authority at startup |
 | `messaging.outbound.defaultDeny` | **Cold** | Channel services clone the default-deny posture at startup |
-| `messaging.commands.operators` | **Cold** | The command dispatcher clones operator authority at startup |
 | `messaging.commands.publicCommands` | **Cold** | The command dispatcher clones the public-command set at startup |
-| `messaging.commands.defaultAllow` | **Cold** | The command dispatcher clones the default-allow posture at startup |
 
 ### Embedding (`embedding`)
 
@@ -325,12 +336,13 @@ reloaded config instead.
 
 ### Cold field detail: `channels`
 
-**Note:** The `channels` prefix covers the entire messaging transport configuration. Signal accounts and their connection parameters are established at server startup. Changes to any channel settings require a restart to re-initialize the transport connections.
+**Note:** The `channels` prefix covers the entire messaging transport configuration. Signal and Matrix accounts, clients, receive tasks, and connection parameters are established at server startup. Changes to any channel settings require a restart to re-initialize the transport connections.
 
 ### Cold field detail: messaging authority
 
 **Note:** `bindings`, `messaging.outbound`, and `messaging.commands` are registry-declared
-cold prefixes. The runtime constructs `MessageRouter` from a binding clone, gives channel
+cold prefixes. The runtime constructs `MessageRouter` from a binding clone (including
+its direct/group identity shape and command tier), gives channel
 services an outbound-policy clone, and gives the command dispatcher a command-policy clone
 at startup. PUT, API reload, and SIGHUP persist a changed policy to disk but retain the old
 live config value and report the changed paths as restart-required. This is especially
@@ -366,10 +378,10 @@ permission was removed while the startup object can still exercise it.
 - **CSRF protection**: Enabling/disabling CSRF middleware
 - **Gateway rate limiting** (`gateway.rateLimit.*`, including every `perUser.*` field): enabling, disabling, and changing thresholds all require a restart to take effect — a SIGHUP that changes these values is silently unenforced until the process restarts (#5173)
 - **Request limits**: Body size limits (Axum router configuration)
-- **Channel transports**: Signal messenger configuration and account settings
-- **Inbound routing authority**: `bindings` entries, including account and participant scopes
+- **Channel transports**: Signal and Matrix messenger configuration and account settings
+- **Inbound routing authority**: `bindings` entries, including account, source-kind, participant, and command-tier scopes
 - **Outbound recipient authority**: `messaging.outbound.*` allowlist and default-deny policy
-- **Inbound command authority**: `messaging.commands.*` operator, public-command, and default-allow policy
+- **Inbound command authority**: `messaging.commands.publicCommands` controls only the safe public subset. Operational authority comes from an exact account-scoped binding with `sourceKind = "direct"` and `commandTier = "operator"`; group, wildcard, and global routes remain Public.
 - **Sandbox policies**: Enforcement mode, egress rules, path allowances
 - **External tool registrations**: `[tools.required]` and `[tools.optional]` entries
 - **Domain packs**: Adding, removing, or changing pack paths or pack contents requires a restart to reload manifests, context files, and pack tools from disk. SIGHUP rebuilds actor configs from the startup snapshot only.

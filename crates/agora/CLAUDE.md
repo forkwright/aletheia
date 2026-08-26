@@ -2,11 +2,11 @@
 
 ## At a glance
 
-Channel registry and Signal provider for external messaging. Depends on koina and taxis. Entry point: `src/lib.rs` (ChannelListener, ChannelRegistry, MessageRouter).
+Channel registry plus first-class Signal and Matrix providers for external messaging. Depends on koina and taxis. Entry point: `src/lib.rs` (ChannelListener, ChannelRegistry, MessageRouter).
 
 ## Depth
 
-Channel registry and provider implementations for external messaging (Signal). 3K lines.
+Channel registry and provider implementations for external messaging (Signal and Matrix).
 
 ## Read first
 
@@ -14,7 +14,8 @@ Channel registry and provider implementations for external messaging (Signal). 3
 2. `src/registry.rs`: ChannelRegistry (name-based provider dispatch with metrics)
 3. `src/router.rs`: MessageRouter (inbound message routing to nous agents)
 4. `src/semeion/mod.rs`: SignalProvider (Signal channel implementation)
-5. `src/listener.rs`: ChannelListener (merges inbound messages from all providers)
+5. `src/matrix/mod.rs`: MatrixProvider (Matrix Client-Server API implementation)
+6. `src/listener.rs`: ChannelListener (merges inbound messages from all providers)
 
 ## Key types
 
@@ -27,19 +28,23 @@ Channel registry and provider implementations for external messaging (Signal). 3
 | `InboundMessage` | `types.rs` | Normalized inbound message from any channel |
 | `SignalProvider` | `semeion/mod.rs` | Signal channel: multi-account, JSON-RPC to signal-cli daemon |
 | `SignalClient` | `semeion/client.rs` | HTTP client for signal-cli JSON-RPC API |
+| `MatrixProvider` | `matrix/mod.rs` | Matrix channel: multi-account Client-Server API sync/send |
 | `RouteDecision` | `router.rs` | Resolved routing target: `nous_id` + `session_key` + `MatchReason` |
 
 ## Patterns
 
 - **Provider trait**: object-safe via `Pin<Box<dyn Future>>`, stored as `Arc<dyn ChannelProvider>`.
 - **Routing priority**: exact group binding > exact source binding > channel wildcard > global default.
+- **Command authority**: only an exact account-scoped direct-message binding can resolve to Operator; group, wildcard, and global routes are Public.
+- **Ingress privacy**: built-in provider normalization sets `raw = None`; no transport config switch retains provider envelopes.
 - **Connection resilience**: `AccountState` buffers outbound messages during disconnects, exponential reconnect backoff.
-- **Listener cleanup**: abort callbacks registered at spawn time via `CleanupRegistry`, disarmed by `into_receiver()`.
+- **Listener cleanup**: `JoinSet` owns provider and forwarding tasks; accepted handlers drain before shutdown.
+- **Subscription metrics**: each Signal/Matrix account task owns one `ActiveSubscriptionGuard`; the listener never counts the aggregate again.
 
 ## Recent substrate notes
 
 - Channel capabilities must report only behavior actually implemented by the provider; Signal claims were intentionally narrowed.
-- Listener cleanup uses registered abort callbacks and disarms them when ownership moves to the receiver.
+- Matrix checkpoints an accepted sync batch before forwarding it, so restart cannot replay an already-accepted batch.
 
 ## Common tasks
 

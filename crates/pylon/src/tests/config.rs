@@ -54,7 +54,9 @@ async fn update_section_binding_revoke_is_persisted_but_not_reported_live() {
             nous_id: "syn".to_owned(),
             session_key: "{source}".to_owned(),
             account: None,
+            source_kind: None,
             participants: Vec::new(),
+            command_tier: taxis::config::CommandTier::Public,
         });
         taxis::loader::write_config(&state.oikos, &config).unwrap();
     }
@@ -285,17 +287,22 @@ async fn reload_api_stages_command_revoke_without_reporting_it_hot_applied() {
     let (state, dir) = test_state().await;
     {
         let mut live = state.config.write().await;
-        live.messaging.commands.default_allow = true;
-        live.messaging
-            .commands
-            .operators
-            .push("signal:+15550100".to_owned());
+        live.bindings.push(taxis::config::ChannelBinding {
+            channel: "signal".to_owned(),
+            source: "+15550100".to_owned(),
+            nous_id: "syn".to_owned(),
+            session_key: "{source}".to_owned(),
+            account: Some("primary".to_owned()),
+            source_kind: Some(taxis::config::ChannelSourceKind::Direct),
+            participants: Vec::new(),
+            command_tier: taxis::config::CommandTier::Operator,
+        });
         taxis::loader::write_config(&state.oikos, &live).unwrap();
     }
 
     let mut staged = state.config.read().await.clone();
-    staged.messaging.commands.default_allow = false;
-    staged.messaging.commands.operators.clear();
+    staged.bindings.clear();
+    staged.messaging.commands.public_commands = vec!["ping".to_owned()];
     taxis::loader::write_config(&state.oikos, &staged).unwrap();
 
     let app = build_router(Arc::clone(&state), &test_security_config());
@@ -311,29 +318,30 @@ async fn reload_api_stages_command_revoke_without_reporting_it_hot_applied() {
     assert!(
         restart_required
             .iter()
-            .any(|path| path.as_str() == Some("messaging.commands.defaultAllow"))
+            .any(|path| path.as_str() == Some("bindings"))
     );
     assert!(
         restart_required
             .iter()
-            .any(|path| path.as_str() == Some("messaging.commands.operators"))
+            .any(|path| path.as_str() == Some("messaging.commands.publicCommands"))
     );
 
     let live = state.config.read().await;
-    assert!(
-        live.messaging.commands.default_allow,
-        "the startup dispatcher still holds the old allow policy"
+    assert_eq!(
+        live.bindings.len(),
+        1,
+        "the startup router keeps its old grant"
     );
     assert_eq!(
-        live.messaging.commands.operators,
-        vec!["signal:+15550100".to_owned()]
+        live.messaging.commands.public_commands,
+        vec!["help".to_owned(), "ping".to_owned()]
     );
     drop(live);
 
     let oikos = taxis::oikos::Oikos::from_root(dir.path());
     let persisted = taxis::loader::load_config(&oikos).unwrap();
-    assert!(!persisted.messaging.commands.default_allow);
-    assert!(persisted.messaging.commands.operators.is_empty());
+    assert!(persisted.bindings.is_empty());
+    assert_eq!(persisted.messaging.commands.public_commands, vec!["ping"]);
 }
 
 #[tokio::test]
