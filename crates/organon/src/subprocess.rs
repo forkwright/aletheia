@@ -651,7 +651,6 @@ mod tests {
     use koina::id::{NousId, SessionId};
 
     use super::*;
-    use crate::sandbox::SandboxConfigExt as _;
 
     fn test_ctx(dir: &std::path::Path) -> ToolContext {
         ToolContext {
