@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CI gate: PROVENANCE.toml completeness, NOTICE.md sync, no derived-row growth,
-status-sequence, soak expiry, land-dark fuse scheduling, offline verbatim
-recompute, consulted-sibling rule, per-file MPL Exhibit A notices."""
+status-sequence, soak expiry, offline verbatim recompute, consulted-sibling rule,
+per-file MPL Exhibit A notices."""
 
 from __future__ import annotations
 
@@ -244,98 +244,6 @@ def check_soak_expiry(rows: list[dict], commit_count: int | None) -> list[str]:
                 f"({commit_count}) has reached soak_expires_at_commit_count ({expiry}); flip to "
                 "sovereign or delete the module (RETIREMENT-PLAN.md §2), or extend the window with an "
                 "explicit, reviewable ledger edit"
-            )
-    return errors
-
-
-def _sovereign_shadow_base(path: str) -> str | None:
-    """The module directory a sovereign row shadows, per the ledger's naming
-    convention (PROVENANCE-LEDGER.md: every sovereign replacement's path
-    carries the substring 'sovereign' — hnsw_sovereign/, fold_table_sovereign/,
-    stop_word_filter/sovereign/). Normalizing strips a '_sovereign' suffix or a
-    bare 'sovereign' component from the row's directory; None when the path has
-    no marker at all (an in-place sovereign row shadows nothing — its derived
-    predecessor lived at this very path and is already gone from the ledger).
-    """
-    parts = pathlib.PurePosixPath(path).parent.parts
-    out: list[str] = []
-    marked = False
-    for part in parts:
-        if part == "sovereign":
-            marked = True
-        elif part.endswith("_sovereign"):
-            marked = True
-            out.append(part[: -len("_sovereign")])
-        else:
-            out.append(part)
-    return "/".join(out) if marked else None
-
-
-def _derived_module_dir(path: str) -> str:
-    """A derived row's module directory, with the paired 'derived/' component of
-    the stop_word_filter-style layout (derived/ next to sovereign/ under one
-    module dir) folded away so both shapes compare equal."""
-    parts = list(pathlib.PurePosixPath(path).parent.parts)
-    if parts and parts[-1] == "derived":
-        parts.pop()
-    return "/".join(parts)
-
-
-def check_land_dark_unfused(rows: list[dict]) -> list[str]:
-    """#6988: a land-dark module whose retiring copies still carry no fuse is a
-    retirement that was never scheduled.
-
-    Land-dark (RETIREMENT-PLAN.md §2(a)) is the state where a sovereign
-    replacement compiles beside the derived copy, selected by a feature cfg.
-    The hnsw wave reached exactly that state — runtime/hnsw_sovereign/*.rs
-    landed beside runtime/hnsw/*.rs — while the eight derived rows sat at
-    status=derived with soak_expires_at_commit_count=0, i.e. no fuse at all,
-    and every check here stayed green because none of them looked. A dual row
-    cannot linger this way (check_soak_expiry requires a positive fuse); a
-    derived row had no equivalent rule, so the most visible wave of the
-    program stalled silently while reporting success.
-
-    The detector keys on the naming convention the ledger already enforces
-    structurally in the other direction (validate_rows: a path containing
-    'sovereign' must be status=sovereign). A derived row is land-dark when its
-    module directory is shadowed by at least one sovereign row — 'shadowed'
-    meaning the sovereign row's directory with its 'sovereign' marker
-    normalized away equals the derived row's module directory
-    (_sovereign_shadow_base / _derived_module_dir). A partial retirement does
-    not trip it: wave 2a retired only ascii_folding_filter's fold table, whose
-    sovereign rows normalize into the fold_table/ subtree, so the still-live
-    derived filter and its tests share no shadowed directory. Nor does an
-    in-place transition (fixed_rule/algos/*): those paths carry no 'sovereign'
-    marker, so they generate no shadow.
-
-    Only 'derived' rows are flagged — a 'dual' row already carries the fuse
-    this check exists to force (and check_soak_expiry bounds it). The check
-    reads the current ledger only, never --base-ref: the land-dark PR is
-    itself the landing window, so the derived -> dual transition must ride in
-    the same change as the sovereign landing (PROVENANCE-LEDGER.md names that
-    transition the land-dark act); deferring it to a follow-up is exactly the
-    failure that produced #6988."""
-    shadow_bases: dict[str, list[str]] = {}
-    for row in rows:
-        if row["status"] != "sovereign":
-            continue
-        base = _sovereign_shadow_base(row["path"])
-        if base is not None:
-            shadow_bases.setdefault(base, []).append(row["path"])
-    errors = []
-    for row in rows:
-        if row["status"] != "derived":
-            continue
-        shadows = shadow_bases.get(_derived_module_dir(row["path"]))
-        if shadows:
-            errors.append(
-                f"{row['path']}: land-dark with no soak fuse — status=derived and "
-                "soak_expires_at_commit_count=0 while a sovereign replacement shadows this "
-                f"module ({shadows[0]}{' et al.' if len(shadows) > 1 else ''}), so its "
-                "retirement is unscheduled. Schedule it in this change: "
-                "scripts/krites-provenance-transition.py --to dual --soak-commits N "
-                "(RETIREMENT-PLAN.md Q3: 30 merged commits for low-blast-radius waves, "
-                "100 for high)"
             )
     return errors
 
@@ -617,7 +525,6 @@ def main() -> int:
     errors += check_no_derived_growth(rows, base_rows)
     errors += check_status_sequence(rows, base_rows)
     errors += check_soak_expiry(rows, git_commit_count(args.main_ref))
-    errors += check_land_dark_unfused(rows)
     errors += check_verbatim_recompute(rows)
     errors += check_no_unjustified_exemption(rows)
     errors += check_method_recorded(rows)

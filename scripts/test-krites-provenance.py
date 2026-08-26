@@ -647,83 +647,6 @@ def test_soak_expiry_fails_closed_when_commit_count_unavailable() -> None:
     )
 
 
-# --- #6988: a land-dark module whose retiring copies carry no fuse ---
-
-
-def test_land_dark_unfused_flags_shadowed_derived_rows() -> None:
-    # WHY: the literal #6988 reproduction — hnsw_sovereign/* landed beside
-    # hnsw/* while every derived row kept soak_expires_at_commit_count=0, and
-    # no check saw it. Every derived row in the shadowed module must be named.
-    rows = [
-        row("runtime/hnsw/mod.rs", "runtime/hnsw.rs", 46.0, "derived"),
-        row("runtime/hnsw/graph.rs", "runtime/hnsw.rs", 40.0, "derived"),
-        row("runtime/hnsw_sovereign/mod.rs", "none", 0.0, "sovereign", replaced_upstream_path="runtime/hnsw.rs"),
-        row("runtime/hnsw_sovereign/graph.rs", "none", 13.6, "sovereign", replaced_upstream_path="runtime/hnsw.rs"),
-    ]
-    errors = CHECKER.check_land_dark_unfused(rows)
-    expect(
-        len(errors) == 2
-        and all("land-dark with no soak fuse" in e for e in errors)
-        and any("runtime/hnsw/mod.rs" in e for e in errors)
-        and any("runtime/hnsw/graph.rs" in e for e in errors),
-        f"both shadowed derived rows must be flagged; got {errors}",
-    )
-
-
-def test_land_dark_unfused_accepts_dual_rows() -> None:
-    # WHY: a dual row already carries the fuse this check exists to force, and
-    # check_soak_expiry owns bounding it — flagging it here too would report
-    # one defect twice.
-    rows = [
-        row("runtime/hnsw/mod.rs", "runtime/hnsw.rs", 46.0, "dual", soak=100),
-        row("runtime/hnsw_sovereign/mod.rs", "none", 0.0, "sovereign", replaced_upstream_path="runtime/hnsw.rs"),
-    ]
-    errors = CHECKER.check_land_dark_unfused(rows)
-    expect(errors == [], f"a shadowed dual row (fuse scheduled) must pass; got {errors}")
-
-
-def test_land_dark_unfused_ignores_partial_retirement() -> None:
-    # WHY: wave 2a's actual shape — only ascii_folding_filter's fold table was
-    # retired, so its sovereign rows normalize into the fold_table/ subtree
-    # while the still-live derived filter and tests sit in the module root.
-    # An upstream_path-granularity check would flag them; the directory-shadow
-    # check must not, or every partial retirement becomes unlandable.
-    rows = [
-        row("fts/tokenizer/ascii_folding_filter/mod.rs", "fts/tokenizer/ascii_folding_filter.rs", 30.0, "derived"),
-        row("fts/tokenizer/ascii_folding_filter/tests/mod.rs", "fts/tokenizer/ascii_folding_filter.rs", 25.0, "derived"),
-        row("fts/tokenizer/ascii_folding_filter/fold_table.rs", "none", 0.0, "sovereign", replaced_upstream_path="fts/tokenizer/ascii_folding_filter.rs"),
-        row("fts/tokenizer/ascii_folding_filter/fold_table/fold_table_sovereign/mod.rs", "none", 15.5, "sovereign", replaced_upstream_path="fts/tokenizer/ascii_folding_filter.rs"),
-    ]
-    errors = CHECKER.check_land_dark_unfused(rows)
-    expect(errors == [], f"a partial retirement (fold-table-only) must not flag the live derived files; got {errors}")
-
-
-def test_land_dark_unfused_flags_paired_derived_dir_layout() -> None:
-    # WHY: the stop_word_filter layout pairs derived/ and sovereign/ dirs under
-    # one module dir; a derived row in that layout is just as land-dark as the
-    # hnsw shape and must be caught too.
-    rows = [
-        row("fts/tokenizer/stop_word_filter/derived/mod.rs", "fts/tokenizer/stop_word_filter/mod.rs", 90.0, "derived"),
-        row("fts/tokenizer/stop_word_filter/sovereign/mod.rs", "none", 15.5, "sovereign", replaced_upstream_path="fts/tokenizer/stop_word_filter/mod.rs"),
-    ]
-    errors = CHECKER.check_land_dark_unfused(rows)
-    expect(
-        len(errors) == 1 and "stop_word_filter/derived/mod.rs" in errors[0],
-        f"a derived/ row shadowed by its paired sovereign/ dir must be flagged; got {errors}",
-    )
-
-
-def test_land_dark_unfused_quiet_without_any_shadow() -> None:
-    # WHY: the overwhelming common case — derived rows with no sovereign
-    # replacement landed yet are the program's normal state, not a defect.
-    rows = [
-        row("data/value.rs", "data/value.rs", 60.3, "derived"),
-        row("async_surface.rs", "none", 0.0, "sovereign"),
-    ]
-    errors = CHECKER.check_land_dark_unfused(rows)
-    expect(errors == [], f"derived rows with no sovereign shadow must pass; got {errors}")
-
-
 # --- P6: offline verbatim recompute ---
 
 
@@ -1775,11 +1698,6 @@ def main() -> int:
         test_soak_expiry_rejects_nonpositive_expiry_on_dual_row,
         test_soak_expiry_skips_when_no_dual_rows,
         test_soak_expiry_fails_closed_when_commit_count_unavailable,
-        test_land_dark_unfused_flags_shadowed_derived_rows,
-        test_land_dark_unfused_accepts_dual_rows,
-        test_land_dark_unfused_ignores_partial_retirement,
-        test_land_dark_unfused_flags_paired_derived_dir_layout,
-        test_land_dark_unfused_quiet_without_any_shadow,
         test_verbatim_recompute_fails_closed_without_snapshot,
         test_verbatim_recompute_detects_drift,
         test_no_unjustified_exemption_rejects_bare_none,

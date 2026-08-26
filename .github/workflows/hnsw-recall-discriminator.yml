@@ -1,31 +1,21 @@
 # WHY this workflow exists (#6952): the sovereign-HNSW close/reopen recall
 # test has reported an intermittent post-delete-and-reopen average recall of
 # exactly 0.00 against a floor of 0.05 (its post-reopen sibling sits at 0.85).
-# The issue's prescribed discriminator — repeated runs at --test-threads=1
-# versus the default thread setting, because a fixture race changes behavior
-# with concurrency and a persistence bug does not — needs a quiet machine and
-# many repeats, which is a workflow_dispatch shape, not a PR gate. This
-# workflow is deliberately NOT in the required `gate` set: it is a measuring
-# instrument whose output (a recall distribution per leg) is the evidence for
-# either re-stating the 0.05 floor as a defended guarantee or localizing a
-# persistence defect. Do not add it to branch protection, and do not read a
-# green run as "the flake is gone" — read the distribution in the artifact.
+# The prescribed comparison is a serial target-only condition against the
+# default-concurrency scope in the same feature world. AB then BA blocks keep
+# invocation order visible. Typed nextest lifecycle events and integer recall
+# sidecars must both be complete before the report is valid. This workflow is
+# deliberately NOT in the required `gate` set: it measures; it does not claim
+# that a green run resolved the flake or establish a sovereign soak.
 name: hnsw recall discriminator (#6952)
 
 on:
   workflow_dispatch:
     inputs:
       runs:
-        description: "Invocations per leg (serial + concurrent)"
+        description: "Even invocation count per condition (minimum 2)"
         default: "10"
         required: true
-      runner:
-        description: "Test runner — nextest is the CI gate's runner"
-        type: choice
-        options:
-          - nextest
-          - cargo
-        default: nextest
       concurrent_scope:
         description: "What runs alongside the target test in the concurrent leg"
         type: choice
@@ -68,7 +58,6 @@ jobs:
           token: ${{ secrets.FLEET_REPO_TOKEN }}
 
       - name: Install cargo-nextest
-        if: inputs.runner == 'nextest'
         uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2
         with:
           tool: nextest@0.9.143
@@ -79,15 +68,18 @@ jobs:
           # surface (the dispatcher types `--runs` by hand); through env the
           # value is quoted shell data, never re-parsed as script text.
           RUNS: ${{ inputs.runs }}
-          RUNNER: ${{ inputs.runner }}
           CONCURRENT_SCOPE: ${{ inputs.concurrent_scope }}
         run: |
+          set +e
           python3 scripts/hnsw-recall-discriminator.py \
             --runs "$RUNS" \
-            --runner "$RUNNER" \
             --concurrent-scope "$CONCURRENT_SCOPE" \
             --out hnsw-recall-discriminator-out
-          cat hnsw-recall-discriminator-out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          status=$?
+          if [[ -f hnsw-recall-discriminator-out/summary.md ]]; then
+            cat hnsw-recall-discriminator-out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
 
       - name: Upload the distribution artifact
         if: always()

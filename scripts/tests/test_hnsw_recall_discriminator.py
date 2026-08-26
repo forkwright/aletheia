@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -13,148 +15,267 @@ hrd = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = hrd
 SPEC.loader.exec_module(hrd)
 
-TARGET = hrd.TARGET_TEST
 
-NEXTEST_PASS = f"""\
-  Starting 1 tests across 1 binaries
-        PASS [   0.006s] krites runtime::hnsw::close_reopen_tests::{TARGET}
-hnsw-recall: phase=post-reopen avg=0.9333
-hnsw-recall: phase=post-delete-reopen avg=0.8667
-"""
+def event_stream(*events: str, name: str = hrd.TARGET_EVENT_NAME) -> str:
+    return "\n".join(
+        json.dumps({"type": "test", "event": event, "name": name}) for event in events
+    )
 
-NEXTEST_FAIL = f"""\
-        FAIL [   0.006s] krites runtime::hnsw::close_reopen_tests::{TARGET}
-hnsw-recall: phase=post-reopen avg=0.9100
-hnsw-recall: phase=post-delete-reopen avg=0.0000
-"""
 
-CARGO_PASS = f"""\
-test runtime::hnsw::close_reopen_tests::{TARGET} ... ok
-hnsw-recall: phase=post-reopen avg=0.9333
-hnsw-recall: phase=post-delete-reopen avg=0.4000
-"""
+def sidecar_document(post_reopen: tuple[int, int], post_delete: tuple[int, int]) -> dict:
+    return {
+        "schema_version": 1,
+        "test": hrd.TARGET_TEST_NAME,
+        "phases": {
+            "post-reopen": {"hits": post_reopen[0], "possible": post_reopen[1]},
+            "post-delete-reopen": {"hits": post_delete[0], "possible": post_delete[1]},
+        },
+    }
 
-CARGO_FAIL = f"""\
-test runtime::hnsw::close_reopen_tests::{TARGET} ... FAILED
-hnsw-recall: phase=post-reopen avg=0.9333
-"""
+
+def valid_run(
+    condition: str,
+    position: str,
+    post_delete: tuple[int, int] = (130, 150),
+) -> dict:
+    ordering = "AB" if (condition, position) in (
+        ("serial", "first"),
+        ("concurrent", "second"),
+    ) else "BA"
+    return {
+        "condition": condition,
+        "position": position,
+        "ordering": ordering,
+        "instrument_state": "valid",
+        "protocol": {
+            "state": "valid",
+            "target_status": "fail" if post_delete[0] == 0 else "pass",
+        },
+        "sidecar": {
+            "state": "valid",
+            "phases": {
+                "post-reopen": {"hits": 140, "possible": 150},
+                "post-delete-reopen": {
+                    "hits": post_delete[0],
+                    "possible": post_delete[1],
+                },
+            },
+        },
+    }
 
 
 class BuildCommand(unittest.TestCase):
-    def test_nextest_serial_is_single_test_single_threaded(self) -> None:
-        cmd = hrd.build_command("nextest", "serial", "module")
-        self.assertIn("--test-threads=1", cmd)
-        self.assertTrue(any(TARGET in part for part in cmd))
-        self.assertIn("test-core,krites_sovereign_hnsw", cmd)
+    def test_serial_is_exact_target_and_single_threaded(self) -> None:
+        command = hrd.build_command("serial", "module")
+        self.assertIn("--test-threads=1", command)
+        self.assertIn(f"test(={hrd.TARGET_TEST_NAME})", command)
+        self.assertIn("test-core,krites_sovereign_hnsw", command)
 
-    def test_nextest_concurrent_keeps_default_parallelism(self) -> None:
-        cmd = hrd.build_command("nextest", "concurrent", "module")
-        self.assertNotIn("--test-threads=1", cmd)
-        self.assertTrue(any("runtime::hnsw::" in part for part in cmd))
+    def test_concurrent_keeps_default_parallelism(self) -> None:
+        command = hrd.build_command("concurrent", "module")
+        self.assertNotIn("--test-threads=1", command)
+        self.assertIn("test(~runtime::hnsw::)", command)
 
-    def test_nextest_never_uses_no_capture(self) -> None:
-        # WHY: nextest's --no-capture silently forces serial execution, which
-        # would destroy the concurrent leg's independent variable. The whole
-        # discriminator is void if that flag ever appears.
-        for leg in hrd.LEGS:
-            for scope in ("module", "package"):
-                cmd = hrd.build_command("nextest", leg, scope)
-                self.assertNotIn("--no-capture", cmd)
+    def test_command_requires_typed_nextest_json(self) -> None:
+        command = hrd.build_command("serial", "module")
+        self.assertEqual(command[command.index("--message-format") + 1], "libtest-json-plus")
+        self.assertEqual(command[command.index("--message-format-version") + 1], "0.1")
+        self.assertNotIn("--no-capture", command)
 
-    def test_cargo_serial_and_concurrent(self) -> None:
-        serial = hrd.build_command("cargo", "serial", "module")
-        self.assertIn("--test-threads=1", serial)
-        self.assertIn("--nocapture", serial)
-        concurrent = hrd.build_command("cargo", "concurrent", "module")
-        self.assertNotIn("--test-threads=1", concurrent)
-        self.assertIn("runtime::hnsw::", concurrent)
-
-    def test_package_scope_widens_the_concurrent_filter(self) -> None:
-        self.assertIn("all()", hrd.build_command("nextest", "concurrent", "package"))
-        cargo = hrd.build_command("cargo", "concurrent", "package")
-        self.assertNotIn("runtime::hnsw::", cargo)
-        self.assertNotIn(TARGET, cargo)
+    def test_package_scope_is_all_tests(self) -> None:
+        self.assertIn("all()", hrd.build_command("concurrent", "package"))
 
 
-class ParseRun(unittest.TestCase):
-    def test_nextest_pass_with_both_markers(self) -> None:
-        outcome = hrd.parse_run(NEXTEST_PASS, "nextest")
-        self.assertEqual(outcome["status"], "pass")
-        self.assertEqual(outcome["post_reopen_avg"], 0.9333)
-        self.assertEqual(outcome["post_delete_avg"], 0.8667)
+class CounterbalancedSchedule(unittest.TestCase):
+    def test_two_runs_per_condition_are_ab_then_ba(self) -> None:
+        schedule = hrd.counterbalanced_schedule(2)
+        observed = [
+            (entry["ordering"], entry["position"], entry["condition"])
+            for entry in schedule
+        ]
+        self.assertEqual(
+            observed,
+            [
+                ("AB", "first", "serial"),
+                ("AB", "second", "concurrent"),
+                ("BA", "first", "concurrent"),
+                ("BA", "second", "serial"),
+            ],
+        )
 
-    def test_nextest_fail_with_exact_zero(self) -> None:
-        outcome = hrd.parse_run(NEXTEST_FAIL, "nextest")
-        self.assertEqual(outcome["status"], "fail")
-        self.assertEqual(outcome["post_delete_avg"], 0.0)
+    def test_schedule_balances_each_condition_and_position(self) -> None:
+        schedule = hrd.counterbalanced_schedule(10)
+        for condition in hrd.CONDITIONS:
+            self.assertEqual(sum(entry["condition"] == condition for entry in schedule), 10)
+            for position in hrd.POSITIONS:
+                self.assertEqual(
+                    sum(
+                        entry["condition"] == condition and entry["position"] == position
+                        for entry in schedule
+                    ),
+                    5,
+                )
 
-    def test_cargo_pass(self) -> None:
-        outcome = hrd.parse_run(CARGO_PASS, "cargo")
-        self.assertEqual(outcome["status"], "pass")
-        self.assertEqual(outcome["post_delete_avg"], 0.4)
-
-    def test_cargo_fail_before_second_phase_leaves_marker_missing(self) -> None:
-        outcome = hrd.parse_run(CARGO_FAIL, "cargo")
-        self.assertEqual(outcome["status"], "fail")
-        self.assertIsNone(outcome["post_delete_avg"])
-
-    def test_no_status_line_is_unknown_not_pass(self) -> None:
-        outcome = hrd.parse_run("compiling...\nnothing matched\n", "nextest")
-        self.assertEqual(outcome["status"], "unknown")
+    def test_odd_cardinality_is_rejected(self) -> None:
+        with self.assertRaises(ValueError):
+            hrd.counterbalanced_schedule(3)
 
 
-class PhaseStats(unittest.TestCase):
-    def test_distribution_buckets(self) -> None:
-        stats = hrd.phase_stats([0.9, 0.0, 0.04, None, 0.9])
-        self.assertEqual(stats["samples"], 4)
-        self.assertEqual(stats["missing"], 1)
+class ParseNextestEvents(unittest.TestCase):
+    def test_exact_started_and_ok_is_valid(self) -> None:
+        parsed = hrd.parse_nextest_events(event_stream("started", "ok"))
+        self.assertEqual(parsed["state"], "valid")
+        self.assertEqual(parsed["target_started"], 1)
+        self.assertEqual(parsed["target_completed"], 1)
+        self.assertEqual(parsed["target_status"], "pass")
+
+    def test_duplicate_started_event_fails_cardinality(self) -> None:
+        parsed = hrd.parse_nextest_events(event_stream("started", "started", "failed"))
+        self.assertEqual(parsed["state"], "invalid")
+        self.assertIn("exactly 1 target started", " ".join(parsed["errors"]))
+
+    def test_similarly_named_test_does_not_satisfy_exact_target(self) -> None:
+        parsed = hrd.parse_nextest_events(
+            event_stream("started", "ok", name=f"prefix::{hrd.TARGET_EVENT_NAME}")
+        )
+        self.assertEqual(parsed["state"], "invalid")
+        self.assertEqual(parsed["target_started"], 0)
+
+    def test_event_identity_includes_nextest_package_and_binary_prefix(self) -> None:
+        self.assertEqual(
+            hrd.TARGET_EVENT_NAME,
+            f"krites::krites${hrd.TARGET_TEST_NAME}",
+        )
+
+    def test_malformed_json_fails_closed(self) -> None:
+        parsed = hrd.parse_nextest_events(event_stream("started", "ok") + "\nnot-json")
+        self.assertEqual(parsed["state"], "invalid")
+        self.assertIn("invalid JSON", " ".join(parsed["errors"]))
+
+    def test_ignored_is_not_a_completed_pass_or_fail(self) -> None:
+        parsed = hrd.parse_nextest_events(event_stream("started", "ignored"))
+        self.assertEqual(parsed["state"], "invalid")
+        self.assertIsNone(parsed["target_status"])
+
+
+class ParseSidecar(unittest.TestCase):
+    def parse_document(self, document: object) -> dict:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "recall.json"
+            path.write_text(json.dumps(document))
+            return hrd.parse_sidecar(path)
+
+    def test_integer_exact_zero_is_valid_data(self) -> None:
+        parsed = self.parse_document(sidecar_document((140, 150), (0, 150)))
+        self.assertEqual(parsed["state"], "valid")
+        self.assertEqual(parsed["phases"]["post-delete-reopen"]["hits"], 0)
+
+    def test_missing_is_distinct_from_parse_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            missing = hrd.parse_sidecar(Path(directory) / "missing.json")
+            malformed_path = Path(directory) / "malformed.json"
+            malformed_path.write_text("{")
+            malformed = hrd.parse_sidecar(malformed_path)
+        self.assertEqual(missing["state"], "missing")
+        self.assertEqual(malformed["state"], "parse_error")
+
+    def test_partial_sidecar_is_incomplete(self) -> None:
+        document = sidecar_document((140, 150), (0, 150))
+        del document["phases"]["post-delete-reopen"]
+        self.assertEqual(self.parse_document(document)["state"], "incomplete")
+
+    def test_boolean_is_not_accepted_as_an_integer(self) -> None:
+        document = sidecar_document((140, 150), (0, 150))
+        document["phases"]["post-delete-reopen"]["hits"] = False
+        parsed = self.parse_document(document)
+        self.assertEqual(parsed["state"], "invalid")
+        self.assertIn("must be integers", " ".join(parsed["errors"]))
+
+    def test_impossible_count_is_invalid(self) -> None:
+        parsed = self.parse_document(sidecar_document((151, 150), (1, 150)))
+        self.assertEqual(parsed["state"], "invalid")
+
+
+class Measurements(unittest.TestCase):
+    def test_integer_buckets_keep_zero_distinct(self) -> None:
+        self.assertEqual(hrd.measurement_class({"hits": 0, "possible": 150}), "exact_zero")
+        self.assertEqual(
+            hrd.measurement_class({"hits": 1, "possible": 150}), "sub_floor_nonzero"
+        )
+        self.assertEqual(
+            hrd.measurement_class({"hits": 8, "possible": 150}), "at_or_above_floor"
+        )
+
+    def test_typed_failure_with_exact_zero_is_valid_evidence(self) -> None:
+        protocol = hrd.parse_nextest_events(event_stream("started", "failed"))
+        sidecar = {
+            "state": "valid",
+            "phases": sidecar_document((140, 150), (0, 150))["phases"],
+            "errors": [],
+        }
+        state, errors = hrd.validate_outcome(protocol, sidecar)
+        self.assertEqual(state, "valid")
+        self.assertEqual(errors, [])
+
+    def test_typed_pass_cannot_contradict_zero_sidecar(self) -> None:
+        protocol = hrd.parse_nextest_events(event_stream("started", "ok"))
+        sidecar = {
+            "state": "valid",
+            "phases": sidecar_document((140, 150), (0, 150))["phases"],
+            "errors": [],
+        }
+        state, errors = hrd.validate_outcome(protocol, sidecar)
+        self.assertEqual(state, "invalid")
+        self.assertIn("contradicts", " ".join(errors))
+
+    def test_phase_stats_are_derived_from_integer_counts(self) -> None:
+        runs = [
+            valid_run("serial", "first", (0, 150)),
+            valid_run("serial", "second", (6, 150)),
+            valid_run("serial", "first", (8, 150)),
+        ]
+        stats = hrd.phase_stats(runs, "post-delete-reopen")
         self.assertEqual(stats["exact_zero"], 1)
         self.assertEqual(stats["sub_floor_nonzero"], 1)
-        self.assertEqual(stats["min"], 0.0)
-        self.assertEqual(stats["max"], 0.9)
-
-    def test_all_missing_is_empty_not_crash(self) -> None:
-        stats = hrd.phase_stats([None, None])
-        self.assertEqual(stats["samples"], 0)
-        self.assertIsNone(stats["min"])
+        self.assertEqual(stats["samples"], 3)
 
 
 class Classify(unittest.TestCase):
-    def _summary(self, fails: int) -> dict:
-        return {"runs": 10, "target_pass": 10 - fails, "target_fail": fails, "target_unknown": 0}
+    def test_no_zero(self) -> None:
+        runs = [valid_run(condition, position) for condition in hrd.CONDITIONS for position in hrd.POSITIONS]
+        self.assertIn("no exact-zero", hrd.classify(runs))
 
-    def test_no_failures(self) -> None:
-        self.assertIn("no failure reproduced", hrd.classify(self._summary(0), self._summary(0)))
+    def test_condition_only_across_positions(self) -> None:
+        runs = [
+            valid_run("serial", "first", (0, 150)),
+            valid_run("serial", "second", (0, 150)),
+            valid_run("concurrent", "first"),
+            valid_run("concurrent", "second"),
+        ]
+        self.assertIn("only in serial, across both", hrd.classify(runs))
 
-    def test_serial_only_is_persistence_shape(self) -> None:
-        self.assertIn("persistence-defect shape", hrd.classify(self._summary(2), self._summary(0)))
+    def test_first_position_across_conditions(self) -> None:
+        runs = [
+            valid_run("serial", "first", (0, 150)),
+            valid_run("serial", "second"),
+            valid_run("concurrent", "first", (0, 150)),
+            valid_run("concurrent", "second"),
+        ]
+        self.assertIn("only when invoked first", hrd.classify(runs))
 
-    def test_concurrent_only_is_race_shape(self) -> None:
-        self.assertIn("fixture-race shape", hrd.classify(self._summary(0), self._summary(3)))
+    def test_invalid_evidence_blocks_interpretation(self) -> None:
+        run = valid_run("serial", "first", (0, 150))
+        run["instrument_state"] = "invalid"
+        self.assertIn("instrument invalid", hrd.classify([run]))
 
-    def test_both_legs_is_concurrency_independent(self) -> None:
-        self.assertIn("BOTH legs", hrd.classify(self._summary(1), self._summary(4)))
-
-
-class RenderMarkdown(unittest.TestCase):
-    def test_summary_renders_table_and_reading(self) -> None:
-        runs = [hrd.parse_run(NEXTEST_PASS, "nextest"), hrd.parse_run(NEXTEST_FAIL, "nextest")]
-        report = {
-            "runner": "nextest",
-            "features": hrd.FEATURES,
-            "target_test": TARGET,
-            "runs_per_leg": 2,
-            "legs": {
-                "serial": {"runs": runs, "summary": hrd.summarize(runs)},
-                "concurrent": {"runs": runs, "summary": hrd.summarize(runs)},
-            },
-        }
-        report["reading"] = hrd.classify(report["legs"]["serial"]["summary"], report["legs"]["concurrent"]["summary"])
-        md = hrd.render_markdown(report)
-        self.assertIn("#6952", md)
-        self.assertIn("post-delete-reopen", md)
-        self.assertIn("exact 0.00", md)
-        self.assertIn("BOTH legs", md)
+    def test_single_block_order_across_conditions_is_visible(self) -> None:
+        runs = [
+            valid_run("serial", "first", (0, 150)),
+            valid_run("serial", "second"),
+            valid_run("concurrent", "first"),
+            valid_run("concurrent", "second", (0, 150)),
+        ]
+        self.assertIn("only in AB blocks", hrd.classify(runs))
 
 
 class ResolveOutDir(unittest.TestCase):

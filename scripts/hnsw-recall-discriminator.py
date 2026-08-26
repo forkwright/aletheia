@@ -1,48 +1,34 @@
 #!/usr/bin/env python3
-"""The #6952 discriminator: is the intermittent post-delete-and-reopen recall
-0.00 in krites' sovereign-HNSW close/reopen test a fixture race or a
-persistence defect?
+"""Collect fail-closed evidence for Aletheia issue #6952.
 
-The issue's prescription: reproduce under --test-threads=1 with varied repeat
-counts — a fixture race changes behavior with concurrency, a persistence bug
-does not. This script runs
-`close_reopen_preserves_recall_across_inserts_and_deletes`
-(crates/krites/src/runtime/hnsw_sovereign/close_reopen_tests.rs) N times in
-two legs:
+The target sovereign-HNSW close/reopen test has intermittently reported exactly
+zero recall after deleting an entry-point-adjacent subset and reopening the
+database. This instrument compares two conditions in the same branch and
+feature world:
 
-- serial: the target test alone, --test-threads=1. No other test is in
-  flight, so no fixture-level race can reach it.
-- concurrent: the whole runtime::hnsw test group at the runner's default
-  parallelism (--concurrent-scope module), or the full krites package
-  (--concurrent-scope package) for a heavier contention sweep.
+* serial: only the exact target test, with ``--test-threads=1``;
+* concurrent: the target runs with the HNSW module (or whole package) at
+  nextest's default parallelism.
 
-The feature world is pinned to `test-core,krites_sovereign_hnsw` — the exact
-world gate-attestation.yml's gate-coverage-sovereign-hnsw job runs, where the
-flake was observed. Note the land-dark selector (runtime/mod.rs): under that
-feature the sovereign tree compiles AS `runtime::hnsw`, which is why every
-filter here is a substring match on the test name rather than a path through
-`hnsw_sovereign`.
+Each repetition is counterbalanced: serial then concurrent, followed by
+concurrent then serial. That makes condition and invocation order separately
+visible instead of letting cache warmth, machine load, or thermal drift stand
+in for the concurrency variable.
 
-Every run's two recall values are harvested from the test's unconditional
-`hnsw-recall: phase=... avg=...` eprintln markers (so PASSING runs contribute
-to the distribution, not only failures), per-run target pass/fail is parsed
-from the runner's own status lines, and the per-leg distribution (min / p50 /
-mean / max / exact-0.00 / sub-floor-nonzero / missing) is written as JSON plus
-a Markdown summary. The `reading` field is a mechanical restatement of where
-failures appeared — it is not a diagnosis; the distribution is the evidence a
-human reads.
-
-Exit code: 1 only when the harness itself could not measure (runner missing,
-test filter matched nothing, zero markers harvested in a leg). A leg full of
-failing test runs exits 0 — failures are the data this instrument exists to
-collect, and the workflow that runs it must stay green enough to upload them.
+Evidence comes from two independent machine-readable channels. Typed nextest
+JSON must prove that the exact test started once and completed once, while the
+test writes integer hit/possible counts to a per-invocation JSON sidecar. A
+missing sidecar, malformed JSON, cardinality drift, or an exact-zero count are
+different states in the report. Only instrument failures make this script
+exit nonzero; a typed target-test failure with valid measurements is data.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import re
+import os
+import shlex
 import shutil
 import statistics
 import subprocess
@@ -53,238 +39,479 @@ from pathlib import Path, PurePosixPath
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 TARGET_TEST = "close_reopen_preserves_recall_across_inserts_and_deletes"
+TARGET_TEST_NAME = f"runtime::hnsw::close_reopen_tests::{TARGET_TEST}"
+# Nextest 0.1 intentionally prefixes every libtest JSON name with
+# `<package>::<binary>$` so events remain unambiguous across a workspace.
+TARGET_EVENT_NAME = f"krites::krites${TARGET_TEST_NAME}"
 FEATURES = "test-core,krites_sovereign_hnsw"
-POST_DELETE_FLOOR = 0.05
+SIDECAR_ENV = "ALETHEIA_HNSW_RECALL_SIDECAR"
+PHASES = ("post-reopen", "post-delete-reopen")
+CONDITIONS = ("serial", "concurrent")
+POSITIONS = ("first", "second")
+ORDERINGS = ("AB", "BA")
+TERMINAL_EVENTS = frozenset(("ok", "failed", "ignored", "timeout"))
+POST_REOPEN_FLOOR_PERCENT = 85
+POST_DELETE_FLOOR_PERCENT = 5
 
-MARKER_RE = re.compile(r"hnsw-recall: phase=(\S+) avg=(\d+(?:\.\d+)?)")
-NEXTEST_STATUS_RE = re.compile(r"^\s*(PASS|FAIL)\s+\[[^\]]*\]\s+\S+\s+(\S+)\s*$", re.MULTILINE)
-CARGO_STATUS_RE = re.compile(r"^test\s+(\S+)\s+\.\.\.\s+(ok|FAILED|ignored)\s*$", re.MULTILINE)
 
-LEGS = ("serial", "concurrent")
-
-
-def build_command(runner: str, leg: str, concurrent_scope: str) -> list[str]:
-    """The exact command for one invocation of one leg.
-
-    WHY --no-capture appears nowhere below: nextest's --no-capture forces
-    serial execution, which would silently destroy the concurrent leg's one
-    independent variable. `--success-output final --failure-output final`
-    surfaces the same marker lines with per-test blocks intact instead.
-    cargo test has no such coupling, so --nocapture is safe there.
-    """
-    if runner == "nextest":
-        if leg == "serial":
-            filt = f"test(~{TARGET_TEST})"
-        elif concurrent_scope == "package":
-            filt = "all()"
-        else:
-            filt = "test(~runtime::hnsw::)"
-        cmd = [
-            "cargo", "nextest", "run", "--profile", "ci", "-p", "krites",
-            "--features", FEATURES, "--no-fail-fast",
-            "--success-output", "final", "--failure-output", "final",
-            "-E", filt,
-        ]
-        if leg == "serial":
-            cmd.append("--test-threads=1")
-        return cmd
-    if leg == "serial":
-        filt = TARGET_TEST
-    elif concurrent_scope == "package":
-        filt = ""
+def build_command(condition: str, concurrent_scope: str) -> list[str]:
+    """Build one nextest invocation without changing the feature world."""
+    if condition == "serial":
+        filterset = f"test(={TARGET_TEST_NAME})"
+    elif condition == "concurrent" and concurrent_scope == "package":
+        filterset = "all()"
+    elif condition == "concurrent":
+        filterset = "test(~runtime::hnsw::)"
     else:
-        filt = "runtime::hnsw::"
-    cmd = ["cargo", "test", "-p", "krites", "--features", FEATURES]
-    if filt:
-        cmd.append(filt)
-    cmd.extend(["--", "--nocapture"])
-    if leg == "serial":
-        cmd.append("--test-threads=1")
-    return cmd
+        raise ValueError(f"unknown condition: {condition!r}")
+
+    command = [
+        "cargo",
+        "nextest",
+        "run",
+        "--profile",
+        "ci",
+        "-p",
+        "krites",
+        "--features",
+        FEATURES,
+        "--no-fail-fast",
+        "--message-format",
+        "libtest-json-plus",
+        "--message-format-version",
+        "0.1",
+        "-E",
+        filterset,
+    ]
+    if condition == "serial":
+        command.append("--test-threads=1")
+    return command
 
 
-def runner_status(output: str, runner: str) -> str:
-    """The target test's verdict from one invocation's output.
+def counterbalanced_schedule(runs_per_condition: int) -> list[dict]:
+    """Return AB then BA blocks, with equal condition/position cardinality."""
+    if runs_per_condition < 2 or runs_per_condition % 2:
+        raise ValueError("runs per condition must be an even integer >= 2")
 
-    `unknown` means the runner's output carried no status line for the target
-    (a filter that matched nothing, or an output shape drift), which the
-    caller counts separately from a real failure.
-    """
-    if runner == "nextest":
-        for verdict, name in NEXTEST_STATUS_RE.findall(output):
-            if TARGET_TEST in name:
-                return "pass" if verdict == "PASS" else "fail"
-        return "unknown"
-    for name, verdict in CARGO_STATUS_RE.findall(output):
-        if TARGET_TEST in name:
-            return {"ok": "pass", "FAILED": "fail"}.get(verdict, "unknown")
-    return "unknown"
+    schedule: list[dict] = []
+    sequence = 1
+    for block in range(1, runs_per_condition // 2 + 1):
+        for ordering, conditions in (
+            ("AB", ("serial", "concurrent")),
+            ("BA", ("concurrent", "serial")),
+        ):
+            for position, condition in zip(POSITIONS, conditions, strict=True):
+                schedule.append(
+                    {
+                        "sequence": sequence,
+                        "block": block,
+                        "ordering": ordering,
+                        "condition": condition,
+                        "position": position,
+                    }
+                )
+                sequence += 1
+    return schedule
 
 
-def parse_run(output: str, runner: str) -> dict:
-    """One invocation's outcome: target status plus any harvested markers."""
-    markers: dict[str, float] = {}
-    for phase, avg in MARKER_RE.findall(output):
-        markers[phase] = float(avg)
+def parse_nextest_events(output: str) -> dict:
+    """Validate the exact target's lifecycle in nextest's typed JSON stream."""
+    errors: list[str] = []
+    target_events: list[str] = []
+    json_events = 0
+
+    for line_number, raw_line in enumerate(output.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append(f"line {line_number}: invalid JSON ({exc.msg})")
+            continue
+        if not isinstance(event, dict):
+            errors.append(f"line {line_number}: event is not a JSON object")
+            continue
+        json_events += 1
+        if event.get("type") == "test" and event.get("name") == TARGET_EVENT_NAME:
+            target_events.append(str(event.get("event")))
+
+    started = target_events.count("started")
+    terminals = [event for event in target_events if event in TERMINAL_EVENTS]
+    if started != 1:
+        errors.append(f"expected exactly 1 target started event, observed {started}")
+    if len(terminals) != 1:
+        errors.append(f"expected exactly 1 target terminal event, observed {len(terminals)}")
+
+    terminal = terminals[0] if len(terminals) == 1 else None
+    if terminal not in (None, "ok", "failed"):
+        errors.append(f"target terminal event {terminal!r} is not a completed pass/fail")
+
     return {
-        "status": runner_status(output, runner),
-        "post_reopen_avg": markers.get("post-reopen"),
-        "post_delete_avg": markers.get("post-delete-reopen"),
+        "state": "valid" if not errors else "invalid",
+        "json_events": json_events,
+        "target_started": started,
+        "target_completed": len(terminals),
+        "target_terminal": terminal,
+        "target_status": {"ok": "pass", "failed": "fail"}.get(terminal),
+        "errors": errors,
     }
 
 
-def resolve_out_dir(raw: str) -> Path:
-    """The artifact directory, contained under the repository root.
+def _is_integer(value: object) -> bool:
+    # bool is an int subclass in Python, but is not an integer measurement.
+    return type(value) is int
 
-    WHY the validation: --out is operator-supplied CLI text that reaches
-    mkdir/write_text below, and the harness has no legitimate reason to write
-    anywhere but under the repo it measures — every CI invocation and the
-    default both name a repo-relative directory. Rejecting absolute paths and
-    `..` lexically, then confirming the resolved path stays under REPO_ROOT,
-    is the same containment idiom the fleet's other scripts use.
-    """
+
+def parse_sidecar(path: Path) -> dict:
+    """Read and validate one versioned integer-measurement sidecar."""
+    if not path.exists():
+        return {"state": "missing", "errors": ["sidecar file was not created"]}
+    try:
+        raw = path.read_text()
+    except (OSError, UnicodeError) as exc:
+        return {"state": "read_error", "errors": [f"cannot read sidecar: {exc}"]}
+    try:
+        document = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return {"state": "parse_error", "errors": [f"invalid sidecar JSON: {exc.msg}"]}
+    if not isinstance(document, dict):
+        return {"state": "invalid", "errors": ["sidecar root is not a JSON object"]}
+
+    errors: list[str] = []
+    if not _is_integer(document.get("schema_version")) or document.get("schema_version") != 1:
+        errors.append("schema_version must be integer 1")
+    if document.get("test") != TARGET_TEST_NAME:
+        errors.append(f"test must be exactly {TARGET_TEST_NAME!r}")
+
+    raw_phases = document.get("phases")
+    if not isinstance(raw_phases, dict):
+        errors.append("phases must be a JSON object")
+        return {"state": "invalid", "errors": errors}
+
+    missing = [phase for phase in PHASES if phase not in raw_phases]
+    if missing:
+        return {
+            "state": "incomplete",
+            "errors": [*errors, f"missing required phase(s): {', '.join(missing)}"],
+        }
+
+    phases: dict[str, dict[str, int]] = {}
+    for phase in PHASES:
+        measurement = raw_phases[phase]
+        if not isinstance(measurement, dict):
+            errors.append(f"{phase}: measurement must be a JSON object")
+            continue
+        hits = measurement.get("hits")
+        possible = measurement.get("possible")
+        if not _is_integer(hits) or not _is_integer(possible):
+            errors.append(f"{phase}: hits and possible must be integers")
+            continue
+        if possible <= 0:
+            errors.append(f"{phase}: possible must be > 0")
+            continue
+        if hits < 0 or hits > possible:
+            errors.append(f"{phase}: hits must satisfy 0 <= hits <= possible")
+            continue
+        phases[phase] = {"hits": hits, "possible": possible}
+
+    if errors:
+        return {"state": "invalid", "errors": errors}
+    return {"state": "valid", "phases": phases, "errors": []}
+
+
+def meets_floor(measurement: dict[str, int], floor_percent: int) -> bool:
+    return measurement["hits"] * 100 >= measurement["possible"] * floor_percent
+
+
+def measurement_class(measurement: dict[str, int]) -> str:
+    if measurement["hits"] == 0:
+        return "exact_zero"
+    if not meets_floor(measurement, POST_DELETE_FLOOR_PERCENT):
+        return "sub_floor_nonzero"
+    return "at_or_above_floor"
+
+
+def validate_outcome(protocol: dict, sidecar: dict) -> tuple[str, list[str]]:
+    """Cross-check independent channels without treating process exit as proof."""
+    errors: list[str] = []
+    if protocol["state"] != "valid":
+        errors.extend(f"nextest: {error}" for error in protocol["errors"])
+    if sidecar["state"] != "valid":
+        errors.extend(f"sidecar {sidecar['state']}: {error}" for error in sidecar["errors"])
+
+    if not errors and protocol["target_status"] == "pass":
+        phases = sidecar["phases"]
+        if not meets_floor(phases["post-reopen"], POST_REOPEN_FLOOR_PERCENT):
+            errors.append("typed pass contradicts a post-reopen measurement below the asserted floor")
+        post_delete = phases["post-delete-reopen"]
+        if post_delete["hits"] == 0 or not meets_floor(post_delete, POST_DELETE_FLOOR_PERCENT):
+            errors.append("typed pass contradicts a post-delete measurement below the asserted floor")
+
+    return ("valid", []) if not errors else ("invalid", errors)
+
+
+def resolve_out_dir(raw: str) -> Path:
+    """Resolve a repository-contained artifact directory."""
     pure = PurePosixPath(raw)
     if pure.is_absolute() or not pure.parts or ".." in pure.parts:
         raise SystemExit(f"error: --out must be a repo-relative path without '..': {raw!r}")
     out_dir = REPO_ROOT.joinpath(*pure.parts)
     if out_dir == REPO_ROOT:
-        raise SystemExit("error: --out must name a directory below the repository root, not the root itself")
+        raise SystemExit("error: --out must name a directory below the repository root")
     resolved_root = REPO_ROOT.resolve()
     resolved_out = out_dir.resolve()
-    if resolved_out != resolved_root and not resolved_out.is_relative_to(resolved_root):
+    if not resolved_out.is_relative_to(resolved_root):
         raise SystemExit(f"error: --out escapes the repository after resolution: {raw!r}")
     return out_dir
 
 
-def phase_stats(values: list[float | None]) -> dict:
-    """Distribution summary for one phase of one leg.
-
-    `missing` counts runs that produced no marker at all — a test that failed
-    before printing (the post-reopen assert precedes the post-delete phase)
-    still belongs in the run count, or a distribution over only the survivors
-    would read healthier than the truth.
-    """
-    present = [v for v in values if v is not None]
+def phase_stats(runs: list[dict], phase: str) -> dict:
+    floor_percent = (
+        POST_REOPEN_FLOOR_PERCENT if phase == "post-reopen" else POST_DELETE_FLOOR_PERCENT
+    )
+    measurements = [
+        run["sidecar"]["phases"][phase]
+        for run in runs
+        if run["instrument_state"] == "valid"
+    ]
+    ratios = [measurement["hits"] / measurement["possible"] for measurement in measurements]
     return {
-        "samples": len(present),
-        "missing": len(values) - len(present),
-        "min": min(present) if present else None,
-        "p50": statistics.median(present) if present else None,
-        "mean": round(statistics.fmean(present), 4) if present else None,
-        "max": max(present) if present else None,
-        "exact_zero": sum(1 for v in present if v == 0.0),
-        "sub_floor_nonzero": sum(1 for v in present if 0.0 < v < POST_DELETE_FLOOR),
+        "samples": len(measurements),
+        "unusable": len(runs) - len(measurements),
+        "floor_percent": floor_percent,
+        "min": min(ratios) if ratios else None,
+        "p50": statistics.median(ratios) if ratios else None,
+        "mean": round(statistics.fmean(ratios), 6) if ratios else None,
+        "max": max(ratios) if ratios else None,
+        "exact_zero": sum(1 for measurement in measurements if measurement["hits"] == 0),
+        "sub_floor_nonzero": sum(
+            1
+            for measurement in measurements
+            if measurement["hits"] > 0 and not meets_floor(measurement, floor_percent)
+        ),
     }
 
 
 def summarize(runs: list[dict]) -> dict:
+    states: dict[str, int] = {}
+    for run in runs:
+        state = run["sidecar"]["state"]
+        states[state] = states.get(state, 0) + 1
     return {
         "runs": len(runs),
-        "target_pass": sum(1 for r in runs if r["status"] == "pass"),
-        "target_fail": sum(1 for r in runs if r["status"] == "fail"),
-        "target_unknown": sum(1 for r in runs if r["status"] == "unknown"),
-        "post_reopen": phase_stats([r["post_reopen_avg"] for r in runs]),
-        "post_delete": phase_stats([r["post_delete_avg"] for r in runs]),
+        "instrument_valid": sum(1 for run in runs if run["instrument_state"] == "valid"),
+        "instrument_invalid": sum(1 for run in runs if run["instrument_state"] != "valid"),
+        "target_pass": sum(1 for run in runs if run["protocol"]["target_status"] == "pass"),
+        "target_fail": sum(1 for run in runs if run["protocol"]["target_status"] == "fail"),
+        "sidecar_states": states,
+        "post_reopen": phase_stats(runs, "post-reopen"),
+        "post_delete": phase_stats(runs, "post-delete-reopen"),
     }
 
 
-def classify(serial: dict, concurrent: dict) -> str:
-    """Mechanical reading of WHERE failures appeared — never a diagnosis.
+def classify(runs: list[dict]) -> str:
+    """Mechanically describe where exact-zero evidence appeared."""
+    invalid = sum(1 for run in runs if run["instrument_state"] != "valid")
+    if invalid:
+        return (
+            f"instrument invalid in {invalid} invocation(s) — missing, malformed, or "
+            "cardinality-invalid evidence fails closed; do not interpret condition effects"
+        )
 
-    serial-only failure is the persistence-defect shape (no concurrency
-    needed); concurrent-only is the fixture-race shape (the behavior changed
-    with the thread setting, which is the discriminator's whole premise).
-    """
-    s, c = serial["target_fail"], concurrent["target_fail"]
-    if s == 0 and c == 0:
+    zeros = [
+        run
+        for run in runs
+        if run["sidecar"]["phases"]["post-delete-reopen"]["hits"] == 0
+    ]
+    if not zeros:
+        return "no exact-zero recall reproduced in either condition in this sample"
+
+    conditions = {run["condition"] for run in zeros}
+    positions = {run["position"] for run in zeros}
+    orderings = {run["ordering"] for run in zeros}
+    if len(conditions) == 1 and positions == set(POSITIONS):
+        condition = next(iter(conditions))
+        return f"exact-zero recall appeared only in {condition}, across both invocation positions"
+    if len(conditions) == 1:
+        condition = next(iter(conditions))
+        position = next(iter(positions)) if len(positions) == 1 else "mixed"
         return (
-            "no failure reproduced in either leg — the intermittent 0.00 did not appear "
-            "in this sample; rerun with more --runs or a heavier --concurrent-scope before "
-            "concluding anything"
+            f"exact-zero recall appeared only in {condition} and only at {position} position(s) "
+            "— condition and order remain confounded in this sample"
         )
-    if s > 0 and c == 0:
-        return (
-            "serial-only failures — reproduce with no concurrency at all, which is the "
-            "persistence-defect shape, not a fixture race"
-        )
-    if s == 0 and c > 0:
-        return (
-            "concurrent-only failures — behavior changed with the thread setting, which is "
-            "the fixture-race shape"
-        )
-    return (
-        "failures in BOTH legs — concurrency-independent, the persistence-defect shape; "
-        "compare rates before weighting"
-    )
+    if positions == {"first"}:
+        return "exact-zero recall appeared in both conditions, but only when invoked first"
+    if positions == {"second"}:
+        return "exact-zero recall appeared in both conditions, but only when invoked second"
+    if len(orderings) == 1:
+        ordering = next(iter(orderings))
+        return f"exact-zero recall appeared in both conditions, but only in {ordering} blocks"
+    return "exact-zero recall appeared in both conditions and both invocation positions"
+
+
+def _format_ratio(value: float | None) -> str:
+    return "—" if value is None else f"{value:.4f}"
 
 
 def render_markdown(report: dict) -> str:
     lines = [
         "### HNSW recall-0.00 discriminator (#6952)",
         "",
-        f"- runner: `{report['runner']}` · feature world: `{report['features']}` · "
-        f"{report['runs_per_leg']} run(s) per leg",
-        f"- target: `{report['target_test']}`",
+        "- protocol: typed nextest JSON 0.1 + integer sidecar schema 1",
+        f"- feature world: `{report['features']}` · {report['runs_per_condition']} run(s) per condition",
+        "- schedule: counterbalanced `serial → concurrent`, then `concurrent → serial`",
+        f"- exact target: `{report['target_test_name']}`",
+        f"- nextest event identity: `{report['target_event_name']}`",
         "",
-        "| leg | runs | target pass | target fail | unknown | phase | samples | min | p50 | mean | max | exact 0.00 | sub-floor nonzero |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| condition | runs | instrument valid | invalid | target pass | target fail | phase | samples | min | p50 | mean | max | exact zero | sub-floor nonzero |",
+        "|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    for leg in LEGS:
-        summary = report["legs"][leg]["summary"]
-        for phase_label, key in (("post-reopen", "post_reopen"), ("post-delete-reopen", "post_delete")):
+    for condition in CONDITIONS:
+        summary = report["conditions"][condition]["summary"]
+        for label, key in (("post-reopen", "post_reopen"), ("post-delete-reopen", "post_delete")):
             stats = summary[key]
-
-            def fmt(v: float | None) -> str:
-                return "—" if v is None else f"{v:.4f}"
-
             lines.append(
-                f"| {leg} | {summary['runs']} | {summary['target_pass']} | {summary['target_fail']} "
-                f"| {summary['target_unknown']} | {phase_label} | {stats['samples']}"
-                f" (+{stats['missing']} missing) | {fmt(stats['min'])} | {fmt(stats['p50'])} "
-                f"| {fmt(stats['mean'])} | {fmt(stats['max'])} | {stats['exact_zero']} "
-                f"| {stats['sub_floor_nonzero']} |"
+                f"| {condition} | {summary['runs']} | {summary['instrument_valid']} | "
+                f"{summary['instrument_invalid']} | {summary['target_pass']} | {summary['target_fail']} | "
+                f"{label} | {stats['samples']} | {_format_ratio(stats['min'])} | "
+                f"{_format_ratio(stats['p50'])} | {_format_ratio(stats['mean'])} | "
+                f"{_format_ratio(stats['max'])} | {stats['exact_zero']} | "
+                f"{stats['sub_floor_nonzero']} |"
             )
+
+    lines += [
+        "",
+        "| condition | first: valid / exact zero | second: valid / exact zero |",
+        "|---|---:|---:|",
+    ]
+    for condition in CONDITIONS:
+        cells = []
+        for position in POSITIONS:
+            summary = report["condition_by_position"][condition][position]
+            cells.append(
+                f"{summary['instrument_valid']} / {summary['post_delete']['exact_zero']}"
+            )
+        lines.append(f"| {condition} | {cells[0]} | {cells[1]} |")
+
+    lines += [
+        "",
+        "| ordering | instrument valid | exact zero |",
+        "|---|---:|---:|",
+    ]
+    for ordering in ORDERINGS:
+        summary = report["orderings"][ordering]
+        lines.append(
+            f"| {ordering} | {summary['instrument_valid']} | "
+            f"{summary['post_delete']['exact_zero']} |"
+        )
+
     lines += [
         "",
         f"**Reading (mechanical, not a diagnosis):** {report['reading']}",
         "",
-        "The post-delete gate floor is 0.05 against the post-reopen sibling's 0.85; "
-        "this distribution is the evidence for re-stating that floor as a defended "
-        "guarantee. Per-run commands and raw output are in the uploaded logs.",
+        "The raw nextest JSONL, stderr, and integer sidecar for every invocation are in the "
+        "artifact. A green workflow means the instrument was complete, not that the exact-zero "
+        "behavior disappeared.",
     ]
     return "\n".join(lines)
 
 
+def _run_one(entry: dict, concurrent_scope: str, logs_dir: Path) -> dict:
+    condition = entry["condition"]
+    command = build_command(condition, concurrent_scope)
+    stem = (
+        f"{entry['sequence']:03d}-block-{entry['block']:02d}-"
+        f"{entry['ordering'].lower()}-{entry['position']}-{condition}"
+    )
+    stdout_path = logs_dir / f"{stem}.nextest.jsonl"
+    stderr_path = logs_dir / f"{stem}.stderr.log"
+    sidecar_path = logs_dir / f"{stem}.recall.json"
+    sidecar_path.unlink(missing_ok=True)
+
+    env = os.environ.copy()
+    env["NEXTEST_EXPERIMENTAL_LIBTEST_JSON"] = "1"
+    env[SIDECAR_ENV] = str(sidecar_path)
+    try:
+        process = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            env=env,
+            check=False,
+        )
+        stdout = process.stdout
+        stderr = process.stderr
+        exit_code: int | None = process.returncode
+    except OSError as exc:
+        stdout = ""
+        stderr = f"failed to launch nextest: {exc}\n"
+        exit_code = None
+
+    stdout_path.write_text(stdout)
+    stderr_path.write_text(stderr)
+    protocol = parse_nextest_events(stdout)
+    sidecar = parse_sidecar(sidecar_path)
+    instrument_state, instrument_errors = validate_outcome(protocol, sidecar)
+
+    result = {
+        **entry,
+        "command": command,
+        "process_exit_code": exit_code,
+        "protocol": protocol,
+        "sidecar": sidecar,
+        "instrument_state": instrument_state,
+        "instrument_errors": instrument_errors,
+        "artifacts": {
+            "nextest_jsonl": f"logs/{stdout_path.name}",
+            "stderr": f"logs/{stderr_path.name}",
+            "sidecar": f"logs/{sidecar_path.name}",
+        },
+    }
+    if sidecar["state"] == "valid":
+        result["post_delete_class"] = measurement_class(
+            sidecar["phases"]["post-delete-reopen"]
+        )
+    else:
+        result["post_delete_class"] = "unavailable"
+    return result
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--runs", type=int, default=10, help="invocations per leg (default 10)")
-    parser.add_argument("--runner", choices=["nextest", "cargo"], default="nextest")
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--runs",
+        type=int,
+        default=10,
+        help="even number of invocations per condition, >= 2 (default 10)",
+    )
     parser.add_argument(
         "--concurrent-scope",
-        choices=["module", "package"],
+        choices=("module", "package"),
         default="module",
-        help="what runs alongside the target in the concurrent leg: the runtime::hnsw test "
-        "group (module, default) or the whole krites package (package)",
+        help="tests alongside the target: runtime::hnsw group (default) or whole package",
     )
     parser.add_argument(
         "--out",
         default="target/hnsw-recall-discriminator",
-        help="artifact directory for report.json, summary.md, and per-run logs",
+        help="repository-relative artifact directory",
     )
     args = parser.parse_args()
-    if args.runs < 1:
-        parser.error("--runs must be >= 1")
+    if args.runs < 2 or args.runs % 2:
+        parser.error("--runs must be an even integer >= 2")
 
     if shutil.which("cargo") is None:
         print("error: cargo not on PATH", file=sys.stderr)
         return 1
-    if args.runner == "nextest" and shutil.which("cargo-nextest") is None:
-        # cargo-nextest the binary is what the install-action provides; a bare
-        # `cargo nextest` shim would also satisfy the invocation below, so fall
-        # back to probing it before refusing.
-        probe = subprocess.run(["cargo", "nextest", "--version"], capture_output=True, text=True)
+    if shutil.which("cargo-nextest") is None:
+        probe = subprocess.run(
+            ["cargo", "nextest", "--version"], capture_output=True, text=True, check=False
+        )
         if probe.returncode != 0:
-            print("error: runner=nextest but cargo nextest is not installed", file=sys.stderr)
+            print("error: cargo nextest is not installed", file=sys.stderr)
             return 1
 
     out_dir = resolve_out_dir(args.out)
@@ -292,56 +519,74 @@ def main() -> int:
     logs_dir.mkdir(parents=True, exist_ok=True)
 
     report: dict = {
+        "schema_version": 1,
         "issue": "#6952",
-        "runner": args.runner,
+        "protocol": "nextest-libtest-json-plus-0.1",
+        "sidecar_schema_version": 1,
         "features": FEATURES,
-        "target_test": TARGET_TEST,
-        "runs_per_leg": args.runs,
+        "target_test_name": TARGET_TEST_NAME,
+        "target_event_name": TARGET_EVENT_NAME,
+        "runs_per_condition": args.runs,
         "concurrent_scope": args.concurrent_scope,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "legs": {},
+        "schedule": [],
     }
 
-    for leg in LEGS:
-        cmd = build_command(args.runner, leg, args.concurrent_scope)
-        print(f"leg={leg}: {args.runs} run(s) of: {' '.join(cmd)}")
-        runs: list[dict] = []
-        for i in range(args.runs):
-            proc = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
-            combined = proc.stdout + proc.stderr
-            (logs_dir / f"{leg}-{i:03d}.log").write_text(combined)
-            outcome = parse_run(combined, args.runner)
-            outcome["run"] = i
-            outcome["exit_code"] = proc.returncode
-            runs.append(outcome)
-            print(
-                f"  run {i}: status={outcome['status']} "
-                f"post-reopen={outcome['post_reopen_avg']} "
-                f"post-delete={outcome['post_delete_avg']}"
-            )
-        report["legs"][leg] = {"command": cmd, "runs": runs, "summary": summarize(runs)}
+    for entry in counterbalanced_schedule(args.runs):
+        print(
+            f"sequence={entry['sequence']} block={entry['block']} order={entry['ordering']} "
+            f"position={entry['position']} condition={entry['condition']}: "
+            f"{shlex.join(build_command(entry['condition'], args.concurrent_scope))}"
+        )
+        outcome = _run_one(entry, args.concurrent_scope, logs_dir)
+        report["schedule"].append(outcome)
+        measurement = outcome.get("post_delete_class", "unavailable")
+        print(
+            f"  protocol={outcome['protocol']['state']} "
+            f"target={outcome['protocol']['target_status']} "
+            f"sidecar={outcome['sidecar']['state']} post-delete={measurement} "
+            f"instrument={outcome['instrument_state']}"
+        )
 
-    report["reading"] = classify(report["legs"]["serial"]["summary"], report["legs"]["concurrent"]["summary"])
+    report["conditions"] = {}
+    report["condition_by_position"] = {}
+    for condition in CONDITIONS:
+        condition_runs = [run for run in report["schedule"] if run["condition"] == condition]
+        report["conditions"][condition] = {
+            "command": build_command(condition, args.concurrent_scope),
+            "summary": summarize(condition_runs),
+        }
+        report["condition_by_position"][condition] = {
+            position: summarize(
+                [run for run in condition_runs if run["position"] == position]
+            )
+            for position in POSITIONS
+        }
+
+    report["orderings"] = {
+        ordering: summarize(
+            [run for run in report["schedule"] if run["ordering"] == ordering]
+        )
+        for ordering in ORDERINGS
+    }
+
+    report["instrument_valid"] = all(
+        run["instrument_state"] == "valid" for run in report["schedule"]
+    )
+    report["reading"] = classify(report["schedule"])
+    report["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     (out_dir / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     markdown = render_markdown(report)
     (out_dir / "summary.md").write_text(markdown + "\n")
     print(markdown)
 
-    # Fail closed only when the instrument itself measured nothing: a leg that
-    # harvested zero markers means the test never ran as named (renamed test,
-    # wrong feature world, filter drift) and every other number in the report
-    # is then fiction. A leg full of failing TESTS is the data, not an error.
-    for leg in LEGS:
-        summary = report["legs"][leg]["summary"]
-        if summary["post_reopen"]["samples"] == 0 and summary["post_delete"]["samples"] == 0:
-            print(
-                f"error: leg {leg!r} harvested zero hnsw-recall markers — the target test did "
-                "not run as named; check the filter and feature world before trusting a "
-                "report with no samples",
-                file=sys.stderr,
-            )
-            return 1
+    if not report["instrument_valid"]:
+        print(
+            "error: one or more invocations lacked valid typed lifecycle and integer sidecar evidence",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 
