@@ -3,7 +3,8 @@
 //!
 //! An inbound message whose text starts with `!` is parsed as a structured command
 //! (name + args) instead of a plain conversational turn. Non-`!` messages are
-//! unaffected. Unknown `!` commands return a helpful error listing available names.
+//! unaffected. Unknown `!` commands are collapsed to a payload-free variant so
+//! attacker-controlled command text cannot escape the parser boundary.
 
 use std::fmt::Write as _;
 
@@ -40,13 +41,8 @@ pub enum Command {
         /// Agent identifier to inspect; `None` means the current routed agent.
         agent_id: Option<String>,
     },
-    /// Unknown command: carries the unrecognised name for the error reply.
-    Unknown {
-        /// The unrecognised command name (without `!`).
-        name: String,
-        /// Raw argument tail after the command name.
-        args: Option<String>,
-    },
+    /// Unknown command. The unrecognised name and arguments are discarded.
+    Unknown,
 }
 
 impl Command {
@@ -67,7 +63,7 @@ impl Command {
             Self::Blackboard => "blackboard",
             Self::Think => "think",
             Self::Info { .. } => "info",
-            Self::Unknown { name, .. } => name.as_str(),
+            Self::Unknown => "unknown",
         }
     }
 
@@ -80,9 +76,6 @@ impl Command {
             Self::Info {
                 agent_id: Some(agent_id),
             } => agent_id.as_str(),
-            Self::Unknown {
-                args: Some(args), ..
-            } => args.as_str(),
             _ => return None,
         };
         let redacted = redact_args(args);
@@ -160,14 +153,7 @@ pub fn parse(text: &str) -> Option<Command> {
                 Some(rest.to_owned())
             },
         },
-        unknown => Command::Unknown {
-            name: unknown.to_owned(),
-            args: if rest.is_empty() {
-                None
-            } else {
-                Some(rest.to_owned())
-            },
-        },
+        _ => Command::Unknown,
     };
     Some(cmd)
 }
@@ -292,7 +278,7 @@ pub struct CommandContext {
 /// Execute a parsed command against the given context and return a reply string.
 ///
 /// The returned string is ready to be sent back through the channel. Every
-/// command variant is handled: unknown commands get a helpful error.
+/// command variant is handled: unknown commands get a fixed, non-echoing error.
 #[must_use]
 pub fn execute(cmd: &Command, ctx: &CommandContext) -> String {
     match cmd {
@@ -309,7 +295,7 @@ pub fn execute(cmd: &Command, ctx: &CommandContext) -> String {
         Command::Blackboard => cmd_blackboard(ctx),
         Command::Think => cmd_think(ctx),
         Command::Info { agent_id } => cmd_info(ctx, agent_id.as_deref()),
-        Command::Unknown { name, .. } => cmd_unknown(name),
+        Command::Unknown => cmd_unknown(),
     }
 }
 
@@ -399,11 +385,8 @@ fn cmd_sessions(ctx: &CommandContext) -> String {
     }
 }
 
-fn cmd_ping(ctx: &CommandContext) -> String {
-    match &ctx.current_agent {
-        None => format!("Agent '{}' is not responding.", ctx.current_nous_id),
-        Some(a) => format!("Pong. Agent '{}' is alive ({}).", a.id, a.lifecycle),
-    }
+fn cmd_ping(_ctx: &CommandContext) -> String {
+    "Pong.".to_owned()
 }
 
 fn cmd_channels(ctx: &CommandContext) -> String {
@@ -482,7 +465,10 @@ fn cmd_think(ctx: &CommandContext) -> String {
 
 fn cmd_info(ctx: &CommandContext, agent_id: Option<&str>) -> String {
     let target_id = agent_id.unwrap_or(&ctx.current_nous_id);
-    let agent = ctx.all_agents.iter().find(|a| a.id == target_id);
+    let agent = match agent_id {
+        Some(_) => ctx.all_agents.iter().find(|a| a.id == target_id),
+        None => ctx.current_agent.as_ref(),
+    };
     match agent {
         None => format!("Agent '{target_id}' not found."),
         Some(a) => {
@@ -504,8 +490,8 @@ fn cmd_info(ctx: &CommandContext, agent_id: Option<&str>) -> String {
     }
 }
 
-fn cmd_unknown(name: &str) -> String {
-    format!("Unknown command '!{name}'. Type !help for a list of available commands.")
+fn cmd_unknown() -> String {
+    "Unknown command.".to_owned()
 }
 
 fn format_uptime(secs: u64) -> String {
@@ -620,23 +606,14 @@ mod tests {
 
     #[test]
     fn parse_unknown_command() {
-        assert_eq!(
-            parse("!frobnicate"),
-            Some(Command::Unknown {
-                name: "frobnicate".to_owned(),
-                args: None,
-            })
-        );
+        assert_eq!(parse("!frobnicate"), Some(Command::Unknown));
     }
 
     #[test]
-    fn parse_unknown_command_keeps_args_for_audit() {
+    fn parse_unknown_command_discards_name_and_args() {
         assert_eq!(
             parse("!frobnicate --token secret-value target"),
-            Some(Command::Unknown {
-                name: "frobnicate".to_owned(),
-                args: Some("--token secret-value target".to_owned()),
-            })
+            Some(Command::Unknown)
         );
     }
 
@@ -770,19 +747,18 @@ mod tests {
     }
 
     #[test]
-    fn ping_includes_alive_when_agent_present() {
+    fn ping_is_fixed_and_does_not_expose_agent_state() {
         let ctx = make_context();
         let reply = execute(&Command::Ping, &ctx);
-        assert!(reply.contains("alive"), "{reply}");
-        assert!(reply.contains("syn"), "{reply}");
+        assert_eq!(reply, "Pong.");
     }
 
     #[test]
-    fn ping_not_responding_when_no_snapshot() {
+    fn ping_does_not_depend_on_an_agent_snapshot() {
         let mut ctx = make_context();
         ctx.current_agent = None;
         let reply = execute(&Command::Ping, &ctx);
-        assert!(reply.contains("not responding"), "{reply}");
+        assert_eq!(reply, "Pong.");
     }
 
     #[test]
@@ -854,17 +830,10 @@ mod tests {
     }
 
     #[test]
-    fn unknown_command_suggests_help() {
+    fn unknown_command_is_fixed_and_non_echoing() {
         let ctx = make_context();
-        let reply = execute(
-            &Command::Unknown {
-                name: "frobnik".to_owned(),
-                args: None,
-            },
-            &ctx,
-        );
-        assert!(reply.contains("frobnik"), "{reply}");
-        assert!(reply.contains("!help"), "{reply}");
+        let reply = execute(&Command::Unknown, &ctx);
+        assert_eq!(reply, "Unknown command.");
     }
 
     #[test]
@@ -917,14 +886,7 @@ mod tests {
         assert_eq!(Command::Blackboard.name(), "blackboard");
         assert_eq!(Command::Think.name(), "think");
         assert_eq!(Command::Info { agent_id: None }.name(), "info");
-        assert_eq!(
-            Command::Unknown {
-                name: "xyz".to_owned(),
-                args: None,
-            }
-            .name(),
-            "xyz"
-        );
+        assert_eq!(Command::Unknown.name(), "unknown");
     }
 
     #[test]
@@ -940,15 +902,7 @@ mod tests {
     }
 
     #[test]
-    fn redacted_args_masks_sensitive_unknown_args() {
-        assert_eq!(
-            Command::Unknown {
-                name: "frobnicate".to_owned(),
-                args: Some("--token secret-value api_key=another target".to_owned()),
-            }
-            .redacted_args()
-            .as_deref(),
-            Some("--token [REDACTED] api_key=[REDACTED] target")
-        );
+    fn unknown_command_has_no_auditable_arguments() {
+        assert!(Command::Unknown.redacted_args().is_none());
     }
 }
