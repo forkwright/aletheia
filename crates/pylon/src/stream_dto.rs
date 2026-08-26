@@ -194,6 +194,15 @@ pub(crate) enum TurnStreamEvent {
         tool_name: String,
         tool_id: String,
         input: serde_json::Value,
+        /// Canonical turn identity supplied by nous (#5016) — additive.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        turn_id: Option<String>,
+        /// Session that owns the turn (#5016) — additive.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+        /// Gateway request ID for the originating HTTP request (#4853).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
     /// Tool execution is awaiting approval.
     #[serde(rename = "tool_approval_required")]
@@ -204,10 +213,28 @@ pub(crate) enum TurnStreamEvent {
         input: serde_json::Value,
         risk: String,
         reason: String,
+        /// Session that owns the turn (#5016) — additive.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+        /// Gateway request ID for the originating HTTP request (#4853).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
     /// Tool approval decision resolved.
     #[serde(rename = "tool_approval_resolved")]
-    ToolApprovalResolved { tool_id: String, decision: String },
+    ToolApprovalResolved {
+        tool_id: String,
+        decision: String,
+        /// Canonical turn identity supplied by nous (#5016) — additive.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        turn_id: Option<String>,
+        /// Session that owns the turn (#5016) — additive.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+        /// Gateway request ID for the originating HTTP request (#4853).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
     /// Tool execution result.
     #[serde(rename = "tool_result")]
     ToolResult {
@@ -221,6 +248,15 @@ pub(crate) enum TurnStreamEvent {
         /// the call never ran. Mirrors `nous::pipeline::ToolCall::outcome_label()`.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         outcome: Option<String>,
+        /// Canonical turn identity supplied by nous (#5016) — additive.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        turn_id: Option<String>,
+        /// Session that owns the turn (#5016) — additive.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        session_id: Option<String>,
+        /// Gateway request ID for the originating HTTP request (#4853).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
     /// Turn completed - mirrors `SseEvent::MessageComplete`.
     ///

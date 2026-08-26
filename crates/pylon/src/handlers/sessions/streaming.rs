@@ -1307,6 +1307,7 @@ pub async fn stream_turn(
                                 provider_stream_event_to_turn_event(llm_event)
                             }
                             TurnStreamEvent::ToolStart {
+                                identity,
                                 tool_id,
                                 tool_name,
                                 input,
@@ -1314,36 +1315,57 @@ pub async fn stream_turn(
                                 tool_name,
                                 tool_id,
                                 input,
+                                // WHY(#5016): forward nous's canonical turn
+                                // identity; pylon never substitutes its own.
+                                turn_id: Some(identity.turn_id),
+                                session_id: Some(identity.session_id),
+                                request_id: identity.request_id,
                             },
                             TurnStreamEvent::ToolApprovalRequired {
-                                turn_id: _nous_turn_id,
+                                identity,
                                 tool_id,
                                 tool_name,
                                 input,
                                 risk,
                                 reason,
-                            } => PylonTurnStreamEvent::ToolApprovalRequired {
-                                turn_id: {
-                                    approval_registry
-                                        .register_tool(
-                                            &approval_session_id,
-                                            &approval_turn_id,
-                                            tool_id.clone(),
-                                            approval_tx_for_bridge.clone(),
-                                        )
-                                        .await;
-                                    approval_turn_id.clone()
-                                },
-                                tool_name,
-                                tool_id,
-                                input,
-                                risk,
-                                reason,
-                            },
-                            TurnStreamEvent::ToolApprovalResolved { tool_id, decision } => {
-                                PylonTurnStreamEvent::ToolApprovalResolved { tool_id, decision }
+                            } => {
+                                // WHY: the approval registry stays keyed on the
+                                // ULID pylon supplied to nous for this turn —
+                                // identical to `identity.turn_id` on this path,
+                                // but the registry key is pylon's own contract
+                                // with the approval endpoints.
+                                approval_registry
+                                    .register_tool(
+                                        &approval_session_id,
+                                        &approval_turn_id,
+                                        tool_id.clone(),
+                                        approval_tx_for_bridge.clone(),
+                                    )
+                                    .await;
+                                PylonTurnStreamEvent::ToolApprovalRequired {
+                                    turn_id: identity.turn_id,
+                                    tool_name,
+                                    tool_id,
+                                    input,
+                                    risk,
+                                    reason,
+                                    session_id: Some(identity.session_id),
+                                    request_id: identity.request_id,
+                                }
                             }
+                            TurnStreamEvent::ToolApprovalResolved {
+                                identity,
+                                tool_id,
+                                decision,
+                            } => PylonTurnStreamEvent::ToolApprovalResolved {
+                                tool_id,
+                                decision,
+                                turn_id: Some(identity.turn_id),
+                                session_id: Some(identity.session_id),
+                                request_id: identity.request_id,
+                            },
                             TurnStreamEvent::ToolResult {
+                                identity,
                                 tool_id,
                                 tool_name,
                                 result,
@@ -1357,6 +1379,9 @@ pub async fn stream_turn(
                                 is_error,
                                 duration_ms,
                                 outcome: Some(outcome),
+                                turn_id: Some(identity.turn_id),
+                                session_id: Some(identity.session_id),
+                                request_id: identity.request_id,
                             },
                             _ => PylonTurnStreamEvent::ProviderUnsupportedEvent {
                                 event_type: "unknown_turn_stream_event".to_owned(),
