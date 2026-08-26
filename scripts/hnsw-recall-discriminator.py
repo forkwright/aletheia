@@ -172,7 +172,10 @@ def phase_stats(values: list[float | None]) -> dict:
         "p50": statistics.median(present) if present else None,
         "mean": round(statistics.fmean(present), 4) if present else None,
         "max": max(present) if present else None,
-        "exact_zero": sum(1 for v in present if v == 0.0),
+        # WHY `not v`: recall is non-negative, so falsy is exactly 0.0. The
+        # float-equality spelling trips SonarCloud S1244, whose Bug rating on
+        # new code is what fails the otherwise-advisory quality gate.
+        "exact_zero": sum(1 for v in present if not v),
         "sub_floor_nonzero": sum(1 for v in present if 0.0 < v < POST_DELETE_FLOOR),
     }
 
