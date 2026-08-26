@@ -312,10 +312,8 @@ pub fn redact_in_json(value: &mut serde_json::Value) {
             // Catch definite credential syntax even inside ordinary prose.
             // The length-only fallback below intentionally remains more
             // conservative for durable copies.
-            let sanitized = koina::redact::redact_sensitive(s);
-            if sanitized != *s {
-                *s = sanitized;
-            } else if looks_like_secret(s) {
+            *s = koina::redact::redact_sensitive(s);
+            if looks_like_secret(s) {
                 "[REDACTED]".clone_into(s);
             }
         }
@@ -538,6 +536,18 @@ mod tests {
         assert!(redacted.contains("sk-ant-***"));
         assert!(redacted.contains("Bearer ***"));
         assert!(redacted.contains("[JWT REDACTED]"));
+    }
+
+    #[test]
+    fn redact_applies_long_token_fallback_after_strong_pattern_sanitization() {
+        let opaque = "x".repeat(40);
+        let recognized = format!("{}{}", "sk-ant-api03-", "synthetic-key");
+        let mut value = serde_json::json!({"token": format!("{recognized}:{opaque}")});
+
+        redact_in_json(&mut value);
+
+        assert_eq!(value["token"], "[REDACTED]");
+        assert!(!value.to_string().contains(&opaque));
     }
 
     #[test]
