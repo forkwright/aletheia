@@ -39,6 +39,15 @@ pub(crate) struct BufferedMessage {
     pub enqueued_at: Instant,
 }
 
+/// Whether the newly submitted message entered the recovery queue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EnqueueDisposition {
+    /// The new message is queued (an older message may have been evicted).
+    Queued,
+    /// Buffering is disabled, so the new message was dropped.
+    DroppedDisabled,
+}
+
 /// Per-account connection state and outbound buffer.
 ///
 /// Tracks connection health and queues outbound messages during
@@ -50,8 +59,14 @@ pub(crate) struct AccountState {
     buffer: VecDeque<BufferedMessage>,
     /// Maximum buffer size.
     capacity: usize,
-    /// Total messages dropped due to buffer overflow.
+    /// Total queued messages dropped due to overflow or a permanent send failure.
     pub dropped_count: u64,
+    /// Sends whose response was lost after the daemon may have accepted them.
+    pub ambiguous_delivery_count: u64,
+    /// Sends that reached only a subset of their intended recipients.
+    pub partial_delivery_count: u64,
+    /// Destructively received envelopes or parts that could not be forwarded.
+    pub receive_loss_count: u64,
 }
 
 impl AccountState {
@@ -63,14 +78,26 @@ impl AccountState {
             buffer: VecDeque::new(),
             capacity,
             dropped_count: 0,
+            ambiguous_delivery_count: 0,
+            partial_delivery_count: 0,
+            receive_loss_count: 0,
         }
     }
 
     /// Queue an outbound message. Drops the oldest if at capacity.
-    pub(crate) fn enqueue(&mut self, params: client::SendParams) {
+    #[must_use]
+    pub(crate) fn enqueue(&mut self, params: client::SendParams) -> EnqueueDisposition {
+        if self.capacity == 0 {
+            self.dropped_count = self.dropped_count.saturating_add(1);
+            tracing::warn!(
+                dropped_count = self.dropped_count,
+                "outbound buffer disabled, dropping message"
+            );
+            return EnqueueDisposition::DroppedDisabled;
+        }
         if self.buffer.len() >= self.capacity {
             self.buffer.pop_front();
-            self.dropped_count += 1;
+            self.dropped_count = self.dropped_count.saturating_add(1);
             tracing::warn!(
                 dropped_count = self.dropped_count,
                 "outbound buffer full, dropping oldest message"
@@ -80,11 +107,46 @@ impl AccountState {
             params,
             enqueued_at: Instant::now(),
         });
+        EnqueueDisposition::Queued
     }
 
     /// Drain all buffered messages in FIFO order.
+    #[cfg(test)]
     pub(crate) fn drain_all(&mut self) -> Vec<client::SendParams> {
         self.buffer.drain(..).map(|bm| bm.params).collect()
+    }
+
+    /// Remove and return the oldest queued message before beginning delivery.
+    pub(crate) fn take_front(&mut self) -> Option<client::SendParams> {
+        self.buffer.pop_front().map(|message| message.params)
+    }
+
+    /// Restore a proven-unsent message to the head of the FIFO.
+    pub(crate) fn push_front(&mut self, params: client::SendParams) {
+        self.buffer.push_front(BufferedMessage {
+            params,
+            enqueued_at: Instant::now(),
+        });
+    }
+
+    /// Record a send whose visibility is unknown and therefore cannot be retried.
+    pub(crate) fn record_ambiguous_delivery(&mut self) {
+        self.ambiguous_delivery_count = self.ambiguous_delivery_count.saturating_add(1);
+    }
+
+    /// Record a send that reached only some intended recipients.
+    pub(crate) fn record_partial_delivery(&mut self) {
+        self.partial_delivery_count = self.partial_delivery_count.saturating_add(1);
+    }
+
+    /// Record a queued message that failed permanently and cannot block the FIFO.
+    pub(crate) fn record_failed_delivery(&mut self) {
+        self.dropped_count = self.dropped_count.saturating_add(1);
+    }
+
+    /// Record messages or message parts consumed but not forwarded.
+    pub(crate) fn record_receive_loss(&mut self, count: u64) {
+        self.receive_loss_count = self.receive_loss_count.saturating_add(count);
     }
 
     /// Number of messages currently buffered.
@@ -101,8 +163,14 @@ pub struct ConnectionHealthReport {
     pub state: ConnectionState,
     /// Messages waiting in the outbound buffer.
     pub buffered_messages: usize,
-    /// Total messages dropped due to overflow.
+    /// Total queued messages dropped due to overflow or permanent send failure.
     pub dropped_count: u64,
+    /// Total sends with an ambiguous provider-visible outcome.
+    pub ambiguous_delivery_count: u64,
+    /// Total sends that reached only a subset of intended recipients.
+    pub partial_delivery_count: u64,
+    /// Total destructively received envelopes or parts that were lost.
+    pub receive_loss_count: u64,
 }
 
 #[cfg(test)]
@@ -120,6 +188,9 @@ mod tests {
         assert_eq!(state.state, ConnectionState::Connected);
         assert_eq!(state.buffered_count(), 0);
         assert_eq!(state.dropped_count, 0);
+        assert_eq!(state.ambiguous_delivery_count, 0);
+        assert_eq!(state.partial_delivery_count, 0);
+        assert_eq!(state.receive_loss_count, 0);
     }
 
     fn test_params(msg: &str) -> client::SendParams {
@@ -135,9 +206,18 @@ mod tests {
     #[test]
     fn enqueue_and_drain_fifo() {
         let mut state = AccountState::new(10);
-        state.enqueue(test_params("first"));
-        state.enqueue(test_params("second"));
-        state.enqueue(test_params("third"));
+        assert_eq!(
+            state.enqueue(test_params("first")),
+            EnqueueDisposition::Queued
+        );
+        assert_eq!(
+            state.enqueue(test_params("second")),
+            EnqueueDisposition::Queued
+        );
+        assert_eq!(
+            state.enqueue(test_params("third")),
+            EnqueueDisposition::Queued
+        );
 
         assert_eq!(state.buffered_count(), 3);
 
@@ -152,11 +232,12 @@ mod tests {
     #[test]
     fn enqueue_drops_oldest_at_capacity() {
         let mut state = AccountState::new(3);
-        state.enqueue(test_params("a"));
-        state.enqueue(test_params("b"));
-        state.enqueue(test_params("c"));
-        state.enqueue(test_params("d"));
-        state.enqueue(test_params("e"));
+        for message in ["a", "b", "c", "d", "e"] {
+            assert_eq!(
+                state.enqueue(test_params(message)),
+                EnqueueDisposition::Queued
+            );
+        }
 
         assert_eq!(state.buffered_count(), 3);
         assert_eq!(state.dropped_count, 2);
@@ -191,11 +272,17 @@ mod tests {
     #[test]
     fn buffer_capacity_one_drops_oldest_on_second_enqueue() {
         let mut state = AccountState::new(1);
-        state.enqueue(test_params("first"));
+        assert_eq!(
+            state.enqueue(test_params("first")),
+            EnqueueDisposition::Queued
+        );
         assert_eq!(state.buffered_count(), 1);
         assert_eq!(state.dropped_count, 0);
 
-        state.enqueue(test_params("second"));
+        assert_eq!(
+            state.enqueue(test_params("second")),
+            EnqueueDisposition::Queued
+        );
         assert_eq!(state.buffered_count(), 1);
         assert_eq!(state.dropped_count, 1);
 
@@ -205,16 +292,27 @@ mod tests {
     }
 
     #[test]
+    fn zero_capacity_drops_instead_of_growing_an_unbounded_queue() {
+        let mut state = AccountState::new(0);
+        assert_eq!(
+            state.enqueue(test_params("never queued")),
+            EnqueueDisposition::DroppedDisabled
+        );
+        assert_eq!(state.buffered_count(), 0);
+        assert_eq!(state.dropped_count, 1);
+    }
+
+    #[test]
     fn drain_resets_buffer_then_accepts_new_messages() {
         let mut state = AccountState::new(10);
-        state.enqueue(test_params("a"));
-        state.enqueue(test_params("b"));
+        assert_eq!(state.enqueue(test_params("a")), EnqueueDisposition::Queued);
+        assert_eq!(state.enqueue(test_params("b")), EnqueueDisposition::Queued);
         assert_eq!(state.buffered_count(), 2);
 
-        let _ = state.drain_all();
+        drop(state.drain_all());
         assert_eq!(state.buffered_count(), 0);
 
-        state.enqueue(test_params("c"));
+        assert_eq!(state.enqueue(test_params("c")), EnqueueDisposition::Queued);
         assert_eq!(state.buffered_count(), 1);
     }
 
@@ -222,7 +320,10 @@ mod tests {
     fn buffering_during_reconnect_then_draining_on_restore() {
         let mut state = AccountState::new(10);
         state.state = ConnectionState::Reconnecting { attempt: 1 };
-        state.enqueue(test_params("buffered-during-reconnect"));
+        assert_eq!(
+            state.enqueue(test_params("buffered-during-reconnect")),
+            EnqueueDisposition::Queued
+        );
         assert_eq!(state.buffered_count(), 1);
 
         state.state = ConnectionState::Connected;

@@ -3,7 +3,6 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
-use snafu::ResultExt;
 use tracing::instrument;
 
 use koina::http::CONTENT_TYPE_JSON;
@@ -18,7 +17,7 @@ pub const HEALTH_TIMEOUT: Duration = Duration::from_secs(2);
 /// Fallback default; runtime reads `MessagingConfig::receive_timeout_secs`.
 pub const RECEIVE_TIMEOUT: Duration = Duration::from_secs(15);
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 struct RpcRequest<'a> {
     jsonrpc: &'static str,
     method: &'a str,
@@ -26,20 +25,55 @@ struct RpcRequest<'a> {
     id: String,
 }
 
-#[derive(Debug, Deserialize)]
-struct RpcResponse {
-    #[expect(dead_code, reason = "deserialized from JSON-RPC wire format")]
-    jsonrpc: String,
-    result: Option<serde_json::Value>,
-    error: Option<RpcError>,
-    #[expect(dead_code, reason = "deserialized from JSON-RPC wire format")]
-    id: Option<serde_json::Value>,
+enum StrictRpcResult {
+    Null,
+    Value(serde_json::Value),
 }
 
-#[derive(Debug, Deserialize)]
-struct RpcError {
-    code: i64,
-    message: String,
+enum StrictRpcResponse {
+    Result(StrictRpcResult),
+    Error {
+        code: i64,
+        /// Command output written before signal-cli surfaced its RPC error.
+        response: Option<serde_json::Value>,
+    },
+}
+
+/// Provider-visible disposition of a correlated signal-cli send response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SendDisposition {
+    /// Every recipient result was successful.
+    Delivered,
+    /// At least one recipient succeeded and at least one failed.
+    Partial,
+    /// No recipient result was successful.
+    Rejected,
+}
+
+/// One successfully decoded item from a destructive receive response.
+pub(crate) struct ReceivedEnvelope {
+    /// Wire account named by signal-cli's response wrapper, when present.
+    pub(crate) account: Option<String>,
+    /// Stable public envelope projection.
+    pub(crate) envelope: SignalEnvelope,
+    /// Complete envelope used only by the normalizer and opt-in raw retention.
+    pub(crate) raw: serde_json::Value,
+}
+
+/// Every receive-array item remains represented after the daemon consumes it.
+pub(crate) enum ReceiveEntry {
+    /// A decoded wrapper and its complete envelope.
+    Envelope(Box<ReceivedEnvelope>),
+    /// signal-cli reported a per-item exception instead of an envelope.
+    DaemonException,
+    /// The wrapper or envelope could not be decoded without guessing.
+    Malformed,
+}
+
+/// Result of one correlated destructive receive call.
+pub(crate) struct ReceiveBatch {
+    /// One typed disposition for every consumed result-array item.
+    pub(crate) entries: Vec<ReceiveEntry>,
 }
 
 /// Async JSON-RPC client for a single signal-cli HTTP daemon instance.
@@ -85,13 +119,7 @@ impl SignalClient {
     ) -> Result<Self> {
         let base = normalize_url(base_url);
 
-        reqwest::Url::parse(&base).map_err(|source| {
-            error::InvalidUrlSnafu {
-                url: base.clone(),
-                reason: source.to_string(),
-            }
-            .build()
-        })?;
+        reqwest::Url::parse(&base).map_err(|_source| error::InvalidUrlSnafu.build())?;
 
         // WHY(#5199): `normalize_url` below says "signal-cli daemon is loopback-only",
         // and nothing made that true -- it only ever detected whether a scheme was
@@ -109,16 +137,17 @@ impl SignalClient {
         // `SignalClient::new("")` normalises to a bare scheme, which this would reject
         // as non-loopback only because there is no host in it to inspect.
         if !koina::http::is_secure_or_plaintext_loopback_url(&base) {
-            return Err(error::InsecureTransportSnafu {
-                url: koina::http::transport_url_for_diagnostic(&base),
-            }
-            .build());
+            return error::InsecureTransportSnafu.fail();
         }
 
         let client = reqwest::Client::builder()
             .timeout(rpc_timeout)
+            // Signal payloads must never leave through ambient proxy settings,
+            // and a redirect must not move a POST to a different authority.
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
             .build()
-            .context(error::HttpSnafu)?;
+            .map_err(|source| error::Error::from_http(&source))?;
 
         Ok(Self {
             client,
@@ -136,6 +165,18 @@ impl SignalClient {
         method: &str,
         params: &serde_json::Value,
     ) -> Result<Option<serde_json::Value>> {
+        match self.rpc_response(method, params).await? {
+            StrictRpcResponse::Result(StrictRpcResult::Null) => Ok(None),
+            StrictRpcResponse::Result(StrictRpcResult::Value(value)) => Ok(Some(value)),
+            StrictRpcResponse::Error { code, .. } => error::RpcSnafu { code }.fail(),
+        }
+    }
+
+    async fn rpc_response(
+        &self,
+        method: &str,
+        params: &serde_json::Value,
+    ) -> Result<StrictRpcResponse> {
         let id = koina::uuid::uuid_v4();
         let request = RpcRequest {
             jsonrpc: "2.0",
@@ -143,9 +184,7 @@ impl SignalClient {
             params,
             id,
         };
-
-        let body = serde_json::to_string(&request).context(error::JsonSnafu)?;
-
+        let body = serde_json::to_string(&request).map_err(|_source| error::Error::json())?;
         let response = self
             .client
             .post(&self.rpc_url)
@@ -153,24 +192,21 @@ impl SignalClient {
             .body(body)
             .send()
             .await
-            .context(error::HttpSnafu)?;
+            .map_err(|source| error::Error::from_http(&source))?;
 
-        // NOTE: 201 = accepted, no body (signal-cli convention for fire-and-forget)
-        if response.status().as_u16() == 201 {
-            return Ok(None);
-        }
-
-        let rpc_response: RpcResponse = response.json().await.context(error::HttpSnafu)?;
-
-        if let Some(err) = rpc_response.error {
-            return Err(error::RpcSnafu {
-                code: err.code,
-                message: err.message,
+        // An ID-bearing JSON-RPC request must receive one correlated response.
+        // signal-cli returns 201 only when it produced no response at all.
+        if response.status().as_u16() != 200 {
+            return Err(error::HttpStatusSnafu {
+                status: response.status().as_u16(),
             }
             .build());
         }
-
-        Ok(rpc_response.result)
+        let value = response
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|_source| error::ProtocolSnafu.build())?;
+        parse_rpc_response(&value, &request.id)
     }
 
     /// Send a message with retry on transient failures.
@@ -178,7 +214,7 @@ impl SignalClient {
     /// Retries up to 2 times with 500ms, 1000ms backoff.
     /// Does NOT retry JSON-RPC application errors (only transport failures).
     #[instrument(skip(self, params))]
-    pub async fn send_message(&self, params: &SendParams) -> Result<Option<serde_json::Value>> {
+    pub(crate) async fn send_message(&self, params: &SendParams) -> Result<SendDisposition> {
         use koina::retry::{BackoffStrategy, RetryConfig};
 
         let rpc_params = params.to_rpc_value();
@@ -189,7 +225,25 @@ impl SignalClient {
             },
         };
         config
-            .retry_classified_async(|| self.rpc("send", &rpc_params))
+            .retry_classified_async(|| async {
+                match self.rpc_response("send", &rpc_params).await? {
+                    StrictRpcResponse::Result(StrictRpcResult::Value(response)) => {
+                        parse_send_disposition(&response)
+                    }
+                    StrictRpcResponse::Result(StrictRpcResult::Null) => error::ProtocolSnafu.fail(),
+                    StrictRpcResponse::Error { code, response } => {
+                        let Some(response) = response else {
+                            return error::RpcSnafu { code }.fail();
+                        };
+                        let disposition = parse_send_disposition(&response)?;
+                        if disposition == SendDisposition::Delivered {
+                            error::ProtocolSnafu.fail()
+                        } else {
+                            Ok(disposition)
+                        }
+                    }
+                }
+            })
             .await
     }
 
@@ -209,8 +263,34 @@ impl SignalClient {
     /// Calls the signal-cli `receive` RPC method, which returns all messages
     /// that have accumulated since the last call. Uses a longer timeout than
     /// standard RPC calls since receive may block briefly.
-    #[instrument(skip(self))]
+    #[instrument(skip(self, account))]
     pub async fn receive(&self, account: Option<&str>) -> Result<Vec<SignalEnvelope>> {
+        let batch = self.receive_batch(account).await?;
+        let mut envelopes = Vec::with_capacity(batch.entries.len());
+        for entry in batch.entries {
+            match entry {
+                ReceiveEntry::Envelope(received)
+                    if account.is_none() || received.account.as_deref() == account =>
+                {
+                    envelopes.push(received.envelope);
+                }
+                ReceiveEntry::Envelope(_) => {
+                    return Err(error::Error::receive_unknown(
+                        error::ReceiveLossReason::AccountMismatch,
+                    ));
+                }
+                ReceiveEntry::DaemonException | ReceiveEntry::Malformed => {
+                    return Err(error::Error::receive_unknown(
+                        error::ReceiveLossReason::ResultShape,
+                    ));
+                }
+            }
+        }
+        Ok(envelopes)
+    }
+
+    /// Receive a batch while preserving signal-cli's account/exception wrapper.
+    pub(crate) async fn receive_batch(&self, account: Option<&str>) -> Result<ReceiveBatch> {
         let mut params = serde_json::Map::new();
         if let Some(acct) = account {
             params.insert(
@@ -228,9 +308,9 @@ impl SignalClient {
             id,
         };
 
-        let body = serde_json::to_string(&request).context(error::JsonSnafu)?;
+        let body = serde_json::to_string(&request).map_err(|_source| error::Error::json())?;
 
-        let response = self
+        let response = match self
             .client
             .post(&self.rpc_url)
             .header("content-type", CONTENT_TYPE_JSON)
@@ -238,39 +318,53 @@ impl SignalClient {
             .body(body)
             .send()
             .await
-            .context(error::HttpSnafu)?;
-
-        if response.status().as_u16() == 201 {
-            return Ok(Vec::new());
-        }
-
-        let rpc_response: RpcResponse = response.json().await.context(error::HttpSnafu)?;
-
-        if let Some(err) = rpc_response.error {
-            return Err(error::RpcSnafu {
-                code: err.code,
-                message: err.message,
+        {
+            Ok(response) => response,
+            Err(source) => {
+                let transport = error::Error::from_http(&source);
+                return if transport.safe_to_retry_delivery() {
+                    Err(transport)
+                } else {
+                    Err(error::Error::receive_unknown(
+                        error::ReceiveLossReason::Transport,
+                    ))
+                };
             }
-            .build());
+        };
+
+        if response.status().as_u16() != 200 {
+            return Err(error::Error::receive_unknown(
+                error::ReceiveLossReason::HttpStatus,
+            ));
         }
 
-        match rpc_response.result {
-            Some(serde_json::Value::Array(items)) => {
-                let envelopes = items
-                    .into_iter()
-                    .filter_map(|item| {
-                        let env_value = item.get("envelope").cloned().unwrap_or(item);
-                        serde_json::from_value::<SignalEnvelope>(env_value)
-                            .inspect_err(
-                                |e| tracing::debug!(error = %e, "skipping unparseable envelope"),
-                            )
-                            .ok()
-                    })
-                    .collect();
-                Ok(envelopes)
+        let value = response
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|_source| error::Error::receive_unknown(error::ReceiveLossReason::Protocol))?;
+        let response =
+            parse_rpc_response(&value, &request.id).map_err(|failure| match failure {
+                error::Error::Protocol { .. } => {
+                    error::Error::receive_unknown(error::ReceiveLossReason::Protocol)
+                }
+                other => other,
+            })?;
+        let result = match response {
+            StrictRpcResponse::Result(result) => result,
+            StrictRpcResponse::Error { .. } => {
+                return Err(error::Error::receive_unknown(error::ReceiveLossReason::Rpc));
             }
-            Some(_) | None => Ok(Vec::new()),
-        }
+        };
+
+        let StrictRpcResult::Value(serde_json::Value::Array(items)) = result else {
+            return Err(error::Error::receive_unknown(
+                error::ReceiveLossReason::ResultShape,
+            ));
+        };
+
+        Ok(ReceiveBatch {
+            entries: items.iter().map(parse_receive_entry).collect(),
+        })
     }
 
     /// The base RPC URL this client targets.
@@ -284,16 +378,143 @@ impl SignalClient {
     }
 }
 
+fn parse_rpc_response(value: &serde_json::Value, expected_id: &str) -> Result<StrictRpcResponse> {
+    let Some(object) = value.as_object() else {
+        return error::ProtocolSnafu.fail();
+    };
+    if object.get("jsonrpc").and_then(serde_json::Value::as_str) != Some("2.0")
+        || object.get("id").and_then(serde_json::Value::as_str) != Some(expected_id)
+    {
+        return error::ProtocolSnafu.fail();
+    }
+
+    let has_result = object.contains_key("result");
+    let has_error = object.contains_key("error");
+    if has_result == has_error {
+        return error::ProtocolSnafu.fail();
+    }
+
+    if has_error {
+        let Some(remote) = object.get("error").and_then(serde_json::Value::as_object) else {
+            return error::ProtocolSnafu.fail();
+        };
+        let Some(code) = remote.get("code").and_then(serde_json::Value::as_i64) else {
+            return error::ProtocolSnafu.fail();
+        };
+        if remote
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .is_none()
+        {
+            return error::ProtocolSnafu.fail();
+        }
+        let response = remote
+            .get("data")
+            .and_then(|data| data.get("response"))
+            .cloned();
+        return Ok(StrictRpcResponse::Error { code, response });
+    }
+
+    match object.get("result") {
+        Some(serde_json::Value::Null) => Ok(StrictRpcResponse::Result(StrictRpcResult::Null)),
+        Some(result) => Ok(StrictRpcResponse::Result(StrictRpcResult::Value(
+            result.clone(),
+        ))),
+        None => error::ProtocolSnafu.fail(),
+    }
+}
+
+fn parse_send_disposition(value: &serde_json::Value) -> Result<SendDisposition> {
+    let Some(response) = value.as_object() else {
+        return error::ProtocolSnafu.fail();
+    };
+    if !response
+        .get("timestamp")
+        .and_then(serde_json::Value::as_u64)
+        .is_some_and(|timestamp| timestamp > 0)
+    {
+        return error::ProtocolSnafu.fail();
+    }
+    let Some(results) = response
+        .get("results")
+        .and_then(serde_json::Value::as_array)
+        .filter(|results| !results.is_empty())
+    else {
+        return error::ProtocolSnafu.fail();
+    };
+
+    let mut successes = 0_usize;
+    for result in results {
+        let Some(kind) = result.get("type").and_then(serde_json::Value::as_str) else {
+            return error::ProtocolSnafu.fail();
+        };
+        match kind {
+            "SUCCESS" => successes = successes.saturating_add(1),
+            "NETWORK_FAILURE"
+            | "UNREGISTERED_FAILURE"
+            | "IDENTITY_FAILURE"
+            | "RATE_LIMIT_FAILURE"
+            | "INVALID_PRE_KEY_FAILURE" => {}
+            _ => return error::ProtocolSnafu.fail(),
+        }
+    }
+
+    if successes == results.len() {
+        Ok(SendDisposition::Delivered)
+    } else if successes == 0 {
+        Ok(SendDisposition::Rejected)
+    } else {
+        Ok(SendDisposition::Partial)
+    }
+}
+
+fn parse_receive_entry(value: &serde_json::Value) -> ReceiveEntry {
+    let Some(wrapper) = value.as_object() else {
+        return ReceiveEntry::Malformed;
+    };
+
+    let has_exception = wrapper
+        .get("exception")
+        .is_some_and(|exception| !exception.is_null());
+    let envelope_value = wrapper
+        .get("envelope")
+        .filter(|envelope| !envelope.is_null());
+    if has_exception {
+        return if envelope_value.is_some() {
+            ReceiveEntry::Malformed
+        } else {
+            ReceiveEntry::DaemonException
+        };
+    }
+    let Some(raw) = envelope_value.cloned() else {
+        return ReceiveEntry::Malformed;
+    };
+
+    let account = match wrapper.get("account") {
+        None | Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::String(account)) if !account.trim().is_empty() => {
+            Some(account.clone())
+        }
+        Some(_) => return ReceiveEntry::Malformed,
+    };
+    match serde_json::from_value::<SignalEnvelope>(raw.clone()) {
+        Ok(envelope) => ReceiveEntry::Envelope(Box::new(ReceivedEnvelope {
+            account,
+            envelope,
+            raw,
+        })),
+        Err(_source) => ReceiveEntry::Malformed,
+    }
+}
+
 impl std::fmt::Debug for SignalClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SignalClient")
-            .field("rpc_url", &self.rpc_url)
-            .finish_non_exhaustive()
+        f.debug_struct("SignalClient").finish_non_exhaustive()
     }
 }
 
 /// Parameters for the signal-cli `send` RPC method.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SendParams {
     /// Message text to send.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -310,6 +531,21 @@ pub struct SendParams {
     /// File paths to attach to the message.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<Vec<String>>,
+}
+
+impl std::fmt::Debug for SendParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SendParams")
+            .field("has_message", &self.message.is_some())
+            .field("has_recipient", &self.recipient.is_some())
+            .field("has_group_id", &self.group_id.is_some())
+            .field("has_account", &self.account.is_some())
+            .field(
+                "attachment_count",
+                &self.attachments.as_ref().map(std::vec::Vec::len),
+            )
+            .finish()
+    }
 }
 
 impl SendParams {
@@ -380,6 +616,25 @@ mod tests {
     use organon::testing::install_crypto_provider;
 
     use super::*;
+
+    fn echo_rpc_id(response_body: serde_json::Value) -> impl wiremock::Respond + 'static {
+        move |request: &wiremock::Request| {
+            let request_body: serde_json::Value = request
+                .body_json()
+                .expect("test request must contain JSON-RPC JSON");
+            let mut body = response_body.clone();
+            body.as_object_mut()
+                .expect("test response must be an object")
+                .insert(
+                    "id".to_owned(),
+                    request_body
+                        .get("id")
+                        .cloned()
+                        .expect("test request must contain an id"),
+                );
+            wiremock::ResponseTemplate::new(200).set_body_json(body)
+        }
+    }
 
     /// A LAN or public host over plaintext must not produce a working client.
     ///
@@ -512,13 +767,12 @@ mod tests {
                     },
                     "account": "+0000000000"
                 }
-            ],
-            "id": "test"
+            ]
         });
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
+            .respond_with(echo_rpc_id(rpc_response))
             .mount(&server)
             .await;
 
@@ -543,13 +797,12 @@ mod tests {
 
         let rpc_response = serde_json::json!({
             "jsonrpc": "2.0",
-            "result": [],
-            "id": "test"
+            "result": []
         });
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
+            .respond_with(echo_rpc_id(rpc_response))
             .mount(&server)
             .await;
 
@@ -565,24 +818,31 @@ mod tests {
 
         let rpc_response = serde_json::json!({
             "jsonrpc": "2.0",
-            "error": {"code": -32601, "message": "method not found"},
-            "id": "test"
+            "error": {"code": -32601, "message": "method not found"}
         });
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
+            .respond_with(echo_rpc_id(rpc_response))
             .mount(&server)
             .await;
 
         let client = SignalClient::new(&server.uri()).expect("create client");
         let err = client.receive(None).await.expect_err("should fail");
         let msg = err.to_string();
-        assert!(msg.contains("method not found"), "got: {msg}");
+        assert!(matches!(
+            &err,
+            error::Error::ReceiveOutcomeUnknown {
+                reason: error::ReceiveLossReason::Rpc,
+                ..
+            }
+        ));
+        assert!(!msg.contains("-32601"), "got: {msg}");
+        assert!(!msg.contains("method not found"), "got: {msg}");
     }
 
     #[tokio::test]
-    async fn receive_skips_malformed_envelopes() {
+    async fn receive_batch_preserves_wrapper_account_and_malformed_entries() {
         install_crypto_provider();
         let server = wiremock::MockServer::start().await;
 
@@ -592,8 +852,10 @@ mod tests {
                 {
                     "envelope": {
                         "sourceNumber": "+1111111111",
-                        "dataMessage": {"message": "good"}
-                    }
+                        "timestamp": 100,
+                        "dataMessage": {"message": "good", "timestamp": 100}
+                    },
+                    "account": "+1000000000"
                 },
                 {
                     "envelope": "not-an-object"
@@ -601,24 +863,265 @@ mod tests {
                 {
                     "envelope": {
                         "sourceNumber": "+2222222222",
-                        "dataMessage": {"message": "also good"}
+                        "timestamp": 101,
+                        "dataMessage": {"message": "also good", "timestamp": 101}
                     }
                 }
-            ],
-            "id": "test"
+            ]
         });
 
         wiremock::Mock::given(wiremock::matchers::method("POST"))
             .and(wiremock::matchers::path("/api/v1/rpc"))
-            .respond_with(wiremock::ResponseTemplate::new(200).set_body_json(&rpc_response))
+            .respond_with(echo_rpc_id(rpc_response))
             .mount(&server)
             .await;
 
         let client = SignalClient::new(&server.uri()).expect("create client");
-        let envelopes = client.receive(None).await.expect("receive");
+        let batch = client.receive_batch(None).await.expect("receive");
+        assert_eq!(batch.entries.len(), 3);
+        match &batch.entries[0] {
+            ReceiveEntry::Envelope(received) => {
+                assert_eq!(received.account.as_deref(), Some("+1000000000"));
+                assert_eq!(
+                    received.envelope.source_number.as_deref(),
+                    Some("+1111111111")
+                );
+            }
+            _ => panic!("first item should preserve its wrapper"),
+        }
+        assert!(matches!(
+            batch.entries.get(1),
+            Some(ReceiveEntry::Malformed)
+        ));
+        assert!(matches!(
+            batch.entries.get(2),
+            Some(ReceiveEntry::Envelope(_))
+        ));
+    }
 
-        assert_eq!(envelopes.len(), 2);
-        assert_eq!(envelopes[0].source_number.as_deref(), Some("+1111111111"));
-        assert_eq!(envelopes[1].source_number.as_deref(), Some("+2222222222"));
+    #[test]
+    fn strict_rpc_shape_requires_version_correlated_id_and_one_outcome() {
+        for invalid in [
+            serde_json::json!({"jsonrpc": "1.0", "id": "expected", "result": []}),
+            serde_json::json!({"jsonrpc": "2.0", "id": "other", "result": []}),
+            serde_json::json!({"jsonrpc": "2.0", "id": "expected"}),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "expected",
+                "result": [],
+                "error": {"code": -1, "message": "both"}
+            }),
+            serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": "expected",
+                "error": {"code": -1}
+            }),
+        ] {
+            assert!(matches!(
+                parse_rpc_response(&invalid, "expected"),
+                Err(error::Error::Protocol { .. })
+            ));
+        }
+        assert!(matches!(
+            parse_rpc_response(
+                &serde_json::json!({"jsonrpc": "2.0", "id": "expected", "result": null}),
+                "expected"
+            ),
+            Ok(StrictRpcResponse::Result(StrictRpcResult::Null))
+        ));
+    }
+
+    fn send_params() -> SendParams {
+        SendParams {
+            message: Some("hello".to_owned()),
+            recipient: Some("+15550001".to_owned()),
+            group_id: None,
+            account: Some("+15550002".to_owned()),
+            attachments: None,
+        }
+    }
+
+    #[test]
+    fn send_result_requires_timestamp_and_known_nonempty_recipient_results() {
+        let delivered = serde_json::json!({
+            "timestamp": 100,
+            "results": [{"type": "SUCCESS"}, {"type": "SUCCESS"}]
+        });
+        let partial = serde_json::json!({
+            "timestamp": 100,
+            "results": [{"type": "SUCCESS"}, {"type": "UNREGISTERED_FAILURE"}]
+        });
+        let rejected = serde_json::json!({
+            "timestamp": 100,
+            "results": [{"type": "NETWORK_FAILURE"}]
+        });
+        assert_eq!(
+            parse_send_disposition(&delivered).expect("delivered shape"),
+            SendDisposition::Delivered
+        );
+        assert_eq!(
+            parse_send_disposition(&partial).expect("partial shape"),
+            SendDisposition::Partial
+        );
+        assert_eq!(
+            parse_send_disposition(&rejected).expect("rejected shape"),
+            SendDisposition::Rejected
+        );
+
+        for malformed in [
+            serde_json::json!({"timestamp": 100}),
+            serde_json::json!({"timestamp": 100, "results": []}),
+            serde_json::json!({"timestamp": 100, "results": [{"type": "FUTURE_TYPE"}]}),
+            serde_json::json!({"results": [{"type": "SUCCESS"}]}),
+            serde_json::json!(null),
+        ] {
+            assert!(matches!(
+                parse_send_disposition(&malformed),
+                Err(error::Error::Protocol { .. })
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn id_bearing_send_rejects_uncorrelated_201_without_retry() {
+        install_crypto_provider();
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(wiremock::ResponseTemplate::new(201))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = SignalClient::new(&server.uri()).expect("client");
+        let failure = client
+            .send_message(&send_params())
+            .await
+            .expect_err("201 cannot confirm delivery");
+        assert!(failure.delivery_outcome_ambiguous());
+    }
+
+    #[tokio::test]
+    async fn rpc_error_preserves_partial_disposition_without_sensitive_data() {
+        install_crypto_provider();
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(echo_rpc_id(serde_json::json!({
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -1,
+                    "message": "remote secret",
+                    "data": {
+                        "response": {
+                            "timestamp": 100,
+                            "results": [
+                                {"type": "SUCCESS", "recipientAddress": {"number": "+15550003"}},
+                                {"type": "IDENTITY_FAILURE", "token": "private-token"}
+                            ]
+                        }
+                    }
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = SignalClient::new(&server.uri()).expect("client");
+        assert_eq!(
+            client
+                .send_message(&send_params())
+                .await
+                .expect("typed result"),
+            SendDisposition::Partial
+        );
+    }
+
+    #[tokio::test]
+    async fn destructive_receive_rejects_201_redirect_and_error_status() {
+        install_crypto_provider();
+        for template in [
+            wiremock::ResponseTemplate::new(201),
+            wiremock::ResponseTemplate::new(302).insert_header("location", "/elsewhere"),
+            wiremock::ResponseTemplate::new(503),
+        ] {
+            let server = wiremock::MockServer::start().await;
+            wiremock::Mock::given(wiremock::matchers::method("POST"))
+                .and(wiremock::matchers::path("/api/v1/rpc"))
+                .respond_with(template)
+                .expect(1)
+                .mount(&server)
+                .await;
+
+            let client = SignalClient::new(&server.uri()).expect("client");
+            assert!(matches!(
+                client.receive_batch(None).await,
+                Err(error::Error::ReceiveOutcomeUnknown {
+                    reason: error::ReceiveLossReason::HttpStatus,
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn destructive_receive_rejects_missing_or_mismatched_outcomes() {
+        install_crypto_provider();
+        for body in [
+            serde_json::json!({"jsonrpc": "2.0", "result": null}),
+            serde_json::json!({"jsonrpc": "2.0", "result": {"not": "an array"}}),
+        ] {
+            let server = wiremock::MockServer::start().await;
+            wiremock::Mock::given(wiremock::matchers::method("POST"))
+                .and(wiremock::matchers::path("/api/v1/rpc"))
+                .respond_with(echo_rpc_id(body))
+                .mount(&server)
+                .await;
+            let client = SignalClient::new(&server.uri()).expect("client");
+            assert!(matches!(
+                client.receive_batch(None).await,
+                Err(error::Error::ReceiveOutcomeUnknown {
+                    reason: error::ReceiveLossReason::ResultShape,
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn wrapper_exception_is_never_mistaken_for_an_empty_receive() {
+        install_crypto_provider();
+        let server = wiremock::MockServer::start().await;
+        wiremock::Mock::given(wiremock::matchers::method("POST"))
+            .and(wiremock::matchers::path("/api/v1/rpc"))
+            .respond_with(echo_rpc_id(serde_json::json!({
+                "jsonrpc": "2.0",
+                "result": [{"account": "+1000000000", "exception": "private detail"}]
+            })))
+            .mount(&server)
+            .await;
+        let client = SignalClient::new(&server.uri()).expect("client");
+        let batch = client.receive_batch(None).await.expect("correlated batch");
+        assert!(matches!(
+            batch.entries.as_slice(),
+            [ReceiveEntry::DaemonException]
+        ));
+    }
+
+    #[test]
+    fn client_and_send_debug_are_redacted() {
+        install_crypto_provider();
+        let client = SignalClient::new("http://localhost:8080").expect("client");
+        assert!(!format!("{client:?}").contains("localhost"));
+
+        let params = SendParams {
+            message: Some("private body".to_owned()),
+            recipient: Some("+15550001".to_owned()),
+            group_id: None,
+            account: Some("+15550002".to_owned()),
+            attachments: Some(vec!["private.jpg".to_owned()]),
+        };
+        let debug = format!("{params:?}");
+        for secret in ["private body", "+15550001", "+15550002", "private.jpg"] {
+            assert!(!debug.contains(secret), "Debug leaked {secret}: {debug}");
+        }
     }
 }

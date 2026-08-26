@@ -31,7 +31,7 @@ fn channel_capabilities_default_values() {
         threads: false,
         reactions: false,
         typing: false,
-        media: true,
+        media: false,
         streaming: false,
         rich_formatting: false,
         max_text_length: 2000,
@@ -40,7 +40,7 @@ fn channel_capabilities_default_values() {
     assert!(!caps.threads);
     assert!(!caps.reactions);
     assert!(!caps.typing);
-    assert!(caps.media);
+    assert!(!caps.media);
     assert!(!caps.streaming);
     assert!(!caps.rich_formatting);
     assert_eq!(caps.max_text_length, 2000);

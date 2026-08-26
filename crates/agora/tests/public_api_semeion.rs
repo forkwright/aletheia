@@ -80,7 +80,7 @@ fn signal_provider_capabilities() {
     assert!(!caps.threads);
     assert!(!caps.reactions);
     assert!(!caps.typing);
-    assert!(caps.media);
+    assert!(!caps.media);
     assert!(!caps.streaming);
     assert!(!caps.rich_formatting);
     assert_eq!(caps.max_text_length, 2000);
@@ -138,7 +138,7 @@ fn signal_client_debug_impl() {
     let client = SignalClient::new("localhost:8080").expect("create client");
     let debug = format!("{client:?}");
     assert!(debug.contains("SignalClient"));
-    assert!(debug.contains("rpc_url"));
+    assert!(!debug.contains("localhost"));
 }
 
 // ── SignalSendParams ──
@@ -374,11 +374,17 @@ fn connection_health_report_construction() {
         state: ConnectionState::Connected,
         buffered_messages: 5,
         dropped_count: 2,
+        ambiguous_delivery_count: 1,
+        partial_delivery_count: 4,
+        receive_loss_count: 3,
     };
 
     assert!(matches!(report.state, ConnectionState::Connected));
     assert_eq!(report.buffered_messages, 5);
     assert_eq!(report.dropped_count, 2);
+    assert_eq!(report.ambiguous_delivery_count, 1);
+    assert_eq!(report.partial_delivery_count, 4);
+    assert_eq!(report.receive_loss_count, 3);
 }
 
 #[test]
@@ -387,11 +393,23 @@ fn connection_health_report_clone() {
         state: ConnectionState::Halted { total_failures: 10 },
         buffered_messages: 3,
         dropped_count: 1,
+        ambiguous_delivery_count: 2,
+        partial_delivery_count: 5,
+        receive_loss_count: 4,
     };
 
     let cloned = original.clone();
     assert_eq!(original.buffered_messages, cloned.buffered_messages);
     assert_eq!(original.dropped_count, cloned.dropped_count);
+    assert_eq!(
+        original.ambiguous_delivery_count,
+        cloned.ambiguous_delivery_count
+    );
+    assert_eq!(
+        original.partial_delivery_count,
+        cloned.partial_delivery_count
+    );
+    assert_eq!(original.receive_loss_count, cloned.receive_loss_count);
     assert_eq!(
         format!("{:?}", original.state),
         format!("{:?}", cloned.state)
@@ -411,11 +429,11 @@ fn signal_error_debug_impl() {
     // WHY: SignalError variants have display formats via snafu.
     // We can at least verify the Debug impl works.
     let err = SignalError::NoAccount {
-        account_id: "+1234567890".to_owned(),
         location: snafu::location!(),
     };
     let debug = format!("{err:?}");
     assert!(!debug.is_empty());
+    assert!(!debug.contains("+1234567890"));
 }
 
 // ── Send + Sync bounds (as promised in lib.rs) ──

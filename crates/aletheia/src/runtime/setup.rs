@@ -1164,12 +1164,16 @@ pub(super) fn build_signal_provider(
         if !account_cfg.enabled {
             continue;
         }
-        let Some(provider_account_id) = signal_provider_account_id(account_id, account_cfg) else {
-            warn!(
-                account = %account_id,
-                "Signal account config has an empty account field; skipping account"
-            );
-            continue;
+        let wire_account = match account_cfg.account.as_deref() {
+            Some(account) if account.trim().is_empty() => {
+                warn!(
+                    account = %account_id,
+                    "Signal account config has an empty account field; skipping account"
+                );
+                continue;
+            }
+            Some(account) => Some(account.to_owned()),
+            None => None,
         };
         let cli_path = resolve_signal_cli_path(account_cfg.cli_path.as_deref());
         if account_cfg.cli_path.is_some() && cli_path.is_none() {
@@ -1197,7 +1201,12 @@ pub(super) fn build_signal_provider(
         let base_url = format!("http://{}:{}", account_cfg.http_host, account_cfg.http_port);
         match SignalClient::with_timeouts(&base_url, rpc_timeout, health_timeout, receive_timeout) {
             Ok(client) => {
-                provider.add_account(provider_account_id, client, account_cfg.auto_start);
+                provider.add_account(
+                    account_id.clone(),
+                    wire_account,
+                    client,
+                    account_cfg.auto_start,
+                );
                 info!(
                     account = %account_id,
                     display_name = %signal_account_display_name(account_id, account_cfg),
@@ -1213,17 +1222,6 @@ pub(super) fn build_signal_provider(
     }
 
     Some(Arc::new(provider))
-}
-
-fn signal_provider_account_id(
-    account_id: &str,
-    account_cfg: &taxis::config::SignalAccountConfig,
-) -> Option<String> {
-    match account_cfg.account.as_deref() {
-        Some(account) if account.trim().is_empty() => None,
-        Some(account) => Some(account.to_owned()),
-        None => Some(account_id.to_owned()),
-    }
 }
 
 fn signal_account_display_name<'a>(

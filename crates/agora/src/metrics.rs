@@ -381,6 +381,26 @@ mod tests {
     }
 
     #[test]
+    fn subscription_guard_owns_exact_task_lifetime() {
+        let _lock = super::GAUGE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let r = fresh_registry();
+        set_active_subscriptions(0);
+        {
+            let _guard = ActiveSubscriptionGuard::new();
+            assert!(
+                encode(&r).contains("aletheia_active_subscriptions 1"),
+                "live polling task must own one subscription"
+            );
+        }
+        assert!(
+            encode(&r).contains("aletheia_active_subscriptions 0"),
+            "task exit must release its subscription"
+        );
+    }
+
+    #[test]
     fn register_and_record_provider_failure() {
         let r = fresh_registry();
         record_provider_failure("_test_provider");
