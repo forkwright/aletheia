@@ -596,9 +596,9 @@ Routes mapping channel sources to nous agents.
 | `channel` | string | *required* | Channel type (e.g., "signal"). |
 | `source` | string | *required* | Source pattern: phone number, group ID, or "*" for default. |
 | `nousId` | string | *required* | Nous ID to route to. |
-| `sessionKey` | string | "{source}" | Session key pattern. Supports `{source}`, `{group}`, and `{account}` placeholders (`{account}` expands to the receiving provider account, or `default` when unattributed). |
-| `account` | string | unset | Restrict this binding to the provider account that received the message. When unset, the binding matches any account. |
-| `participants` | string[] | [] | Sender allowlist for this binding. When non-empty, only the listed senders may activate the binding; other senders — including fellow members of a matched group — fall through to lower-priority routes. |
+| `sessionKey` | string | "{source}" | Session key pattern. Supports `{source}`, `{group}`, and `{account}` placeholders (`{account}` expands to the receiving provider account, or `default` when the provider did not attribute one). |
+| `account` | string | unset | Restrict this binding to the provider account that received the message (multi-account deployments). `None` matches any account. WHY: identical senders and group IDs on two different accounts are distinct conversations; without an account leg in the match they collapse onto whichever binding sorts first. |
+| `participants` | string[] | [] | Sender allowlist for this binding. When non-empty, only the listed senders may activate the binding; other senders fall through to lower-priority routes. WHY: a group binding otherwise lets every participant of a configured group drive the agent and its command surface. Listing participants makes group membership insufficient on its own. Empty preserves the previous any-participant behavior. |
 
 ## feature_flags[]
 
@@ -1192,8 +1192,8 @@ Agora messaging transport poll, buffer, and circuit-breaker settings. WHY config
 | `healthTimeoutSecs` | integer | 2 | Timeout in seconds for Semeion health-check requests. |
 | `receiveTimeoutSecs` | integer | 15 | Timeout in seconds waiting to receive a Semeion response. |
 | `agentDispatchTimeoutSecs` | integer | 300 | Default timeout in seconds for agent-dispatch tool calls. |
-| `maxConcurrentHandlers` | integer | 64 | Maximum concurrent inbound-message handler tasks. Enforced on the live dispatch path; saturation is observable via the `aletheia_inbound_handler_saturation_total` counter and the `aletheia_inbound_handlers_in_flight` gauge. |
-| `retainRawPayloads` | bool | false | Retain raw provider payloads (Signal envelope, Matrix event) on inbound messages for diagnostics. Default `false`: raw payloads contain personal identifiers and are captured only on explicit opt-in. |
+| `maxConcurrentHandlers` | integer | 64 | Maximum concurrent inbound-message handler tasks. Default: 64. Enforced on the live dispatch path; saturation is observable via the `aletheia_inbound_handler_saturation_total` counter and the `aletheia_inbound_handlers_in_flight` gauge. |
+| `retainRawPayloads` | bool | false | Retain the raw provider payload (Signal envelope, Matrix event) on inbound messages for diagnostics. Default: `false` — raw payloads contain personal identifiers and message metadata, so they are captured only when an operator explicitly opts in. |
 
 ### messaging.outbound
 
@@ -1206,15 +1206,13 @@ Per-agent outbound-recipient allowlist and default-deny posture, enforced by `ag
 
 ### messaging.commands
 
-Inbound `!`-command authorization for external channels: who may invoke operational commands, and which commands stay public. Fail-closed by default — an operator who never configures `[messaging.commands]` exposes only the public command subset (`help`, `ping`) to channel senders, regardless of how permissive the route bindings are.
+Inbound `!`-command authorization: who may invoke operational commands from a channel, and which commands stay public.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `operators` | string[] | [] | Sender patterns granted the full operator command surface. Each entry is `"channel:source"`; either segment may be `"*"`, and the source segment may itself contain `:` (e.g. Matrix user IDs) — only the first `:` separates the channel. |
-| `publicCommands` | string[] | ["help", "ping"] | Command names (without the leading `!`) any sender may invoke. |
-| `defaultAllow` | bool | false | Allow every command from any sender. Default `false` (fail closed); `true` restores the pre-policy behavior and is an explicit opt-out. |
-
-Non-operator senders see only the public subset in `!help` output; denied commands receive a refusal reply and are counted in the `aletheia_command_denied_total` metric.
+| `publicCommands` | string[] | ["help", "ping"] | Command names any sender may invoke (without the leading `!`). Default: `["help", "ping"]` — liveness and discovery reveal no fleet state. |
+| `defaultAllow` | bool | false | Allow every command from any sender. Default: `false` (fail closed). Setting this to `true` restores the pre-policy behavior and is an explicit operator opt-out. |
 
 ## tuning
 

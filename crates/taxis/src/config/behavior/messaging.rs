@@ -47,6 +47,9 @@ pub struct MessagingConfig {
     /// Default timeout in seconds for agent-dispatch tool calls.
     pub agent_dispatch_timeout_secs: u64,
     /// Maximum concurrent inbound-message handler tasks. Default: 64.
+    /// Enforced on the live dispatch path; saturation is observable via the
+    /// `aletheia_inbound_handler_saturation_total` counter and the
+    /// `aletheia_inbound_handlers_in_flight` gauge.
     pub max_concurrent_handlers: usize,
     /// Retain the raw provider payload (Signal envelope, Matrix event) on
     /// inbound messages for diagnostics. Default: `false` — raw payloads
@@ -135,7 +138,8 @@ impl OutboundMessagePolicy {
     }
 }
 
-/// Inbound `!`-command authorization policy for external channels.
+/// Inbound `!`-command authorization: who may invoke operational
+/// commands from a channel, and which commands stay public.
 ///
 /// WHY default-deny (#5193): any inbound message that parses as a `!`
 /// command is intercepted after routing and can enumerate agents, channel
@@ -143,7 +147,9 @@ impl OutboundMessagePolicy {
 /// default routes make that surface available to broad sender sets, so the
 /// safe default is that only `public_commands` are reachable and the
 /// operational surface requires an explicit `operators` entry naming the
-/// sender.
+/// sender. Non-operator senders see only the public subset in `!help`
+/// output; denied commands receive a refusal reply and are counted in the
+/// `aletheia_command_denied_total` metric.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]

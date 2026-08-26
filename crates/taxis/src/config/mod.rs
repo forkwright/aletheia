@@ -546,7 +546,11 @@ pub struct MatrixAccountConfig {
     /// Whether to auto-start the `/sync` receive loop on server boot.
     #[serde(alias = "auto_start")]
     pub auto_start: bool,
-    /// Optional initial `/sync` since token.
+    /// Optional initial `/sync` since token. Used only until the first
+    /// successful sync: once the runtime has processed a batch, the
+    /// persisted cursor under the instance data directory
+    /// (`data/channel-cursors/`) takes precedence, so restarts resume after
+    /// the last processed batch instead of replaying it.
     #[serde(alias = "initial_since")]
     pub initial_since: Option<String>,
 }
