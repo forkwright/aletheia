@@ -276,6 +276,14 @@ models = [
 #     "/srv/aletheia/packs/engineering",
 # ]
 
+# High-impact pack overlay powers (model, agency, durable system-prompt
+# additions) are inert unless explicitly enabled here; see docs/PACKS.md.
+# [packOverlays]
+# allowModelOverrides = false
+# allowAgencyOverrides = false
+# allowPromptAdditions = false
+# maxPromptAdditionBytes = 4096
+
 # --- Filesystem sandbox ---
 # Restricts tool execution to declared paths.
 # [sandbox]

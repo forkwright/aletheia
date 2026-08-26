@@ -230,6 +230,7 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         "providers" => validate_providers(value, &mut errors),
         "tools" => validate_tools(value, &mut errors),
         "training" => validate_training(value, &mut errors),
+        "packOverlays" => validate_pack_overlays(value, &mut errors),
         // NOTE: pass-through sections with no validation rules.
         //
         // WHY recallSources is here rather than getting a validator: its whole
@@ -249,6 +250,24 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         Ok(())
     } else {
         ValidationSnafu { errors }.fail()
+    }
+}
+
+fn validate_pack_overlays(value: &Value, errors: &mut Vec<String>) {
+    // WHY(#5220): allowPromptAdditions with a zero cap silently drops every
+    // pack prompt addition — a plausible operator slip worth flagging.
+    let allows_prompts = value
+        .get("allowPromptAdditions")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if allows_prompts
+        && let Some(cap) = value.get("maxPromptAdditionBytes").and_then(Value::as_u64)
+        && cap == 0
+    {
+        errors.push(
+            "packOverlays.maxPromptAdditionBytes must be positive when allowPromptAdditions is on"
+                .to_owned(),
+        );
     }
 }
 

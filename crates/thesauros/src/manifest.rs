@@ -88,6 +88,58 @@ pub struct AgentOverlay {
     pub system_prompt_additions: Vec<String>,
 }
 
+/// Default total byte cap for one pack's system-prompt additions per agent
+/// when the operator opts into prompt additions.
+pub const DEFAULT_MAX_PROMPT_ADDITIONS_BYTES: usize = 4096;
+
+/// Operator policy for high-impact pack overlay powers (#5220).
+///
+/// `model`, `agency`, and `system_prompt_additions` change model choice,
+/// agent autonomy, and durable prompt text — a domain pack must not raise
+/// tool iterations or inject non-truncatable prompt text silently. The
+/// default is restrictive: those powers are stripped at load (recorded in
+/// pack health) until the operator opts in via `[packOverlays]` in
+/// `aletheia.toml`. Domain tags are low-impact routing hints and always
+/// apply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverlayPolicy {
+    /// Permit packs to override an agent's primary model.
+    pub allow_model_overrides: bool,
+    /// Permit packs to override an agent's agency level.
+    pub allow_agency_overrides: bool,
+    /// Permit packs to inject durable system-prompt additions.
+    pub allow_prompt_additions: bool,
+    /// Total byte cap for one pack's system-prompt additions per agent.
+    /// Additions past the cap are dropped (never truncated mid-string).
+    pub max_prompt_additions_bytes: usize,
+}
+
+impl Default for OverlayPolicy {
+    fn default() -> Self {
+        Self {
+            allow_model_overrides: false,
+            allow_agency_overrides: false,
+            allow_prompt_additions: false,
+            max_prompt_additions_bytes: DEFAULT_MAX_PROMPT_ADDITIONS_BYTES,
+        }
+    }
+}
+
+impl OverlayPolicy {
+    /// Permit every overlay power. For tests and for operators who want the
+    /// pre-#5220 behavior; production runtimes should build the policy from
+    /// the operator's config instead.
+    #[must_use]
+    pub fn permit_all() -> Self {
+        Self {
+            allow_model_overrides: true,
+            allow_agency_overrides: true,
+            allow_prompt_additions: true,
+            max_prompt_additions_bytes: DEFAULT_MAX_PROMPT_ADDITIONS_BYTES,
+        }
+    }
+}
+
 /// A tool definition declared in a pack manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackToolDef {

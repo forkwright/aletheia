@@ -307,6 +307,8 @@ truncatable = true
 
 mod loaded_pack_filters {
     use super::{load_packs, write_pack};
+    use thesauros::loader::load_packs_with_policy;
+    use thesauros::manifest::OverlayPolicy;
 
     fn full_pack_toml() -> &'static str {
         r#"
@@ -418,7 +420,9 @@ domains = ["healthcare", "sql"]
     #[test]
     fn overlay_fields_merge_correctly() {
         // WHY: AgentOverlay supports model, agency, and system_prompt_additions
-        // overrides that must be retrievable per-agent.
+        // overrides that must be retrievable per-agent. These are high-impact
+        // powers (#5220), so the test loads with an explicit permissive
+        // policy; the restrictive default is covered by loader unit tests.
         let toml = r#"
 name = "overlay-full"
 version = "1.0"
@@ -430,8 +434,9 @@ agency = "unrestricted"
 system_prompt_additions = ["Cite sources."]
 "#;
         let dir = write_pack(&[("pack.toml", toml)]);
-        let packs = load_packs(&[dir.path().to_path_buf()]);
-        let pack = packs.first().expect("loaded");
+        let outcome =
+            load_packs_with_policy(&[dir.path().to_path_buf()], &OverlayPolicy::permit_all());
+        let pack = outcome.packs.first().expect("loaded");
 
         assert_eq!(
             pack.model_for_agent("psyche"),

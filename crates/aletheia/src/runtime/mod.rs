@@ -478,9 +478,12 @@ impl RuntimeBuilder {
         // so the async runtime thread is not stalled during pack discovery.
         let pack_outcome = if self.domain_packs {
             let packs = resolve_pack_paths(&self.oikos, &self.config.packs);
-            tokio::task::spawn_blocking(move || thesauros::loader::load_packs_with_report(&packs))
-                .await
-                .whatever_context("pack loading task panicked")?
+            let overlay_policy = overlay_policy_from_config(&self.config.pack_overlays);
+            tokio::task::spawn_blocking(move || {
+                thesauros::loader::load_packs_with_policy(&packs, &overlay_policy)
+            })
+            .await
+            .whatever_context("pack loading task panicked")?
         } else {
             thesauros::loader::LoadOutcome::default()
         };
@@ -1327,7 +1330,7 @@ mod metrics;
 mod nous_config;
 
 use metrics::{RuntimeBackupMetricsRecorder, register_all_metrics, task_state_component};
-use nous_config::build_nous_runtime_config;
+use nous_config::{build_nous_runtime_config, overlay_policy_from_config};
 
 mod setup;
 mod tool_adapters;
