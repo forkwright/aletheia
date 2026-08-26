@@ -182,7 +182,7 @@ platforms = ["linux"]
 
 ## Overlays
 
-Overlays assign per-agent domain tags. A section tagged `agents = ["healthcare"]` reaches any agent whose domain list includes `healthcare`.
+Overlays assign per-agent domain tags and — with explicit operator opt-in — high-impact overrides. A context section tagged `agents = ["healthcare"]` reaches any agent whose domain list includes `healthcare`.
 
 ```toml
 [overlays.analyst]
@@ -196,6 +196,26 @@ Domain merging at startup:
 1. Static domains from `aletheia.toml` agent definitions
 2. Pack overlay domains (union across all loaded packs)
 3. Combined domains stored on the agent's config
+
+### High-impact overlay powers
+
+Three overlay fields change more than routing, so they are inert unless the operator opts in via `[packOverlays]` in `aletheia.toml`:
+
+| Field | Effect | Opt-in switch |
+|-------|--------|---------------|
+| `model` | Overrides the agent's primary model | `allowModelOverrides` |
+| `agency` | Overrides the agency level (`unrestricted` = 10000 iterations, `standard`, `restricted` = 50) | `allowAgencyOverrides` |
+| `system_prompt_additions` | Injects durable, non-truncatable prompt text into the agent's bootstrap | `allowPromptAdditions` |
+
+```toml
+[packOverlays]
+allowModelOverrides = false
+allowAgencyOverrides = false
+allowPromptAdditions = false
+maxPromptAdditionBytes = 4096
+```
+
+Without the opt-in, declared powers are stripped at pack load; the pack's [health](#pack-health) record lists exactly what was dropped (degraded) or applied (info note). With the opt-in, prompt additions are additionally capped at `maxPromptAdditionBytes` per agent — additions past the cap are dropped whole, never truncated mid-string. `agency` values are validated at load; an unknown level fails the manifest.
 
 ## How it works
 

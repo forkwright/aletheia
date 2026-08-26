@@ -8,7 +8,7 @@ use tracing::{info, warn};
 
 use crate::error::{self, Result};
 use crate::health::{PackComponent, PackHealth, PackIssue, PackReport, Severity};
-use crate::manifest::{self, ContextEntry, PackManifest, Priority};
+use crate::manifest::{self, ContextEntry, OverlayPolicy, PackManifest, Priority};
 
 /// Maximum bytes read for a single context file.
 ///
@@ -137,7 +137,17 @@ pub fn load_packs(paths: &[PathBuf]) -> Vec<LoadedPack> {
 /// Every configured path gets a [`PackHealth`] entry: `Active` when the pack
 /// and all its context loaded, `Degraded` when it loaded with skips, and
 /// `Failed` when the manifest or a required context entry failed.
+///
+/// High-impact overlay powers (model, agency, system-prompt additions) are
+/// stripped under the restrictive default [`OverlayPolicy`]; use
+/// [`load_packs_with_policy`] to apply the operator's configured policy.
 pub fn load_packs_with_report(paths: &[PathBuf]) -> LoadOutcome {
+    load_packs_with_policy(paths, &OverlayPolicy::default())
+}
+
+/// Load all configured domain packs under an explicit overlay policy
+/// (#5220), returning the structured health report alongside the packs.
+pub fn load_packs_with_policy(paths: &[PathBuf], policy: &OverlayPolicy) -> LoadOutcome {
     let mut packs = Vec::with_capacity(paths.len());
     let mut report = PackReport {
         notes: crate::health::platform_notes(),
@@ -145,7 +155,7 @@ pub fn load_packs_with_report(paths: &[PathBuf]) -> LoadOutcome {
     };
 
     for path in paths {
-        match load_single_pack_inner(path) {
+        match load_single_pack_inner(path, policy) {
             Ok((pack, issues)) => {
                 info!(
                     pack = %pack.manifest.name,
@@ -180,24 +190,27 @@ pub fn load_packs_with_report(paths: &[PathBuf]) -> LoadOutcome {
 }
 
 /// Load a single domain pack from a directory.
+#[cfg(test)]
 fn load_single_pack(pack_root: &Path) -> Result<LoadedPack> {
-    load_single_pack_inner(pack_root).map(|(pack, _issues)| pack)
+    load_single_pack_inner(pack_root, &OverlayPolicy::default()).map(|(pack, _issues)| pack)
 }
 
 /// Load a single domain pack, also returning health issues for every
-/// non-fatal skip (missing optional context files).
-fn load_single_pack_inner(pack_root: &Path) -> Result<(LoadedPack, Vec<PackIssue>)> {
+/// non-fatal skip (missing optional context files, stripped overlay powers).
+fn load_single_pack_inner(
+    pack_root: &Path,
+    policy: &OverlayPolicy,
+) -> Result<(LoadedPack, Vec<PackIssue>)> {
     let manifest = manifest::load_manifest(pack_root)?;
-    let (sections, issues) = resolve_context_sections(pack_root, &manifest)?;
+    let (sections, mut issues) = resolve_context_sections(pack_root, &manifest)?;
 
-    Ok((
-        LoadedPack {
-            manifest,
-            sections,
-            root: pack_root.to_path_buf(),
-        },
-        issues,
-    ))
+    let mut pack = LoadedPack {
+        manifest,
+        sections,
+        root: pack_root.to_path_buf(),
+    };
+    issues.extend(apply_overlay_policy(&mut pack, policy));
+    Ok((pack, issues))
 }
 
 /// Resolve all context entries into sections with file contents.
@@ -236,6 +249,125 @@ fn resolve_context_sections(
     }
 
     Ok((sections, issues))
+}
+
+/// Enforce the operator's overlay policy on a loaded pack (#5220).
+///
+/// High-impact powers (model override, agency override, durable
+/// system-prompt additions) are stripped unless the operator opted in;
+/// every applied or stripped power is recorded as a health issue so the
+/// effective overlay diff is visible. Domain tags always apply — they only
+/// route context. Prompt additions, when permitted, are capped at
+/// `max_prompt_additions_bytes` per agent; additions past the cap are
+/// dropped whole rather than truncated mid-string.
+fn apply_overlay_policy(pack: &mut LoadedPack, policy: &OverlayPolicy) -> Vec<PackIssue> {
+    let mut issues = Vec::new();
+
+    // WHY: sorted iteration keeps the health record deterministic across
+    // runs — HashMap order is randomized per process.
+    let mut agents: Vec<String> = pack.manifest.overlays.keys().cloned().collect();
+    agents.sort();
+
+    for agent in agents {
+        let Some(overlay) = pack.manifest.overlays.get_mut(&agent) else {
+            continue;
+        };
+
+        if let Some(model) = overlay.model.take() {
+            if policy.allow_model_overrides {
+                issues.push(PackIssue {
+                    component: PackComponent::Overlay,
+                    severity: Severity::Info,
+                    message: format!(
+                        "overlay for agent '{agent}': model override '{model}' in effect"
+                    ),
+                });
+                overlay.model = Some(model);
+            } else {
+                issues.push(PackIssue {
+                    component: PackComponent::Overlay,
+                    severity: Severity::Warning,
+                    message: format!(
+                        "overlay for agent '{agent}': model override '{model}' dropped — \
+                         operator opt-in packOverlays.allowModelOverrides is not set"
+                    ),
+                });
+            }
+        }
+
+        if let Some(agency) = overlay.agency.take() {
+            if policy.allow_agency_overrides {
+                issues.push(PackIssue {
+                    component: PackComponent::Overlay,
+                    severity: Severity::Info,
+                    message: format!(
+                        "overlay for agent '{agent}': agency override '{agency}' in effect"
+                    ),
+                });
+                overlay.agency = Some(agency);
+            } else {
+                issues.push(PackIssue {
+                    component: PackComponent::Overlay,
+                    severity: Severity::Warning,
+                    message: format!(
+                        "overlay for agent '{agent}': agency override '{agency}' dropped — \
+                         operator opt-in packOverlays.allowAgencyOverrides is not set"
+                    ),
+                });
+            }
+        }
+
+        if overlay.system_prompt_additions.is_empty() {
+            continue;
+        }
+        if !policy.allow_prompt_additions {
+            let count = overlay.system_prompt_additions.len();
+            overlay.system_prompt_additions.clear();
+            issues.push(PackIssue {
+                component: PackComponent::Overlay,
+                severity: Severity::Warning,
+                message: format!(
+                    "overlay for agent '{agent}': {count} system-prompt addition(s) dropped — \
+                     operator opt-in packOverlays.allowPromptAdditions is not set"
+                ),
+            });
+            continue;
+        }
+
+        let cap = policy.max_prompt_additions_bytes;
+        let mut kept = Vec::with_capacity(overlay.system_prompt_additions.len());
+        let mut total = 0usize;
+        let mut dropped = 0usize;
+        for addition in std::mem::take(&mut overlay.system_prompt_additions) {
+            if total.saturating_add(addition.len()) <= cap {
+                total += addition.len();
+                kept.push(addition);
+            } else {
+                dropped += 1;
+            }
+        }
+        overlay.system_prompt_additions = kept;
+        if dropped > 0 {
+            issues.push(PackIssue {
+                component: PackComponent::Overlay,
+                severity: Severity::Warning,
+                message: format!(
+                    "overlay for agent '{agent}': {dropped} system-prompt addition(s) dropped \
+                     over the {cap}-byte packOverlays.maxPromptAdditionBytes cap"
+                ),
+            });
+        }
+        issues.push(PackIssue {
+            component: PackComponent::Overlay,
+            severity: Severity::Info,
+            message: format!(
+                "overlay for agent '{agent}': {} system-prompt addition(s) in effect ({total} bytes)",
+                overlay.system_prompt_additions.len()
+            ),
+        });
+    }
+
+    issues
 }
 
 /// Resolve a single context entry into a section.
@@ -518,7 +650,11 @@ system_prompt_additions = ["Answer in bullet points."]
 "#;
         let dir = setup_pack(&[("pack.toml", toml)]);
 
-        let pack = load_single_pack(dir.path()).unwrap();
+        // WHY(#5220): high-impact overlay powers require operator opt-in;
+        // this test exercises the permitted path via an explicit policy.
+        let outcome =
+            load_packs_with_policy(&[dir.path().to_path_buf()], &OverlayPolicy::permit_all());
+        let pack = &outcome.packs[0];
         assert_eq!(pack.domains_for_agent("analyst"), vec!["healthcare"]);
         assert_eq!(
             pack.model_for_agent("analyst"),
@@ -538,6 +674,102 @@ system_prompt_additions = ["Answer in bullet points."]
         assert_eq!(pack.model_for_agent("hermes"), None);
         assert_eq!(pack.agency_for_agent("hermes"), None);
         assert!(pack.system_prompt_additions_for_agent("hermes").is_empty());
+    }
+
+    #[test]
+    fn default_policy_strips_high_impact_overlay_powers() {
+        // WHY(#5220): without operator opt-in, a pack must not change the
+        // model, raise agency limits, or inject durable prompt text.
+        let toml = r#"
+name = "overlay-strict"
+version = "1.0"
+
+[overlays.analyst]
+domains = ["healthcare"]
+model = "anubis-70b"
+agency = "unrestricted"
+system_prompt_additions = ["Answer in bullet points."]
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+
+        let outcome = load_packs_with_report(&[dir.path().to_path_buf()]);
+        let pack = &outcome.packs[0];
+        assert_eq!(pack.domains_for_agent("analyst"), vec!["healthcare"]);
+        assert_eq!(pack.model_for_agent("analyst"), None);
+        assert_eq!(pack.agency_for_agent("analyst"), None);
+        assert!(pack.system_prompt_additions_for_agent("analyst").is_empty());
+
+        let health = &outcome.report.packs[0];
+        assert_eq!(health.status, crate::health::PackStatus::Degraded);
+        assert_eq!(health.issues.len(), 3, "one note per stripped power");
+        for issue in &health.issues {
+            assert_eq!(issue.component, crate::health::PackComponent::Overlay);
+            assert_eq!(issue.severity, crate::health::Severity::Warning);
+            assert!(issue.message.contains("dropped"), "{issue:?}");
+        }
+    }
+
+    #[test]
+    fn permit_all_records_applied_powers_without_degrading() {
+        let toml = r#"
+name = "overlay-permitted"
+version = "1.0"
+
+[overlays.analyst]
+model = "anubis-70b"
+agency = "standard"
+system_prompt_additions = ["Cite sources."]
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+
+        let outcome =
+            load_packs_with_policy(&[dir.path().to_path_buf()], &OverlayPolicy::permit_all());
+        let health = &outcome.report.packs[0];
+        assert_eq!(
+            health.status,
+            crate::health::PackStatus::Active,
+            "applied-with-opt-in powers are Info notes, not degradation: {:?}",
+            health.issues
+        );
+        assert_eq!(health.issues.len(), 3);
+        assert!(
+            health
+                .issues
+                .iter()
+                .all(|i| i.severity == crate::health::Severity::Info)
+        );
+    }
+
+    #[test]
+    fn prompt_additions_capped_per_agent() {
+        let toml = r#"
+name = "overlay-capped"
+version = "1.0"
+
+[overlays.analyst]
+system_prompt_additions = ["aaaaa", "bbbbb", "c"]
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+
+        let policy = OverlayPolicy {
+            max_prompt_additions_bytes: 10,
+            ..OverlayPolicy::permit_all()
+        };
+        let outcome = load_packs_with_policy(&[dir.path().to_path_buf()], &policy);
+        let pack = &outcome.packs[0];
+        assert_eq!(
+            pack.system_prompt_additions_for_agent("analyst"),
+            vec!["aaaaa".to_owned(), "bbbbb".to_owned()],
+            "the 11th byte must not fit; additions drop whole, never mid-string"
+        );
+        let health = &outcome.report.packs[0];
+        assert!(
+            health.issues.iter().any(
+                |i| i.severity == crate::health::Severity::Warning && i.message.contains("cap")
+            ),
+            "cap drop must be recorded: {:?}",
+            health.issues
+        );
     }
 
     #[test]

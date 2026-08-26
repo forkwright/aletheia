@@ -27,6 +27,9 @@ Domain pack loader: parses pack.toml manifests, resolves context files, register
 | `LoadedPack` | `loader.rs` | Fully resolved pack: manifest, sections with file content read, root path |
 | `PackSection` | `loader.rs` | Resolved context section: name, content, priority, agent filter, pack name |
 | `PackInputSchema` | `manifest.rs` | Tool input schema: type, properties, required fields |
+| `OverlayPolicy` | `manifest.rs` | Operator opt-in policy for high-impact overlay powers (model, agency, prompt additions) |
+| `PackHealth` | `health.rs` | Per-pack activation state (Active/Degraded/Failed) with structured issues |
+| `PackReport` | `health.rs` | Aggregated pack health plus host platform notes |
 
 ## Patterns
 

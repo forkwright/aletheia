@@ -131,6 +131,21 @@ struct PackRuntimeOverlay {
     max_tool_iterations: u32,
 }
 
+/// Map the operator's `[packOverlays]` config to thesauros's load-time
+/// policy (#5220). Enforcement happens at pack load; by the time overlays
+/// reach [`apply_pack_overlays`], unapproved powers are already stripped.
+pub(super) fn overlay_policy_from_config(
+    config: &taxis::config::PackOverlaysConfig,
+) -> thesauros::manifest::OverlayPolicy {
+    thesauros::manifest::OverlayPolicy {
+        allow_model_overrides: config.allow_model_overrides,
+        allow_agency_overrides: config.allow_agency_overrides,
+        allow_prompt_additions: config.allow_prompt_additions,
+        max_prompt_additions_bytes: usize::try_from(config.max_prompt_addition_bytes)
+            .unwrap_or(usize::MAX),
+    }
+}
+
 fn apply_pack_overlays(
     resolved: &ResolvedNousConfig,
     packs: &[thesauros::loader::LoadedPack],
@@ -301,6 +316,33 @@ mod tests {
             build_nous_runtime_config(config, &oikos, &[], "custom");
 
         nous_config.generation.complexity
+    }
+
+    #[test]
+    fn pack_overlays_config_maps_to_overlay_policy() {
+        let config = taxis::config::PackOverlaysConfig {
+            allow_model_overrides: true,
+            allow_agency_overrides: false,
+            allow_prompt_additions: true,
+            max_prompt_addition_bytes: 512,
+        };
+        let policy = super::overlay_policy_from_config(&config);
+        assert!(policy.allow_model_overrides);
+        assert!(!policy.allow_agency_overrides);
+        assert!(policy.allow_prompt_additions);
+        assert_eq!(policy.max_prompt_additions_bytes, 512);
+
+        // WHY(#5220): fail-safe default — every high-impact power is off
+        // until the operator opts in.
+        let default =
+            super::overlay_policy_from_config(&taxis::config::PackOverlaysConfig::default());
+        assert!(!default.allow_model_overrides);
+        assert!(!default.allow_agency_overrides);
+        assert!(!default.allow_prompt_additions);
+        assert_eq!(
+            default.max_prompt_additions_bytes,
+            thesauros::manifest::DEFAULT_MAX_PROMPT_ADDITIONS_BYTES
+        );
     }
 
     #[test]
