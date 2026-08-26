@@ -200,10 +200,10 @@ mod load_packs_entry {
         let packs = load_packs(&[dir.path().to_path_buf()]);
         assert_eq!(packs.len(), 1);
         let pack = packs.first().expect("one pack");
-        assert_eq!(pack.manifest.name, "mini-pack");
-        assert_eq!(pack.manifest.version, "1.0");
-        assert!(pack.sections.is_empty());
-        assert_eq!(pack.root, dir.path());
+        assert_eq!(pack.manifest().name, "mini-pack");
+        assert_eq!(pack.manifest().version, "1.0");
+        assert!(pack.sections().is_empty());
+        assert_eq!(pack.root(), dir.path());
     }
 
     #[test]
@@ -235,10 +235,10 @@ truncatable = true
 
         let packs = load_packs(&[dir.path().to_path_buf()]);
         let pack = packs.first().expect("one pack");
-        assert_eq!(pack.sections.len(), 2);
+        assert_eq!(pack.sections().len(), 2);
 
         let business = pack
-            .sections
+            .sections()
             .iter()
             .find(|s| s.name == "BUSINESS_LOGIC.md")
             .expect("business logic section");
@@ -252,7 +252,7 @@ truncatable = true
         assert_eq!(business.pack_name, "ctx-pack");
 
         let glossary = pack
-            .sections
+            .sections()
             .iter()
             .find(|s| s.name == "GLOSSARY.md")
             .expect("glossary section");
@@ -272,7 +272,7 @@ truncatable = true
         ]);
         assert_eq!(packs.len(), 1);
         let pack = packs.first().expect("valid pack kept");
-        assert_eq!(pack.manifest.name, "mini-pack");
+        assert_eq!(pack.name(), "mini-pack");
     }
 
     #[test]
@@ -297,8 +297,8 @@ truncatable = true
         let dir = write_pack(&[("pack.toml", toml), ("here.md", "present")]);
         let packs = load_packs(&[dir.path().to_path_buf()]);
         let pack = packs.first().expect("pack loaded despite missing section");
-        assert_eq!(pack.sections.len(), 1);
-        let section = pack.sections.first().expect("surviving section");
+        assert_eq!(pack.sections().len(), 1);
+        let section = pack.sections().first().expect("surviving section");
         assert_eq!(section.name, "here.md");
     }
 }

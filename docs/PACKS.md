@@ -82,7 +82,9 @@ A future `[[reference]]` entry should include at least `path`, `title`, `descrip
 
 The manifest contract is validated when the pack loads, before anything activates:
 
+- unknown keys at the manifest or any nested context, tool, schema, property, or overlay level reject the manifest; misspelled security policy never falls back to an inherited default
 - `name` is 1–64 ASCII alphanumeric/hyphen characters; `version` is non-empty
+- every context `path` uses portable relative syntax inside the pack root (no absolute or `..` components)
 - every tool has a valid tool name (alphanumeric, hyphens, underscores), a non-zero `timeout`, and a `command` that is a relative path inside the pack root
 - every overlay's `agency` is one of `unrestricted`, `standard`, `restricted`; `model` and `system_prompt_additions` entries are not blank
 
@@ -113,7 +115,7 @@ Tools are shell commands exposed to the LLM as callable functions. The runtime p
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `name` | string | required | Tool name (alphanumeric + underscores) |
+| `name` | string | required | Tool name (alphanumeric, hyphens, underscores) |
 | `description` | string | required | Short description sent to the LLM |
 | `command` | string | required | Path to script, relative to pack root |
 | `timeout` | int | `30000` | Execution timeout in **milliseconds** |
@@ -132,7 +134,7 @@ Input schema properties support types: `string`, `number`, `integer`, `boolean`,
 2. Runtime serializes arguments to JSON and pipes to the command's stdin
 3. Command writes result to stdout (text or JSON)
 4. Runtime captures stdout as the tool result
-5. Stderr content is never copied into the model-visible result or diagnostics. Operators receive only structured warning metadata (tool, exit code, byte count); arbitrary subprocess stderr cannot be made safe for the model boundary by pattern redaction
+5. Stderr handling is operator-only: content is never copied into the model-visible result or diagnostics. The operator log receives stable warning metadata (tool, exit code, byte count), while arbitrary subprocess bytes are discarded instead of relying on pattern redaction
 6. Output is truncated at 50KB
 
 Diagnostics also record the exit code, wall-clock duration, and — when the sandbox itself refuses to start the command — the stable `sandbox_setup_failed` category, distinguishing "sandbox refused" from "command failed" without copying OS or policy detail across the model boundary.
@@ -146,6 +148,7 @@ Diagnostics also record the exit code, wall-clock duration, and — when the san
 - The subprocess environment is cleared except for Organon's fixed safe allowlist (`PATH`, `HOME`, `TERM`, ...). Pack manifests cannot request daemon environment variables
 - Pack manifests cannot add write grants. The reserved `env` and `write_paths` fields reject every non-empty declaration until an operator-owned per-pack/per-tool policy can be intersected with the request
 - `egress = "none"` can only tighten the deployment's network policy, and the tool is refused when that denial cannot be enforced
+- Loaded packs expose read-only accessors; their policy-admitted manifest, context, identity, and root cannot be constructed or mutated by downstream crates to bypass loader policy
 
 ### Platform support
 
@@ -202,7 +205,7 @@ allowPromptAdditions = false
 maxPromptAdditionBytes = 4096
 ```
 
-Without the opt-in, declared powers are stripped at pack load; the pack's [health](#pack-health) record lists exactly what was dropped (degraded) or permitted and retained by policy (info note). Policy admission is not an effective runtime diff: agent and provider reconciliation happens later. With the opt-in, prompt additions are additionally capped at `maxPromptAdditionBytes` per pack, per agent — additions past the cap are dropped whole, never truncated mid-string. Prompt additions cannot use `{{file:...}}` interpolation, which would expand after accounting and bypass that cap; use bounded pack context entries for file content. `agency` values are validated at load; an unknown level fails the manifest.
+Without the opt-in, declared powers are stripped at pack load; the pack's [health](#pack-health) record lists exactly what was dropped (degraded) or permitted and retained by policy (info note). Policy admission is not an effective runtime diff: agent and provider reconciliation happens later. With the opt-in, prompt additions are additionally capped at `maxPromptAdditionBytes` per pack, per agent — additions past the cap are dropped whole, never truncated mid-string. Pack-controlled bootstrap text is literal: `{{file:...}}` interpolation is rejected in context content and headings, manifest prompt text, overlay additions, tool descriptions, and input-schema prompt strings. Put file content directly in its declared context file; each such file is read through the pack-root containment check and the 512 KiB loader bound. `agency` values are validated at load; an unknown level fails the manifest.
 
 ## How it works
 
@@ -321,7 +324,7 @@ Every configured pack gets a structured health record (`thesauros::health::PackH
 
 | Status | Meaning |
 |--------|---------|
-| `active` | Manifest, context, and tools loaded/registered without a reported degradation; this does not assert that admitted overlays became runtime-effective |
+| `active` | No degradation has been reported at the current stage. The loader can report this before tool registration; later registration or reconciliation failures are folded into the same record, so the state makes no effectiveness claim |
 | `degraded` | Pack loaded, but something declared was skipped or failed: a missing optional context file, a tool that failed validation or registration (including a duplicate name), or a dropped overlay power |
 | `failed` | Pack did not load: the manifest was unreadable/invalid, or a `priority = "required"` context file could not be read |
 

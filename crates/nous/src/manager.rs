@@ -453,7 +453,7 @@ impl NousManager {
                 for addition in pack.system_prompt_additions_for_agent(&id) {
                     let tokens = estimator.estimate(&addition);
                     sections.push(BootstrapSection {
-                        name: format!("[{}] system-prompt", pack.manifest.name),
+                        name: format!("[{}] system-prompt", pack.name()),
                         priority: crate::bootstrap::SectionPriority::Important,
                         content: addition,
                         tokens,

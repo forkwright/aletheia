@@ -14,7 +14,7 @@ use crate::manifest::{self, ContextEntry, OverlayPolicy, PackManifest, Priority}
 ///
 /// WHY: Bounds per-file read to prevent a malicious or misconfigured pack from
 /// causing unbounded heap growth or startup OOM.
-const MAX_CONTEXT_FILE_BYTES: usize = 512 * 1024;
+pub const MAX_CONTEXT_FILE_BYTES: usize = 512 * 1024;
 
 /// A resolved context section from a domain pack, ready for bootstrap injection.
 #[derive(Debug, Clone)]
@@ -34,19 +34,70 @@ pub struct PackSection {
 }
 
 /// A fully loaded domain pack with resolved context.
+///
+/// Its effective fields are private by design: callers may inspect a pack,
+/// but only this loader can construct or mutate one after manifest validation,
+/// context resolution, and operator-policy admission.
 #[derive(Debug, Clone)]
 pub struct LoadedPack {
     /// Stable identity of this configured pack occurrence.
-    pub instance_id: PackInstanceId,
+    instance_id: PackInstanceId,
     /// The pack manifest.
-    pub manifest: PackManifest,
+    manifest: PackManifest,
     /// Resolved context sections with file contents read.
-    pub sections: Vec<PackSection>,
+    sections: Vec<PackSection>,
     /// Absolute path to the pack root.
-    pub root: PathBuf,
+    root: PathBuf,
 }
 
 impl LoadedPack {
+    /// Construct a pack from test-owned parts without exposing a production
+    /// policy bypass to downstream crates.
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        instance_id: PackInstanceId,
+        manifest: PackManifest,
+        sections: Vec<PackSection>,
+        root: PathBuf,
+    ) -> Self {
+        Self {
+            instance_id,
+            manifest,
+            sections,
+            root,
+        }
+    }
+
+    /// Stable identity of this configured pack occurrence.
+    #[must_use]
+    pub const fn instance_id(&self) -> PackInstanceId {
+        self.instance_id
+    }
+
+    /// Validated, policy-admitted manifest.
+    #[must_use]
+    pub const fn manifest(&self) -> &PackManifest {
+        &self.manifest
+    }
+
+    /// Resolved context sections retained by loader policy.
+    #[must_use]
+    pub fn sections(&self) -> &[PackSection] {
+        &self.sections
+    }
+
+    /// Configured pack root.
+    #[must_use]
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    /// Validated pack name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.manifest.name
+    }
+
     /// Filter sections for an agent by ID or domain tags.
     ///
     /// A section matches if its `agents` list is empty (all agents),
@@ -459,11 +510,32 @@ fn resolve_single_section(
 
     let content = content.trim().to_owned();
 
+    // SECURITY(#5220): bootstrap performs file-ref expansion only after it
+    // combines every section and resolves references against the instance
+    // root. Pack content is not authority to read that root. Reject the
+    // marker here so a tiny context file cannot inject instance credentials
+    // or expand beyond this loader's byte limit.
+    if manifest::has_file_ref_interpolation(&content) {
+        return Err(error::Error::ContextFileInterpolation {
+            path: file_path,
+            location: snafu::location!(),
+        });
+    }
+
     let name = file_path
         .file_name()
         .and_then(|f| f.to_str())
         .unwrap_or("unknown")
         .to_owned();
+
+    // A symlink may have a harmless declared path but a canonical target
+    // whose filename carries the marker into the bootstrap section heading.
+    if manifest::has_file_ref_interpolation(&name) {
+        return Err(error::Error::ContextFileInterpolation {
+            path: file_path,
+            location: snafu::location!(),
+        });
+    }
 
     Ok(PackSection {
         name,
@@ -902,6 +974,33 @@ system_prompt_additions = ["aaaaa", "bbbbb", "c"]
         let pack = load_single_pack(dir.path()).unwrap();
         assert_eq!(pack.sections.len(), 1);
         assert_eq!(pack.sections[0].content.len(), MAX_CONTEXT_FILE_BYTES);
+    }
+
+    #[test]
+    fn context_file_interpolation_is_rejected_at_loader_boundary() {
+        // SECURITY(#5220): a tiny pack context file must not delegate a read
+        // to the later instance-root interpolation pass and thereby bypass
+        // this loader's 512 KiB bound.
+        let dir = setup_pack(&[
+            (
+                "pack.toml",
+                "name = \"interp-test\"\nversion = \"1.0\"\n\n[[context]]\npath = \"read.md\"\n",
+            ),
+            ("read.md", "{{file:config/env}}"),
+        ]);
+        let entry = ContextEntry {
+            path: "read.md".to_owned(),
+            priority: Priority::Important,
+            agents: vec![],
+            truncatable: false,
+        };
+
+        let err = resolve_single_section(dir.path(), &entry, "interp-test")
+            .expect_err("pack context must not cross the trusted file-ref boundary");
+        assert!(
+            matches!(err, error::Error::ContextFileInterpolation { .. }),
+            "expected ContextFileInterpolation, got: {err}"
+        );
     }
 
     #[test]

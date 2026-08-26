@@ -87,9 +87,17 @@ fn test_ctx(dir: &TempDir) -> ToolContext {
 }
 
 fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
-    LoadedPack {
-        instance_id: crate::health::PackInstanceId::default(),
-        manifest: PackManifest {
+    loaded_pack_with_id(dir, tools, crate::health::PackInstanceId::default())
+}
+
+fn loaded_pack_with_id(
+    dir: &TempDir,
+    tools: Vec<PackToolDef>,
+    instance_id: crate::health::PackInstanceId,
+) -> LoadedPack {
+    LoadedPack::for_test(
+        instance_id,
+        PackManifest {
             name: "test-pack".to_owned(),
             version: "1.0".to_owned(),
             description: None,
@@ -97,9 +105,9 @@ fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
             tools,
             overlays: std::collections::HashMap::new(),
         },
-        sections: vec![],
-        root: dir.path().to_path_buf(),
-    }
+        Vec::new(),
+        dir.path().to_path_buf(),
+    )
 }
 
 #[cfg(unix)]
@@ -862,10 +870,13 @@ fn duplicate_tool_name_in_same_named_roots_degrades_actual_occurrence() {
         platforms: Vec::new(),
     };
     let pack_a = minimal_loaded_pack(&dir_a, vec![tool("dup_tool")]);
-    let mut pack_b = minimal_loaded_pack(&dir_b, vec![tool("dup_tool")]);
-    pack_b.instance_id = crate::health::PackInstanceId::from_ordinal(1);
-    let pack_a_id = pack_a.instance_id;
-    let pack_b_id = pack_b.instance_id;
+    let pack_b = loaded_pack_with_id(
+        &dir_b,
+        vec![tool("dup_tool")],
+        crate::health::PackInstanceId::from_ordinal(1),
+    );
+    let pack_a_id = pack_a.instance_id();
+    let pack_b_id = pack_b.instance_id();
 
     let mut registry = ToolRegistry::new();
     let failures = register_pack_tools(&[pack_a, pack_b], &mut registry);
@@ -916,11 +927,14 @@ fn repeated_configured_pack_path_degrades_only_second_occurrence() {
         egress: None,
         platforms: Vec::new(),
     };
-    let first = minimal_loaded_pack(&dir, vec![tool]);
-    let mut second = first.clone();
-    second.instance_id = crate::health::PackInstanceId::from_ordinal(1);
-    let first_id = first.instance_id;
-    let second_id = second.instance_id;
+    let first = minimal_loaded_pack(&dir, vec![tool.clone()]);
+    let second = loaded_pack_with_id(
+        &dir,
+        vec![tool],
+        crate::health::PackInstanceId::from_ordinal(1),
+    );
+    let first_id = first.instance_id();
+    let second_id = second.instance_id();
 
     let mut registry = ToolRegistry::new();
     let failures = register_pack_tools(&[first, second], &mut registry);
@@ -1643,20 +1657,7 @@ fn register_skips_tool_for_unsupported_platform() {
         egress: None,
         platforms: vec![foreign.to_owned()],
     };
-    let dir_root = dir.path().to_path_buf();
-    let pack = LoadedPack {
-        instance_id: crate::health::PackInstanceId::default(),
-        manifest: PackManifest {
-            name: "test-pack".to_owned(),
-            version: "1.0".to_owned(),
-            description: None,
-            context: vec![],
-            tools: vec![tool],
-            overlays: std::collections::HashMap::new(),
-        },
-        sections: vec![],
-        root: dir_root,
-    };
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
 
     let mut registry = ToolRegistry::new();
     let failures = register_pack_tools(&[pack], &mut registry);

@@ -76,6 +76,17 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Context file contains a bootstrap file-ref interpolation marker.
+    #[snafu(display(
+        "context file contains forbidden {{{{file:...}}}} interpolation: {}",
+        path.display()
+    ))]
+    ContextFileInterpolation {
+        path: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Tool command script not found at declared path.
     #[snafu(display("tool command not found: {}", path.display()))]
     ToolCommandNotFound {

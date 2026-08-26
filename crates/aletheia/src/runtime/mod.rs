@@ -1452,9 +1452,10 @@ mod tests {
             "relative pack path should resolve from instance root regardless of process cwd"
         );
         let pack = packs.first().expect("one pack loaded");
-        assert_eq!(pack.manifest.name, "cwd-test");
+        assert_eq!(pack.name(), "cwd-test");
         assert_eq!(
-            pack.root, pack_dir,
+            pack.root(),
+            pack_dir,
             "loaded pack root should be the resolved absolute path"
         );
     }
@@ -1479,8 +1480,8 @@ mod tests {
             "absolute pack path should be used without root resolution"
         );
         let pack = packs.first().expect("one pack loaded");
-        assert_eq!(pack.manifest.name, "absolute-test");
-        assert_eq!(pack.root, pack_dir);
+        assert_eq!(pack.name(), "absolute-test");
+        assert_eq!(pack.root(), pack_dir);
     }
 
     #[test]

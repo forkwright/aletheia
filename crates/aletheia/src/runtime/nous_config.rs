@@ -179,7 +179,7 @@ fn apply_pack_overlays(
                     warn!(
                         agent = %agent_id,
                         agency = %other,
-                        pack = %pack.manifest.name,
+                        pack = %pack.name(),
                         "unknown agency level in pack overlay, skipping"
                     );
                     continue;

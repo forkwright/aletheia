@@ -266,21 +266,22 @@ fn register_pack_tools_impl(
     let runner = SubprocessRunner::new(sandbox);
 
     for pack in packs {
+        let manifest = pack.manifest();
         // WHY: snapshot error count before this pack to compute per-pack failures
         // without contaminating counts from prior packs
         let errors_before = errors.len();
 
-        for tool_def in &pack.manifest.tools {
+        for tool_def in &manifest.tools {
             let prepared = if let Some(reason) = baseline_failure.as_deref() {
                 Err(tool_registration_error(
                     tool_def,
-                    &pack.manifest.name,
+                    pack.name(),
                     reason.to_owned(),
                 ))
             } else if tool_def.egress.as_deref() == Some("none") && !egress_none_enforceable {
                 Err(tool_registration_error(
                     tool_def,
-                    &pack.manifest.name,
+                    pack.name(),
                     "egress = \"none\" requires an enabled enforcing sandbox with an active \
                      egress-denial guarantee"
                         .to_owned(),
@@ -288,8 +289,8 @@ fn register_pack_tools_impl(
             } else {
                 prepare_tool(
                     tool_def,
-                    &pack.root,
-                    &pack.manifest.name,
+                    pack.root(),
+                    pack.name(),
                     runner.clone(),
                     max_timeout_ms,
                 )
@@ -299,14 +300,14 @@ fn register_pack_tools_impl(
                     Ok(()) => {
                         info!(
                             tool = %tool_def.name,
-                            pack = %pack.manifest.name,
+                            pack = %pack.name(),
                             "pack tool registered"
                         );
                         continue;
                     }
                     Err(e) => error::Error::ToolRegistration {
                         tool_name: tool_def.name.clone(),
-                        pack_name: pack.manifest.name.clone(),
+                        pack_name: pack.name().to_owned(),
                         reason: e.to_string(),
                         location: snafu::location!(),
                     },
@@ -314,19 +315,19 @@ fn register_pack_tools_impl(
                 Err(e) => e,
             };
             errors.push(PackToolFailure {
-                pack_instance_id: pack.instance_id,
-                pack_name: pack.manifest.name.clone(),
+                pack_instance_id: pack.instance_id(),
+                pack_name: pack.name().to_owned(),
                 tool_name: tool_def.name.clone(),
                 error: failure,
             });
         }
 
-        if !pack.manifest.tools.is_empty() {
+        if !manifest.tools.is_empty() {
             let pack_errors = errors.len() - errors_before;
-            let registered = pack.manifest.tools.len() - pack_errors;
+            let registered = manifest.tools.len() - pack_errors;
             if registered > 0 {
                 info!(
-                    pack = %pack.manifest.name,
+                    pack = %pack.name(),
                     tools = registered,
                     "pack tools registered"
                 );
