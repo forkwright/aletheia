@@ -120,10 +120,8 @@ Tools are shell commands exposed to the LLM as callable functions. The runtime p
 | `groups` | list | `["command"]` | Tool gating groups: `read`, `edit`, `command`, `mcp`, `spawn_subtask`, `plan`, `verify` |
 | `tags` | list | `["execute"]` | Operational tags: `recon`, `edit`, `verify`, `fetch`, `spawn`, `plan`, `execute`, `format` |
 | `reversibility` | string | `irreversible` | One of `fully_reversible`, `reversible`, `partially_reversible`, `irreversible` |
-| `env` | list | `[]` | Environment variable names to pass through from the daemon's environment (see [Environment and secrets](#environment-and-secrets)) |
-| `write_paths` | list | `[]` | Additional directories the tool may write to, relative to the pack root |
 | `egress` | string | `inherit` | Network egress intent: `inherit` (deployment sandbox policy applies) or `none` (deny outbound network for this tool) |
-| `platforms` | list | `["unix"]` | Host platforms the tool supports: `linux`, `macos`, `windows`, `unix`. A tool whose list excludes the current host is skipped at registration and the pack is marked degraded |
+| `platforms` | list | `["unix"]` | Host platforms the tool supports: `linux`, `macos`, `unix`. A tool whose list excludes the current host is skipped at registration and the pack is marked degraded |
 | `input_schema` | object | none | JSON Schema for input parameters |
 
 Input schema properties support types: `string`, `number`, `integer`, `boolean`, `array`, `object`. Each property has a `description` field and optional `enum` and `default` values.
@@ -137,7 +135,7 @@ Input schema properties support types: `string`, `number`, `integer`, `boolean`,
 5. Stderr content is never copied into the model-visible result or diagnostics. Operators receive only structured warning metadata (tool, exit code, byte count); arbitrary subprocess stderr cannot be made safe for the model boundary by pattern redaction
 6. Output is truncated at 50KB
 
-Diagnostics also record the exit code, wall-clock duration, and — when the sandbox itself refuses to start the command — a `sandbox_violations` entry with the setup denial reason, distinguishing "sandbox refused" from "command failed".
+Diagnostics also record the exit code, wall-clock duration, and — when the sandbox itself refuses to start the command — the stable `sandbox_setup_failed` category, distinguishing "sandbox refused" from "command failed" without copying OS or policy detail across the model boundary.
 
 ### Security
 
@@ -145,30 +143,19 @@ Diagnostics also record the exit code, wall-clock duration, and — when the san
 - Paths that resolve outside the pack root are rejected (no traversal)
 - No shell interpolation: commands receive input only via stdin
 - Tools are registered with category `Domain` in the tool registry
-- The subprocess environment is cleared except for a small safe allowlist (`PATH`, `HOME`, `TERM`, ...) plus whatever the tool explicitly declares in `env`
-- The sandbox grants the tool read access to its pack root and exec access to its command; `write_paths` is the only way to add write grants, and `egress = "none"` can only tighten the deployment's network policy, never loosen it
-
-### Environment and secrets
-
-Tool subprocesses start with a cleared environment. A tool that needs a value from the outside — a database URL, an API token — must declare the variable *name* in `env`; the value comes from the daemon's own environment, never from `pack.toml`:
-
-```toml
-[[tools]]
-name = "run_query"
-description = "Execute a read-only SQL query"
-command = "tools/query.sh"
-env = ["DATABASE_URL"]
-```
-
-The operator provides the value on the daemon (for example a systemd `EnvironmentFile`); it never enters the pack, the manifest, or the LLM-visible tool schema. A declared variable that is absent from the daemon environment fails tool registration and degrades the pack's [health](#pack-health) — the tool never runs with a silently missing value.
+- The subprocess environment is cleared except for Organon's fixed safe allowlist (`PATH`, `HOME`, `TERM`, ...). Pack manifests cannot request daemon environment variables
+- Pack manifests cannot add write grants. The reserved `env` and `write_paths` fields reject every non-empty declaration until an operator-owned per-pack/per-tool policy can be intersected with the request
+- `egress = "none"` can only tighten the deployment's network policy, and the tool is refused when that denial cannot be enforced
 
 ### Platform support
 
 Pack tools are shell scripts executed directly via their shebang line, so they are Unix-first by default. The `platforms` field makes a tool's support explicit:
 
-- **Linux**: full enforcement — wall-clock timeout, process-group kill on timeout, and `RLIMIT_NPROC`/`RLIMIT_CPU` resource limits all apply
-- **macOS and other Unix**: timeout and process-group kill apply; resource limits are a no-op. The startup health report notes the reduced enforcement
-- **Windows**: `platforms = ["unix"]` (the default) does not cover it, so the tool is skipped at registration unless it declares `windows`
+- **Linux**: when the deployment enables an enforcing sandbox and the host supports Landlock and seccomp, filesystem, syscall, resource, and egress restrictions can all be active. Registration fails when an enforcing host cannot provide the baseline guarantees.
+- **macOS and other Unix**: timeout and process-group kill apply, but Landlock, seccomp, egress isolation, and resource limits are unavailable. Enforcing mode refuses pack tools; permissive mode runs with reduced controls and reports each reduced guarantee in pack health.
+- **Windows**: pack shell tools are not currently supported. The manifest deliberately has no `windows` platform value until native execution, process-tree cleanup, and CI coverage exist.
+
+The startup health notes are derived from the deployment's actual sandbox configuration and Organon's capability probe. A disabled sandbox is reported explicitly; platform alone is not treated as proof of enforcement.
 
 Example for a Linux-only tool:
 
@@ -215,7 +202,7 @@ allowPromptAdditions = false
 maxPromptAdditionBytes = 4096
 ```
 
-Without the opt-in, declared powers are stripped at pack load; the pack's [health](#pack-health) record lists exactly what was dropped (degraded) or applied (info note). With the opt-in, prompt additions are additionally capped at `maxPromptAdditionBytes` per agent — additions past the cap are dropped whole, never truncated mid-string. `agency` values are validated at load; an unknown level fails the manifest.
+Without the opt-in, declared powers are stripped at pack load; the pack's [health](#pack-health) record lists exactly what was dropped (degraded) or permitted and retained by policy (info note). Policy admission is not an effective runtime diff: agent and provider reconciliation happens later. With the opt-in, prompt additions are additionally capped at `maxPromptAdditionBytes` per pack, per agent — additions past the cap are dropped whole, never truncated mid-string. `agency` values are validated at load; an unknown level fails the manifest.
 
 ## How it works
 
@@ -272,23 +259,21 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
    ```bash
    #!/usr/bin/env bash
    # Reads JSON from stdin, writes result to stdout.
-   # DATABASE_URL comes from the daemon environment, declared in pack.toml.
    INPUT=$(cat)
    QUERY=$(echo "$INPUT" | jq -r '.sql')
-   psql "$DATABASE_URL" -c "$QUERY"
+   sqlite3 -readonly data/domain.db "$QUERY"
    ```
 
 2. Make it executable: `chmod +x tools/query.sh`
 
-3. Declare it in `pack.toml`, including the environment the script needs:
+3. Declare it in `pack.toml`:
 
    ```toml
    [[tools]]
    name = "run_query"
-   description = "Execute a read-only SQL query"
+   description = "Query the pack's bundled read-only domain database"
    command = "tools/query.sh"
    timeout = 30000
-   env = ["DATABASE_URL"]
 
    [tools.input_schema]
    required = ["sql"]
@@ -297,8 +282,6 @@ At spawn time, the manager calls `sections_for_agent_or_domains(agent_id, domain
    type = "string"
    description = "SQL SELECT statement to execute"
    ```
-
-   Without the `env` declaration the script would run with a cleared environment and `$DATABASE_URL` would be empty — see [Environment and secrets](#environment-and-secrets).
 
 ## Filtering to specific agents
 
@@ -327,8 +310,10 @@ Packs are loaded in the order they appear in the `packs` config list. When multi
 - **Context sections**: all matching sections from all packs are included (additive)
 - **Tools**: tool names must be unique across all packs. The first registration wins; a later duplicate is skipped with a warning, and the pack that declared it is marked degraded in its [pack health](#pack-health) record
 - **Domain overlays**: merged (union) across all packs for each agent
+- **Model and agency overlays**: among values permitted by operator policy, the last loaded pack targeting the configured agent wins
+- **System-prompt additions**: retained additions concatenate in pack configuration order; the byte cap is enforced independently for each pack and agent
 
-Packs compose additively and do not override or shadow each other.
+Load health records whether policy admitted an overlay. It does not claim that an agent existed, a model resolved, or which competing value became effective at runtime.
 
 ## Pack health
 

@@ -13,6 +13,29 @@ use serde::{Deserialize, Serialize};
 
 use crate::tools::PackToolFailure;
 
+/// Stable identity of one configured pack occurrence.
+///
+/// The same path may appear more than once in configuration and different
+/// manifests may use the same name, so neither path nor name identifies the
+/// occurrence whose later registration failed (#5208).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PackInstanceId(usize);
+
+impl PackInstanceId {
+    /// Build an ID from the pack's zero-based position in configured order.
+    #[must_use]
+    pub const fn from_ordinal(ordinal: usize) -> Self {
+        Self(ordinal)
+    }
+
+    /// Return the zero-based configured position.
+    #[must_use]
+    pub const fn ordinal(self) -> usize {
+        self.0
+    }
+}
+
 /// Overall activation state of a single domain pack.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -48,8 +71,8 @@ pub enum PackComponent {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum Severity {
-    /// Operator-visible note about an applied behavior (e.g. an overlay
-    /// power that is in effect).
+    /// Operator-visible note about an admitted behavior (e.g. an overlay
+    /// power retained by policy for later runtime reconciliation).
     Info,
     /// A component was skipped or dropped; the pack stays active.
     Warning,
@@ -71,6 +94,9 @@ pub struct PackIssue {
 /// Health of one configured pack after load and tool registration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackHealth {
+    /// Stable configured-occurrence identity.
+    #[serde(default)]
+    pub instance_id: PackInstanceId,
     /// Pack name from the manifest, or the path-derived fallback when the
     /// manifest itself could not be read.
     pub name: String,
@@ -85,8 +111,9 @@ pub struct PackHealth {
 impl PackHealth {
     /// A cleanly loaded pack with no issues yet.
     #[must_use]
-    pub(crate) fn active(name: String, path: PathBuf) -> Self {
+    pub(crate) fn active(instance_id: PackInstanceId, name: String, path: PathBuf) -> Self {
         Self {
+            instance_id,
             name,
             path,
             status: PackStatus::Active,
@@ -96,18 +123,26 @@ impl PackHealth {
 
     /// A pack that failed to load at all.
     #[must_use]
-    pub(crate) fn failed(path: PathBuf, error: &crate::error::Error) -> Self {
-        let name = path
-            .file_name()
-            .and_then(|f| f.to_str())
-            .unwrap_or("unknown")
-            .to_owned();
+    pub(crate) fn failed(
+        instance_id: PackInstanceId,
+        path: PathBuf,
+        manifest_name: Option<String>,
+        component: PackComponent,
+        error: &crate::error::Error,
+    ) -> Self {
+        let name = manifest_name.unwrap_or_else(|| {
+            path.file_name()
+                .and_then(|f| f.to_str())
+                .unwrap_or("unknown")
+                .to_owned()
+        });
         Self {
+            instance_id,
             name,
             path,
             status: PackStatus::Failed,
             issues: vec![PackIssue {
-                component: PackComponent::Manifest,
+                component,
                 severity: Severity::Error,
                 message: error.to_string(),
             }],
@@ -180,13 +215,21 @@ impl PackReport {
                     failure.tool_name, failure.error
                 ),
             };
-            if let Some(health) = self.packs.iter_mut().find(|p| p.name == failure.pack_name) {
+            if let Some(health) = self
+                .packs
+                .iter_mut()
+                .find(|p| p.instance_id == failure.pack_instance_id)
+            {
                 health.push_issue(issue);
             } else {
                 // WHY: registration only sees loaded packs, so a missing
                 // entry means a loader/registration mismatch. Keep the
                 // failure visible rather than dropping it silently.
-                let mut health = PackHealth::active(failure.pack_name.clone(), PathBuf::new());
+                let mut health = PackHealth::active(
+                    failure.pack_instance_id,
+                    failure.pack_name.clone(),
+                    PathBuf::new(),
+                );
                 health.push_issue(issue);
                 self.packs.push(health);
             }
@@ -194,33 +237,48 @@ impl PackReport {
     }
 }
 
-/// Host capability notes for pack tool execution (#5215).
+/// Host and configured capability notes for pack tool execution (#5215).
 ///
-/// Empty on Linux, where the full subprocess contract (process-group kill,
-/// `RLIMIT_NPROC`/`RLIMIT_CPU` resource limits) is enforced. On other
-/// platforms the degraded guarantees are named so operators see reduced
-/// enforcement instead of assuming it.
+/// Notes come from the actual deployment sandbox plus Organon's preflight
+/// guarantee probe. A disabled sandbox and every requested-but-reduced
+/// guarantee are named instead of inferring safety from the host platform.
 #[must_use]
-pub fn platform_notes() -> Vec<String> {
-    #[cfg(target_os = "linux")]
-    {
-        Vec::new()
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let mut notes = vec![
-            "subprocess resource limits (RLIMIT_NPROC, RLIMIT_CPU) are not enforced on this \
-             platform; pack tool wall-clock timeouts still apply"
+pub fn platform_notes(sandbox: &organon::sandbox::SandboxConfig) -> Vec<String> {
+    if !sandbox.enabled {
+        return vec![
+            "pack tool sandbox is disabled; filesystem, syscall, resource, and egress \
+             restrictions are not applied"
                 .to_owned(),
         ];
-        #[cfg(not(unix))]
-        notes.push(
-            "pack shell tools declare platforms = [\"unix\"] by default and are skipped on \
-             this platform unless a pack opts into \"windows\""
-                .to_owned(),
-        );
-        notes
     }
+
+    let guarantees = organon::sandbox::diagnostic_guarantees(sandbox);
+    let mut notes = Vec::new();
+    for (name, status) in [
+        ("filesystem (Landlock)", guarantees.landlock),
+        ("syscall (seccomp)", guarantees.seccomp),
+        ("network egress", guarantees.egress),
+    ] {
+        if !matches!(
+            status,
+            organon::sandbox::GuaranteeStatus::Active
+                | organon::sandbox::GuaranteeStatus::Unrestricted
+        ) {
+            notes.push(format!(
+                "pack tool {name} guarantee is {status} under {:?} enforcement",
+                sandbox.enforcement
+            ));
+        }
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    notes.push(
+        "subprocess resource limits (RLIMIT_NPROC, RLIMIT_CPU) are not enforced on this \
+         platform; wall-clock timeout and Unix process-group cleanup still apply"
+            .to_owned(),
+    );
+
+    notes
 }
 
 #[cfg(test)]
@@ -229,14 +287,22 @@ mod tests {
 
     #[test]
     fn clean_pack_is_active() {
-        let health = PackHealth::active("good".to_owned(), PathBuf::from("/packs/good"));
+        let health = PackHealth::active(
+            PackInstanceId::default(),
+            "good".to_owned(),
+            PathBuf::from("/packs/good"),
+        );
         assert_eq!(health.status, PackStatus::Active);
         assert!(health.issues.is_empty());
     }
 
     #[test]
     fn warning_issue_degrades_active_pack() {
-        let mut health = PackHealth::active("partial".to_owned(), PathBuf::from("/packs/partial"));
+        let mut health = PackHealth::active(
+            PackInstanceId::default(),
+            "partial".to_owned(),
+            PathBuf::from("/packs/partial"),
+        );
         health.push_issue(PackIssue {
             component: PackComponent::Context,
             severity: Severity::Warning,
@@ -248,11 +314,15 @@ mod tests {
 
     #[test]
     fn info_issue_does_not_degrade() {
-        let mut health = PackHealth::active("noted".to_owned(), PathBuf::from("/packs/noted"));
+        let mut health = PackHealth::active(
+            PackInstanceId::default(),
+            "noted".to_owned(),
+            PathBuf::from("/packs/noted"),
+        );
         health.push_issue(PackIssue {
             component: PackComponent::Overlay,
             severity: Severity::Info,
-            message: "model override in effect".to_owned(),
+            message: "model override permitted by policy".to_owned(),
         });
         assert_eq!(health.status, PackStatus::Active);
     }
@@ -263,7 +333,13 @@ mod tests {
             path: PathBuf::from("/packs/gone/pack.toml"),
             location: snafu::location!(),
         };
-        let mut health = PackHealth::failed(PathBuf::from("/packs/gone"), &err);
+        let mut health = PackHealth::failed(
+            PackInstanceId::default(),
+            PathBuf::from("/packs/gone"),
+            None,
+            PackComponent::Manifest,
+            &err,
+        );
         assert_eq!(health.status, PackStatus::Failed);
         health.push_issue(PackIssue {
             component: PackComponent::Tool,
@@ -277,10 +353,16 @@ mod tests {
     #[test]
     fn report_counts_by_status() {
         let mut report = PackReport::default();
-        report
-            .packs
-            .push(PackHealth::active("a".to_owned(), PathBuf::new()));
-        let mut degraded = PackHealth::active("b".to_owned(), PathBuf::new());
+        report.packs.push(PackHealth::active(
+            PackInstanceId::from_ordinal(0),
+            "a".to_owned(),
+            PathBuf::new(),
+        ));
+        let mut degraded = PackHealth::active(
+            PackInstanceId::from_ordinal(1),
+            "b".to_owned(),
+            PathBuf::new(),
+        );
         degraded.push_issue(PackIssue {
             component: PackComponent::Tool,
             severity: Severity::Error,
@@ -292,14 +374,29 @@ mod tests {
             reason: "bad toml".to_owned(),
             location: snafu::location!(),
         };
-        report
-            .packs
-            .push(PackHealth::failed(PathBuf::from("/packs/c"), &err));
+        report.packs.push(PackHealth::failed(
+            PackInstanceId::from_ordinal(2),
+            PathBuf::from("/packs/c"),
+            None,
+            PackComponent::Manifest,
+            &err,
+        ));
 
         let counts = report.status_counts();
         assert_eq!(counts.active, 1);
         assert_eq!(counts.degraded, 1);
         assert_eq!(counts.failed, 1);
         assert!(report.has_failures());
+    }
+
+    #[test]
+    fn disabled_sandbox_is_reported_explicitly() {
+        let sandbox = organon::sandbox::SandboxConfig {
+            enabled: false,
+            ..organon::sandbox::SandboxConfig::default()
+        };
+        let notes = platform_notes(&sandbox);
+        assert_eq!(notes.len(), 1);
+        assert!(notes[0].contains("sandbox is disabled"));
     }
 }

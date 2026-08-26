@@ -559,10 +559,12 @@ impl RuntimeBuilder {
         };
 
         if self.domain_packs {
+            let pack_sandbox = sandbox_config(&self.config);
+            pack_report.notes = thesauros::health::platform_notes(&pack_sandbox);
             let tool_failures = thesauros::tools::register_pack_tools_with_sandbox_and_limits(
                 &packs,
                 &mut tool_registry,
-                sandbox_config(&self.config),
+                pack_sandbox,
                 self.config.tool_limits.subprocess_timeout_secs,
             );
             for failure in &tool_failures {

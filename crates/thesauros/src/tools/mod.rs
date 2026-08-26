@@ -18,6 +18,7 @@ use organon::types::{
 use tracing::info;
 
 use crate::error;
+use crate::health::PackInstanceId;
 use crate::loader::LoadedPack;
 use crate::manifest::{PackInputSchema, PackToolDef};
 
@@ -26,6 +27,8 @@ use crate::manifest::{PackInputSchema, PackToolDef};
 /// [`crate::health::PackReport`] (#5208).
 #[derive(Debug)]
 pub struct PackToolFailure {
+    /// Stable identity of the configured pack occurrence.
+    pub pack_instance_id: PackInstanceId,
     /// Name of the pack declaring the tool.
     pub pack_name: String,
     /// Name of the tool that failed.
@@ -42,10 +45,6 @@ struct ShellToolExecutor {
     timeout_ms: u64,
     /// Identity of `command_path` captured at registration time (#5213).
     expected_identity: FileIdentity,
-    /// Declared env vars passed through from the daemon environment (#5214).
-    env_vars: Vec<String>,
-    /// Declared in-pack write paths granted to the subprocess (#5214).
-    write_paths: Vec<PathBuf>,
     /// Whether the tool declared `egress = "none"` (#5214).
     deny_egress: bool,
 }
@@ -183,24 +182,18 @@ async fn run_pack_command_with_retry(
 }
 
 /// Build the subprocess request for one invocation, applying the tool's
-/// declared environment, write-path, and egress contract (#5214) on top of
-/// the pack-root read/exec grants.
+/// egress narrowing on top of the pack-root read/exec grants (#5214).
 fn build_request(
     executor: &ShellToolExecutor,
     stdin: Vec<u8>,
     timeout: Duration,
 ) -> SubprocessRequest {
-    let mut request =
-        SubprocessRequest::new(executor.command_path.clone(), executor.pack_root.clone())
-            .stdin_bytes(stdin)
-            .timeout(timeout)
-            .max_output_bytes(MAX_OUTPUT_BYTES)
-            .allow_read_path(executor.pack_root.clone())
-            .allow_exec_path(executor.command_path.clone())
-            .allow_env_vars(executor.env_vars.iter().cloned());
-    for path in &executor.write_paths {
-        request = request.allow_write_path(path.clone());
-    }
+    let request = SubprocessRequest::new(executor.command_path.clone(), executor.pack_root.clone())
+        .stdin_bytes(stdin)
+        .timeout(timeout)
+        .max_output_bytes(MAX_OUTPUT_BYTES)
+        .allow_read_path(executor.pack_root.clone())
+        .allow_exec_path(executor.command_path.clone());
     if executor.deny_egress {
         request = request.deny_egress();
     }
@@ -260,7 +253,15 @@ fn register_pack_tools_impl(
     max_timeout_ms: Option<u64>,
 ) -> Vec<PackToolFailure> {
     let mut errors = Vec::new();
-    let sandbox_enabled = sandbox.enabled;
+    let baseline_failure =
+        enforcing_baseline_failure(&sandbox, organon::sandbox::diagnostic_guarantees(&sandbox));
+    let mut deny_egress_sandbox = sandbox.clone();
+    deny_egress_sandbox.egress = organon::sandbox::EgressPolicy::Deny;
+    deny_egress_sandbox.egress_allowlist.clear();
+    let egress_none_enforceable = egress_none_is_enforceable(
+        &deny_egress_sandbox,
+        organon::sandbox::diagnostic_guarantees(&deny_egress_sandbox),
+    );
     let runner = SubprocessRunner::new(sandbox);
 
     for pack in packs {
@@ -269,21 +270,30 @@ fn register_pack_tools_impl(
         let errors_before = errors.len();
 
         for tool_def in &pack.manifest.tools {
-            if tool_def.egress.as_deref() == Some("none") && !sandbox_enabled {
-                tracing::warn!(
-                    pack = %pack.manifest.name,
-                    tool = %tool_def.name,
-                    "tool declares egress = \"none\" but the deployment sandbox is disabled; \
-                     egress intent is not enforced"
-                );
-            }
-            let failure = match prepare_tool(
-                tool_def,
-                &pack.root,
-                &pack.manifest.name,
-                runner.clone(),
-                max_timeout_ms,
-            ) {
+            let prepared = if let Some(reason) = baseline_failure.as_deref() {
+                Err(tool_registration_error(
+                    tool_def,
+                    &pack.manifest.name,
+                    reason.to_owned(),
+                ))
+            } else if tool_def.egress.as_deref() == Some("none") && !egress_none_enforceable {
+                Err(tool_registration_error(
+                    tool_def,
+                    &pack.manifest.name,
+                    "egress = \"none\" requires an enabled enforcing sandbox with an active \
+                     egress-denial guarantee"
+                        .to_owned(),
+                ))
+            } else {
+                prepare_tool(
+                    tool_def,
+                    &pack.root,
+                    &pack.manifest.name,
+                    runner.clone(),
+                    max_timeout_ms,
+                )
+            };
+            let failure = match prepared {
                 Ok((def, executor)) => match registry.register(def, executor) {
                     Ok(()) => {
                         info!(
@@ -303,6 +313,7 @@ fn register_pack_tools_impl(
                 Err(e) => e,
             };
             errors.push(PackToolFailure {
+                pack_instance_id: pack.instance_id,
                 pack_name: pack.manifest.name.clone(),
                 tool_name: tool_def.name.clone(),
                 error: failure,
@@ -323,6 +334,52 @@ fn register_pack_tools_impl(
     }
 
     errors
+}
+
+/// Refuse all pack tools when an enforcing sandbox cannot provide its
+/// baseline filesystem, syscall, and configured egress guarantees.
+/// Registration-time refusal is honest; marking a tool active and waiting
+/// for first execution is not.
+fn enforcing_baseline_failure(
+    sandbox: &organon::sandbox::SandboxConfig,
+    guarantees: organon::sandbox::SandboxGuarantees,
+) -> Option<String> {
+    if !sandbox.enabled || sandbox.enforcement != organon::sandbox::SandboxEnforcement::Enforcing {
+        return None;
+    }
+
+    let mut unavailable = Vec::new();
+    if guarantees.landlock != organon::sandbox::GuaranteeStatus::Active {
+        unavailable.push(format!("filesystem={}", guarantees.landlock));
+    }
+    if guarantees.seccomp != organon::sandbox::GuaranteeStatus::Active {
+        unavailable.push(format!("syscall={}", guarantees.seccomp));
+    }
+    if !matches!(
+        guarantees.egress,
+        organon::sandbox::GuaranteeStatus::Active | organon::sandbox::GuaranteeStatus::Unrestricted
+    ) {
+        unavailable.push(format!("egress={}", guarantees.egress));
+    }
+    if unavailable.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "enforcing sandbox baseline is unavailable ({})",
+            unavailable.join(", ")
+        ))
+    }
+}
+
+/// Whether an explicit per-tool egress denial can be promised at
+/// registration time.
+fn egress_none_is_enforceable(
+    sandbox: &organon::sandbox::SandboxConfig,
+    guarantees: organon::sandbox::SandboxGuarantees,
+) -> bool {
+    sandbox.enabled
+        && sandbox.enforcement == organon::sandbox::SandboxEnforcement::Enforcing
+        && guarantees.egress == organon::sandbox::GuaranteeStatus::Active
 }
 
 /// Validate and convert a single pack tool definition into organon types.
@@ -357,8 +414,7 @@ fn prepare_tool(
     let groups = parse_groups(tool_def, pack_name)?;
     let tags = parse_tags(tool_def, pack_name)?;
     let reversibility = parse_reversibility(tool_def, pack_name)?;
-    let env_vars = validate_env_contract(tool_def, pack_name)?;
-    let write_paths = validate_write_paths(tool_def, pack_root, pack_name)?;
+    reject_unbound_authority(tool_def, pack_name)?;
     let deny_egress = parse_egress(tool_def, pack_name)?;
 
     let input_schema = match &tool_def.input_schema {
@@ -414,72 +470,32 @@ fn prepare_tool(
         runner,
         timeout_ms: effective_timeout_ms,
         expected_identity,
-        env_vars,
-        write_paths,
         deny_egress,
     });
 
     Ok((def, executor))
 }
 
-/// Validate the tool's declared environment contract (#5214).
+/// Reject manifest-controlled daemon/process authority (#5214).
 ///
-/// Every declared name must be syntactically valid and present in the
-/// daemon's own environment at registration time: a declared-but-absent
-/// variable means the tool would run without a value it declared as needed,
-/// so registration fails (recorded in pack health) rather than letting the
-/// tool fail cryptically at first invocation.
-fn validate_env_contract(
-    tool_def: &PackToolDef,
-    pack_name: &str,
-) -> Result<Vec<String>, error::Error> {
-    for var in &tool_def.env {
-        if var.is_empty() || var.as_bytes().contains(&b'=') || var.as_bytes().contains(&0) {
-            return Err(tool_registration_error(
-                tool_def,
-                pack_name,
-                format!("invalid environment variable name: '{var}'"),
-            ));
-        }
-        if std::env::var_os(var).is_none() {
-            return Err(tool_registration_error(
-                tool_def,
-                pack_name,
-                format!(
-                    "declared env var '{var}' is not present in the daemon environment; \
-                     set it on the daemon (e.g. systemd EnvironmentFile) or remove the declaration"
-                ),
-            ));
-        }
+/// The fields remain reserved for a future operator-owned per-tool grant,
+/// but a pack manifest alone is not an authorization mechanism.
+fn reject_unbound_authority(tool_def: &PackToolDef, pack_name: &str) -> Result<(), error::Error> {
+    if !tool_def.env.is_empty() {
+        return Err(tool_registration_error(
+            tool_def,
+            pack_name,
+            "pack env grants require an operator-owned per-tool policy".to_owned(),
+        ));
     }
-    Ok(tool_def.env.clone())
-}
-
-/// Validate declared write paths: relative, in-pack only (#5214).
-///
-/// The paths may not exist yet (a tool that creates its own data directory
-/// is legitimate), so this is a syntactic check; the sandbox resolves them
-/// against the pack root at execution time.
-fn validate_write_paths(
-    tool_def: &PackToolDef,
-    pack_root: &Path,
-    pack_name: &str,
-) -> Result<Vec<PathBuf>, error::Error> {
-    tool_def
-        .write_paths
-        .iter()
-        .map(|declared| {
-            let path = Path::new(declared);
-            if !crate::manifest::is_relative_in_pack_path(path) {
-                return Err(tool_registration_error(
-                    tool_def,
-                    pack_name,
-                    format!("write path '{declared}' must be a relative path inside the pack root"),
-                ));
-            }
-            Ok(pack_root.join(path))
-        })
-        .collect()
+    if !tool_def.write_paths.is_empty() {
+        return Err(tool_registration_error(
+            tool_def,
+            pack_name,
+            "pack write grants require intersection with operator policy".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 /// Parse the tool's declared egress intent (#5214). Only `"none"` tightens
@@ -506,12 +522,12 @@ fn parse_egress(tool_def: &PackToolDef, pack_name: &str) -> Result<bool, error::
 /// a tool that can only fail at exec time on an unsupported host.
 fn validate_platform_support(tool_def: &PackToolDef, pack_name: &str) -> Result<(), error::Error> {
     for platform in &tool_def.platforms {
-        if !matches!(platform.as_str(), "linux" | "macos" | "windows" | "unix") {
+        if !matches!(platform.as_str(), "linux" | "macos" | "unix") {
             return Err(tool_registration_error(
                 tool_def,
                 pack_name,
                 format!(
-                    "unknown platform '{platform}' (expected \"linux\", \"macos\", \"windows\", or \"unix\")"
+                    "unknown platform '{platform}' (expected \"linux\", \"macos\", or \"unix\")"
                 ),
             ));
         }
@@ -525,7 +541,6 @@ fn validate_platform_support(tool_def: &PackToolDef, pack_name: &str) -> Result<
     let supported = declared.iter().any(|p| match *p {
         "linux" => cfg!(target_os = "linux"),
         "macos" => cfg!(target_os = "macos"),
-        "windows" => cfg!(windows),
         "unix" => cfg!(unix),
         _ => false,
     });

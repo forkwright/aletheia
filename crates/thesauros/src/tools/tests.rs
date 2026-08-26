@@ -68,8 +68,6 @@ fn test_executor(dir: &TempDir, script_relpath: &str, timeout_ms: u64) -> ShellT
         runner: test_runner(),
         timeout_ms,
         expected_identity,
-        env_vars: Vec::new(),
-        write_paths: Vec::new(),
         deny_egress: false,
     }
 }
@@ -91,6 +89,7 @@ fn test_ctx(dir: &TempDir) -> ToolContext {
 #[cfg(unix)]
 fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
     LoadedPack {
+        instance_id: crate::health::PackInstanceId::default(),
         manifest: PackManifest {
             name: "test-pack".to_owned(),
             version: "1.0".to_owned(),
@@ -163,7 +162,6 @@ fn validate_command_path_rejects_directory() {
 #[test]
 fn validate_command_path_rejects_absolute_command_string_syntactically() {
     let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
-    make_executable(&dir, "tools/test.sh");
     // WHY: `/etc/passwd` need not even exist — the syntactic pre-check must
     // reject it before any canonicalize/stat call touches the filesystem.
     let result = validate_command_path(dir.path(), "/definitely/does/not/exist");
@@ -176,7 +174,6 @@ fn validate_command_path_rejects_absolute_command_string_syntactically() {
 #[test]
 fn validate_command_path_rejects_dotdot_command_string_syntactically() {
     let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
-    make_executable(&dir, "tools/test.sh");
     let result = validate_command_path(dir.path(), "tools/../../definitely-does-not-exist");
     assert!(matches!(
         result.expect_err(".. in the command string must be rejected"),
@@ -594,8 +591,14 @@ async fn shell_executor_keeps_stderr_out_of_model_visible_diagnostics() {
     assert!(!text.contains("/home/alice/private"));
 
     let diagnostics = result.diagnostics.expect("diagnostics should be present");
-    assert!(diagnostics.stderr.is_none(), "stderr must remain operator-only");
+    assert!(
+        diagnostics.stderr.is_none(),
+        "stderr must remain operator-only"
+    );
     assert_eq!(diagnostics.exit_code, Some(1));
+    let llm_diagnostics = diagnostics.to_llm_text();
+    assert!(!llm_diagnostics.contains("SECRET_TOKEN"));
+    assert!(!llm_diagnostics.contains("/home/alice/private"));
 }
 
 #[cfg(unix)]
@@ -625,7 +628,10 @@ async fn shell_executor_stderr_only_failure_uses_generic_model_message() {
         result.content.text_summary()
     );
     let diagnostics = result.diagnostics.expect("diagnostics should be present");
-    assert!(diagnostics.stderr.is_none(), "stderr must remain operator-only");
+    assert!(
+        diagnostics.stderr.is_none(),
+        "stderr must remain operator-only"
+    );
 }
 
 #[cfg(unix)]
@@ -710,7 +716,10 @@ fn subprocess_failure_marks_sandbox_setup_as_violation() {
         diagnostics.sandbox_violations
     );
     assert!(
-        !result.content.text_summary().contains("seccomp install refused"),
+        !result
+            .content
+            .text_summary()
+            .contains("seccomp install refused"),
         "operator error detail must not enter the model-visible result"
     );
 }
@@ -830,7 +839,7 @@ fn error_count_per_pack_not_cumulative() {
 
 #[cfg(unix)]
 #[test]
-fn duplicate_tool_name_fails_second_pack_and_degrades_its_health() {
+fn duplicate_tool_name_in_same_named_roots_degrades_actual_occurrence() {
     // WHY(#5208): PACKS.md used to claim duplicate tool names are "rejected at
     // startup". The actual policy is first-registration-wins: the duplicate is
     // skipped, and the failure is recorded so the second pack reports Degraded.
@@ -855,22 +864,27 @@ fn duplicate_tool_name_fails_second_pack_and_degrades_its_health() {
     };
     let pack_a = minimal_loaded_pack(&dir_a, vec![tool("dup_tool")]);
     let mut pack_b = minimal_loaded_pack(&dir_b, vec![tool("dup_tool")]);
-    pack_b.manifest.name = "pack-b".to_owned();
+    pack_b.instance_id = crate::health::PackInstanceId::from_ordinal(1);
+    let pack_a_id = pack_a.instance_id;
+    let pack_b_id = pack_b.instance_id;
 
     let mut registry = ToolRegistry::new();
     let failures = register_pack_tools(&[pack_a, pack_b], &mut registry);
     assert_eq!(failures.len(), 1, "second registration must fail");
-    assert_eq!(failures[0].pack_name, "pack-b");
+    assert_eq!(failures[0].pack_name, "test-pack");
+    assert_eq!(failures[0].pack_instance_id, pack_b_id);
     assert_eq!(failures[0].tool_name, "dup_tool");
     assert_eq!(registry.definitions().len(), 1, "first registration wins");
 
     let mut report = crate::health::PackReport::default();
     report.packs.push(crate::health::PackHealth::active(
+        pack_a_id,
         "test-pack".to_owned(),
         dir_a.path().to_path_buf(),
     ));
     report.packs.push(crate::health::PackHealth::active(
-        "pack-b".to_owned(),
+        pack_b_id,
+        "test-pack".to_owned(),
         dir_b.path().to_path_buf(),
     ));
     report.record_tool_failures(&failures);
@@ -882,6 +896,53 @@ fn duplicate_tool_name_fails_second_pack_and_degrades_its_health() {
         "health issue should name the failed tool: {}",
         report.packs[1].issues[0].message
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn repeated_configured_pack_path_degrades_only_second_occurrence() {
+    let dir = setup_pack_dir(&[("tools/dup.sh", "#!/bin/sh\necho a")]);
+    make_executable(&dir, "tools/dup.sh");
+    let tool = PackToolDef {
+        name: "dup_tool".to_owned(),
+        description: "Duplicate tool".to_owned(),
+        command: "tools/dup.sh".to_owned(),
+        timeout: 5000,
+        input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
+        platforms: Vec::new(),
+    };
+    let first = minimal_loaded_pack(&dir, vec![tool]);
+    let mut second = first.clone();
+    second.instance_id = crate::health::PackInstanceId::from_ordinal(1);
+    let first_id = first.instance_id;
+    let second_id = second.instance_id;
+
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&[first, second], &mut registry);
+    assert_eq!(failures.len(), 1);
+    assert_eq!(failures[0].pack_instance_id, second_id);
+
+    let mut report = crate::health::PackReport::default();
+    report.packs.push(crate::health::PackHealth::active(
+        first_id,
+        "test-pack".to_owned(),
+        dir.path().to_path_buf(),
+    ));
+    report.packs.push(crate::health::PackHealth::active(
+        second_id,
+        "test-pack".to_owned(),
+        dir.path().to_path_buf(),
+    ));
+    report.record_tool_failures(&failures);
+
+    assert_eq!(report.packs[0].status, crate::health::PackStatus::Active);
+    assert_eq!(report.packs[1].status, crate::health::PackStatus::Degraded);
 }
 
 #[cfg(unix)]
@@ -1344,13 +1405,7 @@ fn tool_def_with_policy(
 
 #[cfg(unix)]
 #[test]
-#[expect(unsafe_code, reason = "test serializes process environment mutation")]
-fn register_rejects_declared_env_var_missing_from_daemon_environment() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
-    unsafe {
-        std::env::remove_var("THESAUROS_TEST_MISSING_ENV");
-    }
-
+fn register_rejects_manifest_declared_env_authority() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
     make_executable(&dir, "tools/echo.sh");
     let tool = tool_def_with_policy(
@@ -1364,13 +1419,13 @@ fn register_rejects_declared_env_var_missing_from_daemon_environment() {
 
     let mut registry = ToolRegistry::new();
     let failures = register_pack_tools(&[pack], &mut registry);
-    assert_eq!(failures.len(), 1, "declared-but-absent env must fail");
+    assert_eq!(failures.len(), 1, "every manifest env grant must fail");
     assert!(
         failures[0]
             .error
             .to_string()
-            .contains("THESAUROS_TEST_MISSING_ENV"),
-        "failure must name the missing variable: {}",
+            .contains("operator-owned per-tool policy"),
+        "failure must name the missing authority boundary: {}",
         failures[0].error
     );
     assert!(registry.definitions().is_empty());
@@ -1378,67 +1433,50 @@ fn register_rejects_declared_env_var_missing_from_daemon_environment() {
 
 #[cfg(unix)]
 #[test]
-#[expect(unsafe_code, reason = "test serializes process environment mutation")]
-fn declared_env_var_is_injected_into_subprocess() {
-    let _guard = ENV_LOCK.lock().expect("env lock");
-    unsafe {
-        std::env::set_var("THESAUROS_TEST_DECLARED_ENV", "declared-value");
-    }
-
+fn register_rejects_declared_env_before_executor_creation() {
     let dir = setup_pack_dir(&[(
         "tools/env.sh",
         "#!/bin/sh\nprintf '%s' \"${THESAUROS_TEST_DECLARED_ENV-unset}\"",
     )]);
     make_executable(&dir, "tools/env.sh");
+    let tool = tool_def_with_policy(
+        "wants_env",
+        "tools/env.sh",
+        vec!["THESAUROS_TEST_DECLARED_ENV".to_owned()],
+        Vec::new(),
+        None,
+    );
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&[pack], &mut registry);
 
-    let mut executor = test_executor(&dir, "tools/env.sh", 5000);
-    executor
-        .env_vars
-        .push("THESAUROS_TEST_DECLARED_ENV".to_owned());
-
-    let input = ToolInput {
-        name: ToolName::new("env_tool").expect("valid tool name"),
-        tool_use_id: "toolu_declared_env".to_owned(),
-        arguments: serde_json::json!({}),
-    };
-    let ctx = test_ctx(&dir);
-
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .expect("runtime");
-    let result = runtime
-        .block_on(executor.execute(&input, &ctx))
-        .expect("executor should return result");
-
-    unsafe {
-        std::env::remove_var("THESAUROS_TEST_DECLARED_ENV");
-    }
-
-    assert!(!result.is_error);
-    assert_eq!(result.content.text_summary(), "declared-value");
+    assert_eq!(failures.len(), 1);
+    assert!(registry.definitions().is_empty());
 }
 
 #[cfg(unix)]
 #[test]
-fn register_rejects_write_path_escaping_pack_root() {
+fn register_rejects_manifest_declared_write_authority() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
     make_executable(&dir, "tools/echo.sh");
     let tool = tool_def_with_policy(
         "writes_outside",
         "tools/echo.sh",
         Vec::new(),
-        vec!["../outside".to_owned()],
+        vec!["data".to_owned()],
         None,
     );
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
     let mut registry = ToolRegistry::new();
     let failures = register_pack_tools(&[pack], &mut registry);
-    assert_eq!(failures.len(), 1, "escaping write path must fail");
+    assert_eq!(failures.len(), 1, "every manifest write grant must fail");
     assert!(
-        failures[0].error.to_string().contains("write path"),
-        "failure must name the write path contract: {}",
+        failures[0]
+            .error
+            .to_string()
+            .contains("intersection with operator policy"),
+        "failure must name the operator authority boundary: {}",
         failures[0].error
     );
     assert!(registry.definitions().is_empty());
@@ -1473,8 +1511,8 @@ fn register_rejects_unknown_egress_intent() {
 }
 
 #[cfg(unix)]
-#[tokio::test]
-async fn register_accepts_egress_none_and_inherit() {
+#[test]
+fn register_rejects_egress_none_when_sandbox_is_disabled_but_accepts_inherit() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\ncat")]);
     make_executable(&dir, "tools/echo.sh");
     let tools = vec![
@@ -1496,26 +1534,85 @@ async fn register_accepts_egress_none_and_inherit() {
     let pack = minimal_loaded_pack(&dir, tools);
 
     let mut registry = ToolRegistry::new();
-    // NOTE: sandbox disabled in tests, so the egress = "none" tool logs an
-    // unenforced-intent warning but still registers.
-    let failures = register_pack_tools(&[pack], &mut registry);
-    assert!(failures.is_empty(), "failures: {failures:?}");
-    assert_eq!(registry.definitions().len(), 2);
-
-    let input = ToolInput {
-        name: ToolName::new("no_network").expect("valid tool name"),
-        tool_use_id: "toolu_egress".to_owned(),
-        arguments: serde_json::json!({"ok": true}),
-    };
-    let result = registry
-        .execute(&input, &test_ctx(&dir))
-        .await
-        .expect("execute should return a result");
-    assert!(
-        !result.is_error,
-        "declared egress intent must not break execution: {}",
-        result.content.text_summary()
+    let failures = register_pack_tools_with_sandbox(
+        &[pack],
+        &mut registry,
+        organon::sandbox::SandboxConfig {
+            enabled: false,
+            ..organon::sandbox::SandboxConfig::default()
+        },
     );
+    assert_eq!(failures.len(), 1, "failures: {failures:?}");
+    assert_eq!(failures[0].tool_name, "no_network");
+    assert!(
+        failures[0]
+            .error
+            .to_string()
+            .contains("requires an enabled enforcing sandbox"),
+        "explicit denial must fail closed: {}",
+        failures[0].error
+    );
+    assert_eq!(registry.definitions().len(), 1);
+    assert_eq!(registry.definitions()[0].name.as_str(), "inherits_policy");
+}
+
+#[test]
+fn egress_none_preflight_requires_enabled_enforcing_active_guarantee() {
+    let active = organon::sandbox::SandboxGuarantees {
+        landlock: organon::sandbox::GuaranteeStatus::Active,
+        seccomp: organon::sandbox::GuaranteeStatus::Active,
+        egress: organon::sandbox::GuaranteeStatus::Active,
+    };
+    let unavailable = organon::sandbox::SandboxGuarantees {
+        egress: organon::sandbox::GuaranteeStatus::Unavailable,
+        ..active
+    };
+    let mut sandbox = organon::sandbox::SandboxConfig {
+        enabled: true,
+        enforcement: organon::sandbox::SandboxEnforcement::Enforcing,
+        egress: organon::sandbox::EgressPolicy::Deny,
+        ..organon::sandbox::SandboxConfig::default()
+    };
+
+    assert!(egress_none_is_enforceable(&sandbox, active));
+    assert!(!egress_none_is_enforceable(&sandbox, unavailable));
+    sandbox.enforcement = organon::sandbox::SandboxEnforcement::Permissive;
+    assert!(!egress_none_is_enforceable(&sandbox, active));
+    sandbox.enabled = false;
+    assert!(!egress_none_is_enforceable(&sandbox, active));
+}
+
+#[test]
+fn enforcing_baseline_preflight_rejects_degraded_or_unavailable_guarantees() {
+    let sandbox = organon::sandbox::SandboxConfig {
+        enabled: true,
+        enforcement: organon::sandbox::SandboxEnforcement::Enforcing,
+        ..organon::sandbox::SandboxConfig::default()
+    };
+    let active = organon::sandbox::SandboxGuarantees {
+        landlock: organon::sandbox::GuaranteeStatus::Active,
+        seccomp: organon::sandbox::GuaranteeStatus::Active,
+        egress: organon::sandbox::GuaranteeStatus::Unrestricted,
+    };
+    assert!(enforcing_baseline_failure(&sandbox, active).is_none());
+
+    let degraded = organon::sandbox::SandboxGuarantees {
+        landlock: organon::sandbox::GuaranteeStatus::Degraded,
+        ..active
+    };
+    assert!(enforcing_baseline_failure(&sandbox, degraded).is_some());
+
+    let unavailable = organon::sandbox::SandboxGuarantees {
+        seccomp: organon::sandbox::GuaranteeStatus::Unavailable,
+        ..active
+    };
+    assert!(enforcing_baseline_failure(&sandbox, unavailable).is_some());
+
+    let degraded_egress = organon::sandbox::SandboxGuarantees {
+        egress: organon::sandbox::GuaranteeStatus::Degraded,
+        ..active
+    };
+    assert!(enforcing_baseline_failure(&sandbox, degraded_egress).is_some());
 }
 
 // --- #5215: explicit platform support ---
@@ -1528,7 +1625,11 @@ fn register_skips_tool_for_unsupported_platform() {
     // platform the host is not; the platform check runs before any
     // filesystem validation, so no executable fixture is needed.
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
-    let foreign = if cfg!(windows) { "linux" } else { "windows" };
+    let foreign = if cfg!(target_os = "linux") {
+        "macos"
+    } else {
+        "linux"
+    };
     let tool = PackToolDef {
         name: "foreign_tool".to_owned(),
         description: "Wrong-platform tool".to_owned(),
@@ -1545,6 +1646,7 @@ fn register_skips_tool_for_unsupported_platform() {
     };
     let dir_root = dir.path().to_path_buf();
     let pack = LoadedPack {
+        instance_id: crate::health::PackInstanceId::default(),
         manifest: PackManifest {
             name: "test-pack".to_owned(),
             version: "1.0".to_owned(),

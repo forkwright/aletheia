@@ -7,7 +7,7 @@ use snafu::ResultExt;
 use tracing::{info, warn};
 
 use crate::error::{self, Result};
-use crate::health::{PackComponent, PackHealth, PackIssue, PackReport, Severity};
+use crate::health::{PackComponent, PackHealth, PackInstanceId, PackIssue, PackReport, Severity};
 use crate::manifest::{self, ContextEntry, OverlayPolicy, PackManifest, Priority};
 
 /// Maximum bytes read for a single context file.
@@ -36,6 +36,8 @@ pub struct PackSection {
 /// A fully loaded domain pack with resolved context.
 #[derive(Debug, Clone)]
 pub struct LoadedPack {
+    /// Stable identity of this configured pack occurrence.
+    pub instance_id: PackInstanceId,
     /// The pack manifest.
     pub manifest: PackManifest,
     /// Resolved context sections with file contents read.
@@ -149,13 +151,11 @@ pub fn load_packs_with_report(paths: &[PathBuf]) -> LoadOutcome {
 /// (#5220), returning the structured health report alongside the packs.
 pub fn load_packs_with_policy(paths: &[PathBuf], policy: &OverlayPolicy) -> LoadOutcome {
     let mut packs = Vec::with_capacity(paths.len());
-    let mut report = PackReport {
-        notes: crate::health::platform_notes(),
-        ..PackReport::default()
-    };
+    let mut report = PackReport::default();
 
-    for path in paths {
-        match load_single_pack_inner(path, policy) {
+    for (ordinal, path) in paths.iter().enumerate() {
+        let instance_id = PackInstanceId::from_ordinal(ordinal);
+        match load_single_pack_inner(instance_id, path, policy) {
             Ok((pack, issues)) => {
                 info!(
                     pack = %pack.manifest.name,
@@ -163,20 +163,27 @@ pub fn load_packs_with_policy(paths: &[PathBuf], policy: &OverlayPolicy) -> Load
                     path = %path.display(),
                     "domain pack loaded"
                 );
-                let mut health = PackHealth::active(pack.manifest.name.clone(), path.clone());
+                let mut health =
+                    PackHealth::active(instance_id, pack.manifest.name.clone(), path.clone());
                 for issue in issues {
                     health.push_issue(issue);
                 }
                 report.packs.push(health);
                 packs.push(pack);
             }
-            Err(e) => {
+            Err(failure) => {
                 warn!(
                     path = %path.display(),
-                    error = %e,
+                    error = %failure.error,
                     "failed to load domain pack, skipping"
                 );
-                report.packs.push(PackHealth::failed(path.clone(), &e));
+                report.packs.push(PackHealth::failed(
+                    instance_id,
+                    path.clone(),
+                    failure.manifest_name,
+                    failure.component,
+                    &failure.error,
+                ));
             }
         }
     }
@@ -192,19 +199,44 @@ pub fn load_packs_with_policy(paths: &[PathBuf], policy: &OverlayPolicy) -> Load
 /// Load a single domain pack from a directory.
 #[cfg(test)]
 fn load_single_pack(pack_root: &Path) -> Result<LoadedPack> {
-    load_single_pack_inner(pack_root, &OverlayPolicy::default()).map(|(pack, _issues)| pack)
+    load_single_pack_inner(
+        PackInstanceId::default(),
+        pack_root,
+        &OverlayPolicy::default(),
+    )
+    .map(|(pack, _issues)| pack)
+    .map_err(|failure| failure.error)
+}
+
+/// Typed internal load failure preserving how far pack loading progressed.
+struct PackLoadFailure {
+    manifest_name: Option<String>,
+    component: PackComponent,
+    error: error::Error,
 }
 
 /// Load a single domain pack, also returning health issues for every
 /// non-fatal skip (missing optional context files, stripped overlay powers).
 fn load_single_pack_inner(
+    instance_id: PackInstanceId,
     pack_root: &Path,
     policy: &OverlayPolicy,
-) -> Result<(LoadedPack, Vec<PackIssue>)> {
-    let manifest = manifest::load_manifest(pack_root)?;
-    let (sections, mut issues) = resolve_context_sections(pack_root, &manifest)?;
+) -> std::result::Result<(LoadedPack, Vec<PackIssue>), PackLoadFailure> {
+    let manifest = manifest::load_manifest(pack_root).map_err(|error| PackLoadFailure {
+        manifest_name: None,
+        component: PackComponent::Manifest,
+        error,
+    })?;
+    let manifest_name = manifest.name.clone();
+    let (sections, mut issues) =
+        resolve_context_sections(pack_root, &manifest).map_err(|error| PackLoadFailure {
+            manifest_name: Some(manifest_name),
+            component: PackComponent::Context,
+            error,
+        })?;
 
     let mut pack = LoadedPack {
+        instance_id,
         manifest,
         sections,
         root: pack_root.to_path_buf(),
@@ -255,8 +287,8 @@ fn resolve_context_sections(
 ///
 /// High-impact powers (model override, agency override, durable
 /// system-prompt additions) are stripped unless the operator opted in;
-/// every applied or stripped power is recorded as a health issue so the
-/// effective overlay diff is visible. Domain tags always apply — they only
+/// every permitted or stripped power is recorded as a health issue. Actual
+/// runtime reconciliation occurs after agents and providers exist. Domain tags always apply — they only
 /// route context. Prompt additions, when permitted, are capped at
 /// `max_prompt_additions_bytes` per agent; additions past the cap are
 /// dropped whole rather than truncated mid-string.
@@ -279,7 +311,8 @@ fn apply_overlay_policy(pack: &mut LoadedPack, policy: &OverlayPolicy) -> Vec<Pa
                     component: PackComponent::Overlay,
                     severity: Severity::Info,
                     message: format!(
-                        "overlay for agent '{agent}': model override '{model}' in effect"
+                        "overlay for agent '{agent}': model override '{model}' permitted and \
+                         retained by operator policy"
                     ),
                 });
                 overlay.model = Some(model);
@@ -301,7 +334,8 @@ fn apply_overlay_policy(pack: &mut LoadedPack, policy: &OverlayPolicy) -> Vec<Pa
                     component: PackComponent::Overlay,
                     severity: Severity::Info,
                     message: format!(
-                        "overlay for agent '{agent}': agency override '{agency}' in effect"
+                        "overlay for agent '{agent}': agency override '{agency}' permitted and \
+                         retained by operator policy"
                     ),
                 });
                 overlay.agency = Some(agency);
@@ -361,7 +395,8 @@ fn apply_overlay_policy(pack: &mut LoadedPack, policy: &OverlayPolicy) -> Vec<Pa
             component: PackComponent::Overlay,
             severity: Severity::Info,
             message: format!(
-                "overlay for agent '{agent}': {} system-prompt addition(s) in effect ({total} bytes)",
+                "overlay for agent '{agent}': {} system-prompt addition(s) permitted and retained \
+                 by operator policy ({total} bytes)",
                 overlay.system_prompt_additions.len()
             ),
         });
@@ -773,6 +808,40 @@ system_prompt_additions = ["aaaaa", "bbbbb", "c"]
     }
 
     #[test]
+    fn prompt_addition_cap_is_independent_per_pack_and_agent() {
+        let first = setup_pack(&[(
+            "pack.toml",
+            "name = \"first\"\nversion = \"1.0\"\n\n[overlays.analyst]\n\
+             system_prompt_additions = [\"aaaaa\"]\n",
+        )]);
+        let second = setup_pack(&[(
+            "pack.toml",
+            "name = \"second\"\nversion = \"1.0\"\n\n[overlays.analyst]\n\
+             system_prompt_additions = [\"bbbbb\"]\n",
+        )]);
+        let policy = OverlayPolicy {
+            max_prompt_additions_bytes: 5,
+            ..OverlayPolicy::permit_all()
+        };
+
+        let outcome = load_packs_with_policy(
+            &[first.path().to_path_buf(), second.path().to_path_buf()],
+            &policy,
+        );
+
+        assert_eq!(outcome.packs.len(), 2);
+        assert_eq!(
+            outcome.packs[0].system_prompt_additions_for_agent("analyst"),
+            vec!["aaaaa".to_owned()]
+        );
+        assert_eq!(
+            outcome.packs[1].system_prompt_additions_for_agent("analyst"),
+            vec!["bbbbb".to_owned()],
+            "the second configured pack gets its own per-pack/per-agent cap"
+        );
+    }
+
+    #[test]
     fn missing_context_file_skipped_gracefully() {
         let toml = "name = \"partial\"\nversion = \"1.0\"\n\n[[context]]\npath = \"exists.md\"\n\n[[context]]\npath = \"missing.md\"\n";
         let dir = setup_pack(&[("pack.toml", toml), ("exists.md", "content")]);
@@ -907,6 +976,14 @@ system_prompt_additions = ["aaaaa", "bbbbb", "c"]
             outcome.report.packs[0].status,
             crate::health::PackStatus::Failed
         );
+        assert_eq!(
+            outcome.report.packs[0].name, "strict",
+            "the parsed manifest name survives a later context-stage failure"
+        );
+        assert_eq!(
+            outcome.report.packs[0].issues[0].component,
+            crate::health::PackComponent::Context
+        );
         assert!(outcome.report.has_failures());
     }
 
@@ -923,5 +1000,27 @@ system_prompt_additions = ["aaaaa", "bbbbb", "c"]
             health.issues[0].component,
             crate::health::PackComponent::Manifest
         );
+        assert_eq!(
+            health.name,
+            dir.path()
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap(),
+            "an invalid manifest falls back to its configured path name"
+        );
+    }
+
+    #[test]
+    fn configured_occurrences_receive_distinct_stable_ids() {
+        let dir = setup_pack(&[("pack.toml", "name = \"same\"\nversion = \"1.0\"\n")]);
+        let path = dir.path().to_path_buf();
+        let outcome = load_packs_with_report(&[path.clone(), path]);
+
+        assert_eq!(outcome.packs.len(), 2);
+        assert_eq!(outcome.report.packs.len(), 2);
+        assert_eq!(outcome.packs[0].instance_id.ordinal(), 0);
+        assert_eq!(outcome.packs[1].instance_id.ordinal(), 1);
+        assert_eq!(outcome.report.packs[0].instance_id.ordinal(), 0);
+        assert_eq!(outcome.report.packs[1].instance_id.ordinal(), 1);
     }
 }

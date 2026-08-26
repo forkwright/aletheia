@@ -164,19 +164,17 @@ pub struct PackToolDef {
     /// Reversibility metadata. Defaults to `irreversible`.
     #[serde(default)]
     pub reversibility: Option<String>,
-    /// Environment variable names passed through from the daemon's own
-    /// environment into the tool's subprocess (#5214).
+    /// Reserved environment-authority declarations (#5214).
     ///
-    /// Values never appear in the manifest — the pack declares the *name*,
-    /// the operator provides the value in the daemon's environment (e.g. a
-    /// systemd `EnvironmentFile`). A declared name absent from the daemon
-    /// environment fails tool registration. Anything not declared here is
-    /// stripped from the child environment.
+    /// Non-empty declarations are rejected until an operator-owned,
+    /// per-pack/per-tool grant can be intersected with this request. A pack
+    /// manifest is not authority to read arbitrary daemon environment values.
     #[serde(default)]
     pub env: Vec<String>,
-    /// Additional directories the tool may write to, relative to the pack
-    /// root. Read access to the pack root and exec access to the command
-    /// itself are already implied; this is the *additive* write contract.
+    /// Reserved filesystem-write declarations (#5214).
+    ///
+    /// Non-empty declarations are rejected until they can be intersected
+    /// with operator policy. A manifest alone cannot widen write authority.
     #[serde(default)]
     pub write_paths: Vec<String>,
     /// Declared network egress intent: `"none"` denies outbound network for
@@ -185,8 +183,8 @@ pub struct PackToolDef {
     /// unchanged. A pack can only narrow egress, never widen it.
     #[serde(default)]
     pub egress: Option<String>,
-    /// Host platforms this tool supports: any of `linux`, `macos`,
-    /// `windows`, `unix` (#5215).
+    /// Host platforms this tool supports: any of `linux`, `macos`, `unix`
+    /// (#5215).
     ///
     /// Empty means `["unix"]`: a pack tool is a shebang-executed script,
     /// which needs a Unix exec environment unless the author declares
@@ -330,21 +328,19 @@ fn validate_tool_contract(tool: &PackToolDef, issues: &mut Vec<String>) {
             tool.name, tool.command
         ));
     }
-    for var in &tool.env {
-        if !is_valid_env_name(var) {
-            issues.push(format!(
-                "tool '{}' declares invalid environment variable name '{var}'",
-                tool.name
-            ));
-        }
+    if !tool.env.is_empty() {
+        issues.push(format!(
+            "tool '{}' declares env authority, but pack env grants are reserved until an \
+             operator-owned per-tool policy exists",
+            tool.name
+        ));
     }
-    for path in &tool.write_paths {
-        if !is_relative_in_pack_path(Path::new(path)) {
-            issues.push(format!(
-                "tool '{}' write path '{path}' must be a relative path inside the pack root",
-                tool.name
-            ));
-        }
+    if !tool.write_paths.is_empty() {
+        issues.push(format!(
+            "tool '{}' declares write_paths authority, but pack write grants are reserved until \
+             they can be intersected with operator policy",
+            tool.name
+        ));
     }
     if let Some(egress) = tool.egress.as_deref()
         && !matches!(egress, "none" | "inherit")
@@ -355,20 +351,14 @@ fn validate_tool_contract(tool: &PackToolDef, issues: &mut Vec<String>) {
         ));
     }
     for platform in &tool.platforms {
-        if !matches!(platform.as_str(), "linux" | "macos" | "windows" | "unix") {
+        if !matches!(platform.as_str(), "linux" | "macos" | "unix") {
             issues.push(format!(
                 "tool '{}' platform '{platform}' is unknown \
-                 (expected \"linux\", \"macos\", \"windows\", or \"unix\")",
+                 (expected \"linux\", \"macos\", or \"unix\")",
                 tool.name
             ));
         }
     }
-}
-
-/// Returns `true` for a syntactically valid environment variable name:
-/// non-empty, no `=` or NUL (which would corrupt `Command::env` handling).
-fn is_valid_env_name(name: &str) -> bool {
-    !name.is_empty() && !name.as_bytes().contains(&b'=') && !name.as_bytes().contains(&0)
 }
 
 /// Validate one overlay's high-impact fields: `agency` must name a known
@@ -928,9 +918,9 @@ model = "  "
     }
 
     #[test]
-    fn rejects_invalid_tool_policy_fields() {
-        // WHY(#5214): env names, write paths, and egress intent are part of the
-        // tool contract and fail load-time validation when malformed.
+    fn rejects_unbound_tool_authority_and_invalid_narrowing_fields() {
+        // SECURITY(#5214): a manifest cannot self-authorize daemon env or writes. Egress and
+        // platform remain declarative narrowing/compatibility fields and are validated here.
         let toml = r#"
 name = "policy-pack"
 version = "1.0"
@@ -963,8 +953,8 @@ platforms = ["plan9"]
         let err = load_manifest(dir.path()).unwrap_err();
         let msg = err.to_string();
         for expected in [
-            "invalid environment variable name 'HAS=VALUE'",
-            "write path '../elsewhere' must be a relative path inside the pack root",
+            "env authority",
+            "write_paths authority",
             "egress 'everything' is unknown",
             "platform 'plan9' is unknown",
         ] {
@@ -973,7 +963,7 @@ platforms = ["plan9"]
     }
 
     #[test]
-    fn accepts_valid_tool_policy_fields() {
+    fn rejects_even_well_formed_env_and_write_declarations_without_operator_policy() {
         let toml = r#"
 name = "policy-pack"
 version = "1.0"
@@ -987,11 +977,27 @@ write_paths = ["data", "data/scratch"]
 egress = "none"
 "#;
         let dir = setup_pack(&[("pack.toml", toml)]);
-        let manifest = load_manifest(dir.path()).unwrap();
-        let declared = &manifest.tools[0];
-        assert_eq!(declared.env, vec!["DATABASE_URL"]);
-        assert_eq!(declared.write_paths, vec!["data", "data/scratch"]);
-        assert_eq!(declared.egress.as_deref(), Some("none"));
+        let err = load_manifest(dir.path()).expect_err("pack must not self-grant authority");
+        let message = err.to_string();
+        assert!(message.contains("env authority"), "{message}");
+        assert!(message.contains("write_paths authority"), "{message}");
+    }
+
+    #[test]
+    fn rejects_windows_platform_until_native_execution_is_supported() {
+        let toml = r#"
+name = "platform-pack"
+version = "1.0"
+
+[[tools]]
+name = "native_tool"
+description = "Not yet portable"
+command = "tools/native.exe"
+platforms = ["windows"]
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).expect_err("Windows is not a supported pack platform");
+        assert!(err.to_string().contains("platform 'windows' is unknown"));
     }
 
     #[test]
