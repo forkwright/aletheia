@@ -79,6 +79,11 @@ pub struct TurnAttemptRecord {
     /// Provider/model context, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Full model/provider identity chain for the turn (#4798): configured,
+    /// requested, routing decision, fallback attempts, final serving route,
+    /// and provider-reported model. `None` on records predating the chain.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model_identity: Option<hermeneus::types::ResolvedModelContext>,
     /// Degraded-mode provider failure provenance, when this was a synthetic response.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub degraded_provenance: Option<DegradedProvenance>,
@@ -108,6 +113,7 @@ impl TurnAttemptRecord {
             error_code: None,
             error_message: None,
             model: None,
+            model_identity: None,
             degraded_provenance: None,
             user_content_saved: None,
             messages_persisted: None,
@@ -410,5 +416,64 @@ mod tests {
                 .expect("read run context")
                 .is_none()
         );
+    }
+
+    #[test]
+    fn model_identity_round_trips_through_turn_attempt_record() {
+        let (store, session) = make_store_and_session();
+        let mut record = TurnAttemptRecord::new(
+            &session.turn_id,
+            &session.id,
+            "test-nous",
+            TurnAttemptStatus::Completed,
+        );
+        record.model_identity = Some(hermeneus::types::ResolvedModelContext {
+            configured_model: "configured".to_owned(),
+            configured_provider: Some("primary".to_owned()),
+            requested_model: "routed".to_owned(),
+            routing_score: Some(42),
+            routing_tier: Some("sonnet".to_owned()),
+            routing_reason: Some("moderate complexity".to_owned()),
+            deployment_target: Some("cloud".to_owned()),
+            fallback_attempted: vec!["routed via primary".to_owned()],
+            final_model: "fallback".to_owned(),
+            final_provider: Some("secondary".to_owned()),
+            provider_reported_model: Some("fallback-20260301".to_owned()),
+        });
+
+        persist_turn_attempt(&store, "test-nous", &record).expect("persist");
+
+        let read = latest_turn_attempt_record(&store, &session.id, &session.turn_id)
+            .expect("read")
+            .expect("record present");
+        let identity = read.model_identity.expect("model identity persisted");
+        assert_eq!(identity.configured_model, "configured");
+        assert_eq!(identity.requested_model, "routed");
+        assert_eq!(identity.final_model, "fallback");
+        assert_eq!(identity.final_provider.as_deref(), Some("secondary"));
+        assert_eq!(
+            identity.provider_reported_model.as_deref(),
+            Some("fallback-20260301")
+        );
+        assert_eq!(identity.fallback_attempted, ["routed via primary"]);
+        assert_eq!(identity.routing_tier.as_deref(), Some("sonnet"));
+    }
+
+    #[test]
+    fn turn_attempt_record_without_model_identity_still_parses() {
+        // WHY(#4798): records written before the identity chain existed carry
+        // no `model_identity` key at all — the field must default to `None`
+        // rather than failing to deserialize historical notes.
+        let legacy = serde_json::json!({
+            "version": 1,
+            "turn_id": "01J00000000000000000000000",
+            "session_id": "ses-1",
+            "nous_id": "test-nous",
+            "status": "completed",
+            "created_at": "2026-04-16T12:00:00Z",
+        });
+        let record: TurnAttemptRecord =
+            serde_json::from_value(legacy).expect("legacy record parses");
+        assert!(record.model_identity.is_none());
     }
 }

@@ -538,6 +538,7 @@ fn turn_complete_event_payload_includes_partial_stop_reason() {
         model_used: "test-model".to_owned(),
         provider_used: None,
         tool_surface_hashes: Vec::new(),
+        model_identity: Default::default(),
     };
 
     let payload = turn_complete_event_payload(

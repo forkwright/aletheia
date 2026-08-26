@@ -20,8 +20,8 @@ use tracing::{debug, info, instrument, warn};
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 use hermeneus::provider::{DeploymentTarget, ProviderCapabilities, ProviderRegistry};
 use hermeneus::types::{
-    CompletionRequest, CompletionResponse, Content, ContentBlock, Message, Role,
-    ServerToolDefinition, StopReason, ThinkingConfig,
+    CompletionRequest, CompletionResponse, Content, ContentBlock, Message, ResolvedModelContext,
+    Role, ServerToolDefinition, StopReason, ThinkingConfig,
 };
 use mneme::knowledge::FactSensitivity;
 use organon::registry::ToolRegistry;
@@ -39,8 +39,8 @@ use self::dispatch::{
 // the one function of its internals crate::execute intentionally surfaces.
 pub(crate) use self::dispatch::is_denial_outcome;
 use self::resolve::{
-    gate_turn_sensitivity, process_response_blocks, resolve_active_server_tools,
-    resolve_provider_checked, resolve_turn_model, resolve_turn_route, route_admits_sensitivity,
+    TurnRouting, gate_turn_sensitivity, process_response_blocks, resolve_active_server_tools,
+    resolve_provider_checked, resolve_turn_model, resolve_turn_routing, route_admits_sensitivity,
 };
 use crate::approval::ApprovalGate;
 use crate::config::{ModelProviderRoute, NousConfig};
@@ -72,6 +72,9 @@ struct LlmCompletion {
     /// try. This field is the single place that count is computed, so the
     /// loop below cannot under-report it again.
     llm_call_count: u32,
+    /// Route labels the fallback chain exhausted before this completion;
+    /// empty on a direct call (#4798).
+    attempted_routes: Vec<String>,
 }
 
 type LlmCallFuture<'a> = std::pin::Pin<
@@ -198,6 +201,7 @@ fn build_llm_future<'a>(
                     model: completion.model,
                     provider: completion.provider,
                     llm_call_count: completion.attempts,
+                    attempted_routes: completion.attempted_routes,
                 })
             });
             Ok((fut, None))
@@ -217,6 +221,7 @@ fn build_llm_future<'a>(
                     model: completion.model,
                     provider: completion.provider,
                     llm_call_count: completion.attempts,
+                    attempted_routes: completion.attempted_routes,
                 })
             });
             Ok((fut, None))
@@ -237,6 +242,7 @@ fn build_llm_future<'a>(
                     model: requested_model,
                     provider: provider_name,
                     llm_call_count: 1,
+                    attempted_routes: Vec::new(),
                 })
             });
             Ok((fut, Some(name_for_caller)))
@@ -257,6 +263,7 @@ fn build_llm_future<'a>(
                     model: requested_model,
                     provider: provider_name,
                     llm_call_count: 1,
+                    attempted_routes: Vec::new(),
                 })
             });
             Ok((fut, Some(name_for_caller)))
@@ -360,7 +367,8 @@ pub(crate) async fn execute_with_deadline(
         },
         Vec::len,
     );
-    let turn_route = resolve_turn_route(request.ctx, request.config, request.providers, tool_count);
+    let turn_routing =
+        resolve_turn_routing(request.ctx, request.config, request.providers, tool_count);
     run_execute_loop(
         request.ctx,
         request.session,
@@ -373,7 +381,7 @@ pub(crate) async fn execute_with_deadline(
         adapters.hooks,
         adapters.deadline,
         adapters.audit_log,
-        turn_route,
+        turn_routing,
         LlmTransport::NonStreaming,
     )
     .await
@@ -393,6 +401,7 @@ fn build_turn_budget_exceeded_result(
     model_used: String,
     provider_used: Option<String>,
     tool_surface_hashes: Vec<String>,
+    model_identity: ResolvedModelContext,
 ) -> TurnResult {
     let banner =
         "Turn time budget exhausted — returning partial results from the last safe boundary."
@@ -410,6 +419,7 @@ fn build_turn_budget_exceeded_result(
         model_used,
         provider_used,
         tool_surface_hashes,
+        model_identity,
     }
 }
 
@@ -524,7 +534,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         || tools.definitions_for_policy(&config.tool_groups).len(),
         Vec::len,
     );
-    let turn_route = resolve_turn_route(ctx, config, providers, tool_count);
+    let turn_routing = resolve_turn_routing(ctx, config, providers, tool_count);
 
     // WHY(#5253): the turn's real CompletionRequest is built per-iteration
     // inside run_execute_loop below, so this preflight approximates required
@@ -533,7 +543,7 @@ pub(crate) async fn execute_streaming_with_deadline(
     // build_llm_future negotiates against the real request once it exists.
     let streaming_provider = resolve_provider_checked(
         providers,
-        &turn_route,
+        &turn_routing.route,
         ProviderCapabilities::with_tool_loop(tool_count > 0),
     )?;
     if !streaming_provider.supports_streaming() {
@@ -549,7 +559,7 @@ pub(crate) async fn execute_streaming_with_deadline(
             hooks,
             deadline,
             audit_log,
-            turn_route,
+            turn_routing,
             LlmTransport::NonStreaming,
         )
         .await;
@@ -567,7 +577,7 @@ pub(crate) async fn execute_streaming_with_deadline(
         hooks,
         deadline,
         audit_log,
-        turn_route,
+        turn_routing,
         LlmTransport::Streaming(stream_tx),
     )
     .await
@@ -600,7 +610,7 @@ async fn run_execute_loop(
     hooks: Option<&HookRegistry>,
     deadline: Option<Instant>,
     audit_log: Option<&crate::audit::PromptAuditLog>,
-    turn_route: ModelProviderRoute,
+    turn_routing: TurnRouting,
     llm_transport: LlmTransport<'_>,
 ) -> error::Result<TurnResult> {
     // WHY(#4621): gate before the loop, once, rather than per-iteration —
@@ -609,9 +619,34 @@ async fn run_execute_loop(
     // route (a mid-turn provider swap would split one turn's content across
     // deployment targets). Covers both transports: streaming and
     // non-streaming callers both converge on this shared loop.
-    let (turn_route, turn_sensitivity) = gate_turn_sensitivity(ctx, config, providers, turn_route)?;
+    let (turn_route, turn_sensitivity) =
+        gate_turn_sensitivity(ctx, config, providers, turn_routing.route)?;
     let mut model_used = turn_route.model.clone();
     let mut provider_used = None;
+
+    // WHY(#4798): the turn's model identity chain is established up front
+    // from config + routing + the gated route, then completed per iteration
+    // with the observed provider/model, provider-reported model, and any
+    // fallback routes exhausted along the way.
+    let mut model_identity = ResolvedModelContext {
+        configured_model: config.generation.model.clone(),
+        configured_provider: config.generation.provider.clone(),
+        requested_model: turn_route.model.clone(),
+        routing_score: turn_routing
+            .decision
+            .as_ref()
+            .map(|decision| decision.complexity.score),
+        routing_tier: turn_routing
+            .decision
+            .as_ref()
+            .map(|decision| decision.complexity.tier.to_string()),
+        routing_reason: turn_routing
+            .decision
+            .as_ref()
+            .map(|decision| decision.complexity.reason.clone()),
+        final_model: turn_route.model.clone(),
+        ..ResolvedModelContext::default()
+    };
 
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
@@ -803,15 +838,28 @@ async fn run_execute_loop(
                 provider_used = Some(completion.provider);
                 total_usage.llm_calls += completion.llm_call_count;
 
+                // WHY(#4798): complete the identity chain with what this
+                // iteration actually observed — the serving route, the
+                // provider's own reported model, its deployment target, and
+                // any fallback routes exhausted before this success.
+                let provider_reported_model = completion.response.model.clone();
+                model_identity.final_model.clone_from(&model_used);
+                model_identity.final_provider.clone_from(&provider_used);
+                model_identity.provider_reported_model = Some(provider_reported_model.clone());
+                model_identity
+                    .fallback_attempted
+                    .extend(completion.attempted_routes);
+                let provider_name = provider_used
+                    .as_deref()
+                    .map_or_else(|| "unknown".to_owned(), ToOwned::to_owned);
+                let deployment_target = provider_deployment_target(providers, &provider_name);
+                model_identity.deployment_target = Some(deployment_target.clone());
+
                 // WHY(#4831): log one prompt audit record per outbound
                 // CompletionRequest using the actual model/provider/route and
                 // effective tool surface for this iteration, not the
                 // top-level config defaults.
                 if let Some(log) = audit_log {
-                    let provider_name = provider_used
-                        .as_deref()
-                        .map_or_else(|| "unknown".to_owned(), ToOwned::to_owned);
-                    let deployment_target = provider_deployment_target(providers, &provider_name);
                     let mut audit_request = request.clone();
                     audit_request.model.clone_from(&model_used);
                     let record = crate::audit::build_audit_record_for_request(
@@ -832,6 +880,8 @@ async fn run_execute_loop(
                             // threaded from Pylon's gateway middleware
                             // instead of minting a disconnected local ID.
                             request_id: session.request_id.clone(),
+                            requested_model: Some(turn_route.model.clone()),
+                            provider_reported_model: Some(provider_reported_model),
                         },
                     );
                     if let Err(e) = log.log_request(&record) {
@@ -1088,6 +1138,7 @@ async fn run_execute_loop(
             model_used,
             provider_used,
             tool_surface_hashes.into_iter().collect(),
+            model_identity,
         ));
     }
 
@@ -1118,5 +1169,6 @@ async fn run_execute_loop(
         model_used,
         provider_used,
         tool_surface_hashes: tool_surface_hashes.into_iter().collect(),
+        model_identity,
     })
 }

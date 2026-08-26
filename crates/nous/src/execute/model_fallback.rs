@@ -38,6 +38,10 @@ pub(super) struct RegistryFallbackCompletion {
     /// call) does not increment this, matching what `TurnUsage::llm_calls`
     /// is meant to represent: real LLM calls, not resolution attempts.
     pub(super) attempts: u32,
+    /// Route labels of provider-call attempts that failed before this
+    /// success, in attempt order — the fallback chain the turn burned
+    /// through, for per-turn identity provenance (#4798).
+    pub(super) attempted_routes: Vec<String>,
 }
 
 /// Outcome of one raw provider call attempt.
@@ -66,6 +70,7 @@ pub(super) async fn complete_with_registry_fallback(
     let primary_label = route_label(primary_route);
     let mut last_error = None;
     let mut attempt_errors = Vec::new();
+    let mut attempted_routes = Vec::new();
     let mut attempts: u32 = 0;
 
     if let Some(skip) = capability_gap(providers, primary_route, required) {
@@ -92,6 +97,7 @@ pub(super) async fn complete_with_registry_fallback(
                 attempt,
                 &mut attempts,
                 &mut attempt_errors,
+                &mut attempted_routes,
                 &mut last_error,
             ) {
                 return result;
@@ -136,6 +142,7 @@ pub(super) async fn complete_with_registry_fallback(
                 fallback_attempt,
                 &mut attempts,
                 &mut attempt_errors,
+                &mut attempted_routes,
                 &mut last_error,
             ) {
                 return result;
@@ -172,6 +179,7 @@ pub(super) async fn complete_streaming_with_registry_fallback(
     let primary_label = route_label(primary_route);
     let mut last_error = None;
     let mut attempt_errors = Vec::new();
+    let mut attempted_routes = Vec::new();
     let mut attempts: u32 = 0;
 
     if let Some(skip) = capability_gap(providers, primary_route, required) {
@@ -205,6 +213,7 @@ pub(super) async fn complete_streaming_with_registry_fallback(
                 attempt,
                 &mut attempts,
                 &mut attempt_errors,
+                &mut attempted_routes,
                 &mut last_error,
             ) {
                 return result;
@@ -256,6 +265,7 @@ pub(super) async fn complete_streaming_with_registry_fallback(
                 fallback_attempt,
                 &mut attempts,
                 &mut attempt_errors,
+                &mut attempted_routes,
                 &mut last_error,
             ) {
                 return result;
@@ -289,6 +299,7 @@ fn record_attempt(
     attempt: u32,
     attempts: &mut u32,
     attempt_errors: &mut Vec<String>,
+    attempted_routes: &mut Vec<String>,
     last_error: &mut Option<llm_error::Error>,
 ) -> ControlFlow<llm_error::Result<RegistryFallbackCompletion>> {
     if raw.attempted {
@@ -300,6 +311,7 @@ fn record_attempt(
             model: route.model.clone(),
             provider,
             attempts: *attempts,
+            attempted_routes: std::mem::take(attempted_routes),
         })),
         Err(e) => {
             if raw.emitted_stream_event || !e.is_retryable() {
@@ -312,6 +324,7 @@ fn record_attempt(
                 error = %redact_sensitive(&e.to_string()),
                 "{failure_label}"
             );
+            attempted_routes.push(route_label(route));
             attempt_errors.push(format!("{}: {e}", route_label(route)));
             *last_error = Some(e);
             ControlFlow::Continue(())

@@ -307,9 +307,10 @@ pub fn build_degraded_response_with_provenance(
                 provenance,
             }),
             reasoning: String::new(),
-            model_used,
+            model_used: model_used.clone(),
             provider_used: None,
             tool_surface_hashes: Vec::new(),
+            model_identity: hermeneus::types::ResolvedModelContext::unattributed(model_used),
         }
     } else {
         let provenance =
@@ -340,9 +341,10 @@ pub fn build_degraded_response_with_provenance(
                 provenance,
             }),
             reasoning: String::new(),
-            model_used,
+            model_used: model_used.clone(),
             provider_used: None,
             tool_surface_hashes: Vec::new(),
+            model_identity: hermeneus::types::ResolvedModelContext::unattributed(model_used),
         }
     }
 }

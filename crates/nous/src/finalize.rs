@@ -278,6 +278,7 @@ fn turn_attempt_record(
     let mut record =
         TurnAttemptRecord::new(&session.turn_id, &session.id, &session.nous_id, status);
     record.model = Some(result.model_used.clone());
+    record.model_identity = Some(result.model_identity.clone());
     record.degraded_provenance = result
         .degraded
         .as_ref()
@@ -503,6 +504,7 @@ mod tests {
             model_used: "test-model".to_owned(),
             provider_used: None,
             tool_surface_hashes: Vec::new(),
+            model_identity: Default::default(),
         }
     }
 
@@ -562,6 +564,7 @@ mod tests {
             model_used: "test-model".to_owned(),
             provider_used: None,
             tool_surface_hashes: Vec::new(),
+            model_identity: Default::default(),
         }
     }
 

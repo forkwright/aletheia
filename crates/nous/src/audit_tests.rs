@@ -28,6 +28,8 @@ fn make_record(ts: Timestamp, id: &str) -> PromptAuditRecord {
         tool_names: vec!["read".to_owned(), "write".to_owned()],
         tool_surface_hash: "ts1:test".to_owned(),
         request_id: Some("req-abc".to_owned()),
+        requested_model: Some("claude-opus-4-20250514".to_owned()),
+        provider_reported_model: Some("claude-opus-4-20250514".to_owned()),
     }
 }
 
@@ -59,7 +61,51 @@ fn record_serialization_roundtrip() {
     assert_eq!(decoded.tool_names, vec!["read", "write"]);
     assert_eq!(decoded.tool_surface_hash, "ts1:test");
     assert_eq!(decoded.request_id.as_deref(), Some("req-abc"));
+    assert_eq!(
+        decoded.requested_model.as_deref(),
+        Some("claude-opus-4-20250514")
+    );
+    assert_eq!(
+        decoded.provider_reported_model.as_deref(),
+        Some("claude-opus-4-20250514")
+    );
     assert_eq!(decoded.system_prompt_bytes, 12);
+}
+
+#[test]
+fn build_audit_record_for_request_carries_model_identity_fields() {
+    // WHY(#4798): the per-request audit row must distinguish the requested
+    // model (pre-fallback) from the served model and the provider-reported
+    // model, so fallback turns are attributable without re-reading the chain.
+    let config = crate::config::NousConfig::default();
+    let session = crate::session::SessionState::new("ses-1".to_owned(), "main".to_owned(), &config);
+    let ctx = crate::pipeline::PipelineContext::default();
+    let request = CompletionRequest {
+        model: "served-model".to_owned(),
+        ..CompletionRequest::default()
+    };
+
+    let record = build_audit_record_for_request(PromptAuditRequestRecordInput {
+        ctx: &ctx,
+        session: &session,
+        model: "served-model",
+        request: &request,
+        provider: "anthropic",
+        deployment_target: "cloud",
+        surface_hash: "ts1:test",
+        options: PromptAuditRecordOptions::default(),
+        chars_per_token: 4,
+        request_id: Some("req-1".to_owned()),
+        requested_model: Some("requested-model".to_owned()),
+        provider_reported_model: Some("reported-model".to_owned()),
+    });
+
+    assert_eq!(record.model, "served-model");
+    assert_eq!(record.requested_model.as_deref(), Some("requested-model"));
+    assert_eq!(
+        record.provider_reported_model.as_deref(),
+        Some("reported-model")
+    );
 }
 
 #[test]

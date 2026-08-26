@@ -92,6 +92,7 @@ fn turn_result_with_tool_calls() {
         model_used: "test-model".to_owned(),
         provider_used: None,
         tool_surface_hashes: Vec::new(),
+        model_identity: Default::default(),
     };
 
     assert_eq!(result.tool_calls.len(), 1);

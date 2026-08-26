@@ -722,6 +722,7 @@ async fn detector_returns_continue() {
         model_used: "test-model".to_owned(),
         provider_used: None,
         tool_surface_hashes: Vec::new(),
+        model_identity: Default::default(),
     };
     let ctx = crate::hooks::TurnContext {
         result: &turn_result,

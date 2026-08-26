@@ -839,6 +839,7 @@ fn make_turn_result(
         model_used: "test-model".to_owned(),
         provider_used: None,
         tool_surface_hashes: Vec::new(),
+        model_identity: Default::default(),
     }
 }
 

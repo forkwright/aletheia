@@ -33,6 +33,7 @@ fn test_turn_result() -> TurnResult {
         model_used: "test-model".to_owned(),
         provider_used: None,
         tool_surface_hashes: Vec::new(),
+        model_identity: Default::default(),
     }
 }
 

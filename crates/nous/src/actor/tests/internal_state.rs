@@ -532,6 +532,7 @@ fn make_turn_result_with_content(
         model_used: "test-model".to_owned(),
         provider_used: None,
         tool_surface_hashes: Vec::new(),
+        model_identity: Default::default(),
     }
 }
 // ── turn.rs: spawn_pipeline_task cancellation ───────────────────────────────

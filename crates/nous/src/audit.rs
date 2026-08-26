@@ -165,6 +165,14 @@ pub struct PromptAuditRecord {
     /// Request identifier propagated from pylon middleware (#3384).
     #[serde(default)]
     pub request_id: Option<String>,
+    /// Model on the outbound request before any fallback switch (#4798).
+    /// Differs from `model` exactly when the fallback chain served the turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_model: Option<String>,
+    /// Model identifier the provider reported on its response — the only
+    /// model identity not derived from local routing state (#4798).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_reported_model: Option<String>,
 }
 
 /// Compute the SHA-256 hex digest of a system prompt.
@@ -458,6 +466,8 @@ pub(crate) fn build_audit_record(input: PromptAuditRecordInput<'_>) -> PromptAud
         // TODO(#4853): thread request_id from pylon middleware
         // through PipelineInput once the extraction path reaches nous.
         request_id: None,
+        requested_model: None,
+        provider_reported_model: None,
     }
 }
 
@@ -500,6 +510,10 @@ pub(crate) struct PromptAuditRequestRecordInput<'a> {
     pub(crate) chars_per_token: usize,
     /// Request identifier for this outbound provider call.
     pub(crate) request_id: Option<String>,
+    /// Model on the outbound request before any fallback switch (#4798).
+    pub(crate) requested_model: Option<String>,
+    /// Model the provider reported on its response (#4798).
+    pub(crate) provider_reported_model: Option<String>,
 }
 
 /// Build a [`PromptAuditRecord`] from an outbound [`CompletionRequest`].
@@ -522,6 +536,8 @@ pub(crate) fn build_audit_record_for_request(
         options,
         chars_per_token,
         request_id,
+        requested_model,
+        provider_reported_model,
     } = input;
     let system_prompt = ctx.system_prompt.as_deref();
     let system_prompt_bytes = system_prompt.map_or(0, str::len);
@@ -565,6 +581,8 @@ pub(crate) fn build_audit_record_for_request(
         tool_names,
         tool_surface_hash: surface_hash.to_owned(),
         request_id,
+        requested_model,
+        provider_reported_model,
     }
 }
 

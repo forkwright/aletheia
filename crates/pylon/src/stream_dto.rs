@@ -73,6 +73,10 @@ pub(crate) enum SseEvent {
     MessageComplete {
         stop_reason: String,
         usage: UsageData,
+        /// Observed model that served the turn (#4798) — the final model in
+        /// the turn's identity chain, after routing and any fallback.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        model: Option<String>,
         /// Provider instance that served the turn, when known.
         #[serde(skip_serializing_if = "Option::is_none")]
         provider: Option<String>,

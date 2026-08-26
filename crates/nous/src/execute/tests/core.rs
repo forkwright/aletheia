@@ -335,6 +335,47 @@ async fn explicit_provider_route_wins_when_multiple_providers_claim_model() {
 }
 
 #[tokio::test]
+async fn complexity_routing_decision_recorded_in_model_identity() {
+    // WHY(#4798): when complexity routing runs, the score/tier/reason and the
+    // routed (requested) model must survive into the turn's identity record —
+    // previously they were computed in resolve_turn_route and only logged.
+    let routed_model: &'static str = koina::models::tier_default(koina::models::ModelTier::Haiku);
+    let provider = Arc::new(FallbackSequenceProvider::new(
+        "primary",
+        &[routed_model],
+        vec![Ok(make_text_response_for_model("hi", routed_model))],
+    ));
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(ArcProvider(Arc::clone(&provider))));
+
+    let mut config = test_config();
+    config.generation.complexity.enabled = true;
+
+    let result = execute(
+        &test_pipeline_ctx(),
+        &test_session(),
+        &config,
+        &providers,
+        &ToolRegistry::new(),
+        &test_tool_ctx(),
+        None,
+    )
+    .await
+    .expect("execute");
+
+    let identity = &result.model_identity;
+    assert_eq!(identity.configured_model, "test-model");
+    assert_eq!(
+        identity.requested_model, routed_model,
+        "the simple test prompt must route to the haiku tier model"
+    );
+    assert_eq!(identity.final_model, routed_model);
+    assert_eq!(identity.routing_tier.as_deref(), Some("haiku"));
+    assert!(identity.routing_score.is_some());
+    assert!(identity.routing_reason.is_some());
+}
+
+#[tokio::test]
 async fn configured_fallback_models_are_used_for_retryable_primary_failure() {
     let primary = Arc::new(FallbackSequenceProvider::new(
         "primary",
@@ -394,6 +435,25 @@ async fn configured_fallback_models_are_used_for_retryable_primary_failure() {
     assert!(
         tertiary.called_models().is_empty(),
         "fallback chain should stop after first success"
+    );
+
+    // WHY(#4798): the identity chain must distinguish the configured/requested
+    // primary route from the route that actually served, record the exhausted
+    // fallback attempt, and keep the provider's own reported model separate
+    // from anything local routing derived.
+    let identity = &result.model_identity;
+    assert_eq!(identity.configured_model, "test-model");
+    assert_eq!(identity.requested_model, "test-model");
+    assert_eq!(identity.final_model, "fallback-model");
+    assert_eq!(identity.final_provider.as_deref(), Some("secondary"));
+    assert_eq!(
+        identity.provider_reported_model.as_deref(),
+        Some("fallback-model")
+    );
+    assert_eq!(identity.fallback_attempted, ["test-model"]);
+    assert!(
+        identity.routing_score.is_none(),
+        "complexity routing is disabled in test_config, so no decision may be recorded"
     );
 }
 

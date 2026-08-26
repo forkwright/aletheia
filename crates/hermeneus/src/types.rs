@@ -645,6 +645,68 @@ pub struct CompletionResponse {
     pub duration_ms: Option<u64>,
 }
 
+/// Per-turn model/provider identity chain.
+///
+/// A turn's model identity is not one string: the operator configures a
+/// default, complexity routing may select a different model, the sensitivity
+/// gate may reroute, the fallback chain may switch routes mid-turn, and the
+/// provider may report a different concrete model on the response itself.
+/// This record keeps each stage distinct so audit, usage accounting,
+/// empirical routing, and control-plane views never have to guess which
+/// "model" a field meant.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ResolvedModelContext {
+    /// Model from static configuration.
+    pub configured_model: String,
+    /// Provider pinned in static configuration, when any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub configured_provider: Option<String>,
+    /// Model placed on the outbound request after routing and sensitivity
+    /// gating — the primary route the turn dispatched to.
+    pub requested_model: String,
+    /// Complexity score that drove routing, when complexity routing ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_score: Option<u32>,
+    /// Complexity tier label, when routing ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_tier: Option<String>,
+    /// Human-readable routing rationale, when routing ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub routing_reason: Option<String>,
+    /// Deployment target of the provider that served the turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deployment_target: Option<String>,
+    /// Route labels (`"model via provider"`) the fallback chain attempted and
+    /// exhausted before the successful call, in attempt order. Empty when the
+    /// primary route served the turn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallback_attempted: Vec<String>,
+    /// Model on the route that actually served the turn (post-fallback).
+    pub final_model: String,
+    /// Provider instance that served the successful call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_provider: Option<String>,
+    /// Model identifier the provider reported on the response itself — the
+    /// only identity in this chain not derived from local routing state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_reported_model: Option<String>,
+}
+
+impl ResolvedModelContext {
+    /// Identity for a turn no provider served (degraded mode): the attempted
+    /// model is known, but no final or provider-reported identity exists.
+    #[must_use]
+    pub fn unattributed(attempted_model: impl Into<String>) -> Self {
+        let model = attempted_model.into();
+        Self {
+            configured_model: model.clone(),
+            requested_model: model.clone(),
+            final_model: model,
+            ..Self::default()
+        }
+    }
+}
+
 /// Why the model stopped generating.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -800,6 +800,10 @@ pub struct TurnResult {
     pub provider_used: Option<String>,
     /// Opaque effective tool-surface hash refs observed during this turn.
     pub tool_surface_hashes: Vec<String>,
+    /// Full model/provider identity chain for this turn (#4798): configured,
+    /// requested, routing decision, fallback attempts, final serving route,
+    /// and provider-reported model.
+    pub model_identity: hermeneus::types::ResolvedModelContext,
 }
 
 impl TurnResult {

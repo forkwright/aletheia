@@ -6,7 +6,7 @@ use std::sync::Arc;
 use snafu::IntoError as _;
 use tracing::{debug, warn};
 
-use hermeneus::complexity::{ComplexityInput, route_model};
+use hermeneus::complexity::{ComplexityInput, RoutingDecision, route_model};
 use hermeneus::provider::{
     DeploymentTarget, LlmProvider, ProviderCapabilities, ProviderRegistry, ProviderResolutionError,
 };
@@ -29,6 +29,18 @@ pub(super) struct ResponseExtract {
     pub reasoning_parts: Vec<String>,
 }
 
+/// The route a turn will dispatch to, plus the complexity decision that
+/// produced it when routing ran.
+///
+/// WHY(#4798): `decision` is `Some` whenever complexity routing ran — even
+/// when local-deployment preservation or an already-matching model kept the
+/// configured route — so the score/tier/reason survive as turn provenance
+/// instead of living only in a debug log line.
+pub(super) struct TurnRouting {
+    pub(super) route: ModelProviderRoute,
+    pub(super) decision: Option<RoutingDecision>,
+}
+
 /// Resolve the model to use for this turn, applying complexity-based routing when enabled.
 ///
 /// WHY: when `complexity.enabled == false` (the default) this returns
@@ -44,22 +56,27 @@ pub(super) fn resolve_turn_model(
     providers: &ProviderRegistry,
     tool_count: usize,
 ) -> String {
-    resolve_turn_route(ctx, config, providers, tool_count).model
+    resolve_turn_routing(ctx, config, providers, tool_count)
+        .route
+        .model
 }
 
-/// Resolve the model/provider route to use for this turn.
-pub(super) fn resolve_turn_route(
+/// Resolve the model/provider route and the routing decision behind it.
+pub(super) fn resolve_turn_routing(
     ctx: &PipelineContext,
     config: &NousConfig,
     providers: &ProviderRegistry,
     tool_count: usize,
-) -> ModelProviderRoute {
+) -> TurnRouting {
     let configured_route = ModelProviderRoute {
         model: config.generation.model.clone(),
         provider: config.generation.provider.clone(),
     };
     if !config.generation.complexity.enabled {
-        return configured_route;
+        return TurnRouting {
+            route: configured_route,
+            decision: None,
+        };
     }
 
     // WHY: complexity routing scores the most recent user message — the one
@@ -108,13 +125,22 @@ pub(super) fn resolve_turn_route(
             complexity_tier = %decision.complexity.tier,
             "complexity routing preserved local deployment target"
         );
-        return configured_route;
+        return TurnRouting {
+            route: configured_route,
+            decision: Some(decision),
+        };
     }
 
     if decision.model == configured_route.model {
-        configured_route
+        TurnRouting {
+            route: configured_route,
+            decision: Some(decision),
+        }
     } else {
-        ModelProviderRoute::model_only(decision.model)
+        TurnRouting {
+            route: ModelProviderRoute::model_only(decision.model.clone()),
+            decision: Some(decision),
+        }
     }
 }
 
