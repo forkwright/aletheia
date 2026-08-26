@@ -309,7 +309,11 @@ fn parse_placeholder(s: &str) -> Option<&str> {
 pub fn redact_in_json(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::String(s) => {
-            if parse_placeholder(s).is_some() {
+            if let Some(name) = parse_placeholder(s) {
+                if koina::redact::redact_sensitive(name) == name {
+                    return;
+                }
+                "[REDACTED]".clone_into(s);
                 return;
             }
             // Catch definite credential syntax even inside ordinary prose.
@@ -502,6 +506,19 @@ mod tests {
         let mut value = serde_json::json!({"auth": "{{secret:aws}}"});
         redact_in_json(&mut value);
         assert_eq!(value["auth"], "{{secret:aws}}");
+    }
+
+    #[test]
+    fn redact_rejects_credential_bearing_placeholder_names() {
+        let mut value = serde_json::json!({
+            "brace": "{{secret:password=hunter2}}",
+            "dollar": "$SECRET(Bearer synthetic.dynamic.token)",
+        });
+
+        redact_in_json(&mut value);
+
+        assert_eq!(value["brace"], "[REDACTED]");
+        assert_eq!(value["dollar"], "[REDACTED]");
     }
 
     #[test]
