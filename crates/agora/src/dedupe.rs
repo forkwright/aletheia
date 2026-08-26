@@ -8,8 +8,9 @@ use std::collections::{HashSet, VecDeque};
 
 use crate::types::InboundMessage;
 
-/// Fallback dedupe window size; the runtime passes
-/// `MessagingConfig::buffer_capacity`-derived or explicit values.
+/// Fixed fallback dedupe window size. This is independent of
+/// `MessagingConfig::buffer_capacity`, which sizes only Signal's disconnected
+/// outbound retry buffer.
 pub const DEFAULT_DEDUPE_CAPACITY: usize = 4096;
 
 /// A bounded remember-set of recently seen inbound messages.

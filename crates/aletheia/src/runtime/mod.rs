@@ -1071,6 +1071,7 @@ impl RuntimeBuilder {
 
         let ready_rx = nous_manager.ready_rx();
         let (_channel_registry, _dispatch_handle) = start_inbound_dispatch(
+            &task_tracker,
             &self.config,
             &nous_manager,
             Arc::clone(&session_store),

@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use snafu::prelude::*;
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 use tracing::{info, warn};
 
 use agora::listener::ChannelListener;
@@ -1345,6 +1346,7 @@ pub(super) fn build_matrix_provider(
 }
 
 pub(super) fn start_inbound_dispatch(
+    task_tracker: &TaskTracker,
     config: &AletheiaConfig,
     nous_manager: &Arc<NousManager>,
     session_store: Arc<Mutex<SessionStore>>,
@@ -1403,6 +1405,7 @@ pub(super) fn start_inbound_dispatch(
         // dispatcher's lifetime; taking the receiver directly used to bypass
         // the cap and drop the provider tasks at the end of this block.
         Some(crate::dispatch::spawn_dispatcher(
+            task_tracker,
             listener,
             crate::dispatch::DispatcherParts {
                 router,

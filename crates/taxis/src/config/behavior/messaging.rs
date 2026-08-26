@@ -236,9 +236,7 @@ const _: () =
 // be the final item in the file.
 #[cfg(test)]
 mod policy_tests {
-    use super::{
-        CommandTier, InboundCommandPolicy, MessagingConfig, OutboundMessagePolicy,
-    };
+    use super::{CommandTier, InboundCommandPolicy, MessagingConfig, OutboundMessagePolicy};
 
     #[test]
     fn raw_payload_retention_is_not_a_public_config_switch() {

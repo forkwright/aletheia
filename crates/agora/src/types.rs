@@ -35,16 +35,16 @@ pub struct ChannelCapabilities {
 }
 
 /// Parameters for sending a message through a channel.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SendParams {
     /// Target identifier (channel-specific: phone number, group ID, etc.)
     pub to: String,
     /// Message text (markdown).
     pub text: String,
-    /// Account ID within the channel (for multi-account setups): selects
-    /// WHICH provider account/identity a message is sent FROM (e.g. which
-    /// registered Signal phone number, which Matrix account). `None` falls
-    /// back to the provider's configured default account.
+    /// Stable logical account label within the channel (for example,
+    /// `"primary"`). Providers resolve this label to their private wire
+    /// identity; callers never put a phone number or access identity here.
+    /// `None` selects the provider's configured logical default.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub account_id: Option<String>,
     /// Identity of the sending agent (`nous_id`), used ONLY for outbound
@@ -79,14 +79,52 @@ pub struct SendParams {
     pub attachments: Option<Vec<String>>,
 }
 
+impl std::fmt::Debug for SendParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SendParams")
+            .field(
+                "to",
+                &crate::redact::opaque_identifier("send-target", &self.to),
+            )
+            .field("text", &format_args!("<{} bytes>", self.text.len()))
+            .field(
+                "account_id",
+                &self
+                    .account_id
+                    .as_deref()
+                    .map(|value| crate::redact::opaque_identifier("logical-account", value)),
+            )
+            .field("sender_id", &self.sender_id.as_ref().map(|_| "<present>"))
+            .field(
+                "idempotency_key",
+                &self.idempotency_key.as_ref().map(|_| "<present>"),
+            )
+            .field("thread_id", &self.thread_id.as_ref().map(|_| "<present>"))
+            .field(
+                "attachments",
+                &self.attachments.as_ref().map(std::vec::Vec::len),
+            )
+            .finish()
+    }
+}
+
 /// Result of a send operation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SendResult {
     /// Whether the message was successfully delivered to the channel.
     pub sent: bool,
     /// Error description if the send failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+impl std::fmt::Debug for SendResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SendResult")
+            .field("sent", &self.sent)
+            .field("error", &self.error.as_ref().map(|_| "<present>"))
+            .finish()
+    }
 }
 
 impl SendResult {
@@ -138,8 +176,8 @@ pub struct InboundMessage {
     pub group_id: Option<String>,
     /// Provider account that RECEIVED this message (multi-account routing).
     ///
-    /// Identifies which configured account identity accepted the message
-    /// (e.g. which registered Signal number, which Matrix account), so
+    /// Identifies which configured logical account label accepted the message
+    /// (for example, `"primary"`), so
     /// identical senders/rooms on different accounts stay distinct and
     /// replies leave from the receiving account. `None` when the provider
     /// cannot attribute an account.
@@ -164,23 +202,41 @@ pub struct InboundMessage {
 impl InboundMessage {
     /// Stable identity key for dedupe and reply idempotency.
     ///
-    /// The provider message ID when one exists; otherwise a SHA-256 content
-    /// hash over the routing identity, receiving account, timestamp, and
-    /// text, so a redelivered message hashes to the same key while
-    /// distinct messages that happen to share a timestamp do not collide.
+    /// Always returns an opaque SHA-256 handle. Provider IDs are scoped by channel and
+    /// logical receiving account before hashing; the fallback also commits to
+    /// sender, group, timestamp, text, and attachments. The returned handle
+    /// contains no raw provider ID.
     #[must_use]
     pub fn dedupe_key(&self) -> String {
-        if let Some(id) = &self.message_id {
-            return format!("{}:id:{id}", self.channel);
-        }
         let mut hasher = Sha256::new();
+        hasher.update(b"aletheia.agora.inbound-message.v1\0");
         hash_part(&mut hasher, &self.channel);
-        hash_part(&mut hasher, self.account_id.as_deref().unwrap_or(""));
-        hash_part(&mut hasher, &self.sender);
-        hash_part(&mut hasher, self.group_id.as_deref().unwrap_or(""));
-        hash_part(&mut hasher, &self.timestamp.to_string());
-        hash_part(&mut hasher, &self.text);
-        format!("{}:h:{}", self.channel, hex_lower(&hasher.finalize()))
+        hash_optional_part(&mut hasher, self.account_id.as_deref());
+        if let Some(id) = self.message_id.as_deref().filter(|id| !id.is_empty()) {
+            hash_part(&mut hasher, "provider-id");
+            match self.group_id.as_deref() {
+                Some(group) => {
+                    hash_part(&mut hasher, "group");
+                    hash_part(&mut hasher, group);
+                }
+                None => {
+                    hash_part(&mut hasher, "dm");
+                    hash_part(&mut hasher, &self.sender);
+                }
+            }
+            hash_part(&mut hasher, id);
+        } else {
+            hash_part(&mut hasher, "content-fallback");
+            hash_part(&mut hasher, &self.sender);
+            hash_optional_part(&mut hasher, self.group_id.as_deref());
+            hash_part(&mut hasher, &self.timestamp.to_string());
+            hash_part(&mut hasher, &self.text);
+            hash_part(&mut hasher, &self.attachments.len().to_string());
+            for attachment in &self.attachments {
+                hash_part(&mut hasher, attachment);
+            }
+        }
+        format!("sha256:{}", hex_lower(&hasher.finalize()))
     }
 }
 
@@ -205,7 +261,7 @@ impl std::fmt::Debug for InboundMessage {
                 "account_id",
                 &self.account_id.as_deref().map(crate::redact::identifier),
             )
-            .field("message_id", &self.message_id)
+            .field("message_id", &self.message_id.as_ref().map(|_| "<present>"))
             .field("text", &format_args!("<{} bytes>", self.text.len()))
             .field("timestamp", &self.timestamp)
             .field("attachments", &self.attachments.len())
@@ -219,6 +275,16 @@ fn hash_part(hasher: &mut Sha256, value: &str) {
     hasher.update(b"\0");
     hasher.update(value.as_bytes());
     hasher.update(b"\0");
+}
+
+fn hash_optional_part(hasher: &mut Sha256, value: Option<&str>) {
+    match value {
+        Some(value) => {
+            hash_part(hasher, "some");
+            hash_part(hasher, value);
+        }
+        None => hash_part(hasher, "none"),
+    }
 }
 
 pub(crate) fn hex_lower(bytes: &[u8]) -> String {
@@ -385,12 +451,26 @@ mod tests {
             attachments: vec![],
             raw: None,
         };
-        assert_eq!(msg.dedupe_key(), "matrix:id:$event1");
+        let provider_key = msg.dedupe_key();
+        assert!(provider_key.starts_with("sha256:"));
+        assert!(!provider_key.contains("$event1"));
+
+        let mut other_account = msg.clone();
+        other_account.account_id = Some("secondary".to_owned());
+        assert_ne!(provider_key, other_account.dedupe_key());
+
+        let mut other_room = msg.clone();
+        other_room.group_id = Some("!other:example.org".to_owned());
+        assert_ne!(provider_key, other_room.dedupe_key());
+
+        let mut direct_message = msg.clone();
+        direct_message.group_id = None;
+        assert_ne!(provider_key, direct_message.dedupe_key());
 
         msg.message_id = None;
         let hashed = msg.dedupe_key();
         assert!(
-            hashed.starts_with("matrix:h:"),
+            hashed.starts_with("sha256:"),
             "content-hash fallback: {hashed}"
         );
         assert!(
@@ -421,6 +501,80 @@ mod tests {
         assert_eq!(a.dedupe_key(), a_again.dedupe_key());
         assert_ne!(a.dedupe_key(), other_text.dedupe_key());
         assert_ne!(a.dedupe_key(), other_ts.dedupe_key());
+
+        let mut with_attachment = a.clone();
+        with_attachment.attachments.push("first".to_owned());
+        let mut other_attachment = a.clone();
+        other_attachment.attachments.push("second".to_owned());
+        assert_ne!(a.dedupe_key(), with_attachment.dedupe_key());
+        assert_ne!(with_attachment.dedupe_key(), other_attachment.dedupe_key());
+    }
+
+    #[test]
+    fn blank_provider_id_uses_content_fallback() {
+        let base = InboundMessage {
+            channel: "matrix".to_owned(),
+            sender: "@alice:example.org".to_owned(),
+            sender_name: None,
+            group_id: Some("!room:example.org".to_owned()),
+            account_id: Some("primary".to_owned()),
+            message_id: None,
+            text: "hello".to_owned(),
+            timestamp: 100,
+            attachments: vec![],
+            raw: None,
+        };
+        let mut blank = base.clone();
+        blank.message_id = Some(String::new());
+        assert_eq!(base.dedupe_key(), blank.dedupe_key());
+    }
+
+    #[test]
+    fn optional_identity_presence_is_hash_significant() {
+        let mut absent = InboundMessage {
+            channel: "signal".to_owned(),
+            sender: "sender".to_owned(),
+            sender_name: None,
+            group_id: None,
+            account_id: None,
+            message_id: None,
+            text: "hello".to_owned(),
+            timestamp: 100,
+            attachments: vec![],
+            raw: None,
+        };
+        let mut present_empty = absent.clone();
+        present_empty.account_id = Some(String::new());
+        assert_ne!(absent.dedupe_key(), present_empty.dedupe_key());
+
+        absent.account_id = Some("primary".to_owned());
+        present_empty.account_id = Some("primary".to_owned());
+        present_empty.group_id = Some(String::new());
+        assert_ne!(absent.dedupe_key(), present_empty.dedupe_key());
+    }
+
+    #[test]
+    fn send_debug_redacts_payload_and_provider_identities() {
+        let params = SendParams {
+            to: "+15550100".to_owned(),
+            text: "private body".to_owned(),
+            account_id: Some("primary-private".to_owned()),
+            sender_id: Some("syn".to_owned()),
+            idempotency_key: Some("reply-secret".to_owned()),
+            thread_id: Some("thread-secret".to_owned()),
+            attachments: Some(vec!["private.jpg".to_owned()]),
+        };
+        let debug = format!("{params:?}");
+        for secret in [
+            "+15550100",
+            "private body",
+            "primary-private",
+            "reply-secret",
+            "thread-secret",
+            "private.jpg",
+        ] {
+            assert!(!debug.contains(secret), "Debug leaked {secret}: {debug}");
+        }
     }
 
     #[test]

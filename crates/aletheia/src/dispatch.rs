@@ -951,7 +951,7 @@ mod tests {
     use nous::manager::NousManager;
     use organon::registry::ToolRegistry;
     use organon::types::{BlackboardStore, ToolHttpClients, ToolServices};
-    use taxis::config::ChannelBinding;
+    use taxis::config::{ChannelBinding, ChannelSourceKind};
     use taxis::oikos::Oikos;
     use tokio::sync::{Mutex, mpsc};
     use tokio::task::JoinSet;
@@ -1115,6 +1115,7 @@ mod tests {
                 nous_id: "alice".to_owned(),
                 session_key: "signal:{source}".to_owned(),
                 account: None,
+                source_kind: None,
                 participants: vec![],
                 command_tier: taxis::config::CommandTier::Public,
             }],
@@ -1184,6 +1185,7 @@ mod tests {
                 nous_id: "alice".to_owned(),
                 session_key: "signal:{source}".to_owned(),
                 account: Some(account_id.to_owned()),
+                source_kind: Some(ChannelSourceKind::Direct),
                 participants: vec![],
                 command_tier: CommandTier::Operator,
             }],
