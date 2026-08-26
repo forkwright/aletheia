@@ -145,7 +145,7 @@ pub struct DpoPair {
     /// The original assistant response that was corrected (dispreferred).
     pub rejected: String,
     /// Session identifier linking the pair to its conversation.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: training-pair record persisted to JSONL and consumed by external trainers; must round-trip historical session id formats (UUID, ULID, legacy ses_); conversion tracked in #6755
     pub session_id: String,
     /// Turn number of the rejected response.
     pub rejected_turn: u64,

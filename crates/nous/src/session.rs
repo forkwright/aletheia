@@ -21,9 +21,9 @@ use crate::config::NousConfig;
     reason = "session state fields are self-documenting by name"
 )]
 pub struct SessionState {
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: in-memory actor session state populated from the store record, which may carry any historical id format (UUID, ULID, legacy ses_); conversion tracked in #6755
     pub id: String,
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: in-memory actor session state populated from a config-validated NousId at spawn; no external parse boundary; conversion tracked in #6755
     pub nous_id: String,
     pub session_key: String, // kanon:ignore RUST/plain-string-secret
 

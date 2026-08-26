@@ -17,8 +17,7 @@ pub(crate) struct IngestArgs {
     pub format: String,
     /// Nous agent ID that will own the extracted facts.
     #[arg(short, long, default_value = koina::defaults::DEFAULT_AGENT_ID)]
-    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
-    pub nous_id: String,
+    pub nous_id: koina::id::NousId,
     /// Preview without mutating the knowledge store.
     #[arg(long)]
     pub dry_run: bool,
@@ -80,9 +79,6 @@ pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> R
 }
 
 fn validate_inputs(args: &IngestArgs) -> Result<()> {
-    if args.nous_id.trim().is_empty() {
-        whatever!("--nous-id must not be empty");
-    }
     if !is_valid_format(&args.format) {
         whatever!(
             "unsupported --format: {}\n  \
@@ -178,7 +174,7 @@ async fn run_via_api(args: &IngestArgs) -> Result<()> {
         if args.dry_run {
             #[cfg(feature = "recall")]
             {
-                match count_facts(&content, format_str, &args.nous_id) {
+                match count_facts(&content, format_str, args.nous_id.as_str()) {
                     Ok(n) => {
                         println!("[dry-run] {}: would insert {} facts", file.display(), n);
                     }
@@ -375,7 +371,7 @@ async fn process_file(
         .ok_or_else(|| crate::error::Error::msg(format!("unsupported format: {format_str}")))?;
 
     let config = mneme::ingest::IngestConfig::default();
-    let facts = mneme::ingest::ingest_content(&content, format, &config, &args.nous_id)
+    let facts = mneme::ingest::ingest_content(&content, format, &config, args.nous_id.as_str())
         .with_whatever_context(|_| format!("failed to parse {}", file.display()))?;
 
     if args.dry_run {
@@ -541,7 +537,7 @@ mod tests {
         let args = IngestArgs {
             path: input,
             format: "auto".to_owned(),
-            nous_id: "alice".to_owned(),
+            nous_id: koina::id::NousId::new("alice").unwrap(),
             dry_run: true,
             url: format!("http://{addr}"),
             token: None,
@@ -560,7 +556,7 @@ mod tests {
         IngestArgs {
             path,
             format: format.to_owned(),
-            nous_id: nous_id.to_owned(),
+            nous_id: koina::id::NousId::new(nous_id).unwrap(),
             dry_run: true,
             url: "http://127.0.0.1:1".to_owned(),
             token: None,
@@ -577,19 +573,17 @@ mod tests {
         use clap::Parser as _;
 
         let args = IngestArgs::try_parse_from(["ingest", "/tmp/x"]).unwrap();
-        assert_eq!(args.nous_id, koina::defaults::DEFAULT_AGENT_ID);
+        assert_eq!(args.nous_id.as_str(), koina::defaults::DEFAULT_AGENT_ID);
     }
 
     #[test]
-    fn validate_inputs_rejects_empty_nous_id() {
-        let dir = tempfile::tempdir().unwrap();
-        let input = dir.path().join("x.txt");
-        std::fs::write(&input, "hi").unwrap();
-        let err = validate_inputs(&args_with(input, "auto", "  ")).unwrap_err();
-        assert!(
-            err.to_string().contains("--nous-id must not be empty"),
-            "got: {err}"
-        );
+    fn parse_rejects_empty_nous_id() {
+        use clap::Parser as _;
+
+        // WHY: --nous-id is a validated `NousId`, so an empty or whitespace
+        // value is rejected by clap at parse time rather than by a downstream
+        // check (#6755).
+        assert!(IngestArgs::try_parse_from(["ingest", "/tmp/x", "--nous-id", "   "]).is_err());
     }
 
     #[test]
@@ -688,7 +682,7 @@ mod tests {
             let args = IngestArgs {
                 path: docs,
                 format: "auto".to_owned(),
-                nous_id: "alice".to_owned(),
+                nous_id: koina::id::NousId::new("alice").unwrap(),
                 dry_run: true,
                 url: "http://127.0.0.1:1".to_owned(),
                 token: None,
@@ -726,7 +720,7 @@ mod tests {
             let args = IngestArgs {
                 path: docs,
                 format: "auto".to_owned(),
-                nous_id: "alice".to_owned(),
+                nous_id: koina::id::NousId::new("alice").unwrap(),
                 dry_run: false,
                 url: "http://127.0.0.1:1".to_owned(),
                 token: None,

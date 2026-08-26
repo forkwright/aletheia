@@ -162,7 +162,7 @@ pub struct DomainScore {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentCompetence {
     /// Agent identifier.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: fjall-persisted competence record whose nous id originates from validated config at actor spawn; historical records predate #4638 validation and must stay readable; conversion tracked in #6755
     pub nous_id: String,
     /// Per-domain scores.
     pub domains: Vec<DomainScore>,

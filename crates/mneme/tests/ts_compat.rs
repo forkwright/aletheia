@@ -14,7 +14,7 @@ fn deserialize_ts_format_agent_file() {
 
     assert_eq!(agent.version, 1);
     assert_eq!(agent.generator, "aletheia-export/1.0");
-    assert_eq!(agent.nous.id, "syn");
+    assert_eq!(agent.nous.id.as_str(), "syn");
     assert_eq!(agent.nous.name.as_deref(), Some("Syn"));
     assert_eq!(agent.nous.model.as_deref(), Some("claude-sonnet-4-6"));
 

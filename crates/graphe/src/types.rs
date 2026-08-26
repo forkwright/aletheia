@@ -230,9 +230,9 @@ pub struct SessionOrigin {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Session {
     /// Unique session identifier (UUID v4).
-    pub id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: persistence primary key; historical rows carry ULID (#3101) and legacy ses_<24hex> ids that koina::id::SessionId normalizes on Display — a typed field would rewrite the key on reserialize and orphan child rows; new ids are validated at the creation entrypoints
     /// Owning agent identifier.
-    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: persisted record whose value originates from a config-validated NousId at creation; the read path must round-trip rows written before #4638 validation existed
     /// Logical key used to look up or resume this session.
     pub session_key: String, // kanon:ignore RUST/plain-string-secret - NOTE: lookup slug, not a secret credential
     /// Current lifecycle status.
@@ -283,7 +283,7 @@ pub struct Message {
     /// Database-assigned row identifier.
     pub id: i64,
     /// Session this message belongs to.
-    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: raw foreign key to Session.id; must preserve the stored byte form exactly (UUID, ULID, or legacy ses_) or joins break, so it cannot be a normalizing newtype
     /// Sequence number within the session (monotonically increasing).
     pub seq: i64,
     /// Author role (system, user, assistant, or `tool_result`).
@@ -306,7 +306,7 @@ pub struct Message {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UsageRecord {
     /// Session this usage belongs to.
-    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: raw foreign key to Session.id; must preserve the stored byte form exactly (UUID, ULID, or legacy ses_) or joins break, so it cannot be a normalizing newtype
     /// Turn sequence number within the session.
     pub turn_seq: i64,
     /// Tokens consumed from the input (prompt).
@@ -339,9 +339,9 @@ pub struct ToolAuditRecord {
     /// Store-assigned chronological identifier.
     pub id: i64,
     /// Session this tool call belongs to.
-    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: raw foreign key to Session.id; must preserve the stored byte form exactly (UUID, ULID, or legacy ses_) or joins break, so it cannot be a normalizing newtype
     /// Agent that requested the tool call.
-    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: persisted record whose value originates from a config-validated NousId at creation; the read path must round-trip rows written before #4638 validation existed
     /// Turn sequence shared with usage records for the finalized turn.
     pub turn_seq: i64,
     /// Provider/tool-use identifier for this call.
@@ -398,7 +398,7 @@ pub enum BlackboardVisibility {
 pub struct BlackboardRow {
     pub key: String,
     pub value: String,
-    pub author_nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub author_nous_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: persisted row whose value originates from a config-validated NousId at the write boundary; the read path must round-trip rows written before #4638 validation existed
     pub ttl_seconds: i64,
     pub created_at: String,
     pub expires_at: Option<String>,
@@ -417,9 +417,9 @@ pub struct AgentNote {
     /// Database-assigned row identifier.
     pub id: i64,
     /// Session this note is attached to.
-    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: raw foreign key to Session.id; must preserve the stored byte form exactly (UUID, ULID, or legacy ses_) or joins break, so it cannot be a normalizing newtype
     /// Agent that wrote the note.
-    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id — wire-format serde type; newtype would break JSON compatibility and change public API
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: persisted record whose value originates from a config-validated NousId at creation; the read path must round-trip rows written before #4638 validation existed
     /// Freeform category tag for filtering (e.g. "insight", "task").
     pub category: String,
     /// Note body text.

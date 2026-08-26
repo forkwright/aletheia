@@ -14,7 +14,7 @@ use crate::error::Result;
 #[derive(Debug, Clone, Args)]
 pub(crate) struct SessionExportArgs {
     /// Session ID to export
-    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
+    // kanon:ignore RUST/primitive-for-domain-id WHY: the server resolves sessions by raw-string key (graphe find_session_by_id), and historical sessions carry ULID (#3101) or legacy ses_<24hex> ids that koina::id::SessionId normalizes to UUID form on Display — a typed field would rewrite the lookup key and make those sessions unexportable
     pub session_id: String,
 
     /// Output format: `md` (default) or `json`

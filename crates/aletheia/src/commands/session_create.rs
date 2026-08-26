@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use clap::Args;
 use snafu::prelude::*;
 
+use koina::id::NousId;
 use mneme::store::SessionStore;
 use mneme::types::parse_session_or_agent_id;
 use taxis::loader::load_config;
@@ -19,8 +20,7 @@ const MAX_IDENTIFIER_BYTES: usize = 256;
 #[derive(Debug, Clone, Args)]
 pub(crate) struct SessionCreateArgs {
     /// Nous agent identifier to bind the session to.
-    // kanon:ignore RUST/primitive-for-domain-id — CLI arg struct field; clap parses from string, newtype would require custom FromStr
-    pub nous_id: String,
+    pub nous_id: NousId,
 
     /// Client-chosen key for session deduplication.
     #[arg(long, default_value = DEFAULT_SESSION_KEY)]
@@ -41,21 +41,16 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &SessionCreateArgs) -> 
         );
     }
 
-    validate_identifier(&args.nous_id, "nous_id")?;
     validate_identifier(&args.key, "key")?;
 
     let config = load_config(&oikos).with_whatever_context(|_| "failed to load aletheia config")?;
 
-    let agent_exists = config
-        .agents
-        .list
-        .iter()
-        .any(|a| a.id.as_str() == args.nous_id);
+    let agent_exists = config.agents.list.iter().any(|a| a.id == args.nous_id);
     if !agent_exists {
         snafu::whatever!("nous agent '{}' not found in configuration", args.nous_id);
     }
 
-    let resolved = taxis::config::resolve_nous(&config, &args.nous_id);
+    let resolved = taxis::config::resolve_nous(&config, args.nous_id.as_str());
     let model = resolved.model.primary.to_string();
 
     let db_path = oikos.sessions_db();
@@ -70,7 +65,7 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &SessionCreateArgs) -> 
 
     let id = koina::id::SessionId::new().to_string();
 
-    match store.create_session(&id, &args.nous_id, &args.key, None, Some(&model)) {
+    match store.create_session(&id, args.nous_id.as_str(), &args.key, None, Some(&model)) {
         Ok(session) => {
             let output = serde_json::json!({
                 "id": session.id,
@@ -171,7 +166,7 @@ workspace = "/tmp/alice"
         .unwrap();
 
         let args = SessionCreateArgs {
-            nous_id: "alice".to_owned(),
+            nous_id: NousId::new("alice").unwrap(),
             key: "cross:victim".to_owned(),
         };
 
@@ -210,7 +205,7 @@ workspace = "/tmp/alice"
         .unwrap();
 
         let args = SessionCreateArgs {
-            nous_id: "alice".to_owned(),
+            nous_id: NousId::new("alice").unwrap(),
             key: "cli-test-key".to_owned(),
         };
 
@@ -247,7 +242,7 @@ workspace = "/tmp/alice"
         .unwrap();
 
         let args = SessionCreateArgs {
-            nous_id: "bob".to_owned(),
+            nous_id: NousId::new("bob").unwrap(),
             key: "main".to_owned(),
         };
 
@@ -276,7 +271,7 @@ workspace = "/tmp/alice"
         .unwrap();
 
         let args = SessionCreateArgs {
-            nous_id: "alice".to_owned(),
+            nous_id: NousId::new("alice").unwrap(),
             key: "dup-key".to_owned(),
         };
 

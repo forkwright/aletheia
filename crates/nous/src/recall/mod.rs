@@ -75,7 +75,7 @@ pub struct RecallStageResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecallFilteredFact {
     /// Source fact ID.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: recall source-plane id — filtered candidates are not always facts (memory updates can target non-fact context ids), so eidos FactId would be wrong here
     pub id: String,
     /// Sensitivity that exceeded the active deployment target.
     pub sensitivity: FactSensitivity,

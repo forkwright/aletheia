@@ -971,7 +971,7 @@ mod corpus_admission_tests {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
     /// Tool call ID.
-    // kanon:ignore RUST/primitive-for-domain-id — existing String-based ID; migrating to newtype requires cross-crate API changes
+    // kanon:ignore RUST/primitive-for-domain-id WHY: provider-assigned tool call id (e.g. toolu_*), opaque to aletheia and not a first-party domain id to validate
     pub id: String,
     /// Tool name.
     pub name: String,
