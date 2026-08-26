@@ -95,6 +95,7 @@ impl MessageService for SignalAdapter {
             text: text.to_owned(),
             account_id: None,
             sender_id: Some(from_nous.to_owned()),
+            idempotency_key: None,
             thread_id: None,
             attachments: None,
         };

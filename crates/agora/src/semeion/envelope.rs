@@ -112,6 +112,9 @@ pub(crate) fn extract_message(
         sender_name: envelope.source_name.clone(),
         group_id,
         account_id: account_id.map(ToOwned::to_owned),
+        // WHY: signal-cli exposes no message ID; dedupe and reply
+        // idempotency fall back to InboundMessage::dedupe_key's content hash.
+        message_id: None,
         text: text.to_owned(),
         timestamp: envelope.timestamp.or(data.timestamp).unwrap_or_else(|| {
             tracing::warn!("signal envelope has no timestamp, defaulting to 0");

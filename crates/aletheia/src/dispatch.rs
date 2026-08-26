@@ -12,6 +12,7 @@ use tokio::task::{JoinHandle, JoinSet};
 use tracing::{Instrument, debug, info, warn};
 
 use agora::command::{self, AgentSnapshot, ChannelSnapshot, CommandContext};
+use agora::dedupe::DedupeFilter;
 use agora::registry::ChannelRegistry;
 use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
@@ -46,6 +47,12 @@ pub(crate) fn spawn_dispatcher(
             info!("dispatch loop started");
 
             let mut in_flight = JoinSet::new();
+            // WHY: providers can redeliver after restarts, retries, or cursor
+            // resets; a bounded remember-set drops repeat sightings before any
+            // agent work is scheduled.
+            let dedupe = Arc::new(std::sync::Mutex::new(DedupeFilter::with_capacity(
+                agora::dedupe::DEFAULT_DEDUPE_CAPACITY,
+            )));
 
             while let Some(msg) = rx.recv().await {
                 let router = Arc::clone(&router);
@@ -53,6 +60,7 @@ pub(crate) fn spawn_dispatcher(
                 let channels = Arc::clone(&channel_registry);
                 let session_store = Arc::clone(&session_store);
                 let command_policy = command_policy.clone();
+                let dedupe = Arc::clone(&dedupe);
                 let msg_span = tracing::info_span!(
                     "dispatch",
                     channel = %msg.channel,
@@ -60,8 +68,16 @@ pub(crate) fn spawn_dispatcher(
                     account = %msg.account_id.as_deref().unwrap_or("default"),
                 );
                 in_flight.spawn(
-                    dispatch_one(msg, router, nous_mgr, channels, session_store, command_policy)
-                        .instrument(msg_span),
+                    dispatch_one(
+                        msg,
+                        router,
+                        nous_mgr,
+                        channels,
+                        session_store,
+                        command_policy,
+                        dedupe,
+                    )
+                    .instrument(msg_span),
                 );
 
                 // WHY: Reap completed tasks periodically to prevent unbounded growth.
@@ -89,6 +105,10 @@ pub(crate) fn spawn_dispatcher(
     )
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "dispatch context bundles the router, agent manager, channel registry, audit store, command policy, and dedupe filter — all required per message"
+)]
 async fn dispatch_one(
     msg: InboundMessage,
     router: Arc<MessageRouter>,
@@ -96,7 +116,24 @@ async fn dispatch_one(
     channel_registry: Arc<ChannelRegistry>,
     session_store: Arc<tokio::sync::Mutex<SessionStore>>,
     command_policy: InboundCommandPolicy,
+    dedupe: Arc<std::sync::Mutex<DedupeFilter>>,
 ) {
+    // WHY: checked before routing so a redelivered message does no agent work
+    // at all. Held only for the lookup — never across an await.
+    let is_new = {
+        let mut guard = dedupe
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        guard.check_and_record(&msg)
+    };
+    if !is_new {
+        debug!(
+            channel = %msg.channel,
+            "duplicate inbound delivery ignored"
+        );
+        return;
+    }
+
     let Some(decision) = router.resolve(&msg) else {
         warn!(
             channel = %msg.channel,
@@ -800,11 +837,17 @@ async fn send_reply(
     channel_registry: &ChannelRegistry,
 ) -> ReplyDelivery {
     let to = reply_target(msg);
+    // WHY: the idempotency key is derived from the inbound message
+    // identity, so a replayed inbound event retries the reply under the
+    // same provider-level key instead of posting a duplicate (Matrix
+    // honors this via its transaction ID; providers without idempotent
+    // sends ignore it).
     let params = SendParams {
         to,
         text: text.to_owned(),
         account_id: msg.account_id.clone(),
         sender_id: None,
+        idempotency_key: Some(format!("reply:{}", msg.dedupe_key())),
         thread_id: None,
         attachments: None,
     };
@@ -1001,6 +1044,7 @@ mod tests {
         session_store: Arc<Mutex<SessionStore>>,
         sent: Arc<Mutex<Vec<SendParams>>>,
         command_policy: InboundCommandPolicy,
+        dedupe: Arc<std::sync::Mutex<DedupeFilter>>,
     }
 
     async fn make_dispatch_harness() -> DispatchHarness {
@@ -1039,6 +1083,7 @@ mod tests {
             session_store,
             sent,
             command_policy: InboundCommandPolicy::default(),
+            dedupe: Arc::new(std::sync::Mutex::new(DedupeFilter::with_capacity(16))),
         }
     }
 
@@ -1071,6 +1116,7 @@ mod tests {
             sender_name: Some("Alice".to_owned()),
             group_id: None,
             account_id: None,
+            message_id: None,
             text: text.to_owned(),
             timestamp,
             attachments: vec![],
@@ -1110,6 +1156,7 @@ mod tests {
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
             harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
         )
         .await;
 
@@ -1146,6 +1193,7 @@ mod tests {
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
             harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
         )
         .await;
 
@@ -1210,6 +1258,7 @@ mod tests {
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
             harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
         )
         .await;
 
@@ -1259,6 +1308,7 @@ mod tests {
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
             harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
         )
         .await;
         dispatch_one(
@@ -1268,13 +1318,16 @@ mod tests {
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
             harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
         )
         .await;
 
         {
             let sent = harness.sent.lock().await;
-            assert_eq!(sent.len(), 2);
-            assert_eq!(sent[0].text, sent[1].text);
+            // WHY: the dispatcher-level DedupeFilter drops the identical
+            // redelivery before the command-record idempotency path, so only
+            // one reply is sent.
+            assert_eq!(sent.len(), 1);
         }
 
         let history = command_history(&harness).await;
@@ -1292,6 +1345,67 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn dispatch_deduplicates_plain_turn_redelivery() {
+        let harness = make_dispatch_harness().await;
+        let msg = command_message("a plain conversational turn", 1_709_312_345_690);
+
+        for _ in 0..3 {
+            dispatch_one(
+                msg.clone(),
+                Arc::clone(&harness.router),
+                Arc::clone(&harness.nous_manager),
+                Arc::clone(&harness.channel_registry),
+                Arc::clone(&harness.session_store),
+                harness.command_policy.clone(),
+                Arc::clone(&harness.dedupe),
+            )
+            .await;
+        }
+
+        let sent = harness.sent.lock().await;
+        assert_eq!(
+            sent.len(),
+            1,
+            "three identical deliveries must run exactly one agent turn"
+        );
+        drop(sent);
+
+        shutdown_harness(harness).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn dispatch_dedupe_uses_provider_message_id_when_present() {
+        let harness = make_dispatch_harness().await;
+        let mut first = command_message("!ping", 1_709_312_345_691);
+        first.message_id = Some("$event1".to_owned());
+        let mut second = command_message("!ping", 1_709_312_345_692);
+        second.message_id = Some("$event1".to_owned());
+
+        for msg in [first, second] {
+            dispatch_one(
+                msg,
+                Arc::clone(&harness.router),
+                Arc::clone(&harness.nous_manager),
+                Arc::clone(&harness.channel_registry),
+                Arc::clone(&harness.session_store),
+                harness.command_policy.clone(),
+                Arc::clone(&harness.dedupe),
+            )
+            .await;
+        }
+
+        let sent = harness.sent.lock().await;
+        assert_eq!(
+            sent.len(),
+            1,
+            "same provider message ID must dedupe even when timestamps differ"
+        );
+        drop(sent);
+
+        shutdown_harness(harness).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn wildcard_route_cannot_run_operator_commands_without_policy_grant() {
         let harness = make_dispatch_harness().await;
         let msg = command_message("!agents", 1_709_312_345_700);
@@ -1303,6 +1417,7 @@ mod tests {
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
             harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
         )
         .await;
 
@@ -1345,6 +1460,7 @@ mod tests {
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
             harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
         )
         .await;
 
@@ -1376,6 +1492,7 @@ mod tests {
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
             harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
         )
         .await;
 
@@ -1407,6 +1524,7 @@ mod tests {
             Arc::clone(&harness.channel_registry),
             Arc::clone(&harness.session_store),
             harness.command_policy.clone(),
+            Arc::clone(&harness.dedupe),
         )
         .await;
 

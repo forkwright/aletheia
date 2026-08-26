@@ -9,6 +9,10 @@
 pub mod command;
 /// Shared connection utilities used by channel providers.
 pub(crate) mod connection_utils;
+/// Provider cursor persistence (Matrix sync tokens).
+pub mod cursor;
+/// Bounded inbound-message dedupe filter.
+pub mod dedupe;
 /// Error types for channel operations and provider failures.
 pub(crate) mod error;
 /// Unified channel listener that merges inbound messages from all providers into a single stream.

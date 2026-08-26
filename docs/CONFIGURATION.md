@@ -583,7 +583,7 @@ Named Matrix accounts keyed by account label.
 | `accessTokenEnv` | string | "" | Environment variable that contains the Matrix access token. Aliases: `access_token_env`. |
 | `userId` | string | unset | Matrix user ID for this account. Used to ignore echoed self messages. Aliases: `user_id`. |
 | `autoStart` | bool | true | Whether to auto-start the `/sync` receive loop on server boot. Aliases: `auto_start`. |
-| `initialSince` | string | unset | Optional initial `/sync` since token. Aliases: `initial_since`. |
+| `initialSince` | string | unset | Optional initial `/sync` since token. Used only until the first successful sync: once the runtime has processed a batch, the persisted cursor under the instance data directory (`data/channel-cursors/`) takes precedence, so restarts resume after the last processed batch instead of replaying it. Aliases: `initial_since`. |
 
 ## bindings[]
 

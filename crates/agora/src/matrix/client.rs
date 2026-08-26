@@ -81,14 +81,20 @@ impl MatrixClient {
     }
 
     /// Send an `m.room.message` text event to a room or room alias.
+    ///
+    /// `txn_id` overrides the client-generated transaction ID; passing a
+    /// stable key derived from the triggering inbound event makes a retried
+    /// send idempotent at the homeserver (`PUT .../send/.../{txnId}` is
+    /// the Matrix idempotency mechanism).
     #[instrument(skip(self, body), fields(room_id = %room_id))]
     pub async fn send_text(
         &self,
         room_id: &str,
         body: &str,
         thread_id: Option<&str>,
+        txn_id: Option<&str>,
     ) -> Result<serde_json::Value> {
-        let txn_id = koina::uuid::uuid_v4();
+        let txn_id = txn_id.map_or_else(koina::uuid::uuid_v4, ToOwned::to_owned);
         let url = format!(
             "{}/_matrix/client/v3/rooms/{}/send/m.room.message/{}",
             self.homeserver,
@@ -222,7 +228,7 @@ mod tests {
 
         let client = MatrixClient::new(&server.uri(), "token-123").expect("client");
         let result = client
-            .send_text("!room:example.org", "hello", None)
+            .send_text("!room:example.org", "hello", None, None)
             .await
             .expect("send");
         assert_eq!(
@@ -268,6 +274,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn send_text_uses_provided_txn_id() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        // NOTE: the exact path pins the percent-encoded idempotency key:
+        // "reply:matrix:id:$event1" encodes ':' as %3A and '$' as %24.
+        Mock::given(method("PUT"))
+            .and(path(
+                "/_matrix/client/v3/rooms/%21room%3Aexample.org/send/m.room.message/reply%3Amatrix%3Aid%3A%24event1",
+            ))
+            .and(header("authorization", "Bearer token-123"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "event_id": "$reply-event"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = MatrixClient::new(&server.uri(), "token-123").expect("client");
+        let result = client
+            .send_text(
+                "!room:example.org",
+                "hello",
+                None,
+                Some("reply:matrix:id:$event1"),
+            )
+            .await
+            .expect("send");
+        assert_eq!(
+            result.get("event_id").and_then(serde_json::Value::as_str),
+            Some("$reply-event")
+        );
+    }
+
+    #[tokio::test]
     async fn api_error_surfaces_matrix_message() {
         install_crypto_provider();
         let server = MockServer::start().await;
@@ -281,7 +321,7 @@ mod tests {
 
         let client = MatrixClient::new(&server.uri(), "token-123").expect("client");
         let err = client
-            .send_text("!room:example.org", "hello", None)
+            .send_text("!room:example.org", "hello", None, None)
             .await
             .expect_err("forbidden");
         assert!(err.to_string().contains("M_FORBIDDEN: no access"));

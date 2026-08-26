@@ -35,6 +35,16 @@ struct CommandDeniedLabels {
     channel_id: String,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct IngressDuplicateLabels {
+    channel_id: String,
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct CursorCheckpointLabels {
+    channel_id: String,
+}
+
 // ── Metric families ──
 
 static CHANNEL_MESSAGES_TOTAL: LazyLock<Family<ChannelMessageLabels, Counter>> =
@@ -49,6 +59,12 @@ static HANDLER_FAILURES_TOTAL: LazyLock<Family<HandlerFailureLabels, Counter>> =
     LazyLock::new(Family::default);
 
 static COMMAND_DENIED_TOTAL: LazyLock<Family<CommandDeniedLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static INGRESS_DUPLICATES_TOTAL: LazyLock<Family<IngressDuplicateLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static CURSOR_CHECKPOINTS_TOTAL: LazyLock<Family<CursorCheckpointLabels, Counter>> =
     LazyLock::new(Family::default);
 
 // ── Registration ──
@@ -79,6 +95,16 @@ pub fn register(registry: &mut Registry) {
         "aletheia_command_denied",
         "Total inbound commands denied by the inbound command policy",
         COMMAND_DENIED_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_ingress_duplicates",
+        "Total inbound messages dropped as duplicate deliveries",
+        INGRESS_DUPLICATES_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_cursor_checkpoints",
+        "Total provider sync cursor checkpoints persisted",
+        CURSOR_CHECKPOINTS_TOTAL.clone(),
     );
 }
 
@@ -125,6 +151,24 @@ pub(crate) fn record_handler_failure(channel_id: &str) {
 pub fn record_command_denied(channel_id: &str) {
     COMMAND_DENIED_TOTAL
         .get_or_create(&CommandDeniedLabels {
+            channel_id: channel_id.to_owned(),
+        })
+        .inc();
+}
+
+/// Record an inbound message dropped as a duplicate delivery.
+pub(crate) fn record_ingress_duplicate(channel_id: &str) {
+    INGRESS_DUPLICATES_TOTAL
+        .get_or_create(&IngressDuplicateLabels {
+            channel_id: channel_id.to_owned(),
+        })
+        .inc();
+}
+
+/// Record a provider sync cursor checkpoint persisted to the cursor store.
+pub(crate) fn record_cursor_checkpoint(channel_id: &str) {
+    CURSOR_CHECKPOINTS_TOTAL
+        .get_or_create(&CursorCheckpointLabels {
             channel_id: channel_id.to_owned(),
         })
         .inc();

@@ -316,6 +316,7 @@ mod tests {
             text: "hello".to_owned(),
             account_id: None,
             sender_id: None,
+            idempotency_key: None,
             thread_id: None,
             attachments: None,
         }
@@ -324,6 +325,7 @@ mod tests {
     fn attributed_params(to: &str, sender_id: &str) -> SendParams {
         SendParams {
             sender_id: Some(sender_id.to_owned()),
+            idempotency_key: None,
             ..test_params(to)
         }
     }

@@ -167,6 +167,7 @@ async fn registry_send_verifies_provider_registered() {
         text: "Test".to_owned(),
         account_id: None,
         sender_id: None,
+        idempotency_key: None,
         thread_id: None,
         attachments: None,
     };
@@ -191,6 +192,7 @@ async fn registry_send_to_existing_channel() {
         text: "Test".to_owned(),
         account_id: None,
         sender_id: None,
+        idempotency_key: None,
         thread_id: None,
         attachments: None,
     };
@@ -211,6 +213,7 @@ async fn registry_send_to_missing_channel_fails() {
         text: "Test".to_owned(),
         account_id: None,
         sender_id: None,
+        idempotency_key: None,
         thread_id: None,
         attachments: None,
     };

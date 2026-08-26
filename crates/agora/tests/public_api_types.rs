@@ -79,6 +79,7 @@ fn send_params_construction_and_field_access() {
         text: "Hello, world!".to_owned(),
         account_id: Some("acct123".to_owned()),
         sender_id: Some("syn".to_owned()),
+        idempotency_key: None,
         thread_id: Some("thread456".to_owned()),
         attachments: Some(vec!["/tmp/photo.jpg".to_owned()]),
     };
@@ -98,6 +99,7 @@ fn send_params_serde_skips_none_fields() {
         text: "minimal".to_owned(),
         account_id: None,
         sender_id: None,
+        idempotency_key: None,
         thread_id: None,
         attachments: None,
     };
@@ -118,6 +120,7 @@ fn send_params_serde_roundtrip() {
         text: "Group message".to_owned(),
         account_id: Some("+1111111111".to_owned()),
         sender_id: Some("syn".to_owned()),
+        idempotency_key: None,
         thread_id: Some("reply-to-123".to_owned()),
         attachments: Some(vec!["file1.jpg".to_owned(), "file2.pdf".to_owned()]),
     };
@@ -232,6 +235,7 @@ fn inbound_message_construction() {
         sender_name: Some("Alice".to_owned()),
         group_id: Some("group-abc".to_owned()),
         account_id: Some("acct1".to_owned()),
+        message_id: None,
         text: "Hello!".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec!["photo.jpg".to_owned()],
@@ -257,6 +261,7 @@ fn inbound_message_serde_roundtrip() {
         sender_name: Some("Bob".to_owned()),
         group_id: None,
         account_id: None,
+        message_id: None,
         text: "Direct message".to_owned(),
         timestamp: 1_709_312_345_678,
         attachments: vec![],

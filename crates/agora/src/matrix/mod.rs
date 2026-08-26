@@ -18,6 +18,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
 
 use crate::connection_utils::reconnect_delay;
+use crate::cursor::CursorStore;
 use crate::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult,
     SendParams as ChannelSendParams, SendResult,
@@ -116,6 +117,10 @@ pub struct MatrixProvider {
     default_account: Option<String>,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
+    /// Durable `/sync` cursor store shared by all accounts. When set, each
+    /// account resumes from its persisted cursor on startup and checkpoints
+    /// after every sync batch.
+    cursor_store: Option<Arc<dyn CursorStore>>,
 }
 
 impl MatrixProvider {
@@ -127,6 +132,7 @@ impl MatrixProvider {
             default_account: None,
             circuit_breaker_threshold: 5,
             halted_health_check_interval: Duration::from_mins(1),
+            cursor_store: None,
         }
     }
 
@@ -140,7 +146,16 @@ impl MatrixProvider {
             halted_health_check_interval: Duration::from_secs(
                 config.halted_health_check_interval_secs,
             ),
+            cursor_store: None,
         }
+    }
+
+    /// Attach a durable cursor store. A persisted cursor overrides the
+    /// account's configured `initial_since` on startup.
+    #[must_use]
+    pub fn with_cursor_store(mut self, store: Arc<dyn CursorStore>) -> Self {
+        self.cursor_store = Some(store);
+        self
     }
 
     /// Register a Matrix account.
@@ -193,6 +208,7 @@ impl MatrixProvider {
             let since = Arc::clone(&account.since);
             let user_id = account.user_id.clone();
             let account_label = account_id.clone();
+            let cursor_store = self.cursor_store.clone();
             let span = tracing::info_span!("matrix_sync", account = %account_id);
 
             handles.spawn(
@@ -206,6 +222,7 @@ impl MatrixProvider {
                     token,
                     self.circuit_breaker_threshold,
                     self.halted_health_check_interval,
+                    cursor_store,
                 )
                 .instrument(span),
             );
@@ -266,7 +283,12 @@ impl ChannelProvider for MatrixProvider {
 
             match account
                 .client
-                .send_text(&params.to, &params.text, params.thread_id.as_deref())
+                .send_text(
+                    &params.to,
+                    &params.text,
+                    params.thread_id.as_deref(),
+                    params.idempotency_key.as_deref(),
+                )
                 .await
             {
                 Ok(_) => SendResult::ok(),
@@ -350,8 +372,21 @@ async fn sync_loop(
     cancel: CancellationToken,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
+    cursor_store: Option<Arc<dyn CursorStore>>,
 ) {
     tracing::info!("Matrix sync started");
+
+    // WHY: a persisted cursor overrides the configured initial_since — it is
+    // newer by construction (checkpointed after each processed batch), and
+    // resuming from it prevents a restart from replaying already-processed
+    // events.
+    if let Some(store) = &cursor_store
+        && let Some(saved) = store.load("matrix", &account_id)
+    {
+        tracing::info!("resuming Matrix sync from persisted cursor");
+        *since.lock().await = Some(saved);
+    }
+
     let mut consecutive_failures = 0_u32;
 
     loop {
@@ -361,7 +396,7 @@ async fn sync_loop(
                 tracing::info!("cancellation received, stopping Matrix sync");
                 return;
             }
-            result = sync_once(&client, &tx, &since, user_id.as_deref(), &account_id) => {
+            result = sync_once(&client, &tx, &since, user_id.as_deref(), &account_id, cursor_store.as_ref()) => {
                 match result {
                     Ok(()) => {
                         consecutive_failures = 0;
@@ -428,6 +463,7 @@ async fn sync_once(
     since: &Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
     own_user_id: Option<&str>,
     account_id: &str,
+    cursor_store: Option<&Arc<dyn CursorStore>>,
 ) -> error::Result<()> {
     let since_token = { since.lock().await.clone() };
     let response = client.sync(since_token.as_deref()).await?;
@@ -435,8 +471,14 @@ async fn sync_once(
     // WHY: advance the cursor immediately after the HTTP response returns,
     // before any tx.send await points. If cancellation interrupts the sends
     // below, we would rather lose the in-flight events than replay the whole
-    // batch on the next sync.
+    // batch on the next sync. Persisting before the in-memory advance means
+    // a crash lands on the durable cursor; the bounded dedupe filter covers
+    // the residual overlap.
     if let Some(next_batch) = response.next_batch {
+        if let Some(store) = cursor_store {
+            store.save("matrix", account_id, &next_batch);
+            crate::metrics::record_cursor_checkpoint("matrix");
+        }
         let mut guard = since.lock().await;
         *guard = Some(next_batch);
     }
@@ -490,6 +532,7 @@ fn extract_message(
         sender_name: None,
         group_id: Some(room_id.to_owned()),
         account_id: Some(account_id.to_owned()),
+        message_id: event.event_id.clone(),
         text: text.to_owned(),
         timestamp: event.origin_server_ts.unwrap_or_else(|| {
             tracing::warn!("Matrix event has no timestamp, defaulting to 0");
@@ -637,6 +680,7 @@ mod tests {
                 text: "hello".to_owned(),
                 account_id: None,
                 sender_id: None,
+                idempotency_key: None,
                 thread_id: None,
                 attachments: None,
             })
@@ -725,6 +769,106 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sync_once_persists_cursor_checkpoint() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(header("authorization", "Bearer token-123"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s9",
+                "rooms": { "join": {} }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = client::MatrixClient::with_timeouts(
+            &server.uri(),
+            "token-123",
+            Duration::from_secs(1),
+            Duration::from_millis(50),
+        )
+        .expect("client");
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let store: Arc<dyn CursorStore> =
+            Arc::new(crate::cursor::FileCursorStore::new(dir.path().to_path_buf()));
+        let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let (tx, _rx) = mpsc::channel::<InboundMessage>(4);
+
+        sync_once(&client, &tx, &since, None, "primary", Some(&store))
+            .await
+            .expect("sync_once");
+
+        assert_eq!(
+            store.load("matrix", "primary").as_deref(),
+            Some("s9"),
+            "next_batch must be persisted for restart recovery"
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_loop_resumes_from_persisted_cursor() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(header("authorization", "Bearer token-123"))
+            .and(query_param("since", "s-saved"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s10",
+                "rooms": { "join": {} }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let store: Arc<dyn CursorStore> =
+            Arc::new(crate::cursor::FileCursorStore::new(dir.path().to_path_buf()));
+        store.save("matrix", "primary", "s-saved");
+
+        let mut provider = MatrixProvider::from_config(&taxis::config::MessagingConfig {
+            receive_timeout_secs: 1,
+            ..taxis::config::MessagingConfig::default()
+        })
+        .with_cursor_store(store);
+        let client = client::MatrixClient::with_timeouts(
+            &server.uri(),
+            "token-123",
+            Duration::from_secs(1),
+            Duration::from_millis(50),
+        )
+        .expect("client");
+        provider.add_account(
+            "primary".to_owned(),
+            client,
+            Some("@bot:example.org".to_owned()),
+            true,
+            None,
+        );
+
+        let token = CancellationToken::new();
+        let (rx, mut handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
+
+        // WHY: the mock expectation (`since = "s-saved", expect(1)`) verifies
+        // at server drop that the first sync resumed from the persisted
+        // cursor rather than starting unscoped; waiting briefly lets the
+        // first sync actually happen before teardown.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        token.cancel();
+        drop(rx);
+        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next())
+            .await
+            .ok()
+            .flatten()
+        {
+            let _ = result;
+        }
+    }
+
+    #[tokio::test]
     async fn sync_once_advances_since_before_sends_complete() {
         install_crypto_provider();
         let server = MockServer::start().await;
@@ -787,7 +931,7 @@ mod tests {
         let tx_ref = tx.clone();
         let own_user_id = "@bot:example.org".to_owned();
         let handle = tokio::spawn(async move {
-            sync_once(&client_ref, &tx_ref, &since_ref, Some(&own_user_id), "primary").await
+            sync_once(&client_ref, &tx_ref, &since_ref, Some(&own_user_id), "primary", None).await
         });
 
         // WHY: wait until sync_once has advanced the cursor; that happens
