@@ -163,8 +163,9 @@ impl SubprocessRequest {
     /// This only ever tightens policy: when the runner builds a sandbox
     /// policy from the shared config, the request's denial overrides an
     /// `Allow`/`Allowlist` egress setting to `Deny`. It cannot widen a
-    /// policy, and it has no effect when the sandbox is disabled (no policy
-    /// is built at all in that mode).
+    /// policy. When the sandbox is disabled and the request supplies no
+    /// explicit policy, there is no policy to tighten; an explicit request
+    /// policy is still narrowed regardless of the shared enabled flag.
     #[must_use]
     pub fn deny_egress(mut self) -> Self {
         self.deny_egress = true;
@@ -403,12 +404,7 @@ impl SubprocessRunner {
         sandbox
             .extra_exec_paths
             .extend(request.extra_exec_paths.iter().cloned());
-        let mut policy = sandbox.build_policy(&ctx.workspace, &ctx.allowed_roots);
-        if request.deny_egress {
-            policy.egress = crate::sandbox::EgressPolicy::Deny;
-            policy.egress_allowlist.clear();
-        }
-        policy
+        sandbox.build_policy(&ctx.workspace, &ctx.allowed_roots)
     }
 
     fn policy_for_request(
@@ -416,12 +412,21 @@ impl SubprocessRunner {
         ctx: &ToolContext,
         request: &SubprocessRequest,
     ) -> Option<crate::sandbox::SandboxPolicy> {
-        if let Some(policy) = &request.sandbox_policy {
-            return Some(policy.clone());
+        let mut policy = if let Some(policy) = &request.sandbox_policy {
+            policy.clone()
+        } else {
+            self.sandbox
+                .enabled
+                .then(|| self.build_policy(ctx, request))?
+        };
+        // SECURITY(#5214): request-level denial is a final monotonic
+        // narrowing. Apply it after selecting either an explicit policy or the
+        // deployment-built policy so an explicit Allow cannot bypass it.
+        if request.deny_egress {
+            policy.egress = crate::sandbox::EgressPolicy::Deny;
+            policy.egress_allowlist.clear();
         }
-        self.sandbox
-            .enabled
-            .then(|| self.build_policy(ctx, request))
+        Some(policy)
     }
 }
 
@@ -646,6 +651,7 @@ mod tests {
     use koina::id::{NousId, SessionId};
 
     use super::*;
+    use crate::sandbox::SandboxConfigExt as _;
 
     fn test_ctx(dir: &std::path::Path) -> ToolContext {
         ToolContext {
@@ -786,13 +792,37 @@ mod tests {
         let ctx = test_ctx(dir.path());
 
         let denied = SubprocessRequest::new("sh", dir.path()).deny_egress();
-        let policy = runner.build_policy(&ctx, &denied);
+        let policy = runner
+            .policy_for_request(&ctx, &denied)
+            .expect("enabled sandbox has a policy");
         assert_eq!(policy.egress, crate::sandbox::EgressPolicy::Deny);
         assert!(policy.egress_allowlist.is_empty());
 
         let open = SubprocessRequest::new("sh", dir.path());
-        let policy = runner.build_policy(&ctx, &open);
+        let policy = runner
+            .policy_for_request(&ctx, &open)
+            .expect("enabled sandbox has a policy");
         assert_eq!(policy.egress, crate::sandbox::EgressPolicy::Allow);
+    }
+
+    #[test]
+    fn deny_egress_tightens_explicit_policy() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let runner = SubprocessRunner::new(SandboxConfig::default());
+        let ctx = test_ctx(dir.path());
+        let mut explicit = SandboxConfig::default().build_policy(dir.path(), &[]);
+        explicit.egress = crate::sandbox::EgressPolicy::Allow;
+        explicit.egress_allowlist = vec!["example.test".to_owned()];
+
+        let request = SubprocessRequest::new("sh", dir.path())
+            .sandbox_policy(explicit)
+            .deny_egress();
+        let policy = runner
+            .policy_for_request(&ctx, &request)
+            .expect("explicit policy is retained");
+
+        assert_eq!(policy.egress, crate::sandbox::EgressPolicy::Deny);
+        assert!(policy.egress_allowlist.is_empty());
     }
 
     #[test]

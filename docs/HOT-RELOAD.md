@@ -249,6 +249,7 @@ neither hot nor cold.
 | Config path | Hot/Cold | Reason |
 |-------------|----------|--------|
 | `packs` | **Cold** | Packs are loaded once at startup into an `Arc<Vec<LoadedPack>>` snapshot. SIGHUP rebuilds agent configs from the existing snapshot; it does not reload manifests, context files, or pack tools from disk. A restart is required to pick up added, removed, or changed packs. |
+| `packOverlays` | **Cold** | Overlay authority is applied destructively while packs load. Reload reuses the startup pack snapshot, so enabling cannot restore stripped powers and disabling cannot revoke retained powers until restart. |
 
 ---
 

@@ -188,12 +188,13 @@ fn build_request(
     stdin: Vec<u8>,
     timeout: Duration,
 ) -> SubprocessRequest {
-    let request = SubprocessRequest::new(executor.command_path.clone(), executor.pack_root.clone())
-        .stdin_bytes(stdin)
-        .timeout(timeout)
-        .max_output_bytes(MAX_OUTPUT_BYTES)
-        .allow_read_path(executor.pack_root.clone())
-        .allow_exec_path(executor.command_path.clone());
+    let mut request =
+        SubprocessRequest::new(executor.command_path.clone(), executor.pack_root.clone())
+            .stdin_bytes(stdin)
+            .timeout(timeout)
+            .max_output_bytes(MAX_OUTPUT_BYTES)
+            .allow_read_path(executor.pack_root.clone())
+            .allow_exec_path(executor.command_path.clone());
     if executor.deny_egress {
         request = request.deny_egress();
     }

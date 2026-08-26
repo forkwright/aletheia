@@ -41,12 +41,14 @@ impl PackInstanceId {
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum PackStatus {
-    /// Pack loaded cleanly; every declared component is active.
+    /// Pack loaded without a reported degradation. Registration and runtime
+    /// reconciliation happen later; their failures may subsequently be folded
+    /// into this health entry, so this state makes no effectiveness claim.
     Active,
-    /// Pack is active, but at least one declared component (context entry,
-    /// tool, overlay power) was skipped, dropped, or failed.
+    /// Pack loaded, but at least one declared component (context entry, tool,
+    /// overlay power) was skipped, dropped, or failed.
     Degraded,
-    /// Pack is not active at all: its manifest or a required context entry
+    /// Pack did not load: its manifest or a required context entry
     /// failed to load.
     Failed,
 }
@@ -91,7 +93,8 @@ pub struct PackIssue {
     pub message: String,
 }
 
-/// Health of one configured pack after load and tool registration.
+/// Health of one configured pack after load, optionally enriched by later
+/// registration and runtime-reconciliation outcomes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackHealth {
     /// Stable configured-occurrence identity.
@@ -245,9 +248,23 @@ impl PackReport {
 #[must_use]
 pub fn platform_notes(sandbox: &organon::sandbox::SandboxConfig) -> Vec<String> {
     if !sandbox.enabled {
+        let sandbox_note = "pack tool sandbox is disabled; filesystem, syscall, and egress \
+                            sandbox restrictions are not applied"
+            .to_owned();
+        #[cfg(target_os = "linux")]
+        return vec![sandbox_note];
+        #[cfg(all(not(target_os = "linux"), unix))]
         return vec![
-            "pack tool sandbox is disabled; filesystem, syscall, resource, and egress \
-             restrictions are not applied"
+            sandbox_note,
+            "subprocess resource limits (RLIMIT_NPROC, RLIMIT_CPU) are not enforced on this \
+             platform; wall-clock timeout and Unix process-group cleanup still apply"
+                .to_owned(),
+        ];
+        #[cfg(not(unix))]
+        return vec![
+            sandbox_note,
+            "subprocess resource limits and process-group cleanup are unavailable on this \
+             platform; wall-clock timeout still applies to the direct child"
                 .to_owned(),
         ];
     }
@@ -271,10 +288,17 @@ pub fn platform_notes(sandbox: &organon::sandbox::SandboxConfig) -> Vec<String> 
         }
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(all(not(target_os = "linux"), unix))]
     notes.push(
         "subprocess resource limits (RLIMIT_NPROC, RLIMIT_CPU) are not enforced on this \
          platform; wall-clock timeout and Unix process-group cleanup still apply"
+            .to_owned(),
+    );
+
+    #[cfg(not(unix))]
+    notes.push(
+        "subprocess resource limits and process-group cleanup are unavailable on this \
+         platform; wall-clock timeout still applies to the direct child"
             .to_owned(),
     );
 
@@ -396,7 +420,7 @@ mod tests {
             ..organon::sandbox::SandboxConfig::default()
         };
         let notes = platform_notes(&sandbox);
-        assert_eq!(notes.len(), 1);
+        assert!(!notes.is_empty());
         assert!(notes[0].contains("sandbox is disabled"));
     }
 }

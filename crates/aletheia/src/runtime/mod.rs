@@ -592,19 +592,50 @@ impl RuntimeBuilder {
                     failed = counts.failed,
                     "domain pack health: some packs are degraded or failed"
                 );
-                for pack in &pack_report.packs {
-                    for issue in &pack.issues {
-                        warn!(
+            } else if counts.active > 0 {
+                info!(
+                    loaded_cleanly = counts.active,
+                    "domain packs loaded and registered without reported degradation"
+                );
+            }
+            // WHY: informational overlay-admission records do not degrade a
+            // pack, but they are still operator-facing health evidence. Emit
+            // every recorded issue independently of the aggregate status, with
+            // the configured occurrence identity needed to disambiguate
+            // duplicate names and paths.
+            for pack in &pack_report.packs {
+                for issue in &pack.issues {
+                    match issue.severity {
+                        thesauros::health::Severity::Info => info!(
                             pack = %pack.name,
+                            pack_ordinal = pack.instance_id.ordinal(),
+                            pack_path = %pack.path.display(),
                             component = ?issue.component,
                             severity = ?issue.severity,
                             "{}",
                             issue.message,
-                        );
+                        ),
+                        thesauros::health::Severity::Warning
+                        | thesauros::health::Severity::Error => warn!(
+                            pack = %pack.name,
+                            pack_ordinal = pack.instance_id.ordinal(),
+                            pack_path = %pack.path.display(),
+                            component = ?issue.component,
+                            severity = ?issue.severity,
+                            "{}",
+                            issue.message,
+                        ),
+                        _ => warn!(
+                            pack = %pack.name,
+                            pack_ordinal = pack.instance_id.ordinal(),
+                            pack_path = %pack.path.display(),
+                            component = ?issue.component,
+                            severity = ?issue.severity,
+                            "{}",
+                            issue.message,
+                        ),
                     }
                 }
-            } else if counts.active > 0 {
-                info!(active = counts.active, "domain packs fully active");
             }
         }
 

@@ -202,7 +202,7 @@ allowPromptAdditions = false
 maxPromptAdditionBytes = 4096
 ```
 
-Without the opt-in, declared powers are stripped at pack load; the pack's [health](#pack-health) record lists exactly what was dropped (degraded) or permitted and retained by policy (info note). Policy admission is not an effective runtime diff: agent and provider reconciliation happens later. With the opt-in, prompt additions are additionally capped at `maxPromptAdditionBytes` per pack, per agent — additions past the cap are dropped whole, never truncated mid-string. `agency` values are validated at load; an unknown level fails the manifest.
+Without the opt-in, declared powers are stripped at pack load; the pack's [health](#pack-health) record lists exactly what was dropped (degraded) or permitted and retained by policy (info note). Policy admission is not an effective runtime diff: agent and provider reconciliation happens later. With the opt-in, prompt additions are additionally capped at `maxPromptAdditionBytes` per pack, per agent — additions past the cap are dropped whole, never truncated mid-string. Prompt additions cannot use `{{file:...}}` interpolation, which would expand after accounting and bypass that cap; use bounded pack context entries for file content. `agency` values are validated at load; an unknown level fails the manifest.
 
 ## How it works
 
@@ -321,11 +321,11 @@ Every configured pack gets a structured health record (`thesauros::health::PackH
 
 | Status | Meaning |
 |--------|---------|
-| `active` | Manifest, all context files, and all tools loaded cleanly |
-| `degraded` | Pack is active, but something declared was skipped or failed: a missing optional context file, a tool that failed validation or registration (including a duplicate name), or a dropped overlay power |
-| `failed` | Pack is not active at all: the manifest was unreadable/invalid, or a `priority = "required"` context file could not be read |
+| `active` | Manifest, context, and tools loaded/registered without a reported degradation; this does not assert that admitted overlays became runtime-effective |
+| `degraded` | Pack loaded, but something declared was skipped or failed: a missing optional context file, a tool that failed validation or registration (including a duplicate name), or a dropped overlay power |
+| `failed` | Pack did not load: the manifest was unreadable/invalid, or a `priority = "required"` context file could not be read |
 
-The startup log prints a `domain pack health` summary line with per-status counts, followed by one warning per recorded issue naming the pack, component, and reason. The structured report is available in-process via `NousManager::pack_report()` for control-plane surfaces.
+The startup log prints a per-status summary, followed by every recorded issue at its severity with the pack name, configured ordinal, path, component, and reason. The structured report is available in-process via `NousManager::pack_report()` for control-plane surfaces.
 
 ## See also
 

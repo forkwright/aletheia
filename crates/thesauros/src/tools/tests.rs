@@ -86,7 +86,6 @@ fn test_ctx(dir: &TempDir) -> ToolContext {
     }
 }
 
-#[cfg(unix)]
 fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
     LoadedPack {
         instance_id: crate::health::PackInstanceId::default(),

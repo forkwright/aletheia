@@ -364,7 +364,9 @@ fn validate_tool_contract(tool: &PackToolDef, issues: &mut Vec<String>) {
 /// Validate one overlay's high-impact fields: `agency` must name a known
 /// level (the runtime maps it to iteration limits), and `model` /
 /// `system_prompt_additions` must not be blank placeholders that would apply
-/// as empty overrides.
+/// as empty overrides, or contain `{{file:...}}` interpolation. File expansion
+/// happens after the pack byte cap and would otherwise amplify a tiny declared
+/// addition into unbounded non-truncatable prompt authority.
 fn validate_overlay(agent: &str, overlay: &AgentOverlay, issues: &mut Vec<String>) {
     if let Some(agency) = overlay.agency.as_deref()
         && !matches!(agency, "unrestricted" | "standard" | "restricted")
@@ -385,6 +387,12 @@ fn validate_overlay(agent: &str, overlay: &AgentOverlay, issues: &mut Vec<String
         if addition.trim().is_empty() {
             issues.push(format!(
                 "overlay for agent '{agent}': system-prompt addition is blank"
+            ));
+        }
+        if addition.contains("{{file:") {
+            issues.push(format!(
+                "overlay for agent '{agent}': system-prompt additions must not contain \
+                 {{{{file:...}}}} interpolation; declare bounded pack context instead"
             ));
         }
     }
@@ -915,6 +923,19 @@ model = "  "
         let dir = setup_pack(&[("pack.toml", toml)]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(err.to_string().contains("blank"), "{err}");
+    }
+
+    #[test]
+    fn rejects_file_interpolation_in_prompt_addition() {
+        let toml = "name = \"prompt-pack\"\nversion = \"1.0\"\n\n[overlays.analyst]\nsystem_prompt_additions = [\"{{file:large.txt}}\"]\n";
+        let dir = setup_pack(&[
+            ("pack.toml", toml),
+            ("large.txt", "content outside the declared prompt cap"),
+        ]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        let display = err.to_string();
+        assert!(display.contains("must not contain"), "{display}");
+        assert!(display.contains("file"), "{display}");
     }
 
     #[test]
