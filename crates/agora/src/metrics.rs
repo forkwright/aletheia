@@ -136,8 +136,20 @@ pub(crate) fn record_channel_message(channel_id: &str, success: bool) {
 }
 
 /// Set the number of active subscriptions.
+#[cfg(test)]
 pub(crate) fn set_active_subscriptions(count: i64) {
     ACTIVE_SUBSCRIPTIONS.set(count);
+}
+
+/// Add to (or, with a negative delta, subtract from) the active-subscription
+/// gauge. Ownership lives in `listener::SubscriptionGuard`: construction adds
+/// the handle count, guard drop subtracts it.
+pub(crate) fn add_active_subscriptions(delta: i64) {
+    if delta >= 0 {
+        ACTIVE_SUBSCRIPTIONS.inc_by(delta);
+    } else {
+        ACTIVE_SUBSCRIPTIONS.dec_by(delta.saturating_neg());
+    }
 }
 
 /// Record a provider polling task failure.

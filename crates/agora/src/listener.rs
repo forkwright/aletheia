@@ -13,16 +13,42 @@ use tokio_util::sync::CancellationToken;
 
 use crate::types::{ChannelProvider, InboundMessage};
 
+/// Owns the active-subscription gauge contribution of one listener.
+///
+/// The gauge is incremented when the listener starts and decremented when
+/// this guard drops, so the metric tracks actual subscription lifetime:
+/// `run()` holds the guard until shutdown, and `into_receiver` transfers it
+/// to the caller alongside the provider handles. Dropping the guard twice is
+/// impossible; moving it out of the listener is the only way to keep the
+/// subscriptions counted.
+#[derive(Debug)]
+#[must_use = "dropping the guard immediately clears the subscription metric"]
+pub struct SubscriptionGuard {
+    count: i64,
+}
+
+impl Drop for SubscriptionGuard {
+    fn drop(&mut self) {
+        crate::metrics::add_active_subscriptions(-self.count);
+    }
+}
+
 /// Listens on registered channels, merging inbound messages into a single stream.
 ///
 /// Dropping the listener aborts all background polling tasks through
 /// [`JoinSet`]'s drop behavior unless [`into_receiver`](Self::into_receiver)
-/// was called first, which transfers the receiver and handles to the caller.
+/// was called first, which transfers the receiver, handles, and the
+/// subscription-metric guard to the caller.
 pub struct ChannelListener {
     rx: Option<mpsc::Receiver<InboundMessage>>,
     handles: Option<JoinSet<()>>,
     /// Maximum concurrent inbound-message handler tasks.
     max_concurrent_handlers: usize,
+    /// Gauge ownership for this listener's subscriptions; `None` once
+    /// transferred to a caller via [`into_receiver`](Self::into_receiver).
+    /// Dropping the listener drops the guard, so the gauge clears exactly
+    /// when an owned listener goes away and never when it was transferred.
+    guard: Option<SubscriptionGuard>,
 }
 
 impl ChannelListener {
@@ -112,7 +138,7 @@ impl ChannelListener {
         // WHY: JoinSet aborts all tasks on drop, so no explicit cleanup needed.
         // Handle count is small (single-digit), fits in i64
         let count = i64::try_from(handles.len()).unwrap_or(0);
-        crate::metrics::set_active_subscriptions(count);
+        crate::metrics::add_active_subscriptions(count);
         tracing::info!(
             subscriptions = count,
             max_concurrent_handlers,
@@ -122,18 +148,7 @@ impl ChannelListener {
             rx: Some(rx),
             handles: Some(handles),
             max_concurrent_handlers,
-        }
-    }
-
-    /// Decrement the active-subscription gauge when the listener is dropped
-    /// while it still owns the receiver and background tasks.
-    ///
-    /// [`into_receiver`](Self::into_receiver) transfers ownership of the
-    /// receiver and handles to the caller; in that case the subscriptions are
-    /// still active and the gauge must not be cleared.
-    fn decrement_on_drop(&mut self) {
-        if self.rx.is_some() {
-            crate::metrics::set_active_subscriptions(0);
+            guard: Some(SubscriptionGuard { count }),
         }
     }
 
@@ -232,17 +247,27 @@ impl ChannelListener {
             }
         }
 
-        self.decrement_on_drop();
+        // WHY: dropping the guard here clears the subscription gauge exactly
+        // when the subscriptions actually end — the last act of run(), after
+        // every handler and provider task has drained.
+        drop(self.guard.take());
         tracing::info!("channel listener stopped");
     }
 
-    /// Unwrap into the raw receiver and background task handles for manual control.
+    /// Unwrap into the raw receiver, background task handles, and the
+    /// subscription-metric guard for manual control.
     ///
     /// The returned handles represent the background polling tasks.  Callers can
     /// abort them for immediate shutdown or await them for graceful drain.  Tasks
     /// also stop naturally once the receiver is dropped (closed channel).
+    ///
+    /// The returned [`SubscriptionGuard`] owns the active-subscription gauge:
+    /// the subscriptions stay counted until the guard drops, so a caller that
+    /// abandons it undercounts and a caller that keeps it past shutdown
+    /// overcounts. Keep the guard alive for exactly the subscriptions'
+    /// lifetime.
     #[must_use]
-    pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>) {
+    pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>, SubscriptionGuard) {
         #[expect(
             clippy::expect_used,
             reason = "rx is None only if into_receiver was already called; calling it twice is a programming error and panic is appropriate"
@@ -259,7 +284,15 @@ impl ChannelListener {
             .handles
             .take()
             .expect("into_receiver called on consumed listener");
-        (rx, handles)
+        #[expect(
+            clippy::expect_used,
+            reason = "guard is None only if into_receiver was already called; calling it twice is a programming error and panic is appropriate"
+        )]
+        let guard = self
+            .guard
+            .take()
+            .expect("into_receiver called on consumed listener");
+        (rx, handles, guard)
     }
 
     fn merge_providers<'a, I>(
@@ -300,12 +333,6 @@ impl ChannelListener {
 
         drop(merged_tx);
         (merged_rx, merged_handles)
-    }
-}
-
-impl Drop for ChannelListener {
-    fn drop(&mut self) {
-        self.decrement_on_drop();
     }
 }
 
@@ -427,7 +454,7 @@ mod tests {
         tx.send(msg.clone()).await.expect("send");
         drop(tx);
 
-        let (mut rx, _handles) = listener.into_receiver();
+        let (mut rx, _handles, _guard) = listener.into_receiver();
         let received = rx.recv().await.expect("recv");
         assert_eq!(received.text, "hello");
         assert_eq!(received.sender, "+1234567890");
@@ -442,7 +469,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let listener = ChannelListener::start_many(providers, None, &cancel);
 
-        let (mut rx, _handles) = listener.into_receiver();
+        let (mut rx, _handles, _guard) = listener.into_receiver();
         let mut received = Vec::new();
         while let Some(message) = rx.recv().await {
             received.push((message.channel, message.text));
@@ -622,10 +649,45 @@ mod tests {
             }
         });
         let listener = ChannelListener::from_parts(rx, join_set);
-        let (_rx, mut handles) = listener.into_receiver();
+        let (_rx, mut handles, _guard) = listener.into_receiver();
 
         assert_eq!(handles.len(), 1);
         handles.abort_all();
+    }
+
+    #[tokio::test]
+    async fn into_receiver_transfers_gauge_ownership_to_guard() {
+        let _guard = crate::metrics::GAUGE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
+        let mut handles = JoinSet::new();
+        handles.spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_mins(5)).await;
+        });
+
+        let r = fresh_registry();
+        let listener = ChannelListener::from_parts(rx, handles);
+        let started = encode_metrics(&r);
+        assert!(
+            started.contains("aletheia_active_subscriptions 1"),
+            "got: {started}"
+        );
+
+        let (_rx, mut handles, guard) = listener.into_receiver();
+        let after_transfer = encode_metrics(&r);
+        assert!(
+            after_transfer.contains("aletheia_active_subscriptions 1"),
+            "transfer must not clear the gauge while subscriptions live: {after_transfer}"
+        );
+
+        handles.abort_all();
+        drop(guard);
+        let after_drop = encode_metrics(&r);
+        assert!(
+            after_drop.contains("aletheia_active_subscriptions 0"),
+            "guard drop must clear the gauge: {after_drop}"
+        );
     }
 
     // ── Lifecycle/metrics tests ──
