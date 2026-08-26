@@ -52,6 +52,33 @@ static CHANNEL_MESSAGES_TOTAL: LazyLock<Family<ChannelMessageLabels, Counter>> =
 
 static ACTIVE_SUBSCRIPTIONS: LazyLock<Gauge> = LazyLock::new(Gauge::default);
 
+/// Owns one contribution to the process-wide active-subscription gauge.
+///
+/// Provider tasks construct this guard when they begin polling. Completion,
+/// cancellation, and panic all drop it with the task future, so the gauge
+/// describes live provider-account work rather than listener handle ownership.
+#[must_use = "dropping the guard immediately releases the subscription metric"]
+pub(crate) struct ActiveSubscriptionGuard {
+    gauge: Gauge,
+}
+
+impl ActiveSubscriptionGuard {
+    pub(crate) fn new() -> Self {
+        Self::for_gauge(ACTIVE_SUBSCRIPTIONS.clone())
+    }
+
+    fn for_gauge(gauge: Gauge) -> Self {
+        gauge.inc();
+        Self { gauge }
+    }
+}
+
+impl Drop for ActiveSubscriptionGuard {
+    fn drop(&mut self) {
+        self.gauge.dec();
+    }
+}
+
 static PROVIDER_FAILURES_TOTAL: LazyLock<Family<ProviderFailureLabels, Counter>> =
     LazyLock::new(Family::default);
 
@@ -300,6 +327,57 @@ mod tests {
             "got: {out}"
         );
         set_active_subscriptions(0);
+    }
+
+    #[tokio::test]
+    async fn subscription_guard_tracks_live_tasks_across_every_exit_path() {
+        use tokio::sync::oneshot;
+
+        let gauge = Gauge::default();
+
+        let (started_tx, started_rx) = oneshot::channel();
+        let (finish_tx, finish_rx) = oneshot::channel();
+        let task_gauge = gauge.clone();
+        let normal_exit = tokio::spawn(async move {
+            let _subscription = ActiveSubscriptionGuard::for_gauge(task_gauge);
+            let _ = started_tx.send(());
+            let _ = finish_rx.await;
+        });
+        started_rx.await.expect("normal task must start");
+        assert_eq!(gauge.get(), 1, "a live task must contribute exactly once");
+        let _ = finish_tx.send(());
+        normal_exit.await.expect("normal task must join");
+        assert_eq!(gauge.get(), 0, "normal exit must release its contribution");
+
+        let (started_tx, started_rx) = oneshot::channel();
+        let task_gauge = gauge.clone();
+        let cancelled = tokio::spawn(async move {
+            let _subscription = ActiveSubscriptionGuard::for_gauge(task_gauge);
+            let _ = started_tx.send(());
+            std::future::pending::<()>().await;
+        });
+        started_rx.await.expect("cancelled task must start");
+        assert_eq!(gauge.get(), 1, "a cancellable live task must be counted");
+        cancelled.abort();
+        let cancellation = cancelled.await.expect_err("task must be cancelled");
+        assert!(cancellation.is_cancelled());
+        assert_eq!(gauge.get(), 0, "cancellation must release its contribution");
+
+        let (started_tx, started_rx) = oneshot::channel();
+        let (fail_tx, fail_rx) = oneshot::channel();
+        let task_gauge = gauge.clone();
+        let failed = tokio::spawn(async move {
+            let _subscription = ActiveSubscriptionGuard::for_gauge(task_gauge);
+            let _ = started_tx.send(());
+            let _ = fail_rx.await;
+            panic!("synthetic provider failure");
+        });
+        started_rx.await.expect("failing task must start");
+        assert_eq!(gauge.get(), 1, "a live task before failure must be counted");
+        let _ = fail_tx.send(());
+        let failure = failed.await.expect_err("task must fail");
+        assert!(failure.is_panic());
+        assert_eq!(gauge.get(), 0, "task failure must release its contribution");
     }
 
     #[test]

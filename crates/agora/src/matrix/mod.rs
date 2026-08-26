@@ -263,26 +263,33 @@ impl MatrixProvider {
             let account_label = account_id.clone();
             let cursor_store = self.cursor_store.clone();
             let ingress_state = Arc::clone(&account.ingress_state);
+            let circuit_breaker_threshold = self.circuit_breaker_threshold;
+            let halted_health_check_interval = self.halted_health_check_interval;
+            let retain_raw_payloads = self.retain_raw_payloads;
             let span = tracing::info_span!(
                 "matrix_sync",
                 account = %crate::redact::identifier(account_id)
             );
 
             handles.spawn(
-                sync_loop(
-                    client,
-                    account_label,
-                    tx,
-                    interval,
-                    since,
-                    user_id,
-                    token,
-                    self.circuit_breaker_threshold,
-                    self.halted_health_check_interval,
-                    cursor_store,
-                    self.retain_raw_payloads,
-                    ingress_state,
-                )
+                async move {
+                    let _subscription = crate::metrics::ActiveSubscriptionGuard::new();
+                    sync_loop(
+                        client,
+                        account_label,
+                        tx,
+                        interval,
+                        since,
+                        user_id,
+                        token,
+                        circuit_breaker_threshold,
+                        halted_health_check_interval,
+                        cursor_store,
+                        retain_raw_payloads,
+                        ingress_state,
+                    )
+                    .await;
+                }
                 .instrument(span),
             );
         }
