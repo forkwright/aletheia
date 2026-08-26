@@ -432,7 +432,13 @@ jobs:
       # built it. Both matrix targets produce a natively-runnable binary, so a
       # failure here is real rather than a cross-compilation artifact.
       - name: Smoke test the release binary
-        run: scripts/smoke-test.sh --binary "$BINARY"
+        # WHY the guard echoes + explicit bash: BINARY is a bare filename
+        # (PATH lookup never finds it), and a zero-output instant exit 127
+        # killed a release with no evidence. `ls` proves what exists; `bash -x`
+        # makes the step's own trace the evidence if it dies early again.
+        run: |
+          ls -l scripts/smoke-test.sh "./$BINARY"
+          bash -x scripts/smoke-test.sh --binary "./$BINARY"
 
       - name: Verify binary version matches tag and manifests
         run: |

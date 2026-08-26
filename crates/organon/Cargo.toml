@@ -157,8 +157,12 @@ tokio = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 landlock = "0.4"
-rustix = { workspace = true, features = ["process", "thread"] }
 seccompiler = "0.5"
+
+# WHY: the process-group kill path in src/subprocess.rs is cfg(unix), so rustix
+# must resolve on every Unix target, not only Linux.
+[target.'cfg(unix)'.dependencies]
+rustix = { workspace = true, features = ["process", "thread"] }
 
 [lints]
 workspace = true
