@@ -282,9 +282,10 @@ pub(crate) async fn run(args: Args) -> Result<()> {
         }
     }
 
-    // WHY: close() prevents new tasks from being spawned; wait() resolves
-    // when every tracked task has completed. The timeout ensures we don't
-    // hang indefinitely on a stuck daemon.
+    // WHY: close() marks the tracker closed; wait() resolves once it is closed
+    // and empty. It does not reject later spawns, so the preceding shutdown
+    // ordering must first stop every owner that can add tracked work. The
+    // timeout ensures a stuck daemon cannot block shutdown indefinitely.
     runtime.task_tracker.close();
     tokio::select! {
         () = runtime.task_tracker.wait() => {

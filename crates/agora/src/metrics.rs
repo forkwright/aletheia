@@ -141,17 +141,6 @@ pub(crate) fn set_active_subscriptions(count: i64) {
     ACTIVE_SUBSCRIPTIONS.set(count);
 }
 
-/// Add to (or, with a negative delta, subtract from) the active-subscription
-/// gauge. Ownership lives in `listener::SubscriptionGuard`: construction adds
-/// the handle count, guard drop subtracts it.
-pub(crate) fn add_active_subscriptions(delta: i64) {
-    if delta >= 0 {
-        ACTIVE_SUBSCRIPTIONS.inc_by(delta);
-    } else {
-        ACTIVE_SUBSCRIPTIONS.dec_by(delta.saturating_neg());
-    }
-}
-
 /// Record a provider polling task failure.
 pub(crate) fn record_provider_failure(channel_id: &str) {
     PROVIDER_FAILURES_TOTAL
@@ -200,9 +189,36 @@ pub(crate) fn record_cursor_checkpoint(channel_id: &str) {
         .inc();
 }
 
-/// Set the number of inbound-message handler tasks currently running.
-pub(crate) fn set_inbound_handlers_in_flight(count: i64) {
-    INBOUND_HANDLERS_IN_FLIGHT.set(count);
+/// Add one handler's delta to the number of inbound-message handler tasks.
+///
+/// Listeners contribute independently; setting an absolute value from a local
+/// task set would let concurrent listeners overwrite one another.
+fn add_inbound_handlers_in_flight(delta: i64) {
+    if delta >= 0 {
+        INBOUND_HANDLERS_IN_FLIGHT.inc_by(delta);
+    } else {
+        INBOUND_HANDLERS_IN_FLIGHT.dec_by(delta.saturating_neg());
+    }
+}
+
+/// Owns one contribution to the process-wide in-flight handler gauge.
+///
+/// The guard travels with a spawned handler future, so completion, panic, and
+/// task abortion all remove exactly the contribution they added. Deltas keep
+/// concurrent listeners from overwriting one another's counts.
+pub(crate) struct InboundHandlerGuard;
+
+impl InboundHandlerGuard {
+    pub(crate) fn new() -> Self {
+        add_inbound_handlers_in_flight(1);
+        Self
+    }
+}
+
+impl Drop for InboundHandlerGuard {
+    fn drop(&mut self) {
+        add_inbound_handlers_in_flight(-1);
+    }
 }
 
 /// Record that inbound dispatch had to wait for a free handler slot
@@ -211,8 +227,8 @@ pub(crate) fn record_inbound_handler_saturation() {
     INBOUND_HANDLER_SATURATION_TOTAL.inc();
 }
 
-/// Serializes tests that read or write `ACTIVE_SUBSCRIPTIONS` to prevent
-/// cross-test gauge interference when the full test suite runs in parallel.
+/// Serializes tests that read or write process-global gauges to prevent
+/// cross-test interference when the full test suite runs in parallel.
 #[cfg(test)]
 pub(crate) static GAUGE_TEST_LOCK: std::sync::LazyLock<std::sync::Mutex<()>> =
     std::sync::LazyLock::new(|| std::sync::Mutex::new(()));
@@ -234,6 +250,15 @@ mod tests {
         #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
         r.encode(&mut buf).unwrap();
         buf
+    }
+
+    fn scalar_value(encoded: &str, metric: &str) -> Option<i64> {
+        let needle = format!("{metric} ");
+        encoded.lines().find_map(|line| {
+            line.strip_prefix(&needle)
+                .and_then(|value| value.split_whitespace().next())
+                .and_then(|value| value.parse::<i64>().ok())
+        })
     }
 
     #[test]
@@ -334,18 +359,33 @@ mod tests {
 
     #[test]
     fn register_and_record_handler_saturation_and_in_flight() {
+        let _guard = super::GAUGE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let r = fresh_registry();
+        let before = encode(&r);
+        let saturation_before =
+            scalar_value(&before, "aletheia_inbound_handler_saturation_total").unwrap_or(0);
+        let in_flight_before =
+            scalar_value(&before, "aletheia_inbound_handlers_in_flight").unwrap_or(0);
+
         record_inbound_handler_saturation();
-        set_inbound_handlers_in_flight(3);
+        add_inbound_handlers_in_flight(3);
         let out = encode(&r);
-        assert!(
-            out.contains("aletheia_inbound_handler_saturation_total 1"),
+        assert_eq!(
+            scalar_value(&out, "aletheia_inbound_handler_saturation_total"),
+            Some(saturation_before + 1),
             "got: {out}"
         );
-        assert!(
-            out.contains("aletheia_inbound_handlers_in_flight 3"),
+        assert_eq!(
+            scalar_value(&out, "aletheia_inbound_handlers_in_flight"),
+            Some(in_flight_before + 3),
             "got: {out}"
         );
-        set_inbound_handlers_in_flight(0);
+        add_inbound_handlers_in_flight(-3);
+        assert_eq!(
+            scalar_value(&encode(&r), "aletheia_inbound_handlers_in_flight"),
+            Some(in_flight_before)
+        );
     }
 }
