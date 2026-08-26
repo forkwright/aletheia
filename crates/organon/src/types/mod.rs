@@ -782,35 +782,31 @@ impl Default for RollbackSupport {
 /// Input/output redaction policy for trace and audit surfaces.
 ///
 /// ARCHITECTURE(#4543, #6808): enforced at the dispatch layer
-/// (`nous::execute::dispatch`) on every surface that leaves the live
-/// executor loop: `ToolStart`/`ToolApprovalRequired`/`ToolResult` stream
-/// events, the persisted `ToolCall` record (which session-history
-/// persistence, skill evidence, and background extraction all read), and
-/// the receipt ledger. The in-turn LLM-facing result block is NOT redacted
-/// -- the model that emitted the call needs the real result to continue the
-/// turn; the policy governs what is recorded, not what the model sees
-/// mid-turn.
+/// (`nous::execute::dispatch`). Durable/replay `ToolStart`, approval,
+/// `ToolResult`, persisted `ToolCall`, hook, and receipt-ledger surfaces use a
+/// redacted placeholder-form copy. A separately typed live approval event
+/// applies the same policy to the prepared input so the connected operator can
+/// authorize what will actually execute; that evidence is neither serialized
+/// nor reconstructed on reconnect. The in-turn LLM-facing result block is not
+/// redacted because the model that emitted the call needs the real result to
+/// continue the turn.
 ///
 /// Precedence with the secret vault (#3569), stated once here:
-/// `hermeneus::secret::substitute_in_json` runs first, at dispatch, on the
-/// executor-bound copy only -- persisted/trace copies of the input carry
-/// the `{{secret:name}}` placeholder, which reveals the vault key NAME but
-/// never the value. This policy then applies to those trace copies:
-/// `None` (the default) passes the placeholder form through unchanged;
-/// `Fields` redacts the named argument keys (a placeholder under a named
-/// key redacts like any other value); `Full` redacts every argument value
-/// (placeholders included -- even the vault key name is hidden) plus the
-/// result text.
+/// Durable/replay copies receive generic secret redaction before this policy.
+/// The executor-bound copy is prepared separately (vault and file references
+/// expanded, then schema-validated); live approval masks vault-origin values
+/// and dynamic keys, applies this policy, and preserves schema-declared strings
+/// such as canonical paths/URLs that the operator needs to authorize.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RedactionPolicy {
-    /// No per-tool redaction; trace surfaces carry the (placeholder-form)
-    /// payload unchanged.
+    /// No additional per-tool redaction. The generic secret pass still
+    /// applies before any trace surface receives the payload.
     #[default]
     None,
-    /// Redact every argument value and the entire result text in trace
-    /// surfaces. Object structure and keys are preserved (the input schema
-    /// is already visible to the model); only leaf values are replaced.
+    /// Replace the entire argument payload with one fixed marker object and
+    /// redact the entire result text. No input-derived shape or dynamic key
+    /// survives on a trace surface.
     Full,
     /// Redact only the named top-level argument fields. Applies to
     /// arguments only: results are rendered text, not field-addressable --
@@ -828,6 +824,31 @@ pub enum RedactionPolicy {
 pub const REDACTED_MARKER: &str = "[REDACTED]";
 
 impl RedactionPolicy {
+    /// Whether this declaration is complete and agrees with a tool's input
+    /// schema.
+    ///
+    /// A `Fields` declaration must name at least one distinct, non-empty
+    /// top-level schema property. Empty or duplicate lists are rejected even
+    /// though applying them would happen to be harmless: accepting malformed
+    /// governance metadata would make the declared policy identity ambiguous.
+    #[must_use]
+    pub fn is_valid_for_schema(&self, schema: &InputSchema) -> bool {
+        match self {
+            Self::None | Self::Full => true,
+            Self::Fields(fields) => {
+                if fields.is_empty() {
+                    return false;
+                }
+                let mut seen = std::collections::HashSet::with_capacity(fields.len());
+                fields.iter().all(|field| {
+                    !field.is_empty()
+                        && schema.properties.contains_key(field)
+                        && seen.insert(field.as_str())
+                })
+            }
+        }
+    }
+
     /// Apply this policy to a tool call's argument payload, in place.
     ///
     /// Returns the declared field names that were absent from the payload
@@ -845,17 +866,13 @@ impl RedactionPolicy {
         match self {
             Self::None => Vec::new(),
             Self::Full => {
-                redact_leaves(value);
+                *value = full_redaction_value();
                 Vec::new()
             }
             Self::Fields(fields) => {
                 if !value.is_object() {
                     let missed = fields.clone();
-                    *value = serde_json::json!({
-                        "__redaction__": "fail-closed: Fields policy cannot be verified \
-                                          against a non-object payload",
-                        "declared_fields": fields,
-                    });
+                    *value = full_redaction_value();
                     return missed;
                 }
                 let mut missed = Vec::new();
@@ -892,8 +909,8 @@ impl RedactionPolicy {
     /// misspelled name here means the field the author meant to redact is
     /// passed through in cleartext on every call. The capability-governance
     /// gate test fails on any built-in tool with a non-empty return, and
-    /// `ToolRegistry::declare_capability` warns, so the typo dies at
-    /// declaration time rather than leaking silently per call.
+    /// `ToolRegistry::declare_capability` rejects the declaration, so the typo
+    /// dies at registration rather than leaking silently per call.
     #[must_use]
     pub fn unrecognized_fields(&self, schema: &InputSchema) -> Vec<String> {
         match self {
@@ -907,22 +924,8 @@ impl RedactionPolicy {
     }
 }
 
-/// Replace every leaf value in a JSON tree with [`REDACTED_MARKER`],
-/// preserving object keys and array positions.
-fn redact_leaves(value: &mut serde_json::Value) {
-    match value {
-        serde_json::Value::Object(map) => {
-            for v in map.values_mut() {
-                redact_leaves(v);
-            }
-        }
-        serde_json::Value::Array(arr) => {
-            for v in arr.iter_mut() {
-                redact_leaves(v);
-            }
-        }
-        leaf => *leaf = serde_json::Value::String(REDACTED_MARKER.to_owned()),
-    }
+fn full_redaction_value() -> serde_json::Value {
+    serde_json::json!({"__redaction__": REDACTED_MARKER})
 }
 
 /// Owner/stability/rollback/redaction governance metadata for one tool.

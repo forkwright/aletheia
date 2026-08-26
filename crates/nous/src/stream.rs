@@ -2,6 +2,43 @@
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 
+/// Policy-minimized tool input carried only to the currently connected
+/// approver.
+///
+/// This wrapper deliberately implements neither serialization nor a
+/// value-bearing [`std::fmt::Debug`]. Durable/replay consumers receive the
+/// separate `replay_input` value on [`TurnStreamEvent::ToolApprovalRequired`]
+/// instead of being able to persist this evidence accidentally.
+#[derive(Clone)]
+pub struct LiveApprovalEvidence(serde_json::Value);
+
+impl LiveApprovalEvidence {
+    /// Seal a live-only approval payload at the dispatch boundary.
+    #[must_use]
+    pub(crate) fn new(input: serde_json::Value) -> Self {
+        Self(input)
+    }
+
+    /// Borrow the live-only payload without transferring it to a durable
+    /// surface.
+    #[must_use]
+    pub fn as_value(&self) -> &serde_json::Value {
+        &self.0
+    }
+
+    /// Consume the wrapper at the live transport boundary.
+    #[must_use]
+    pub fn into_inner(self) -> serde_json::Value {
+        self.0
+    }
+}
+
+impl std::fmt::Debug for LiveApprovalEvidence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("LiveApprovalEvidence([REDACTED])")
+    }
+}
+
 /// Events emitted during a streaming turn, bridging LLM deltas and tool lifecycle.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
@@ -24,7 +61,12 @@ pub enum TurnStreamEvent {
         turn_id: String,
         tool_id: String,
         tool_name: String,
-        input: serde_json::Value,
+        /// Minimum policy-redacted evidence sent only to the currently
+        /// connected approver.
+        input: LiveApprovalEvidence,
+        /// Independently produced payload safe for replay/history buffers.
+        /// Consumers must never reconstruct this from `input`.
+        replay_input: serde_json::Value,
         risk: String,
         reason: String,
     },

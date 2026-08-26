@@ -28,7 +28,7 @@ use crate::types::{
 };
 
 use super::filesystem_policy::protected_path_class;
-use super::workspace::{extract_opt_bool, extract_str, validate_path};
+use super::workspace::{extract_opt_bool, extract_str, validate_path, validate_prepared_path};
 
 /// Sanitize a path to just its filename for error messages.
 ///
@@ -57,7 +57,14 @@ fn revalidate_before_mutation(
     // Re-run the same canonicalization and root check used at validation time.
     // For existing paths this detects a symlink swapped onto the resolved
     // target; for non-existing paths it re-checks the deepest existing ancestor.
-    let _ = validate_path(&validated_path.to_string_lossy(), ctx, tool_name)?;
+    let current = validate_path(&validated_path.to_string_lossy(), ctx, tool_name)?;
+    if current.as_path() != validated_path {
+        return Err(crate::error::InvalidInputSnafu {
+            name: tool_name.clone(),
+            reason: "prepared path target changed before mutation".to_owned(),
+        }
+        .build());
+    }
     Ok(())
 }
 
@@ -153,6 +160,10 @@ fn protected_io_error(action: &str, protected: &str) -> std::io::Error {
 pub(crate) struct MkdirExecutor;
 
 impl ToolExecutor for MkdirExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -161,7 +172,7 @@ impl ToolExecutor for MkdirExecutor {
         Box::pin(async {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let parents = extract_opt_bool(&input.arguments, "parents").unwrap_or(true);
-            let path = validate_path(path_str, ctx, &input.name)?;
+            let path = validate_prepared_path(path_str, ctx, &input.name)?;
 
             if let Some(protected) = protected_path_class(&path, &ctx.workspace) {
                 return Ok(protected_path_error("create", protected));
@@ -197,6 +208,10 @@ impl ToolExecutor for MkdirExecutor {
 pub(crate) struct MvExecutor;
 
 impl ToolExecutor for MvExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["from", "to"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -205,8 +220,8 @@ impl ToolExecutor for MvExecutor {
         Box::pin(async {
             let from_str = extract_str(&input.arguments, "from", &input.name)?;
             let to_str = extract_str(&input.arguments, "to", &input.name)?;
-            let from = validate_path(from_str, ctx, &input.name)?;
-            let to = validate_path(to_str, ctx, &input.name)?;
+            let from = validate_prepared_path(from_str, ctx, &input.name)?;
+            let to = validate_prepared_path(to_str, ctx, &input.name)?;
 
             if let Some(protected) = first_protected_existing_descendant(&from, &ctx.workspace) {
                 return Ok(protected_path_error("move", protected));
@@ -289,6 +304,10 @@ fn remove_path(path: &Path) -> std::io::Result<()> {
 pub(crate) struct CpExecutor;
 
 impl ToolExecutor for CpExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["from", "to"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -298,8 +317,8 @@ impl ToolExecutor for CpExecutor {
             let from_str = extract_str(&input.arguments, "from", &input.name)?;
             let to_str = extract_str(&input.arguments, "to", &input.name)?;
             let recursive = extract_opt_bool(&input.arguments, "recursive").unwrap_or(false);
-            let from = validate_path(from_str, ctx, &input.name)?;
-            let to = validate_path(to_str, ctx, &input.name)?;
+            let from = validate_prepared_path(from_str, ctx, &input.name)?;
+            let to = validate_prepared_path(to_str, ctx, &input.name)?;
 
             if let Some(protected) = protected_path_class(&from, &ctx.workspace) {
                 return Ok(protected_path_error("copy", protected));
@@ -394,6 +413,10 @@ fn copy_dir_recursive(src: &Path, dst: &Path, workspace: &Path) -> std::io::Resu
 pub(crate) struct RmExecutor;
 
 impl ToolExecutor for RmExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -402,7 +425,7 @@ impl ToolExecutor for RmExecutor {
         Box::pin(async {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let recursive = extract_opt_bool(&input.arguments, "recursive").unwrap_or(false);
-            let path = validate_path(path_str, ctx, &input.name)?;
+            let path = validate_prepared_path(path_str, ctx, &input.name)?;
 
             if let Some(protected) = protected_path_class(&path, &ctx.workspace) {
                 return Ok(protected_path_error("remove", protected));
@@ -469,7 +492,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(mv_def(), Box::new(MvExecutor))?;
     registry.declare_capability(
         ToolName::from_static("mv"), // kanon:ignore RUST/expect
@@ -484,7 +507,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(cp_def(), Box::new(CpExecutor))?;
     registry.declare_capability(
         ToolName::from_static("cp"), // kanon:ignore RUST/expect
@@ -498,7 +521,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(rm_def(), Box::new(RmExecutor))?;
     registry.declare_capability(
         ToolName::from_static("rm"), // kanon:ignore RUST/expect
@@ -512,7 +535,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

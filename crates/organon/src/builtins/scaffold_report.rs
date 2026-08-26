@@ -5,7 +5,7 @@ use std::pin::Pin;
 
 use indexmap::IndexMap;
 
-use crate::builtins::workspace::validate_path;
+use crate::builtins::workspace::validate_prepared_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -40,6 +40,10 @@ fn extract_bool(args: &serde_json::Value, key: &str, default: bool) -> bool {
 struct ScaffoldReportExecutor;
 
 impl ToolExecutor for ScaffoldReportExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["directory"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -75,7 +79,7 @@ impl ToolExecutor for ScaffoldReportExecutor {
                 };
 
             if let Some(dir) = extract_opt_str(args, "directory") {
-                let validated_dir = match validate_path(dir, ctx, &input.name) {
+                let validated_dir = match validate_prepared_path(dir, ctx, &input.name) {
                     Ok(path) => path,
                     Err(e) => {
                         return Ok(ToolResult::error(format!("invalid directory {dir:?}: {e}")));
@@ -240,7 +244,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

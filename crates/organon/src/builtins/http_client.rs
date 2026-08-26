@@ -425,7 +425,7 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
             redaction: RedactionPolicy::Fields(vec!["headers".to_owned()]),
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

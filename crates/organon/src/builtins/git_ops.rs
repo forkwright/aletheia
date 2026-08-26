@@ -377,7 +377,7 @@ pub(crate) fn register_with_sandbox(
                 rollback: RollbackSupport::Supported,
                 ..ToolCapabilityMetadata::default()
             },
-        );
+        )?;
     }
     registry.declare_capability(
         ToolName::from_static("git_checkout"), // kanon:ignore RUST/expect
@@ -392,7 +392,7 @@ pub(crate) fn register_with_sandbox(
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

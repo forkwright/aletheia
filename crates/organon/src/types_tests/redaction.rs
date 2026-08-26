@@ -32,7 +32,7 @@ fn none_passes_input_and_result_through() {
 }
 
 #[test]
-fn full_redacts_every_input_leaf_preserving_shape() {
+fn full_replaces_input_with_fixed_payload_independent_of_shape() {
     let policy = RedactionPolicy::Full;
     let mut input = serde_json::json!({
         "url": "https://acme.corp",
@@ -44,13 +44,8 @@ fn full_redacts_every_input_leaf_preserving_shape() {
     assert!(missed.is_empty(), "Full reports no misses");
     assert_eq!(
         input,
-        serde_json::json!({
-            "url": REDACTED_MARKER,
-            "headers": {"authorization": REDACTED_MARKER},
-            "retries": REDACTED_MARKER,
-            "tags": [REDACTED_MARKER, REDACTED_MARKER],
-        }),
-        "every leaf is redacted; object keys and array positions are preserved"
+        serde_json::json!({"__redaction__": REDACTED_MARKER}),
+        "Full must preserve no input-derived keys, shape, or array length"
     );
 }
 
@@ -136,6 +131,21 @@ fn fields_misspelled_declaration_is_flagged_against_schema() {
 }
 
 #[test]
+fn malformed_fields_declarations_are_invalid_for_schema() {
+    let schema = schema_with(&["headers", "url"]);
+    assert!(RedactionPolicy::Fields(vec!["headers".to_owned()]).is_valid_for_schema(&schema));
+    assert!(!RedactionPolicy::Fields(vec![]).is_valid_for_schema(&schema));
+    assert!(
+        !RedactionPolicy::Fields(vec!["headers".to_owned(), "headers".to_owned()])
+            .is_valid_for_schema(&schema)
+    );
+    assert!(
+        !RedactionPolicy::Fields(vec!["headers".to_owned(), "missing".to_owned()])
+            .is_valid_for_schema(&schema)
+    );
+}
+
+#[test]
 fn fields_on_non_object_payload_fails_closed() {
     let policy = RedactionPolicy::Fields(vec!["headers".to_owned()]);
     let mut input = serde_json::json!("not an object");
@@ -146,10 +156,7 @@ fn fields_on_non_object_payload_fails_closed() {
         "every declared field missed on a non-object payload"
     );
     let text = input.to_string();
-    assert!(
-        text.contains("fail-closed") && text.contains("headers"),
-        "the replacement payload names the policy failure and the declared fields: {text}"
-    );
+    assert_eq!(input, serde_json::json!({"__redaction__": REDACTED_MARKER}));
     assert!(
         !text.contains("not an object"),
         "the unverifiable payload value must not survive: {text}"
@@ -182,8 +189,8 @@ fn vault_placeholders_follow_the_declared_policy() {
     let mut full_input = placeholder_input();
     RedactionPolicy::Full.apply_to_input(&mut full_input);
     assert_eq!(
-        full_input["auth"],
-        serde_json::json!(REDACTED_MARKER),
-        "Full hides the placeholder as well"
+        full_input,
+        serde_json::json!({"__redaction__": REDACTED_MARKER}),
+        "Full hides the placeholder and its input-derived field name"
     );
 }

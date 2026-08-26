@@ -18,7 +18,7 @@ use crate::surface::{
     deferred_schema_placeholder,
 };
 use crate::types::{
-    ApprovalRequirement, Reversibility, ToolCallCapability, ToolCallCapabilityRule,
+    ApprovalRequirement, PropertyType, Reversibility, ToolCallCapability, ToolCallCapabilityRule,
     ToolCallMetadata, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId,
     ToolGroupPolicy, ToolInput, ToolOrigin, ToolOutcome, ToolResult, ToolTag,
 };
@@ -64,6 +64,25 @@ pub(crate) type ToolSchemaSnapshot = Arc<RwLock<HashMap<String, String>>>;
 /// ```
 pub trait ToolExecutor: Send + Sync {
     // kanon:ignore RUST/pub-visibility
+    /// Top-level string arguments that name filesystem targets.
+    ///
+    /// The registry alone performs the canonicalization. Keeping this seam
+    /// declarative prevents an executor from moving or deriving vault-tainted
+    /// values before the live-approval redaction pass.
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    // kanon:ignore RUST/pub-visibility
+    /// Declared path arguments whose absent value means the canonical
+    /// workspace directory.
+    ///
+    /// Every returned field must also appear in [`Self::path_arguments`].
+    fn workspace_default_path_arguments(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    // kanon:ignore RUST/pub-visibility
     /// Execute the tool with the given input and context.
     fn execute<'a>(
         &'a self,
@@ -75,7 +94,28 @@ pub trait ToolExecutor: Send + Sync {
 struct RegisteredTool {
     def: ToolDef,
     call_capability: Option<ToolCallCapabilityRule>,
+    path_arguments: Vec<&'static str>,
+    workspace_default_path_arguments: Vec<&'static str>,
     executor: Box<dyn ToolExecutor>,
+}
+
+/// A file-expanded, canonical-path, schema-validated input ready for execution.
+///
+/// Construction is owned by [`ToolRegistry::prepare_input`], so callers can
+/// bind receipts and approval decisions to the exact JSON input that the
+/// executor will receive without asking the registry to expand it a second
+/// time. This is argument identity, not an inode/effect receipt.
+#[derive(Clone)]
+pub struct PreparedToolInput {
+    input: ToolInput,
+}
+
+impl PreparedToolInput {
+    /// Borrow the exact validated input that will be passed to the executor.
+    #[must_use]
+    pub fn as_tool_input(&self) -> &ToolInput {
+        &self.input
+    }
 }
 
 /// Registry of available tools.
@@ -167,11 +207,42 @@ impl ToolRegistry {
                 name: def.name.clone()
             }
         );
+        let path_arguments = executor.path_arguments().to_vec();
+        let workspace_default_path_arguments = executor.workspace_default_path_arguments().to_vec();
+        let mut declared_paths = HashSet::new();
+        for field in &path_arguments {
+            let valid = !field.is_empty()
+                && declared_paths.insert(*field)
+                && def
+                    .input_schema
+                    .properties
+                    .get(*field)
+                    .is_some_and(|property| property.property_type == PropertyType::String);
+            ensure!(
+                valid,
+                error::InvalidInputSnafu {
+                    name: def.name.clone(),
+                    reason: "invalid path-argument declaration"
+                }
+            );
+        }
+        let mut declared_defaults = HashSet::new();
+        for field in &workspace_default_path_arguments {
+            ensure!(
+                declared_defaults.insert(*field) && declared_paths.contains(*field),
+                error::InvalidInputSnafu {
+                    name: def.name.clone(),
+                    reason: "invalid workspace-default path declaration"
+                }
+            );
+        }
         self.tools.insert(
             def.name.clone(),
             RegisteredTool {
                 def,
                 call_capability,
+                path_arguments,
+                workspace_default_path_arguments,
                 executor,
             },
         );
@@ -262,24 +333,35 @@ impl ToolRegistry {
     /// [`ToolCapabilityMetadata::default`] (owner `"unassigned"`) via
     /// [`Self::capability_metadata`], which is an honest "not yet
     /// reviewed," not a fabricated "safe."
-    pub fn declare_capability(&mut self, name: ToolName, metadata: ToolCapabilityMetadata) {
-        if let Some(def) = self.tools.get(&name) {
-            let unrecognized = metadata.redaction.unrecognized_fields(&def.input_schema);
-            if !unrecognized.is_empty() {
-                // WHY(#6808): a `Fields` name that is not in the tool's
-                // input schema matches nothing on every call -- the field
-                // the author meant to redact passes through in cleartext.
-                // The capability-governance gate test hard-fails on this
-                // for built-ins; external registrations get this warning.
-                tracing::warn!(
-                    tool.name = name.as_str(),
-                    ?unrecognized,
-                    "declared redaction field(s) are not in the tool's input schema; \
-                     they will never match a call payload"
-                );
-            }
-            self.capabilities.insert(name, metadata);
+    ///
+    /// # Errors
+    ///
+    /// Returns [`crate::error::Error::ToolNotFound`] for an unknown tool,
+    /// [`crate::error::Error::InvalidCapabilityDeclaration`] when a declared
+    /// redaction field is absent from the input schema, or
+    /// [`crate::error::Error::DuplicateCapability`] for a second declaration.
+    pub fn declare_capability(
+        &mut self,
+        name: ToolName,
+        metadata: ToolCapabilityMetadata,
+    ) -> Result<()> {
+        let def = self
+            .tools
+            .get(&name)
+            .ok_or_else(|| error::ToolNotFoundSnafu { name: name.clone() }.build())?;
+        if self.capabilities.contains_key(&name) {
+            return error::DuplicateCapabilitySnafu { name }.fail();
         }
+        if !metadata
+            .redaction
+            .is_valid_for_schema(&def.def.input_schema)
+        {
+            // SECURITY(#6808): do not echo rejected field names. Declaration
+            // keys are data and may themselves be dynamic or sensitive.
+            return error::InvalidCapabilityDeclarationSnafu { name }.fail();
+        }
+        self.capabilities.insert(name, metadata);
+        Ok(())
     }
 
     /// Look up governance metadata for a tool by name, falling back to
@@ -296,6 +378,18 @@ impl ToolRegistry {
     /// Returns an error if no tool with the given name is registered.
     /// Returns the tool executor's error if execution fails.
     pub async fn execute(&self, input: &ToolInput, ctx: &ToolContext) -> Result<ToolResult> {
+        let prepared = self.prepare_input(input, ctx)?;
+        self.execute_prepared(&prepared, ctx).await
+    }
+
+    /// Expand file references, canonicalize declared paths, and validate an
+    /// input exactly once before an approval/receipt boundary.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the tool is unknown, interpolation fails, or the
+    /// expanded arguments do not satisfy the tool's schema.
+    pub fn prepare_input(&self, input: &ToolInput, ctx: &ToolContext) -> Result<PreparedToolInput> {
         let tool = self.tools.get(&input.name).ok_or_else(|| {
             error::ToolNotFoundSnafu {
                 name: input.name.clone(),
@@ -310,12 +404,53 @@ impl ToolRegistry {
         let mut expanded_input = input.clone();
         expanded_input.arguments = expanded_args;
 
-        // Validate expanded arguments against the tool's declared input schema.
-        // WHY: Catch malformed arguments before the executor runs so callers get
-        // consistent, schema-driven errors instead of internal parsing failures.
+        // Validate before registry-owned path normalization so it may rely on
+        // the declared JSON types.
         tool.def
             .input_schema
             .validate(&input.name, &expanded_input.arguments)?;
+
+        // WHY(#6808): path resolution must happen before approval and Receipt
+        // V2, not privately inside execute(). Executors declare only the path
+        // field names; the registry performs the constrained, shape-preserving
+        // normalization so vault taint cannot be moved or retyped here.
+        expanded_input.arguments = crate::builtins::workspace::prepare_path_arguments(
+            &expanded_input,
+            ctx,
+            &tool.path_arguments,
+            &tool.workspace_default_path_arguments,
+        )?;
+
+        // Fail closed if normalization materializes a value outside the
+        // registered schema.
+        tool.def
+            .input_schema
+            .validate(&input.name, &expanded_input.arguments)?;
+
+        Ok(PreparedToolInput {
+            input: expanded_input,
+        })
+    }
+
+    /// Execute an input produced by [`Self::prepare_input`] without repeating
+    /// interpolation or validation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the prepared tool is no longer registered or its
+    /// executor fails.
+    pub async fn execute_prepared(
+        &self,
+        prepared: &PreparedToolInput,
+        ctx: &ToolContext,
+    ) -> Result<ToolResult> {
+        let input = prepared.as_tool_input();
+        let tool = self.tools.get(&input.name).ok_or_else(|| {
+            error::ToolNotFoundSnafu {
+                name: input.name.clone(),
+            }
+            .build()
+        })?;
 
         let span = info_span!("tool_execute",
             tool.name = %input.name,
@@ -335,7 +470,7 @@ impl ToolRegistry {
         // causes incorrect parent attribution for concurrent tasks (#3384).
         let result = tool
             .executor
-            .execute(&expanded_input, ctx)
+            .execute(input, ctx)
             .instrument(span.clone())
             .await;
         let duration_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);

@@ -313,7 +313,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(sessions_dispatch_def(), Box::new(SessionsDispatchExecutor))?;
     registry.declare_capability(
         ToolName::from_static("sessions_dispatch"), // kanon:ignore RUST/expect
@@ -327,7 +327,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

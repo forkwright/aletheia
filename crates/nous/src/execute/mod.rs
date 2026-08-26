@@ -26,7 +26,7 @@ use hermeneus::types::{
 use mneme::knowledge::FactSensitivity;
 use organon::registry::ToolRegistry;
 use organon::surface::SurfaceInputs;
-use organon::types::ToolContext;
+use organon::types::{REDACTED_MARKER, ToolContext};
 
 use self::dispatch::{
     DispatchResult, ToolDispatchItem, ToolDispatchPolicy, build_messages, classify_signals,
@@ -447,6 +447,22 @@ fn record_llm_stream_send_error(
     }
 }
 
+/// Produce the outward/replay-safe form of a provider lifecycle event.
+///
+/// Incremental tool JSON arrives before dispatch has a complete value and,
+/// on some provider adapters, before the event carries enough identity to
+/// resolve a per-tool policy. Partial JSON cannot be safely field-redacted.
+/// Keep the lifecycle signal but fail closed on its payload; the later
+/// structured `ToolStart` event carries the complete policy-aware input.
+fn outward_safe_llm_event(event: &LlmStreamEvent) -> LlmStreamEvent {
+    match event {
+        LlmStreamEvent::InputJsonDelta { .. } => LlmStreamEvent::InputJsonDelta {
+            partial_json: REDACTED_MARKER.to_owned(),
+        },
+        event => event.clone(),
+    }
+}
+
 /// Streaming execute stage: same as [`execute`] but emits real-time events.
 ///
 /// Uses `complete_streaming()` when the provider supports it, falling back to
@@ -755,7 +771,8 @@ async fn run_execute_loop(
         let mut on_event = tx_for_delta.map(|tx| {
             let tx = tx.clone();
             move |event: LlmStreamEvent| {
-                if let Err(e) = tx.try_send(TurnStreamEvent::LlmDelta(event.clone())) {
+                let outward_event = outward_safe_llm_event(&event);
+                if let Err(e) = tx.try_send(TurnStreamEvent::LlmDelta(outward_event)) {
                     record_llm_stream_send_error(nous_id_for_delta.as_ref(), &event, &e);
                 }
             }
