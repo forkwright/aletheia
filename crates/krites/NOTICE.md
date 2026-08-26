@@ -192,7 +192,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 11.9% | derived | — |
 | `src/runtime/hnsw/visited_pool.rs` | `runtime/hnsw.rs` | 3.3% | derived | — |
 | `src/runtime/hnsw_sovereign/adaptive.rs` | cf. `runtime/hnsw.rs` | 0.0% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
-| `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | cf. `runtime/hnsw.rs` | 0.9% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
+| `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | cf. `runtime/hnsw.rs` | 0.8% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
 | `src/runtime/hnsw_sovereign/graph.rs` | cf. `runtime/hnsw.rs` | 13.6% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
 | `src/runtime/hnsw_sovereign/mod.rs` | cf. `runtime/hnsw.rs` | 0.0% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
 | `src/runtime/hnsw_sovereign/put.rs` | cf. `runtime/hnsw.rs` | 9.6% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |

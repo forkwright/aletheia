@@ -1,0 +1,90 @@
+# WHY this workflow exists (#6952): the sovereign-HNSW close/reopen recall
+# test has reported an intermittent post-delete-and-reopen average recall of
+# exactly 0.00 against a floor of 0.05 (its post-reopen sibling sits at 0.85).
+# The prescribed comparison is a serial target-only condition against the
+# default-concurrency scope in the same feature world. AB then BA blocks keep
+# invocation order visible. Typed nextest lifecycle events and integer recall
+# sidecars must both be complete before the report is valid. This workflow is
+# deliberately NOT in the required `gate` set: it measures; it does not claim
+# that a green run resolved the flake or establish a sovereign soak.
+name: hnsw recall discriminator (#6952)
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "Even invocation count per condition (minimum 2)"
+        default: "10"
+        required: true
+      concurrent_scope:
+        description: "What runs alongside the target test in the concurrent leg"
+        type: choice
+        options:
+          - module
+          - package
+        default: module
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  discriminate:
+    name: recall distribution, serial vs concurrent
+    runs-on: ubuntu-latest
+    # WHY 90m: 2 x N test invocations share one cold-cache krites build; the
+    # gate-coverage-sovereign-hnsw job's 60m covers a full workspace run, and
+    # this is a fraction of it. Ceiling for a runaway loop, not a target.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # WHY: toolchain falls through to rust-toolchain.toml, the SSOT for the
+      # pinned Rust version (#4945) — no `toolchain:` override here.
+      - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          key: hnsw-recall-discriminator
+
+      - name: Configure git credentials for fleet deps
+        uses: ./.github/actions/fleet-git-credentials
+        with:
+          token: ${{ secrets.FLEET_REPO_TOKEN }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2
+        with:
+          tool: nextest@0.9.143
+
+      - name: Run the discriminator
+        env:
+          # WHY env indirection: `inputs.*` in a run block is script injection
+          # surface (the dispatcher types `--runs` by hand); through env the
+          # value is quoted shell data, never re-parsed as script text.
+          RUNS: ${{ inputs.runs }}
+          CONCURRENT_SCOPE: ${{ inputs.concurrent_scope }}
+        run: |
+          set +e
+          python3 scripts/hnsw-recall-discriminator.py \
+            --runs "$RUNS" \
+            --concurrent-scope "$CONCURRENT_SCOPE" \
+            --out hnsw-recall-discriminator-out
+          status=$?
+          if [[ -f hnsw-recall-discriminator-out/summary.md ]]; then
+            cat hnsw-recall-discriminator-out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          exit "$status"
+
+      - name: Upload the distribution artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: hnsw-recall-discriminator
+          path: hnsw-recall-discriminator-out/
+          retention-days: 90
