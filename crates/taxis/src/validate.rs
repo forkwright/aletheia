@@ -8,7 +8,7 @@ use serde_json::Value;
 use snafu::Snafu;
 use symbolon::types::Role;
 
-use crate::config::AletheiaConfig;
+use crate::config::{AletheiaConfig, DEFAULT_CHANNEL_SESSION_KEY_PATTERN};
 use crate::oikos::Oikos;
 use crate::workspace_schema::validate_agent_workspaces;
 
@@ -826,27 +826,254 @@ fn validate_bindings(value: &Value, errors: &mut Vec<String>) {
     };
 
     for (i, binding) in bindings.iter().enumerate() {
-        for field in &["channel", "source", "nousId"] {
-            match binding.get(field).and_then(Value::as_str) {
-                None | Some("") => {
-                    errors.push(format!("bindings[{i}].{field} must not be empty"));
-                }
-                _ => {
-                    // NOTE: non-empty field value passes validation
-                }
-            }
-        }
+        validate_binding(i, binding, errors);
+    }
 
-        if let Some(channel) = binding.get("channel").and_then(Value::as_str)
-            && !channel.is_empty()
-            && !KNOWN_CHANNEL_TYPES.contains(&channel)
+    validate_binding_conflicts(bindings, errors);
+}
+
+fn validate_binding(index: usize, binding: &Value, errors: &mut Vec<String>) {
+    for field in &["channel", "source", "nousId"] {
+        if binding
+            .get(field)
+            .and_then(Value::as_str)
+            .is_none_or(|value| value.trim().is_empty())
         {
+            errors.push(format!("bindings[{index}].{field} must not be empty"));
+        }
+    }
+
+    if let Some(account) = binding.get("account").and_then(Value::as_str)
+        && account.trim().is_empty()
+    {
+        errors.push(format!("bindings[{index}].account must not be empty"));
+    }
+
+    if let Some(channel) = binding.get("channel").and_then(Value::as_str)
+        && !channel.trim().is_empty()
+        && !KNOWN_CHANNEL_TYPES.contains(&channel)
+    {
+        errors.push(format!(
+            "bindings[{index}].channel '{channel}' is not a known channel type (expected one of: {})",
+            KNOWN_CHANNEL_TYPES.join(", ")
+        ));
+    }
+
+    let source_kind = validate_binding_source_kind(index, binding, errors);
+    if binding_has_operator_tier(index, binding, errors) {
+        validate_operator_binding(index, binding, source_kind, errors);
+    }
+    validate_binding_participants(index, binding, errors);
+}
+
+fn validate_binding_source_kind<'a>(
+    index: usize,
+    binding: &'a Value,
+    errors: &mut Vec<String>,
+) -> Option<&'a str> {
+    let Some(kind) = binding.get("sourceKind") else {
+        return None;
+    };
+    let Some(kind) = kind.as_str() else {
+        errors.push(format!("bindings[{index}].sourceKind must be a string"));
+        return None;
+    };
+
+    if matches!(kind, "direct" | "group") {
+        Some(kind)
+    } else {
+        errors.push(format!(
+            "bindings[{index}].sourceKind must be \"direct\" or \"group\""
+        ));
+        None
+    }
+}
+
+fn binding_has_operator_tier(index: usize, binding: &Value, errors: &mut Vec<String>) -> bool {
+    let Some(tier) = binding.get("commandTier") else {
+        return false;
+    };
+    let Some(tier) = tier.as_str() else {
+        errors.push(format!("bindings[{index}].commandTier must be a string"));
+        return false;
+    };
+
+    match tier {
+        "public" => false,
+        "operator" => true,
+        _ => {
             errors.push(format!(
-                "bindings[{i}].channel '{channel}' is not a known channel type (expected one of: {})",
-                KNOWN_CHANNEL_TYPES.join(", ")
+                "bindings[{index}].commandTier must be \"public\" or \"operator\""
+            ));
+            false
+        }
+    }
+}
+
+fn validate_operator_binding(
+    index: usize,
+    binding: &Value,
+    source_kind: Option<&str>,
+    errors: &mut Vec<String>,
+) {
+    if source_kind != Some("direct") {
+        errors.push(format!(
+            "bindings[{index}] must set sourceKind = \"direct\" for operator commands"
+        ));
+    }
+    if binding.get("source").and_then(Value::as_str) == Some("*") {
+        errors.push(format!(
+            "bindings[{index}] cannot grant operator commands from a wildcard source"
+        ));
+    }
+    if binding
+        .get("account")
+        .and_then(Value::as_str)
+        .is_none_or(|account| account.trim().is_empty())
+    {
+        errors.push(format!(
+            "bindings[{index}] must name an explicit account for operator commands"
+        ));
+    }
+    if binding
+        .get("participants")
+        .and_then(Value::as_array)
+        .is_some_and(|participants| !participants.is_empty())
+    {
+        errors.push(format!(
+            "bindings[{index}]: operator bindings cannot declare participants; privileged group replies unsupported"
+        ));
+    }
+}
+
+fn validate_binding_participants(index: usize, binding: &Value, errors: &mut Vec<String>) {
+    let Some(participants) = binding.get("participants") else {
+        return;
+    };
+    let Some(participants) = participants.as_array() else {
+        errors.push(format!("bindings[{index}].participants must be an array"));
+        return;
+    };
+
+    let mut seen = HashSet::new();
+    for (participant_index, participant) in participants.iter().enumerate() {
+        let Some(participant) = participant.as_str() else {
+            errors.push(format!(
+                "bindings[{index}].participants[{participant_index}] must be a string"
+            ));
+            continue;
+        };
+        if participant.trim().is_empty() {
+            errors.push(format!(
+                "bindings[{index}].participants[{participant_index}] must not be empty"
+            ));
+        } else if !seen.insert(participant) {
+            errors.push(format!(
+                "bindings[{index}].participants contains a duplicate value"
             ));
         }
     }
+}
+
+fn validate_binding_conflicts(bindings: &[Value], errors: &mut Vec<String>) {
+    // WHY: equal-specificity overlapping bindings must not let TOML order
+    // choose between divergent destinations or authority. More-specific
+    // bindings may intentionally layer over a general guest route.
+    for (left_index, left) in bindings.iter().enumerate() {
+        for (right_index, right) in bindings.iter().enumerate().skip(left_index + 1) {
+            if !bindings_share_route_class(left, right)
+                || binding_specificity(left) != binding_specificity(right)
+                || !binding_identity_domains_overlap(left, right)
+                || binding_outcomes_equal(left, right)
+            {
+                continue;
+            }
+            errors.push(format!(
+                "bindings[{left_index}] and bindings[{right_index}] overlap at equal specificity with divergent routing outcomes"
+            ));
+        }
+    }
+}
+
+fn bindings_share_route_class(left: &Value, right: &Value) -> bool {
+    left.get("channel").and_then(Value::as_str) == right.get("channel").and_then(Value::as_str)
+        && left.get("source").and_then(Value::as_str) == right.get("source").and_then(Value::as_str)
+        && binding_source_kinds_overlap(left, right)
+}
+
+fn binding_source_kinds_overlap(left: &Value, right: &Value) -> bool {
+    let left_kind = left.get("sourceKind").and_then(Value::as_str);
+    let right_kind = right.get("sourceKind").and_then(Value::as_str);
+    left_kind.is_none() || right_kind.is_none() || left_kind == right_kind
+}
+
+fn binding_specificity(binding: &Value) -> usize {
+    usize::from(
+        binding
+            .get("sourceKind")
+            .and_then(Value::as_str)
+            .is_some_and(|kind| matches!(kind, "direct" | "group")),
+    ) + usize::from(
+        binding
+            .get("account")
+            .and_then(Value::as_str)
+            .is_some_and(|value| !value.trim().is_empty()),
+    ) + usize::from(
+        binding
+            .get("participants")
+            .and_then(Value::as_array)
+            .is_some_and(|participants| {
+                participants.iter().any(|participant| {
+                    participant
+                        .as_str()
+                        .is_some_and(|value| !value.trim().is_empty())
+                })
+            }),
+    )
+}
+
+fn binding_identity_domains_overlap(left: &Value, right: &Value) -> bool {
+    let left_account = left
+        .get("account")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty());
+    let right_account = right
+        .get("account")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty());
+    let accounts_overlap =
+        left_account.is_none() || right_account.is_none() || left_account == right_account;
+
+    let left_participants = binding_participants(left);
+    let right_participants = binding_participants(right);
+    let participants_overlap = left_participants.is_empty()
+        || right_participants.is_empty()
+        || !left_participants.is_disjoint(&right_participants);
+    accounts_overlap && participants_overlap
+}
+
+fn binding_participants(binding: &Value) -> HashSet<&str> {
+    binding
+        .get("participants")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .collect()
+}
+
+fn binding_outcomes_equal(left: &Value, right: &Value) -> bool {
+    let string_or = |binding: &Value, key: &str, default: &str| {
+        binding
+            .get(key)
+            .and_then(Value::as_str)
+            .map_or_else(|| default.to_owned(), ToOwned::to_owned)
+    };
+    string_or(left, "nousId", "") == string_or(right, "nousId", "")
+        && string_or(left, "sessionKey", DEFAULT_CHANNEL_SESSION_KEY_PATTERN)
+            == string_or(right, "sessionKey", DEFAULT_CHANNEL_SESSION_KEY_PATTERN)
+        && string_or(left, "commandTier", "public") == string_or(right, "commandTier", "public")
 }
 
 fn validate_feature_flags(value: &Value, errors: &mut Vec<String>) {
@@ -1176,6 +1403,31 @@ fn validate_messaging(value: &Value, errors: &mut Vec<String>) {
     check_range_u64(value, "receiveTimeoutSecs", 1, 300, errors);
     check_range_u64(value, "agentDispatchTimeoutSecs", 10, 3600, errors);
     check_range_u64(value, "maxConcurrentHandlers", 1, 10_000, errors);
+    let Some(public_commands) = value.pointer("/commands/publicCommands") else {
+        return;
+    };
+    let Some(public_commands) = public_commands.as_array() else {
+        errors.push("messaging.commands.publicCommands must be an array".to_owned());
+        return;
+    };
+
+    let mut seen = HashSet::new();
+    for (index, command) in public_commands.iter().enumerate() {
+        let Some(command) = command.as_str() else {
+            errors.push(format!(
+                "messaging.commands.publicCommands[{index}] must be a string"
+            ));
+            continue;
+        };
+        if !matches!(command, "help" | "ping") {
+            errors.push(format!(
+                "messaging.commands.publicCommands[{index}] is not a safe public command"
+            ));
+        } else if !seen.insert(command) {
+            errors
+                .push("messaging.commands.publicCommands contains a duplicate command".to_owned());
+        }
+    }
 }
 
 fn validate_tuning(value: &Value, errors: &mut Vec<String>) {

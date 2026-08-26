@@ -438,6 +438,25 @@ async fn openapi_spec_contains_config_section_schemas() {
         schemas.contains_key("FeatureFlagConfig"),
         "OpenAPI spec must include FeatureFlagConfig schema"
     );
+    let binding_properties = schemas["ChannelBinding"]["properties"]
+        .as_object()
+        .expect("ChannelBinding properties");
+    assert!(
+        binding_properties.contains_key("sourceKind"),
+        "binding schema must expose its direct/group selector"
+    );
+    assert!(
+        binding_properties.contains_key("commandTier"),
+        "binding schema must expose command authority"
+    );
+    assert_eq!(
+        schemas["ChannelSourceKind"]["enum"],
+        serde_json::json!(["direct", "group"])
+    );
+    assert_eq!(
+        schemas["CommandTier"]["enum"],
+        serde_json::json!(["public", "operator"])
+    );
 }
 
 #[tokio::test]

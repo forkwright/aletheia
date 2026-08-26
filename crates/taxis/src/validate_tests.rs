@@ -1490,6 +1490,218 @@ fn accepts_matrix_binding() {
 }
 
 #[test]
+fn accepts_exact_account_scoped_dm_operator_binding() {
+    let section = json!([{
+        "channel": "signal",
+        "source": "+15550100",
+        "nousId": "main",
+        "account": "primary",
+        "sourceKind": "direct",
+        "commandTier": "operator"
+    }]);
+    assert!(validate_section("bindings", &section).is_ok());
+}
+
+#[test]
+fn rejects_wildcard_or_unscoped_operator_bindings() {
+    for section in [
+        json!([{
+            "channel": "signal", "source": "*", "nousId": "main",
+            "account": "primary", "sourceKind": "direct", "commandTier": "operator"
+        }]),
+        json!([{
+            "channel": "signal", "source": "+15550100", "nousId": "main",
+            "sourceKind": "direct", "commandTier": "operator"
+        }]),
+    ] {
+        assert!(
+            validate_section("bindings", &section).is_err(),
+            "broad operator grant must be rejected"
+        );
+    }
+}
+
+#[test]
+fn rejects_operator_binding_without_explicit_direct_source_kind() {
+    for section in [
+        json!([{
+            "channel": "signal", "source": "+15550100", "nousId": "main",
+            "account": "primary", "commandTier": "operator"
+        }]),
+        json!([{
+            "channel": "signal", "source": "group-a", "nousId": "main",
+            "account": "primary", "sourceKind": "group", "commandTier": "operator"
+        }]),
+    ] {
+        let error = validate_section("bindings", &section).expect_err("non-direct operator route");
+        assert!(error.errors.iter().any(|message| {
+            message.contains("must set sourceKind = \"direct\" for operator commands")
+        }));
+    }
+}
+
+#[test]
+fn rejects_operator_binding_with_participants_as_unsupported_group_reply() {
+    let section = json!([{
+        "channel": "signal",
+        "source": "group-a",
+        "nousId": "ops",
+        "account": "primary",
+        "sourceKind": "group",
+        "participants": ["+15550100"],
+        "commandTier": "operator"
+    }]);
+    let error = validate_section("bindings", &section).expect_err("privileged group route");
+    assert!(error.errors.iter().any(|message| {
+        message.contains(
+            "operator bindings cannot declare participants; privileged group replies unsupported",
+        )
+    }));
+}
+
+#[test]
+fn rejects_equal_specificity_overlapping_binding_conflicts_in_either_order() {
+    let first = json!({
+        "channel": "signal", "source": "group-a", "nousId": "ops-a",
+        "account": "primary", "participants": ["+15550100"]
+    });
+    let second = json!({
+        "channel": "signal", "source": "group-a", "nousId": "ops-b",
+        "account": "primary", "participants": ["+15550100", "+15550101"]
+    });
+
+    for section in [
+        Value::Array(vec![first.clone(), second.clone()]),
+        Value::Array(vec![second.clone(), first.clone()]),
+    ] {
+        assert!(validate_section("bindings", &section).is_err());
+    }
+}
+
+#[test]
+fn accepts_layered_public_groups_and_identity_disjoint_bindings() {
+    let section = json!([
+        {
+            "channel": "signal", "source": "group-a", "nousId": "guest",
+            "account": "primary"
+        },
+        {
+            "channel": "signal", "source": "group-a", "nousId": "listed",
+            "account": "primary", "participants": ["+15550100"]
+        },
+        {
+            "channel": "signal", "source": "group-a", "nousId": "other-account",
+            "account": "secondary", "participants": ["+15550100"]
+        }
+    ]);
+    assert!(validate_section("bindings", &section).is_ok());
+}
+
+#[test]
+fn accepts_identical_overlapping_binding_outcomes() {
+    let section = json!([
+        {
+            "channel": "signal", "source": "+15550100", "nousId": "same",
+            "account": "primary"
+        },
+        {
+            "channel": "signal", "source": "+15550100", "nousId": "same",
+            "account": "primary"
+        }
+    ]);
+    assert!(validate_section("bindings", &section).is_ok());
+}
+
+#[test]
+fn source_kind_selectors_are_disjoint_and_more_specific_than_legacy_routes() {
+    let section = json!([
+        {
+            "channel": "signal", "source": "shared-id", "nousId": "legacy"
+        },
+        {
+            "channel": "signal", "source": "shared-id", "sourceKind": "direct",
+            "nousId": "direct"
+        },
+        {
+            "channel": "signal", "source": "shared-id", "sourceKind": "group",
+            "nousId": "group"
+        }
+    ]);
+    assert!(validate_section("bindings", &section).is_ok());
+}
+
+#[test]
+fn rejects_cross_leg_specificity_ties_in_either_order() {
+    let typed_direct = json!({
+        "channel": "signal", "source": "shared-id", "sourceKind": "direct",
+        "nousId": "direct"
+    });
+    let account_scoped_legacy = json!({
+        "channel": "signal", "source": "shared-id", "account": "primary",
+        "nousId": "account"
+    });
+
+    for section in [
+        Value::Array(vec![typed_direct.clone(), account_scoped_legacy.clone()]),
+        Value::Array(vec![account_scoped_legacy.clone(), typed_direct.clone()]),
+    ] {
+        assert!(validate_section("bindings", &section).is_err());
+    }
+}
+
+#[test]
+fn rejects_empty_duplicate_or_non_string_binding_participants() {
+    for section in [
+        json!([{
+            "channel": "signal", "source": "group-a", "nousId": "main",
+            "participants": [""]
+        }]),
+        json!([{
+            "channel": "signal", "source": "group-a", "nousId": "main",
+            "participants": ["alice", "alice"]
+        }]),
+        json!([{
+            "channel": "signal", "source": "group-a", "nousId": "main",
+            "participants": [42]
+        }]),
+    ] {
+        assert!(validate_section("bindings", &section).is_err());
+    }
+}
+
+#[test]
+fn rejects_invalid_binding_command_tier() {
+    for section in [
+        json!([{
+            "channel": "signal", "source": "+15550100", "nousId": "main",
+            "commandTier": "admin"
+        }]),
+        json!([{
+            "channel": "signal", "source": "+15550100", "nousId": "main",
+            "commandTier": 1
+        }]),
+    ] {
+        assert!(validate_section("bindings", &section).is_err());
+    }
+}
+
+#[test]
+fn rejects_invalid_binding_source_kind() {
+    for section in [
+        json!([{
+            "channel": "signal", "source": "+15550100", "nousId": "main",
+            "sourceKind": "room"
+        }]),
+        json!([{
+            "channel": "signal", "source": "+15550100", "nousId": "main",
+            "sourceKind": 1
+        }]),
+    ] {
+        assert!(validate_section("bindings", &section).is_err());
+    }
+}
+
+#[test]
 fn accepts_feature_flags() {
     let section = json!([
         { "key": "new_ui", "description": "Enable the new UI", "enabled": true }
@@ -1882,6 +2094,17 @@ fn accepts_valid_messaging() {
         validate_section("messaging", &section).is_ok(),
         "valid messaging config should be accepted"
     );
+}
+
+#[test]
+fn rejects_operational_or_duplicate_commands_in_public_subset() {
+    for section in [
+        json!({ "commands": { "publicCommands": ["help", "agents"] } }),
+        json!({ "commands": { "publicCommands": ["ping", "ping"] } }),
+        json!({ "commands": { "publicCommands": "help" } }),
+    ] {
+        assert!(validate_section("messaging", &section).is_err());
+    }
 }
 
 // --- validate_startup instance subdirectory checks (#3338) ---

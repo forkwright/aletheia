@@ -59,8 +59,8 @@ pub struct MessagingConfig {
     /// Per-agent outbound-recipient allowlist and default-deny posture,
     /// enforced by `agora::ChannelRegistry::send` before any provider send.
     pub outbound: OutboundMessagePolicy,
-    /// Inbound `!`-command authorization: who may invoke operational
-    /// commands from a channel, and which commands stay public.
+    /// Inbound `!`-command authorization: which commands stay public.
+    /// Operational authority is carried by the selected channel binding.
     pub commands: InboundCommandPolicy,
 }
 
@@ -138,16 +138,31 @@ impl OutboundMessagePolicy {
     }
 }
 
-/// Inbound `!`-command authorization: who may invoke operational
-/// commands from a channel, and which commands stay public.
+/// Authority tier attached to a selected inbound route.
+///
+/// The router, rather than the command dispatcher, derives this value from
+/// the complete channel/account/group/participant match. This keeps command
+/// authority bound to the identity evidence that selected the destination.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum CommandTier {
+    /// Only the fixed, non-operational public command surface is available.
+    #[default]
+    Public,
+    /// The complete operational command surface is available.
+    Operator,
+}
+
+/// Inbound `!`-command authorization for the public command subset.
 ///
 /// WHY default-deny (#5193): any inbound message that parses as a `!`
 /// command is intercepted after routing and can enumerate agents, channel
 /// health, models, skills, blackboard entries, and sessions. Wildcard and
 /// default routes make that surface available to broad sender sets, so the
 /// safe default is that only `public_commands` are reachable and the
-/// operational surface requires an explicit `operators` entry naming the
-/// sender. Non-operator senders see only the public subset in `!help`
+/// operational surface requires a route whose [`CommandTier`] resolves to
+/// `Operator`. Non-operator senders see only the public subset in `!help`
 /// output; denied commands receive a refusal reply and are counted in the
 /// `aletheia_command_denied_total` metric.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,57 +170,38 @@ impl OutboundMessagePolicy {
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct InboundCommandPolicy {
-    /// Sender patterns granted the full operator command surface. Each
-    /// entry is `"channel:source"`; either segment may be `"*"`, and the
-    /// source segment may itself contain `:` (e.g. Matrix user IDs) —
-    /// only the first `:` separates the channel.
-    pub operators: Vec<String>,
     /// Command names any sender may invoke (without the leading `!`).
     /// Default: `["help", "ping"]` — liveness and discovery reveal no
-    /// fleet state.
+    /// fleet state. Configuration may narrow this set, but cannot broaden it
+    /// beyond the built-in safe commands.
     pub public_commands: Vec<String>,
-    /// Allow every command from any sender. Default: `false` (fail
-    /// closed). Setting this to `true` restores the pre-policy behavior
-    /// and is an explicit operator opt-out.
-    pub default_allow: bool,
 }
 
 impl Default for InboundCommandPolicy {
     fn default() -> Self {
         Self {
-            operators: Vec::new(),
             public_commands: vec!["help".to_owned(), "ping".to_owned()],
-            default_allow: false,
         }
     }
 }
 
 impl InboundCommandPolicy {
-    /// Whether `command` (name without the leading `!`) may be invoked by
-    /// `sender` on `channel` under this policy.
+    /// Whether `command` may be invoked at the authority of the selected route.
+    ///
+    /// `public_commands` is intersected with the built-in safe set, so a
+    /// directly constructed config cannot make an operational command public.
     #[must_use]
-    pub fn allows(&self, command: &str, channel: &str, sender: &str) -> bool {
-        self.is_operator(channel, sender) || self.public_commands.iter().any(|c| c == command)
+    pub fn allows(&self, command: &str, tier: CommandTier) -> bool {
+        tier == CommandTier::Operator || self.public_command_names().any(|name| name == command)
     }
 
-    /// Whether `sender` on `channel` holds the operator command tier.
-    #[must_use]
-    pub fn is_operator(&self, channel: &str, sender: &str) -> bool {
-        self.default_allow
-            || self
-                .operators
-                .iter()
-                .any(|pattern| sender_pattern_matches(pattern, channel, sender))
+    /// Configured public commands after fail-closed intersection with the safe set.
+    pub fn public_command_names(&self) -> impl Iterator<Item = &str> {
+        self.public_commands
+            .iter()
+            .map(String::as_str)
+            .filter(|name| matches!(*name, "help" | "ping"))
     }
-}
-
-fn sender_pattern_matches(pattern: &str, channel: &str, sender: &str) -> bool {
-    let Some((channel_pat, source_pat)) = pattern.split_once(':') else {
-        // WHY: a pattern without a channel separator can never match;
-        // treating it as malformed-deny keeps a typo from widening access.
-        return false;
-    };
-    (channel_pat == "*" || channel_pat == channel) && (source_pat == "*" || source_pat == sender)
 }
 
 #[cfg(test)]
@@ -239,7 +235,7 @@ const _: () =
 // be the final item in the file.
 #[cfg(test)]
 mod policy_tests {
-    use super::{InboundCommandPolicy, OutboundMessagePolicy};
+    use super::{CommandTier, InboundCommandPolicy, OutboundMessagePolicy};
 
     #[test]
     fn default_denies_unconfigured_sender() {
@@ -288,76 +284,49 @@ mod policy_tests {
     #[test]
     fn inbound_default_denies_operator_commands() {
         let policy = InboundCommandPolicy::default();
-        assert!(!policy.allows("agents", "signal", "+15550100"));
-        assert!(!policy.allows("blackboard", "matrix", "@mallory:example.org"));
-        assert!(!policy.is_operator("signal", "+15550100"));
+        assert!(!policy.allows("agents", CommandTier::Public));
+        assert!(!policy.allows("blackboard", CommandTier::Public));
     }
 
     #[test]
     fn inbound_default_allows_public_subset() {
         let policy = InboundCommandPolicy::default();
-        assert!(policy.allows("help", "signal", "+15550100"));
-        assert!(policy.allows("ping", "matrix", "@anyone:example.org"));
+        assert!(policy.allows("help", CommandTier::Public));
+        assert!(policy.allows("ping", CommandTier::Public));
     }
 
     #[test]
-    fn inbound_operator_entry_grants_full_surface() {
-        let policy = InboundCommandPolicy {
-            operators: vec!["signal:+15550100".to_owned()],
-            ..InboundCommandPolicy::default()
-        };
-        assert!(policy.allows("agents", "signal", "+15550100"));
-        assert!(policy.is_operator("signal", "+15550100"));
-        // WHY: the grant is scoped to the exact channel + sender pair.
-        assert!(!policy.allows("agents", "matrix", "+15550100"));
-        assert!(!policy.allows("agents", "signal", "+15550999"));
-    }
-
-    #[test]
-    fn inbound_operator_wildcards() {
-        let policy = InboundCommandPolicy {
-            operators: vec!["matrix:*".to_owned()],
-            ..InboundCommandPolicy::default()
-        };
-        assert!(policy.allows("channels", "matrix", "@alice:example.org"));
-        assert!(!policy.allows("channels", "signal", "@alice:example.org"));
-    }
-
-    #[test]
-    fn inbound_operator_source_may_contain_colons() {
-        let policy = InboundCommandPolicy {
-            operators: vec!["matrix:@alice:example.org".to_owned()],
-            ..InboundCommandPolicy::default()
-        };
-        assert!(policy.allows("uptime", "matrix", "@alice:example.org"));
-        assert!(!policy.allows("uptime", "matrix", "@bob:example.org"));
-    }
-
-    #[test]
-    fn inbound_malformed_pattern_never_matches() {
-        let policy = InboundCommandPolicy {
-            operators: vec!["no-separator".to_owned()],
-            ..InboundCommandPolicy::default()
-        };
-        assert!(!policy.is_operator("signal", "no-separator"));
-    }
-
-    #[test]
-    fn inbound_default_allow_restores_open_behavior() {
-        let policy = InboundCommandPolicy {
-            default_allow: true,
-            ..InboundCommandPolicy::default()
-        };
-        assert!(policy.allows("blackboard", "signal", "+15550999"));
+    fn inbound_operator_tier_grants_full_surface() {
+        let policy = InboundCommandPolicy::default();
+        assert!(policy.allows("agents", CommandTier::Operator));
+        assert!(policy.allows("blackboard", CommandTier::Operator));
     }
 
     #[test]
     fn inbound_public_commands_are_configurable() {
         let policy = InboundCommandPolicy {
-            public_commands: vec!["status".to_owned()],
-            ..InboundCommandPolicy::default()
+            public_commands: vec!["ping".to_owned()],
         };
-        assert!(policy.allows("status", "signal", "+15550999"));
-        assert!(!policy.allows("help", "signal", "+15550999"));
+        assert!(policy.allows("ping", CommandTier::Public));
+        assert!(!policy.allows("help", CommandTier::Public));
+    }
+
+    #[test]
+    fn inbound_public_configuration_cannot_broaden_safe_set() {
+        let policy = InboundCommandPolicy {
+            public_commands: vec!["help".to_owned(), "agents".to_owned()],
+        };
+        assert!(policy.allows("help", CommandTier::Public));
+        assert!(!policy.allows("agents", CommandTier::Public));
+    }
+
+    #[test]
+    fn inbound_retired_sender_grants_are_rejected() {
+        for json in [
+            r#"{"operators":["signal:+15550100"]}"#,
+            r#"{"defaultAllow":true}"#,
+        ] {
+            assert!(serde_json::from_str::<InboundCommandPolicy>(json).is_err());
+        }
     }
 }

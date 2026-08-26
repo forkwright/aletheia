@@ -21,7 +21,7 @@ pub use knowledge::{
     AdmissionPolicyKind, BookkeepingProviderKind, CompactionStrategyKind, ExtractionConfig,
     KnowledgeConfig,
 };
-pub use messaging::{InboundCommandPolicy, MessagingConfig, OutboundMessagePolicy};
+pub use messaging::{CommandTier, InboundCommandPolicy, MessagingConfig, OutboundMessagePolicy};
 pub use nous::NousBehaviorConfig;
 pub use provider::{
     AnthropicConfig, DeploymentTarget, LlmProviderConfig, OpenAiApiFamily, PromptCacheMode,

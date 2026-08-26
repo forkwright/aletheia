@@ -173,6 +173,8 @@ use crate::state::AppState;
         crate::handlers::config::ChannelsConfig,
         crate::handlers::config::FeatureFlagConfig,
         crate::handlers::config::ChannelBinding,
+        crate::handlers::config::ChannelSourceKind,
+        crate::handlers::config::CommandTier,
         crate::handlers::config::EmbeddingSettings,
         crate::handlers::config::DataConfig,
         crate::handlers::config::MaintenanceConfig,

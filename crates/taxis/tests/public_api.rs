@@ -16,7 +16,8 @@
 use koina::id::NousId;
 use koina::secret::SecretString;
 use taxis::config::{
-    AgencyLevel, AletheiaConfig, ChannelBinding, EgressPolicy, ModelPricing, ModelRoute, ModelSpec,
+    AgencyLevel, AletheiaConfig, ChannelBinding, ChannelSourceKind, CommandTier,
+    DEFAULT_CHANNEL_SESSION_KEY_PATTERN, EgressPolicy, ModelPricing, ModelRoute, ModelSpec,
     NousDefinition, SandboxEnforcementMode, SignalAccountConfig, resolve_nous,
 };
 use taxis::redact::redact;
@@ -190,7 +191,68 @@ fn channel_binding_json_uses_camel_case_nous_id() {
     assert_eq!(binding.channel, "signal");
     assert_eq!(binding.source, "*");
     assert_eq!(binding.nous_id, "syn");
-    assert_eq!(binding.session_key, "{source}", "session key default");
+    assert_eq!(
+        binding.session_key, DEFAULT_CHANNEL_SESSION_KEY_PATTERN,
+        "session key default"
+    );
+    assert_eq!(binding.source_kind, None);
+    assert_eq!(binding.command_tier, CommandTier::Public);
+}
+
+#[test]
+fn channel_binding_operator_tier_roundtrips_lowercase() {
+    let json = r#"{
+        "channel":"signal",
+        "source":"+15550100",
+        "nousId":"syn",
+        "account":"primary",
+        "sourceKind":"direct",
+        "commandTier":"operator"
+    }"#;
+    let binding: ChannelBinding = serde_json::from_str(json).expect("parse");
+    assert_eq!(binding.source_kind, Some(ChannelSourceKind::Direct));
+    assert_eq!(binding.command_tier, CommandTier::Operator);
+    let serialized = serde_json::to_value(binding).expect("serialize");
+    assert_eq!(serialized["sourceKind"], "direct");
+    assert_eq!(serialized["commandTier"], "operator");
+}
+
+#[test]
+fn channel_binding_group_source_kind_roundtrips_lowercase() {
+    let json = r#"{
+        "channel":"matrix",
+        "source":"!room:example.org",
+        "sourceKind":"group",
+        "nousId":"syn"
+    }"#;
+    let binding: ChannelBinding = serde_json::from_str(json).expect("parse");
+    assert_eq!(binding.source_kind, Some(ChannelSourceKind::Group));
+    assert_eq!(
+        serde_json::to_value(binding).expect("serialize")["sourceKind"],
+        "group"
+    );
+}
+
+#[test]
+fn channel_binding_rejects_unknown_authority_fields() {
+    let json = r#"{
+        "channel":"signal",
+        "source":"+15550100",
+        "nousId":"syn",
+        "commandRole":"operator"
+    }"#;
+    assert!(serde_json::from_str::<ChannelBinding>(json).is_err());
+}
+
+#[test]
+fn channel_binding_rejects_unknown_source_kind() {
+    let json = r#"{
+        "channel":"signal",
+        "source":"+15550100",
+        "nousId":"syn",
+        "sourceKind":"room"
+    }"#;
+    assert!(serde_json::from_str::<ChannelBinding>(json).is_err());
 }
 
 #[test]

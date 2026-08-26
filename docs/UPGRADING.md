@@ -124,6 +124,23 @@ Both validations are correct and are not going away. They are called out here be
 `auth.mode = "none"` with an empty origins list is the shape a local instance naturally
 has, which makes it the likeliest config to hit this rather than an edge case.
 
+**Default channel session keys are intentionally account-isolated after this upgrade.**
+A binding that omits `sessionKey`, and any global-default route, now derives
+`{channel}:{account}:{group}:{source}` instead of `{source}`. The stable account label
+falls back to `default` when the provider did not attribute one, and direct messages use
+`dm` for the group leg. The first post-upgrade message therefore starts a new logical
+session under the isolated key; history stored under the old key is retained but is not
+silently merged across accounts, channels, or groups. Explicit custom `sessionKey`
+patterns are unchanged.
+
+**Inbound operator grants move onto exact channel bindings.** The retired
+`messaging.commands.operators` and `messaging.commands.defaultAllow` keys are rejected
+as unknown. Grant operator commands only on a binding with an exact non-wildcard
+`source`, an explicit `account`, `sourceKind = "direct"`, and
+`commandTier = "operator"`. Group, wildcard, unspecified-kind, and global-default
+routes remain public even if a config value is constructed outside the validated load
+path.
+
 Check `git log --oneline` or [GitHub releases](https://github.com/forkwright/aletheia/releases) for breaking changes per version. Pre-1.0, MINOR bumps may include breaking changes with documented migration steps.
 
 ---

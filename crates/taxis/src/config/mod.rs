@@ -15,7 +15,7 @@ pub use agents::{
 };
 pub use behavior::{
     AcademicSourceConfig, AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig,
-    BookkeepingProviderKind, CapacityConfig, CompactionStrategyKind, CronTaskConfig,
+    BookkeepingProviderKind, CapacityConfig, CommandTier, CompactionStrategyKind, CronTaskConfig,
     DaemonBehaviorConfig, DaemonRunnerOutputMode, DeploymentTarget, DispatchConfig,
     DispatchSpecConfig, ExtractionConfig, InboundCommandPolicy, JwtSettings, KnowledgeConfig,
     LlmProviderConfig, MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, OutboundMessagePolicy,
@@ -321,10 +321,33 @@ pub enum AgencyLevel {
 // existing call sites and camelCase wire format unchanged.
 pub type ModelPricing = koina::models::ModelPrice;
 
+/// Message shape selected by a channel binding's `source` value.
+///
+/// An explicit selector prevents an identifier string from being interpreted
+/// as both a direct-message sender and a group ID. Omitting `sourceKind` keeps
+/// legacy non-operator routing behavior, but cannot prove operator authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum ChannelSourceKind {
+    /// Match only direct messages whose sender equals `source`.
+    Direct,
+    /// Match only group messages whose group ID equals `source`.
+    Group,
+}
+
+/// Default session-key template for inbound channel routes.
+///
+/// The provider, stable account label, message shape, and sender are all
+/// included so identities on different accounts, channels, or groups cannot
+/// share conversation state accidentally.
+pub const DEFAULT_CHANNEL_SESSION_KEY_PATTERN: &str = "{channel}:{account}:{group}:{source}";
+
 /// Maps a channel source to a nous agent.
 // kanon:ignore RUST/no-debug-derive-on-public-types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ChannelBinding {
     /// Channel type (e.g., "signal").
     pub channel: String,
@@ -333,34 +356,53 @@ pub struct ChannelBinding {
     /// Nous ID to route to.
     // kanon:ignore RUST/primitive-for-domain-id — wire/serde config field: nous_id is a TOML routing string, not a runtime domain identifier
     pub nous_id: String,
-    /// Session key pattern. Supports `{source}`, `{group}`, and `{account}`
-    /// placeholders (`{account}` expands to the receiving provider account,
-    /// or `default` when the provider did not attribute one).
+    /// Session key pattern. Supports `{channel}`, `{source}`, `{group}`, and
+    /// `{account}` placeholders. `{account}` expands to the stable receiving
+    /// provider account label, or `default` when the provider did not
+    /// attribute one; `{group}` expands to `dm` for direct messages.
+    ///
+    /// Upgrade note: bindings that omit this field intentionally receive the
+    /// new account-isolated default key after upgrading. Their prior sessions
+    /// remain stored under the old key. An explicit custom pattern is retained
+    /// unchanged.
     #[serde(default = "default_session_pattern")]
     // kanon:ignore RUST/plain-string-secret
     pub session_key: String,
-    /// Restrict this binding to the provider account that received the
-    /// message (multi-account deployments). `None` matches any account.
+    /// Restrict this binding to the stable logical account label that received
+    /// the message (the key under `channels.<provider>.accounts`, not a Signal
+    /// phone number or other private wire identity). `None` matches any account.
     ///
     /// WHY: identical senders and group IDs on two different accounts are
     /// distinct conversations; without an account leg in the match they
     /// collapse onto whichever binding sorts first.
     #[serde(default)]
     pub account: Option<String>,
+    /// Whether `source` names a direct-message sender or a group ID.
+    /// `None` preserves legacy matching for public routes. Operator routes
+    /// must explicitly select `direct` so their identity shape is provable at
+    /// configuration-validation time.
+    #[serde(default)]
+    pub source_kind: Option<ChannelSourceKind>,
     /// Sender allowlist for this binding. When non-empty, only the listed
-    /// senders may activate the binding; other senders fall through to
-    /// lower-priority routes.
+    /// senders may activate it. An exact group binding casts a deny shadow,
+    /// so an unlisted participant cannot fall through to broader routes.
     ///
     /// WHY: a group binding otherwise lets every participant of a
     /// configured group drive the agent and its command surface. Listing
-    /// participants makes group membership insufficient on its own.
-    /// Empty preserves the previous any-participant behavior.
+    /// participants makes group membership insufficient on its own. A
+    /// separate open exact-group binding is the explicit guest route.
     #[serde(default)]
     pub participants: Vec<String>,
+    /// Command authority granted by this route when its identity constraints
+    /// prove a sufficiently narrow principal. Only an exact, account-scoped
+    /// direct-message binding may resolve to [`CommandTier::Operator`]; group,
+    /// wildcard, and default routes are always clamped to `Public` at runtime.
+    #[serde(default)]
+    pub command_tier: CommandTier,
 }
 
 fn default_session_pattern() -> String {
-    "{source}".to_owned()
+    DEFAULT_CHANNEL_SESSION_KEY_PATTERN.to_owned()
 }
 
 /// Embedding provider configuration for recall pipeline.

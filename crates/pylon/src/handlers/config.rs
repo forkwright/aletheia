@@ -29,9 +29,9 @@ const VALID_SECTIONS: &[&str] = &[
 #[path = "config_dto.rs"]
 mod config_dto;
 pub use config_dto::{
-    AgentsConfig, ChannelBinding, ChannelsConfig, ConfigReloadResponse, ConfigUpdateResponse,
-    DataConfig, EmbeddingSettings, FeatureFlagConfig, GatewayConfig, MaintenanceConfig,
-    ModelPricing,
+    AgentsConfig, ChannelBinding, ChannelSourceKind, ChannelsConfig, CommandTier,
+    ConfigReloadResponse, ConfigUpdateResponse, DataConfig, EmbeddingSettings, FeatureFlagConfig,
+    GatewayConfig, MaintenanceConfig, ModelPricing,
 };
 
 pub use section_schemas::*; // kanon:ignore RUST/barrel-reexport -- WHY: section_schemas is a private submodule; the pub use glob is the intended public API surface for config endpoint types
@@ -40,8 +40,8 @@ pub use section_schemas::*; // kanon:ignore RUST/barrel-reexport -- WHY: section
 mod section_schemas {
     use crate::error::{ApiError, FieldError};
     use crate::handlers::config::config_dto::{
-        AgentsConfig, ChannelBinding, ChannelsConfig, DataConfig, EmbeddingSettings,
-        FeatureFlagConfig, GatewayConfig, MaintenanceConfig, ModelPricing,
+        AgentsConfig, ChannelBinding, ChannelSourceKind, ChannelsConfig, CommandTier, DataConfig,
+        EmbeddingSettings, FeatureFlagConfig, GatewayConfig, MaintenanceConfig, ModelPricing,
     };
     use std::collections::HashMap;
 
@@ -97,6 +97,11 @@ mod section_schemas {
             schemas.push((GatewayConfig::name().into(), GatewayConfig::schema()));
             schemas.push((ChannelsConfig::name().into(), ChannelsConfig::schema()));
             schemas.push((ChannelBinding::name().into(), ChannelBinding::schema()));
+            schemas.push((
+                ChannelSourceKind::name().into(),
+                ChannelSourceKind::schema(),
+            ));
+            schemas.push((CommandTier::name().into(), CommandTier::schema()));
             schemas.push((
                 FeatureFlagConfig::name().into(),
                 FeatureFlagConfig::schema(),

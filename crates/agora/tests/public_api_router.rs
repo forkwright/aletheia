@@ -8,6 +8,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use agora::command::{Command, CommandContext, execute, parse};
 use agora::registry::ChannelRegistry;
 use agora::router::{MatchReason, MessageRouter, RouteDecision, reply_target};
 use agora::semeion::client::{SendParams as SignalSendParams, SignalClient};
@@ -18,7 +19,7 @@ use agora::semeion::{SignalProvider, SignalTarget, parse_target};
 use agora::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult, SendParams, SendResult,
 };
-use taxis::config::ChannelBinding;
+use taxis::config::{ChannelBinding, ChannelSourceKind, CommandTier};
 use tokio_util::sync::CancellationToken;
 
 // ── MessageRouter ──
@@ -30,7 +31,9 @@ fn make_binding(channel: &str, source: &str, nous_id: &str) -> ChannelBinding {
         nous_id: nous_id.to_owned(),
         session_key: "{source}".to_owned(),
         account: None,
+        source_kind: None,
         participants: vec![],
+        command_tier: CommandTier::Public,
     }
 }
 
@@ -101,6 +104,74 @@ fn router_resolve_exact_source_binding() {
 }
 
 #[test]
+fn router_exposes_only_exact_account_scoped_dm_operator_authority() {
+    let mut binding = make_binding("signal", "+1234567890", "operator-nous");
+    binding.account = Some("primary".to_owned());
+    binding.source_kind = Some(ChannelSourceKind::Direct);
+    binding.command_tier = CommandTier::Operator;
+    let router = MessageRouter::new(vec![binding], None);
+    let mut message = make_dm_message("+1234567890");
+    message.account_id = Some("primary".to_owned());
+
+    assert_eq!(
+        router
+            .resolve(&message)
+            .expect("exact DM route")
+            .command_tier,
+        CommandTier::Operator
+    );
+}
+
+#[test]
+fn direct_operator_selector_cannot_match_same_named_group() {
+    let mut direct = make_binding("signal", "shared-id", "operator-nous");
+    direct.account = Some("primary".to_owned());
+    direct.source_kind = Some(ChannelSourceKind::Direct);
+    direct.command_tier = CommandTier::Operator;
+    let mut group_default = make_binding("signal", "*", "group-nous");
+    group_default.source_kind = Some(ChannelSourceKind::Group);
+    let router = MessageRouter::new(vec![direct, group_default], None);
+    let mut message = make_group_message("alice", "shared-id");
+    message.account_id = Some("primary".to_owned());
+
+    let decision = router.resolve(&message).expect("group fallback");
+    assert_eq!(decision.nous_id, "group-nous");
+    assert!(matches!(decision.matched_by, MatchReason::ChannelDefault));
+    assert_eq!(decision.command_tier, CommandTier::Public);
+}
+
+#[test]
+fn router_clamps_group_and_wildcard_operator_authority() {
+    let mut group_binding = make_binding("signal", "group-abc", "group-nous");
+    group_binding.account = Some("primary".to_owned());
+    group_binding.source_kind = Some(ChannelSourceKind::Group);
+    group_binding.command_tier = CommandTier::Operator;
+    let mut message = make_group_message("+1234567890", "group-abc");
+    message.account_id = Some("primary".to_owned());
+    assert_eq!(
+        MessageRouter::new(vec![group_binding], None)
+            .resolve(&message)
+            .expect("group route")
+            .command_tier,
+        CommandTier::Public
+    );
+
+    let mut wildcard = make_binding("signal", "*", "wildcard-nous");
+    wildcard.account = Some("primary".to_owned());
+    wildcard.source_kind = Some(ChannelSourceKind::Direct);
+    wildcard.command_tier = CommandTier::Operator;
+    let mut dm = make_dm_message("+1234567890");
+    dm.account_id = Some("primary".to_owned());
+    assert_eq!(
+        MessageRouter::new(vec![wildcard], None)
+            .resolve(&dm)
+            .expect("wildcard route")
+            .command_tier,
+        CommandTier::Public
+    );
+}
+
+#[test]
 fn router_resolve_channel_default_wildcard() {
     let bindings = vec![make_binding("signal", "*", "catchall-nous")];
     let router = MessageRouter::new(bindings, None);
@@ -121,6 +192,7 @@ fn router_resolve_global_default_fallback() {
 
     assert_eq!(decision.nous_id, "global-nous");
     assert!(matches!(decision.matched_by, MatchReason::GlobalDefault));
+    assert_eq!(decision.session_key, "signal:default:dm:+1234567890");
 }
 
 #[test]
@@ -224,18 +296,21 @@ fn route_decision_equality() {
         nous_id: &binding.nous_id,
         session_key: "key1".to_owned(),
         matched_by: MatchReason::ChannelDefault,
+        command_tier: CommandTier::Public,
     };
 
     let decision2 = RouteDecision {
         nous_id: &binding.nous_id,
         session_key: "key1".to_owned(),
         matched_by: MatchReason::ChannelDefault,
+        command_tier: CommandTier::Public,
     };
 
     let decision3 = RouteDecision {
         nous_id: &binding.nous_id,
         session_key: "key2".to_owned(),
         matched_by: MatchReason::GlobalDefault,
+        command_tier: CommandTier::Public,
     };
 
     assert_eq!(decision1, decision2);
@@ -257,4 +332,24 @@ fn match_reason_variants_distinct() {
     assert_ne!(r2, r3);
     assert_ne!(r2, r4);
     assert_ne!(r3, r4);
+}
+
+#[test]
+fn unknown_command_public_api_discards_payload_and_never_echoes_it() {
+    let command = parse("!attacker-controlled --token secret-value").expect("command");
+    assert_eq!(command, Command::Unknown);
+    assert_eq!(command.name(), "unknown");
+    assert!(command.redacted_args().is_none());
+
+    let context = CommandContext {
+        current_nous_id: "syn".to_owned(),
+        session_key: "signal:opaque".to_owned(),
+        current_agent: None,
+        all_agents: vec![],
+        skills: vec![],
+        blackboard_entries: vec![],
+        channels: vec![],
+        visible_commands: vec![],
+    };
+    assert_eq!(execute(&command, &context), "Unknown command.");
 }

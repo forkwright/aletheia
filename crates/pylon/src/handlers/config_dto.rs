@@ -76,6 +76,22 @@ pub struct ChannelsConfig {
     pub matrix: Option<Value>,
 }
 
+/// Closed OpenAPI shape for a binding's source selector.
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ChannelSourceKind {
+    Direct,
+    Group,
+}
+
+/// Closed OpenAPI shape for command authority on a binding.
+#[derive(serde::Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum CommandTier {
+    Public,
+    Operator,
+}
+
 /// Schema for a single channel binding entry.
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -85,7 +101,9 @@ pub struct ChannelBinding {
     pub nous_id: Option<String>,
     pub session_key: Option<String>,
     pub account: Option<String>,
+    pub source_kind: Option<ChannelSourceKind>,
     pub participants: Option<Vec<String>>,
+    pub command_tier: Option<CommandTier>,
 }
 
 /// Schema for the `embedding` config section.

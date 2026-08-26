@@ -845,6 +845,15 @@ mod tests {
     }
 
     #[test]
+    fn info_without_id_needs_only_the_current_agent_snapshot() {
+        let mut ctx = make_context();
+        ctx.all_agents.clear();
+        let reply = execute(&Command::Info { agent_id: None }, &ctx);
+        assert!(reply.contains("syn"), "{reply}");
+        assert!(reply.contains("claude-sonnet-4-6"), "{reply}");
+    }
+
+    #[test]
     fn info_unknown_agent_reports_not_found() {
         let ctx = make_context();
         let reply = execute(

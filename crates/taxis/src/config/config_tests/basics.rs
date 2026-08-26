@@ -859,8 +859,8 @@ fn channel_binding_serde_roundtrip() {
         "nous_id field should deserialize correctly"
     );
     assert_eq!(
-        binding.session_key, "{source}",
-        "session_key should default to source pattern"
+        binding.session_key, DEFAULT_CHANNEL_SESSION_KEY_PATTERN,
+        "session_key should default to the isolated channel identity pattern"
     );
 }
 
