@@ -224,10 +224,18 @@ fn hash_part(hasher: &mut Sha256, value: &str) {
 pub(crate) fn hex_lower(bytes: &[u8]) -> String {
     let mut out = String::with_capacity(bytes.len().saturating_mul(2));
     for &byte in bytes {
-        out.push(char::from(b"0123456789abcdef"[usize::from(byte >> 4)]));
-        out.push(char::from(b"0123456789abcdef"[usize::from(byte & 0x0f)]));
+        out.push(hex_digit(byte >> 4));
+        out.push(hex_digit(byte & 0x0f));
     }
     out
+}
+
+fn hex_digit(nibble: u8) -> char {
+    // NOTE: call sites pass `byte >> 4` / `byte & 0x0f` (always 0..=15).
+    match nibble {
+        0..=9 => char::from(b'0' + nibble),
+        _ => char::from(b'a' + (nibble - 10)),
+    }
 }
 
 /// The contract every channel provider must implement.
