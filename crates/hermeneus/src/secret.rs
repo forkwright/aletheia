@@ -326,10 +326,10 @@ pub fn redact_in_json(value: &mut serde_json::Value) {
             // values would miss it and later schema/debug dumps would retain
             // it. Collapse the object if any key is secret-shaped: rewriting
             // keys individually can collide and silently discard entries.
-            if map.keys().any(|key| {
-                parse_placeholder(key).is_none()
-                    && (looks_like_secret(key) || koina::redact::redact_sensitive(key) != *key)
-            }) {
+            if map
+                .keys()
+                .any(|key| looks_like_secret(key) || koina::redact::redact_sensitive(key) != *key)
+            {
                 *value = serde_json::json!({"__redaction__": "[REDACTED]"});
                 return;
             }
