@@ -16,7 +16,7 @@ use organon::registry::ToolRegistry;
 use organon::surface::{
     DenialReason, EffectiveToolSurface, SurfaceAvailability, SurfaceEntryKind, SurfaceLookup,
 };
-use organon::types::{ApprovalRequirement, ToolContext, ToolInput};
+use organon::types::{ApprovalRequirement, RedactionPolicy, ToolContext, ToolInput};
 
 use crate::approval::{ApprovalChoice, ApprovalGate};
 use crate::error;
@@ -333,6 +333,48 @@ fn approval_reason(tool_name: &str, approval: ApprovalRequirement) -> String {
     format!("Tool '{tool_name}' requires {approval} approval because of its reversibility metadata")
 }
 
+/// Resolve the declared redaction policy for a tool by its (possibly
+/// unvalidated) name. Unknown or undeclared tools read as
+/// `RedactionPolicy::None` -- the honest "no per-tool policy" default, never
+/// a fabricated redaction.
+fn redaction_policy_for(tools: &ToolRegistry, tool_name: &str) -> RedactionPolicy {
+    ToolName::new(tool_name)
+        .ok()
+        .map(|name| tools.capability_metadata(&name).redaction)
+        .unwrap_or_default()
+}
+
+/// Produce the trace-surface copy of a tool call's input: the declared
+/// redaction policy (#6808) applied to the placeholder-form arguments.
+/// Everything that leaves the live executor loop -- stream events, approval
+/// prompts, the persisted `ToolCall` record, the receipt ledger -- carries
+/// this copy, never the model-emitted original.
+fn redacted_trace_input(
+    tools: &ToolRegistry,
+    tool_name: &str,
+    input: &serde_json::Value,
+) -> serde_json::Value {
+    let policy = redaction_policy_for(tools, tool_name);
+    if matches!(policy, RedactionPolicy::None) {
+        return input.clone();
+    }
+    let mut redacted = input.clone();
+    let missed = policy.apply_to_input(&mut redacted);
+    if !missed.is_empty() {
+        // WHY debug, not warn: an absent declared field is normally a
+        // legitimately-omitted optional argument. The loud failure for a
+        // misspelled declaration lives at declaration time --
+        // `organon::builtins::capability_governance_tests` fails CI on any
+        // `Fields` name absent from the tool's input schema.
+        debug!(
+            tool = tool_name,
+            ?missed,
+            "declared redaction field(s) absent from call payload"
+        );
+    }
+    redacted
+}
+
 const APPROVAL_OUTCOME_AUTO_APPROVED: &str = "auto_approved";
 const APPROVAL_OUTCOME_ADVISORY_AUTO: &str = "advisory_auto";
 const APPROVAL_OUTCOME_NO_GATE_DENIED: &str = "no_gate_denied";
@@ -382,6 +424,7 @@ fn record_undispatched_calls(
     tool_results: &mut Vec<ContentBlock>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
+    tools: &ToolRegistry,
     remaining: &[ToolDispatchItem],
 ) {
     for item in remaining {
@@ -397,6 +440,7 @@ fn record_undispatched_calls(
             tool_results,
             stream_tx,
             tool_ctx,
+            tools,
             DeniedToolCall {
                 id,
                 name,
@@ -519,14 +563,20 @@ fn record_denied_call(
     tool_results: &mut Vec<ContentBlock>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
+    tools: &ToolRegistry,
     denied: DeniedToolCall<'_>,
 ) {
     unexecuted.push(denied.id.to_owned());
     organon::metrics::record_policy_denial(denied.name, denied.approval.unwrap_or("unknown"));
+    // WHY the denied input is policy-redacted too: a denial record lands in
+    // the same persisted trace as an executed call, and a denied call's
+    // arguments can carry the same sensitive values (e.g. a header the
+    // model inlined on a call the role policy then rejected).
+    let trace_input = redacted_trace_input(tools, denied.name, denied.input);
     all_tool_calls.push(ToolCall {
         id: denied.id.to_owned(),
         name: denied.name.to_owned(),
-        input: denied.input.clone(),
+        input: trace_input,
         result: Some(denied.message.clone()),
         is_error: true,
         duration_ms: 0,
@@ -990,10 +1040,18 @@ async fn dispatch_single_tool(
     // WHY unconditional (#4835): receipt issuance is a runtime invariant
     // on this path now that `receipt_signer` is non-optional -- see this
     // function's parameter docs.
+    //
+    // WHY(#6808) redaction applies before signing and recording:
+    // `persisted_input` is already the policy-redacted trace copy, and the
+    // result text is redacted here under a `Full` policy, so the receipt
+    // ledger never holds a value the tool's declared policy bars from
+    // trace surfaces. The signature covers exactly what the ledger stores.
+    let redaction = tools.capability_metadata(&execution_input.name).redaction;
     let (content, receipt) = {
         organon::metrics::record_receipt(tool_name, "emitted");
         let ts = jiff::Timestamp::now();
-        let result_text = content.text_summary();
+        let mut result_text = content.text_summary();
+        redaction.apply_to_result(&mut result_text);
         let receipt_str =
             receipt_signer.sign(tool_name, &persisted_input.to_string(), &result_text, ts);
         if let Some(ledger) = receipt_ledger {
@@ -1026,11 +1084,16 @@ async fn dispatch_single_tool(
         (tagged, Some(receipt_str))
     };
 
+    // WHY(#6808): the persisted record's result text follows the declared
+    // policy even though the LLM-facing `result_block` above does not --
+    // the model mid-turn needs the real output; the trace does not.
+    let mut recorded_result = content.text_summary();
+    redaction.apply_to_result(&mut recorded_result);
     let call = ToolCall {
         id: tool_id.to_owned(),
         name: tool_name.to_owned(),
         input: persisted_input.clone(),
-        result: Some(content.text_summary()),
+        result: Some(recorded_result),
         is_error,
         duration_ms,
         approval: None,
@@ -1152,6 +1215,7 @@ pub(super) async fn dispatch_tool_items(
                     &mut tool_results,
                     stream_tx,
                     tool_ctx,
+                    tools,
                     DeniedToolCall {
                         id,
                         name,
@@ -1180,6 +1244,7 @@ pub(super) async fn dispatch_tool_items(
                 &mut tool_results,
                 stream_tx,
                 tool_ctx,
+                tools,
                 DeniedToolCall {
                     id: tool_id,
                     name: tool_name,
@@ -1213,7 +1278,7 @@ pub(super) async fn dispatch_tool_items(
                 call: ToolCall {
                     id: tool_id.clone(),
                     name: tool_name.clone(),
-                    input: tool_input.clone(),
+                    input: redacted_trace_input(tools, tool_name, tool_input),
                     result: Some(msg.clone()),
                     is_error: true,
                     duration_ms: 0,
@@ -1245,6 +1310,7 @@ pub(super) async fn dispatch_tool_items(
                         &mut tool_results,
                         stream_tx,
                         tool_ctx,
+                        tools,
                         tool_items.get(index + 1..).unwrap_or(&[]),
                     );
                     return Ok(DispatchResult {
@@ -1278,6 +1344,7 @@ pub(super) async fn dispatch_tool_items(
                     &mut tool_results,
                     stream_tx,
                     tool_ctx,
+                    tools,
                     DeniedToolCall {
                         id: tool_id,
                         name: tool_name,
@@ -1289,6 +1356,16 @@ pub(super) async fn dispatch_tool_items(
                 continue;
             }
         };
+
+        // WHY(#6808): the trace-surface copy of the input -- declared
+        // redaction policy applied to the placeholder-form arguments -- is
+        // computed once here and feeds every surface that leaves the
+        // executor loop: the approval prompt, the `ToolStart` event, the
+        // persisted `ToolCall` record, and the receipt ledger. The executor
+        // still sees the vault-substituted arguments; the loop detector
+        // still hashes the model-emitted original (redaction is not its
+        // concern).
+        let trace_input = redacted_trace_input(tools, tool_name, tool_input);
 
         // WHY(#3958, ADR-005): one decision boundary protects streaming,
         // fallback, and batch dispatch. Unknown future requirements block.
@@ -1329,7 +1406,12 @@ pub(super) async fn dispatch_tool_items(
             }
             ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
                 emit_approval_required(
-                    stream_tx, tool_ctx, tool_id, tool_name, tool_input, approval,
+                    stream_tx,
+                    tool_ctx,
+                    tool_id,
+                    tool_name,
+                    &trace_input,
+                    approval,
                 );
                 let (choice, outcome) = if let Some(gate) = approval_gate {
                     let choice = gate.await_decision(tool_id).await;
@@ -1366,6 +1448,7 @@ pub(super) async fn dispatch_tool_items(
                         &mut tool_results,
                         stream_tx,
                         tool_ctx,
+                        tools,
                         DeniedToolCall {
                             id: tool_id,
                             name: tool_name,
@@ -1380,13 +1463,13 @@ pub(super) async fn dispatch_tool_items(
             }
         };
 
-        emit_tool_start(stream_tx, tool_ctx, tool_id, tool_name, tool_input);
+        emit_tool_start(stream_tx, tool_ctx, tool_id, tool_name, &trace_input);
 
         let mut outcome = dispatch_single_tool(
             tool_id,
             tool_name,
             &approval_input,
-            tool_input,
+            &trace_input,
             tools,
             tool_ctx,
             max_tool_result_bytes,
@@ -1415,6 +1498,7 @@ pub(super) async fn dispatch_tool_items(
                     &mut tool_results,
                     stream_tx,
                     tool_ctx,
+                    tools,
                     tool_items.get(index + 1..).unwrap_or(&[]),
                 );
                 return Ok(DispatchResult {

@@ -1033,10 +1033,12 @@ async fn run_execute_loop(
                     nous_id: &session.nous_id,
                     tool_use_id: &tool_call.id,
                     tool_name: &tool_call.name,
-                    tool_input: dispatch_items
-                        .iter()
-                        .find_map(|item| item.ready_input_for(&tool_call.id))
-                        .unwrap_or(&serde_json::Value::Null),
+                    // WHY(#6808): the hook receives the persisted (policy-
+                    // redacted) record of the input, not the model-emitted
+                    // original — hooks feed audit and training capture, which
+                    // are exactly the surfaces the tool's declared redaction
+                    // policy exists to keep clean.
+                    tool_input: &tool_call.input,
                     tool_result: ToolResultRecord::from_option(tool_call.result.as_deref()),
                     is_error: tool_call.is_error,
                     turn_usage: &total_usage,

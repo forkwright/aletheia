@@ -23,9 +23,9 @@ use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{EgressGate, SandboxConfig, check_egress, check_egress_remote_addr};
 use crate::types::{
-    AdditionalProperties, InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport,
-    ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
-    ToolStability, ToolTag,
+    AdditionalProperties, InputSchema, PropertyDef, PropertyType, RedactionPolicy, Reversibility,
+    RollbackSupport, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId,
+    ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 use super::workspace::{extract_opt_str, extract_opt_u64, extract_str};
@@ -418,6 +418,11 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
                          effects occur on an external system outside aletheia's control"
                     .to_owned(),
             },
+            // WHY headers: FORBIDDEN_REQUEST_HEADERS rejects the common
+            // credential headers, but custom auth headers outside that list
+            // (e.g. GitLab-style `PRIVATE-TOKEN`) still pass through — the
+            // one argument field whose ordinary values can be credentials.
+            redaction: RedactionPolicy::Fields(vec!["headers".to_owned()]),
             ..ToolCapabilityMetadata::default()
         },
     );

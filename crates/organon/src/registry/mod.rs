@@ -263,7 +263,21 @@ impl ToolRegistry {
     /// [`Self::capability_metadata`], which is an honest "not yet
     /// reviewed," not a fabricated "safe."
     pub fn declare_capability(&mut self, name: ToolName, metadata: ToolCapabilityMetadata) {
-        if self.tools.contains_key(&name) {
+        if let Some(def) = self.tools.get(&name) {
+            let unrecognized = metadata.redaction.unrecognized_fields(&def.input_schema);
+            if !unrecognized.is_empty() {
+                // WHY(#6808): a `Fields` name that is not in the tool's
+                // input schema matches nothing on every call -- the field
+                // the author meant to redact passes through in cleartext.
+                // The capability-governance gate test hard-fails on this
+                // for built-ins; external registrations get this warning.
+                tracing::warn!(
+                    tool.name = name.as_str(),
+                    ?unrecognized,
+                    "declared redaction field(s) are not in the tool's input schema; \
+                     they will never match a call payload"
+                );
+            }
             self.capabilities.insert(name, metadata);
         }
     }
