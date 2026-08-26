@@ -159,6 +159,16 @@ fn entry_point_id(db: &TestDb) -> i64 {
 /// per-run floor tight enough to be a precise regression gate is not
 /// available without seeding the RNG and pinning `PriorityQueue`'s hasher,
 /// which is out of this wave's scope.
+///
+/// The `hnsw-recall:` eprintln markers exist so #6952's discriminator
+/// harness (scripts/hnsw-recall-discriminator.py, run via the
+/// hnsw-recall-discriminator workflow) can harvest the recall distribution
+/// from passing runs — a value visible only inside a failure message can
+/// never build the distribution that decides whether the 0.05 floor is
+/// vestigial or load-bearing. The post-delete assertion is split so an exact
+/// 0.00 (the index came back dead) reads differently from a sub-floor
+/// nonzero miss (the index came back degraded): today both print "average
+/// recall too low" and only one of them means the graph walk found nothing.
 #[test]
 fn close_reopen_preserves_recall_across_inserts_and_deletes() {
     let dir = tempfile::tempdir().unwrap();
@@ -194,6 +204,7 @@ fn close_reopen_preserves_recall_across_inserts_and_deletes() {
     {
         let db = open(path);
         let avg = average_recall(&db, &queries, &present, 10);
+        eprintln!("hnsw-recall: phase=post-reopen avg={avg:.4}");
         assert!(avg >= 0.85, "post-reopen average recall too low ({avg:.2})");
     }
 
@@ -223,9 +234,23 @@ fn close_reopen_preserves_recall_across_inserts_and_deletes() {
             }
         }
         let avg = average_recall(&db, &queries, &remaining, 10);
+        eprintln!("hnsw-recall: phase=post-delete-reopen avg={avg:.4}");
+        assert!(
+            avg > 0.0,
+            "post-delete-and-reopen average recall is exactly 0.00 — every query returned zero \
+             relevant neighbours, so the index came back dead (empty graph, lost entry point, or \
+             a reopen that silently rebuilt nothing), not degraded. #6952: this is a different \
+             failure class from a sub-floor nonzero miss and must not be retried into passing; \
+             reproduce it with the hnsw-recall-discriminator workflow and treat it as a \
+             persistence defect until that measurement says otherwise"
+        );
         assert!(
             avg >= 0.05,
-            "post-delete-and-reopen average recall too low ({avg:.2})"
+            "post-delete-and-reopen average recall {avg:.2} is below the 0.05 floor but nonzero — \
+             the index came back alive and degraded, a different failure class than the \
+             intermittent exact 0.00. #6952: a sustained sub-floor distribution is evidence the \
+             floor itself needs re-deriving (raise it toward the sibling's 0.85, or document what \
+             makes this path genuinely worse), not a flake to retry"
         );
     }
 }
