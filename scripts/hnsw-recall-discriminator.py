@@ -48,7 +48,7 @@ import statistics
 import subprocess
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -103,30 +103,57 @@ def build_command(runner: str, leg: str, concurrent_scope: str) -> list[str]:
     return cmd
 
 
-def parse_run(output: str, runner: str) -> dict:
-    """One invocation's outcome: target status plus any harvested markers.
+def runner_status(output: str, runner: str) -> str:
+    """The target test's verdict from one invocation's output.
 
-    status is pass/fail/unknown — unknown means the runner's output carried no
-    status line for the target (a filter that matched nothing, or an output
-    shape drift), which the caller counts separately from a real failure.
+    `unknown` means the runner's output carried no status line for the target
+    (a filter that matched nothing, or an output shape drift), which the
+    caller counts separately from a real failure.
     """
-    markers: dict[str, float] = {}
-    for phase, avg in MARKER_RE.findall(output):
-        markers[phase] = float(avg)
-    status = "unknown"
     if runner == "nextest":
         for verdict, name in NEXTEST_STATUS_RE.findall(output):
             if TARGET_TEST in name:
-                status = "pass" if verdict == "PASS" else "fail"
-    else:
-        for name, verdict in CARGO_STATUS_RE.findall(output):
-            if TARGET_TEST in name:
-                status = {"ok": "pass", "FAILED": "fail"}.get(verdict, "unknown")
+                return "pass" if verdict == "PASS" else "fail"
+        return "unknown"
+    for name, verdict in CARGO_STATUS_RE.findall(output):
+        if TARGET_TEST in name:
+            return {"ok": "pass", "FAILED": "fail"}.get(verdict, "unknown")
+    return "unknown"
+
+
+def parse_run(output: str, runner: str) -> dict:
+    """One invocation's outcome: target status plus any harvested markers."""
+    markers: dict[str, float] = {}
+    for phase, avg in MARKER_RE.findall(output):
+        markers[phase] = float(avg)
     return {
-        "status": status,
+        "status": runner_status(output, runner),
         "post_reopen_avg": markers.get("post-reopen"),
         "post_delete_avg": markers.get("post-delete-reopen"),
     }
+
+
+def resolve_out_dir(raw: str) -> Path:
+    """The artifact directory, contained under the repository root.
+
+    WHY the validation: --out is operator-supplied CLI text that reaches
+    mkdir/write_text below, and the harness has no legitimate reason to write
+    anywhere but under the repo it measures — every CI invocation and the
+    default both name a repo-relative directory. Rejecting absolute paths and
+    `..` lexically, then confirming the resolved path stays under REPO_ROOT,
+    is the same containment idiom the fleet's other scripts use.
+    """
+    pure = PurePosixPath(raw)
+    if pure.is_absolute() or not pure.parts or ".." in pure.parts:
+        raise SystemExit(f"error: --out must be a repo-relative path without '..': {raw!r}")
+    out_dir = REPO_ROOT.joinpath(*pure.parts)
+    if out_dir == REPO_ROOT:
+        raise SystemExit("error: --out must name a directory below the repository root, not the root itself")
+    resolved_root = REPO_ROOT.resolve()
+    resolved_out = out_dir.resolve()
+    if resolved_out != resolved_root and not resolved_out.is_relative_to(resolved_root):
+        raise SystemExit(f"error: --out escapes the repository after resolution: {raw!r}")
+    return out_dir
 
 
 def phase_stats(values: list[float | None]) -> dict:
@@ -193,7 +220,7 @@ def classify(serial: dict, concurrent: dict) -> str:
 
 def render_markdown(report: dict) -> str:
     lines = [
-        f"### HNSW recall-0.00 discriminator (#6952)",
+        "### HNSW recall-0.00 discriminator (#6952)",
         "",
         f"- runner: `{report['runner']}` · feature world: `{report['features']}` · "
         f"{report['runs_per_leg']} run(s) per leg",
@@ -260,7 +287,7 @@ def main() -> int:
             print("error: runner=nextest but cargo nextest is not installed", file=sys.stderr)
             return 1
 
-    out_dir = Path(args.out)
+    out_dir = resolve_out_dir(args.out)
     logs_dir = out_dir / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 

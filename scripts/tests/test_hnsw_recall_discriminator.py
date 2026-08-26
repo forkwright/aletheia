@@ -157,5 +157,23 @@ class RenderMarkdown(unittest.TestCase):
         self.assertIn("BOTH legs", md)
 
 
+class ResolveOutDir(unittest.TestCase):
+    def test_accepts_repo_relative_path(self) -> None:
+        out = hrd.resolve_out_dir("target/hnsw-recall-discriminator")
+        self.assertEqual(out, hrd.REPO_ROOT / "target" / "hnsw-recall-discriminator")
+
+    def test_rejects_dotdot_escape(self) -> None:
+        with self.assertRaises(SystemExit):
+            hrd.resolve_out_dir("../outside")
+
+    def test_rejects_absolute_path(self) -> None:
+        with self.assertRaises(SystemExit):
+            hrd.resolve_out_dir("/tmp/outside")
+
+    def test_rejects_repo_root_itself(self) -> None:
+        with self.assertRaises(SystemExit):
+            hrd.resolve_out_dir(".")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -74,11 +74,18 @@ jobs:
           tool: nextest@0.9.143
 
       - name: Run the discriminator
+        env:
+          # WHY env indirection: `inputs.*` in a run block is script injection
+          # surface (the dispatcher types `--runs` by hand); through env the
+          # value is quoted shell data, never re-parsed as script text.
+          RUNS: ${{ inputs.runs }}
+          RUNNER: ${{ inputs.runner }}
+          CONCURRENT_SCOPE: ${{ inputs.concurrent_scope }}
         run: |
           python3 scripts/hnsw-recall-discriminator.py \
-            --runs "${{ inputs.runs }}" \
-            --runner "${{ inputs.runner }}" \
-            --concurrent-scope "${{ inputs.concurrent_scope }}" \
+            --runs "$RUNS" \
+            --runner "$RUNNER" \
+            --concurrent-scope "$CONCURRENT_SCOPE" \
             --out hnsw-recall-discriminator-out
           cat hnsw-recall-discriminator-out/summary.md >> "$GITHUB_STEP_SUMMARY"
 
