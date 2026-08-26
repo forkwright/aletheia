@@ -988,10 +988,10 @@ egress = "none"
 "#;
         let dir = setup_pack(&[("pack.toml", toml)]);
         let manifest = load_manifest(dir.path()).unwrap();
-        let tool = &manifest.tools[0];
-        assert_eq!(tool.env, vec!["DATABASE_URL"]);
-        assert_eq!(tool.write_paths, vec!["data", "data/scratch"]);
-        assert_eq!(tool.egress.as_deref(), Some("none"));
+        let declared = &manifest.tools[0];
+        assert_eq!(declared.env, vec!["DATABASE_URL"]);
+        assert_eq!(declared.write_paths, vec!["data", "data/scratch"]);
+        assert_eq!(declared.egress.as_deref(), Some("none"));
     }
 
     #[test]
