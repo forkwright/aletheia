@@ -572,6 +572,10 @@ impl RuntimeBuilder {
             }
             pack_report.record_tool_failures(&tool_failures);
 
+            for note in &pack_report.notes {
+                warn!("{note}");
+            }
+
             // WHY(#5208): a pack can be active, degraded, or failed; the
             // summary line is the daemon-visible record operators and log
             // scrapers key on, and pack_report carries the structured detail.

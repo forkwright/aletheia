@@ -139,7 +139,10 @@ pub fn load_packs(paths: &[PathBuf]) -> Vec<LoadedPack> {
 /// `Failed` when the manifest or a required context entry failed.
 pub fn load_packs_with_report(paths: &[PathBuf]) -> LoadOutcome {
     let mut packs = Vec::with_capacity(paths.len());
-    let mut report = PackReport::default();
+    let mut report = PackReport {
+        notes: crate::health::platform_notes(),
+        ..PackReport::default()
+    };
 
     for path in paths {
         match load_single_pack_inner(path) {

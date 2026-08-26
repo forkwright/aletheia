@@ -129,6 +129,10 @@ impl PackHealth {
 pub struct PackReport {
     /// Per-pack health, in config order.
     pub packs: Vec<PackHealth>,
+    /// Report-level notes about the host's pack execution support, e.g.
+    /// reduced subprocess enforcement off-Linux (#5215). Empty on a fully
+    /// supported platform.
+    pub notes: Vec<String>,
 }
 
 /// Count of packs by status, for summary logging.
@@ -187,6 +191,35 @@ impl PackReport {
                 self.packs.push(health);
             }
         }
+    }
+}
+
+/// Host capability notes for pack tool execution (#5215).
+///
+/// Empty on Linux, where the full subprocess contract (process-group kill,
+/// `RLIMIT_NPROC`/`RLIMIT_CPU` resource limits) is enforced. On other
+/// platforms the degraded guarantees are named so operators see reduced
+/// enforcement instead of assuming it.
+#[must_use]
+pub fn platform_notes() -> Vec<String> {
+    #[cfg(target_os = "linux")]
+    {
+        Vec::new()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let mut notes = vec![
+            "subprocess resource limits (RLIMIT_NPROC, RLIMIT_CPU) are not enforced on this \
+             platform; pack tool wall-clock timeouts still apply"
+                .to_owned(),
+        ];
+        #[cfg(not(unix))]
+        notes.push(
+            "pack shell tools declare platforms = [\"unix\"] by default and are skipped on \
+             this platform unless a pack opts into \"windows\""
+                .to_owned(),
+        );
+        notes
     }
 }
 
