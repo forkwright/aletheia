@@ -1004,8 +1004,7 @@ system_prompt_additions = ["aaaaa", "bbbbb", "c"]
             truncatable: false,
         };
 
-        let err = resolve_single_section(dir.path(), &entry, "interp-test")
-            .expect_err("pack context must not cross the trusted file-ref boundary");
+        let err = resolve_single_section(dir.path(), &entry, "interp-test").unwrap_err();
         assert!(
             matches!(err, error::Error::ContextFileInterpolation { .. }),
             "expected ContextFileInterpolation, got: {err}"

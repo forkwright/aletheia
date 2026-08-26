@@ -875,25 +875,25 @@ fn duplicate_tool_name_in_same_named_roots_degrades_actual_occurrence() {
         vec![tool("dup_tool")],
         crate::health::PackInstanceId::from_ordinal(1),
     );
-    let pack_a_id = pack_a.instance_id();
-    let pack_b_id = pack_b.instance_id();
+    let first_pack_id = pack_a.instance_id();
+    let second_pack_id = pack_b.instance_id();
 
     let mut registry = ToolRegistry::new();
     let failures = register_pack_tools(&[pack_a, pack_b], &mut registry);
     assert_eq!(failures.len(), 1, "second registration must fail");
     assert_eq!(failures[0].pack_name, "test-pack");
-    assert_eq!(failures[0].pack_instance_id, pack_b_id);
+    assert_eq!(failures[0].pack_instance_id, second_pack_id);
     assert_eq!(failures[0].tool_name, "dup_tool");
     assert_eq!(registry.definitions().len(), 1, "first registration wins");
 
     let mut report = crate::health::PackReport::default();
     report.packs.push(crate::health::PackHealth::active(
-        pack_a_id,
+        first_pack_id,
         "test-pack".to_owned(),
         dir_a.path().to_path_buf(),
     ));
     report.packs.push(crate::health::PackHealth::active(
-        pack_b_id,
+        second_pack_id,
         "test-pack".to_owned(),
         dir_b.path().to_path_buf(),
     ));

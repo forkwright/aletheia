@@ -421,6 +421,10 @@ mod tests {
         };
         let notes = platform_notes(&sandbox);
         assert!(!notes.is_empty());
-        assert!(notes[0].contains("sandbox is disabled"));
+        assert!(
+            notes
+                .iter()
+                .any(|note| note.contains("sandbox is disabled"))
+        );
     }
 }

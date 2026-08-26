@@ -731,8 +731,7 @@ domains = ["healthcare", "analytics", "sql"]
                 overlays: std::collections::HashMap::new(),
             };
 
-            let err = validate_manifest(&manifest)
-                .expect_err("context paths must have portable relative syntax");
+            let err = validate_manifest(&manifest).unwrap_err();
             assert!(
                 err.to_string()
                     .contains("relative path inside the pack root"),
@@ -767,8 +766,7 @@ domains = ["healthcare", "analytics", "sql"]
             truncatable: false,
         };
 
-        let err = resolve_context_path(dir.path(), &entry)
-            .expect_err("absolute context path must fail before filesystem resolution");
+        let err = resolve_context_path(dir.path(), &entry).unwrap_err();
         assert!(matches!(err, error::Error::ContextFileEscape { .. }));
     }
 
@@ -972,8 +970,7 @@ command = "{command}"
 "#
             );
             let dir = setup_pack(&[("pack.toml", &toml)]);
-            let err = load_manifest(dir.path())
-                .expect_err("a command must name an entry below the pack root");
+            let err = load_manifest(dir.path()).unwrap_err();
             assert!(
                 err.to_string()
                     .contains("relative path inside the pack root"),
@@ -1195,7 +1192,7 @@ description = "safe"
 default = { "{{file:config/env}}" = "safe" }
 "#;
         let dir = setup_pack(&[("pack.toml", toml)]);
-        let err = load_manifest(dir.path()).expect_err("file refs must fail manifest validation");
+        let err = load_manifest(dir.path()).unwrap_err();
         let display = err.to_string();
         for expected in [
             "pack description",
@@ -1231,7 +1228,7 @@ command = "tools/query.sh"
 egres = "none"
 "#;
         let dir = setup_pack(&[("pack.toml", toml)]);
-        let err = load_manifest(dir.path()).expect_err("unknown manifest fields must fail closed");
+        let err = load_manifest(dir.path()).unwrap_err();
         assert!(
             matches!(err, error::Error::ParseManifest { .. }),
             "expected ParseManifest, got: {err}"
@@ -1301,7 +1298,7 @@ write_paths = ["data", "data/scratch"]
 egress = "none"
 "#;
         let dir = setup_pack(&[("pack.toml", toml)]);
-        let err = load_manifest(dir.path()).expect_err("pack must not self-grant authority");
+        let err = load_manifest(dir.path()).unwrap_err();
         let message = err.to_string();
         assert!(message.contains("env authority"), "{message}");
         assert!(message.contains("write_paths authority"), "{message}");
@@ -1320,7 +1317,7 @@ command = "tools/native.exe"
 platforms = ["windows"]
 "#;
         let dir = setup_pack(&[("pack.toml", toml)]);
-        let err = load_manifest(dir.path()).expect_err("Windows is not a supported pack platform");
+        let err = load_manifest(dir.path()).unwrap_err();
         assert!(err.to_string().contains("platform 'windows' is unknown"));
     }
 
