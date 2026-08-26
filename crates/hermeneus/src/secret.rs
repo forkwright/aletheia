@@ -309,6 +309,9 @@ fn parse_placeholder(s: &str) -> Option<&str> {
 pub fn redact_in_json(value: &mut serde_json::Value) {
     match value {
         serde_json::Value::String(s) => {
+            if parse_placeholder(s).is_some() {
+                return;
+            }
             // Catch definite credential syntax even inside ordinary prose.
             // The length-only fallback below intentionally remains more
             // conservative for durable copies.
@@ -323,10 +326,10 @@ pub fn redact_in_json(value: &mut serde_json::Value) {
             // values would miss it and later schema/debug dumps would retain
             // it. Collapse the object if any key is secret-shaped: rewriting
             // keys individually can collide and silently discard entries.
-            if map
-                .keys()
-                .any(|key| looks_like_secret(key) || koina::redact::redact_sensitive(key) != *key)
-            {
+            if map.keys().any(|key| {
+                parse_placeholder(key).is_none()
+                    && (looks_like_secret(key) || koina::redact::redact_sensitive(key) != *key)
+            }) {
                 *value = serde_json::json!({"__redaction__": "[REDACTED]"});
                 return;
             }
@@ -532,7 +535,7 @@ mod tests {
 
         redact_in_json(&mut value);
 
-        let redacted = value["text"].as_str().expect("redacted text");
+        let redacted = value["text"].as_str().unwrap();
         assert!(!redacted.contains(&api_key));
         assert!(!redacted.contains(bearer));
         assert!(!redacted.contains(&jwt));

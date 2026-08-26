@@ -423,7 +423,6 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
             // (e.g. GitLab-style `PRIVATE-TOKEN`) still pass through — the
             // one argument field whose ordinary values can be credentials.
             redaction: RedactionPolicy::Fields(vec!["headers".to_owned()]),
-            ..ToolCapabilityMetadata::default()
         },
     )?;
     Ok(())

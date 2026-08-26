@@ -896,7 +896,7 @@ impl RedactionPolicy {
     /// Only `Full` redacts results; see the `Fields` variant doc.
     pub fn apply_to_result(&self, result: &mut String) {
         if matches!(self, Self::Full) {
-            *result = REDACTED_MARKER.to_owned();
+            REDACTED_MARKER.clone_into(result);
         }
     }
 
