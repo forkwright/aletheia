@@ -10,8 +10,8 @@ mod fjall_store;
 pub mod test_support;
 
 pub use fjall_store::{
-    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
-    FinalizeTurnResult, SchemaManifest, SessionStatusCounts, SessionStore,
+    AppendCommandLifecycleRecord, FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord,
+    FinalizeTurnRequest, FinalizeTurnResult, SchemaManifest, SessionStatusCounts, SessionStore,
 };
 // WHY(#4414): the four portability-only types below are gated behind
 // `#[cfg(feature = "portability")]` in fjall_store.rs; this re-export must
@@ -22,5 +22,6 @@ pub use fjall_store::{
 // build in this repo's history to compile graphe with portability off.
 #[cfg(feature = "portability")]
 pub use fjall_store::{
-    ImportSessionBundle, ImportSessionBundleResult, ImportSessionNote, ImportSessionWorkingState,
+    ImportCommandLifecycleRecord, ImportSessionBundle, ImportSessionBundleResult,
+    ImportSessionNote, ImportSessionWorkingState,
 };

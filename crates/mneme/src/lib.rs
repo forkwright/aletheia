@@ -121,16 +121,18 @@ pub mod knowledge_error {
 /// Agent portability schema: `AgentFile` format for cross-runtime export/import.
 pub mod portability {
     pub use graphe::portability::{
-        AGENT_FILE_VERSION, AgentFile, BinaryFileData, ExportMetadata, ExportedMessage,
-        ExportedNote, ExportedSession, ExportedUsageRecord, ExportedVector, FactEntityEdge,
-        GraphData, KnowledgeExport, MemoryData, NousInfo, OmittedSection, TruncationRecord,
-        WorkspaceData,
+        AGENT_FILE_VERSION, AgentFile, BinaryFileData, ExportMetadata,
+        ExportedCommandLifecycleRecord, ExportedMessage, ExportedNote, ExportedSession,
+        ExportedUsageRecord, ExportedVector, FactEntityEdge, GraphData, KnowledgeExport,
+        MemoryData, NousInfo, OmittedSection, TruncationRecord, WorkspaceData,
     };
 }
 
 /// Session store — fjall LSM-tree backend.
 pub mod store {
-    pub use graphe::store::{FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord};
+    pub use graphe::store::{
+        AppendCommandLifecycleRecord, FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord,
+    };
     pub use graphe::store::{
         FinalizeTurnRequest, FinalizeTurnResult, SchemaManifest, SessionStatusCounts, SessionStore,
     };
@@ -140,8 +142,8 @@ pub mod store {
     /// and its siblings, which only exist under that feature.
     #[cfg(feature = "portability")]
     pub use graphe::store::{
-        ImportSessionBundle, ImportSessionBundleResult, ImportSessionNote,
-        ImportSessionWorkingState,
+        ImportCommandLifecycleRecord, ImportSessionBundle, ImportSessionBundleResult,
+        ImportSessionNote, ImportSessionWorkingState,
     };
 
     /// Test helpers for backend-agnostic session-store fixtures.
@@ -154,8 +156,12 @@ pub mod store {
 /// Core types for sessions, messages, usage records, and agent notes.
 pub mod types {
     pub use graphe::types::{
-        AgentNote, BlackboardRow, BlackboardVisibility, Message, Role, Session, SessionMetrics,
-        SessionOrigin, SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
+        AgentNote, BlackboardRow, BlackboardVisibility, COMMAND_LIFECYCLE_SCHEMA,
+        COMMAND_LIFECYCLE_SCHEMA_VERSION, CommandDelivery, CommandDeliveryFailureClass,
+        CommandDeliveryStatus, CommandFailureClass, CommandInvocationStatus, CommandLifecycleEvent,
+        CommandLifecycleRecord, CommandResultStatus, Message, RedactedCommand,
+        RedactedCommandOrigin, Role, Session, SessionMetrics, SessionOrigin, SessionStatus,
+        SessionType, ToolAuditRecord, UsageRecord,
     };
     pub use graphe::types::{
         ReservedIdPrefixError, ReservedIdPrefixSnafu, ValidatedId, is_reserved_session_prefix,
@@ -433,10 +439,10 @@ mod facade_surface_tests {
         Visibility, default_stability_hours, far_future, format_timestamp, parse_timestamp,
     };
     use crate::portability::{
-        AGENT_FILE_VERSION, AgentFile, BinaryFileData, ExportMetadata, ExportedMessage,
-        ExportedNote, ExportedSession, ExportedUsageRecord, ExportedVector, FactEntityEdge,
-        GraphData, KnowledgeExport, MemoryData, NousInfo, OmittedSection, TruncationRecord,
-        WorkspaceData,
+        AGENT_FILE_VERSION, AgentFile, BinaryFileData, ExportMetadata,
+        ExportedCommandLifecycleRecord, ExportedMessage, ExportedNote, ExportedSession,
+        ExportedUsageRecord, ExportedVector, FactEntityEdge, GraphData, KnowledgeExport,
+        MemoryData, NousInfo, OmittedSection, TruncationRecord, WorkspaceData,
     };
     use crate::skills::{
         CandidateTracker, ContentEvidenceRef, ExtractedSkill, PendingSkill, SkillCandidate,
@@ -487,6 +493,7 @@ mod facade_surface_tests {
         assert_type::<AgentFile>();
         assert_type::<BinaryFileData>();
         assert_type::<ExportMetadata>();
+        assert_type::<ExportedCommandLifecycleRecord>();
         assert_type::<ExportedMessage>();
         assert_type::<ExportedNote>();
         assert_type::<ExportedSession>();

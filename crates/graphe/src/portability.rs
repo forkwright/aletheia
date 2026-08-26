@@ -29,11 +29,15 @@ use serde::{Deserialize, Serialize};
 ///   populated. A v3-or-older `working_state` blob (the old task/focus/wait
 ///   shape) does not parse as checkpoints and is skipped on import rather
 ///   than rejected.
+/// - **v5** (#4801): session-linked Agora command lifecycle records round-trip
+///   through the dedicated runtime-owned audit partition instead of being
+///   smuggled through model-visible system messages.
 ///
-/// The version bump declares the fidelity contract: consumers MUST reject
-/// older versions (or pipe them through a migration) so they cannot silently
-/// drop fields that the current version expects to round-trip.
-pub const AGENT_FILE_VERSION: u32 = 4;
+/// The version bump declares the fidelity contract. The Aletheia importer may
+/// upgrade older additive versions by defaulting fields that did not exist;
+/// a consumer that requires v5 command-audit fidelity must require version 5
+/// explicitly rather than treating an absent vector as proof no commands ran.
+pub const AGENT_FILE_VERSION: u32 = 5;
 
 /// Machine-readable metadata describing the completeness of an export.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -173,6 +177,9 @@ pub struct ExportedSession {
     pub messages: Vec<ExportedMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage_records: Option<Vec<ExportedUsageRecord>>,
+    /// Runtime-owned command lifecycle records for this session.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command_lifecycle_records: Vec<ExportedCommandLifecycleRecord>,
     // NOTE: artefact_meta from Session is intentionally excluded — store-internal
     // provenance, not user/agent data. The identity fields below were excluded from
     // v1; they now round-trip, guarded by serde(default) so older files still load.
@@ -256,6 +263,49 @@ pub struct ExportedUsageRecord {
     /// existed importable.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub created_at: String,
+}
+
+/// Portable command lifecycle record nested under its owning session.
+///
+/// `session_id` and `nous_id` are derived from the containing
+/// [`ExportedSession`] during import. The containing session owns the portable
+/// `session_key`; it is deliberately not duplicated in this runtime-only row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ExportedCommandLifecycleRecord {
+    /// Store-assigned chronological identifier, preserved for stable
+    /// inspection and collision detection.
+    pub id: u64,
+    /// Stable command record schema identifier.
+    pub schema: String,
+    /// Structured command record schema version.
+    pub schema_version: u32,
+    /// Transport-derived key correlating invocation and result events.
+    pub delivery_key: String,
+    /// Redacted transport origin.
+    pub origin: crate::types::RedactedCommandOrigin,
+    /// Parsed command metadata with redacted arguments.
+    pub command: crate::types::RedactedCommand,
+    /// Typed invocation or result payload.
+    #[serde(flatten)]
+    pub event: crate::types::CommandLifecycleEvent,
+    /// ISO 8601 timestamp when the source store wrote this row.
+    pub created_at: String,
+}
+
+impl From<crate::types::CommandLifecycleRecord> for ExportedCommandLifecycleRecord {
+    fn from(record: crate::types::CommandLifecycleRecord) -> Self {
+        Self {
+            id: record.id,
+            schema: record.schema,
+            schema_version: record.schema_version,
+            delivery_key: record.delivery_key,
+            origin: record.origin,
+            command: record.command,
+            event: record.event,
+            created_at: record.created_at,
+        }
+    }
 }
 
 /// Optional memory data (vectors and/or knowledge graph).
@@ -346,6 +396,14 @@ pub struct FactEntityEdge {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
+    use crate::types::{
+        COMMAND_LIFECYCLE_SCHEMA, COMMAND_LIFECYCLE_SCHEMA_VERSION, CommandLifecycleEvent,
+        RedactedCommand, RedactedCommandOrigin,
+    };
+
+    fn audit_digest(prefix: &str, byte: char) -> String {
+        format!("{prefix}{}", byte.to_string().repeat(64))
+    }
 
     fn sample_agent_file() -> AgentFile {
         AgentFile {
@@ -420,6 +478,35 @@ mod tests {
                     model: Some("claude-sonnet-4-6".to_owned()),
                     created_at: "2026-03-05T10:00:00Z".to_owned(),
                 }]),
+                command_lifecycle_records: vec![ExportedCommandLifecycleRecord {
+                    id: 9,
+                    schema: COMMAND_LIFECYCLE_SCHEMA.to_owned(),
+                    schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
+                    delivery_key: audit_digest("sha256:", 'a'),
+                    origin: RedactedCommandOrigin {
+                        channel: "signal".to_owned(),
+                        account_id: Some(audit_digest("h:", 'b')),
+                        sender: audit_digest("h:", 'c'),
+                        group_id: None,
+                        thread_id: None,
+                        conversation_id: audit_digest("sha256:", 'd'),
+                        timestamp_ms: 1_709_312_345_678,
+                    },
+                    command: RedactedCommand {
+                        name: "status".to_owned(),
+                        args_redacted: None,
+                    },
+                    event: CommandLifecycleEvent::Result {
+                        status: crate::types::CommandResultStatus::Succeeded,
+                        failure_class: None,
+                        duration_ms: 42,
+                        delivery: crate::types::CommandDelivery {
+                            status: crate::types::CommandDeliveryStatus::Sent,
+                            failure_class: None,
+                        },
+                    },
+                    created_at: "2026-03-05T10:00:02Z".to_owned(),
+                }],
                 parent_session_id: Some("ses-parent".to_owned()),
                 thread_id: Some("thread-9".to_owned()),
                 transport: Some("stdio".to_owned()),
@@ -454,6 +541,7 @@ mod tests {
         assert_eq!(restored.sessions.len(), 1);
         assert_eq!(restored.sessions[0].messages.len(), 2);
         assert_eq!(restored.sessions[0].notes.len(), 1);
+        assert_eq!(restored.sessions[0].command_lifecycle_records.len(), 1);
         assert!(restored.memory.is_none());
     }
 
@@ -491,6 +579,22 @@ mod tests {
         );
         assert!(session.get("createdAt").is_some(), "missing createdAt");
         assert!(session.get("updatedAt").is_some(), "missing updatedAt");
+        assert!(
+            session.get("commandLifecycleRecords").is_some(),
+            "missing commandLifecycleRecords"
+        );
+
+        let command_record = &session["commandLifecycleRecords"][0];
+        assert!(command_record.get("schema_version").is_some());
+        assert!(command_record.get("delivery_key").is_some());
+        assert!(command_record.get("created_at").is_some());
+        assert!(
+            command_record.get("session_id").is_none(),
+            "the containing session owns this relationship"
+        );
+        assert!(command_record.get("nous_id").is_none());
+        assert!(command_record.get("reply_text").is_none());
+        assert!(command_record.get("reply_digest").is_none());
 
         let msg = &session["messages"][0];
         assert!(msg.get("tokenEstimate").is_some(), "missing tokenEstimate");
@@ -549,7 +653,7 @@ mod tests {
 
     #[test]
     fn format_version_constant() {
-        assert_eq!(AGENT_FILE_VERSION, 4);
+        assert_eq!(AGENT_FILE_VERSION, 5);
     }
 
     #[test]

@@ -5,12 +5,32 @@
     reason = "test assertions on Vecs with asserted length"
 )]
 
-use super::super::{ImportSessionBundle, ImportSessionNote, ImportSessionWorkingState};
+use super::super::{
+    ImportCommandLifecycleRecord, ImportSessionBundle, ImportSessionNote, ImportSessionWorkingState,
+};
 use crate::test_fixtures::test_store;
 use crate::types::{
-    AgentNote, BlackboardVisibility, Message, Role, Session, SessionMetrics, SessionOrigin,
-    SessionStatus, SessionType, UsageRecord,
+    AgentNote, BlackboardVisibility, COMMAND_LIFECYCLE_SCHEMA, COMMAND_LIFECYCLE_SCHEMA_VERSION,
+    CommandDelivery, CommandDeliveryStatus, CommandInvocationStatus, CommandLifecycleEvent,
+    CommandResultStatus, Message, RedactedCommand, RedactedCommandOrigin, Role, Session,
+    SessionMetrics, SessionOrigin, SessionStatus, SessionType, UsageRecord,
 };
+
+fn audit_digest(prefix: &str, byte: char) -> String {
+    format!("{prefix}{}", byte.to_string().repeat(64))
+}
+
+fn command_origin() -> RedactedCommandOrigin {
+    RedactedCommandOrigin {
+        channel: "matrix".to_owned(),
+        account_id: Some(audit_digest("h:", 'a')),
+        sender: audit_digest("h:", 'b'),
+        group_id: None,
+        thread_id: None,
+        conversation_id: audit_digest("sha256:", 'c'),
+        timestamp_ms: 1_709_312_345_678,
+    }
+}
 
 fn seed_session(store: &super::super::SessionStore) -> String {
     let session = store
@@ -644,6 +664,46 @@ fn import_session_bundle_writes_everything_atomically() {
         model: Some("mock-model".to_owned()),
         created_at: "2024-08-01T00:00:02Z".to_owned(),
     }];
+    let command_origin = command_origin();
+    let command = RedactedCommand {
+        name: "status".to_owned(),
+        args_redacted: None,
+    };
+    let invocation = CommandLifecycleEvent::Invocation {
+        status: CommandInvocationStatus::Started,
+    };
+    let result_event = CommandLifecycleEvent::Result {
+        status: CommandResultStatus::Succeeded,
+        failure_class: None,
+        duration_ms: 27,
+        delivery: CommandDelivery {
+            status: CommandDeliveryStatus::Sent,
+            failure_class: None,
+        },
+    };
+    let delivery_key = audit_digest("sha256:", 'd');
+    let command_lifecycle_records = vec![
+        ImportCommandLifecycleRecord {
+            id: 41,
+            schema: COMMAND_LIFECYCLE_SCHEMA,
+            schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
+            delivery_key: &delivery_key,
+            origin: &command_origin,
+            command: &command,
+            event: &invocation,
+            created_at: "2024-08-01T00:00:01Z",
+        },
+        ImportCommandLifecycleRecord {
+            id: 42,
+            schema: COMMAND_LIFECYCLE_SCHEMA,
+            schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
+            delivery_key: &delivery_key,
+            origin: &command_origin,
+            command: &command,
+            event: &result_event,
+            created_at: "2024-08-01T00:00:02Z",
+        },
+    ];
     let notes = vec![ImportSessionNote {
         category: "task",
         content: "bundled note",
@@ -663,6 +723,7 @@ fn import_session_bundle_writes_everything_atomically() {
                 session: &session,
                 messages: &messages,
                 usage_records: &usage_records,
+                command_lifecycle_records: &command_lifecycle_records,
                 notes: &notes,
                 working_state,
             },
@@ -673,6 +734,7 @@ fn import_session_bundle_writes_everything_atomically() {
     assert_eq!(result.session.id, "ses-bundle-1");
     assert_eq!(result.messages_imported, 2);
     assert_eq!(result.usage_records_imported, 1);
+    assert_eq!(result.command_lifecycle_records_imported, 2);
     assert_eq!(result.notes_imported, 1);
     assert!(result.working_state_imported);
 
@@ -697,6 +759,16 @@ fn import_session_bundle_writes_everything_atomically() {
     assert_eq!(notes_stored.len(), 1);
     assert_eq!(notes_stored[0].content, "bundled note");
 
+    let command_records = store
+        .command_lifecycle_records_for_session("ses-bundle-1")
+        .expect("command lifecycle");
+    assert_eq!(command_records.len(), 2);
+    assert_eq!(command_records[0].id, 41);
+    assert_eq!(command_records[1].id, 42);
+    assert_eq!(command_records[0].session_id, "ses-bundle-1");
+    assert_eq!(command_records[0].nous_id, "syn");
+    assert_eq!(command_records[0].created_at, "2024-08-01T00:00:01Z");
+
     let ws = store
         .blackboard_read(&ws_key)
         .expect("blackboard read")
@@ -708,6 +780,229 @@ fn import_session_bundle_writes_everything_atomically() {
     // A regression here reopens the leak #6731 closed.
     assert_eq!(ws.visibility, BlackboardVisibility::SessionPrivate);
     assert_eq!(ws.session_id.as_deref(), Some(session.id.as_str()));
+}
+
+#[test]
+fn command_lifecycle_import_is_idempotent_but_rejects_content_collision() {
+    let store = test_store();
+    let session = import_session_record(
+        "ses-command-collision",
+        SessionStatus::Active,
+        "2024-08-01T00:00:00Z",
+    );
+    let origin = command_origin();
+    let command = RedactedCommand {
+        name: "status".to_owned(),
+        args_redacted: None,
+    };
+    let delivery_key = audit_digest("sha256:", 'e');
+    let first_event = CommandLifecycleEvent::Result {
+        status: CommandResultStatus::Succeeded,
+        failure_class: None,
+        duration_ms: 10,
+        delivery: CommandDelivery {
+            status: CommandDeliveryStatus::Sent,
+            failure_class: None,
+        },
+    };
+    let first_records = [ImportCommandLifecycleRecord {
+        id: 7,
+        schema: COMMAND_LIFECYCLE_SCHEMA,
+        schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
+        delivery_key: &delivery_key,
+        origin: &origin,
+        command: &command,
+        event: &first_event,
+        created_at: "2024-08-01T00:00:01Z",
+    }];
+    let first_bundle = ImportSessionBundle {
+        session: &session,
+        messages: &[],
+        usage_records: &[],
+        command_lifecycle_records: &first_records,
+        notes: &[],
+        working_state: None,
+    };
+    store
+        .import_session_bundle(&first_bundle, false)
+        .expect("first import");
+    store
+        .import_session_bundle(&first_bundle, true)
+        .expect("exact retry is idempotent");
+    assert_eq!(
+        store
+            .command_lifecycle_records_for_session(&session.id)
+            .expect("records")
+            .len(),
+        1,
+        "an exact retry must not duplicate a source row"
+    );
+
+    let conflicting_event = CommandLifecycleEvent::Result {
+        status: CommandResultStatus::Succeeded,
+        failure_class: None,
+        duration_ms: 999,
+        delivery: CommandDelivery {
+            status: CommandDeliveryStatus::Sent,
+            failure_class: None,
+        },
+    };
+    let conflicting_records = [ImportCommandLifecycleRecord {
+        id: 7,
+        schema: COMMAND_LIFECYCLE_SCHEMA,
+        schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
+        delivery_key: &delivery_key,
+        origin: &origin,
+        command: &command,
+        event: &conflicting_event,
+        created_at: "2024-08-01T00:00:01Z",
+    }];
+    let conflict = store.import_session_bundle(
+        &ImportSessionBundle {
+            session: &session,
+            messages: &[],
+            usage_records: &[],
+            command_lifecycle_records: &conflicting_records,
+            notes: &[],
+            working_state: None,
+        },
+        true,
+    );
+    assert!(
+        conflict
+            .expect_err("same id with different content must reject")
+            .to_string()
+            .contains("different content")
+    );
+    let restored = store
+        .command_lifecycle_records_for_session(&session.id)
+        .expect("record remains");
+    assert!(matches!(
+        &restored[0].event,
+        CommandLifecycleEvent::Result {
+            duration_ms: 10,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn command_lifecycle_import_rejects_cross_session_global_id_collision() {
+    let store = test_store();
+    let first_session = import_session_record(
+        "ses-command-collision-first",
+        SessionStatus::Active,
+        "2024-08-01T00:00:00Z",
+    );
+    let other_session = import_session_record(
+        "ses-command-collision-other",
+        SessionStatus::Active,
+        "2024-08-01T00:01:00Z",
+    );
+    let origin = command_origin();
+    let command = RedactedCommand {
+        name: "status".to_owned(),
+        args_redacted: None,
+    };
+    let event = CommandLifecycleEvent::Invocation {
+        status: CommandInvocationStatus::Started,
+    };
+    let delivery_key = audit_digest("sha256:", 'e');
+    let records = [ImportCommandLifecycleRecord {
+        id: 7,
+        schema: COMMAND_LIFECYCLE_SCHEMA,
+        schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
+        delivery_key: &delivery_key,
+        origin: &origin,
+        command: &command,
+        event: &event,
+        created_at: "2024-08-01T00:00:01Z",
+    }];
+    let first_bundle = ImportSessionBundle {
+        session: &first_session,
+        messages: &[],
+        usage_records: &[],
+        command_lifecycle_records: &records,
+        notes: &[],
+        working_state: None,
+    };
+    store
+        .import_session_bundle(&first_bundle, false)
+        .expect("first global id owner imports");
+    let cross_session_collision = store.import_session_bundle(
+        &ImportSessionBundle {
+            session: &other_session,
+            messages: &[],
+            usage_records: &[],
+            command_lifecycle_records: &records,
+            notes: &[],
+            working_state: None,
+        },
+        false,
+    );
+    assert!(
+        cross_session_collision
+            .expect_err("a global id cannot be reused by a different session")
+            .to_string()
+            .contains("different session record")
+    );
+    assert!(
+        store
+            .find_session_by_id(&other_session.id)
+            .expect("query")
+            .is_none(),
+        "the colliding import must not commit its session row"
+    );
+}
+
+#[test]
+fn command_lifecycle_import_rejects_duplicate_ids_before_write() {
+    let store = test_store();
+    let session = import_session_record(
+        "ses-command-duplicate",
+        SessionStatus::Active,
+        "2024-08-01T00:00:00Z",
+    );
+    let origin = command_origin();
+    let command = RedactedCommand {
+        name: "status".to_owned(),
+        args_redacted: None,
+    };
+    let event = CommandLifecycleEvent::Invocation {
+        status: CommandInvocationStatus::Started,
+    };
+    let delivery_key = audit_digest("sha256:", 'f');
+    let duplicate = ImportCommandLifecycleRecord {
+        id: 8,
+        schema: COMMAND_LIFECYCLE_SCHEMA,
+        schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
+        delivery_key: &delivery_key,
+        origin: &origin,
+        command: &command,
+        event: &event,
+        created_at: "2024-08-01T00:00:01Z",
+    };
+    let err = store
+        .import_session_bundle(
+            &ImportSessionBundle {
+                session: &session,
+                messages: &[],
+                usage_records: &[],
+                command_lifecycle_records: &[duplicate, duplicate],
+                notes: &[],
+                working_state: None,
+            },
+            false,
+        )
+        .expect_err("duplicate ids reject");
+    assert!(err.to_string().contains("duplicate command lifecycle id"));
+    assert!(
+        store
+            .find_session_by_id(&session.id)
+            .expect("query")
+            .is_none(),
+        "validation must reject before the session row is written"
+    );
 }
 
 #[test]
@@ -743,6 +1038,7 @@ fn import_session_bundle_invalid_note_leaves_nothing_committed() {
                 session: &session,
                 messages: &messages,
                 usage_records: &[],
+                command_lifecycle_records: &[],
                 notes: &notes,
                 working_state: None,
             },
@@ -803,6 +1099,7 @@ fn import_session_bundle_duplicate_seq_rejected_before_write() {
                 session: &session,
                 messages: &messages,
                 usage_records: &[],
+                command_lifecycle_records: &[],
                 notes: &[],
                 working_state: None,
             },
@@ -847,6 +1144,7 @@ fn import_session_bundle_mismatched_session_id_rejected() {
                 session: &session,
                 messages: &messages,
                 usage_records: &[],
+                command_lifecycle_records: &[],
                 notes: &[],
                 working_state: None,
             },

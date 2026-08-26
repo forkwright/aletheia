@@ -6,13 +6,18 @@
 )]
 
 use super::{
-    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
-    SessionStatusCounts, SessionStore, test_finalize_failure, test_persist_counter,
+    AppendCommandLifecycleRecord, FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord,
+    FinalizeTurnRequest, SessionStatusCounts, SessionStore, test_finalize_failure,
+    test_persist_counter,
 };
 use crate::error::Error;
 use crate::test_fixtures::test_store;
 use crate::types::{
-    BlackboardRow, BlackboardVisibility, Role, SessionStatus, SessionType, UsageRecord,
+    BlackboardRow, BlackboardVisibility, COMMAND_LIFECYCLE_SCHEMA,
+    COMMAND_LIFECYCLE_SCHEMA_VERSION, CommandDelivery, CommandDeliveryFailureClass,
+    CommandDeliveryStatus, CommandFailureClass, CommandInvocationStatus, CommandLifecycleEvent,
+    CommandLifecycleRecord, CommandResultStatus, RedactedCommand, RedactedCommandOrigin, Role,
+    SessionStatus, SessionType, UsageRecord,
 };
 use tempfile::TempDir;
 
@@ -21,6 +26,87 @@ fn write_raw(store: &super::SessionStore, partition_name: &str, key: &str, value
     let mut tx = store.db.write_tx();
     tx.insert(&partition, key, value);
     tx.commit().expect("raw value committed");
+}
+
+fn audit_digest(prefix: &str, byte: char) -> String {
+    format!("{prefix}{}", byte.to_string().repeat(64))
+}
+
+fn command_origin() -> RedactedCommandOrigin {
+    RedactedCommandOrigin {
+        channel: "signal".to_owned(),
+        account_id: Some(audit_digest("h:", 'a')),
+        sender: audit_digest("h:", 'b'),
+        group_id: Some(audit_digest("h:", 'c')),
+        thread_id: Some(audit_digest("h:", 'd')),
+        conversation_id: audit_digest("sha256:", 'e'),
+        timestamp_ms: 1_709_312_345_678,
+    }
+}
+
+fn command_metadata(args_redacted: Option<&str>) -> RedactedCommand {
+    RedactedCommand {
+        name: "status".to_owned(),
+        args_redacted: args_redacted.map(str::to_owned),
+    }
+}
+
+fn append_test_command_lifecycle(store: &SessionStore) -> Vec<CommandLifecycleRecord> {
+    let origin = command_origin();
+    let command = command_metadata(Some("password=hunter2 target"));
+    let delivery_key = audit_digest("sha256:", 'f');
+    let invocation = CommandLifecycleEvent::Invocation {
+        status: CommandInvocationStatus::Started,
+    };
+    test_persist_counter::reset();
+    let first = store
+        .append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+            session_id: "ses-command",
+            delivery_key: &delivery_key,
+            origin: &origin,
+            command: &command,
+            event: &invocation,
+        })
+        .expect("append invocation");
+    assert_eq!(
+        test_persist_counter::count(),
+        1,
+        "a command event must flush before append returns"
+    );
+    assert_eq!(first.id, 1);
+    assert_eq!(first.session_id, "ses-command");
+    assert_eq!(first.nous_id, "alice");
+    assert_eq!(first.schema, COMMAND_LIFECYCLE_SCHEMA);
+    assert_eq!(first.schema_version, COMMAND_LIFECYCLE_SCHEMA_VERSION);
+    assert_eq!(
+        first.command.args_redacted.as_deref(),
+        Some("password=*** target"),
+        "the store must re-apply central secret redaction"
+    );
+
+    let result = CommandLifecycleEvent::Result {
+        status: CommandResultStatus::Succeeded,
+        failure_class: None,
+        duration_ms: 42,
+        delivery: CommandDelivery {
+            status: CommandDeliveryStatus::Sent,
+            failure_class: None,
+        },
+    };
+    test_persist_counter::reset();
+    let second = store
+        .append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+            session_id: "ses-command",
+            delivery_key: &delivery_key,
+            origin: &origin,
+            command: &command,
+            event: &result,
+        })
+        .expect("append result");
+    assert_eq!(test_persist_counter::count(), 1);
+    assert_eq!(second.id, 2);
+
+    vec![first, second]
 }
 
 /// Run a closure with `TZ` temporarily set to `tz`, restoring the previous value
@@ -742,6 +828,220 @@ fn delete_session_removes_all_child_rows() {
     );
 }
 
+#[test]
+fn command_lifecycle_is_durable_and_absent_from_agent_surfaces() {
+    const REPLY_SENTINEL: &str = "COMMAND-REPLY-MUST-NOT-PERSIST";
+
+    let dir = TempDir::new().expect("temp dir creates");
+    let path = dir.path().join("sessions");
+    let written = {
+        let store = SessionStore::open(&path).expect("open store");
+        store
+            .create_session("ses-command", "alice", "main", None, None)
+            .expect("create session");
+        let legacy_record = serde_json::json!({
+            "schema": "aletheia.agora.command.v1",
+            "event": "result",
+            "response": { "reply_text": REPLY_SENTINEL },
+        })
+        .to_string();
+        store
+            .append_message("ses-command", Role::System, &legacy_record, None, None, 10)
+            .expect("seed legacy command message");
+        let appended = append_test_command_lifecycle(&store);
+
+        let history = store.get_history("ses-command", None).expect("history");
+        assert!(
+            history.is_empty(),
+            "command audit must not enter model or distillation history"
+        );
+        assert!(
+            store
+                .get_history_filtered("ses-command", None, None)
+                .expect("filtered history")
+                .is_empty(),
+            "historical command messages must not enter session inspection"
+        );
+        assert!(
+            store
+                .get_history_with_budget("ses-command", 100)
+                .expect("budget history")
+                .is_empty(),
+            "historical command messages must not enter budgeted model context"
+        );
+        #[cfg(feature = "portability")]
+        {
+            let raw_history = store
+                .get_history_raw("ses-command", None)
+                .expect("operator raw history");
+            assert_eq!(raw_history.len(), 1);
+            assert!(
+                raw_history[0].content.contains(REPLY_SENTINEL),
+                "raw/operator export preserves historical bytes for migration"
+            );
+        }
+        assert!(
+            store.get_notes("ses-command").expect("notes").is_empty(),
+            "command audit must not enter agent-readable/deletable notes"
+        );
+
+        let records = store
+            .command_lifecycle_records_for_session("ses-command")
+            .expect("inspect command records");
+        assert_eq!(records.len(), 2);
+        let encoded = serde_json::to_string(&records).expect("records serialize");
+        assert!(!encoded.contains(REPLY_SENTINEL));
+        assert!(!encoded.contains("reply_text"));
+        assert!(!encoded.contains("reply_digest"));
+        assert_eq!(records, appended);
+        records
+    };
+
+    let reopened = SessionStore::open(&path).expect("reopen store");
+    let restored = reopened
+        .command_lifecycle_records_for_session("ses-command")
+        .expect("read records after reopen");
+    assert_eq!(restored, written, "both typed events must survive reopen");
+    assert!(
+        reopened
+            .get_history("ses-command", None)
+            .expect("history after reopen")
+            .is_empty()
+    );
+    assert!(
+        reopened
+            .get_notes("ses-command")
+            .expect("notes after reopen")
+            .is_empty()
+    );
+}
+
+#[test]
+fn command_lifecycle_rejects_raw_identities_and_invalid_status_pairs() {
+    let store = test_store();
+    store
+        .create_session("ses-command-invalid", "alice", "main", None, None)
+        .expect("create session");
+    let command = command_metadata(None);
+    let invocation = CommandLifecycleEvent::Invocation {
+        status: CommandInvocationStatus::Started,
+    };
+    let mut raw_origin = command_origin();
+    raw_origin.sender = "+15550100".to_owned();
+    let raw_identity = store.append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+        session_id: "ses-command-invalid",
+        delivery_key: &audit_digest("sha256:", '1'),
+        origin: &raw_origin,
+        command: &command,
+        event: &invocation,
+    });
+    assert!(
+        raw_identity
+            .expect_err("raw sender must be rejected")
+            .to_string()
+            .contains("opaque identity")
+    );
+
+    let origin = command_origin();
+    let succeeded_with_failure = CommandLifecycleEvent::Result {
+        status: CommandResultStatus::Succeeded,
+        failure_class: Some(CommandFailureClass::ExecutionFailure),
+        duration_ms: 1,
+        delivery: CommandDelivery {
+            status: CommandDeliveryStatus::Sent,
+            failure_class: None,
+        },
+    };
+    assert!(
+        store
+            .append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+                session_id: "ses-command-invalid",
+                delivery_key: &audit_digest("sha256:", '2'),
+                origin: &origin,
+                command: &command,
+                event: &succeeded_with_failure,
+            })
+            .expect_err("success/failure mismatch must reject")
+            .to_string()
+            .contains("successful command result")
+    );
+
+    let failed_delivery_without_class = CommandLifecycleEvent::Result {
+        status: CommandResultStatus::Failed,
+        failure_class: Some(CommandFailureClass::ExecutionFailure),
+        duration_ms: 1,
+        delivery: CommandDelivery {
+            status: CommandDeliveryStatus::Failed,
+            failure_class: None,
+        },
+    };
+    assert!(
+        store
+            .append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+                session_id: "ses-command-invalid",
+                delivery_key: &audit_digest("sha256:", '3'),
+                origin: &origin,
+                command: &command,
+                event: &failed_delivery_without_class,
+            })
+            .expect_err("failed delivery without class must reject")
+            .to_string()
+            .contains("delivery failure_class")
+    );
+
+    let sent_with_failure = CommandLifecycleEvent::Result {
+        status: CommandResultStatus::Failed,
+        failure_class: Some(CommandFailureClass::ExecutionFailure),
+        duration_ms: 1,
+        delivery: CommandDelivery {
+            status: CommandDeliveryStatus::Sent,
+            failure_class: Some(CommandDeliveryFailureClass::ProviderFailure),
+        },
+    };
+    assert!(
+        store
+            .append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+                session_id: "ses-command-invalid",
+                delivery_key: &audit_digest("sha256:", '4'),
+                origin: &origin,
+                command: &command,
+                event: &sent_with_failure,
+            })
+            .expect_err("sent delivery with class must reject")
+            .to_string()
+            .contains("sent command reply")
+    );
+}
+
+#[test]
+fn command_lifecycle_row_namespace_cannot_collide_with_session_id() {
+    let store = test_store();
+    store
+        .create_session("gid", "alice", "main", None, None)
+        .expect("create namespaced session");
+    let origin = command_origin();
+    let command = command_metadata(None);
+    let event = CommandLifecycleEvent::Invocation {
+        status: CommandInvocationStatus::Started,
+    };
+    store
+        .append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+            session_id: "gid",
+            delivery_key: &audit_digest("sha256:", '8'),
+            origin: &origin,
+            command: &command,
+            event: &event,
+        })
+        .expect("append without colliding with the global id index");
+    assert_eq!(
+        store
+            .command_lifecycle_records_for_session("gid")
+            .expect("read namespaced record")
+            .len(),
+        1
+    );
+}
+
 // SECURITY(#5270): every critical session mutation must flush before
 // returning success, so a caller told "done" never observes the change
 // vanish after an unclean shutdown. Each assertion below fails without the
@@ -940,6 +1240,20 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
             completion_note: None,
         })
         .expect("record tool audit");
+    let command_origin = command_origin();
+    let command = command_metadata(None);
+    let command_event = CommandLifecycleEvent::Invocation {
+        status: CommandInvocationStatus::Started,
+    };
+    store
+        .append_command_lifecycle_record(&AppendCommandLifecycleRecord {
+            session_id: "ses-x",
+            delivery_key: &audit_digest("sha256:", '9'),
+            origin: &command_origin,
+            command: &command,
+            event: &command_event,
+        })
+        .expect("record command lifecycle");
 
     assert!(
         !store
@@ -959,6 +1273,13 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
     assert!(
         !store.get_notes("ses-x").expect("notes").is_empty(),
         "note row should exist before delete"
+    );
+    assert!(
+        !store
+            .command_lifecycle_records_for_session("ses-x")
+            .expect("command lifecycle")
+            .is_empty(),
+        "command lifecycle row should exist before delete"
     );
 
     let deleted = store.delete_session("ses-x").expect("delete");
@@ -981,6 +1302,13 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
     assert!(
         store.get_notes("ses-x").expect("notes").is_empty(),
         "note rows must be removed"
+    );
+    assert!(
+        store
+            .command_lifecycle_records_for_session("ses-x")
+            .expect("command lifecycle")
+            .is_empty(),
+        "command lifecycle rows must be removed"
     );
     assert!(
         store

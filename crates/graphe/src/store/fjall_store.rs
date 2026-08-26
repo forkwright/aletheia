@@ -16,6 +16,8 @@
 //! | `messages`      | `next_seq:{session_id}`                                | big-endian `u64`         |
 //! | `usage`         | `{session_id}:{turn_seq_padded_20}`                    | JSON `UsageRecord`       |
 //! | `tool_audit`    | `{global_id_padded_20}`                                | JSON `ToolAuditRecord`   |
+//! | `command_lifecycle` | `row:{session_id}:{global_id_padded_20}`            | JSON `CommandLifecycleRecord` |
+//! | `command_lifecycle` | `gid:{global_id_padded_20}`                         | owning record key        |
 //! | `distillations` | `{session_id}:{auto_id_padded_20}`                     | JSON distillation record |
 //! | `notes`         | `{session_id}:{auto_id_padded_20}`                     | JSON `AgentNote`         |
 //! | `notes`         | `gid:{global_note_id_padded_20}`                       | `{session_id}:{auto_id}` |
@@ -68,8 +70,11 @@ use eidos::meta::Stamped as _;
 use crate::error::{self, Result};
 use crate::metrics;
 use crate::types::{
-    AgentNote, BlackboardRow, BlackboardVisibility, Message, Role, Session, SessionMetrics,
-    SessionOrigin, SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
+    AgentNote, BlackboardRow, BlackboardVisibility, COMMAND_LIFECYCLE_SCHEMA,
+    COMMAND_LIFECYCLE_SCHEMA_VERSION, CommandDeliveryStatus, CommandLifecycleEvent,
+    CommandLifecycleRecord, CommandResultStatus, Message, RedactedCommand, RedactedCommandOrigin,
+    Role, Session, SessionMetrics, SessionOrigin, SessionStatus, SessionType, ToolAuditRecord,
+    UsageRecord,
 };
 
 fn storage_error(message: impl Into<String>) -> error::Error {
@@ -110,6 +115,46 @@ fn try_decode_u64(bytes: &[u8], context: &str) -> Result<u64> {
 /// Encode a u64 as big-endian bytes.
 fn encode_u64(v: u64) -> [u8; 8] {
     v.to_be_bytes()
+}
+
+/// Whether `value` is a versioned SHA-256-style opaque handle.
+///
+/// Command audit identifiers cross a durable privacy boundary. Pinning the
+/// wire shape here prevents a caller from accidentally persisting a raw
+/// phone number, room id, or provider error where an opaque handle belongs.
+fn is_digest(value: &str, prefix: &str) -> bool {
+    value.strip_prefix(prefix).is_some_and(|digest| {
+        digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+    })
+}
+
+/// Whether `value` is a bounded, machine-selected audit vocabulary token.
+fn is_named_audit_token(value: &str, max_len: usize) -> bool {
+    !value.is_empty()
+        && value.len() <= max_len
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+}
+
+/// Schema used by the superseded command-as-system-message implementation.
+const LEGACY_COMMAND_MESSAGE_SCHEMA: &str = "aletheia.agora.command.v1";
+
+/// Whether a historical system message is runtime command audit rather than
+/// model conversation.
+///
+/// These rows remain in raw/operator export for faithful preservation, but
+/// the model-facing history APIs must stop surfacing them now that command
+/// audit has a dedicated partition. This is a compatibility filter, not a
+/// second live storage path.
+fn is_legacy_command_runtime_message(message: &Message) -> bool {
+    if message.role != Role::System {
+        return false;
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&message.content) else {
+        return false;
+    };
+    value.get("schema").and_then(serde_json::Value::as_str) == Some(LEGACY_COMMAND_MESSAGE_SCHEMA)
 }
 
 /// ISO 8601 timestamp string for "now".
@@ -155,6 +200,7 @@ const PARTITIONS: &[&str] = &[
     "messages",
     "usage",
     "tool_audit",
+    "command_lifecycle",
     "distillations",
     "notes",
     "blackboard",
@@ -187,7 +233,7 @@ const CURRENT_SCHEMA_VERSION: u32 = 1;
 /// whether this binary opens the store at all, while the key-layout version
 /// is informational provenance recorded in the manifest for operator
 /// diagnosis and is not itself compared on open.
-const CURRENT_KEY_LAYOUT_VERSION: u32 = 1;
+const CURRENT_KEY_LAYOUT_VERSION: u32 = 2;
 
 /// Store kind recorded in the manifest, distinguishing this fjall layout
 /// from sibling fjall-backed stores elsewhere in the fleet (symbolon,
@@ -568,6 +614,25 @@ pub struct FinalizeToolAuditRecord<'a> {
     pub receipt: Option<&'a str>,
 }
 
+/// One typed command lifecycle event to append durably.
+///
+/// The owning agent is derived from `session_id` inside the store, preventing
+/// a caller from forging a row that disagrees with its parent session. The
+/// session key remains solely on that parent session.
+#[derive(Debug, Clone, Copy)]
+pub struct AppendCommandLifecycleRecord<'a> {
+    /// Existing session that owns this event.
+    pub session_id: &'a str,
+    /// Transport-derived key correlating invocation and result events.
+    pub delivery_key: &'a str,
+    /// Redacted transport origin.
+    pub origin: &'a RedactedCommandOrigin,
+    /// Parsed command metadata with redacted arguments.
+    pub command: &'a RedactedCommand,
+    /// Typed invocation or result payload.
+    pub event: &'a CommandLifecycleEvent,
+}
+
 /// Request to persist a complete conversational turn in a single transaction.
 ///
 /// WHY: grouping session creation, message appends, usage recording, and the
@@ -684,6 +749,26 @@ struct NoteTxParts<'a> {
 struct NoteDeleteKeys {
     gid_keys: Vec<Vec<u8>>,
     gid_idx_keys: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Copy)]
+struct CommandLifecycleTxParts<'a> {
+    command_lifecycle: &'a fjall::SingleWriterTxKeyspace,
+    counters: &'a fjall::SingleWriterTxKeyspace,
+    sessions: &'a fjall::SingleWriterTxKeyspace,
+}
+
+#[derive(Clone, Copy)]
+struct PutCommandLifecycleRecord<'a> {
+    session_id: &'a str,
+    schema: &'a str,
+    schema_version: u32,
+    delivery_key: &'a str,
+    origin: &'a RedactedCommandOrigin,
+    command: &'a RedactedCommand,
+    event: &'a CommandLifecycleEvent,
+    created_at: Option<&'a str>,
+    provided_id: Option<u64>,
 }
 
 #[derive(Clone, Copy)]
@@ -1910,6 +1995,7 @@ impl SessionStore {
         let messages_part = self.partition("messages")?;
         let usage_part = self.partition("usage")?;
         let tool_audit_part = self.partition("tool_audit")?;
+        let command_lifecycle_part = self.partition("command_lifecycle")?;
         let distillations_part = self.partition("distillations")?;
         let notes_part = self.partition("notes")?;
 
@@ -1940,6 +2026,48 @@ impl SessionStore {
 
         let tool_audit_keys =
             Self::tool_audit_keys_for_session_in_tx(&mut tx, &tool_audit_part, id)?;
+
+        let command_lifecycle_prefix = format!("row:{id}:");
+        let command_lifecycle_upper = format!("row:{id};\x00");
+        let command_lifecycle_keys: Vec<(Vec<u8>, Vec<u8>)> = tx
+            .range(
+                &command_lifecycle_part,
+                command_lifecycle_prefix.as_str()..command_lifecycle_upper.as_str(),
+            )
+            .map(|guard| {
+                let (key, value) = guard.into_inner().map_err(|e| {
+                    storage_error(format!("fjall delete_session command_lifecycle scan: {e}"))
+                })?;
+                let record = serde_json::from_slice::<CommandLifecycleRecord>(&value)
+                    .context(error::StoredJsonSnafu)?;
+                if record.session_id != id {
+                    return Err(storage_error(format!(
+                        "command lifecycle row for '{}' found under session '{id}' prefix",
+                        record.session_id
+                    )));
+                }
+                Ok((
+                    key.to_vec(),
+                    Self::command_lifecycle_global_id_key(record.id).into_bytes(),
+                ))
+            })
+            .collect::<Result<_>>()?;
+
+        for (record_key, global_id_key) in &command_lifecycle_keys {
+            let indexed_owner = tx
+                .get(&command_lifecycle_part, global_id_key.as_slice())
+                .map_err(|e| {
+                    storage_error(format!("fjall delete_session command lifecycle index: {e}"))
+                })?
+                .ok_or_else(|| {
+                    storage_error("command lifecycle record is missing its global id index")
+                })?;
+            if indexed_owner.as_ref() != record_key.as_slice() {
+                return Err(storage_error(
+                    "command lifecycle global id index points at a different record",
+                ));
+            }
+        }
 
         let dist_keys: Vec<Vec<u8>> = tx
             .range(
@@ -1975,6 +2103,10 @@ impl SessionStore {
         }
         for key in &tool_audit_keys {
             tx.remove(&tool_audit_part, key.as_slice());
+        }
+        for (record_key, global_id_key) in &command_lifecycle_keys {
+            tx.remove(&command_lifecycle_part, record_key.as_slice());
+            tx.remove(&command_lifecycle_part, global_id_key.as_slice());
         }
 
         for key in &dist_keys {
@@ -2153,7 +2285,7 @@ impl SessionStore {
                     .into_inner()
                     .map_err(|e| storage_error(format!("fjall load_messages_in_range: {e}")))?;
                 let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
-                if msg.is_distilled {
+                if msg.is_distilled || is_legacy_command_runtime_message(&msg) {
                     continue;
                 }
                 result.push(msg);
@@ -2171,7 +2303,7 @@ impl SessionStore {
                     .into_inner()
                     .map_err(|e| storage_error(format!("fjall load_messages_in_range: {e}")))?;
                 let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
-                if !msg.is_distilled {
+                if !msg.is_distilled && !is_legacy_command_runtime_message(&msg) {
                     messages.push(msg);
                 }
             }
@@ -2212,7 +2344,7 @@ impl SessionStore {
                 .into_inner()
                 .map_err(|e| storage_error(format!("fjall get_history_filtered: {e}")))?;
             let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
-            if msg.is_distilled {
+            if msg.is_distilled || is_legacy_command_runtime_message(&msg) {
                 continue;
             }
             messages.push_back(msg);
@@ -2256,7 +2388,7 @@ impl SessionStore {
                 .into_inner()
                 .map_err(|e| storage_error(format!("fjall get_history_with_budget: {e}")))?;
             let msg = serde_json::from_slice::<Message>(&v).context(error::StoredJsonSnafu)?;
-            if msg.is_distilled {
+            if msg.is_distilled || is_legacy_command_runtime_message(&msg) {
                 continue;
             }
             if total + msg.token_estimate > max_tokens && !result.is_empty() {
@@ -2684,6 +2816,397 @@ impl SessionStore {
         // past `keep_last_n`, and a missed flush just delays the trim to
         // the next call.
         Ok(to_delete as u64) // kanon:ignore RUST/as-cast — count of deleted rows, bounded by partition size
+    }
+
+    // ── Command lifecycle audit ───────────────────────────────────────────
+
+    /// Append one command lifecycle event and flush it durably before return.
+    ///
+    /// The record is stored outside messages and notes. Its `nous_id` is copied
+    /// from the owning session row rather than trusted from the caller; the
+    /// session key remains solely on that parent row.
+    ///
+    /// # Errors
+    /// Returns an error if the session does not exist, the record violates the
+    /// command schema invariants, or the transaction cannot be committed and
+    /// flushed.
+    #[instrument(skip(self, spec), fields(session_id = %spec.session_id))]
+    pub fn append_command_lifecycle_record(
+        &self,
+        spec: &AppendCommandLifecycleRecord<'_>,
+    ) -> Result<CommandLifecycleRecord> {
+        let _guard = self
+            .write_lock
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let command_lifecycle_part = self.partition("command_lifecycle")?;
+        let counters_part = self.partition("counters")?;
+        let sessions_part = self.partition("sessions")?;
+
+        let mut tx = self.db.write_tx();
+        let record = Self::put_command_lifecycle_record_in_tx(
+            &mut tx,
+            CommandLifecycleTxParts {
+                command_lifecycle: &command_lifecycle_part,
+                counters: &counters_part,
+                sessions: &sessions_part,
+            },
+            PutCommandLifecycleRecord {
+                session_id: spec.session_id,
+                schema: COMMAND_LIFECYCLE_SCHEMA,
+                schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
+                delivery_key: spec.delivery_key,
+                origin: spec.origin,
+                command: spec.command,
+                event: spec.event,
+                created_at: None,
+                provided_id: None,
+            },
+        )?;
+        tx.commit().map_err(|e| {
+            storage_error(format!("fjall append_command_lifecycle_record commit: {e}"))
+        })?;
+        self.ensure_durable()?;
+        Ok(record)
+    }
+
+    /// Get all command lifecycle records for a session in insertion order.
+    ///
+    /// This is the runtime inspection/export surface. Conversation history and
+    /// note APIs do not consult this partition.
+    ///
+    /// # Errors
+    /// Returns an error if the partition scan fails or a stored row is corrupt.
+    #[instrument(skip(self))]
+    pub fn command_lifecycle_records_for_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<CommandLifecycleRecord>> {
+        use fjall::Readable;
+
+        let command_lifecycle_part = self.partition("command_lifecycle")?;
+        let prefix = format!("row:{session_id}:");
+        let upper = format!("row:{session_id};\x00");
+        let snap = self.db.read_tx();
+
+        let mut records = Vec::new();
+        for guard in snap.range(&command_lifecycle_part, prefix.as_str()..upper.as_str()) {
+            let (key, value) = guard.into_inner().map_err(|e| {
+                storage_error(format!("fjall command_lifecycle_records_for_session: {e}"))
+            })?;
+            let record = serde_json::from_slice::<CommandLifecycleRecord>(&value)
+                .context(error::StoredJsonSnafu)?;
+            if record.session_id != session_id {
+                return Err(storage_error(format!(
+                    "command lifecycle row for '{}' found under session '{}' prefix",
+                    record.session_id, session_id
+                )));
+            }
+            Self::validate_command_lifecycle_record(&PutCommandLifecycleRecord {
+                session_id: record.session_id.as_str(),
+                schema: record.schema.as_str(),
+                schema_version: record.schema_version,
+                delivery_key: record.delivery_key.as_str(),
+                origin: &record.origin,
+                command: &record.command,
+                event: &record.event,
+                created_at: Some(record.created_at.as_str()),
+                provided_id: Some(record.id),
+            })?;
+            let global_id_key = Self::command_lifecycle_global_id_key(record.id);
+            let indexed_owner = snap
+                .get(&command_lifecycle_part, global_id_key.as_str())
+                .map_err(|e| storage_error(format!("fjall command lifecycle id index: {e}")))?
+                .ok_or_else(|| {
+                    storage_error(format!(
+                        "command lifecycle id {} is missing its global index",
+                        record.id
+                    ))
+                })?;
+            if indexed_owner.as_ref() != key.as_ref() {
+                return Err(storage_error(format!(
+                    "command lifecycle id {} global index points at a different record",
+                    record.id
+                )));
+            }
+            records.push(record);
+        }
+        Ok(records)
+    }
+
+    fn command_lifecycle_global_id_key(id: u64) -> String {
+        format!("gid:{}", pad_u64(id))
+    }
+
+    fn validate_command_lifecycle_record(spec: &PutCommandLifecycleRecord<'_>) -> Result<()> {
+        Self::validate_command_lifecycle_schema_and_presence(spec)?;
+        Self::validate_command_lifecycle_redaction(spec)?;
+        Self::validate_command_lifecycle_event(spec.event)
+    }
+
+    fn validate_command_lifecycle_schema_and_presence(
+        spec: &PutCommandLifecycleRecord<'_>,
+    ) -> Result<()> {
+        if spec.schema != COMMAND_LIFECYCLE_SCHEMA
+            || spec.schema_version != COMMAND_LIFECYCLE_SCHEMA_VERSION
+        {
+            return Err(storage_error(format!(
+                "unsupported command lifecycle schema '{}'/{}; expected '{}'/{}",
+                spec.schema,
+                spec.schema_version,
+                COMMAND_LIFECYCLE_SCHEMA,
+                COMMAND_LIFECYCLE_SCHEMA_VERSION
+            )));
+        }
+        for (field, value) in [
+            ("session_id", spec.session_id),
+            ("delivery_key", spec.delivery_key),
+            ("origin.channel", spec.origin.channel.as_str()),
+            ("origin.sender", spec.origin.sender.as_str()),
+            (
+                "origin.conversation_id",
+                spec.origin.conversation_id.as_str(),
+            ),
+            ("command.name", spec.command.name.as_str()),
+        ] {
+            if value.trim().is_empty() {
+                return Err(storage_error(format!(
+                    "command lifecycle {field} must not be empty"
+                )));
+            }
+        }
+        for (field, value) in [
+            ("origin.account_id", spec.origin.account_id.as_deref()),
+            ("origin.group_id", spec.origin.group_id.as_deref()),
+            ("origin.thread_id", spec.origin.thread_id.as_deref()),
+            (
+                "command.args_redacted",
+                spec.command.args_redacted.as_deref(),
+            ),
+            ("created_at", spec.created_at),
+        ] {
+            if value.is_some_and(|candidate| candidate.trim().is_empty()) {
+                return Err(storage_error(format!(
+                    "command lifecycle {field} must be absent or non-empty"
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_command_lifecycle_redaction(spec: &PutCommandLifecycleRecord<'_>) -> Result<()> {
+        if !is_named_audit_token(&spec.origin.channel, 32) {
+            return Err(storage_error(
+                "command lifecycle origin.channel must be a bounded ASCII name",
+            ));
+        }
+        if !is_named_audit_token(&spec.command.name, 64) {
+            return Err(storage_error(
+                "command lifecycle command.name must be a bounded ASCII name",
+            ));
+        }
+        if !is_digest(&spec.delivery_key, "sha256:") {
+            return Err(storage_error(
+                "command lifecycle delivery_key must be a sha256 digest",
+            ));
+        }
+        if !is_digest(&spec.origin.sender, "h:") {
+            return Err(storage_error(
+                "command lifecycle origin.sender must be an opaque identity",
+            ));
+        }
+        for (field, value) in [
+            ("origin.account_id", spec.origin.account_id.as_deref()),
+            ("origin.group_id", spec.origin.group_id.as_deref()),
+            ("origin.thread_id", spec.origin.thread_id.as_deref()),
+        ] {
+            if value.is_some_and(|candidate| !is_digest(candidate, "h:")) {
+                return Err(storage_error(format!(
+                    "command lifecycle {field} must be an opaque identity"
+                )));
+            }
+        }
+        if !is_digest(&spec.origin.conversation_id, "sha256:") {
+            return Err(storage_error(
+                "command lifecycle origin.conversation_id must be a sha256 digest",
+            ));
+        }
+        if spec.origin.timestamp_ms == 0 {
+            return Err(storage_error(
+                "command lifecycle origin.timestamp_ms must be greater than zero",
+            ));
+        }
+        if spec
+            .command
+            .args_redacted
+            .as_ref()
+            .is_some_and(|args| args.len() > 1024)
+        {
+            return Err(storage_error(
+                "command lifecycle command.args_redacted exceeds 1024 bytes",
+            ));
+        }
+        if let Some(created_at) = spec.created_at
+            && created_at.parse::<jiff::Timestamp>().is_err()
+        {
+            return Err(storage_error(
+                "command lifecycle created_at must be an ISO 8601 timestamp",
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn validate_command_lifecycle_event(event: &CommandLifecycleEvent) -> Result<()> {
+        if let CommandLifecycleEvent::Result {
+            status,
+            failure_class,
+            delivery,
+            ..
+        } = event
+        {
+            match status {
+                CommandResultStatus::Succeeded if failure_class.is_some() => {
+                    return Err(storage_error(
+                        "successful command result cannot carry a failure_class",
+                    ));
+                }
+                CommandResultStatus::Failed if failure_class.is_none() => {
+                    return Err(storage_error(
+                        "failed command result requires a failure_class",
+                    ));
+                }
+                CommandResultStatus::Succeeded | CommandResultStatus::Failed => {}
+            }
+
+            match delivery.status {
+                CommandDeliveryStatus::Sent if delivery.failure_class.is_some() => {
+                    return Err(storage_error(
+                        "sent command reply cannot carry a delivery failure_class",
+                    ));
+                }
+                CommandDeliveryStatus::Failed if delivery.failure_class.is_none() => {
+                    return Err(storage_error(
+                        "failed command reply requires a delivery failure_class",
+                    ));
+                }
+                CommandDeliveryStatus::Sent | CommandDeliveryStatus::Failed => {}
+            }
+        }
+        Ok(())
+    }
+
+    fn put_command_lifecycle_record_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        parts: CommandLifecycleTxParts<'_>,
+        spec: PutCommandLifecycleRecord<'_>,
+    ) -> Result<CommandLifecycleRecord> {
+        use fjall::Readable;
+
+        Self::validate_command_lifecycle_record(&spec)?;
+        let session_bytes = tx
+            .get(parts.sessions, spec.session_id)
+            .map_err(|e| storage_error(format!("fjall command lifecycle session check: {e}")))?
+            .ok_or_else(|| {
+                error::SessionNotFoundSnafu {
+                    id: spec.session_id.to_owned(),
+                }
+                .build()
+            })?;
+        let session =
+            serde_json::from_slice::<Session>(&session_bytes).context(error::StoredJsonSnafu)?;
+
+        let current_id = match tx
+            .get(parts.counters, "command_lifecycle_id")
+            .map_err(|e| storage_error(format!("fjall command_lifecycle_id counter: {e}")))?
+        {
+            None => 0,
+            Some(bytes) => try_decode_u64(&bytes, "command_lifecycle_id")?,
+        };
+        let id = match spec.provided_id {
+            Some(0) => {
+                return Err(storage_error(
+                    "imported command lifecycle id must be greater than zero",
+                ));
+            }
+            Some(id) => id,
+            None => current_id.checked_add(1).ok_or_else(|| {
+                storage_error("command lifecycle id counter exhausted".to_owned())
+            })?,
+        };
+        let key = format!("row:{}:{}", spec.session_id, pad_u64(id));
+        let global_id_key = Self::command_lifecycle_global_id_key(id);
+        let mut command = spec.command.clone();
+        if let Some(args) = command.args_redacted.as_deref() {
+            command.args_redacted = Some(koina::redact::redact_sensitive(args));
+        }
+        let record = CommandLifecycleRecord {
+            id,
+            session_id: session.id,
+            nous_id: session.nous_id,
+            schema: spec.schema.to_owned(),
+            schema_version: spec.schema_version,
+            delivery_key: spec.delivery_key.to_owned(),
+            origin: spec.origin.clone(),
+            command,
+            event: spec.event.clone(),
+            created_at: spec.created_at.map_or_else(now_iso, str::to_owned),
+        };
+        if let Some(indexed_owner) = tx
+            .get(parts.command_lifecycle, global_id_key.as_str())
+            .map_err(|e| storage_error(format!("fjall command lifecycle id index: {e}")))?
+        {
+            if indexed_owner.as_ref() != key.as_bytes() {
+                return Err(storage_error(format!(
+                    "command lifecycle id {id} is already owned by a different session record"
+                )));
+            }
+            let existing = tx
+                .get(parts.command_lifecycle, key.as_str())
+                .map_err(|e| storage_error(format!("fjall command lifecycle collision: {e}")))?
+                .ok_or_else(|| {
+                    storage_error(format!(
+                        "command lifecycle id {id} global index points at a missing record"
+                    ))
+                })?;
+            let existing = serde_json::from_slice::<CommandLifecycleRecord>(&existing)
+                .context(error::StoredJsonSnafu)?;
+            if spec.provided_id.is_some() && existing == record {
+                tx.insert(
+                    parts.counters,
+                    "command_lifecycle_id",
+                    encode_u64(id.max(current_id)),
+                );
+                return Ok(existing);
+            }
+            return Err(storage_error(format!(
+                "command lifecycle id {id} already exists with different content for session '{}'",
+                spec.session_id
+            )));
+        }
+        if tx
+            .get(parts.command_lifecycle, key.as_str())
+            .map_err(|e| storage_error(format!("fjall command lifecycle collision: {e}")))?
+            .is_some()
+        {
+            return Err(storage_error(format!(
+                "command lifecycle id {id} record exists without its global index"
+            )));
+        }
+        let data = serde_json::to_vec(&record).context(error::StoredJsonSnafu)?;
+        tx.insert(parts.command_lifecycle, key.as_str(), data.as_slice());
+        tx.insert(
+            parts.command_lifecycle,
+            global_id_key.as_str(),
+            key.as_bytes(),
+        );
+        tx.insert(
+            parts.counters,
+            "command_lifecycle_id",
+            encode_u64(id.max(current_id)),
+        );
+        Ok(record)
     }
 
     // ── Usage ─────────────────────────────────────────────────────────────
@@ -3616,6 +4139,9 @@ pub struct ImportSessionBundle<'a> {
     /// Usage records to insert, exactly as [`SessionStore::record_usage`]
     /// expects. Every record must belong to `session.id`.
     pub usage_records: &'a [UsageRecord],
+    /// Runtime-owned command lifecycle rows to restore into their dedicated
+    /// partition. Identifiers and timestamps are preserved.
+    pub command_lifecycle_records: &'a [ImportCommandLifecycleRecord<'a>],
     /// Notes to insert. A fresh id is always allocated: the portable export
     /// format does not carry the original note id.
     pub notes: &'a [ImportSessionNote<'a>],
@@ -3635,6 +4161,28 @@ pub struct ImportSessionNote<'a> {
     /// Note body text.
     pub content: &'a str,
     /// ISO 8601 timestamp to preserve from the export.
+    pub created_at: &'a str,
+}
+
+/// One command lifecycle row within an [`ImportSessionBundle`].
+#[cfg(feature = "portability")]
+#[derive(Debug, Clone, Copy)]
+pub struct ImportCommandLifecycleRecord<'a> {
+    /// Source-store chronological identifier.
+    pub id: u64,
+    /// Stable command record schema identifier.
+    pub schema: &'a str,
+    /// Structured command record schema version.
+    pub schema_version: u32,
+    /// Transport-derived key correlating invocation and result events.
+    pub delivery_key: &'a str,
+    /// Redacted transport origin.
+    pub origin: &'a RedactedCommandOrigin,
+    /// Parsed command metadata with redacted arguments.
+    pub command: &'a RedactedCommand,
+    /// Typed invocation or result payload.
+    pub event: &'a CommandLifecycleEvent,
+    /// ISO 8601 timestamp to preserve from the source store.
     pub created_at: &'a str,
 }
 
@@ -3664,6 +4212,8 @@ pub struct ImportSessionBundleResult {
     pub messages_imported: usize,
     /// Number of usage records written.
     pub usage_records_imported: usize,
+    /// Number of command lifecycle records written.
+    pub command_lifecycle_records_imported: usize,
     /// Number of notes written.
     pub notes_imported: usize,
     /// Whether a working-state payload was written.
@@ -3672,6 +4222,38 @@ pub struct ImportSessionBundleResult {
 
 #[cfg(feature = "portability")]
 impl SessionStore {
+    /// Validate one portable command lifecycle row without opening or writing
+    /// a store.
+    ///
+    /// Import front ends use this during their all-input preflight so a
+    /// malformed command record cannot be discovered only after workspace or
+    /// configuration files have already changed.
+    ///
+    /// # Errors
+    /// Returns an error if the identifier, schema, timestamp, redacted origin,
+    /// command metadata, or event/status combination is invalid.
+    pub fn validate_command_lifecycle_import(
+        session_id: &str,
+        record: &ImportCommandLifecycleRecord<'_>,
+    ) -> Result<()> {
+        if record.id == 0 {
+            return Err(storage_error(format!(
+                "command lifecycle id for session '{session_id}' must be greater than zero"
+            )));
+        }
+        Self::validate_command_lifecycle_record(&PutCommandLifecycleRecord {
+            session_id,
+            schema: record.schema,
+            schema_version: record.schema_version,
+            delivery_key: record.delivery_key,
+            origin: record.origin,
+            command: record.command,
+            event: record.event,
+            created_at: Some(record.created_at),
+            provided_id: Some(record.id),
+        })
+    }
+
     /// Get message history including distilled messages, preserving seq order.
     ///
     /// Unlike [`Self::get_history`], the distilled flag is not used to filter
@@ -4087,6 +4669,17 @@ impl SessionStore {
                 )));
             }
         }
+        let mut seen_command_ids =
+            std::collections::HashSet::with_capacity(bundle.command_lifecycle_records.len());
+        for record in bundle.command_lifecycle_records {
+            if !seen_command_ids.insert(record.id) {
+                return Err(storage_error(format!(
+                    "import_session_bundle: duplicate command lifecycle id {} in session '{}'",
+                    record.id, bundle.session.id
+                )));
+            }
+            Self::validate_command_lifecycle_import(bundle.session.id.as_str(), record)?;
+        }
         Ok(())
     }
 
@@ -4102,6 +4695,7 @@ impl SessionStore {
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         messages_part: &fjall::SingleWriterTxKeyspace,
         usage_part: &fjall::SingleWriterTxKeyspace,
+        command_lifecycle_part: &fjall::SingleWriterTxKeyspace,
         notes_part: &fjall::SingleWriterTxKeyspace,
         counters_part: &fjall::SingleWriterTxKeyspace,
         sessions_part: &fjall::SingleWriterTxKeyspace,
@@ -4113,6 +4707,28 @@ impl SessionStore {
 
         for usage in bundle.usage_records {
             Self::record_usage_in_tx(tx, usage_part, sessions_part, usage)?;
+        }
+
+        for record in bundle.command_lifecycle_records {
+            Self::put_command_lifecycle_record_in_tx(
+                tx,
+                CommandLifecycleTxParts {
+                    command_lifecycle: command_lifecycle_part,
+                    counters: counters_part,
+                    sessions: sessions_part,
+                },
+                PutCommandLifecycleRecord {
+                    session_id: bundle.session.id.as_str(),
+                    schema: record.schema,
+                    schema_version: record.schema_version,
+                    delivery_key: record.delivery_key,
+                    origin: record.origin,
+                    command: record.command,
+                    event: record.event,
+                    created_at: Some(record.created_at),
+                    provided_id: Some(record.id),
+                },
+            )?;
         }
 
         for note in bundle.notes {
@@ -4176,6 +4792,7 @@ impl SessionStore {
         let sessions_part = self.partition("sessions")?;
         let messages_part = self.partition("messages")?;
         let usage_part = self.partition("usage")?;
+        let command_lifecycle_part = self.partition("command_lifecycle")?;
         let notes_part = self.partition("notes")?;
         let counters_part = self.partition("counters")?;
         let bb_part = self.partition("blackboard")?;
@@ -4202,6 +4819,7 @@ impl SessionStore {
             &mut tx,
             &messages_part,
             &usage_part,
+            &command_lifecycle_part,
             &notes_part,
             &counters_part,
             &sessions_part,
@@ -4254,6 +4872,7 @@ impl SessionStore {
             nous_id = session_outcome.stamped.nous_id,
             messages = bundle.messages.len(),
             usage_records = bundle.usage_records.len(),
+            command_lifecycle_records = bundle.command_lifecycle_records.len(),
             notes = bundle.notes.len(),
             working_state_imported,
             "imported session bundle atomically"
@@ -4263,6 +4882,7 @@ impl SessionStore {
             session: session_outcome.stamped,
             messages_imported: bundle.messages.len(),
             usage_records_imported: bundle.usage_records.len(),
+            command_lifecycle_records_imported: bundle.command_lifecycle_records.len(),
             notes_imported: bundle.notes.len(),
             working_state_imported,
         })

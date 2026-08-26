@@ -576,6 +576,7 @@ fn import_knowledge(
 struct ImportSummary {
     workspace_files: usize,
     sessions: usize,
+    command_lifecycle_records: usize,
     facts: usize,
     entities: usize,
     relationships: usize,
@@ -586,6 +587,10 @@ fn print_import_summary(nous_id: &str, source: &Path, summary: &ImportSummary) {
     println!("Imported agent '{nous_id}' from {}", source.display());
     println!("  Workspace: {} files", summary.workspace_files);
     println!("  Sessions: {}", summary.sessions);
+    println!(
+        "  Command lifecycle records: {}",
+        summary.command_lifecycle_records
+    );
     println!("  Facts: {}", summary.facts);
     println!("  Entities: {}", summary.entities);
     println!("  Relationships: {}", summary.relationships);
@@ -605,8 +610,8 @@ fn print_import_summary(nous_id: &str, source: &Path, summary: &ImportSummary) {
 )]
 pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -> Result<()> {
     use mneme::portability::{
-        AgentFile, ExportMetadata, ExportedMessage, ExportedNote, ExportedSession,
-        ExportedUsageRecord, NousInfo, OmittedSection, TruncationRecord,
+        AgentFile, ExportMetadata, ExportedCommandLifecycleRecord, ExportedMessage, ExportedNote,
+        ExportedSession, ExportedUsageRecord, NousInfo, OmittedSection, TruncationRecord,
     };
 
     let oikos = super::resolve_oikos(instance_root)?;
@@ -642,7 +647,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
     // tool) rather than the blackboard `ws:{nous_id}:{session_id}` convention —
     // nothing in production runtime ever writes that blackboard key
     // (`WorkingState::persist_key` is dead outside tests), so it exported empty
-    // in practice. See AGENT_FILE_VERSION v4 note in `graphe::portability`.
+    // in practice. See the additive-version note in `graphe::portability`.
     let checkpoints_db = oikos.working_checkpoints_db();
     let checkpoint_store = nous::working_memory::FjallWorkingCheckpointStore::open(&checkpoints_db)
         .with_whatever_context(|_| {
@@ -714,6 +719,18 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             })
             .collect::<Vec<_>>();
 
+        let command_lifecycle_records = store
+            .command_lifecycle_records_for_session(&session.id)
+            .with_whatever_context(|_| {
+                format!(
+                    "failed to read command lifecycle records for {}",
+                    session.id
+                )
+            })?
+            .into_iter()
+            .map(ExportedCommandLifecycleRecord::from)
+            .collect();
+
         let notes = store
             .get_notes(&session.id)
             .with_whatever_context(|_| format!("failed to read notes for {}", session.id))?
@@ -758,6 +775,7 @@ pub(crate) fn export_agent(instance_root: Option<&PathBuf>, args: &ExportArgs) -
             notes,
             messages,
             usage_records: Some(usage_records),
+            command_lifecycle_records,
             // WHY(#5783): faithfully round-trip session identity metadata that v1
             // silently dropped; artefact_meta stays excluded (store-internal).
             parent_session_id: session.origin.parent_session_id,
@@ -1206,6 +1224,12 @@ fn parse_message_role(
 /// while the operation is still fully reversible. Call this before any I/O so
 /// a corrupt export is rejected without leaving partial state on disk.
 fn preflight_agent_file(file: &mneme::portability::AgentFile) -> Result<()> {
+    let command_record_count = file
+        .sessions
+        .iter()
+        .map(|session| session.command_lifecycle_records.len())
+        .sum();
+    let mut command_ids = HashSet::with_capacity(command_record_count);
     for (i, session) in file.sessions.iter().enumerate() {
         if session.id.trim().is_empty() {
             whatever!("session[{i}].id must not be empty");
@@ -1215,6 +1239,34 @@ fn preflight_agent_file(file: &mneme::portability::AgentFile) -> Result<()> {
                 "session[{i}] (id: {:?}) session_key must not be empty",
                 session.id
             );
+        }
+        for record in &session.command_lifecycle_records {
+            if !command_ids.insert(record.id) {
+                whatever!(
+                    "session[{i}] (id: {:?}) reuses global command lifecycle id {}",
+                    session.id,
+                    record.id
+                );
+            }
+            mneme::store::SessionStore::validate_command_lifecycle_import(
+                &session.id,
+                &mneme::store::ImportCommandLifecycleRecord {
+                    id: record.id,
+                    schema: record.schema.as_str(),
+                    schema_version: record.schema_version,
+                    delivery_key: record.delivery_key.as_str(),
+                    origin: &record.origin,
+                    command: &record.command,
+                    event: &record.event,
+                    created_at: record.created_at.as_str(),
+                },
+            )
+            .with_whatever_context(|_| {
+                format!(
+                    "session[{i}] (id: {:?}) has an invalid command lifecycle record {}",
+                    session.id, record.id
+                )
+            })?;
         }
     }
 
@@ -1426,8 +1478,14 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
         println!("Relationships: {relationships}");
         let total_msgs: usize = agent_file.sessions.iter().map(|s| s.messages.len()).sum();
         let total_notes: usize = agent_file.sessions.iter().map(|s| s.notes.len()).sum();
+        let total_command_records: usize = agent_file
+            .sessions
+            .iter()
+            .map(|s| s.command_lifecycle_records.len())
+            .sum();
         println!("Messages: {total_msgs}");
         println!("Notes: {total_notes}");
+        println!("Command lifecycle records: {total_command_records}");
         if let Some(ref memory) = agent_file.memory {
             let vectors = memory.vectors.as_ref().map_or(0, Vec::len);
             let graph = memory.graph.is_some();
@@ -1739,22 +1797,42 @@ pub(crate) fn import_agent(instance_root: Option<&PathBuf>, args: &ImportArgs) -
                 })
                 .collect();
 
+            let command_lifecycle_records: Vec<mneme::store::ImportCommandLifecycleRecord<'_>> =
+                session
+                    .command_lifecycle_records
+                    .iter()
+                    .map(|record| mneme::store::ImportCommandLifecycleRecord {
+                        id: record.id,
+                        schema: record.schema.as_str(),
+                        schema_version: record.schema_version,
+                        delivery_key: record.delivery_key.as_str(),
+                        origin: &record.origin,
+                        command: &record.command,
+                        event: &record.event,
+                        created_at: record.created_at.as_str(),
+                    })
+                    .collect();
+
             // WHY(#4588): working_state no longer round-trips through the
             // blackboard (so it is out of scope for #5033's single-transaction
             // guarantee; the checkpoint store is a separate durable fjall
             // database by construction, written just below instead).
-            store
+            let import_result = store
                 .import_session_bundle(
                     &mneme::store::ImportSessionBundle {
                         session: &session_record,
                         messages: &messages,
                         usage_records: &usage_records,
+                        command_lifecycle_records: &command_lifecycle_records,
                         notes: &notes,
                         working_state: None,
                     },
                     import_force,
                 )
                 .with_whatever_context(|_| format!("failed to import session {}", session.id))?;
+            summary.command_lifecycle_records = summary
+                .command_lifecycle_records
+                .saturating_add(import_result.command_lifecycle_records_imported);
 
             // WHY(#4588): checkpoints import durably (no TTL — the store never
             // expires entries) instead of the old 24h blackboard TTL. Older
@@ -2431,11 +2509,62 @@ mod tests {
     use std::fmt::Write as _;
 
     use mneme::portability::{
-        AgentFile, ExportMetadata, ExportedMessage, ExportedNote, ExportedSession,
-        ExportedUsageRecord, NousInfo, OmittedSection, WorkspaceData,
+        AgentFile, ExportMetadata, ExportedCommandLifecycleRecord, ExportedMessage, ExportedNote,
+        ExportedSession, ExportedUsageRecord, NousInfo, OmittedSection, WorkspaceData,
     };
 
     use super::*;
+
+    fn audit_digest(prefix: &str, byte: char) -> String {
+        format!("{prefix}{}", byte.to_string().repeat(64))
+    }
+
+    fn seed_command_lifecycle(store: &mneme::store::SessionStore, session_id: &str) {
+        let origin = mneme::types::RedactedCommandOrigin {
+            channel: "signal".to_owned(),
+            account_id: Some(audit_digest("h:", 'a')),
+            sender: audit_digest("h:", 'b'),
+            group_id: None,
+            thread_id: None,
+            conversation_id: audit_digest("sha256:", 'c'),
+            timestamp_ms: 1_709_312_345_678,
+        };
+        let command = mneme::types::RedactedCommand {
+            name: "status".to_owned(),
+            args_redacted: None,
+        };
+        let delivery_key = audit_digest("sha256:", 'd');
+        let invocation = mneme::types::CommandLifecycleEvent::Invocation {
+            status: mneme::types::CommandInvocationStatus::Started,
+        };
+        store
+            .append_command_lifecycle_record(&mneme::store::AppendCommandLifecycleRecord {
+                session_id,
+                delivery_key: &delivery_key,
+                origin: &origin,
+                command: &command,
+                event: &invocation,
+            })
+            .expect("append command invocation");
+        let result = mneme::types::CommandLifecycleEvent::Result {
+            status: mneme::types::CommandResultStatus::Succeeded,
+            failure_class: None,
+            duration_ms: 12,
+            delivery: mneme::types::CommandDelivery {
+                status: mneme::types::CommandDeliveryStatus::Sent,
+                failure_class: None,
+            },
+        };
+        store
+            .append_command_lifecycle_record(&mneme::store::AppendCommandLifecycleRecord {
+                session_id,
+                delivery_key: &delivery_key,
+                origin: &origin,
+                command: &command,
+                event: &result,
+            })
+            .expect("append command result");
+    }
 
     #[test]
     fn capitalize_first_letter() {
@@ -2652,6 +2781,7 @@ mod tests {
                     model: Some("claude-sonnet-4-6".to_owned()),
                     created_at: "2026-03-05T10:00:00Z".to_owned(),
                 }]),
+                command_lifecycle_records: vec![],
                 parent_session_id: None,
                 thread_id: None,
                 transport: None,
@@ -2668,6 +2798,56 @@ mod tests {
             knowledge: None,
             export_metadata: None,
         }
+    }
+
+    #[test]
+    fn import_preflights_command_lifecycle_before_filesystem_mutation() {
+        let dir = tempfile::tempdir().unwrap();
+        let oikos = Oikos::from_root(dir.path());
+        let mut agent_file = sample_agent_file();
+        agent_file.sessions[0].command_lifecycle_records = vec![ExportedCommandLifecycleRecord {
+            id: 1,
+            schema: mneme::types::COMMAND_LIFECYCLE_SCHEMA.to_owned(),
+            schema_version: mneme::types::COMMAND_LIFECYCLE_SCHEMA_VERSION,
+            delivery_key: audit_digest("sha256:", '1'),
+            origin: mneme::types::RedactedCommandOrigin {
+                channel: "signal".to_owned(),
+                account_id: None,
+                sender: "+15550100".to_owned(),
+                group_id: None,
+                thread_id: None,
+                conversation_id: audit_digest("sha256:", '2'),
+                timestamp_ms: 1_709_312_345_678,
+            },
+            command: mneme::types::RedactedCommand {
+                name: "status".to_owned(),
+                args_redacted: None,
+            },
+            event: mneme::types::CommandLifecycleEvent::Invocation {
+                status: mneme::types::CommandInvocationStatus::Started,
+            },
+            created_at: "2026-03-05T10:00:00Z".to_owned(),
+        }];
+        let input = dir.path().join("invalid-command.agent.json");
+        std::fs::write(&input, serde_json::to_vec(&agent_file).unwrap()).unwrap();
+
+        let err = import_agent(
+            Some(&dir.path().to_path_buf()),
+            &ImportArgs {
+                file: input,
+                target_id: None,
+                skip_sessions: false,
+                skip_workspace: false,
+                skip_knowledge: false,
+                force: false,
+                dry_run: false,
+                allow_unknown_values: false,
+            },
+        )
+        .expect_err("raw command identity must fail preflight");
+        assert!(err.to_string().contains("invalid command lifecycle record"));
+        assert!(!oikos.nous_dir("imported-agent").exists());
+        assert!(!oikos.config().join("aletheia.toml").exists());
     }
 
     fn write_agent_config(root: &Path, agent_id: &str, name: &str) {
@@ -2743,6 +2923,7 @@ workspace = "nous/{agent_id}"
         store
             .add_note(&session.id, "alice", "task", "remember this")
             .unwrap();
+        seed_command_lifecycle(&store, &session.id);
         drop(store);
 
         let output = dir.path().join("alice.agent.json");
@@ -2790,6 +2971,15 @@ workspace = "nous/{agent_id}"
         assert_eq!(usage_records[0].input_tokens, 5);
         assert_eq!(usage_records[0].cache_write_tokens, 3);
         assert_eq!(exported.sessions[0].notes.len(), 1);
+        assert_eq!(
+            exported.sessions[0].command_lifecycle_records.len(),
+            2,
+            "operator export must include the typed invocation/result pair"
+        );
+        let encoded_records =
+            serde_json::to_string(&exported.sessions[0].command_lifecycle_records).unwrap();
+        assert!(!encoded_records.contains("reply_text"));
+        assert!(!encoded_records.contains("reply_digest"));
     }
 
     #[test]
@@ -2812,6 +3002,7 @@ workspace = "nous/{agent_id}"
         source_store
             .append_message(&session.id, Role::User, "round trip", None, None, 10)
             .unwrap();
+        seed_command_lifecycle(&source_store, &session.id);
         drop(source_store);
 
         let export_path = source.path().join("alice.agent.json");
@@ -2865,6 +3056,18 @@ workspace = "nous/{agent_id}"
         let history = dest_store.get_history(&sessions[0].id, None).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].content, "round trip");
+        let command_records = dest_store
+            .command_lifecycle_records_for_session(&sessions[0].id)
+            .unwrap();
+        assert_eq!(command_records.len(), 2);
+        assert!(matches!(
+            &command_records[0].event,
+            mneme::types::CommandLifecycleEvent::Invocation { .. }
+        ));
+        assert!(matches!(
+            &command_records[1].event,
+            mneme::types::CommandLifecycleEvent::Result { .. }
+        ));
         assert_eq!(
             std::fs::read(dest_oikos.nous_dir("alice").join("avatar.png")).unwrap(),
             avatar_bytes.to_vec()
@@ -4301,6 +4504,7 @@ workspace = "nous/{agent_id}"
                 tool_name: None,
             }],
             usage_records: None,
+            command_lifecycle_records: vec![],
             parent_session_id: None,
             thread_id: None,
             transport: None,

@@ -369,6 +369,173 @@ pub struct ToolAuditRecord {
     pub created_at: String,
 }
 
+/// Schema identifier written on every Agora command lifecycle record.
+pub const COMMAND_LIFECYCLE_SCHEMA: &str = "aletheia.agora.command.v2";
+
+/// Structured schema version written alongside [`COMMAND_LIFECYCLE_SCHEMA`].
+pub const COMMAND_LIFECYCLE_SCHEMA_VERSION: u32 = 2;
+
+/// Redacted transport origin for a command lifecycle event.
+///
+/// Callers must apply the transport's identifier-redaction policy before
+/// constructing this value. The store deliberately accepts no raw payload or
+/// provider response object, keeping the durable record bounded to routing
+/// metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RedactedCommandOrigin {
+    /// Channel provider that delivered the command.
+    pub channel: String,
+    /// Logical provider account, when the channel supports multiple accounts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+    /// Redacted sender identifier.
+    pub sender: String,
+    /// Redacted group identifier, when the command came from a group.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
+    /// Redacted thread identifier, when the transport exposes one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+    /// Stable opaque handle for the originating conversation.
+    pub conversation_id: String,
+    /// Transport timestamp in milliseconds since the Unix epoch.
+    pub timestamp_ms: u64,
+}
+
+/// Command metadata after sensitive arguments have been redacted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct RedactedCommand {
+    /// Stable parsed command name without the transport prefix.
+    pub name: String,
+    /// Redacted argument tail, when the command accepts arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args_redacted: Option<String>,
+}
+
+/// Persisted status for a command invocation event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CommandInvocationStatus {
+    /// The durable invocation row was written before execution began.
+    Started,
+}
+
+/// Persisted status for a command result event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CommandResultStatus {
+    /// Command execution completed without a command-level failure.
+    Succeeded,
+    /// Command execution produced a stable failure class.
+    Failed,
+}
+
+/// Stable command-execution failure class.
+///
+/// This deliberately excludes provider error text. Adding a new durable
+/// class is a schema decision rather than a call-site string convention.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CommandFailureClass {
+    /// The parsed command could not complete its runtime operation.
+    ExecutionFailure,
+}
+
+/// Outcome of delivering a command reply to the originating channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CommandDeliveryStatus {
+    /// The channel provider confirmed the reply was sent.
+    Sent,
+    /// The reply was not confirmed sent.
+    Failed,
+}
+
+/// Stable command-reply delivery failure class.
+///
+/// Raw provider or registry errors must remain in operator-only logs and are
+/// never representable in the durable command record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CommandDeliveryFailureClass {
+    /// The selected channel provider did not confirm the send.
+    ProviderFailure,
+    /// No usable provider was available for the routed channel.
+    RegistryFailure,
+}
+
+/// Redacted delivery outcome for a command result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct CommandDelivery {
+    /// Stable delivery status.
+    pub status: CommandDeliveryStatus,
+    /// Stable redacted failure class, never a raw provider error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_class: Option<CommandDeliveryFailureClass>,
+}
+
+/// Typed lifecycle payload for one command invocation or result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "event", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum CommandLifecycleEvent {
+    /// Command invocation durably accepted before execution.
+    Invocation {
+        /// Invocation state; currently only `started` is valid.
+        status: CommandInvocationStatus,
+    },
+    /// Command execution and reply-delivery outcome.
+    Result {
+        /// Command-level outcome.
+        status: CommandResultStatus,
+        /// Stable redacted command failure class, when execution failed.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        failure_class: Option<CommandFailureClass>,
+        /// Wall-clock duration from accepted invocation through reply delivery.
+        duration_ms: u64,
+        /// Redacted channel-delivery outcome.
+        delivery: CommandDelivery,
+    },
+}
+
+/// Runtime-owned durable record for one command lifecycle event.
+///
+/// This type is stored in its own partition. It is not a conversation
+/// [`Message`] or [`AgentNote`], so agent history, distillation, and note tools
+/// cannot read or delete it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CommandLifecycleRecord {
+    /// Store-assigned chronological identifier.
+    pub id: u64,
+    /// Session this command event belongs to.
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: raw foreign key to Session.id; preserving historical bytes is required for joins
+    /// Agent that owns the session, derived from the persisted session row.
+    pub nous_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: copied from the owning persisted Session row so historical values round-trip unchanged
+    /// Stable schema identifier.
+    pub schema: String,
+    /// Structured schema version.
+    pub schema_version: u32,
+    /// Transport-derived key correlating invocation and result events.
+    pub delivery_key: String,
+    /// Redacted transport origin.
+    pub origin: RedactedCommandOrigin,
+    /// Parsed command metadata with redacted arguments.
+    pub command: RedactedCommand,
+    /// Typed invocation or result payload.
+    #[serde(flatten)]
+    pub event: CommandLifecycleEvent,
+    /// ISO 8601 timestamp when this audit row was written.
+    pub created_at: String,
+}
+
 /// Visibility classification for a blackboard entry (aletheia#5032).
 ///
 /// WHY: `Shared` is `#[default]` so rows written before this taxonomy

@@ -403,6 +403,7 @@ mod tests {
                     session: &session,
                     messages: &[],
                     usage_records: &[],
+                    command_lifecycle_records: &[],
                     notes: &[],
                     working_state,
                 },
