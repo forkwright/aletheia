@@ -13,14 +13,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::types::{ChannelProvider, InboundMessage};
 
-fn redact_phone(phone: &str) -> String {
-    if phone.len() > 4 {
-        format!("...{}", phone.get(phone.len() - 4..).unwrap_or(""))
-    } else {
-        "****".to_owned()
-    }
-}
-
 /// Listens on registered channels, merging inbound messages into a single stream.
 ///
 /// Dropping the listener aborts all background polling tasks through
@@ -183,7 +175,7 @@ impl ChannelListener {
                 let span = info_span!(
                     "inbound_message",
                     msg.channel = %msg.channel,
-                    msg.source = %redact_phone(&msg.sender),
+                    msg.source = %crate::redact::identifier(&msg.sender),
                 );
                 let channel_id = msg.channel.clone();
                 let h = Arc::clone(&handler);
@@ -411,22 +403,7 @@ mod tests {
 
     #[test]
     fn redact_phone_long_number() {
-        assert_eq!(redact_phone("+1234567890"), "...7890");
-    }
-
-    #[test]
-    fn redact_phone_short_number() {
-        assert_eq!(redact_phone("12"), "****");
-    }
-
-    #[test]
-    fn redact_phone_exactly_four() {
-        assert_eq!(redact_phone("1234"), "****");
-    }
-
-    #[test]
-    fn redact_phone_five_chars() {
-        assert_eq!(redact_phone("12345"), "...2345");
+        assert_eq!(crate::redact::identifier("+1234567890"), "...7890");
     }
 
     #[tokio::test]

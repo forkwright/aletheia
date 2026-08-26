@@ -121,6 +121,10 @@ pub struct MatrixProvider {
     /// account resumes from its persisted cursor on startup and checkpoints
     /// after every sync batch.
     cursor_store: Option<Arc<dyn CursorStore>>,
+    /// Whether raw Matrix events are attached to inbound messages
+    /// (`MessagingConfig::retain_raw_payloads`); off by default because the
+    /// raw event carries personal identifiers.
+    retain_raw_payloads: bool,
 }
 
 impl MatrixProvider {
@@ -133,6 +137,7 @@ impl MatrixProvider {
             circuit_breaker_threshold: 5,
             halted_health_check_interval: Duration::from_mins(1),
             cursor_store: None,
+            retain_raw_payloads: false,
         }
     }
 
@@ -147,6 +152,7 @@ impl MatrixProvider {
                 config.halted_health_check_interval_secs,
             ),
             cursor_store: None,
+            retain_raw_payloads: config.retain_raw_payloads,
         }
     }
 
@@ -223,6 +229,7 @@ impl MatrixProvider {
                     self.circuit_breaker_threshold,
                     self.halted_health_check_interval,
                     cursor_store,
+                    self.retain_raw_payloads,
                 )
                 .instrument(span),
             );
@@ -373,6 +380,7 @@ async fn sync_loop(
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
     cursor_store: Option<Arc<dyn CursorStore>>,
+    retain_raw_payloads: bool,
 ) {
     tracing::info!("Matrix sync started");
 
@@ -396,7 +404,7 @@ async fn sync_loop(
                 tracing::info!("cancellation received, stopping Matrix sync");
                 return;
             }
-            result = sync_once(&client, &tx, &since, user_id.as_deref(), &account_id, cursor_store.as_ref()) => {
+            result = sync_once(&client, &tx, &since, user_id.as_deref(), &account_id, cursor_store.as_ref(), retain_raw_payloads) => {
                 match result {
                     Ok(()) => {
                         consecutive_failures = 0;
@@ -464,6 +472,7 @@ async fn sync_once(
     own_user_id: Option<&str>,
     account_id: &str,
     cursor_store: Option<&Arc<dyn CursorStore>>,
+    retain_raw_payloads: bool,
 ) -> error::Result<()> {
     let since_token = { since.lock().await.clone() };
     let response = client.sync(since_token.as_deref()).await?;
@@ -485,7 +494,8 @@ async fn sync_once(
 
     for (room_id, room) in &response.rooms.join {
         for event in &room.timeline.events {
-            if let Some(message) = extract_message(room_id, event, own_user_id, account_id)
+            if let Some(message) =
+                extract_message(room_id, event, own_user_id, account_id, retain_raw_payloads)
                 && tx.send(message).await.is_err()
             {
                 // WHY: the listener has shut down; returning an error lets
@@ -503,6 +513,7 @@ fn extract_message(
     event: &MatrixEvent,
     own_user_id: Option<&str>,
     account_id: &str,
+    retain_raw: bool,
 ) -> Option<InboundMessage> {
     if event.event_type != "m.room.message" {
         return None;
@@ -539,7 +550,11 @@ fn extract_message(
             0
         }),
         attachments,
-        raw: serde_json::to_value(event).ok(), // kanon:ignore RUST/silent-error-ok WHY: optional diagnostic field; serde failure is non-fatal and pre-existing WHY documents this
+        raw: if retain_raw {
+            serde_json::to_value(event).ok() // kanon:ignore RUST/silent-error-ok WHY: optional diagnostic field; serde failure is non-fatal and pre-existing WHY documents this
+        } else {
+            None
+        },
     })
 }
 
@@ -623,14 +638,38 @@ mod tests {
         }))
         .expect("event");
 
-        let msg = extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary")
+        let msg = extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary", true)
             .expect("message");
         assert_eq!(msg.channel, "matrix");
         assert_eq!(msg.sender, "@alice:example.org");
         assert_eq!(msg.group_id.as_deref(), Some("!room:example.org"));
         assert_eq!(msg.account_id.as_deref(), Some("primary"));
+        assert_eq!(msg.message_id.as_deref(), Some("$event"));
         assert_eq!(msg.text, "hello");
         assert_eq!(msg.timestamp, 100);
+        assert!(msg.raw.is_some(), "retain_raw=true keeps the raw event");
+    }
+
+    #[test]
+    fn extract_matrix_message_drops_raw_event_unless_opted_in() {
+        let event: MatrixEvent = serde_json::from_value(serde_json::json!({
+            "type": "m.room.message",
+            "sender": "@alice:example.org",
+            "event_id": "$event",
+            "origin_server_ts": 100,
+            "content": {
+                "msgtype": "m.text",
+                "body": "hello"
+            }
+        }))
+        .expect("event");
+
+        let msg = extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary", false)
+            .expect("message");
+        assert!(
+            msg.raw.is_none(),
+            "raw event must be absent by default (opt-in retention)"
+        );
     }
 
     #[test]
@@ -647,7 +686,7 @@ mod tests {
         .expect("event");
 
         assert!(
-            extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary")
+            extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary", true)
                 .is_none()
         );
     }
@@ -796,7 +835,7 @@ mod tests {
         let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let (tx, _rx) = mpsc::channel::<InboundMessage>(4);
 
-        sync_once(&client, &tx, &since, None, "primary", Some(&store))
+        sync_once(&client, &tx, &since, None, "primary", Some(&store), false)
             .await
             .expect("sync_once");
 
@@ -931,7 +970,7 @@ mod tests {
         let tx_ref = tx.clone();
         let own_user_id = "@bot:example.org".to_owned();
         let handle = tokio::spawn(async move {
-            sync_once(&client_ref, &tx_ref, &since_ref, Some(&own_user_id), "primary", None).await
+            sync_once(&client_ref, &tx_ref, &since_ref, Some(&own_user_id), "primary", None, false).await
         });
 
         // WHY: wait until sync_once has advanced the cursor; that happens

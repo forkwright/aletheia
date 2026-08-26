@@ -48,6 +48,11 @@ pub struct MessagingConfig {
     pub agent_dispatch_timeout_secs: u64,
     /// Maximum concurrent inbound-message handler tasks. Default: 64.
     pub max_concurrent_handlers: usize,
+    /// Retain the raw provider payload (Signal envelope, Matrix event) on
+    /// inbound messages for diagnostics. Default: `false` — raw payloads
+    /// contain personal identifiers and message metadata, so they are
+    /// captured only when an operator explicitly opts in.
+    pub retain_raw_payloads: bool,
     /// Per-agent outbound-recipient allowlist and default-deny posture,
     /// enforced by `agora::ChannelRegistry::send` before any provider send.
     pub outbound: OutboundMessagePolicy,
@@ -68,6 +73,7 @@ impl Default for MessagingConfig {
             receive_timeout_secs: DEFAULT_RECEIVE_TIMEOUT_SECS,
             agent_dispatch_timeout_secs: DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS,
             max_concurrent_handlers: 64,
+            retain_raw_payloads: false,
             outbound: OutboundMessagePolicy::default(),
             commands: InboundCommandPolicy::default(),
         }

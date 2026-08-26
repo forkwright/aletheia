@@ -21,6 +21,8 @@ pub mod listener;
 pub mod matrix;
 /// Prometheus metric definitions for channel messaging.
 pub mod metrics;
+/// Channel identity redaction for logs, metrics, and audit records.
+pub mod redact;
 /// Channel registry: the single source of truth for available channel providers.
 pub mod registry;
 /// Message routing: resolves inbound messages to the appropriate nous agent.

@@ -126,7 +126,7 @@ pub struct ProbeResult {
 }
 
 /// A normalized inbound message received from any channel.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct InboundMessage {
     /// Channel this message came from (e.g., "signal").
     pub channel: String,
@@ -181,6 +181,36 @@ impl InboundMessage {
         hash_part(&mut hasher, &self.timestamp.to_string());
         hash_part(&mut hasher, &self.text);
         format!("{}:h:{}", self.channel, hex_lower(&hasher.finalize()))
+    }
+}
+
+/// Channel identities are personal identifiers: the Debug representation
+/// redacts sender/group/account via [`crate::redact::identifier`], never
+/// prints the message text or attachment references, and reports a captured
+/// raw payload only as present-or-absent.
+impl std::fmt::Debug for InboundMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InboundMessage")
+            .field("channel", &self.channel)
+            .field("sender", &crate::redact::identifier(&self.sender))
+            .field(
+                "sender_name",
+                &self.sender_name.as_ref().map(|_| "<redacted>"),
+            )
+            .field(
+                "group_id",
+                &self.group_id.as_deref().map(crate::redact::identifier),
+            )
+            .field(
+                "account_id",
+                &self.account_id.as_deref().map(crate::redact::identifier),
+            )
+            .field("message_id", &self.message_id)
+            .field("text", &format_args!("<{} bytes>", self.text.len()))
+            .field("timestamp", &self.timestamp)
+            .field("attachments", &self.attachments.len())
+            .field("raw", &self.raw.as_ref().map(|_| "<captured>"))
+            .finish()
     }
 }
 
@@ -385,5 +415,36 @@ mod tests {
         assert_eq!(a.dedupe_key(), a_again.dedupe_key());
         assert_ne!(a.dedupe_key(), other_text.dedupe_key());
         assert_ne!(a.dedupe_key(), other_ts.dedupe_key());
+    }
+
+    #[test]
+    fn debug_redacts_channel_identities_and_payload() {
+        let msg = InboundMessage {
+            channel: "signal".to_owned(),
+            sender: "+1234567890".to_owned(),
+            sender_name: Some("Alice".to_owned()),
+            group_id: Some("group-abc-secret".to_owned()),
+            account_id: Some("+1098765432".to_owned()),
+            message_id: Some("evt-1".to_owned()),
+            text: "a private message body".to_owned(),
+            timestamp: 100,
+            attachments: vec!["s3://bucket/private.jpg".to_owned()],
+            raw: Some(serde_json::json!({"provider": "payload"})),
+        };
+        let debug = format!("{msg:?}");
+        assert!(debug.contains("...7890"), "{debug}");
+        assert!(debug.contains("...cret"), "{debug}");
+        assert!(debug.contains("...5432"), "{debug}");
+        for leaked in [
+            "+1234567890",
+            "Alice",
+            "group-abc",
+            "+1098765432",
+            "private message body",
+            "s3://bucket/private.jpg",
+            "provider",
+        ] {
+            assert!(!debug.contains(leaked), "Debug leaked {leaked}: {debug}");
+        }
     }
 }

@@ -70,8 +70,8 @@ pub(crate) fn spawn_dispatcher(
                     let msg_span = tracing::info_span!(
                         "dispatch",
                         channel = %msg.channel,
-                        sender = %msg.sender,
-                        account = %msg.account_id.as_deref().unwrap_or("default"),
+                        sender = %agora::redact::identifier(&msg.sender),
+                        account = %agora::redact::optional_identifier(msg.account_id.as_deref()),
                     );
                     async move {
                         dispatch_one(
@@ -95,10 +95,6 @@ pub(crate) fn spawn_dispatcher(
     )
 }
 
-#[expect(
-    clippy::too_many_arguments,
-    reason = "dispatch context bundles the router, agent manager, channel registry, audit store, command policy, and dedupe filter — all required per message"
-)]
 async fn dispatch_one(
     msg: InboundMessage,
     router: Arc<MessageRouter>,
@@ -127,7 +123,7 @@ async fn dispatch_one(
     let Some(decision) = router.resolve(&msg) else {
         warn!(
             channel = %msg.channel,
-            sender = %msg.sender,
+            sender = %agora::redact::identifier(&msg.sender),
             "no route for inbound message, dropping"
         );
         return;
@@ -519,14 +515,22 @@ fn command_result_record(
 }
 
 fn command_origin_record(msg: &InboundMessage) -> serde_json::Value {
-    let conversation_id = msg.group_id.as_deref().unwrap_or(msg.sender.as_str());
+    // WHY: the audit record is durable storage — channel identities go in
+    // redacted, matching the log/span posture; the raw identifiers were never
+    // needed to answer "which conversation did this command come from" (the
+    // hashed session key already pins it).
+    let redacted_sender = agora::redact::identifier(&msg.sender);
+    let redacted_group = msg.group_id.as_deref().map(agora::redact::identifier);
+    let conversation_id = redacted_group
+        .clone()
+        .unwrap_or_else(|| redacted_sender.clone());
     serde_json::json!({
         "channel": msg.channel.as_str(),
-        "sender": msg.sender.as_str(),
-        "sender_name": msg.sender_name.as_deref(),
-        "group_id": msg.group_id.as_deref(),
-        "account_id": msg.account_id.as_deref(),
-        "thread_id": msg.group_id.as_deref(),
+        "sender": redacted_sender,
+        "sender_name": msg.sender_name.as_deref().map(|_| "<redacted>"),
+        "group_id": redacted_group.clone(),
+        "account_id": msg.account_id.as_deref().map(agora::redact::identifier),
+        "thread_id": redacted_group,
         "conversation_id": conversation_id,
         "timestamp_ms": msg.timestamp,
     })
@@ -1165,8 +1169,8 @@ mod tests {
         let invocation = record_json(&history[0]);
         assert_eq!(
             json_str(&invocation, "/origin/account_id"),
-            Some("work"),
-            "command audit must record the receiving account"
+            Some("****"),
+            "command audit must record the receiving account redacted"
         );
 
         shutdown_harness(harness).await;
@@ -1210,13 +1214,22 @@ mod tests {
         assert_eq!(json_str(&invocation, "/event"), Some("invocation"));
         assert_eq!(json_str(&invocation, "/command/name"), Some("ping"));
         assert_eq!(json_str(&invocation, "/origin/channel"), Some("signal"));
-        assert_eq!(json_str(&invocation, "/origin/sender"), Some("+15550100"));
+        assert_eq!(
+            json_str(&invocation, "/origin/sender"),
+            Some("...0100"),
+            "command audit must carry the redacted sender"
+        );
         assert_eq!(
             json_str(&invocation, "/session_key"),
             Some(session_key.as_str())
         );
         assert_eq!(json_str(&result, "/event"), Some("result"));
         assert_eq!(json_str(&result, "/response/status"), Some("succeeded"));
+        assert!(
+            !history[0].content.contains("+15550100") && !history[1].content.contains("+15550100"),
+            "raw sender must not persist in command audit records: {:?}",
+            history[0].content
+        );
         assert_eq!(json_str(&result, "/response/delivery/status"), Some("sent"));
         assert!(
             result

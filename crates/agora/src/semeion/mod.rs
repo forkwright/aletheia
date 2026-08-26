@@ -93,6 +93,10 @@ pub struct SignalProvider {
     buffer_capacity: usize,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
+    /// Whether raw Signal envelopes are attached to inbound messages
+    /// (`MessagingConfig::retain_raw_payloads`); off by default because the
+    /// raw envelope carries personal identifiers.
+    retain_raw_payloads: bool,
 }
 
 impl SignalProvider {
@@ -113,6 +117,7 @@ impl SignalProvider {
             buffer_capacity: capacity,
             circuit_breaker_threshold: CIRCUIT_BREAKER_THRESHOLD,
             halted_health_check_interval: HALTED_HEALTH_CHECK_INTERVAL,
+            retain_raw_payloads: false,
         }
     }
 
@@ -129,6 +134,7 @@ impl SignalProvider {
             halted_health_check_interval: Duration::from_secs(
                 config.halted_health_check_interval_secs,
             ),
+            retain_raw_payloads: config.retain_raw_payloads,
         }
     }
 
@@ -198,7 +204,7 @@ impl SignalProvider {
                 .clone();
             let span = tracing::info_span!(
                 "signal_poll",
-                account = %account_id
+                account = %crate::redact::identifier(account_id)
             );
 
             handles.spawn(
@@ -211,6 +217,7 @@ impl SignalProvider {
                     token,
                     self.circuit_breaker_threshold,
                     self.halted_health_check_interval,
+                    self.retain_raw_payloads,
                 )
                 .instrument(span),
             );
@@ -220,12 +227,15 @@ impl SignalProvider {
     }
 
     /// Query connection health for all accounts.
+    ///
+    /// Report keys are redacted account identifiers: Signal account IDs are
+    /// phone numbers and must not appear in serialized health payloads.
     pub async fn connection_health(&self) -> HashMap<String, ConnectionHealthReport> {
         let mut reports = HashMap::new();
         for (account_id, state_mutex) in &self.account_states {
             let s = state_mutex.lock().await;
             reports.insert(
-                account_id.clone(),
+                crate::redact::identifier(account_id),
                 ConnectionHealthReport {
                     state: s.state.clone(),
                     buffered_messages: s.buffered_count(),
@@ -385,7 +395,9 @@ impl ChannelProvider for SignalProvider {
                     }
                 }
 
-                account_results.insert(account_id.clone(), detail);
+                // WHY: probe details feed serialized health payloads; Signal
+                // account IDs are phone numbers and are redacted here.
+                account_results.insert(crate::redact::identifier(account_id), detail);
             }
 
             ProbeResult {
@@ -423,6 +435,10 @@ impl std::fmt::Debug for SignalProvider {
     clippy::too_many_lines,
     reason = "single cohesive state machine: halted-state health check + receive success/error branches share lock acquisition order; splitting would risk the lock dance and obscure the connection-state transitions"
 )]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "poll_loop is one state machine; account identity and raw-payload posture ride with the connection state it drives"
+)]
 async fn poll_loop(
     signal_client: client::SignalClient,
     account_id: String,
@@ -432,6 +448,7 @@ async fn poll_loop(
     cancel: CancellationToken,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
+    retain_raw_payloads: bool,
 ) {
     tracing::info!("polling started");
     loop {
@@ -504,7 +521,11 @@ async fn poll_loop(
                         }
 
                         for env in &envelopes {
-                            if let Some(msg) = envelope::extract_message(env, Some(&account_id)) {
+                            if let Some(msg) = envelope::extract_message(
+                                env,
+                                Some(&account_id),
+                                retain_raw_payloads,
+                            ) {
                                 if tx.send(msg).await.is_err() {
                                     tracing::info!("receiver dropped, stopping poll");
                                     return;
@@ -750,6 +771,7 @@ mod tests {
                 token,
                 CIRCUIT_BREAKER_THRESHOLD,
                 HALTED_HEALTH_CHECK_INTERVAL,
+                false,
             )
             .instrument(tracing::info_span!("test_poll_loop")),
         );
@@ -778,9 +800,13 @@ mod tests {
         provider.add_account("+1111111111".to_owned(), signal_client, true);
 
         let health = provider.connection_health().await;
-        let report = health.get("+1111111111").expect("account present");
+        let report = health.get("...1111").expect("account present (redacted)");
         assert_eq!(report.state, ConnectionState::Connected);
         assert_eq!(report.buffered_messages, 0);
         assert_eq!(report.dropped_count, 0);
+        assert!(
+            !health.contains_key("+1111111111"),
+            "health payload must not carry raw phone numbers"
+        );
     }
 }
