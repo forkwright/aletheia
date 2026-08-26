@@ -408,7 +408,9 @@ mod tests {
         let router = MessageRouter::new(vec![b], None);
 
         let allowed = group_message("+15550100", "group-xyz");
-        let decision = router.resolve(&allowed).expect("listed participant should match");
+        let decision = router
+            .resolve(&allowed)
+            .expect("listed participant should match");
         assert_eq!(decision.nous_id, "ops-nous");
         assert_eq!(decision.matched_by, MatchReason::GroupBinding);
 
@@ -447,7 +449,10 @@ mod tests {
         let mut operators = binding("signal", "group-xyz", "ops-nous");
         operators.participants = vec!["+15550100".to_owned()];
         operators.session_key = "signal:ops:{group}".to_owned();
-        let router = MessageRouter::new(vec![operators, binding("signal", "group-xyz", "guest-nous")], None);
+        let router = MessageRouter::new(
+            vec![operators, binding("signal", "group-xyz", "guest-nous")],
+            None,
+        );
 
         let operator = group_message("+15550100", "group-xyz");
         let decision = router.resolve(&operator).expect("operator should match");

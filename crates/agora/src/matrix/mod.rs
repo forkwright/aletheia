@@ -638,8 +638,14 @@ mod tests {
         }))
         .expect("event");
 
-        let msg = extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary", true)
-            .expect("message");
+        let msg = extract_message(
+            "!room:example.org",
+            &event,
+            Some("@bot:example.org"),
+            "primary",
+            true,
+        )
+        .expect("message");
         assert_eq!(msg.channel, "matrix");
         assert_eq!(msg.sender, "@alice:example.org");
         assert_eq!(msg.group_id.as_deref(), Some("!room:example.org"));
@@ -664,8 +670,14 @@ mod tests {
         }))
         .expect("event");
 
-        let msg = extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary", false)
-            .expect("message");
+        let msg = extract_message(
+            "!room:example.org",
+            &event,
+            Some("@bot:example.org"),
+            "primary",
+            false,
+        )
+        .expect("message");
         assert!(
             msg.raw.is_none(),
             "raw event must be absent by default (opt-in retention)"
@@ -686,8 +698,14 @@ mod tests {
         .expect("event");
 
         assert!(
-            extract_message("!room:example.org", &event, Some("@bot:example.org"), "primary", true)
-                .is_none()
+            extract_message(
+                "!room:example.org",
+                &event,
+                Some("@bot:example.org"),
+                "primary",
+                true
+            )
+            .is_none()
         );
     }
 
@@ -830,8 +848,9 @@ mod tests {
         )
         .expect("client");
         let dir = tempfile::tempdir().expect("tmpdir");
-        let store: Arc<dyn CursorStore> =
-            Arc::new(crate::cursor::FileCursorStore::new(dir.path().to_path_buf()));
+        let store: Arc<dyn CursorStore> = Arc::new(crate::cursor::FileCursorStore::new(
+            dir.path().to_path_buf(),
+        ));
         let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let (tx, _rx) = mpsc::channel::<InboundMessage>(4);
 
@@ -863,8 +882,9 @@ mod tests {
             .await;
 
         let dir = tempfile::tempdir().expect("tmpdir");
-        let store: Arc<dyn CursorStore> =
-            Arc::new(crate::cursor::FileCursorStore::new(dir.path().to_path_buf()));
+        let store: Arc<dyn CursorStore> = Arc::new(crate::cursor::FileCursorStore::new(
+            dir.path().to_path_buf(),
+        ));
         store.save("matrix", "primary", "s-saved");
 
         let mut provider = MatrixProvider::from_config(&taxis::config::MessagingConfig {
@@ -970,7 +990,16 @@ mod tests {
         let tx_ref = tx.clone();
         let own_user_id = "@bot:example.org".to_owned();
         let handle = tokio::spawn(async move {
-            sync_once(&client_ref, &tx_ref, &since_ref, Some(&own_user_id), "primary", None, false).await
+            sync_once(
+                &client_ref,
+                &tx_ref,
+                &since_ref,
+                Some(&own_user_id),
+                "primary",
+                None,
+                false,
+            )
+            .await
         });
 
         // WHY: wait until sync_once has advanced the cursor; that happens

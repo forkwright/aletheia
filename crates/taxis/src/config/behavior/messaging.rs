@@ -179,8 +179,7 @@ impl InboundCommandPolicy {
     /// `sender` on `channel` under this policy.
     #[must_use]
     pub fn allows(&self, command: &str, channel: &str, sender: &str) -> bool {
-        self.is_operator(channel, sender)
-            || self.public_commands.iter().any(|c| c == command)
+        self.is_operator(channel, sender) || self.public_commands.iter().any(|c| c == command)
     }
 
     /// Whether `sender` on `channel` holds the operator command tier.

@@ -120,11 +120,7 @@ pub fn known_command_names() -> Vec<&'static str> {
         .iter()
         // NOTE: entries like "!info [agent_id]" carry usage hints; the
         // command name stops at the first whitespace.
-        .filter_map(|(name, _)| {
-            name.trim_start_matches('!')
-                .split_whitespace()
-                .next()
-        })
+        .filter_map(|(name, _)| name.trim_start_matches('!').split_whitespace().next())
         .collect()
 }
 

@@ -267,7 +267,13 @@ impl ChannelListener {
     /// overcounts. Keep the guard alive for exactly the subscriptions'
     /// lifetime.
     #[must_use]
-    pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, JoinSet<()>, SubscriptionGuard) {
+    pub fn into_receiver(
+        mut self,
+    ) -> (
+        mpsc::Receiver<InboundMessage>,
+        JoinSet<()>,
+        SubscriptionGuard,
+    ) {
         #[expect(
             clippy::expect_used,
             reason = "rx is None only if into_receiver was already called; calling it twice is a programming error and panic is appropriate"
@@ -569,11 +575,9 @@ mod tests {
                     // broken to serialized execution) into a completed
                     // handler, so the max_seen assertion below reports the
                     // regression instead of hanging the test.
-                    let _ = tokio::time::timeout(
-                        std::time::Duration::from_secs(10),
-                        barrier.wait(),
-                    )
-                    .await;
+                    let _ =
+                        tokio::time::timeout(std::time::Duration::from_secs(10), barrier.wait())
+                            .await;
                     active.fetch_sub(1, Ordering::SeqCst);
                     completed.fetch_add(1, Ordering::SeqCst);
                 }
