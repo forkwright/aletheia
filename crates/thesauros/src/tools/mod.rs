@@ -364,6 +364,11 @@ fn prepare_tool(
         });
     }
 
+    // WHY: the platform check runs first among the contract checks so an
+    // unsupported host reports the real reason (platform mismatch) instead
+    // of a secondary validation error for a tool that would never run here.
+    validate_platform_support(tool_def, pack_name)?;
+
     let (command_path, expected_identity) = validate_command_path(pack_root, &tool_def.command)?;
     let groups = parse_groups(tool_def, pack_name)?;
     let tags = parse_tags(tool_def, pack_name)?;
@@ -506,6 +511,52 @@ fn parse_egress(tool_def: &PackToolDef, pack_name: &str) -> Result<bool, error::
             format!("unknown egress intent: {other} (expected \"none\" or \"inherit\")"),
         )),
     }
+}
+
+/// Refuse registration when the tool's declared `platforms` do not cover
+/// this host (#5215).
+///
+/// WHY: absent `platforms` defaults to `["unix"]` — a pack tool is a
+/// shebang-executed script, which needs a Unix exec environment. Skipping
+/// (with a registration failure recorded in pack health) beats registering
+/// a tool that can only fail at exec time on an unsupported host.
+fn validate_platform_support(tool_def: &PackToolDef, pack_name: &str) -> Result<(), error::Error> {
+    for platform in &tool_def.platforms {
+        if !matches!(platform.as_str(), "linux" | "macos" | "windows" | "unix") {
+            return Err(tool_registration_error(
+                tool_def,
+                pack_name,
+                format!(
+                    "unknown platform '{platform}' (expected \"linux\", \"macos\", \"windows\", or \"unix\")"
+                ),
+            ));
+        }
+    }
+
+    let declared: Vec<&str> = if tool_def.platforms.is_empty() {
+        vec!["unix"]
+    } else {
+        tool_def.platforms.iter().map(String::as_str).collect()
+    };
+    let supported = declared.iter().any(|p| match *p {
+        "linux" => cfg!(target_os = "linux"),
+        "macos" => cfg!(target_os = "macos"),
+        "windows" => cfg!(windows),
+        "unix" => cfg!(unix),
+        _ => false,
+    });
+    if supported {
+        return Ok(());
+    }
+    Err(tool_registration_error(
+        tool_def,
+        pack_name,
+        format!(
+            "tool supports platforms [{}], but this host is '{}' — tool skipped",
+            declared.join(", "),
+            std::env::consts::OS
+        ),
+    ))
 }
 
 fn parse_groups(tool_def: &PackToolDef, pack_name: &str) -> Result<Vec<ToolGroupId>, error::Error> {

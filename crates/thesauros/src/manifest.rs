@@ -133,6 +133,15 @@ pub struct PackToolDef {
     /// unchanged. A pack can only narrow egress, never widen it.
     #[serde(default)]
     pub egress: Option<String>,
+    /// Host platforms this tool supports: any of `linux`, `macos`,
+    /// `windows`, `unix` (#5215).
+    ///
+    /// Empty means `["unix"]`: a pack tool is a shebang-executed script,
+    /// which needs a Unix exec environment unless the author declares
+    /// otherwise. A tool whose list does not cover the current host is
+    /// skipped at registration and the pack is marked degraded.
+    #[serde(default)]
+    pub platforms: Vec<String>,
 }
 
 fn default_tool_timeout() -> u64 {
@@ -292,6 +301,15 @@ fn validate_tool_contract(tool: &PackToolDef, issues: &mut Vec<String>) {
             "tool '{}' egress '{egress}' is unknown (expected \"none\" or \"inherit\")",
             tool.name
         ));
+    }
+    for platform in &tool.platforms {
+        if !matches!(platform.as_str(), "linux" | "macos" | "windows" | "unix") {
+            issues.push(format!(
+                "tool '{}' platform '{platform}' is unknown \
+                 (expected \"linux\", \"macos\", \"windows\", or \"unix\")",
+                tool.name
+            ));
+        }
     }
 }
 
@@ -727,6 +745,7 @@ timeout = 0
             env: Vec::new(),
             write_paths: Vec::new(),
             egress: None,
+            platforms: Vec::new(),
         };
         let json = serde_json::to_string(&tool).unwrap();
         let back: PackToolDef = serde_json::from_str(&json).unwrap();
@@ -881,6 +900,12 @@ name = "bad_egress"
 description = "Unknown egress"
 command = "tools/x.sh"
 egress = "everything"
+
+[[tools]]
+name = "bad_platform"
+description = "Unknown platform"
+command = "tools/x.sh"
+platforms = ["plan9"]
 "#;
         let dir = setup_pack(&[("pack.toml", toml)]);
         let err = load_manifest(dir.path()).unwrap_err();
@@ -889,6 +914,7 @@ egress = "everything"
             "invalid environment variable name 'HAS=VALUE'",
             "write path '../elsewhere' must be a relative path inside the pack root",
             "egress 'everything' is unknown",
+            "platform 'plan9' is unknown",
         ] {
             assert!(msg.contains(expected), "missing '{expected}' in: {msg}");
         }

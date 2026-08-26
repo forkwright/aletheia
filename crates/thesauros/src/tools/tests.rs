@@ -6,6 +6,7 @@
 )]
 
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
 use tempfile::TempDir;
@@ -29,6 +30,7 @@ fn setup_pack_dir(files: &[(&str, &str)]) -> TempDir {
     dir
 }
 
+#[cfg(unix)]
 fn make_executable(dir: &TempDir, path: &str) {
     let full = dir.path().join(path);
     let mut perms = fs::metadata(&full)
@@ -38,6 +40,7 @@ fn make_executable(dir: &TempDir, path: &str) {
     fs::set_permissions(&full, perms).expect("set executable permissions");
 }
 
+#[cfg(unix)]
 fn test_runner() -> SubprocessRunner {
     SubprocessRunner::new(organon::sandbox::SandboxConfig {
         enabled: false,
@@ -50,6 +53,7 @@ fn test_runner() -> SubprocessRunner {
 /// `dir`, capturing its `FileIdentity` the same way registration does
 /// (#5213) so the swap-detection check in `execute()` doesn't fire on
 /// freshly-built test fixtures.
+#[cfg(unix)]
 fn test_executor(dir: &TempDir, script_relpath: &str, timeout_ms: u64) -> ShellToolExecutor {
     let command_path = dir
         .path()
@@ -70,6 +74,7 @@ fn test_executor(dir: &TempDir, script_relpath: &str, timeout_ms: u64) -> ShellT
     }
 }
 
+#[cfg(unix)]
 fn test_ctx(dir: &TempDir) -> ToolContext {
     ToolContext {
         nous_id: koina::id::NousId::new("test").expect("test is a valid nous id"),
@@ -83,6 +88,7 @@ fn test_ctx(dir: &TempDir) -> ToolContext {
     }
 }
 
+#[cfg(unix)]
 fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
     LoadedPack {
         manifest: PackManifest {
@@ -98,10 +104,13 @@ fn minimal_loaded_pack(dir: &TempDir, tools: Vec<PackToolDef>) -> LoadedPack {
     }
 }
 
+#[cfg(unix)]
 static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+#[cfg(unix)]
 struct EnvCleanup;
 
+#[cfg(unix)]
 impl Drop for EnvCleanup {
     #[expect(unsafe_code, reason = "test serializes process environment mutation")]
     fn drop(&mut self) {
@@ -111,6 +120,7 @@ impl Drop for EnvCleanup {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn validate_command_path_success() {
     let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh\necho ok")]);
@@ -122,6 +132,7 @@ fn validate_command_path_success() {
 // SECURITY(#5213): registration must reject a non-executable file, a
 // directory, and an absolute/`..`-shaped command string syntactically
 // before any filesystem access.
+#[cfg(unix)]
 #[test]
 fn validate_command_path_rejects_non_executable_file() {
     let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh\necho ok")]);
@@ -272,6 +283,7 @@ fn convert_input_schema_success() {
     assert_eq!(result.required, vec!["sql"]);
 }
 
+#[cfg(unix)]
 #[test]
 fn register_pack_tools_success() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
@@ -289,6 +301,7 @@ fn register_pack_tools_success() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -306,6 +319,7 @@ fn register_pack_tools_success() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn register_pack_tools_applies_declared_capability_metadata() {
     let dir = setup_pack_dir(&[("tools/read.sh", "#!/bin/sh\necho ok")]);
@@ -323,6 +337,7 @@ fn register_pack_tools_applies_declared_capability_metadata() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -335,6 +350,7 @@ fn register_pack_tools_applies_declared_capability_metadata() {
     assert_eq!(def.reversibility, Reversibility::FullyReversible);
 }
 
+#[cfg(unix)]
 #[test]
 fn register_pack_tools_rejects_unknown_capability_metadata() {
     let dir = setup_pack_dir(&[("tools/test.sh", "#!/bin/sh")]);
@@ -352,6 +368,7 @@ fn register_pack_tools_rejects_unknown_capability_metadata() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -381,6 +398,7 @@ fn register_pack_tools_skips_missing_command() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -416,6 +434,7 @@ fn register_pack_tools_skips_bad_schema() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -425,6 +444,7 @@ fn register_pack_tools_skips_bad_schema() {
     assert!(registry.definitions().is_empty());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_runs_script() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\ncat")]);
@@ -463,6 +483,7 @@ async fn shell_executor_runs_script() {
 // SECURITY(#5213): a file swapped in at the registered path after
 // registration must be refused at execution, not silently run under the
 // tool's original, reviewed name.
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_refuses_a_swapped_command_file() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\ncat")]);
@@ -510,6 +531,7 @@ async fn shell_executor_refuses_a_swapped_command_file() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_nonzero_exit_is_error() {
     let dir = setup_pack_dir(&[("tools/fail.sh", "#!/bin/sh\nexit 1")]);
@@ -540,6 +562,7 @@ async fn shell_executor_nonzero_exit_is_error() {
     assert!(result.is_error);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_surfaces_bounded_redacted_stderr_in_diagnostics() {
     // WHY(#5212): stderr is the agent's recovery signal on failure. It rides
@@ -585,6 +608,7 @@ async fn shell_executor_surfaces_bounded_redacted_stderr_in_diagnostics() {
     assert_eq!(diagnostics.exit_code, Some(1));
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_stderr_only_failure_carries_stderr_in_diagnostics() {
     let dir = setup_pack_dir(&[(
@@ -620,6 +644,7 @@ async fn shell_executor_stderr_only_failure_carries_stderr_in_diagnostics() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_spawn_failure_is_an_error_result() {
     // A syntactically valid script with a nonexistent interpreter fails at
@@ -725,6 +750,7 @@ fn diagnostic_stderr_bounds_and_trims() {
     assert!(bounded.len() <= MAX_DIAGNOSTIC_STDERR_BYTES + 20);
 }
 
+#[cfg(unix)]
 #[test]
 #[expect(unsafe_code, reason = "test serializes process environment mutation")]
 fn shell_executor_clears_sensitive_parent_environment() {
@@ -767,6 +793,7 @@ fn register_empty_packs() {
     assert!(registry.definitions().is_empty());
 }
 
+#[cfg(unix)]
 #[test]
 fn error_count_per_pack_not_cumulative() {
     let dir_a = setup_pack_dir(&[]);
@@ -784,6 +811,7 @@ fn error_count_per_pack_not_cumulative() {
             env: Vec::new(),
             write_paths: Vec::new(),
             egress: None,
+            platforms: Vec::new(),
         }],
     );
 
@@ -803,6 +831,7 @@ fn error_count_per_pack_not_cumulative() {
             env: Vec::new(),
             write_paths: Vec::new(),
             egress: None,
+            platforms: Vec::new(),
         }],
     );
 
@@ -822,6 +851,7 @@ fn error_count_per_pack_not_cumulative() {
     assert_eq!(registry.definitions()[0].name.as_str(), "good_tool_b");
 }
 
+#[cfg(unix)]
 #[test]
 fn duplicate_tool_name_fails_second_pack_and_degrades_its_health() {
     // WHY(#5208): PACKS.md used to claim duplicate tool names are "rejected at
@@ -844,6 +874,7 @@ fn duplicate_tool_name_fails_second_pack_and_degrades_its_health() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack_a = minimal_loaded_pack(&dir_a, vec![tool("dup_tool")]);
     let mut pack_b = minimal_loaded_pack(&dir_b, vec![tool("dup_tool")]);
@@ -876,6 +907,7 @@ fn duplicate_tool_name_fails_second_pack_and_degrades_its_health() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_metacharacters_in_arguments_passed_safely_via_stdin() {
     let dir = setup_pack_dir(&[("tools/cat.sh", "#!/bin/sh\ncat")]);
@@ -945,6 +977,7 @@ fn validate_command_path_rejects_dotdot_traversal() {
     );
 }
 
+#[cfg(unix)]
 #[test]
 fn validate_command_path_rejects_symlink_escape() {
     let dir = setup_pack_dir(&[("tools/legit.sh", "#!/bin/sh")]);
@@ -962,6 +995,7 @@ fn validate_command_path_rejects_symlink_escape() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_does_not_expand_env_vars_in_arguments() {
     let dir = setup_pack_dir(&[("tools/cat.sh", "#!/bin/sh\ncat")]);
@@ -998,6 +1032,7 @@ async fn shell_executor_does_not_expand_env_vars_in_arguments() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_timeout_returns_error() {
     let dir = setup_pack_dir(&[("tools/slow.sh", "#!/bin/sh\nsleep 60")]);
@@ -1032,6 +1067,7 @@ async fn shell_executor_timeout_returns_error() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_records_nonzero_duration() {
     let dir = setup_pack_dir(&[("tools/sleep.sh", "#!/bin/sh\nsleep 0.05")]);
@@ -1067,6 +1103,7 @@ async fn shell_executor_records_nonzero_duration() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn shell_executor_truncates_at_char_boundary() {
     // NOTE: U+2026 (3 bytes: 0xE2 0x80 0xA6) is placed straddling MAX_OUTPUT_BYTES
@@ -1111,6 +1148,7 @@ async fn shell_executor_truncates_at_char_boundary() {
     assert!(text.len() <= MAX_OUTPUT_BYTES + "[output truncated]".len() + 2);
 }
 
+#[cfg(unix)]
 fn unsandboxed_test_config() -> organon::sandbox::SandboxConfig {
     organon::sandbox::SandboxConfig {
         enabled: false,
@@ -1119,6 +1157,7 @@ fn unsandboxed_test_config() -> organon::sandbox::SandboxConfig {
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn register_with_limits_rejects_zero_timeout() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
@@ -1136,6 +1175,7 @@ fn register_with_limits_rejects_zero_timeout() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1156,6 +1196,7 @@ fn register_with_limits_rejects_zero_timeout() {
     assert!(registry.definitions().is_empty());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn register_with_limits_clamps_timeout_below_floor() {
     let dir = setup_pack_dir(&[("tools/sleep.sh", "#!/bin/sh\nsleep 0.4")]);
@@ -1173,6 +1214,7 @@ async fn register_with_limits_clamps_timeout_below_floor() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1202,6 +1244,7 @@ async fn register_with_limits_clamps_timeout_below_floor() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn register_with_limits_clamps_timeout_above_ceiling() {
     let dir = setup_pack_dir(&[("tools/sleep.sh", "#!/bin/sh\nsleep 3")]);
@@ -1219,6 +1262,7 @@ async fn register_with_limits_clamps_timeout_above_ceiling() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1248,6 +1292,7 @@ async fn register_with_limits_clamps_timeout_above_ceiling() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn register_with_limits_leaves_in_range_timeout_unclamped() {
     let dir = setup_pack_dir(&[("tools/sleep.sh", "#!/bin/sh\nsleep 0.05")]);
@@ -1265,6 +1310,7 @@ async fn register_with_limits_leaves_in_range_timeout_unclamped() {
         env: Vec::new(),
         write_paths: Vec::new(),
         egress: None,
+        platforms: Vec::new(),
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1295,6 +1341,7 @@ async fn register_with_limits_leaves_in_range_timeout_unclamped() {
 
 // --- #5214: per-tool environment / write-path / egress contract ---
 
+#[cfg(unix)]
 fn tool_def_with_policy(
     name: &str,
     command: &str,
@@ -1314,9 +1361,11 @@ fn tool_def_with_policy(
         env,
         write_paths,
         egress,
+        platforms: Vec::new(),
     }
 }
 
+#[cfg(unix)]
 #[test]
 #[expect(unsafe_code, reason = "test serializes process environment mutation")]
 fn register_rejects_declared_env_var_missing_from_daemon_environment() {
@@ -1350,6 +1399,7 @@ fn register_rejects_declared_env_var_missing_from_daemon_environment() {
     assert!(registry.definitions().is_empty());
 }
 
+#[cfg(unix)]
 #[test]
 #[expect(unsafe_code, reason = "test serializes process environment mutation")]
 fn declared_env_var_is_injected_into_subprocess() {
@@ -1392,6 +1442,7 @@ fn declared_env_var_is_injected_into_subprocess() {
     assert_eq!(result.content.text_summary(), "declared-value");
 }
 
+#[cfg(unix)]
 #[test]
 fn register_rejects_write_path_escaping_pack_root() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
@@ -1416,6 +1467,7 @@ fn register_rejects_write_path_escaping_pack_root() {
     assert!(registry.definitions().is_empty());
 }
 
+#[cfg(unix)]
 #[test]
 fn register_rejects_unknown_egress_intent() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
@@ -1443,6 +1495,7 @@ fn register_rejects_unknown_egress_intent() {
     assert!(registry.definitions().is_empty());
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn register_accepts_egress_none_and_inherit() {
     let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\ncat")]);
@@ -1486,4 +1539,81 @@ async fn register_accepts_egress_none_and_inherit() {
         "declared egress intent must not break execution: {}",
         result.content.text_summary()
     );
+}
+
+// --- #5215: explicit platform support ---
+
+#[test]
+fn register_skips_tool_for_unsupported_platform() {
+    // WHY: a tool whose platforms exclude the current host must be skipped at
+    // registration with a visible failure (pack health: degraded), not
+    // registered to fail at first exec. Runs on any host by picking a
+    // platform the host is not; the platform check runs before any
+    // filesystem validation, so no executable fixture is needed.
+    let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
+    let foreign = if cfg!(windows) { "linux" } else { "windows" };
+    let tool = PackToolDef {
+        name: "foreign_tool".to_owned(),
+        description: "Wrong-platform tool".to_owned(),
+        command: "tools/echo.sh".to_owned(),
+        timeout: 5000,
+        input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
+        platforms: vec![foreign.to_owned()],
+    };
+    let dir_root = dir.path().to_path_buf();
+    let pack = LoadedPack {
+        manifest: PackManifest {
+            name: "test-pack".to_owned(),
+            version: "1.0".to_owned(),
+            description: None,
+            context: vec![],
+            tools: vec![tool],
+            overlays: std::collections::HashMap::new(),
+        },
+        sections: vec![],
+        root: dir_root,
+    };
+
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&[pack], &mut registry);
+    assert_eq!(failures.len(), 1, "unsupported-platform tool must fail");
+    assert!(
+        failures[0].error.to_string().contains("tool skipped"),
+        "failure must name the platform mismatch: {}",
+        failures[0].error
+    );
+    assert!(registry.definitions().is_empty());
+}
+
+#[cfg(unix)]
+#[test]
+fn register_accepts_tool_covering_current_host() {
+    let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\necho ok")]);
+    make_executable(&dir, "tools/echo.sh");
+    let tool = PackToolDef {
+        name: "unix_tool".to_owned(),
+        description: "Unix tool".to_owned(),
+        command: "tools/echo.sh".to_owned(),
+        timeout: 5000,
+        input_schema: None,
+        groups: Vec::new(),
+        tags: Vec::new(),
+        reversibility: None,
+        env: Vec::new(),
+        write_paths: Vec::new(),
+        egress: None,
+        platforms: vec!["unix".to_owned()],
+    };
+    let pack = minimal_loaded_pack(&dir, vec![tool]);
+
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&[pack], &mut registry);
+    assert!(failures.is_empty(), "failures: {failures:?}");
+    assert_eq!(registry.definitions().len(), 1);
 }

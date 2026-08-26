@@ -123,6 +123,7 @@ Tools are shell commands exposed to the LLM as callable functions. The runtime p
 | `env` | list | `[]` | Environment variable names to pass through from the daemon's environment (see [Environment and secrets](#environment-and-secrets)) |
 | `write_paths` | list | `[]` | Additional directories the tool may write to, relative to the pack root |
 | `egress` | string | `inherit` | Network egress intent: `inherit` (deployment sandbox policy applies) or `none` (deny outbound network for this tool) |
+| `platforms` | list | `["unix"]` | Host platforms the tool supports: `linux`, `macos`, `windows`, `unix`. A tool whose list excludes the current host is skipped at registration and the pack is marked degraded |
 | `input_schema` | object | none | JSON Schema for input parameters |
 
 Input schema properties support types: `string`, `number`, `integer`, `boolean`, `array`, `object`. Each property has a `description` field and optional `enum` and `default` values.
@@ -160,6 +161,24 @@ env = ["DATABASE_URL"]
 ```
 
 The operator provides the value on the daemon (for example a systemd `EnvironmentFile`); it never enters the pack, the manifest, or the LLM-visible tool schema. A declared variable that is absent from the daemon environment fails tool registration and degrades the pack's [health](#pack-health) — the tool never runs with a silently missing value.
+
+### Platform support
+
+Pack tools are shell scripts executed directly via their shebang line, so they are Unix-first by default. The `platforms` field makes a tool's support explicit:
+
+- **Linux**: full enforcement — wall-clock timeout, process-group kill on timeout, and `RLIMIT_NPROC`/`RLIMIT_CPU` resource limits all apply
+- **macOS and other Unix**: timeout and process-group kill apply; resource limits are a no-op. The startup health report notes the reduced enforcement
+- **Windows**: `platforms = ["unix"]` (the default) does not cover it, so the tool is skipped at registration unless it declares `windows`
+
+Example for a Linux-only tool:
+
+```toml
+[[tools]]
+name = "gpu_probe"
+description = "Probe NVIDIA GPU state"
+command = "tools/gpu_probe.sh"
+platforms = ["linux"]
+```
 
 ## Overlays
 
