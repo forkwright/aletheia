@@ -522,7 +522,10 @@ mod tests {
     fn redact_strong_credential_patterns_inside_prose() {
         let api_key = format!("{}{}", "sk-ant-api03-", "synthetic-redaction-key");
         let bearer = "Bearer synthetic.redaction.token";
-        let jwt = "eyJhbGciOiJIUzI1NiJ9.c3ludGhldGlj.c2lnbmF0dXJl";
+        let jwt = format!(
+            "{}.{}.{}",
+            "eyJhbGciOiJIUzI1NiJ9", "c3ludGhldGlj", "c2lnbmF0dXJl"
+        );
         let mut value = serde_json::json!({
             "text": format!("key={api_key}; auth={bearer}; jwt={jwt}"),
         });
@@ -532,7 +535,7 @@ mod tests {
         let redacted = value["text"].as_str().expect("redacted text");
         assert!(!redacted.contains(&api_key));
         assert!(!redacted.contains(bearer));
-        assert!(!redacted.contains(jwt));
+        assert!(!redacted.contains(&jwt));
         assert!(redacted.contains("sk-ant-***"));
         assert!(redacted.contains("Bearer ***"));
         assert!(redacted.contains("[JWT REDACTED]"));

@@ -582,7 +582,10 @@ async fn live_approval_preserves_long_declared_url_while_replay_is_generic_redac
     assert!(url.len() > 32, "exercise the generic token heuristic");
     let api_key = format!("{}{}", "sk-ant-api03-", "synthetic-approval-key");
     let bearer = "Bearer synthetic.approval.token";
-    let jwt = "eyJhbGciOiJIUzI1NiJ9.c3ludGhldGlj.c2lnbmF0dXJl";
+    let jwt = format!(
+        "{}.{}.{}",
+        "eyJhbGciOiJIUzI1NiJ9", "c3ludGhldGlj", "c2lnbmF0dXJl"
+    );
     let note = format!("key={api_key}; auth={bearer}; jwt={jwt}");
     let model_input = serde_json::json!({
         "url": url,
@@ -618,7 +621,7 @@ async fn live_approval_preserves_long_declared_url_while_replay_is_generic_redac
     let live_note = live["note"].as_str().expect("live note is text");
     assert!(!live_note.contains(&api_key));
     assert!(!live_note.contains(bearer));
-    assert!(!live_note.contains(jwt));
+    assert!(!live_note.contains(&jwt));
     assert!(live_note.contains("sk-ant-***"));
     assert!(live_note.contains("Bearer ***"));
     assert!(live_note.contains("[JWT REDACTED]"));
@@ -627,7 +630,7 @@ async fn live_approval_preserves_long_declared_url_while_replay_is_generic_redac
     let replay_note = replay["note"].as_str().expect("replay note is text");
     assert!(!replay_note.contains(&api_key));
     assert!(!replay_note.contains(bearer));
-    assert!(!replay_note.contains(jwt));
+    assert!(!replay_note.contains(&jwt));
     assert!(replay_note.contains("sk-ant-***"));
     assert!(replay_note.contains("Bearer ***"));
     assert!(replay_note.contains("[JWT REDACTED]"));

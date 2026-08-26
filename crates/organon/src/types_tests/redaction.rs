@@ -3,8 +3,6 @@
 //! directions (redact and pass-through), the misspelled-declaration case,
 //! and the non-object fail-closed case.
 
-#![expect(clippy::expect_used, reason = "test assertions")]
-
 use super::super::*;
 
 fn schema_with(properties: &[&str]) -> InputSchema {
