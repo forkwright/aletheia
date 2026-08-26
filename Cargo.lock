@@ -77,6 +77,7 @@ dependencies = [
 name = "agora"
 version = "0.43.0"
 dependencies = [
+ "bathron",
  "futures",
  "indexmap",
  "koina",

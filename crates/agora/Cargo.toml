@@ -13,6 +13,7 @@ test-core = []
 test-full = []
 
 [dependencies]
+bathron = { workspace = true }
 koina = { path = "../koina" }
 taxis = { path = "../taxis" }
 indexmap = { workspace = true }

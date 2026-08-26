@@ -11,7 +11,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use snafu::ResultExt;
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
@@ -38,69 +39,73 @@ static MATRIX_CAPABILITIES: ChannelCapabilities = ChannelCapabilities {
 };
 
 /// Joined-room section from Matrix `/sync`.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MatrixSyncResponse {
+struct MatrixSyncResponse {
     /// Batch token to pass as `since` on the next sync.
-    pub next_batch: Option<String>,
+    next_batch: String,
     /// Joined rooms returned by sync.
-    #[serde(default)]
-    pub rooms: MatrixRooms,
+    rooms: MatrixRooms,
 }
 
 /// Matrix `/sync` rooms container.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MatrixRooms {
+#[derive(Default, Deserialize)]
+struct MatrixRooms {
     /// Joined rooms keyed by room ID.
     #[serde(default)]
-    pub join: HashMap<String, MatrixJoinedRoom>,
+    join: HashMap<String, MatrixJoinedRoom>,
 }
 
 /// Matrix joined-room sync payload.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MatrixJoinedRoom {
+#[derive(Default, Deserialize)]
+struct MatrixJoinedRoom {
     /// Timeline events returned for the room.
     #[serde(default)]
-    pub timeline: MatrixTimeline,
+    timeline: MatrixTimeline,
 }
 
 /// Matrix room timeline payload.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MatrixTimeline {
+#[derive(Default, Deserialize)]
+struct MatrixTimeline {
     /// Timeline events.
     #[serde(default)]
-    pub events: Vec<MatrixEvent>,
+    events: Vec<MatrixEvent>,
+    /// Whether earlier timeline events were omitted from this response.
+    #[serde(default)]
+    limited: bool,
 }
 
 /// Matrix event subset used by message extraction.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MatrixEvent {
+#[derive(Default, Deserialize)]
+struct MatrixEvent {
     /// Event type, e.g. `m.room.message`.
     #[serde(rename = "type")]
-    pub event_type: String,
+    event_type: String,
     /// Matrix user ID of the sender.
-    pub sender: Option<String>,
+    sender: Option<String>,
     /// Event ID.
-    pub event_id: Option<String>,
+    event_id: Option<String>,
     /// Server timestamp in milliseconds.
-    pub origin_server_ts: Option<u64>,
+    origin_server_ts: Option<u64>,
     /// Event content.
     #[serde(default)]
-    pub content: MatrixEventContent,
+    content: MatrixEventContent,
     /// Raw unsigned metadata.
     #[serde(default)]
-    pub unsigned: Option<serde_json::Value>,
+    unsigned: Option<serde_json::Value>,
+    /// Additional top-level event fields retained only for explicit raw-payload opt-in.
+    #[serde(flatten)]
+    extra: HashMap<String, serde_json::Value>,
 }
 
 /// Matrix room-message content subset.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MatrixEventContent {
+#[derive(Default, Deserialize)]
+struct MatrixEventContent {
     /// Matrix message type, e.g. `m.text`.
-    pub msgtype: Option<String>,
+    msgtype: Option<String>,
     /// Plain-text body.
-    pub body: Option<String>,
+    body: Option<String>,
     /// Additional content fields retained for attachments and raw diagnostics.
     #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Clone)]
@@ -109,6 +114,40 @@ struct MatrixAccount {
     user_id: Option<String>,
     auto_start: bool,
     since: Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
+    ingress_state: Arc<Mutex<MatrixIngressState>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: probe and the account task share one async state cell
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MatrixIngressState {
+    Disabled,
+    Starting,
+    Active,
+    BackingOff,
+    Halted,
+    CursorUnavailable,
+    TimelineGap,
+    ProtocolError,
+    Stopped,
+}
+
+impl MatrixIngressState {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::Starting => "starting",
+            Self::Active => "active",
+            Self::BackingOff => "backing_off",
+            Self::Halted => "halted",
+            Self::CursorUnavailable => "cursor_unavailable",
+            Self::TimelineGap => "timeline_gap",
+            Self::ProtocolError => "protocol_error",
+            Self::Stopped => "stopped",
+        }
+    }
+
+    const fn is_healthy(self) -> bool {
+        matches!(self, Self::Disabled | Self::Active)
+    }
 }
 
 /// Matrix channel provider implementing `ChannelProvider`.
@@ -183,6 +222,11 @@ impl MatrixProvider {
                 user_id,
                 auto_start,
                 since: Arc::new(Mutex::new(initial_since)), // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
+                ingress_state: Arc::new(Mutex::new(if auto_start {
+                    MatrixIngressState::Starting
+                } else {
+                    MatrixIngressState::Disabled
+                })), // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: probe and the account task share one async state cell
             },
         );
     }
@@ -204,7 +248,10 @@ impl MatrixProvider {
 
         for (account_id, account) in &self.accounts {
             if !account.auto_start {
-                tracing::info!(account = %account_id, "skipping Matrix sync loop (auto_start=false)");
+                tracing::info!(
+                    account = %crate::redact::identifier(account_id),
+                    "skipping Matrix sync loop (auto_start=false)"
+                );
                 continue;
             }
 
@@ -215,7 +262,11 @@ impl MatrixProvider {
             let user_id = account.user_id.clone();
             let account_label = account_id.clone();
             let cursor_store = self.cursor_store.clone();
-            let span = tracing::info_span!("matrix_sync", account = %account_id);
+            let ingress_state = Arc::clone(&account.ingress_state);
+            let span = tracing::info_span!(
+                "matrix_sync",
+                account = %crate::redact::identifier(account_id)
+            );
 
             handles.spawn(
                 sync_loop(
@@ -230,6 +281,7 @@ impl MatrixProvider {
                     self.halted_health_check_interval,
                     cursor_store,
                     self.retain_raw_payloads,
+                    ingress_state,
                 )
                 .instrument(span),
             );
@@ -324,26 +376,33 @@ impl ChannelProvider for MatrixProvider {
             }
 
             let mut details = HashMap::new();
-            let mut any_ok = false;
-            for (account_id, account) in &self.accounts {
-                let ok = account.client.health().await;
-                any_ok |= ok;
+            let mut all_ok = true;
+            let mut accounts = self.accounts.iter().collect::<Vec<_>>();
+            accounts.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            for (index, (account_id, account)) in accounts.into_iter().enumerate() {
+                let reachable = account.client.health().await;
+                let ingress_state = *account.ingress_state.lock().await;
+                let ok = reachable && ingress_state.is_healthy();
+                all_ok &= ok;
                 details.insert(
-                    account_id.clone(),
+                    format!("account_{index}"),
                     serde_json::json!({
-                        "reachable": ok,
+                        "account_ref": crate::redact::identifier(account_id),
+                        "reachable": reachable,
                         "auto_start": account.auto_start,
+                        "ingress_state": ingress_state.as_str(),
+                        "ingress_ok": ingress_state.is_healthy(),
                     }),
                 );
             }
 
             ProbeResult {
-                ok: any_ok,
+                ok: all_ok,
                 latency_ms: None,
-                error: if any_ok {
+                error: if all_ok {
                     None
                 } else {
-                    Some("all Matrix accounts unreachable".to_owned())
+                    Some("one or more Matrix accounts unreachable or ingress-unhealthy".to_owned())
                 },
                 details: Some(details),
             }
@@ -354,8 +413,8 @@ impl ChannelProvider for MatrixProvider {
 impl std::fmt::Debug for MatrixProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("MatrixProvider")
-            .field("accounts", &self.accounts.keys().collect::<Vec<_>>())
-            .field("default_account", &self.default_account)
+            .field("accounts_count", &self.accounts.len())
+            .field("default_account_set", &self.default_account.is_some())
             .field("circuit_breaker_threshold", &self.circuit_breaker_threshold)
             .field(
                 "halted_health_check_interval",
@@ -367,7 +426,11 @@ impl std::fmt::Debug for MatrixProvider {
 
 #[expect(
     clippy::too_many_arguments,
-    reason = "sync_loop is a single cohesive state machine; the shared halted-state recovery               loop requires these parameters together — splitting would obscure the state transitions"
+    reason = "sync_loop is one account state machine; splitting its shared state would obscure transition ownership"
+)]
+#[expect(
+    clippy::too_many_lines,
+    reason = "cursor recovery, polling, gap halt, and transport recovery are transitions in one account state machine"
 )]
 async fn sync_loop(
     client: client::MatrixClient,
@@ -381,18 +444,40 @@ async fn sync_loop(
     halted_health_check_interval: Duration,
     cursor_store: Option<Arc<dyn CursorStore>>,
     retain_raw_payloads: bool,
+    ingress_state: Arc<Mutex<MatrixIngressState>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: probe and the account task share one async state cell
 ) {
     tracing::info!("Matrix sync started");
 
-    // WHY: a persisted cursor overrides the configured initial_since — it is
-    // newer by construction (checkpointed after each processed batch), and
-    // resuming from it prevents a restart from replaying already-processed
-    // events.
-    if let Some(store) = &cursor_store
-        && let Some(saved) = store.load("matrix", &account_id)
-    {
-        tracing::info!("resuming Matrix sync from persisted cursor");
-        *since.lock().await = Some(saved);
+    // WHY: cursor failure must never look like cursor absence. Starting an
+    // unscoped sync after a failed load would silently widen the replay set.
+    if let Some(store) = &cursor_store {
+        let mut load_failures = 0_u32;
+        loop {
+            match store
+                .load("matrix", &account_id)
+                .context(error::CursorSnafu { operation: "load" })
+            {
+                Ok(Some(saved)) => {
+                    tracing::info!("resuming Matrix sync from persisted cursor");
+                    *since.lock().await = Some(saved);
+                    break;
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    load_failures = load_failures.saturating_add(1);
+                    *ingress_state.lock().await = MatrixIngressState::CursorUnavailable;
+                    tracing::warn!(
+                        error = %e,
+                        load_failures,
+                        "Matrix cursor load failed; sync remains stopped"
+                    );
+                    if wait_or_stop(reconnect_delay(load_failures), &cancel, &tx).await {
+                        *ingress_state.lock().await = MatrixIngressState::Stopped;
+                        return;
+                    }
+                }
+            }
+        }
     }
 
     let mut consecutive_failures = 0_u32;
@@ -402,26 +487,82 @@ async fn sync_loop(
             biased;
             () = cancel.cancelled() => {
                 tracing::info!("cancellation received, stopping Matrix sync");
+                *ingress_state.lock().await = MatrixIngressState::Stopped;
+                return;
+            }
+            () = tx.closed() => {
+                tracing::info!("receiver dropped, stopping Matrix sync");
+                *ingress_state.lock().await = MatrixIngressState::Stopped;
                 return;
             }
             result = sync_once(&client, &tx, &since, user_id.as_deref(), &account_id, cursor_store.as_ref(), retain_raw_payloads) => {
                 match result {
                     Ok(()) => {
                         consecutive_failures = 0;
-                        tokio::time::sleep(interval).await;
+                        *ingress_state.lock().await = MatrixIngressState::Active;
+                        if wait_or_stop(interval, &cancel, &tx).await {
+                            *ingress_state.lock().await = MatrixIngressState::Stopped;
+                            return;
+                        }
                     }
                     Err(error::Error::ReceiverDropped { .. }) => {
                         tracing::info!("receiver dropped, stopping Matrix sync");
+                        *ingress_state.lock().await = MatrixIngressState::Stopped;
                         return;
+                    }
+                    Err(e @ error::Error::TimelineGap { .. }) => {
+                        *ingress_state.lock().await = MatrixIngressState::TimelineGap;
+                        tracing::error!(
+                            error = %e,
+                            "Matrix sync halted before checkpoint because timeline history is incomplete"
+                        );
+                        wait_until_stopped(&cancel, &tx).await;
+                        *ingress_state.lock().await = MatrixIngressState::Stopped;
+                        return;
+                    }
+                    Err(e @ error::Error::Protocol { .. }) => {
+                        *ingress_state.lock().await = MatrixIngressState::ProtocolError;
+                        tracing::error!(error = %e, "Matrix sync halted on invalid protocol response");
+                        wait_until_stopped(&cancel, &tx).await;
+                        *ingress_state.lock().await = MatrixIngressState::Stopped;
+                        return;
+                    }
+                    Err(e @ error::Error::Json { .. }) => {
+                        *ingress_state.lock().await = MatrixIngressState::ProtocolError;
+                        tracing::error!(error = %e, "Matrix sync halted on malformed JSON response");
+                        wait_until_stopped(&cancel, &tx).await;
+                        *ingress_state.lock().await = MatrixIngressState::Stopped;
+                        return;
+                    }
+                    Err(e @ error::Error::Cursor { .. }) => {
+                        consecutive_failures = consecutive_failures.saturating_add(1);
+                        *ingress_state.lock().await = MatrixIngressState::CursorUnavailable;
+                        tracing::warn!(
+                            error = %e,
+                            consecutive_failures,
+                            "Matrix cursor checkpoint failed; batch remains unaccepted"
+                        );
+                        if wait_or_stop(
+                            reconnect_delay(consecutive_failures),
+                            &cancel,
+                            &tx,
+                        )
+                        .await
+                        {
+                            *ingress_state.lock().await = MatrixIngressState::Stopped;
+                            return;
+                        }
                     }
                     Err(e) => {
                         consecutive_failures = consecutive_failures.saturating_add(1);
+                        *ingress_state.lock().await = MatrixIngressState::BackingOff;
                         tracing::warn!(
                             error = %e,
                             consecutive_failures,
                             "Matrix sync failed"
                         );
                         if consecutive_failures >= circuit_breaker_threshold {
+                            *ingress_state.lock().await = MatrixIngressState::Halted;
                             tracing::error!(
                                 consecutive_failures,
                                 "Matrix sync halted after repeated failures; will probe for recovery"
@@ -431,20 +572,29 @@ async fn sync_loop(
                             // this avoids requiring a full process restart after a transient
                             // Matrix homeserver outage.
                             loop {
-                                tokio::select! {
+                                if wait_or_stop(halted_health_check_interval, &cancel, &tx).await {
+                                    *ingress_state.lock().await = MatrixIngressState::Stopped;
+                                    return;
+                                }
+                                let reachable = tokio::select! {
                                     biased;
                                     () = cancel.cancelled() => {
-                                        tracing::info!("cancellation received, stopping Matrix sync");
+                                        *ingress_state.lock().await = MatrixIngressState::Stopped;
                                         return;
                                     }
-                                    () = tokio::time::sleep(halted_health_check_interval) => {}
-                                }
-                                if client.health().await {
+                                    () = tx.closed() => {
+                                        *ingress_state.lock().await = MatrixIngressState::Stopped;
+                                        return;
+                                    }
+                                    reachable = client.health() => reachable,
+                                };
+                                if reachable {
                                     tracing::info!(
                                         previous_failures = consecutive_failures,
                                         "Matrix health check passed, resuming sync"
                                     );
                                     consecutive_failures = 0;
+                                    *ingress_state.lock().await = MatrixIngressState::Starting;
                                     break;
                                 }
                                 tracing::debug!("Matrix health check failed, remaining halted");
@@ -456,12 +606,36 @@ async fn sync_loop(
                                 backoff_secs = delay.as_secs(),
                                 "Matrix sync backing off after error"
                             );
-                            tokio::time::sleep(delay).await;
+                            if wait_or_stop(delay, &cancel, &tx).await {
+                                *ingress_state.lock().await = MatrixIngressState::Stopped;
+                                return;
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+async fn wait_or_stop(
+    delay: Duration,
+    cancel: &CancellationToken,
+    tx: &mpsc::Sender<InboundMessage>,
+) -> bool {
+    tokio::select! {
+        biased;
+        () = cancel.cancelled() => true,
+        () = tx.closed() => true,
+        () = tokio::time::sleep(delay) => false,
+    }
+}
+
+async fn wait_until_stopped(cancel: &CancellationToken, tx: &mpsc::Sender<InboundMessage>) {
+    tokio::select! {
+        biased;
+        () = cancel.cancelled() => {},
+        () = tx.closed() => {},
     }
 }
 
@@ -477,20 +651,32 @@ async fn sync_once(
     let since_token = { since.lock().await.clone() };
     let response = client.sync(since_token.as_deref()).await?;
 
+    let limited_rooms = response
+        .rooms
+        .join
+        .values()
+        .filter(|room| room.timeline.limited)
+        .count();
+    if limited_rooms > 0 {
+        return error::TimelineGapSnafu { limited_rooms }.fail();
+    }
+
     // WHY: advance the cursor immediately after the HTTP response returns,
     // before any tx.send await points. If cancellation interrupts the sends
     // below, we would rather lose the in-flight events than replay the whole
-    // batch on the next sync. Persisting before the in-memory advance means
-    // a crash lands on the durable cursor; the bounded dedupe filter covers
-    // the residual overlap.
-    if let Some(next_batch) = response.next_batch {
-        if let Some(store) = cursor_store {
-            store.save("matrix", account_id, &next_batch);
-            crate::metrics::record_cursor_checkpoint("matrix");
-        }
-        let mut guard = since.lock().await;
-        *guard = Some(next_batch);
+    // accepted batch on the next sync. This is an explicit at-most-once
+    // boundary: loss is preferred over replay, and this does not claim the
+    // downstream turn was processed or durable.
+    let next_batch = response.next_batch;
+    if let Some(store) = cursor_store {
+        store
+            .save("matrix", account_id, &next_batch)
+            .context(error::CursorSnafu { operation: "save" })?;
+        crate::metrics::record_cursor_checkpoint("matrix");
     }
+    let mut guard = since.lock().await;
+    *guard = Some(next_batch);
+    drop(guard);
 
     for (room_id, room) in &response.rooms.join {
         for event in &room.timeline.events {
@@ -551,11 +737,45 @@ fn extract_message(
         }),
         attachments,
         raw: if retain_raw {
-            serde_json::to_value(event).ok() // kanon:ignore RUST/silent-error-ok WHY: optional diagnostic field; serde failure is non-fatal and pre-existing WHY documents this
+            Some(retained_raw_event(event))
         } else {
             None
         },
     })
+}
+
+fn retained_raw_event(event: &MatrixEvent) -> serde_json::Value {
+    let mut content = event.content.extra.clone();
+    if let Some(msgtype) = &event.content.msgtype {
+        content.insert("msgtype".to_owned(), serde_json::json!(msgtype));
+    }
+    if let Some(body) = &event.content.body {
+        content.insert("body".to_owned(), serde_json::json!(body));
+    }
+
+    let mut raw = event.extra.clone();
+    raw.insert(
+        "type".to_owned(),
+        serde_json::json!(event.event_type.as_str()),
+    );
+    raw.insert(
+        "sender".to_owned(),
+        serde_json::json!(event.sender.as_deref()),
+    );
+    raw.insert(
+        "event_id".to_owned(),
+        serde_json::json!(event.event_id.as_deref()),
+    );
+    raw.insert(
+        "origin_server_ts".to_owned(),
+        serde_json::json!(event.origin_server_ts),
+    );
+    raw.insert("content".to_owned(), serde_json::Value::Object(content));
+    raw.insert(
+        "unsigned".to_owned(),
+        serde_json::json!(event.unsigned.as_ref()),
+    );
+    serde_json::Value::Object(raw)
 }
 
 pub(crate) fn encode_path_segment(value: &str) -> String {
@@ -587,6 +807,7 @@ fn hex_digit(nibble: u8) -> char {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::io;
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -596,6 +817,62 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+
+    async fn assert_join_set_drains(handles: &mut JoinSet<()>) {
+        while !handles.is_empty() {
+            let result = tokio::time::timeout(Duration::from_secs(5), handles.join_next())
+                .await
+                .expect("Matrix task did not stop before timeout")
+                .expect("Matrix JoinSet ended before all tracked tasks drained");
+            result.expect("Matrix task panicked");
+        }
+    }
+
+    async fn wait_for_ingress_state(
+        state: &Arc<Mutex<MatrixIngressState>>,
+        expected: MatrixIngressState,
+    ) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if *state.lock().await == expected {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("Matrix ingress state did not reach expected value");
+    }
+
+    struct LoadFailingCursorStore;
+
+    impl CursorStore for LoadFailingCursorStore {
+        fn load(&self, _channel: &str, _account: &str) -> io::Result<Option<String>> {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "synthetic cursor failure",
+            ))
+        }
+
+        fn save(&self, _channel: &str, _account: &str, _cursor: &str) -> io::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct SaveFailingCursorStore;
+
+    impl CursorStore for SaveFailingCursorStore {
+        fn load(&self, _channel: &str, _account: &str) -> io::Result<Option<String>> {
+            Ok(None)
+        }
+
+        fn save(&self, _channel: &str, _account: &str, _cursor: &str) -> io::Result<()> {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "synthetic cursor failure",
+            ))
+        }
+    }
 
     #[test]
     fn matrix_sync_error_backoff_grows_with_failures() {
@@ -816,13 +1093,7 @@ mod tests {
 
         token.cancel();
         drop(rx);
-        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next())
-            .await
-            .ok()
-            .flatten()
-        {
-            let _ = result;
-        }
+        assert_join_set_drains(&mut handles).await;
     }
 
     #[tokio::test]
@@ -859,7 +1130,7 @@ mod tests {
             .expect("sync_once");
 
         assert_eq!(
-            store.load("matrix", "primary").as_deref(),
+            store.load("matrix", "primary").expect("load").as_deref(),
             Some("s9"),
             "next_batch must be persisted for restart recovery"
         );
@@ -885,7 +1156,7 @@ mod tests {
         let store: Arc<dyn CursorStore> = Arc::new(crate::cursor::FileCursorStore::new(
             dir.path().to_path_buf(),
         ));
-        store.save("matrix", "primary", "s-saved");
+        store.save("matrix", "primary", "s-saved").expect("save");
 
         let mut provider = MatrixProvider::from_config(&taxis::config::MessagingConfig {
             receive_timeout_secs: 1,
@@ -910,25 +1181,298 @@ mod tests {
         let token = CancellationToken::new();
         let (rx, mut handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
 
-        // WHY: the mock expectation (`since = "s-saved", expect(1)`) verifies
-        // at server drop that the first sync resumed from the persisted
-        // cursor rather than starting unscoped; waiting briefly lets the
-        // first sync actually happen before teardown.
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        let ingress_state = Arc::clone(
+            &provider
+                .accounts
+                .get("primary")
+                .expect("account")
+                .ingress_state,
+        );
+        wait_for_ingress_state(&ingress_state, MatrixIngressState::Active).await;
 
         token.cancel();
         drop(rx);
-        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next())
-            .await
-            .ok()
-            .flatten()
-        {
-            let _ = result;
-        }
+        assert_join_set_drains(&mut handles).await;
     }
 
     #[tokio::test]
-    async fn sync_once_advances_since_before_sends_complete() {
+    async fn limited_timeline_halts_before_checkpoint_or_forward() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(query_param("since", "s0"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:example.org": {
+                            "timeline": {
+                                "limited": true,
+                                "prev_batch": "backfill-token",
+                                "events": [{
+                                    "type": "m.room.message",
+                                    "sender": "@alice:example.org",
+                                    "event_id": "$event",
+                                    "origin_server_ts": 123,
+                                    "content": {"msgtype": "m.text", "body": "must not forward"}
+                                }]
+                            }
+                        }
+                    }
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = client::MatrixClient::with_timeouts(
+            &server.uri(),
+            "token-123",
+            Duration::from_secs(1),
+            Duration::from_millis(50),
+        )
+        .expect("client");
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let store: Arc<dyn CursorStore> = Arc::new(crate::cursor::FileCursorStore::new(
+            dir.path().to_path_buf(),
+        ));
+        store.save("matrix", "primary", "s0").expect("save");
+        let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(Some("s0".to_owned())));
+        let (tx, mut rx) = mpsc::channel::<InboundMessage>(4);
+
+        let error = sync_once(&client, &tx, &since, None, "primary", Some(&store), false)
+            .await
+            .expect_err("limited timeline");
+
+        assert!(matches!(error, error::Error::TimelineGap { .. }));
+        assert_eq!(since.lock().await.as_deref(), Some("s0"));
+        assert_eq!(
+            store.load("matrix", "primary").expect("load").as_deref(),
+            Some("s0"),
+            "limited timeline must leave the durable cursor unchanged"
+        );
+        assert!(
+            matches!(rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
+            "limited timeline event must not reach dispatch"
+        );
+    }
+
+    #[tokio::test]
+    async fn cursor_save_failure_leaves_batch_unaccepted_and_unforwarded() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:example.org": {
+                            "timeline": {
+                                "events": [{
+                                    "type": "m.room.message",
+                                    "sender": "@alice:example.org",
+                                    "event_id": "$event",
+                                    "origin_server_ts": 123,
+                                    "content": {"msgtype": "m.text", "body": "must not forward"}
+                                }]
+                            }
+                        }
+                    }
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let client = client::MatrixClient::with_timeouts(
+            &server.uri(),
+            "token-123",
+            Duration::from_secs(1),
+            Duration::from_millis(50),
+        )
+        .expect("client");
+        let store: Arc<dyn CursorStore> = Arc::new(SaveFailingCursorStore);
+        let since: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let (tx, mut rx) = mpsc::channel::<InboundMessage>(4);
+
+        let error = sync_once(&client, &tx, &since, None, "primary", Some(&store), false)
+            .await
+            .expect_err("cursor save");
+
+        assert!(matches!(error, error::Error::Cursor { .. }));
+        assert!(since.lock().await.is_none());
+        assert!(
+            matches!(rx.try_recv(), Err(mpsc::error::TryRecvError::Empty)),
+            "uncheckpointed event must not reach dispatch"
+        );
+    }
+
+    #[tokio::test]
+    async fn limited_timeline_is_visible_in_redacted_account_health() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:example.org": {
+                            "timeline": {"limited": true, "events": []}
+                        }
+                    }
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/account/whoami"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "user_id": "@bot:example.org"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let store: Arc<dyn CursorStore> = Arc::new(crate::cursor::FileCursorStore::new(
+            dir.path().to_path_buf(),
+        ));
+        let mut provider = MatrixProvider::new().with_cursor_store(store);
+        provider.add_account(
+            "operator@private".to_owned(),
+            client::MatrixClient::with_timeouts(
+                &server.uri(),
+                "token-123",
+                Duration::from_secs(1),
+                Duration::from_millis(50),
+            )
+            .expect("client"),
+            Some("@bot:example.org".to_owned()),
+            true,
+            None,
+        );
+        let ingress_state = Arc::clone(
+            &provider
+                .accounts
+                .get("operator@private")
+                .expect("account")
+                .ingress_state,
+        );
+
+        let token = CancellationToken::new();
+        let (rx, mut handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
+        wait_for_ingress_state(&ingress_state, MatrixIngressState::TimelineGap).await;
+
+        let probe = provider.probe().await;
+        assert!(!probe.ok, "reachable homeserver cannot hide a timeline gap");
+        let details = serde_json::to_string(&probe.details).expect("details");
+        assert!(!details.contains("operator@private"));
+        assert!(details.contains(MatrixIngressState::TimelineGap.as_str()));
+
+        token.cancel();
+        drop(rx);
+        assert_join_set_drains(&mut handles).await;
+    }
+
+    #[tokio::test]
+    async fn cursor_load_failure_never_starts_unscoped_sync_and_cancels_promptly() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        let store: Arc<dyn CursorStore> = Arc::new(LoadFailingCursorStore);
+        let mut provider = MatrixProvider::new().with_cursor_store(store);
+        provider.add_account(
+            "primary".to_owned(),
+            client::MatrixClient::with_timeouts(
+                &server.uri(),
+                "token-123",
+                Duration::from_secs(1),
+                Duration::from_millis(50),
+            )
+            .expect("client"),
+            None,
+            true,
+            None,
+        );
+        let ingress_state = Arc::clone(
+            &provider
+                .accounts
+                .get("primary")
+                .expect("account")
+                .ingress_state,
+        );
+
+        let token = CancellationToken::new();
+        let (rx, mut handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
+        wait_for_ingress_state(&ingress_state, MatrixIngressState::CursorUnavailable).await;
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server records requests");
+        assert!(
+            requests.is_empty(),
+            "cursor failure must precede all sync I/O"
+        );
+
+        token.cancel();
+        drop(rx);
+        assert_join_set_drains(&mut handles).await;
+    }
+
+    #[tokio::test]
+    async fn receiver_close_interrupts_long_poll_interval() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {"join": {}}
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut provider = MatrixProvider::new();
+        provider.add_account(
+            "primary".to_owned(),
+            client::MatrixClient::with_timeouts(
+                &server.uri(),
+                "token-123",
+                Duration::from_secs(1),
+                Duration::from_millis(50),
+            )
+            .expect("client"),
+            None,
+            true,
+            None,
+        );
+        let ingress_state = Arc::clone(
+            &provider
+                .accounts
+                .get("primary")
+                .expect("account")
+                .ingress_state,
+        );
+
+        let token = CancellationToken::new();
+        let (rx, mut handles) = provider.listen(Some(Duration::from_hours(1)), token.clone());
+        wait_for_ingress_state(&ingress_state, MatrixIngressState::Active).await;
+        drop(rx);
+
+        assert_join_set_drains(&mut handles).await;
+        assert!(
+            !token.is_cancelled(),
+            "receiver close is independent of cancellation"
+        );
+        assert!(*ingress_state.lock().await == MatrixIngressState::Stopped);
+    }
+
+    #[tokio::test]
+    async fn sync_once_accepts_batch_before_sends_complete() {
         install_crypto_provider();
         let server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1024,7 +1568,7 @@ mod tests {
         assert_eq!(
             guard.as_deref(),
             Some("s1"),
-            "next_batch should be persisted even when the future is cancelled mid-send"
+            "next_batch should be accepted even when the future is cancelled mid-send"
         );
     }
 }

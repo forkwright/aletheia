@@ -9,14 +9,14 @@ use tracing::instrument;
 use koina::http::CONTENT_TYPE_JSON;
 
 use super::error::{self, Result};
-use super::{MatrixSyncResponse, encode_path_segment};
+use super::{MatrixRooms, MatrixSyncResponse, encode_path_segment};
 
 /// Fallback default; runtime reads `MessagingConfig::rpc_timeout_secs`.
 pub(crate) const RPC_TIMEOUT: Duration = Duration::from_secs(10);
 /// Fallback default; runtime reads `MessagingConfig::receive_timeout_secs`.
 pub(crate) const SYNC_TIMEOUT: Duration = Duration::from_secs(15);
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 struct SendMessageRequest<'a> {
     msgtype: &'static str,
     body: &'a str,
@@ -25,16 +25,22 @@ struct SendMessageRequest<'a> {
     relates_to: Option<ThreadRelation<'a>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Serialize)]
 struct ThreadRelation<'a> {
     rel_type: &'static str,
     event_id: &'a str,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct MatrixErrorBody {
     errcode: Option<String>,
-    error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct MatrixSyncWire {
+    next_batch: Option<String>,
+    #[serde(default)]
+    rooms: MatrixRooms,
 }
 
 /// Async client for a single Matrix account.
@@ -69,6 +75,8 @@ impl MatrixClient {
     ) -> Result<Self> {
         let client = reqwest::Client::builder()
             .timeout(rpc_timeout)
+            .redirect(reqwest::redirect::Policy::none())
+            .no_proxy()
             .build()
             .context(error::HttpSnafu)?;
 
@@ -86,7 +94,10 @@ impl MatrixClient {
     /// stable key derived from the triggering inbound event makes a retried
     /// send idempotent at the homeserver (`PUT .../send/.../{txnId}` is
     /// the Matrix idempotency mechanism).
-    #[instrument(skip(self, body), fields(room_id = %room_id))]
+    #[instrument(
+        skip(self, body, room_id),
+        fields(room = %crate::redact::identifier(room_id))
+    )]
     pub async fn send_text(
         &self,
         room_id: &str,
@@ -118,6 +129,7 @@ impl MatrixClient {
             .json(&request)
             .send()
             .await
+            .map_err(reqwest::Error::without_url)
             .context(error::HttpSnafu)?;
 
         json_response(response).await
@@ -125,7 +137,7 @@ impl MatrixClient {
 
     /// Perform a Matrix `/sync` request.
     #[instrument(skip(self, since))]
-    pub async fn sync(&self, since: Option<&str>) -> Result<MatrixSyncResponse> {
+    pub(super) async fn sync(&self, since: Option<&str>) -> Result<MatrixSyncResponse> {
         let mut query = vec![("timeout", self.sync_timeout.as_millis().to_string())];
         if let Some(since_token) = since {
             query.push(("since", since_token.to_owned()));
@@ -140,10 +152,28 @@ impl MatrixClient {
             .timeout(self.sync_timeout + Duration::from_secs(2))
             .send()
             .await
+            .map_err(reqwest::Error::without_url)
             .context(error::HttpSnafu)?;
 
         let value = json_response(response).await?;
-        serde_json::from_value(value).context(error::JsonSnafu)
+        let wire: MatrixSyncWire = serde_json::from_value(value).context(error::JsonSnafu)?;
+        let Some(next_batch) = wire.next_batch else {
+            return error::ProtocolSnafu {
+                reason: "sync response omitted next_batch",
+            }
+            .fail();
+        };
+        if next_batch.trim().is_empty() {
+            return error::ProtocolSnafu {
+                reason: "sync response returned an empty next_batch",
+            }
+            .fail();
+        }
+
+        Ok(MatrixSyncResponse {
+            next_batch,
+            rooms: wire.rooms,
+        })
     }
 
     /// Check whether the access token is accepted by the homeserver.
@@ -171,20 +201,23 @@ impl std::fmt::Debug for MatrixClient {
 async fn json_response(response: reqwest::Response) -> Result<serde_json::Value> {
     let status = response.status();
     if status.is_success() {
-        return response.json().await.context(error::HttpSnafu);
+        return response
+            .json()
+            .await
+            .map_err(reqwest::Error::without_url)
+            .context(error::HttpSnafu);
     }
 
     let status_code = status.as_u16();
-    let body = response.text().await.context(error::HttpSnafu)?;
+    let body = response
+        .text()
+        .await
+        .map_err(reqwest::Error::without_url)
+        .context(error::HttpSnafu)?;
     let message = serde_json::from_str::<MatrixErrorBody>(&body)
         .ok()
-        .and_then(|error_body| match (error_body.errcode, error_body.error) {
-            (Some(code), Some(error)) => Some(format!("{code}: {error}")),
-            (None, Some(error)) => Some(error),
-            (Some(code), None) => Some(code),
-            (None, None) => None,
-        })
-        .unwrap_or(body);
+        .and_then(|error_body| error_body.errcode)
+        .unwrap_or_else(|| "Matrix request rejected".to_owned());
 
     error::ApiSnafu {
         status: status_code,
@@ -270,7 +303,80 @@ mod tests {
         )
         .expect("client");
         let response = client.sync(Some("s0")).await.expect("sync");
-        assert_eq!(response.next_batch.as_deref(), Some("s1"));
+        assert_eq!(response.next_batch, "s1");
+    }
+
+    #[tokio::test]
+    async fn sync_rejects_missing_null_and_empty_next_batch() {
+        install_crypto_provider();
+        for body in [
+            serde_json::json!({"rooms": {"join": {}}}),
+            serde_json::json!({"next_batch": null, "rooms": {"join": {}}}),
+            serde_json::json!({"next_batch": "", "rooms": {"join": {}}}),
+        ] {
+            let server = MockServer::start().await;
+            Mock::given(method("GET"))
+                .and(path("/_matrix/client/v3/sync"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(body))
+                .expect(1)
+                .mount(&server)
+                .await;
+
+            let client = MatrixClient::with_timeouts(
+                &server.uri(),
+                "token-123",
+                Duration::from_secs(1),
+                Duration::from_millis(10),
+            )
+            .expect("client");
+            let error = match client.sync(None).await {
+                Ok(_) => panic!("invalid next_batch was accepted"),
+                Err(error) => error,
+            };
+            assert!(
+                matches!(&error, error::Error::Protocol { .. }),
+                "unexpected error: {error}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn sync_does_not_follow_redirects() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("location", "/redirected-with-credentials"),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/redirected-with-credentials"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1"
+            })))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let client = MatrixClient::with_timeouts(
+            &server.uri(),
+            "token-123",
+            Duration::from_secs(1),
+            Duration::from_millis(10),
+        )
+        .expect("client");
+        let error = match client.sync(None).await {
+            Ok(_) => panic!("redirect was followed"),
+            Err(error) => error,
+        };
+        assert!(
+            matches!(&error, error::Error::Api { status: 302, .. }),
+            "unexpected error: {error}"
+        );
     }
 
     #[tokio::test]
@@ -308,7 +414,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_error_surfaces_matrix_message() {
+    async fn api_error_surfaces_matrix_code_without_server_text() {
         install_crypto_provider();
         let server = MockServer::start().await;
         Mock::given(method("PUT"))
@@ -324,6 +430,8 @@ mod tests {
             .send_text("!room:example.org", "hello", None, None)
             .await
             .expect_err("forbidden");
-        assert!(err.to_string().contains("M_FORBIDDEN: no access"));
+        let rendered = err.to_string();
+        assert!(rendered.contains("M_FORBIDDEN"));
+        assert!(!rendered.contains("no access"));
     }
 }

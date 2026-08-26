@@ -1,22 +1,36 @@
 //! Per-account provider cursor persistence.
 //!
 //! Matrix `/sync` cursors survive process restarts when a store is wired in,
-//! so a restart resumes after the last processed batch instead of replaying
+//! so a restart resumes after the last accepted batch instead of replaying
 //! it. Signal needs no cursor: signal-cli's `receive` consumes messages
 //! destructively on the daemon side.
 
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
 
+#[cfg(unix)]
+use std::fs::File;
+
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 
 /// Where providers keep their resumption cursors.
 pub trait CursorStore: Send + Sync {
     /// Last persisted cursor for this channel+account, if any.
-    fn load(&self, channel: &str, account: &str) -> Option<String>;
-    /// Persist the cursor. Best-effort: implementations log and drop
-    /// errors, because a lost cursor replays a bounded window (covered by
-    /// the dedupe filter) while a failed save must never stop ingress.
-    fn save(&self, channel: &str, account: &str, cursor: &str);
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a present cursor cannot be read or validated.
+    /// Absence alone returns `Ok(None)`.
+    fn load(&self, channel: &str, account: &str) -> io::Result<Option<String>>;
+
+    /// Persist the cursor before the provider accepts the corresponding batch.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when any directory, serialization, write, rename, or
+    /// durability step fails.
+    fn save(&self, channel: &str, account: &str, cursor: &str) -> io::Result<()>;
 }
 
 /// JSON-file cursor store: one file per channel+account under `dir`.
@@ -46,37 +60,118 @@ impl FileCursorStore {
             .join(format!("{}.json", crate::types::hex_lower(&digest)))
     }
 
-    fn try_save(&self, channel: &str, account: &str, cursor: &str) -> std::io::Result<()> {
-        std::fs::create_dir_all(&self.dir)?;
+    fn try_load(&self, channel: &str, account: &str) -> io::Result<Option<String>> {
         let path = self.path_for(channel, account);
-        // WHY: write-then-rename keeps a torn write from corrupting the last
-        // good cursor — a partial file would otherwise read as garbage and
-        // silently replay from the beginning.
-        let tmp = path.with_extension("json.tmp");
-        std::fs::write(&tmp, serde_json::json!({ "cursor": cursor }).to_string())?;
-        std::fs::rename(&tmp, &path)?;
+        let contents = match std::fs::read(&path) {
+            Ok(contents) => contents,
+            Err(source) if source.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(source) => return Err(source),
+        };
+        let document: CursorDocument = serde_json::from_slice(&contents)
+            .map_err(|source| io::Error::new(io::ErrorKind::InvalidData, source))?;
+        validate_cursor(&document.cursor)?;
+        Ok(Some(document.cursor))
+    }
+
+    fn try_save(&self, channel: &str, account: &str, cursor: &str) -> io::Result<()> {
+        validate_cursor(cursor)?;
+        create_dir_all_durable(&self.dir)?;
+        let path = self.path_for(channel, account);
+        let document = CursorDocument {
+            cursor: cursor.to_owned(),
+        };
+        let contents = serde_json::to_vec(&document).map_err(io::Error::other)?;
+
+        // WHY: Bathron owns the tempfile, file-fsync, rename, and directory-
+        // fsync sequence. `create_dir_all_durable` separately makes the first
+        // `channel-cursors/` entry durable in its owning data directory.
+        bathron::atomic::write_atomic(&path, &contents, Some(0o600)).map_err(io::Error::other)?;
         Ok(())
     }
 }
 
 impl CursorStore for FileCursorStore {
-    fn load(&self, channel: &str, account: &str) -> Option<String> {
-        let path = self.path_for(channel, account);
-        let contents = std::fs::read_to_string(&path).ok()?;
-        let value: serde_json::Value = serde_json::from_str(&contents).ok()?;
-        value
-            .get("cursor")
-            .and_then(serde_json::Value::as_str)
-            .map(ToOwned::to_owned)
+    fn load(&self, channel: &str, account: &str) -> io::Result<Option<String>> {
+        self.try_load(channel, account)
     }
 
-    fn save(&self, channel: &str, account: &str, cursor: &str) {
-        if let Err(e) = self.try_save(channel, account, cursor) {
-            // NOTE: account is deliberately not logged — it is a phone
-            // number or Matrix user ID.
-            tracing::warn!(error = %e, channel, "failed to persist channel cursor");
-        }
+    fn save(&self, channel: &str, account: &str, cursor: &str) -> io::Result<()> {
+        self.try_save(channel, account, cursor)
     }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct CursorDocument {
+    cursor: String,
+}
+
+fn validate_cursor(cursor: &str) -> io::Result<()> {
+    if cursor.trim().is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "provider cursor is empty",
+        ));
+    }
+    Ok(())
+}
+
+fn create_dir_all_durable(path: &Path) -> io::Result<()> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_dir() => {
+            return match usable_parent(path) {
+                Ok(parent) => sync_directory(parent),
+                Err(_) if path.has_root() => Ok(()),
+                Err(source) => Err(source),
+            };
+        }
+        Ok(_) => {
+            return Err(io::Error::new(
+                io::ErrorKind::AlreadyExists,
+                "cursor directory path is not a directory",
+            ));
+        }
+        Err(source) if source.kind() == io::ErrorKind::NotFound => {}
+        Err(source) => return Err(source),
+    }
+
+    let parent = usable_parent(path)?;
+    create_dir_all_durable(parent)?;
+    match std::fs::create_dir(path) {
+        Ok(()) => {}
+        Err(source) if source.kind() == io::ErrorKind::AlreadyExists && path.is_dir() => {}
+        Err(source) => return Err(source),
+    }
+
+    // WHY: creating `path` changes its parent's directory entry. Bathron's
+    // file replace later fsyncs `path`, but only this fsync makes the new
+    // directory itself reachable after a power loss.
+    sync_directory(parent)
+}
+
+fn usable_parent(path: &Path) -> io::Result<&Path> {
+    match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => Ok(parent),
+        _ if path.is_relative() => Ok(Path::new(".")),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "cursor directory has no parent",
+        )),
+    }
+}
+
+#[cfg(unix)]
+fn sync_directory(path: &Path) -> io::Result<()> {
+    File::open(path).and_then(|directory| directory.sync_all())
+}
+
+#[cfg(not(unix))]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "signature matches the unix durability operation, which can fail"
+)]
+fn sync_directory(_path: &Path) -> io::Result<()> {
+    Ok(())
 }
 
 #[cfg(test)]
@@ -87,32 +182,46 @@ mod tests {
     #[test]
     fn save_then_load_roundtrips() {
         let dir = tempfile::tempdir().expect("tmpdir");
-        let store = FileCursorStore::new(dir.path().to_path_buf());
-        assert_eq!(store.load("matrix", "primary"), None);
+        let store = FileCursorStore::new(dir.path().join("channel-cursors"));
+        assert_eq!(store.load("matrix", "primary").expect("load"), None);
 
-        store.save("matrix", "primary", "s-123");
-        assert_eq!(store.load("matrix", "primary").as_deref(), Some("s-123"));
+        store.save("matrix", "primary", "s-123").expect("save");
+        assert_eq!(
+            store.load("matrix", "primary").expect("load").as_deref(),
+            Some("s-123")
+        );
 
-        store.save("matrix", "primary", "s-124");
-        assert_eq!(store.load("matrix", "primary").as_deref(), Some("s-124"));
+        store.save("matrix", "primary", "s-124").expect("save");
+        assert_eq!(
+            store.load("matrix", "primary").expect("load").as_deref(),
+            Some("s-124")
+        );
     }
 
     #[test]
     fn cursors_are_scoped_per_channel_and_account() {
         let dir = tempfile::tempdir().expect("tmpdir");
         let store = FileCursorStore::new(dir.path().to_path_buf());
-        store.save("matrix", "primary", "s-1");
-        store.save("matrix", "secondary", "s-2");
-        assert_eq!(store.load("matrix", "primary").as_deref(), Some("s-1"));
-        assert_eq!(store.load("matrix", "secondary").as_deref(), Some("s-2"));
-        assert_eq!(store.load("signal", "primary"), None);
+        store.save("matrix", "primary", "s-1").expect("save");
+        store.save("matrix", "secondary", "s-2").expect("save");
+        assert_eq!(
+            store.load("matrix", "primary").expect("load").as_deref(),
+            Some("s-1")
+        );
+        assert_eq!(
+            store.load("matrix", "secondary").expect("load").as_deref(),
+            Some("s-2")
+        );
+        assert_eq!(store.load("signal", "primary").expect("load"), None);
     }
 
     #[test]
     fn file_names_do_not_carry_raw_account_ids() {
         let dir = tempfile::tempdir().expect("tmpdir");
         let store = FileCursorStore::new(dir.path().to_path_buf());
-        store.save("matrix", "@bot:example.org", "s-1");
+        store
+            .save("matrix", "@bot:example.org", "s-1")
+            .expect("save");
         for entry in std::fs::read_dir(dir.path()).expect("read dir") {
             let name = entry.expect("entry").file_name();
             let name = name.to_string_lossy();
@@ -124,12 +233,31 @@ mod tests {
     }
 
     #[test]
-    fn corrupt_cursor_file_reads_as_absent() {
+    fn corrupt_cursor_file_fails_closed() {
         let dir = tempfile::tempdir().expect("tmpdir");
         let store = FileCursorStore::new(dir.path().to_path_buf());
-        store.save("matrix", "primary", "s-1");
+        store.save("matrix", "primary", "s-1").expect("save");
         let path = store.path_for("matrix", "primary");
         std::fs::write(&path, "{not json").expect("corrupt");
-        assert_eq!(store.load("matrix", "primary"), None);
+        let error = store
+            .load("matrix", "primary")
+            .expect_err("corruption must not look like absence");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn empty_cursor_is_rejected_without_replacing_last_checkpoint() {
+        let dir = tempfile::tempdir().expect("tmpdir");
+        let store = FileCursorStore::new(dir.path().to_path_buf());
+        store.save("matrix", "primary", "s-1").expect("save");
+
+        let error = store
+            .save("matrix", "primary", "  ")
+            .expect_err("empty cursor");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+        assert_eq!(
+            store.load("matrix", "primary").expect("load").as_deref(),
+            Some("s-1")
+        );
     }
 }

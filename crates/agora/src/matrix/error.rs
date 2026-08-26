@@ -35,8 +35,40 @@ pub enum Error {
     Api {
         /// HTTP status code returned by the homeserver.
         status: u16,
-        /// Matrix API error message.
+        /// Privacy-safe Matrix error code or fixed rejection description.
         message: String,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+
+    /// Matrix wire response violated a required protocol invariant.
+    #[snafu(display("Matrix protocol error: {reason}"))]
+    Protocol {
+        /// Stable, privacy-safe description of the violated invariant.
+        reason: &'static str,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+
+    /// Durable cursor storage was unavailable or invalid.
+    #[snafu(display("Matrix cursor {operation} failed: {source}"))]
+    Cursor {
+        /// Cursor operation that failed.
+        operation: &'static str,
+        /// Underlying durable-store failure.
+        source: std::io::Error,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
+
+    /// A limited room timeline would skip history if checkpointed.
+    #[snafu(display("Matrix sync contained {limited_rooms} limited room timelines"))]
+    TimelineGap {
+        /// Number of joined rooms whose timeline declared a gap.
+        limited_rooms: usize,
         #[snafu(implicit)]
         /// Source location captured by snafu.
         location: snafu::Location,

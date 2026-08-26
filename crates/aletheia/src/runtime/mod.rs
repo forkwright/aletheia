@@ -638,7 +638,7 @@ impl RuntimeBuilder {
         };
         let matrix_provider = if self.tool_services {
             // WHY: persisted sync cursors keep a restart from replaying
-            // already-processed Matrix timeline events; Signal needs no
+            // already-accepted Matrix timeline batches; Signal needs no
             // cursor (signal-cli consumes on receive).
             let cursor_store: Arc<dyn agora::cursor::CursorStore> = Arc::new(
                 agora::cursor::FileCursorStore::new(self.oikos.data().join("channel-cursors")),
