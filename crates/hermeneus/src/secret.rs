@@ -330,10 +330,11 @@ pub fn redact_in_json(value: &mut serde_json::Value) {
             // values would miss it and later schema/debug dumps would retain
             // it. Collapse the object if any key is secret-shaped: rewriting
             // keys individually can collide and silently discard entries.
-            if map
-                .keys()
-                .any(|key| looks_like_secret(key) || koina::redact::redact_sensitive(key) != *key)
-            {
+            if map.keys().any(|key| {
+                parse_placeholder(key).is_some()
+                    || looks_like_secret(key)
+                    || koina::redact::redact_sensitive(key) != *key
+            }) {
                 *value = serde_json::json!({"__redaction__": "[REDACTED]"});
                 return;
             }
@@ -503,9 +504,18 @@ mod tests {
 
     #[test]
     fn redact_preserves_placeholders() {
-        let mut value = serde_json::json!({"auth": "{{secret:aws}}"});
+        let mut value = serde_json::json!({
+            "brace": "{{secret:aws}}",
+            "brace_long": "{{secret:abcdefghijklmnopqrstuvwxyz0123456789abcdef}}",
+            "dollar": "$SECRET(github)",
+        });
         redact_in_json(&mut value);
-        assert_eq!(value["auth"], "{{secret:aws}}");
+        assert_eq!(value["brace"], "{{secret:aws}}");
+        assert_eq!(
+            value["brace_long"],
+            "{{secret:abcdefghijklmnopqrstuvwxyz0123456789abcdef}}"
+        );
+        assert_eq!(value["dollar"], "$SECRET(github)");
     }
 
     #[test]
@@ -596,6 +606,21 @@ mod tests {
 
             assert_eq!(value, serde_json::json!({"__redaction__": "[REDACTED]"}));
             assert!(!value.to_string().contains(secret_key));
+        }
+    }
+
+    #[test]
+    fn redact_collapses_placeholder_shaped_dynamic_object_keys() {
+        for placeholder_key in [
+            "{{secret:abcdefghijklmnopqrstuvwxyz0123456789abcdef}}",
+            "$SECRET(abcdefghijklmnopqrstuvwxyz0123456789abcdef)",
+        ] {
+            let mut value = serde_json::json!({(placeholder_key): "ordinary value"});
+
+            redact_in_json(&mut value);
+
+            assert_eq!(value, serde_json::json!({"__redaction__": "[REDACTED]"}));
+            assert!(!value.to_string().contains(placeholder_key));
         }
     }
 

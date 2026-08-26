@@ -65,13 +65,13 @@ fn fields_redacts_named_fields_and_passes_others() {
     let missed = policy.apply_to_input(&mut input);
     assert!(missed.is_empty(), "all declared fields matched");
     assert_eq!(
-        input["headers"],
-        serde_json::json!(REDACTED_MARKER),
+        input.get("headers"),
+        Some(&serde_json::json!(REDACTED_MARKER)),
         "declared field is redacted"
     );
     assert_eq!(
-        input["url"],
-        serde_json::json!("https://acme.corp"),
+        input.get("url"),
+        Some(&serde_json::json!("https://acme.corp")),
         "undeclared field passes through unchanged"
     );
 
@@ -171,16 +171,16 @@ fn vault_placeholders_follow_the_declared_policy() {
     let mut none_input = placeholder_input();
     RedactionPolicy::None.apply_to_input(&mut none_input);
     assert_eq!(
-        none_input["auth"],
-        serde_json::json!("{{secret:token}}"),
+        none_input.get("auth"),
+        Some(&serde_json::json!("{{secret:token}}")),
         "None passes the placeholder form through by design"
     );
 
     let mut fields_input = placeholder_input();
     RedactionPolicy::Fields(vec!["auth".to_owned()]).apply_to_input(&mut fields_input);
     assert_eq!(
-        fields_input["auth"],
-        serde_json::json!(REDACTED_MARKER),
+        fields_input.get("auth"),
+        Some(&serde_json::json!(REDACTED_MARKER)),
         "Fields hides even the vault key name on declared fields"
     );
 

@@ -20,7 +20,7 @@ use organon::surface::{
 };
 use organon::types::{
     ApprovalRequirement, InputSchema, PropertyDef, PropertyType, RedactionPolicy, ToolContext,
-    ToolInput,
+    ToolInput, ToolResult,
 };
 
 use crate::approval::{ApprovalChoice, ApprovalGate};
@@ -444,7 +444,6 @@ fn mask_declared_property_strings(value: &mut serde_json::Value, property: &Prop
                 }
             }
         }
-        PropertyType::Number | PropertyType::Integer | PropertyType::Boolean => {}
         _ => {}
     }
 }
@@ -501,10 +500,6 @@ fn restore_declared_property_strings(
                 }
             }
         }
-        PropertyType::String
-        | PropertyType::Number
-        | PropertyType::Integer
-        | PropertyType::Boolean => {}
         _ => {}
     }
 }
@@ -583,7 +578,7 @@ fn record_undispatched_calls(
             stream_tx,
             tool_ctx,
             tools,
-            DeniedToolCall {
+            &DeniedToolCall {
                 id,
                 name,
                 input,
@@ -714,7 +709,7 @@ fn record_denied_call(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
     tools: &ToolRegistry,
-    denied: DeniedToolCall<'_>,
+    denied: &DeniedToolCall<'_>,
 ) {
     unexecuted.push(denied.id.to_owned());
     organon::metrics::record_policy_denial(denied.name, denied.approval.unwrap_or("unknown"));
@@ -1095,6 +1090,44 @@ struct SingleToolOutcome {
     is_error: bool,
 }
 
+fn normalize_tool_result(
+    result: organon::error::Result<ToolResult>,
+    duration_ms: u64,
+) -> (ToolResultContent, bool, Option<String>) {
+    match result {
+        Ok(mut result) => {
+            if let Some(ref mut diagnostics) = result.diagnostics {
+                diagnostics.duration_ms = duration_ms;
+                let diagnostic_text = diagnostics.to_llm_text();
+                result.content = inject_diagnostics(result.content, &diagnostic_text);
+            }
+            // WHY the accessor methods, not a direct match: `ToolOutcome` is
+            // `#[non_exhaustive]` — matching its variants directly here would
+            // need a wildcard arm that silently swallows any future variant
+            // organon adds. `is_partial()`/`partial_reasons()`/
+            // `failure_reason()` are the crate's own forward-compatible
+            // surface for exactly this.
+            let outcome_detail = if result.outcome.is_partial() {
+                Some(result.outcome.partial_reasons().join("; "))
+            } else {
+                let reason = result.outcome.failure_reason();
+                (!reason.is_empty()).then(|| reason.to_owned())
+            };
+            (result.content, result.is_error, outcome_detail)
+        }
+        // WHY None, not a synthesized detail: this branch is a dispatch-level
+        // failure (the executor itself errored, e.g. tool not found in the
+        // registry) rather than an organon `ToolOutcome::Failure` — there is
+        // no `FailureInfo::reason` to carry, and `msg` (via `content`) is
+        // already the fuller human-readable message.
+        Err(error) => (
+            ToolResultContent::text(format!("Tool error: {error}")),
+            true,
+            None,
+        ),
+    }
+}
+
 /// Execute one prepared tool call: invoke the executor, truncate + log + build
 /// the (`ToolCall`, `ContentBlock::ToolResult`) pair. Loop-detection
 /// bookkeeping is handled by the caller.
@@ -1144,38 +1177,7 @@ async fn dispatch_single_tool(
     )]
     let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
 
-    let (content, is_error, outcome_detail) = match result {
-        Ok(mut r) => {
-            if let Some(ref mut d) = r.diagnostics {
-                d.duration_ms = duration_ms;
-                let diag_text = d.to_llm_text();
-                r.content = inject_diagnostics(r.content, &diag_text);
-            }
-            // WHY the accessor methods, not a direct match: `ToolOutcome` is
-            // `#[non_exhaustive]` — matching its variants directly here would
-            // need a wildcard arm that silently swallows any future variant
-            // organon adds. `is_partial()`/`partial_reasons()`/
-            // `failure_reason()` are the crate's own forward-compatible
-            // surface for exactly this.
-            let outcome_detail = if r.outcome.is_partial() {
-                Some(r.outcome.partial_reasons().join("; "))
-            } else {
-                let reason = r.outcome.failure_reason();
-                (!reason.is_empty()).then(|| reason.to_owned())
-            };
-            (r.content, r.is_error, outcome_detail)
-        }
-        // WHY None, not a synthesized detail: this branch is a dispatch-level
-        // failure (the executor itself errored, e.g. tool not found in the
-        // registry) rather than an organon `ToolOutcome::Failure` — there is
-        // no `FailureInfo::reason` to carry, and `msg` (via `content`) is
-        // already the fuller human-readable message.
-        Err(e) => (
-            ToolResultContent::text(format!("Tool error: {e}")),
-            true,
-            None,
-        ),
-    };
+    let (content, is_error, outcome_detail) = normalize_tool_result(result, duration_ms);
 
     let content = truncate_tool_result(content, max_tool_result_bytes);
 
@@ -1386,7 +1388,7 @@ pub(super) async fn dispatch_tool_items(
                     stream_tx,
                     tool_ctx,
                     tools,
-                    DeniedToolCall {
+                    &DeniedToolCall {
                         id,
                         name,
                         input,
@@ -1415,7 +1417,7 @@ pub(super) async fn dispatch_tool_items(
                 stream_tx,
                 tool_ctx,
                 tools,
-                DeniedToolCall {
+                &DeniedToolCall {
                     id: tool_id,
                     name: tool_name,
                     input: tool_input,
@@ -1525,7 +1527,7 @@ pub(super) async fn dispatch_tool_items(
                     stream_tx,
                     tool_ctx,
                     tools,
-                    DeniedToolCall {
+                    &DeniedToolCall {
                         id: tool_id,
                         name: tool_name,
                         input: tool_input,
@@ -1662,7 +1664,7 @@ pub(super) async fn dispatch_tool_items(
                         stream_tx,
                         tool_ctx,
                         tools,
-                        DeniedToolCall {
+                        &DeniedToolCall {
                             id: tool_id,
                             name: tool_name,
                             input: tool_input,

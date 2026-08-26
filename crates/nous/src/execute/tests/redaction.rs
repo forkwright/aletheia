@@ -53,6 +53,14 @@ struct DispatchOutcome {
     events: Vec<TurnStreamEvent>,
 }
 
+fn only_call(outcome: &DispatchOutcome) -> &crate::pipeline::ToolCall {
+    outcome.calls.first().expect("single dispatched call")
+}
+
+fn json_field<'a>(value: &'a serde_json::Value, field: &str) -> &'a serde_json::Value {
+    value.get(field).expect("expected JSON object field")
+}
+
 struct SensitiveFailureExecutor;
 
 struct CanonicalPathEchoExecutor;
@@ -216,7 +224,7 @@ async fn full_policy_redacts_recorded_input_and_result() {
     let outcome = dispatch_one(&tools, tool, input, None, None).await;
 
     assert_eq!(outcome.calls.len(), 1);
-    let call = &outcome.calls[0];
+    let call = only_call(&outcome);
     assert_eq!(
         call.input,
         serde_json::json!({"__redaction__": "[REDACTED]"}),
@@ -258,14 +266,14 @@ async fn fields_policy_redacts_named_field_and_passes_others() {
 
     let outcome = dispatch_one(&tools, tool, input, None, None).await;
 
-    let call = &outcome.calls[0];
+    let call = only_call(&outcome);
     assert_eq!(
-        call.input["headers"],
+        json_field(&call.input, "headers"),
         serde_json::json!("[REDACTED]"),
         "declared field redacted in the persisted record"
     );
     assert_eq!(
-        call.input["url"],
+        json_field(&call.input, "url"),
         serde_json::json!("https://acme.corp/api"),
         "undeclared field passes through"
     );
@@ -287,7 +295,7 @@ async fn none_policy_passes_input_and_result_through() {
 
     let outcome = dispatch_one(&tools, tool, input.clone(), None, None).await;
 
-    let call = &outcome.calls[0];
+    let call = only_call(&outcome);
     assert_eq!(
         call.input, input,
         "no declaration means no per-tool redaction"
@@ -311,8 +319,9 @@ async fn generic_redaction_still_applies_under_none_policy() {
 
     let outcome = dispatch_one(&tools, tool, input, None, None).await;
 
-    assert_eq!(outcome.calls[0].input["token"], "[REDACTED]");
-    assert_eq!(outcome.calls[0].input["note"], "ordinary prose");
+    let call = only_call(&outcome);
+    assert_eq!(json_field(&call.input, "token"), "[REDACTED]");
+    assert_eq!(json_field(&call.input, "note"), "ordinary prose");
 }
 
 #[tokio::test]
@@ -325,10 +334,10 @@ async fn generic_redaction_does_not_emit_secret_shaped_dynamic_keys() {
     let outcome = dispatch_one(&tools, tool, input, None, None).await;
 
     assert_eq!(
-        outcome.calls[0].input,
+        only_call(&outcome).input,
         serde_json::json!({"__redaction__": "[REDACTED]"})
     );
-    assert!(!outcome.calls[0].input.to_string().contains(dynamic_key));
+    assert!(!only_call(&outcome).input.to_string().contains(dynamic_key));
     assert!(
         !format!("{:?}", outcome.events).contains(dynamic_key),
         "runtime data keys must not reappear through event Debug"
@@ -350,7 +359,8 @@ async fn absent_optional_declared_field_redacts_nothing_else() {
     let outcome = dispatch_one(&tools, tool, input.clone(), None, None).await;
 
     assert_eq!(
-        outcome.calls[0].input, input,
+        only_call(&outcome).input,
+        input,
         "a declared field that matched nothing leaves the payload otherwise untouched"
     );
 }
@@ -392,12 +402,12 @@ async fn approval_prompt_and_tool_start_carry_redacted_input() {
         })
         .expect("approval-required event emitted");
     assert_eq!(
-        approval_input["text"],
+        json_field(&approval_input, "text"),
         serde_json::json!("[REDACTED]"),
         "the approval prompt redacts the declared field"
     );
     assert_eq!(
-        approval_input["action"],
+        json_field(&approval_input, "action"),
         serde_json::json!("type_text"),
         "the approval prompt keeps undeclared fields legible"
     );
@@ -415,7 +425,7 @@ async fn approval_prompt_and_tool_start_carry_redacted_input() {
         })
         .expect("tool-start event emitted");
     assert_eq!(
-        start_input["text"],
+        json_field(&start_input, "text"),
         serde_json::json!("[REDACTED]"),
         "the tool-start event carries the same redacted copy"
     );
@@ -485,7 +495,7 @@ async fn live_approval_uses_prepared_input_while_replay_and_history_keep_placeho
         })
         .expect("tool-start event");
     assert_eq!(start_input, &placeholder);
-    assert_eq!(outcome.calls[0].input, placeholder);
+    assert_eq!(only_call(&outcome).input, placeholder);
 }
 
 #[tokio::test]
@@ -549,10 +559,10 @@ async fn live_approval_uses_canonical_path_while_replay_keeps_model_path() {
         })
         .expect("approval event");
 
-    assert_eq!(live["path"], canonical);
+    assert_eq!(json_field(live, "path"), &canonical);
     let durable = serde_json::json!({"path": "[REDACTED]"});
     assert_eq!(replay, &durable);
-    assert_eq!(outcome.calls[0].input, durable);
+    assert_eq!(only_call(&outcome).input, durable);
 }
 
 #[tokio::test]
@@ -616,18 +626,22 @@ async fn live_approval_preserves_long_declared_url_while_replay_is_generic_redac
         })
         .expect("approval event");
 
-    assert_eq!(live["url"], url);
-    assert_eq!(live["headers"], "[REDACTED]");
-    let live_note = live["note"].as_str().expect("live note is text");
+    assert_eq!(json_field(live, "url"), url);
+    assert_eq!(json_field(live, "headers"), "[REDACTED]");
+    let live_note = json_field(live, "note")
+        .as_str()
+        .expect("live note is text");
     assert!(!live_note.contains(&api_key));
     assert!(!live_note.contains(bearer));
     assert!(!live_note.contains(&jwt));
     assert!(live_note.contains("sk-ant-***"));
     assert!(live_note.contains("Bearer ***"));
     assert!(live_note.contains("[JWT REDACTED]"));
-    assert_eq!(replay["url"], "[REDACTED]");
-    assert_eq!(replay["headers"], "[REDACTED]");
-    let replay_note = replay["note"].as_str().expect("replay note is text");
+    assert_eq!(json_field(replay, "url"), "[REDACTED]");
+    assert_eq!(json_field(replay, "headers"), "[REDACTED]");
+    let replay_note = json_field(replay, "note")
+        .as_str()
+        .expect("replay note is text");
     assert!(!replay_note.contains(&api_key));
     assert!(!replay_note.contains(bearer));
     assert!(!replay_note.contains(&jwt));
@@ -672,7 +686,7 @@ async fn full_policy_keeps_computer_use_payload_free_even_for_live_approval() {
     let fixed = serde_json::json!({"__redaction__": "[REDACTED]"});
     assert_eq!(live, &fixed);
     assert_eq!(replay, &fixed);
-    assert_eq!(outcome.calls[0].input, fixed);
+    assert_eq!(only_call(&outcome).input, fixed);
 }
 
 #[tokio::test]
@@ -717,12 +731,13 @@ async fn saturated_live_stream_defaults_to_deny_without_pre_timeout_blocking() {
         .expect("dispatch records a fail-closed denial");
 
     assert_eq!(all_calls.len(), 1);
-    assert!(all_calls[0].is_error);
+    let call = all_calls.first().expect("denied call recorded");
+    assert!(call.is_error);
     assert_eq!(
-        all_calls[0].approval.as_deref(),
+        call.approval.as_deref(),
         Some("approval_event_unavailable_denied")
     );
-    assert_eq!(all_calls[0].duration_ms, 0, "the executor never ran");
+    assert_eq!(call.duration_ms, 0, "the executor never ran");
 }
 
 #[tokio::test]
@@ -736,7 +751,7 @@ async fn receipt_ledger_holds_only_the_redacted_copy() {
 
     let outcome = dispatch_one(&tools, tool, input, None, Some(&ledger)).await;
 
-    let receipt = outcome.calls[0]
+    let receipt = only_call(&outcome)
         .receipt
         .as_deref()
         .expect("receipt emitted")
@@ -833,7 +848,7 @@ async fn receipt_v2_binds_vault_and_file_expanded_input_without_storing_it() {
     )
     .await;
 
-    let receipt = outcome.calls[0]
+    let receipt = only_call(&outcome)
         .receipt
         .as_deref()
         .expect("receipt emitted");
@@ -893,14 +908,15 @@ async fn denied_call_record_is_redacted_too() {
     let outcome = dispatch_one(&tools, tool, input, Some(&gate), None).await;
 
     assert_eq!(outcome.calls.len(), 1);
-    assert!(outcome.calls[0].is_error, "denied call recorded as error");
+    let call = only_call(&outcome);
+    assert!(call.is_error, "denied call recorded as error");
     assert_eq!(
-        outcome.calls[0].input["text"],
+        json_field(&call.input, "text"),
         serde_json::json!("[REDACTED]"),
         "a denied call's recorded input follows the same policy"
     );
     assert_eq!(
-        outcome.calls[0].input["action"],
+        json_field(&call.input, "action"),
         serde_json::json!("type_text"),
         "undeclared fields stay legible on the denial record"
     );
@@ -913,7 +929,7 @@ async fn durable_result_and_outcome_detail_receive_generic_redaction() {
 
     let outcome = dispatch_one(&tools, tool, serde_json::json!({}), None, None).await;
 
-    let call = &outcome.calls[0];
+    let call = only_call(&outcome);
     assert!(call.is_error);
     let recorded_result = call.result.as_deref().expect("recorded result");
     let recorded_detail = call.outcome_detail.as_deref().expect("outcome detail");
