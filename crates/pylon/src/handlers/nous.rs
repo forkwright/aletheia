@@ -461,31 +461,37 @@ pub async fn update_enabled(
         .ok_or_else(|| NousNotFoundSnafu { id: id.clone() }.build())?
         .clone();
 
-    // WHY: Stage the toggle on a cloned config, persist it, then swap the
-    // live config. This keeps runtime state and disk consistent if the write
-    // fails (see #4582).
-    let staged = {
-        let config = state.config.read().await;
-        let mut staged = config.clone();
-        drop(config);
+    // WHY: hold the shared config write guard for the entire disk-read ->
+    // mutate -> persist -> live-swap transaction. Config PUT and both reload
+    // paths use the same boundary, so none can overwrite another from a stale
+    // snapshot. Disk is the staged authority because it may contain cold
+    // changes that are intentionally absent from the live config.
+    let mut config = state.config.write().await;
+    let mut staged = taxis::loader::load_config(&state.oikos).map_err(|e| ApiError::Internal {
+        message: format!("failed to load staged config: {e}"),
+        location: snafu::location!(),
+    })?;
+    let staged_agent = ensure_agent_definition(&mut staged, &runtime)?;
+    staged_agent.enabled = body.enabled;
 
-        let agent = ensure_agent_definition(&mut staged, &runtime)?;
-        agent.enabled = body.enabled;
-        staged
-    };
+    // The targeted lifecycle intent is applied through the live actor below,
+    // so mirror only that field into the effective view. Do not swap the full
+    // staged disk config: doing so would falsely activate unrelated cold
+    // gateway/channel/agent changes before restart.
+    let mut live = config.clone();
+    let live_agent = ensure_agent_definition(&mut live, &runtime)?;
+    live_agent.enabled = body.enabled;
 
     taxis::loader::write_config(&state.oikos, &staged).map_err(|e| ApiError::Internal {
         message: format!("failed to write config: {e}"),
         location: snafu::location!(),
     })?;
 
-    {
-        let mut config = state.config.write().await;
-        *config = staged;
-        if let Err(e) = state.config_tx.send(config.clone()) {
-            tracing::warn!(error = %e, "config broadcast has no receivers");
-        }
+    *config = live;
+    if let Err(e) = state.config_tx.send(config.clone()) {
+        tracing::warn!(error = %e, "config broadcast has no receivers");
     }
+    drop(config);
 
     let live_handle = state.nous_manager.get(&id);
     let mut live_command_failed = live_handle.is_none();
@@ -592,15 +598,16 @@ pub async fn update_tool(
         });
     }
 
-    // WHY: Stage the allowlist change on a cloned config, persist it, then
-    // swap the live config. A failed write must not alter live tool policy
-    // (see #4582).
-    let staged = {
-        let config = state.config.read().await;
-        let mut staged = config.clone();
-        drop(config);
+    // WHY: share one transaction boundary with config PUT/reload and start
+    // from disk so prior staged cold values survive this unrelated mutation.
+    let mut config = state.config.write().await;
+    let mut staged = taxis::loader::load_config(&state.oikos).map_err(|e| ApiError::Internal {
+        message: format!("failed to load staged config: {e}"),
+        location: snafu::location!(),
+    })?;
 
-        let agent = ensure_agent_definition(&mut staged, &runtime)?;
+    let update_allowlist = |config: &mut taxis::config::AletheiaConfig| -> Result<(), ApiError> {
+        let agent = ensure_agent_definition(config, &runtime)?;
         let mut allowlist = agent
             .tool_allowlist
             .take()
@@ -620,24 +627,25 @@ pub async fn update_tool(
         } else {
             Some(allowlist)
         };
-
-        staged
+        Ok(())
     };
+    update_allowlist(&mut staged)?;
+
+    // Mirror only this targeted policy field into the effective view; the
+    // rest of disk may contain intentionally deferred restart-required state.
+    let mut live = config.clone();
+    update_allowlist(&mut live)?;
 
     taxis::loader::write_config(&state.oikos, &staged).map_err(|e| ApiError::Internal {
         message: format!("failed to write config: {e}"),
         location: snafu::location!(),
     })?;
 
-    {
-        let mut config = state.config.write().await;
-        *config = staged;
-        if let Err(e) = state.config_tx.send(config.clone()) {
-            tracing::warn!(error = %e, "config broadcast has no receivers");
-        }
+    *config = live;
+    if let Err(e) = state.config_tx.send(config.clone()) {
+        tracing::warn!(error = %e, "config broadcast has no receivers");
     }
 
-    let config = state.config.read().await;
     let tools = tool_summaries_for_agent(&state, &runtime, allowlist_for_agent(&config, &id));
 
     Ok(Json(ToolsResponse {

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use koina::http::BEARER_PREFIX;
@@ -146,6 +148,193 @@ async fn update_section_preserves_cold_gateway_auth_none_role_in_live_response()
             .iter()
             .any(|path| path.as_str() == Some("gateway.auth.noneRole")),
         "response should report staged restart-required gateway.auth.noneRole"
+    );
+}
+
+#[tokio::test]
+async fn sequential_puts_preserve_earlier_staged_cold_values_on_disk() {
+    let (app, dir) = app().await;
+    let first = app
+        .clone()
+        .oneshot(authed_request(
+            "PUT",
+            "/api/v1/config/gateway",
+            Some(serde_json::json!({ "port": 3999 })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::OK);
+
+    let second = app
+        .oneshot(authed_request(
+            "PUT",
+            "/api/v1/config/embedding",
+            Some(serde_json::json!({
+                "provider": "candle",
+                "dimension": 512
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::OK);
+
+    let oikos = taxis::oikos::Oikos::from_root(dir.path());
+    let staged = taxis::loader::load_config(&oikos).unwrap();
+    assert_eq!(
+        staged.gateway.port, 3999,
+        "the second PUT must merge from staged disk, not cold-filtered live state"
+    );
+    assert_eq!(staged.embedding.dimension, 512);
+}
+
+#[tokio::test]
+async fn concurrent_put_and_reload_leave_the_put_visible_and_persisted() {
+    let (app, dir) = app().await;
+    let put_app = app.clone();
+    let reload_app = app.clone();
+
+    let put = tokio::spawn(async move {
+        put_app
+            .oneshot(authed_request(
+                "PUT",
+                "/api/v1/config/embedding",
+                Some(serde_json::json!({
+                    "provider": "candle",
+                    "dimension": 512
+                })),
+            ))
+            .await
+            .unwrap()
+    });
+    let reload = tokio::spawn(async move {
+        reload_app
+            .oneshot(authed_request("POST", "/api/v1/config/reload", None))
+            .await
+            .unwrap()
+    });
+
+    let (put, reload) = tokio::join!(put, reload);
+    assert_eq!(put.unwrap().status(), StatusCode::OK);
+    assert_eq!(reload.unwrap().status(), StatusCode::OK);
+
+    let get = app
+        .oneshot(authed_get("/api/v1/config/embedding"))
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::OK);
+    let live = body_json(get).await;
+    assert_eq!(live["dimension"], 512);
+
+    let oikos = taxis::oikos::Oikos::from_root(dir.path());
+    let staged = taxis::loader::load_config(&oikos).unwrap();
+    assert_eq!(staged.embedding.dimension, 512);
+}
+
+#[tokio::test]
+async fn get_then_put_gateway_preserves_absent_sensitive_options() {
+    let (app, dir) = app().await;
+    let get = app
+        .clone()
+        .oneshot(authed_get("/api/v1/config/gateway"))
+        .await
+        .unwrap();
+    assert_eq!(get.status(), StatusCode::OK);
+    let gateway = body_json(get).await;
+    assert_eq!(gateway["auth"]["signingKey"], "***");
+    assert_eq!(gateway["tls"]["certPath"], "***");
+    assert_eq!(gateway["tls"]["keyPath"], "***");
+
+    let put = app
+        .oneshot(authed_request(
+            "PUT",
+            "/api/v1/config/gateway",
+            Some(gateway),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(put.status(), StatusCode::OK);
+
+    let oikos = taxis::oikos::Oikos::from_root(dir.path());
+    let staged = taxis::loader::load_config(&oikos).unwrap();
+    assert!(staged.gateway.auth.signing_key.is_none());
+    assert!(staged.gateway.tls.cert_path.is_none());
+    assert!(staged.gateway.tls.key_path.is_none());
+}
+
+#[tokio::test]
+async fn explicit_null_stages_secret_clear_without_changing_live_key() {
+    use koina::secret::SecretString;
+
+    let (state, dir) = test_state().await;
+    {
+        let mut config = state.config.write().await;
+        config.gateway.auth.signing_key = Some(SecretString::from("old-signing-secret"));
+        taxis::loader::write_config(&state.oikos, &config).unwrap();
+    }
+    let app = build_router(Arc::clone(&state), &test_security_config());
+
+    let put = app
+        .oneshot(authed_request(
+            "PUT",
+            "/api/v1/config/gateway",
+            Some(serde_json::json!({
+                "auth": { "signingKey": null }
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(put.status(), StatusCode::OK);
+
+    let live = state.config.read().await;
+    assert_eq!(
+        live.gateway
+            .auth
+            .signing_key
+            .as_ref()
+            .map(SecretString::expose_secret),
+        Some("old-signing-secret"),
+        "cold key clear must not become effective before restart"
+    );
+    drop(live);
+
+    let oikos = taxis::oikos::Oikos::from_root(dir.path());
+    let staged = taxis::loader::load_config(&oikos).unwrap();
+    assert!(
+        staged.gateway.auth.signing_key.is_none(),
+        "explicit null must remain a deliberate staged clear"
+    );
+}
+
+#[tokio::test]
+async fn marker_for_new_matrix_account_is_rejected_without_mutation() {
+    let (app, dir) = app().await;
+    let config_path = dir.path().join("config/aletheia.toml");
+    let before = std::fs::read_to_string(&config_path).unwrap();
+
+    let put = app
+        .oneshot(authed_request(
+            "PUT",
+            "/api/v1/config/channels",
+            Some(serde_json::json!({
+                "matrix": {
+                    "enabled": true,
+                    "accounts": {
+                        "primary": {
+                            "homeserver": "https://matrix.example.org",
+                            "accessTokenEnv": "***"
+                        }
+                    }
+                }
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(put.status(), StatusCode::UNPROCESSABLE_ENTITY);
+
+    let after = std::fs::read_to_string(config_path).unwrap();
+    assert_eq!(
+        after, before,
+        "rejected marker must not rewrite staged disk"
     );
 }
 

@@ -26,8 +26,8 @@ use crate::config::AletheiaConfig;
 use crate::config_decrypt;
 use crate::encrypt;
 use crate::error::{
-    ConfigLoadSnafu, ConfigPathEscapesRootSnafu, LoadSnafu, Result, SerializeTomlSnafu,
-    WriteConfigSnafu,
+    ConfigDecryptSnafu, ConfigLoadSnafu, ConfigPathEscapesRootSnafu, InvalidPrimaryKeySnafu,
+    LoadSnafu, ReadConfigSnafu, Result, SerializeTomlSnafu, WriteConfigSnafu,
 };
 use crate::interpolate;
 use crate::oikos::Oikos;
@@ -497,19 +497,31 @@ pub(crate) fn write_config_checked(
     // sensitive leaves here -- using the same key-name predicate as the
     // `aletheia config encrypt` CLI path -- keeps persistence
     // encryption-preserving instead of requiring the operator to re-run that
-    // command after every mutation. No-op when no primary key is configured
-    // (the operator never opted into at-rest encryption). A key-load failure
-    // mirrors `config_decrypt::decrypt_toml_value`'s soft-fail treatment: it
-    // degrades to "write unencrypted" (logged) rather than blocking the write
-    // on a corrupt key file the operator has not yet noticed.
-    match encrypt::primary_key_path().map(|path| encrypt::load_primary_key(&path)) {
-        Some(Ok(Some(primary_key))) => {
-            encrypt::encrypt_sensitive_values(&mut toml_value, &primary_key)?;
+    // command after every mutation. No-op when no primary key was ever
+    // configured. Once encryption is explicit or the existing file contains
+    // ciphertext, failure to load the key aborts before the atomic write;
+    // silently persisting the exposed in-memory secrets would be an
+    // irreversible plaintext downgrade.
+    if let Some(key_path) = encrypt::primary_key_path() {
+        match encrypt::load_primary_key(&key_path)? {
+            Some(primary_key) => {
+                encrypt::encrypt_sensitive_values(&mut toml_value, &primary_key)?;
+            }
+            None if std::env::var_os("ALETHEIA_PRIMARY_KEY").is_some() => {
+                return Err(InvalidPrimaryKeySnafu {
+                    path: key_path,
+                    reason: "configured primary key file does not exist".to_owned(),
+                }
+                .build());
+            }
+            None if existing_config_contains_ciphertext(&target)? => {
+                return Err(ConfigDecryptSnafu {
+                    fields: "existing encrypted configuration".to_owned(),
+                }
+                .build());
+            }
+            None => {}
         }
-        Some(Err(e)) => {
-            warn!(error = %e, "failed to load primary key; config will be written unencrypted");
-        }
-        Some(Ok(None)) | None => {}
     }
 
     let toml = toml::to_string(&toml_value).map_err(|e| {
@@ -539,6 +551,16 @@ pub(crate) fn write_config_checked(
     std::fs::rename(&tmp, &target).context(WriteConfigSnafu { path: target })?;
 
     Ok(())
+}
+
+fn existing_config_contains_ciphertext(path: &std::path::Path) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let content = std::fs::read_to_string(path).context(ReadConfigSnafu {
+        path: path.to_path_buf(),
+    })?;
+    Ok(content.contains("enc:"))
 }
 
 #[cfg(test)]
@@ -777,6 +799,50 @@ mod tests {
     }
 
     #[test]
+    fn write_config_persists_dynamic_tool_auth_secret_unredacted() {
+        let mut jail = EnvJail::new();
+        jail.remove_env("HOME");
+        jail.remove_env("ALETHEIA_PRIMARY_KEY");
+        std::fs::create_dir_all(jail.directory().join("config")).expect("create config dir");
+
+        let oikos = Oikos::from_root(jail.directory());
+        let mut config = AletheiaConfig::default();
+        config.tools.optional.insert(
+            "synthetic-search".to_owned(),
+            crate::config::ExternalToolEntry {
+                auth: Some(crate::config::ExternalToolAuth::Bearer {
+                    token: SecretString::from("synthetic-tool-auth-secret"),
+                }),
+                ..crate::config::ExternalToolEntry::default()
+            },
+        );
+
+        write_config(&oikos, &config).unwrap_or_else(|error| panic!("write: {error}"));
+
+        let persisted =
+            std::fs::read_to_string(oikos.config().join("aletheia.toml")).expect("read config");
+        assert!(
+            persisted.contains("synthetic-tool-auth-secret"),
+            "typed dynamic secrets must be exposed only for persistence"
+        );
+        assert!(
+            !persisted.contains("[REDACTED]"),
+            "SecretString's display marker must never become stored auth data"
+        );
+
+        let loaded = load_config(&oikos).unwrap_or_else(|error| panic!("load: {error}"));
+        let Some(crate::config::ExternalToolAuth::Bearer { token }) = loaded
+            .tools
+            .optional
+            .get("synthetic-search")
+            .and_then(|entry| entry.auth.as_ref())
+        else {
+            panic!("persisted tool must retain bearer auth");
+        };
+        assert_eq!(token.expose_secret(), "synthetic-tool-auth-secret");
+    }
+
+    #[test]
     fn write_config_re_encrypts_sensitive_leaves_when_primary_key_present() {
         let mut jail = EnvJail::new();
         std::fs::create_dir_all(jail.directory().join("config")).expect("create config dir");
@@ -830,6 +896,91 @@ mod tests {
             Some(signing_key),
             "signing key should decrypt back to the original value on load"
         );
+    }
+
+    #[test]
+    fn write_config_encrypts_dynamic_header_auth_and_roundtrips_it() {
+        let mut jail = EnvJail::new();
+        std::fs::create_dir_all(jail.directory().join("config")).expect("create config dir");
+
+        let key_path = jail.directory().join("primary.key");
+        crate::encrypt::generate_primary_key(&key_path)
+            .unwrap_or_else(|e| panic!("generate primary key: {e}"));
+        jail.set_env(
+            "ALETHEIA_PRIMARY_KEY",
+            key_path.to_str().expect("utf-8 path"),
+        );
+
+        let oikos = Oikos::from_root(jail.directory());
+        let mut config = AletheiaConfig::default();
+        config.tools.optional.insert(
+            "synthetic-token-service".to_owned(),
+            crate::config::ExternalToolEntry {
+                auth: Some(crate::config::ExternalToolAuth::Header {
+                    name: "X-Synthetic-Key".to_owned(),
+                    value: SecretString::from("synthetic-header-auth-secret"),
+                }),
+                ..crate::config::ExternalToolEntry::default()
+            },
+        );
+
+        write_config(&oikos, &config).unwrap_or_else(|error| panic!("write: {error}"));
+        let persisted =
+            std::fs::read_to_string(oikos.config().join("aletheia.toml")).expect("read config");
+        assert!(
+            !persisted.contains("synthetic-header-auth-secret"),
+            "typed header auth must not remain plaintext when encryption is configured"
+        );
+        assert!(persisted.contains("value = \"enc:"));
+
+        let loaded = load_config(&oikos).unwrap_or_else(|error| panic!("load: {error}"));
+        let Some(crate::config::ExternalToolAuth::Header { value, .. }) = loaded
+            .tools
+            .optional
+            .get("synthetic-token-service")
+            .and_then(|entry| entry.auth.as_ref())
+        else {
+            panic!("persisted tool must retain header auth");
+        };
+        assert_eq!(value.expose_secret(), "synthetic-header-auth-secret");
+    }
+
+    #[test]
+    fn write_config_fails_closed_when_configured_key_becomes_invalid() {
+        let mut jail = EnvJail::new();
+        std::fs::create_dir_all(jail.directory().join("config")).expect("create config dir");
+
+        let key_path = jail.directory().join("primary.key");
+        crate::encrypt::generate_primary_key(&key_path)
+            .unwrap_or_else(|e| panic!("generate primary key: {e}"));
+        jail.set_env(
+            "ALETHEIA_PRIMARY_KEY",
+            key_path.to_str().expect("utf-8 path"),
+        );
+
+        let oikos = Oikos::from_root(jail.directory());
+        let mut config = AletheiaConfig::default();
+        config.gateway.auth.signing_key = Some(SecretString::from("old-signing-secret"));
+        write_config(&oikos, &config).unwrap_or_else(|e| panic!("initial write: {e}"));
+        let config_path = oikos.config().join("aletheia.toml");
+        let before = std::fs::read_to_string(&config_path).expect("read encrypted config");
+        assert!(!before.contains("old-signing-secret"));
+
+        std::fs::write(&key_path, "not-a-valid-primary-key").expect("corrupt test key");
+        config.gateway.auth.signing_key = Some(SecretString::from("new-signing-secret"));
+        let error = write_config(&oikos, &config)
+            .expect_err("invalid configured key must abort rather than write plaintext");
+        assert!(matches!(
+            error,
+            crate::error::Error::InvalidPrimaryKey { .. }
+        ));
+
+        let after = std::fs::read_to_string(config_path).expect("read config after rejection");
+        assert_eq!(
+            after, before,
+            "failed write must leave the atomic target intact"
+        );
+        assert!(!after.contains("new-signing-secret"));
     }
 
     // ── load_config_with (FileSystem trait) ──────────────────────────────

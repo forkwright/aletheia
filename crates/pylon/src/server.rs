@@ -469,12 +469,14 @@ fn serve_tls(
 
 /// Apply a prepared config reload to the live state.
 ///
-/// Acquires the config write lock, swaps the config, logs the diff,
-/// and notifies subscribers via the watch channel. Cold changes
+/// The caller holds the config write lock across reload preparation and this
+/// apply step. This function swaps the config, logs the diff, and notifies
+/// subscribers via the watch channel. Cold changes
 /// (fields that require a process restart) are excluded from the
 /// applied config — subscribers only see hot-reloadable values.
-pub(crate) async fn apply_reload(
+pub(crate) fn apply_reload(
     config_state: &ConfigState,
+    current: &mut tokio::sync::RwLockWriteGuard<'_, AletheiaConfig>,
     outcome: taxis::reload::ReloadOutcome,
 ) {
     taxis::reload::log_diff(&outcome.diff);
@@ -492,23 +494,20 @@ pub(crate) async fn apply_reload(
             count = cold.len(),
             "cold config changes deferred until restart"
         );
-        let current = config_state.config.read().await;
         match taxis::reload::preserve_restart_required_values(
-            &current,
+            current,
             &outcome.new_config,
             &outcome.diff,
         ) {
             Ok(config) => config,
             Err(e) => {
                 tracing::error!(error = %e, "failed to preserve cold config values");
-                current.clone()
+                (**current).clone()
             }
         }
     };
 
-    let mut config = config_state.config.write().await;
-    *config = config_to_apply.clone();
-    drop(config);
+    **current = config_to_apply.clone();
 
     // WHY: send can only fail if all receivers are dropped, which means
     // no actors are listening. Safe to ignore.
@@ -572,13 +571,21 @@ pub(crate) fn spawn_sighup_handler_with(
                         }
                         info!("received SIGHUP, reloading config");
 
-                        let current = state.config.read().await.clone();
+                        // WHY: the write guard spans read -> prepare -> apply.
+                        // Config PUT uses the same guard for its whole transaction,
+                        // so neither path can compute from a stale snapshot and then
+                        // overwrite a newer mutation.
+                        let mut current = state.config.write().await;
                         match taxis::reload::prepare_reload(&state.oikos, &current) {
                             Ok(outcome) => {
                                 if outcome.diff.is_empty() {
                                     info!("config reload: no changes detected");
                                 } else {
-                                    apply_reload(&ConfigState::from_ref(&state), outcome).await;
+                                    apply_reload(
+                                        &ConfigState::from_ref(&state),
+                                        &mut current,
+                                        outcome,
+                                    );
                                 }
                             }
                             Err(e) => {

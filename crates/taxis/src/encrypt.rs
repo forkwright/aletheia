@@ -408,6 +408,7 @@ pub(crate) fn encrypt_sensitive_values(
 ) -> Result<usize> {
     let mut count = 0;
     encrypt_structural_leaves(value, primary_key, &mut count)?;
+    encrypt_external_tool_auth_leaves(value, primary_key, &mut count)?;
     encrypt_recursive(value, primary_key, &mut count)?;
     Ok(count)
 }
@@ -430,6 +431,44 @@ fn encrypt_structural_leaves(
     Ok(())
 }
 
+/// Encrypt typed external-tool auth leaves whose field name alone is not
+/// sensitive. Bearer `token` is also found by the generic key pass, but header
+/// auth `value` needs this structural rule so persistence matches the
+/// `SecretString`/GET redaction boundary.
+fn encrypt_external_tool_auth_leaves(
+    value: &mut toml::Value,
+    primary_key: &[u8; KEY_LEN],
+    count: &mut usize,
+) -> Result<()> {
+    let Some(tools) = value.get_mut("tools").and_then(toml::Value::as_table_mut) else {
+        return Ok(());
+    };
+    for class in ["required", "optional"] {
+        let Some(entries) = tools.get_mut(class).and_then(toml::Value::as_table_mut) else {
+            continue;
+        };
+        for entry in entries.values_mut() {
+            let Some(auth) = entry
+                .as_table_mut()
+                .and_then(|entry| entry.get_mut("auth"))
+                .and_then(toml::Value::as_table_mut)
+            else {
+                continue;
+            };
+            for field in ["token", "value"] {
+                let Some(toml::Value::String(secret)) = auth.get_mut(field) else {
+                    continue;
+                };
+                if !secret.is_empty() && !is_encrypted(secret) {
+                    *secret = encrypt_value(secret, primary_key)?;
+                    *count += 1;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
 fn encrypt_recursive(
     value: &mut toml::Value,
     primary_key: &[u8; KEY_LEN],
@@ -438,15 +477,17 @@ fn encrypt_recursive(
     match value {
         toml::Value::Table(table) => {
             for (key, val) in table.iter_mut() {
-                if is_sensitive_key(key) {
-                    if let toml::Value::String(s) = val
-                        && !s.is_empty()
-                        && !is_encrypted(s)
-                    {
-                        *s = encrypt_value(s, primary_key)?;
-                        *count += 1;
-                    }
+                if is_sensitive_key(key)
+                    && let toml::Value::String(s) = val
+                    && !s.is_empty()
+                    && !is_encrypted(s)
+                {
+                    *s = encrypt_value(s, primary_key)?;
+                    *count += 1;
                 } else {
+                    // A sensitive-looking dynamic key can name a table (for
+                    // example, a tool id containing "token"). Redaction
+                    // descends into non-string values, so encryption must too.
                     encrypt_recursive(val, primary_key, count)?;
                 }
             }
@@ -768,6 +809,51 @@ mod tests {
             "headerValue must be encrypted at rest despite its non-sensitive-looking key name"
         );
         assert_eq!(decrypt_value(header_value, &key).unwrap(), "my-csrf-secret");
+    }
+
+    #[test]
+    fn encrypt_covers_external_tool_header_auth_value() {
+        let key = fixture_key();
+        let toml_str = r#"
+            [tools.optional.synthetic.auth]
+            type = "header"
+            name = "X-Synthetic-Key"
+            value = "synthetic-header-secret"
+        "#;
+        let mut value: toml::Value = toml::from_str(toml_str).unwrap();
+        let count = encrypt_sensitive_values(&mut value, &key).unwrap();
+
+        assert_eq!(count, 1, "typed header auth value must be encrypted");
+        let encrypted = value["tools"]["optional"]["synthetic"]["auth"]["value"]
+            .as_str()
+            .unwrap();
+        assert!(is_encrypted(encrypted));
+        assert_eq!(
+            decrypt_value(encrypted, &key).unwrap(),
+            "synthetic-header-secret"
+        );
+    }
+
+    #[test]
+    fn encrypt_descends_through_sensitive_looking_dynamic_tool_id() {
+        let key = fixture_key();
+        let toml_str = r#"
+            [tools.optional.synthetic-token-service.auth]
+            type = "bearer"
+            token = "synthetic-bearer-secret"
+        "#;
+        let mut value: toml::Value = toml::from_str(toml_str).unwrap();
+        let count = encrypt_sensitive_values(&mut value, &key).unwrap();
+
+        assert_eq!(count, 1, "sensitive table names must not stop recursion");
+        let encrypted = value["tools"]["optional"]["synthetic-token-service"]["auth"]["token"]
+            .as_str()
+            .unwrap();
+        assert!(is_encrypted(encrypted));
+        assert_eq!(
+            decrypt_value(encrypted, &key).unwrap(),
+            "synthetic-bearer-secret"
+        );
     }
 
     #[test]

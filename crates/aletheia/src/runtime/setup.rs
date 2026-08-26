@@ -1159,7 +1159,7 @@ pub(super) fn build_signal_provider(
     let rpc_timeout = std::time::Duration::from_secs(messaging_config.rpc_timeout_secs);
     let health_timeout = std::time::Duration::from_secs(messaging_config.health_timeout_secs);
     let receive_timeout = std::time::Duration::from_secs(messaging_config.receive_timeout_secs);
-    for (account_id, account_cfg) in &signal_config.accounts {
+    for (account_id, account_cfg) in ordered_account_entries(&signal_config.accounts) {
         if !account_cfg.enabled {
             continue;
         }
@@ -1236,6 +1236,25 @@ fn signal_account_display_name<'a>(
         .unwrap_or(account_id)
 }
 
+/// Return named account declarations in the order that determines provider
+/// fallback: the explicit `default` label first, then all remaining labels
+/// lexically. Provider implementations use first registration as the default,
+/// so iterating a `HashMap` directly makes account-less sends nondeterministic.
+fn ordered_account_entries<T>(accounts: &std::collections::HashMap<String, T>) -> Vec<(&str, &T)> {
+    let mut entries: Vec<_> = accounts
+        .iter()
+        .map(|(account_id, config)| (account_id.as_str(), config))
+        .collect();
+    entries.sort_by(
+        |(left, _), (right, _)| match (*left == "default", *right == "default") {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => left.cmp(right),
+        },
+    );
+    entries
+}
+
 fn resolve_signal_cli_path(configured: Option<&Path>) -> Option<PathBuf> {
     match configured {
         Some(path) if path.as_os_str().is_empty() => None,
@@ -1275,7 +1294,7 @@ pub(super) fn build_matrix_provider(
     let rpc_timeout = std::time::Duration::from_secs(messaging_config.rpc_timeout_secs);
     let receive_timeout = std::time::Duration::from_secs(messaging_config.receive_timeout_secs);
 
-    for (account_id, account_cfg) in &matrix_config.accounts {
+    for (account_id, account_cfg) in ordered_account_entries(&matrix_config.accounts) {
         if !account_cfg.enabled {
             continue;
         }
@@ -1308,7 +1327,7 @@ pub(super) fn build_matrix_provider(
         ) {
             Ok(client) => {
                 provider.add_account(
-                    account_id.clone(),
+                    account_id.to_owned(),
                     client,
                     account_cfg.user_id.clone(),
                     account_cfg.auto_start,
@@ -1620,6 +1639,64 @@ mod tests {
         assert!(
             !debug.contains("default_account: Some(\"default\")"),
             "provider should not send the account label as the signal-cli account: {debug}"
+        );
+    }
+
+    #[test]
+    fn named_channel_accounts_order_default_then_lexically() {
+        let accounts = std::collections::HashMap::from([
+            ("zeta".to_owned(), 3_u8),
+            ("default".to_owned(), 1_u8),
+            ("alpha".to_owned(), 2_u8),
+        ]);
+
+        let ordered: Vec<_> = ordered_account_entries(&accounts)
+            .into_iter()
+            .map(|(account_id, _)| account_id)
+            .collect();
+        assert_eq!(ordered, ["default", "alpha", "zeta"]);
+
+        let without_default = std::collections::HashMap::from([
+            ("zeta".to_owned(), 2_u8),
+            ("alpha".to_owned(), 1_u8),
+        ]);
+        let ordered: Vec<_> = ordered_account_entries(&without_default)
+            .into_iter()
+            .map(|(account_id, _)| account_id)
+            .collect();
+        assert_eq!(ordered, ["alpha", "zeta"]);
+    }
+
+    #[test]
+    fn signal_default_falls_back_to_first_valid_lexical_account() {
+        organon::testing::install_crypto_provider();
+        let valid_cli = std::env::current_exe().expect("current test binary path");
+        let mut signal = SignalConfig::default();
+        signal.accounts.insert(
+            "default".to_owned(),
+            SignalAccountConfig {
+                cli_path: Some(PathBuf::from(
+                    "/definitely/missing/aletheia-test-signal-cli",
+                )),
+                ..SignalAccountConfig::default()
+            },
+        );
+        for account_id in ["zeta", "alpha"] {
+            signal.accounts.insert(
+                account_id.to_owned(),
+                SignalAccountConfig {
+                    cli_path: Some(valid_cli.clone()),
+                    ..SignalAccountConfig::default()
+                },
+            );
+        }
+
+        let provider = build_signal_provider(&signal, &MessagingConfig::default())
+            .expect("Signal provider should build");
+        let debug = format!("{provider:?}");
+        assert!(
+            debug.contains("default_account: Some(\"alpha\")"),
+            "invalid explicit default must fall back deterministically: {debug}"
         );
     }
 

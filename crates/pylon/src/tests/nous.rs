@@ -405,6 +405,83 @@ async fn patch_nous_tools_reports_reload_required_for_persisted_allowlist() {
 }
 
 #[tokio::test]
+async fn nous_mutations_preserve_unrelated_staged_cold_config() {
+    let (state, _dir) = test_state().await;
+    let mut state = Arc::try_unwrap(state).unwrap_or_else(|_| panic!("unique app state"));
+    state.tool_registry = Arc::new(probe_tool_registry());
+    let state = Arc::new(state);
+
+    let live_port = state.config.read().await.gateway.port;
+    let staged_port = live_port.saturating_add(1);
+    let mut staged = state.config.read().await.clone();
+    staged.gateway.port = staged_port;
+    taxis::loader::write_config(&state.oikos, &staged).unwrap();
+
+    let app = build_router(Arc::clone(&state), &test_security_config());
+    let enabled = app
+        .clone()
+        .oneshot(authed_request(
+            "PATCH",
+            "/api/v1/nous/syn",
+            Some(serde_json::json!({ "enabled": false })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(enabled.status(), StatusCode::OK);
+
+    let tool = app
+        .oneshot(authed_request(
+            "PATCH",
+            "/api/v1/nous/syn/tools",
+            Some(serde_json::json!({
+                "tool": "probe_tool",
+                "enabled": false
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(tool.status(), StatusCode::OK);
+
+    let disk = taxis::loader::load_config(&state.oikos).unwrap();
+    assert_eq!(
+        disk.gateway.port, staged_port,
+        "nous mutations must merge from staged disk rather than cold-filtered live state"
+    );
+    let disk_agent = disk
+        .agents
+        .list
+        .iter()
+        .find(|agent| agent.id.as_str() == "syn")
+        .expect("persisted syn definition");
+    assert!(!disk_agent.enabled);
+    assert!(
+        disk_agent
+            .tool_allowlist
+            .as_ref()
+            .is_some_and(Vec::is_empty)
+    );
+
+    let live = state.config.read().await;
+    assert_eq!(
+        live.gateway.port, live_port,
+        "pending cold gateway value must remain ineffective"
+    );
+    let live_agent = live
+        .agents
+        .list
+        .iter()
+        .find(|agent| agent.id.as_str() == "syn")
+        .expect("live syn definition");
+    assert!(!live_agent.enabled);
+    assert!(
+        live_agent
+            .tool_allowlist
+            .as_ref()
+            .is_some_and(Vec::is_empty)
+    );
+}
+
+#[tokio::test]
 async fn nous_list_from_manager() {
     let (state, _dir) = test_state().await;
     let router = build_router(Arc::clone(&state), &test_security_config());

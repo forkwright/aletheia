@@ -266,7 +266,7 @@ workspace = "{workspace}"
 {provider_section}
 
 # --- Channels ---
-# [[channels.signal.accounts]]
+# [channels.signal.accounts.default]
 # account = "+1XXXXXXXXXX"
 # httpHost = "localhost"
 # httpPort = 8080
@@ -445,6 +445,44 @@ mod tests {
             parsed.agents.defaults.model_defaults.max_output_tokens, 16_384,
             "schema-valid maxOutputTokens key must be parsed"
         );
+    }
+
+    #[test]
+    fn rendered_signal_example_uses_named_account_table_shape() {
+        let answers = Answers {
+            root: PathBuf::from("/tmp/aletheia-init"),
+            api_key: None,
+            api_provider: "anthropic".to_owned(),
+            model: "claude-sonnet-4-6".to_owned(),
+            agent_id: "alice".to_owned(),
+            agent_name: "Alice".to_owned(),
+            bind: "localhost".to_owned(),
+            auth_mode: "none".to_owned(),
+            timezone: "America/Chicago".to_owned(),
+            credential_source: "auto".to_owned(),
+        };
+
+        let rendered = render_config(&answers);
+        assert!(rendered.contains("# [channels.signal.accounts.default]"));
+        assert!(
+            !rendered.contains("# [[channels.signal.accounts]]"),
+            "Signal accounts are a named map, not an array of tables"
+        );
+
+        let enabled_example = rendered
+            .replace(
+                "# [channels.signal.accounts.default]",
+                "[channels.signal.accounts.default]",
+            )
+            .replace(
+                "# account = \"+1XXXXXXXXXX\"",
+                "account = \"+15551234567\"", // pii-allow: synthetic Signal test number
+            )
+            .replace("# httpHost = \"localhost\"", "httpHost = \"localhost\"")
+            .replace("# httpPort = 8080", "httpPort = 8080");
+        let parsed: taxis::config::AletheiaConfig = toml::from_str(&enabled_example)
+            .unwrap_or_else(|error| panic!("enabled Signal example must match schema: {error}"));
+        assert!(parsed.channels.signal.accounts.contains_key("default"));
     }
 
     #[test]

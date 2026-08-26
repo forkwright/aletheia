@@ -55,7 +55,6 @@ mod section_schemas {
     /// The variant is determined by the `{section}` path parameter at the API
     /// boundary. Each variant wraps the raw JSON value so the underlying deep-merge
     /// semantics are preserved unchanged.
-    #[derive(Debug)]
     #[non_exhaustive]
     pub enum ConfigSectionPayload {
         Agents(Value),
@@ -312,7 +311,11 @@ pub async fn reload_config(
     claims: Claims,
 ) -> Result<impl IntoResponse, ApiError> {
     require_role(&claims, Role::Operator)?;
-    let current = state.config.read().await.clone();
+    // WHY: hold the write guard from disk read through live swap. Config PUT,
+    // explicit reload, SIGHUP reload, and the nous config writers all use this
+    // same transaction boundary, so a prepared stale snapshot cannot overwrite
+    // a mutation that completed while it was waiting to apply.
+    let mut current = state.config.write().await;
     let outcome = taxis::reload::prepare_reload(&state.oikos, &current).map_err(|e| {
         tracing::error!(error = %e, "config reload failed");
         match e {
@@ -349,7 +352,7 @@ pub async fn reload_config(
         .map(|c| c.path.clone())
         .collect();
 
-    crate::server::apply_reload(&state, outcome).await;
+    crate::server::apply_reload(&state, &mut current, outcome);
 
     Ok((
         StatusCode::OK,
@@ -494,35 +497,34 @@ pub async fn update_section(
 
     validate_section_for_put(&section, &body_value)?;
 
+    // WHY: the live config deliberately retains old values for cold settings,
+    // while disk carries the operator's staged values. Start every PUT from
+    // disk so an unrelated second PUT cannot erase an earlier staged change.
+    // The write guard serializes the complete disk-read -> validate -> write ->
+    // live-swap transaction with PUT, reload, SIGHUP, and nous mutations.
     let mut config = state.config.write().await;
-    let mut config_value = serde_json::to_value(&*config).map_err(|e| ApiError::Internal {
-        message: format!("failed to serialize config: {e}"),
+    let staged = taxis::loader::load_config(&state.oikos).map_err(|e| ApiError::Internal {
+        message: format!("failed to load staged config: {e}"),
         location: snafu::location!(),
     })?;
-
-    if let Value::Object(root) = &mut config_value {
-        let existing = root
-            .entry(section.clone())
-            .or_insert_with(|| Value::Object(serde_json::Map::default()));
-        deep_merge(existing, body_value);
-    }
-    taxis::redact::preserve_secret_leaves(&mut config_value, &config);
 
     // WHY: Deserialize back to verify structural validity.
     // Log serde details internally; the error message exposed to the client must not
     // include field paths or internal type names from the serde error. (#845)
-    let new_config: taxis::config::AletheiaConfig =
-        serde_json::from_value(config_value).map_err(|e| {
-            tracing::error!(error = %e, section = %section, "config deserialization failed after merge");
-            ApiError::ValidationFailed {
-                errors: vec![FieldError {
-                    field: section.clone(),
-                    code: "format".to_owned(),
-                    message: "Invalid configuration format".to_owned(),
-                }],
-                location: snafu::location!(),
-            }
-        })?;
+    let new_config = taxis::redact::apply_section_patch_with_marker_authority(
+        &staged, &config, &section, body_value,
+    )
+    .map_err(|e| {
+        tracing::error!(error = %e, section = %section, "config reconstruction failed after merge");
+        ApiError::ValidationFailed {
+            errors: vec![FieldError {
+                field: section.clone(),
+                code: "format".to_owned(),
+                message: "Invalid configuration format".to_owned(),
+            }],
+            location: snafu::location!(),
+        }
+    })?;
 
     // WHY(#4583): Run the same semantic validation used by reload against the
     // fully merged candidate before any write or live swap can occur.
@@ -545,13 +547,6 @@ pub async fn update_section(
         .map_err(|e| ApiError::Internal {
             message: format!("failed to preserve cold config values: {e}"),
             location: snafu::location!(),
-        })?;
-    let live_config =
-        taxis::redact::preserve_config_secret_leaves(&live_config, &config).map_err(|e| {
-            ApiError::Internal {
-                message: format!("failed to preserve secret config values: {e}"),
-                location: snafu::location!(),
-            }
         })?;
 
     taxis::loader::write_config(&state.oikos, &new_config).map_err(|e| ApiError::Internal {
@@ -580,22 +575,6 @@ pub async fn update_section(
     ))
 }
 
-/// Recursively merge `patch` into `base`. Patch values override base values;
-/// nested objects are merged rather than replaced.
-pub(crate) fn deep_merge(base: &mut Value, patch: Value) {
-    match (base, patch) {
-        (Value::Object(base_map), Value::Object(patch_map)) => {
-            for (key, patch_val) in patch_map {
-                let entry = base_map.entry(key).or_insert(Value::Null);
-                deep_merge(entry, patch_val);
-            }
-        }
-        (base, patch) => {
-            *base = patch;
-        }
-    }
-}
-
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 #[expect(
@@ -606,45 +585,6 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-
-    #[test]
-    fn deep_merge_replaces_leaf_value() {
-        let mut base = json!({"key": "old"});
-        deep_merge(&mut base, json!({"key": "new"}));
-        assert_eq!(base["key"], "new");
-    }
-
-    #[test]
-    fn deep_merge_merges_nested_objects_without_replacing() {
-        let mut base = json!({"outer": {"a": 1, "b": 2}});
-        deep_merge(&mut base, json!({"outer": {"b": 99}}));
-        assert_eq!(base["outer"]["a"], 1);
-        assert_eq!(base["outer"]["b"], 99);
-    }
-
-    #[test]
-    fn deep_merge_adds_new_key() {
-        let mut base = json!({"existing": true});
-        deep_merge(&mut base, json!({"added": "value"}));
-        assert_eq!(base["existing"], true);
-        assert_eq!(base["added"], "value");
-    }
-
-    #[test]
-    fn deep_merge_does_not_remove_unpatched_keys() {
-        let mut base = json!({"keep": "me", "also": "this"});
-        deep_merge(&mut base, json!({"keep": "updated"}));
-        assert_eq!(base["also"], "this");
-    }
-
-    #[test]
-    fn deep_merge_replaces_array_wholesale() {
-        let mut base = json!({"items": [1, 2, 3]});
-        deep_merge(&mut base, json!({"items": [4, 5]}));
-        let items = base["items"].as_array().unwrap();
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[0], 4);
-    }
 
     #[test]
     fn valid_sections_includes_expected_entries() {

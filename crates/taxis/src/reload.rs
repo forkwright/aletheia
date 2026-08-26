@@ -55,8 +55,13 @@ pub fn preserve_restart_required_values(
     staged: &AletheiaConfig,
     diff: &ConfigDiff,
 ) -> Result<AletheiaConfig, serde_json::Error> {
-    let current_value = serde_json::to_value(current)?;
-    let mut live_value = serde_json::to_value(staged)?;
+    // WHY: `SecretString::Serialize` intentionally emits `[REDACTED]`.
+    // Config diff/preservation is an internal mutation boundary, not an API
+    // response, so use the narrow typed exposure helper. Otherwise any cold
+    // reload would deserialize the marker into the live config and dynamic
+    // tool-auth secrets could never survive this round trip.
+    let current_value = crate::redact::config_value_with_exposed_secrets(current)?;
+    let mut live_value = crate::redact::config_value_with_exposed_secrets(staged)?;
 
     for change in diff.cold_changes() {
         if let Some(prefix) = restart_prefix_for_path(&change.path)
@@ -160,8 +165,14 @@ pub fn diff_configs(
 ) -> Result<ConfigDiff, crate::error::Error> {
     use snafu::ResultExt;
 
-    let old_value = serde_json::to_value(old).context(SerializeJsonSnafu)?;
-    let new_value = serde_json::to_value(new).context(SerializeJsonSnafu)?;
+    // WHY: ordinary serde output makes every `SecretString` equal to the same
+    // marker. Comparing that output hid real key rotations and let a cold
+    // security change look like an empty diff. Raw values exist only in these
+    // private comparison trees and are never logged or returned.
+    let old_value =
+        crate::redact::config_value_with_exposed_secrets(old).context(SerializeJsonSnafu)?;
+    let new_value =
+        crate::redact::config_value_with_exposed_secrets(new).context(SerializeJsonSnafu)?;
 
     let mut changes = Vec::new();
     diff_values(&old_value, &new_value, String::new(), &mut changes);
@@ -601,6 +612,91 @@ mod tests {
                 .any(|c| c.path.contains("gateway.port")),
             "gateway.port should appear in cold changes"
         );
+    }
+
+    #[test]
+    fn diff_and_live_preservation_see_signing_key_rotation() {
+        use koina::secret::SecretString;
+
+        let mut old = AletheiaConfig::default();
+        old.gateway.auth.signing_key = Some(SecretString::from("old-signing-secret"));
+        let mut staged = old.clone();
+        staged.gateway.auth.signing_key = Some(SecretString::from("new-signing-secret"));
+
+        let diff = diff_configs(&old, &staged).unwrap_or_else(|e| panic!("diff configs: {e}"));
+        assert!(
+            diff.cold_changes()
+                .iter()
+                .any(|change| change.path == "gateway.auth.signingKey"),
+            "SecretString values must be compared by their typed raw value"
+        );
+
+        let live = preserve_restart_required_values(&old, &staged, &diff)
+            .unwrap_or_else(|e| panic!("preserve cold values: {e}"));
+        assert_eq!(
+            live.gateway
+                .auth
+                .signing_key
+                .as_ref()
+                .map(SecretString::expose_secret),
+            Some("old-signing-secret")
+        );
+        assert_eq!(
+            staged
+                .gateway
+                .auth
+                .signing_key
+                .as_ref()
+                .map(SecretString::expose_secret),
+            Some("new-signing-secret")
+        );
+    }
+
+    #[test]
+    fn diff_and_live_preservation_see_dynamic_tool_header_rotation() {
+        use koina::secret::SecretString;
+
+        let mut old = AletheiaConfig::default();
+        old.tools.optional.insert(
+            "synthetic-search".to_owned(),
+            crate::config::ExternalToolEntry {
+                auth: Some(crate::config::ExternalToolAuth::Header {
+                    name: "X-Synthetic-Key".to_owned(),
+                    value: SecretString::from("old-header-secret"),
+                }),
+                ..crate::config::ExternalToolEntry::default()
+            },
+        );
+        let mut staged = old.clone();
+        let Some(crate::config::ExternalToolAuth::Header { value, .. }) = staged
+            .tools
+            .optional
+            .get_mut("synthetic-search")
+            .and_then(|entry| entry.auth.as_mut())
+        else {
+            panic!("header auth fixture");
+        };
+        *value = SecretString::from("new-header-secret");
+
+        let diff = diff_configs(&old, &staged).unwrap_or_else(|e| panic!("diff configs: {e}"));
+        assert!(
+            diff.cold_changes()
+                .iter()
+                .any(|change| { change.path == "tools.optional.synthetic-search.auth.value" }),
+            "dynamic SecretString values must remain visible to the diff"
+        );
+
+        let live = preserve_restart_required_values(&old, &staged, &diff)
+            .unwrap_or_else(|e| panic!("preserve cold values: {e}"));
+        let Some(crate::config::ExternalToolAuth::Header { value, .. }) = live
+            .tools
+            .optional
+            .get("synthetic-search")
+            .and_then(|entry| entry.auth.as_ref())
+        else {
+            panic!("preserved header auth");
+        };
+        assert_eq!(value.expose_secret(), "old-header-secret");
     }
 
     #[test]

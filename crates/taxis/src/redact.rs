@@ -22,7 +22,9 @@
 //!   to string values, because the same substrings appear in numeric fields --
 //!   `max_output_tokens` matches `token`, and a token *count* must survive intact.
 //!
-//! Both replace the value with a marker (`"***"`) rather than dropping the key, so the
+//! Both retain the key and replace its value with a marker. The explicit passes
+//! emit `"***"`; a typed [`SecretString`] whose field is not covered by either
+//! pass retains its own `"[REDACTED]"` serialization marker. In both cases the
 //! shape of a redacted config is identical to the real one.
 
 use serde_json::Value;
@@ -30,7 +32,7 @@ use tracing::debug;
 
 use koina::secret::SecretString;
 
-use crate::config::AletheiaConfig;
+use crate::config::{AletheiaConfig, ExternalToolAuth, ExternalToolEntry};
 use crate::sensitive::key_is_sensitive;
 
 const REDACTED: &str = "***";
@@ -50,6 +52,50 @@ enum SensitiveLeafValue {
 struct SensitiveLeaf {
     path: &'static [&'static str],
     value: SensitiveLeafValue,
+}
+
+/// Failure while reconstructing a typed config from a redacted API payload.
+///
+/// The error deliberately does not include the rejected JSON path. Dynamic
+/// config keys can themselves be operator-sensitive identifiers, and a
+/// malformed marker must not turn an error response into a metadata leak.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum RedactionMutationError {
+    /// The typed config could not be converted to or from its mutation tree.
+    Serialization(serde_json::Error),
+    /// A reserved redaction marker appeared where the current config had not
+    /// emitted one.
+    UnexpectedMarker,
+    /// The root config did not serialize as an object.
+    InvalidRoot,
+}
+
+impl std::fmt::Display for RedactionMutationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Serialization(_) => f.write_str("failed to transform configuration"),
+            Self::UnexpectedMarker => {
+                f.write_str("redaction marker has no existing value to preserve")
+            }
+            Self::InvalidRoot => f.write_str("configuration root is not an object"),
+        }
+    }
+}
+
+impl std::error::Error for RedactionMutationError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Serialization(source) => Some(source),
+            Self::UnexpectedMarker | Self::InvalidRoot => None,
+        }
+    }
+}
+
+impl From<serde_json::Error> for RedactionMutationError {
+    fn from(source: serde_json::Error) -> Self {
+        Self::Serialization(source)
+    }
 }
 
 /// Paths whose leaf values are replaced with `"***"` in redacted output.
@@ -92,13 +138,208 @@ pub(crate) fn encryptable_leaf_paths() -> impl Iterator<Item = &'static [&'stati
 /// Serialize config to JSON, then redact sensitive fields.
 #[must_use]
 pub fn redact(config: &AletheiaConfig) -> Value {
-    let mut value = serde_json::to_value(config).unwrap_or_else(|e| {
+    redacted_config_value(config).unwrap_or_else(|e| {
         debug!(error = %e, "failed to serialize config for redaction");
         Value::Null
-    });
+    })
+}
+
+fn redacted_config_value(config: &AletheiaConfig) -> Result<Value, serde_json::Error> {
+    let mut value = serde_json::to_value(config)?;
     redact_sensitive_leaves(&mut value);
     redact_sensitive_keys(&mut value);
-    value
+    Ok(value)
+}
+
+/// Apply a redacted API patch to one top-level config section.
+///
+/// `"***"` is a placeholder only at paths where the redacted view of `staged`
+/// emitted that marker. Such placeholders preserve the existing staged value,
+/// including an absent optional (`null`). An explicit JSON `null` remains a
+/// deliberate clear. A marker under a new dynamic key or any other sensitive
+/// path is rejected instead of being persisted as data. Some [`SecretString`]
+/// fields whose names are not themselves sensitive serialize as
+/// `"[REDACTED]"`; that marker is accepted only when the current GET emitted it
+/// at the exact same path.
+///
+/// This function also exposes [`SecretString`] values only inside its private
+/// mutation tree. That keeps a GET/PUT round trip from replacing secrets with
+/// `SecretString`'s serialization marker and preserves pending cold changes
+/// from earlier PUTs.
+///
+/// # Errors
+///
+/// Returns [`RedactionMutationError`] when serialization fails, the config
+/// root is malformed, or a reserved marker has no existing value to preserve.
+pub fn apply_section_patch(
+    staged: &AletheiaConfig,
+    section: &str,
+    patch: Value,
+) -> Result<AletheiaConfig, RedactionMutationError> {
+    apply_section_patch_with_marker_authority(staged, staged, section, patch)
+}
+
+/// Apply a redacted section patch while separating persistence and GET
+/// authority.
+///
+/// `staged` is the disk-authoritative merge/replacement base, including cold
+/// values deferred until restart. `marker_authority` is the live config from
+/// which the client could actually have obtained a GET marker. A marker is
+/// accepted only when that live GET emitted the exact marker at the same path;
+/// its replacement still comes from `staged`, so an unrelated PUT preserves a
+/// previously staged secret rotation.
+///
+/// # Errors
+///
+/// Returns [`RedactionMutationError`] when serialization fails, the config
+/// root is malformed, or a marker was not emitted by `marker_authority`.
+pub fn apply_section_patch_with_marker_authority(
+    staged: &AletheiaConfig,
+    marker_authority: &AletheiaConfig,
+    section: &str,
+    patch: Value,
+) -> Result<AletheiaConfig, RedactionMutationError> {
+    let mut root = config_value_with_exposed_secrets(staged)?;
+    let Value::Object(root_map) = &mut root else {
+        return Err(RedactionMutationError::InvalidRoot);
+    };
+    let existing = root_map.entry(section.to_owned()).or_insert(Value::Null);
+    deep_merge(existing, patch);
+    restore_redaction_markers_with_replacements(&mut root, staged, marker_authority)?;
+    serde_json::from_value(root).map_err(Into::into)
+}
+
+/// Restore placeholders that came from the current config's redacted view.
+///
+/// A marker is accepted only when the same path in `current` would have been
+/// redacted. This covers structural leaves, redact-only leaves, and dynamic
+/// sensitive keys uniformly. Optional structural leaves that are currently
+/// absent are restored to `null`; explicit `null` in `root` is never changed.
+///
+/// # Errors
+///
+/// Returns [`RedactionMutationError::UnexpectedMarker`] for a marker at a new
+/// or otherwise non-preservable sensitive path.
+pub fn restore_redaction_markers(
+    root: &mut Value,
+    current: &AletheiaConfig,
+) -> Result<(), RedactionMutationError> {
+    restore_redaction_markers_with_replacements(root, current, current)
+}
+
+fn restore_redaction_markers_with_replacements(
+    root: &mut Value,
+    replacements: &AletheiaConfig,
+    marker_authority: &AletheiaConfig,
+) -> Result<(), RedactionMutationError> {
+    let replacement_raw = config_value_with_exposed_secrets(replacements)?;
+    // This must be the actual GET representation, not a redaction pass over
+    // `replacement_raw`. SecretString serialization itself emits `[REDACTED]` for
+    // fields such as external header auth `value`, whose key name does not
+    // trigger the generic sensitive-key pass.
+    let current_redacted = redacted_config_value(marker_authority)?;
+
+    restore_markers_at(
+        root,
+        Some(&replacement_raw),
+        Some(&current_redacted),
+        &mut Vec::new(),
+    )
+}
+
+/// Serialize a config for internal comparison/mutation without erasing typed
+/// secrets. The returned value must never be logged or returned from an API.
+pub(crate) fn config_value_with_exposed_secrets(
+    config: &AletheiaConfig,
+) -> Result<Value, serde_json::Error> {
+    let mut value = serde_json::to_value(config)?;
+    visit_secret_strings(config, |path, secret| {
+        if let Some(slot) = json_path_mut(&mut value, path) {
+            *slot = Value::String(secret.expose_secret().to_owned());
+        }
+    });
+    Ok(value)
+}
+
+fn deep_merge(base: &mut Value, patch: Value) {
+    match (base, patch) {
+        (Value::Object(base_map), Value::Object(patch_map)) => {
+            for (key, patch_value) in patch_map {
+                let entry = base_map.entry(key).or_insert(Value::Null);
+                deep_merge(entry, patch_value);
+            }
+        }
+        (base, patch) => *base = patch,
+    }
+}
+
+fn restore_markers_at(
+    staged: &mut Value,
+    current_raw: Option<&Value>,
+    current_redacted: Option<&Value>,
+    path: &mut Vec<String>,
+) -> Result<(), RedactionMutationError> {
+    if is_redaction_marker(staged) {
+        if current_redacted.is_some_and(|current| current == staged) {
+            let Some(raw) = current_raw else {
+                return Err(RedactionMutationError::UnexpectedMarker);
+            };
+            *staged = raw.clone();
+            return Ok(());
+        }
+        if path_is_redactable(path) {
+            return Err(RedactionMutationError::UnexpectedMarker);
+        }
+        return Ok(());
+    }
+
+    match staged {
+        Value::Object(map) => {
+            for (key, value) in map {
+                path.push(key.clone());
+                restore_markers_at(
+                    value,
+                    current_raw.and_then(|current| current.get(key)),
+                    current_redacted.and_then(|current| current.get(key)),
+                    path,
+                )?;
+                path.pop();
+            }
+        }
+        Value::Array(values) => {
+            for (index, value) in values.iter_mut().enumerate() {
+                path.push(index.to_string());
+                restore_markers_at(
+                    value,
+                    current_raw.and_then(|current| current.get(index)),
+                    current_redacted.and_then(|current| current.get(index)),
+                    path,
+                )?;
+                path.pop();
+            }
+        }
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+    }
+    Ok(())
+}
+
+fn path_is_redactable(path: &[String]) -> bool {
+    SENSITIVE_LEAVES.iter().any(|leaf| {
+        leaf.path.len() == path.len()
+            && leaf
+                .path
+                .iter()
+                .zip(path)
+                .all(|(expected, actual)| expected == actual)
+    }) || path.last().is_some_and(|key| key_is_sensitive(key))
+        || matches!(
+            path,
+            [tools, class, _tool_id, auth, value]
+                if tools == "tools"
+                    && matches!(class.as_str(), "required" | "optional")
+                    && auth == "auth"
+                    && matches!(value.as_str(), "token" | "value")
+        )
 }
 
 fn redact_sensitive_leaves(root: &mut Value) {
@@ -116,22 +357,52 @@ fn redact_sensitive_leaves(root: &mut Value) {
 ///
 /// Call this after serializing `AletheiaConfig` through serde for mutation,
 /// before deserializing the value back into typed config.
+/// This compatibility helper is for trusted internal trees and preserves its
+/// historical infallible API. Untrusted API input must use
+/// [`apply_section_patch`], which rejects unresolved markers fail-closed.
 pub fn preserve_secret_leaves(root: &mut Value, current: &AletheiaConfig) {
+    if let Err(error) = restore_redaction_markers(root, current) {
+        debug!(%error, "could not preserve invalid redaction marker");
+    }
+}
+
+fn visit_secret_strings(config: &AletheiaConfig, mut visit: impl FnMut(&[&str], &SecretString)) {
     for leaf in SENSITIVE_LEAVES {
-        let secret = match leaf.value {
-            SensitiveLeafValue::Secret(accessor) => accessor(current),
-            SensitiveLeafValue::RequiredSecret(accessor) => Some(accessor(current)),
-            SensitiveLeafValue::RedactOnly => continue,
-        };
-        let Some(secret) = secret else {
-            continue;
-        };
-        let Some(slot) = json_path_mut(root, leaf.path) else {
-            continue;
-        };
-        if is_redaction_marker(slot) {
-            *slot = Value::String(secret.expose_secret().to_owned());
+        match leaf.value {
+            SensitiveLeafValue::Secret(accessor) => {
+                if let Some(secret) = accessor(config) {
+                    visit(leaf.path, secret);
+                }
+            }
+            SensitiveLeafValue::RequiredSecret(accessor) => visit(leaf.path, accessor(config)),
+            SensitiveLeafValue::RedactOnly => {}
         }
+    }
+
+    for (class, entries) in [
+        ("required", &config.tools.required),
+        ("optional", &config.tools.optional),
+    ] {
+        for (tool_id, entry) in entries {
+            visit_external_tool_secret(class, tool_id, entry, &mut visit);
+        }
+    }
+}
+
+fn visit_external_tool_secret(
+    class: &str,
+    tool_id: &str,
+    entry: &ExternalToolEntry,
+    visit: &mut impl FnMut(&[&str], &SecretString),
+) {
+    match entry.auth.as_ref() {
+        Some(ExternalToolAuth::Bearer { token }) => {
+            visit(&["tools", class, tool_id, "auth", "token"], token);
+        }
+        Some(ExternalToolAuth::Header { value, .. }) => {
+            visit(&["tools", class, tool_id, "auth", "value"], value);
+        }
+        Some(ExternalToolAuth::EnvToken { .. }) | None => {}
     }
 }
 
@@ -147,28 +418,19 @@ pub fn preserve_config_secret_leaves(
     staged: &AletheiaConfig,
     current: &AletheiaConfig,
 ) -> Result<AletheiaConfig, serde_json::Error> {
-    let mut value = serde_json::to_value(staged)?;
+    let mut value = config_value_with_exposed_secrets(staged)?;
     preserve_secret_leaves(&mut value, current);
     serde_json::from_value(value)
 }
 
 pub(crate) fn expose_secret_leaves_for_toml(root: &mut toml::Value, current: &AletheiaConfig) {
-    for leaf in SENSITIVE_LEAVES {
-        let secret = match leaf.value {
-            SensitiveLeafValue::Secret(accessor) => accessor(current),
-            SensitiveLeafValue::RequiredSecret(accessor) => Some(accessor(current)),
-            SensitiveLeafValue::RedactOnly => continue,
-        };
-        let Some(secret) = secret else {
-            continue;
-        };
-        let Some(slot) = toml_path_mut(root, leaf.path) else {
-            continue;
-        };
-        if slot.as_str().is_some_and(is_redaction_marker_str) {
+    visit_secret_strings(current, |path, secret| {
+        if let Some(slot) = toml_path_mut(root, path)
+            && slot.as_str() == Some(SECRET_REDACTED)
+        {
             *slot = toml::Value::String(secret.expose_secret().to_owned());
         }
-    }
+    });
 }
 
 fn gateway_auth_signing_key(config: &AletheiaConfig) -> Option<&SecretString> {
@@ -180,11 +442,7 @@ fn gateway_csrf_header_value(config: &AletheiaConfig) -> &SecretString {
 }
 
 fn is_redaction_marker(value: &Value) -> bool {
-    value.as_str().is_some_and(is_redaction_marker_str)
-}
-
-fn is_redaction_marker_str(value: &str) -> bool {
-    value == REDACTED || value == SECRET_REDACTED
+    matches!(value.as_str(), Some(REDACTED | SECRET_REDACTED))
 }
 
 fn json_path_mut<'a>(root: &'a mut Value, path: &[&str]) -> Option<&'a mut Value> {
@@ -311,6 +569,219 @@ mod tests {
             redacted["gateway"]["tls"]["certPath"], REDACTED,
             "tls cert path should be redacted"
         );
+    }
+
+    #[test]
+    fn gateway_get_put_round_trip_preserves_absent_sensitive_options() {
+        let current = AletheiaConfig::default();
+        let patch = redact(&current)["gateway"].clone();
+
+        let rebuilt = apply_section_patch(&current, "gateway", patch)
+            .unwrap_or_else(|error| panic!("apply redacted gateway patch: {error}"));
+
+        assert!(
+            rebuilt.gateway.auth.signing_key.is_none(),
+            "a marker emitted for an absent signing key must restore None"
+        );
+        assert!(
+            rebuilt.gateway.tls.cert_path.is_none(),
+            "a redact-only marker emitted for an absent cert path must restore None"
+        );
+        assert!(
+            rebuilt.gateway.tls.key_path.is_none(),
+            "a redact-only marker emitted for an absent key path must restore None"
+        );
+    }
+
+    #[test]
+    fn explicit_null_clears_optional_secret_instead_of_preserving_it() {
+        let mut current = AletheiaConfig::default();
+        current.gateway.auth.signing_key = Some(SecretString::from("old-signing-secret"));
+        let mut patch = redact(&current)["gateway"].clone();
+        patch["auth"]["signingKey"] = Value::Null;
+
+        let rebuilt = apply_section_patch(&current, "gateway", patch)
+            .unwrap_or_else(|error| panic!("apply explicit-null gateway patch: {error}"));
+
+        assert!(
+            rebuilt.gateway.auth.signing_key.is_none(),
+            "JSON null is a deliberate clear, not a redaction placeholder"
+        );
+    }
+
+    #[test]
+    fn dynamic_matrix_marker_preserves_existing_environment_name() {
+        let mut current = AletheiaConfig::default();
+        current.channels.matrix.accounts.insert(
+            "primary".to_owned(),
+            crate::config::MatrixAccountConfig {
+                homeserver: "https://matrix.example.org".to_owned(),
+                access_token_env: "MATRIX_SYNTHETIC_TOKEN".to_owned(),
+                ..crate::config::MatrixAccountConfig::default()
+            },
+        );
+        let patch = redact(&current)["channels"].clone();
+
+        let rebuilt = apply_section_patch(&current, "channels", patch)
+            .unwrap_or_else(|error| panic!("apply redacted channels patch: {error}"));
+
+        assert_eq!(
+            rebuilt.channels.matrix.accounts["primary"].access_token_env, "MATRIX_SYNTHETIC_TOKEN",
+            "dynamic sensitive-name redaction must not persist the marker"
+        );
+    }
+
+    #[test]
+    fn marker_under_new_dynamic_sensitive_path_is_rejected() {
+        let current = AletheiaConfig::default();
+        let patch = serde_json::json!({
+            "matrix": {
+                "accounts": {
+                    "new-account": {
+                        "homeserver": "https://matrix.example.org",
+                        "accessTokenEnv": REDACTED
+                    }
+                }
+            }
+        });
+
+        let error = apply_section_patch(&current, "channels", patch)
+            .expect_err("a new account has no prior redacted value to preserve");
+        assert!(matches!(error, RedactionMutationError::UnexpectedMarker));
+    }
+
+    #[test]
+    fn staged_only_dynamic_marker_is_not_authorized_by_live_get() {
+        let live = AletheiaConfig::default();
+        let mut staged = live.clone();
+        staged.channels.matrix.accounts.insert(
+            "pending".to_owned(),
+            crate::config::MatrixAccountConfig {
+                homeserver: "https://matrix.example.org".to_owned(),
+                access_token_env: "MATRIX_PENDING_TOKEN".to_owned(),
+                ..crate::config::MatrixAccountConfig::default()
+            },
+        );
+        let patch = serde_json::json!({
+            "matrix": {
+                "accounts": {
+                    "pending": {
+                        "accessTokenEnv": REDACTED
+                    }
+                }
+            }
+        });
+
+        let error = apply_section_patch_with_marker_authority(&staged, &live, "channels", patch)
+            .expect_err("disk-only account marker was never emitted by the live GET");
+        assert!(matches!(error, RedactionMutationError::UnexpectedMarker));
+    }
+
+    #[test]
+    fn dynamic_tool_auth_secret_survives_redacted_patch() {
+        let mut current = AletheiaConfig::default();
+        current.tools.optional.insert(
+            "synthetic-search".to_owned(),
+            ExternalToolEntry {
+                auth: Some(ExternalToolAuth::Bearer {
+                    token: SecretString::from("synthetic-tool-secret"),
+                }),
+                ..ExternalToolEntry::default()
+            },
+        );
+        let patch = redact(&current)["tools"].clone();
+
+        let rebuilt = apply_section_patch(&current, "tools", patch)
+            .unwrap_or_else(|error| panic!("apply redacted tools patch: {error}"));
+        let Some(ExternalToolAuth::Bearer { token }) = rebuilt
+            .tools
+            .optional
+            .get("synthetic-search")
+            .and_then(|entry| entry.auth.as_ref())
+        else {
+            panic!("rebuilt tool must retain bearer auth");
+        };
+        assert_eq!(token.expose_secret(), "synthetic-tool-secret");
+    }
+
+    #[test]
+    fn dynamic_header_auth_secret_survives_its_exact_get_marker() {
+        let mut current = AletheiaConfig::default();
+        current.tools.optional.insert(
+            "synthetic-search".to_owned(),
+            ExternalToolEntry {
+                auth: Some(ExternalToolAuth::Header {
+                    name: "X-Synthetic-Key".to_owned(),
+                    value: SecretString::from("synthetic-header-secret"),
+                }),
+                ..ExternalToolEntry::default()
+            },
+        );
+        let patch = redact(&current)["tools"].clone();
+        assert_eq!(
+            patch["optional"]["synthetic-search"]["auth"]["value"], SECRET_REDACTED,
+            "test must exercise SecretString's marker rather than key-name redaction"
+        );
+
+        let rebuilt = apply_section_patch(&current, "tools", patch)
+            .unwrap_or_else(|error| panic!("apply redacted tools patch: {error}"));
+        let Some(ExternalToolAuth::Header { value, .. }) = rebuilt
+            .tools
+            .optional
+            .get("synthetic-search")
+            .and_then(|entry| entry.auth.as_ref())
+        else {
+            panic!("rebuilt tool must retain header auth");
+        };
+        assert_eq!(value.expose_secret(), "synthetic-header-secret");
+    }
+
+    #[test]
+    fn marker_under_new_dynamic_header_auth_path_is_rejected() {
+        let current = AletheiaConfig::default();
+        let patch = serde_json::json!({
+            "optional": {
+                "new-header-tool": {
+                    "type": "http",
+                    "endpoint": "https://tools.example.org/mcp",
+                    "auth": {
+                        "type": "header",
+                        "name": "X-Synthetic-Key",
+                        "value": SECRET_REDACTED
+                    }
+                }
+            }
+        });
+
+        let error = apply_section_patch(&current, "tools", patch)
+            .expect_err("a new header auth value has no GET marker to preserve");
+        assert!(matches!(error, RedactionMutationError::UnexpectedMarker));
+    }
+
+    #[test]
+    fn wrong_marker_for_existing_sensitive_path_is_rejected() {
+        let mut current = AletheiaConfig::default();
+        current.gateway.auth.signing_key = Some(SecretString::from("old-signing-secret"));
+        let patch = serde_json::json!({
+            "auth": { "signingKey": SECRET_REDACTED }
+        });
+
+        let error = apply_section_patch(&current, "gateway", patch)
+            .expect_err("GET emits *** for signingKey, not SecretString's marker");
+        assert!(matches!(error, RedactionMutationError::UnexpectedMarker));
+    }
+
+    #[test]
+    fn marker_literal_at_non_sensitive_path_remains_data() {
+        let current = AletheiaConfig::default();
+        let rebuilt = apply_section_patch(
+            &current,
+            "embedding",
+            serde_json::json!({ "model": REDACTED }),
+        )
+        .unwrap_or_else(|error| panic!("apply non-sensitive marker literal: {error}"));
+
+        assert_eq!(rebuilt.embedding.model, REDACTED);
     }
 
     #[test]
