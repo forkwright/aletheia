@@ -9,6 +9,9 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 #[cfg(unix)]
@@ -323,7 +326,6 @@ description = "Message to echo"
         &[("tools/echo.sh", "#!/bin/sh\ncat")],
     );
 
-    use std::os::unix::fs::PermissionsExt;
     let perms = std::fs::Permissions::from_mode(0o755);
     std::fs::set_permissions(pack_dir.path().join("tools/echo.sh"), perms).expect("chmod");
 
