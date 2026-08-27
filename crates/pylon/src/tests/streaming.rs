@@ -995,8 +995,8 @@ async fn stream_turn_provider_tool_call_lifecycle_events_are_forwarded() {
         .collect::<Vec<_>>();
     assert_eq!(
         partials,
-        vec![r#"{"query":"#, r#""acme"}"#],
-        "stream must preserve ordered provider input JSON deltas; body={body}"
+        vec!["[REDACTED]", "[REDACTED]"],
+        "partial tool JSON is not policy-addressable and must be payload-free; body={body}"
     );
 
     assert!(

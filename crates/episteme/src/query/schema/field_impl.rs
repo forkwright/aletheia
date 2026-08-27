@@ -1,8 +1,11 @@
 //! Field trait implementations for knowledge graph relations.
 
 use super::{
-    CausalEdgesField, EmbeddingsField, EntitiesField, EntityFlagsField, FactEntitiesField,
-    FactsField, Field, MergeAuditField, PendingMergesField, RelationshipsField,
+    CausalEdgesField, ConsolidationAuditField, ConsolidationProvenanceField, DefaultsField,
+    DerivedFactsField, DerivedRuleWatermarksField, DerivedSourceRevisionField, EmbeddingMetaField,
+    EmbeddingsField, EntitiesField, EntityFlagsField, FactEntitiesField, FactMultiplicityField,
+    FactsField, Field, GraphScoresField, MergeAuditField, PendingMergesField, ProvenanceField,
+    PublishedFactsField, RelationshipsField, SchemaVersionField, TypeHierarchyField,
 };
 
 impl Field for FactsField {
@@ -137,6 +140,155 @@ impl Field for CausalEdgesField {
             Self::Confidence => "confidence",
             Self::EvidenceSessionId => "evidence_session_id",
             Self::CreatedAt => "created_at",
+        }
+    }
+}
+
+impl Field for TypeHierarchyField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::ChildType => "child_type",
+            Self::ParentType => "parent_type",
+            Self::CreatedAt => "created_at",
+        }
+    }
+}
+
+impl Field for DerivedFactsField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::EntityId => "entity_id",
+            Self::RuleId => "rule_id",
+            Self::DerivedContent => "derived_content",
+            Self::Confidence => "confidence",
+            Self::MaterializedAt => "materialized_at",
+        }
+    }
+}
+
+impl Field for DefaultsField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::EntityId => "entity_id",
+            Self::Tag => "tag",
+            Self::DefaultContent => "default_content",
+            Self::Confidence => "confidence",
+            Self::CreatedAt => "created_at",
+        }
+    }
+}
+
+impl Field for PublishedFactsField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Id => "id",
+            Self::OriginalFactId => "original_fact_id",
+            Self::PublishedBy => "published_by",
+            Self::PublishedAt => "published_at",
+            Self::VerificationCount => "verification_count",
+            Self::ContestedBy => "contested_by",
+            Self::ContestReason => "contest_reason",
+        }
+    }
+}
+
+impl Field for ProvenanceField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::PublishedFactId => "published_fact_id",
+            Self::Contributor => "contributor",
+            Self::ContributionType => "contribution_type",
+            Self::Confidence => "confidence",
+            Self::ContributedAt => "contributed_at",
+        }
+    }
+}
+
+impl Field for EmbeddingMetaField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Model => "model",
+            Self::Dim => "dim",
+        }
+    }
+}
+
+impl Field for DerivedSourceRevisionField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Key => "key",
+            Self::Revision => "revision",
+        }
+    }
+}
+
+impl Field for DerivedRuleWatermarksField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::RuleId => "rule_id",
+            Self::SourceRevision => "source_revision",
+            Self::MaterializedAt => "materialized_at",
+            Self::Dirty => "dirty",
+        }
+    }
+}
+
+impl Field for ConsolidationAuditField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Id => "id",
+            Self::NousId => "nous_id",
+            Self::TriggerType => "trigger_type",
+            Self::TriggerId => "trigger_id",
+            Self::OriginalCount => "original_count",
+            Self::ConsolidatedCount => "consolidated_count",
+            Self::OriginalFactIds => "original_fact_ids",
+            Self::ConsolidatedFactIds => "consolidated_fact_ids",
+            Self::ConsolidatedAt => "consolidated_at",
+        }
+    }
+}
+
+impl Field for FactMultiplicityField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::FactId => "fact_id",
+            Self::SourceCount => "source_count",
+            Self::FirstObserved => "first_observed",
+            Self::LastObserved => "last_observed",
+            Self::TimeSpreadSeconds => "time_spread_seconds",
+            Self::RecordedAt => "recorded_at",
+        }
+    }
+}
+
+impl Field for ConsolidationProvenanceField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::ConsolidatedFactId => "consolidated_fact_id",
+            Self::SourceFactIds => "source_fact_ids",
+            Self::SourceSessionIds => "source_session_ids",
+        }
+    }
+}
+
+impl Field for GraphScoresField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::EntityId => "entity_id",
+            Self::ScoreType => "score_type",
+            Self::Score => "score",
+            Self::ClusterId => "cluster_id",
+            Self::UpdatedAt => "updated_at",
+        }
+    }
+}
+
+impl Field for SchemaVersionField {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Key => "key",
+            Self::Version => "version",
         }
     }
 }

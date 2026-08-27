@@ -15,7 +15,7 @@ use std::sync::{Arc, RwLock};
 use koina::id::{NousId, SessionId, ToolName};
 use organon::registry::ToolRegistry;
 use organon::sandbox::{SandboxConfig, SandboxConfigExt as _, SandboxEnforcement};
-use organon::types::{ToolContext, ToolInput};
+use organon::types::{ApprovalRequirement, RedactionPolicy, ToolContext, ToolInput};
 
 #[expect(clippy::expect_used, reason = "test assertions")]
 fn test_ctx() -> ToolContext {
@@ -60,6 +60,16 @@ fn registers_computer_use_tool() {
     assert!(props.get("combo").is_some(), "schema should have combo");
     assert!(props.get("delta").is_some(), "schema should have delta");
     assert!(props.get("button").is_some(), "schema should have button");
+    assert_eq!(
+        registry.capability_metadata(&name).redaction,
+        RedactionPolicy::Full,
+        "computer_use has no inspectable payload, even on live approval"
+    );
+    assert_eq!(
+        registry.approval_requirement(&name),
+        Some(ApprovalRequirement::Mandatory),
+        "computer_use always requires the strongest fixed approval requirement"
+    );
 }
 
 /// Unknown actions should be rejected by schema validation before dispatch.

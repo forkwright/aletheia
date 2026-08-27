@@ -102,7 +102,7 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
             cron_task_names,
         }),
     )?;
-    declare_capabilities(registry);
+    declare_capabilities(registry)?;
     Ok(())
 }
 
@@ -112,8 +112,8 @@ pub fn register(registry: &mut ToolRegistry, services: Option<&EnergeiaServices>
 /// keep that function under clippy's `too_many_lines` threshold -- these
 /// calls have no ordering dependency on the `registry.register` calls
 /// above beyond "the tool must already be registered" (`declare_capability`
-/// is a no-op on an unregistered name).
-fn declare_capabilities(registry: &mut ToolRegistry) {
+/// rejects an unregistered name).
+fn declare_capabilities(registry: &mut ToolRegistry) -> Result<()> {
     let declare = |registry: &mut ToolRegistry,
                    name: &'static str,
                    owner: &'static str,
@@ -126,7 +126,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                 rollback,
                 ..ToolCapabilityMetadata::default()
             },
-        );
+        )
     };
     declare(
         registry,
@@ -137,7 +137,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      are not tracked for rollback by this tool"
                 .to_owned(),
         },
-    );
+    )?;
     declare(
         registry,
         "dokimasia",
@@ -147,7 +147,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      NeedsReview verdict has no delete/rollback path"
                 .to_owned(),
         },
-    );
+    )?;
     declare(
         registry,
         "epitropos",
@@ -157,7 +157,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      system outside aletheia's control"
                 .to_owned(),
         },
-    );
+    )?;
     declare(
         registry,
         "parateresis",
@@ -167,7 +167,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      delete/rollback path exists for energeia store writes"
                 .to_owned(),
         },
-    );
+    )?;
     // WHY Supported for diorthosis: the executor is a pure computation over
     // the caller-supplied JSON-encoded QaResult (generate_corrective); no
     // store, filesystem, or network write occurs.
@@ -176,7 +176,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
         "diorthosis",
         "organon::builtins::energeia::qa",
         RollbackSupport::Supported,
-    );
+    )?;
     declare(
         registry,
         "mathesis",
@@ -186,7 +186,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      no delete/rollback path exists for energeia store writes"
                 .to_owned(),
         },
-    );
+    )?;
     // WHY Supported for prographe: the executor renders a prompt-spec
     // template in memory and its own output reports files_written: [] --
     // no files are written.
@@ -195,7 +195,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
         "prographe",
         "organon::builtins::energeia::planning",
         RollbackSupport::Supported,
-    );
+    )?;
     // WHY Supported for schedion: the executor computes the frontier on an
     // in-memory PromptDag; no I/O occurs.
     declare(
@@ -203,7 +203,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
         "schedion",
         "organon::builtins::energeia::planning",
         RollbackSupport::Supported,
-    );
+    )?;
     // WHY Supported for metron: every report_type renders from read-only
     // MetricsService queries against the energeia store.
     declare(
@@ -211,7 +211,8 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
         "metron",
         "organon::builtins::energeia::metrics",
         RollbackSupport::Supported,
-    );
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1301,46 +1301,64 @@ pub async fn stream_turn(
                     () = turn_cancel_for_bridge.cancelled() => break,
                     event = nous_rx.recv() => {
                         let Some(event) = event else { break; };
-                        let turn_event = match event {
+                        let (turn_event, replay_event) = match event {
                             TurnStreamEvent::LlmDelta(llm_event) => {
-                                provider_stream_event_to_turn_event(llm_event)
+                                let event = provider_stream_event_to_turn_event(llm_event);
+                                (event.clone(), event)
                             }
                             TurnStreamEvent::ToolStart {
                                 tool_id,
                                 tool_name,
                                 input,
-                            } => PylonTurnStreamEvent::ToolUse {
-                                tool_name,
-                                tool_id,
-                                input,
-                            },
+                            } => {
+                                let event = PylonTurnStreamEvent::ToolUse {
+                                    tool_name,
+                                    tool_id,
+                                    input,
+                                };
+                                (event.clone(), event)
+                            }
                             TurnStreamEvent::ToolApprovalRequired {
                                 turn_id: _nous_turn_id,
                                 tool_id,
                                 tool_name,
                                 input,
+                                replay_input,
                                 risk,
                                 reason,
-                            } => PylonTurnStreamEvent::ToolApprovalRequired {
-                                turn_id: {
-                                    approval_registry
-                                        .register_tool(
-                                            &approval_session_id,
-                                            &approval_turn_id,
-                                            tool_id.clone(),
-                                            approval_tx_for_bridge.clone(),
-                                        )
-                                        .await;
-                                    approval_turn_id.clone()
-                                },
-                                tool_name,
-                                tool_id,
-                                input,
-                                risk,
-                                reason,
-                            },
+                            } => {
+                                approval_registry
+                                    .register_tool(
+                                        &approval_session_id,
+                                        &approval_turn_id,
+                                        tool_id.clone(),
+                                        approval_tx_for_bridge.clone(),
+                                    )
+                                    .await;
+                                let live = PylonTurnStreamEvent::ToolApprovalRequired {
+                                    turn_id: approval_turn_id.clone(),
+                                    tool_name: tool_name.clone(),
+                                    tool_id: tool_id.clone(),
+                                    input: input.into_inner(),
+                                    risk: risk.clone(),
+                                    reason: reason.clone(),
+                                };
+                                let replay = PylonTurnStreamEvent::ToolApprovalRequired {
+                                    turn_id: approval_turn_id.clone(),
+                                    tool_name,
+                                    tool_id,
+                                    input: replay_input,
+                                    risk,
+                                    reason,
+                                };
+                                (live, replay)
+                            }
                             TurnStreamEvent::ToolApprovalResolved { tool_id, decision } => {
-                                PylonTurnStreamEvent::ToolApprovalResolved { tool_id, decision }
+                                let event = PylonTurnStreamEvent::ToolApprovalResolved {
+                                    tool_id,
+                                    decision,
+                                };
+                                (event.clone(), event)
                             }
                             TurnStreamEvent::ToolResult {
                                 tool_id,
@@ -1349,20 +1367,30 @@ pub async fn stream_turn(
                                 is_error,
                                 duration_ms,
                                 outcome,
-                            } => PylonTurnStreamEvent::ToolResult {
-                                tool_name,
-                                tool_id,
-                                result,
-                                is_error,
-                                duration_ms,
-                                outcome: Some(outcome),
-                            },
-                            _ => PylonTurnStreamEvent::ProviderUnsupportedEvent {
-                                event_type: "unknown_turn_stream_event".to_owned(),
-                            },
+                            } => {
+                                let event = PylonTurnStreamEvent::ToolResult {
+                                    tool_name,
+                                    tool_id,
+                                    result,
+                                    is_error,
+                                    duration_ms,
+                                    outcome: Some(outcome),
+                                };
+                                (event.clone(), event)
+                            }
+                            _ => {
+                                let event = PylonTurnStreamEvent::ProviderUnsupportedEvent {
+                                    event_type: "unknown_turn_stream_event".to_owned(),
+                                };
+                                (event.clone(), event)
+                            }
                         };
                         observed.observe(&turn_event);
-                        let Some(recorded) = record_turn_event(&bridge_buf, &turn_event).await else {
+                        let Some(recorded) = record_turn_event_with_live(
+                            &bridge_buf,
+                            &replay_event,
+                            &turn_event,
+                        ).await else {
                             continue;
                         };
                         if bridge_tx.send(recorded).await.is_err() {
@@ -2215,10 +2243,24 @@ async fn record_turn_event(
     buf: &TurnBufferHandle,
     event: &PylonTurnStreamEvent,
 ) -> Option<(u64, PylonTurnStreamEvent)> {
-    let (event_type, data) =
-        serialization_record_payload(event.event_type(), serde_json::to_string(event));
+    record_turn_event_with_live(buf, event, event).await
+}
+
+/// Persist `replay_event` while returning `live_event` at the same sequence.
+///
+/// Approval evidence is intentionally live-only: reconnect consumers can
+/// read only the independently supplied replay-safe event from the buffer.
+async fn record_turn_event_with_live(
+    buf: &TurnBufferHandle,
+    replay_event: &PylonTurnStreamEvent,
+    live_event: &PylonTurnStreamEvent,
+) -> Option<(u64, PylonTurnStreamEvent)> {
+    let (event_type, data) = serialization_record_payload(
+        replay_event.event_type(),
+        serde_json::to_string(replay_event),
+    );
     match buf.record(&event_type, &data).await {
-        RecordOutcome::Recorded { seq } => Some((seq, event.clone())),
+        RecordOutcome::Recorded { seq } => Some((seq, live_event.clone())),
         RecordOutcome::ReplayGap {
             seq,
             dropped_after_seq,

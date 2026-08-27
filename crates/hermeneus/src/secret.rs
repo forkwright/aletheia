@@ -151,6 +151,128 @@ pub fn substitute_in_json(
     Ok(())
 }
 
+/// Redact values in `resolved` whose corresponding position in `template`
+/// was a secret-vault placeholder.
+///
+/// This is used when a caller must show a resolved payload on a live-only
+/// surface without disclosing even short vault values that the generic content
+/// heuristic cannot recognize. For a separately tool-prepared value, use
+/// [`redact_resolved_secrets_in_prepared_json`] so taint survives key/shape
+/// normalization.
+pub fn redact_resolved_secrets_in_json(
+    template: &serde_json::Value,
+    resolved: &mut serde_json::Value,
+) {
+    let substituted = resolved.clone();
+    redact_resolved_secrets_in_prepared_json(template, &substituted, resolved);
+}
+
+/// Redact vault values from a tool-prepared JSON value while preserving their
+/// provenance across tool-owned normalization.
+///
+/// `template` is the original placeholder-form input, `substituted` is its
+/// shape-identical post-vault copy, and `prepared` is the executor-bound value
+/// after registry-owned, shape-preserving path canonicalization. Placeholder
+/// positions are redacted regardless of how their string changed; recovered
+/// values are also scrubbed recursively as defense in depth.
+pub fn redact_resolved_secrets_in_prepared_json(
+    template: &serde_json::Value,
+    substituted: &serde_json::Value,
+    prepared: &mut serde_json::Value,
+) {
+    let mut secrets = Vec::new();
+    collect_resolved_secret_values(template, substituted, &mut secrets);
+    redact_placeholder_positions(template, prepared);
+    redact_secret_values(prepared, &secrets);
+}
+
+fn redact_placeholder_positions(template: &serde_json::Value, prepared: &mut serde_json::Value) {
+    match (template, prepared) {
+        (serde_json::Value::String(template), prepared)
+            if parse_placeholder(template).is_some() =>
+        {
+            *prepared = serde_json::Value::String("[REDACTED]".to_owned());
+        }
+        (serde_json::Value::Object(template), serde_json::Value::Object(prepared)) => {
+            for (key, template_value) in template {
+                if let Some(prepared_value) = prepared.get_mut(key) {
+                    redact_placeholder_positions(template_value, prepared_value);
+                }
+            }
+        }
+        (serde_json::Value::Array(template), serde_json::Value::Array(prepared)) => {
+            for (template_value, prepared_value) in template.iter().zip(prepared.iter_mut()) {
+                redact_placeholder_positions(template_value, prepared_value);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_resolved_secret_values(
+    template: &serde_json::Value,
+    substituted: &serde_json::Value,
+    secrets: &mut Vec<String>,
+) {
+    match (template, substituted) {
+        (serde_json::Value::String(template), serde_json::Value::String(substituted))
+            if parse_placeholder(template).is_some() =>
+        {
+            if !secrets.iter().any(|secret| secret == substituted) {
+                secrets.push(substituted.clone());
+            }
+        }
+        (serde_json::Value::Object(template), serde_json::Value::Object(substituted)) => {
+            for (key, template_value) in template {
+                if let Some(substituted_value) = substituted.get(key) {
+                    collect_resolved_secret_values(template_value, substituted_value, secrets);
+                }
+            }
+        }
+        (serde_json::Value::Array(template), serde_json::Value::Array(substituted)) => {
+            for (template_value, substituted_value) in template.iter().zip(substituted.iter()) {
+                collect_resolved_secret_values(template_value, substituted_value, secrets);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_secret_values(value: &mut serde_json::Value, secrets: &[String]) {
+    match value {
+        serde_json::Value::String(text) => {
+            for secret in secrets {
+                if secret.is_empty() {
+                    if text.is_empty() {
+                        "[REDACTED]".clone_into(text);
+                    }
+                } else if text.contains(secret.as_str()) {
+                    *text = text.replace(secret.as_str(), "[REDACTED]");
+                }
+            }
+        }
+        serde_json::Value::Object(map) => {
+            if map.keys().any(|key| {
+                secrets
+                    .iter()
+                    .any(|secret| !secret.is_empty() && key.contains(secret.as_str()))
+            }) {
+                *value = serde_json::json!({"__redaction__": "[REDACTED]"});
+                return;
+            }
+            for child in map.values_mut() {
+                redact_secret_values(child, secrets);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for child in values {
+                redact_secret_values(child, secrets);
+            }
+        }
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {}
+    }
+}
+
 /// Parse a placeholder string and return the secret name if it matches.
 ///
 /// Supported forms:
@@ -186,10 +308,36 @@ fn parse_placeholder(s: &str) -> Option<&str> {
 /// sensitive.
 pub fn redact_in_json(value: &mut serde_json::Value) {
     match value {
-        serde_json::Value::String(s) if looks_like_secret(s) => {
-            "[REDACTED]".clone_into(s);
+        serde_json::Value::String(s) => {
+            if let Some(name) = parse_placeholder(s) {
+                if koina::redact::redact_sensitive(name) == name {
+                    return;
+                }
+                "[REDACTED]".clone_into(s);
+                return;
+            }
+            // Catch definite credential syntax even inside ordinary prose.
+            // The length-only fallback below intentionally remains more
+            // conservative for durable copies.
+            *s = koina::redact::redact_sensitive(s);
+            if looks_like_secret(s) {
+                "[REDACTED]".clone_into(s);
+            }
         }
         serde_json::Value::Object(map) => {
+            // SECURITY(#5015): object keys are data too. A model-controlled
+            // map can put a credential in a dynamic key, where walking only
+            // values would miss it and later schema/debug dumps would retain
+            // it. Collapse the object if any key is secret-shaped: rewriting
+            // keys individually can collide and silently discard entries.
+            if map.keys().any(|key| {
+                parse_placeholder(key).is_some()
+                    || looks_like_secret(key)
+                    || koina::redact::redact_sensitive(key) != *key
+            }) {
+                *value = serde_json::json!({"__redaction__": "[REDACTED]"});
+                return;
+            }
             for v in map.values_mut() {
                 redact_in_json(v);
             }
@@ -356,9 +504,31 @@ mod tests {
 
     #[test]
     fn redact_preserves_placeholders() {
-        let mut value = serde_json::json!({"auth": "{{secret:aws}}"});
+        let mut value = serde_json::json!({
+            "brace": "{{secret:aws}}",
+            "brace_long": "{{secret:abcdefghijklmnopqrstuvwxyz0123456789abcdef}}",
+            "dollar": "$SECRET(github)",
+        });
         redact_in_json(&mut value);
-        assert_eq!(value["auth"], "{{secret:aws}}");
+        assert_eq!(value["brace"], "{{secret:aws}}");
+        assert_eq!(
+            value["brace_long"],
+            "{{secret:abcdefghijklmnopqrstuvwxyz0123456789abcdef}}"
+        );
+        assert_eq!(value["dollar"], "$SECRET(github)");
+    }
+
+    #[test]
+    fn redact_rejects_credential_bearing_placeholder_names() {
+        let mut value = serde_json::json!({
+            "brace": "{{secret:password=hunter2}}",
+            "dollar": "$SECRET(Bearer synthetic.dynamic.token)",
+        });
+
+        redact_in_json(&mut value);
+
+        assert_eq!(value["brace"], "[REDACTED]");
+        assert_eq!(value["dollar"], "[REDACTED]");
     }
 
     #[test]
@@ -376,6 +546,119 @@ mod tests {
             value["text"],
             "this is a long sentence with spaces in it ok"
         );
+    }
+
+    #[test]
+    fn redact_strong_credential_patterns_inside_prose() {
+        let api_key = format!("{}{}", "sk-ant-api03-", "synthetic-redaction-key");
+        let bearer = "Bearer synthetic.redaction.token";
+        let jwt = format!(
+            "{}.{}.{}",
+            "eyJhbGciOiJIUzI1NiJ9", "c3ludGhldGlj", "c2lnbmF0dXJl"
+        );
+        let mut value = serde_json::json!({
+            "text": format!("key={api_key}; auth={bearer}; jwt={jwt}"),
+        });
+
+        redact_in_json(&mut value);
+
+        let redacted = value["text"].as_str().unwrap();
+        assert!(!redacted.contains(&api_key));
+        assert!(!redacted.contains(bearer));
+        assert!(!redacted.contains(&jwt));
+        assert!(redacted.contains("sk-ant-***"));
+        assert!(redacted.contains("Bearer ***"));
+        assert!(redacted.contains("[JWT REDACTED]"));
+    }
+
+    #[test]
+    fn redact_applies_long_token_fallback_after_strong_pattern_sanitization() {
+        let opaque = "x".repeat(40);
+        let recognized = format!("{}{}", "sk-ant-api03-", "synthetic-key");
+        let mut value = serde_json::json!({"token": format!("{recognized}:{opaque}")});
+
+        redact_in_json(&mut value);
+
+        assert_eq!(value["token"], "[REDACTED]");
+        assert!(!value.to_string().contains(&opaque));
+    }
+
+    #[test]
+    fn redact_collapses_secret_shaped_dynamic_object_keys() {
+        let secret_key = "dynamic-token-abcdefghijklmnopqrstuvwxyz0123456789";
+        let mut value = serde_json::json!({(secret_key): "ordinary value", "safe": "visible"});
+
+        redact_in_json(&mut value);
+
+        assert_eq!(value, serde_json::json!({"__redaction__": "[REDACTED]"}));
+        assert!(!value.to_string().contains(secret_key));
+    }
+
+    #[test]
+    fn redact_collapses_short_and_whitespace_bearing_credential_keys() {
+        for secret_key in [
+            "password=hunter2",
+            "Authorization: Bearer synthetic.dynamic.token",
+        ] {
+            let mut value = serde_json::json!({(secret_key): "ordinary value"});
+
+            redact_in_json(&mut value);
+
+            assert_eq!(value, serde_json::json!({"__redaction__": "[REDACTED]"}));
+            assert!(!value.to_string().contains(secret_key));
+        }
+    }
+
+    #[test]
+    fn redact_collapses_placeholder_shaped_dynamic_object_keys() {
+        for placeholder_key in [
+            "{{secret:abcdefghijklmnopqrstuvwxyz0123456789abcdef}}",
+            "$SECRET(abcdefghijklmnopqrstuvwxyz0123456789abcdef)",
+        ] {
+            let mut value = serde_json::json!({(placeholder_key): "ordinary value"});
+
+            redact_in_json(&mut value);
+
+            assert_eq!(value, serde_json::json!({"__redaction__": "[REDACTED]"}));
+            assert!(!value.to_string().contains(placeholder_key));
+        }
+    }
+
+    #[test]
+    fn redact_resolved_secret_paths_hides_short_values_without_touching_file_refs() {
+        let template = serde_json::json!({
+            "auth": "{{secret:token}}",
+            "nested": ["$SECRET(pin)", "{{file:payload.txt}}"],
+        });
+        let mut resolved = serde_json::json!({
+            "auth": "short",
+            "nested": ["1234", "expanded approval prose"],
+        });
+
+        redact_resolved_secrets_in_json(&template, &mut resolved);
+
+        assert_eq!(resolved["auth"], "[REDACTED]");
+        assert_eq!(resolved["nested"][0], "[REDACTED]");
+        assert_eq!(resolved["nested"][1], "expanded approval prose");
+    }
+
+    #[test]
+    fn redact_resolved_secret_taint_survives_tool_owned_restructuring() {
+        let template = serde_json::json!({"password": "{{secret:token}}"});
+        let substituted = serde_json::json!({"password": "1234"});
+        let mut prepared = serde_json::json!({
+            "authorization": "Bearer 1234",
+            "nested": {"1234-dynamic": "value"},
+        });
+
+        redact_resolved_secrets_in_prepared_json(&template, &substituted, &mut prepared);
+
+        assert_eq!(prepared["authorization"], "Bearer [REDACTED]");
+        assert_eq!(
+            prepared["nested"],
+            serde_json::json!({"__redaction__": "[REDACTED]"})
+        );
+        assert!(!prepared.to_string().contains("1234"));
     }
 
     #[test]

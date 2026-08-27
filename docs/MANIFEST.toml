@@ -164,12 +164,6 @@ evergreen = true
 description = "Authoritative reference for `aletheia ingest`: supported formats, chunking, JSON fact schema."
 
 [[doc]]
-path = "docs/LESSONS-LEARNED.md"
-type = "authored"
-evergreen = true
-description = "Cross-dispatch pattern extraction: institutional memory between agent observations and durable standards."
-
-[[doc]]
 path = "docs/lexicon.md"
 type = "authored"
 evergreen = true

@@ -781,23 +781,151 @@ impl Default for RollbackSupport {
 
 /// Input/output redaction policy for trace and audit surfaces.
 ///
-/// ARCHITECTURE(#4543): declares INTENT for a tool's arguments/results.
-/// `None` (the default) means no per-tool override -- the call still
-/// passes through the existing content-heuristic redaction
-/// (`hermeneus::secret::redact_in_json`) applied at the dispatch layer to
-/// every tool call, regardless of this field. `Full`/`Fields` are for a
-/// tool whose normal arguments legitimately carry sensitive values the
-/// content heuristic cannot reliably distinguish from ordinary text.
+/// ARCHITECTURE(#4543, #6808): enforced at the dispatch layer
+/// (`nous::execute::dispatch`). Durable/replay `ToolStart`, approval replay,
+/// `ToolResult`, persisted `ToolCall`, post-execution hook, and receipt-ledger
+/// surfaces use a redacted placeholder-form copy. A separately typed live
+/// approval event applies the same policy to the prepared input so the connected
+/// operator can authorize what will actually execute; that evidence is neither
+/// serialized nor reconstructed on reconnect. The in-turn LLM-facing result
+/// block is not redacted because the model that emitted the call needs the real
+/// result to continue the turn.
+///
+/// Precedence with the secret vault (#3569), stated once here:
+/// Durable/replay copies receive generic secret redaction before this policy.
+/// The executor-bound copy is prepared separately (vault and file references
+/// expanded, then schema-validated); live approval masks vault-origin values
+/// and dynamic keys, applies this policy, and preserves schema-declared strings
+/// such as canonical paths/URLs that the operator needs to authorize.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RedactionPolicy {
-    /// No per-tool override; relies on the dispatch-layer content heuristic.
+    /// No additional per-tool redaction. The generic secret pass still
+    /// applies before any trace surface receives the payload.
     #[default]
     None,
-    /// Redact the entire argument/result payload in trace surfaces.
+    /// Replace the entire argument payload with one fixed marker object and
+    /// redact the entire result text. No input-derived shape or dynamic key
+    /// survives on a trace surface.
     Full,
-    /// Redact only the named argument fields.
+    /// Redact only the named top-level argument fields. Applies to
+    /// arguments only: results are rendered text, not field-addressable --
+    /// a tool whose results can carry sensitive values must declare
+    /// `Full`.
     Fields(Vec<String>),
+}
+
+/// Marker substituted for redacted values on trace/audit surfaces.
+///
+/// Deliberately identical to the content-heuristic marker in
+/// `hermeneus::secret::redact_in_json` and the skill-evidence sanitizer in
+/// `episteme::instinct` so a reader of any trace surface sees one token
+/// regardless of which layer redacted.
+pub const REDACTED_MARKER: &str = "[REDACTED]";
+
+impl RedactionPolicy {
+    /// Whether this declaration is complete and agrees with a tool's input
+    /// schema.
+    ///
+    /// A `Fields` declaration must name at least one distinct, non-empty
+    /// top-level schema property. Empty or duplicate lists are rejected even
+    /// though applying them would happen to be harmless: accepting malformed
+    /// governance metadata would make the declared policy identity ambiguous.
+    #[must_use]
+    pub fn is_valid_for_schema(&self, schema: &InputSchema) -> bool {
+        match self {
+            Self::None | Self::Full => true,
+            Self::Fields(fields) => {
+                if fields.is_empty() {
+                    return false;
+                }
+                let mut seen = std::collections::HashSet::with_capacity(fields.len());
+                fields.iter().all(|field| {
+                    !field.is_empty()
+                        && schema.properties.contains_key(field)
+                        && seen.insert(field.as_str())
+                })
+            }
+        }
+    }
+
+    /// Apply this policy to a tool call's argument payload, in place.
+    ///
+    /// Returns the declared field names that were absent from the payload
+    /// (always empty for `None`/`Full`). An absent name is normally benign
+    /// -- optional arguments are absent on most calls -- so callers log it
+    /// at debug, not warn. The case a declared name is not even part of the
+    /// tool's input schema (a misspelled declaration) is caught earlier and
+    /// louder: [`Self::unrecognized_fields`] at declaration time.
+    ///
+    /// WHY fail-closed on a non-object payload: a `Fields` policy cannot be
+    /// verified against a payload that has no fields, so the whole payload
+    /// is replaced by a notice naming the declared fields rather than
+    /// passing an unverifiable value through.
+    pub fn apply_to_input(&self, value: &mut serde_json::Value) -> Vec<String> {
+        match self {
+            Self::None => Vec::new(),
+            Self::Full => {
+                *value = full_redaction_value();
+                Vec::new()
+            }
+            Self::Fields(fields) => {
+                if !value.is_object() {
+                    let missed = fields.clone();
+                    *value = full_redaction_value();
+                    return missed;
+                }
+                let mut missed = Vec::new();
+                if let Some(obj) = value.as_object_mut() {
+                    for field in fields {
+                        match obj.get_mut(field) {
+                            Some(v) => {
+                                *v = serde_json::Value::String(REDACTED_MARKER.to_owned());
+                            }
+                            None => missed.push(field.clone()),
+                        }
+                    }
+                }
+                missed
+            }
+        }
+    }
+
+    /// Apply this policy to a tool call's result text, in place.
+    ///
+    /// Only `Full` redacts results; see the `Fields` variant doc.
+    pub fn apply_to_result(&self, result: &mut String) {
+        if matches!(self, Self::Full) {
+            REDACTED_MARKER.clone_into(result);
+        }
+    }
+
+    /// Declared `Fields` names that are not properties of the tool's input
+    /// schema -- i.e. names nothing can ever match, which means the
+    /// declaration and the schema disagree (a misspelled or renamed field).
+    /// Empty for `None`/`Full`.
+    ///
+    /// WHY this is the fail-closed point for declaration typos: a
+    /// misspelled name here means the field the author meant to redact is
+    /// passed through in cleartext on every call. The capability-governance
+    /// gate test fails on any built-in tool with a non-empty return, and
+    /// `ToolRegistry::declare_capability` rejects the declaration, so the typo
+    /// dies at registration rather than leaking silently per call.
+    #[must_use]
+    pub fn unrecognized_fields(&self, schema: &InputSchema) -> Vec<String> {
+        match self {
+            Self::Fields(fields) => fields
+                .iter()
+                .filter(|f| !schema.properties.contains_key(*f))
+                .cloned()
+                .collect(),
+            Self::None | Self::Full => Vec::new(),
+        }
+    }
+}
+
+fn full_redaction_value() -> serde_json::Value {
+    serde_json::json!({"__redaction__": REDACTED_MARKER})
 }
 
 /// Owner/stability/rollback/redaction governance metadata for one tool.
