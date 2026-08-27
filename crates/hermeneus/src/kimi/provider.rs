@@ -191,34 +191,37 @@ impl KimiProvider {
         max_tokens: u32,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<process::KimiOutput> {
-        // WHY: AtomicBool rather than Cell -- the latch is shared between the
-        // operation closure and the retry classifier, and this future must stay
-        // Send. Cell<bool> is not Sync, so &Cell cannot be held across the await.
-        let content_started = std::sync::atomic::AtomicBool::new(false);
-        let mut on_delta = |text: &str| {
-            content_started.store(true, std::sync::atomic::Ordering::Relaxed);
-            on_event(StreamEvent::TextDelta {
-                text: text.to_owned(),
-            });
-        };
-        subprocess_provider::run_with_retry(
-            self.name(),
-            "Kimi subprocess streaming",
-            || process::run_streaming(process_config, system, prompt, max_tokens, &mut on_delta),
-            |err| {
-                if content_started.load(std::sync::atomic::Ordering::Relaxed) {
-                    warn!(
-                        provider = %self.name,
-                        error = %err,
-                        "Kimi subprocess streaming failed after content started; cannot retry"
-                    );
-                    true
-                } else {
-                    false
+        let mut retry =
+            subprocess_provider::RetryLoop::new(self.name(), "Kimi subprocess streaming");
+        while retry.next_attempt().await {
+            // WHY the callback is rebuilt per attempt: it borrows `on_event`
+            // mutably, and a future holding that borrow cannot outlive one call.
+            let mut content_started = false;
+            let mut on_delta = |text: &str| {
+                content_started = true;
+                on_event(StreamEvent::TextDelta {
+                    text: text.to_owned(),
+                });
+            };
+            match process::run_streaming(process_config, system, prompt, max_tokens, &mut on_delta)
+                .await
+            {
+                Ok(output) => return Ok(output),
+                Err(err) => {
+                    if content_started {
+                        warn!(
+                            provider = %self.name,
+                            error = %err,
+                            "Kimi subprocess streaming failed after content started; cannot retry"
+                        );
+                    }
+                    if let Some(err) = retry.record(err, content_started) {
+                        return Err(err);
+                    }
                 }
-            },
-        )
-        .await
+            }
+        }
+        Err(retry.exhausted())
     }
 
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {

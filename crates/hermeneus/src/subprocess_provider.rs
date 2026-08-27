@@ -176,6 +176,82 @@ pub(crate) fn extract_text_content(content: &Content) -> String {
 /// retrying once a content delta has already reached its consumer
 /// (retrying then would duplicate output the caller already emitted); a
 /// non-streaming caller passes `|_| false`.
+/// Drives the shared retry policy for a caller that owns its own attempt loop.
+///
+/// WHY this exists beside `run_with_retry`: a streaming attempt borrows a delta
+/// callback, and a `FnMut() -> Fut` closure cannot return a future that borrows
+/// its own locals -- rustc rejects it with "captured variable cannot escape
+/// `FnMut` closure body". The streaming callers therefore keep their own loop and
+/// share the *policy* instead: the delay schedule, the retryable/exhausted
+/// decision, and the warn line. That was the duplicated part; the loop shape was
+/// only ever incidental to it.
+pub(crate) struct RetryLoop<'a> {
+    provider_name: &'a str,
+    label: &'a str,
+    policy: RetryPolicy,
+    last_error: Option<Error>,
+    attempt: u32,
+    started: bool,
+}
+
+impl<'a> RetryLoop<'a> {
+    pub(crate) fn new(provider_name: &'a str, label: &'a str) -> Self {
+        Self {
+            provider_name,
+            label,
+            policy: RetryPolicy::default(),
+            last_error: None,
+            attempt: 0,
+            started: false,
+        }
+    }
+
+    /// Wait out this attempt's backoff and report whether another attempt is
+    /// permitted. The first call returns immediately; later ones sleep.
+    pub(crate) async fn next_attempt(&mut self) -> bool {
+        if !self.started {
+            self.started = true;
+            return true;
+        }
+        self.attempt += 1;
+        if self.attempt > self.policy.max_retries {
+            return false;
+        }
+        tokio::time::sleep(self.policy.delay(self.attempt, self.last_error.as_ref())).await;
+        true
+    }
+
+    /// Record a failed attempt. Returns `Some(err)` when the caller must stop and
+    /// return it: the caller vetoed a retry, the error is not retryable, or the
+    /// budget is spent.
+    pub(crate) fn record(&mut self, err: Error, abort: bool) -> Option<Error> {
+        if abort || self.attempt >= self.policy.max_retries || !err.is_retryable() {
+            return Some(err);
+        }
+        let label = self.label;
+        warn!(
+            provider = %self.provider_name,
+            attempt = self.attempt,
+            error = %err,
+            "{label} call failed; retrying"
+        );
+        self.last_error = Some(err);
+        None
+    }
+
+    /// The error to return when the loop ends with neither a success nor a
+    /// decisive failure.
+    pub(crate) fn exhausted(self) -> Error {
+        let label = self.label;
+        self.last_error.unwrap_or_else(|| {
+            error::ApiRequestSnafu {
+                message: format!("{label} retry loop exhausted with no recorded error"),
+            }
+            .build()
+        })
+    }
+}
+
 pub(crate) async fn run_with_retry<T, Attempt, Fut>(
     provider_name: &str,
     label: &str,
