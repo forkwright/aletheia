@@ -59,6 +59,7 @@ impl Relation {
     /// version. The schema-coverage test compares this set against a live
     /// store's `::relations` listing so a DDL added without typed metadata
     /// fails the test suite.
+    #[cfg(test)]
     pub(crate) const ALL: &[Self] = &[
         Self::Facts,
         Self::Entities,
