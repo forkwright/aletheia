@@ -184,7 +184,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             rollback: RollbackSupport::Supported,
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

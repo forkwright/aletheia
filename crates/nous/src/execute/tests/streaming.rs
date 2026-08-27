@@ -10,6 +10,22 @@ use hermeneus::provider::LlmProvider;
 use super::*;
 use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
 
+#[test]
+fn incremental_tool_json_is_payload_free_on_outward_streams() {
+    let secret_fragment = r#"{"password":"short secret"}"#;
+    let event = outward_safe_llm_event(&LlmStreamEvent::InputJsonDelta {
+        partial_json: secret_fragment.to_owned(),
+    });
+
+    match event {
+        LlmStreamEvent::InputJsonDelta { partial_json } => {
+            assert_eq!(partial_json, organon::types::REDACTED_MARKER);
+            assert!(!partial_json.contains(secret_fragment));
+        }
+        _ => panic!("input JSON delta must retain its payload-free lifecycle variant"),
+    }
+}
+
 struct StreamingMockProvider {
     inner: MockProvider,
 }

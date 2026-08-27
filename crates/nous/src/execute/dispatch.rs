@@ -9,19 +9,24 @@ use tracing::{debug, info, warn};
 
 use tokio::sync::mpsc;
 
-use hermeneus::secret::substitute_in_json;
+use hermeneus::secret::{
+    redact_in_json, redact_resolved_secrets_in_prepared_json, substitute_in_json,
+};
 use hermeneus::types::{ContentBlock, ToolDefinition, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
-use organon::registry::ToolRegistry;
+use organon::registry::{PreparedToolInput, ToolRegistry};
 use organon::surface::{
     DenialReason, EffectiveToolSurface, SurfaceAvailability, SurfaceEntryKind, SurfaceLookup,
 };
-use organon::types::{ApprovalRequirement, ToolContext, ToolInput};
+use organon::types::{
+    ApprovalRequirement, InputSchema, PropertyDef, PropertyType, RedactionPolicy, ToolContext,
+    ToolInput, ToolResult,
+};
 
 use crate::approval::{ApprovalChoice, ApprovalGate};
 use crate::error;
 use crate::pipeline::{InteractionSignal, LoopDetector, LoopVerdict, ToolCall};
-use crate::stream::TurnStreamEvent;
+use crate::stream::{LiveApprovalEvidence, TurnStreamEvent};
 
 /// Result of dispatching tool calls, including optional loop warning.
 // kanon:ignore TOPOLOGY/shallow-struct — internal dispatch result carrier used only within the execute module
@@ -333,9 +338,182 @@ fn approval_reason(tool_name: &str, approval: ApprovalRequirement) -> String {
     format!("Tool '{tool_name}' requires {approval} approval because of its reversibility metadata")
 }
 
+/// Resolve the declared redaction policy for a tool by its (possibly
+/// unvalidated) name. Unknown or undeclared tools read as
+/// `RedactionPolicy::None` -- the honest "no per-tool policy" default, never
+/// a fabricated redaction.
+fn redaction_policy_for(tools: &ToolRegistry, tool_name: &str) -> RedactionPolicy {
+    ToolName::new(tool_name)
+        .ok()
+        .map(|name| tools.capability_metadata(&name).redaction)
+        .unwrap_or_default()
+}
+
+/// Apply generic and declared redaction policies (#6808) to an input copy for
+/// one outward-facing surface.
+///
+/// Callers choose the source deliberately: durable/replay surfaces pass the
+/// placeholder-form model input, while the connected live approver passes the
+/// prepared input it is actually authorizing. The two are never reconstructed
+/// from one another.
+fn redacted_surface_input(
+    tools: &ToolRegistry,
+    tool_name: &str,
+    input: &serde_json::Value,
+) -> serde_json::Value {
+    let policy = redaction_policy_for(tools, tool_name);
+    let mut redacted = input.clone();
+    // SECURITY(#6808): declared policy augments the generic content
+    // heuristic; it never replaces it. This also handles secret-shaped
+    // dynamic object keys before a trace copy reaches any consumer.
+    redact_in_json(&mut redacted);
+    let missed = policy.apply_to_input(&mut redacted);
+    if !missed.is_empty() {
+        // WHY debug, not warn: an absent declared field is normally a
+        // legitimately-omitted optional argument. The loud failure for a
+        // misspelled declaration lives at declaration time --
+        // `organon::builtins::capability_governance_tests` fails CI on any
+        // `Fields` name absent from the tool's input schema.
+        debug!(
+            tool = tool_name,
+            missed_count = missed.len(),
+            "declared redaction field(s) absent from call payload"
+        );
+    }
+    redacted
+}
+
+/// Build the connected approver's minimum useful view of executor-bound input.
+///
+/// Generic durable redaction deliberately treats every long whitespace-free
+/// string as credential-shaped. That is safe for replay, but it would erase
+/// ordinary approval identities such as canonical paths, URLs, and opaque IDs.
+/// Temporarily mask schema-declared string positions from that heuristic, then
+/// restore only positions that survived dynamic-key redaction and were not
+/// replaced by the declared `Full`/`Fields` policy. Restoration runs the
+/// strong-pattern sanitizer, so API keys, JWTs, bearer tokens, and password
+/// assignments remain hidden without applying the lossy length-only rule.
+/// Vault-origin values have already been replaced before this function, so
+/// restoring them restores only the redaction marker. Unknown/dynamic keys and
+/// their values still pass through the generic fail-closed walk.
+fn redacted_live_approval_input(
+    tools: &ToolRegistry,
+    tool_name: &ToolName,
+    input: &serde_json::Value,
+) -> serde_json::Value {
+    let Some(def) = tools.get_def(tool_name) else {
+        return redacted_surface_input(tools, tool_name.as_str(), input);
+    };
+    let original = input.clone();
+    let mut masked = input.clone();
+    mask_declared_string_positions(&mut masked, &def.input_schema);
+    let mut redacted = redacted_surface_input(tools, tool_name.as_str(), &masked);
+    restore_declared_string_positions(&mut redacted, &original, &def.input_schema);
+    redacted
+}
+
+fn mask_declared_string_positions(value: &mut serde_json::Value, schema: &InputSchema) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    for (field, property) in &schema.properties {
+        if let Some(value) = object.get_mut(field) {
+            mask_declared_property_strings(value, property);
+        }
+    }
+}
+
+fn mask_declared_property_strings(value: &mut serde_json::Value, property: &PropertyDef) {
+    match property.property_type {
+        PropertyType::String => *value = serde_json::Value::Null,
+        PropertyType::Array => {
+            if let (Some(values), Some(item)) = (value.as_array_mut(), property.items.as_deref()) {
+                for value in values {
+                    mask_declared_property_strings(value, item);
+                }
+            }
+        }
+        PropertyType::Object => {
+            if let (Some(object), Some(properties)) =
+                (value.as_object_mut(), property.properties.as_ref())
+            {
+                for (field, property) in properties {
+                    if let Some(value) = object.get_mut(field) {
+                        mask_declared_property_strings(value, property);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn restore_declared_string_positions(
+    value: &mut serde_json::Value,
+    original: &serde_json::Value,
+    schema: &InputSchema,
+) {
+    let (Some(object), Some(original)) = (value.as_object_mut(), original.as_object()) else {
+        return;
+    };
+    for (field, property) in &schema.properties {
+        if let (Some(value), Some(original)) = (object.get_mut(field), original.get(field)) {
+            restore_declared_property_strings(value, original, property);
+        }
+    }
+}
+
+fn restore_declared_property_strings(
+    value: &mut serde_json::Value,
+    original: &serde_json::Value,
+    property: &PropertyDef,
+) {
+    match property.property_type {
+        PropertyType::String if value.is_null() && original.is_string() => {
+            if let Some(original) = original.as_str() {
+                *value = serde_json::Value::String(koina::redact::redact_sensitive(original));
+            }
+        }
+        PropertyType::Array => {
+            if let (Some(values), Some(originals), Some(item)) = (
+                value.as_array_mut(),
+                original.as_array(),
+                property.items.as_deref(),
+            ) {
+                for (value, original) in values.iter_mut().zip(originals) {
+                    restore_declared_property_strings(value, original, item);
+                }
+            }
+        }
+        PropertyType::Object => {
+            if let (Some(object), Some(original), Some(properties)) = (
+                value.as_object_mut(),
+                original.as_object(),
+                property.properties.as_ref(),
+            ) {
+                for (field, property) in properties {
+                    if let (Some(value), Some(original)) =
+                        (object.get_mut(field), original.get(field))
+                    {
+                        restore_declared_property_strings(value, original, property);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redacted_trace_result(policy: &RedactionPolicy, result: &str) -> String {
+    let mut redacted = koina::redact::redact_sensitive(result);
+    policy.apply_to_result(&mut redacted);
+    redacted
+}
+
 const APPROVAL_OUTCOME_AUTO_APPROVED: &str = "auto_approved";
 const APPROVAL_OUTCOME_ADVISORY_AUTO: &str = "advisory_auto";
 const APPROVAL_OUTCOME_NO_GATE_DENIED: &str = "no_gate_denied";
+const APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED: &str = "approval_event_unavailable_denied";
 const TOOL_OUTCOME_DENIED_BY_ROLE: &str = "denied_by_role";
 const TOOL_OUTCOME_DENIED_BY_GROUP: &str = "denied_by_group";
 pub(super) const TOOL_OUTCOME_DENIED_BY_HOOK: &str = "denied_by_hook";
@@ -366,6 +544,7 @@ pub(crate) fn is_denial_outcome(outcome: &str) -> bool {
             | TOOL_OUTCOME_FAILED
             | TOOL_OUTCOME_UNDISPATCHED
             | APPROVAL_OUTCOME_NO_GATE_DENIED
+            | APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED
     )
 }
 
@@ -382,6 +561,7 @@ fn record_undispatched_calls(
     tool_results: &mut Vec<ContentBlock>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
+    tools: &ToolRegistry,
     remaining: &[ToolDispatchItem],
 ) {
     for item in remaining {
@@ -397,7 +577,8 @@ fn record_undispatched_calls(
             tool_results,
             stream_tx,
             tool_ctx,
-            DeniedToolCall {
+            tools,
+            &DeniedToolCall {
                 id,
                 name,
                 input,
@@ -466,22 +647,30 @@ fn emit_approval_required(
     tool_ctx: &ToolContext,
     tool_id: &str,
     tool_name: &str,
-    tool_input: &serde_json::Value,
+    live_input: LiveApprovalEvidence,
+    replay_input: &serde_json::Value,
     approval: ApprovalRequirement,
-) {
+) -> bool {
     let Some(stream_tx) = stream_tx else {
-        return;
+        return true;
     };
-    if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalRequired {
+    if let Err(error) = stream_tx.try_send(TurnStreamEvent::ToolApprovalRequired {
         turn_id: tool_ctx.turn_number.to_string(),
         tool_id: tool_id.to_owned(),
         tool_name: tool_name.to_owned(),
-        input: tool_input.clone(),
+        input: live_input,
+        replay_input: replay_input.clone(),
         risk: approval_risk(approval).to_owned(),
         reason: approval_reason(tool_name, approval),
     }) {
-        record_stream_send_error(tool_ctx, tool_name, "approval_required", &e);
+        // SECURITY(#6808): do not wait for capacity here. A saturated but
+        // connected transport must not pin the actor before the approval
+        // gate's own timeout begins. If the live evidence cannot be
+        // delivered immediately, execution defaults to deny.
+        record_stream_send_error(tool_ctx, tool_name, "approval_required", &error);
+        return false;
     }
+    true
 }
 
 fn emit_approval_resolved(
@@ -519,15 +708,23 @@ fn record_denied_call(
     tool_results: &mut Vec<ContentBlock>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
-    denied: DeniedToolCall<'_>,
+    tools: &ToolRegistry,
+    denied: &DeniedToolCall<'_>,
 ) {
     unexecuted.push(denied.id.to_owned());
     organon::metrics::record_policy_denial(denied.name, denied.approval.unwrap_or("unknown"));
+    // WHY the denied input is policy-redacted too: a denial record lands in
+    // the same persisted trace as an executed call, and a denied call's
+    // arguments can carry the same sensitive values (e.g. a header the
+    // model inlined on a call the role policy then rejected).
+    let trace_input = redacted_surface_input(tools, denied.name, denied.input);
+    let redaction = redaction_policy_for(tools, denied.name);
+    let recorded_message = redacted_trace_result(&redaction, &denied.message);
     all_tool_calls.push(ToolCall {
         id: denied.id.to_owned(),
         name: denied.name.to_owned(),
-        input: denied.input.clone(),
-        result: Some(denied.message.clone()),
+        input: trace_input,
+        result: Some(recorded_message.clone()),
         is_error: true,
         duration_ms: 0,
         approval: denied.approval.map(str::to_owned),
@@ -553,7 +750,7 @@ fn record_denied_call(
         && let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
             tool_id: denied.id.to_owned(),
             tool_name: denied.name.to_owned(),
-            result: denied.message,
+            result: recorded_message,
             is_error: true,
             duration_ms: 0,
             outcome: outcome_label,
@@ -893,6 +1090,44 @@ struct SingleToolOutcome {
     is_error: bool,
 }
 
+fn normalize_tool_result(
+    result: organon::error::Result<ToolResult>,
+    duration_ms: u64,
+) -> (ToolResultContent, bool, Option<String>) {
+    match result {
+        Ok(mut result) => {
+            if let Some(ref mut diagnostics) = result.diagnostics {
+                diagnostics.duration_ms = duration_ms;
+                let diagnostic_text = diagnostics.to_llm_text();
+                result.content = inject_diagnostics(result.content, &diagnostic_text);
+            }
+            // WHY the accessor methods, not a direct match: `ToolOutcome` is
+            // `#[non_exhaustive]` — matching its variants directly here would
+            // need a wildcard arm that silently swallows any future variant
+            // organon adds. `is_partial()`/`partial_reasons()`/
+            // `failure_reason()` are the crate's own forward-compatible
+            // surface for exactly this.
+            let outcome_detail = if result.outcome.is_partial() {
+                Some(result.outcome.partial_reasons().join("; "))
+            } else {
+                let reason = result.outcome.failure_reason();
+                (!reason.is_empty()).then(|| reason.to_owned())
+            };
+            (result.content, result.is_error, outcome_detail)
+        }
+        // WHY None, not a synthesized detail: this branch is a dispatch-level
+        // failure (the executor itself errored, e.g. tool not found in the
+        // registry) rather than an organon `ToolOutcome::Failure` — there is
+        // no `FailureInfo::reason` to carry, and `msg` (via `content`) is
+        // already the fuller human-readable message.
+        Err(error) => (
+            ToolResultContent::text(format!("Tool error: {error}")),
+            true,
+            None,
+        ),
+    }
+}
+
 /// Execute one prepared tool call: invoke the executor, truncate + log + build
 /// the (`ToolCall`, `ContentBlock::ToolResult`) pair. Loop-detection
 /// bookkeeping is handled by the caller.
@@ -900,10 +1135,14 @@ struct SingleToolOutcome {
     clippy::too_many_arguments,
     reason = "dispatch needs tool id, name, input, registry, context, limits, receipt infra, and approval outcome"
 )]
+#[expect(
+    clippy::expect_used,
+    reason = "ToolResultContent contains only JSON-native strings and arrays; serialization cannot fail"
+)]
 async fn dispatch_single_tool(
     tool_id: &str,
     tool_name: &str,
-    execution_input: &ToolInput,
+    execution_input: &PreparedToolInput,
     persisted_input: &serde_json::Value,
     tools: &ToolRegistry,
     tool_ctx: &ToolContext,
@@ -921,6 +1160,7 @@ async fn dispatch_single_tool(
     // sites and resolves a throwaway signer when `None`.
     receipt_signer: &organon::receipts::ReceiptSigner,
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
+    approval_requirement: ApprovalRequirement,
     // WHY plain &str not Option (#4835): the one real caller
     // (`dispatch_tool_items`) always has an already-resolved approval
     // outcome by this point in the loop -- every branch of its approval
@@ -928,7 +1168,7 @@ async fn dispatch_single_tool(
     approval_outcome: &str,
 ) -> error::Result<SingleToolOutcome> {
     let start = std::time::Instant::now();
-    let result = tools.execute(execution_input, tool_ctx).await;
+    let result = tools.execute_prepared(execution_input, tool_ctx).await;
 
     #[expect(
         clippy::cast_possible_truncation,
@@ -937,38 +1177,7 @@ async fn dispatch_single_tool(
     )]
     let duration_ms = start.elapsed().as_millis() as u64; // kanon:ignore RUST/as-cast
 
-    let (content, is_error, outcome_detail) = match result {
-        Ok(mut r) => {
-            if let Some(ref mut d) = r.diagnostics {
-                d.duration_ms = duration_ms;
-                let diag_text = d.to_llm_text();
-                r.content = inject_diagnostics(r.content, &diag_text);
-            }
-            // WHY the accessor methods, not a direct match: `ToolOutcome` is
-            // `#[non_exhaustive]` — matching its variants directly here would
-            // need a wildcard arm that silently swallows any future variant
-            // organon adds. `is_partial()`/`partial_reasons()`/
-            // `failure_reason()` are the crate's own forward-compatible
-            // surface for exactly this.
-            let outcome_detail = if r.outcome.is_partial() {
-                Some(r.outcome.partial_reasons().join("; "))
-            } else {
-                let reason = r.outcome.failure_reason();
-                (!reason.is_empty()).then(|| reason.to_owned())
-            };
-            (r.content, r.is_error, outcome_detail)
-        }
-        // WHY None, not a synthesized detail: this branch is a dispatch-level
-        // failure (the executor itself errored, e.g. tool not found in the
-        // registry) rather than an organon `ToolOutcome::Failure` — there is
-        // no `FailureInfo::reason` to carry, and `msg` (via `content`) is
-        // already the fuller human-readable message.
-        Err(e) => (
-            ToolResultContent::text(format!("Tool error: {e}")),
-            true,
-            None,
-        ),
-    };
+    let (content, is_error, outcome_detail) = normalize_tool_result(result, duration_ms);
 
     let content = truncate_tool_result(content, max_tool_result_bytes);
 
@@ -990,24 +1199,43 @@ async fn dispatch_single_tool(
     // WHY unconditional (#4835): receipt issuance is a runtime invariant
     // on this path now that `receipt_signer` is non-optional -- see this
     // function's parameter docs.
+    //
+    // WHY(#6808): the ledger retains only redacted display copies. Receipt V2
+    // separately commits (under the ephemeral session key) to the exact
+    // prepared executor-bound JSON and bounded result content, plus the tool,
+    // policy, and approval identities that admitted execution. This does not
+    // claim inode-level physical-effect identity for path-based OS calls.
+    let redaction = tools
+        .capability_metadata(&execution_input.as_tool_input().name)
+        .redaction;
     let (content, receipt) = {
         organon::metrics::record_receipt(tool_name, "emitted");
         let ts = jiff::Timestamp::now();
-        let result_text = content.text_summary();
-        let receipt_str =
-            receipt_signer.sign(tool_name, &persisted_input.to_string(), &result_text, ts);
+        let actual_result = content.text_summary();
+        let result_text = redacted_trace_result(&redaction, &actual_result);
+        let output_value = serde_json::to_value(&content)
+            .expect("ToolResultContent is composed exclusively of JSON-native values");
+        let attestation = receipt_signer.attest_v2(
+            tool_id,
+            tool_name,
+            &execution_input.as_tool_input().arguments,
+            &output_value,
+            approval_requirement.to_string(),
+            approval_outcome,
+            redaction.clone(),
+            ts,
+        );
+        let receipt_str = receipt_signer.sign_v2(&attestation);
         if let Some(ledger) = receipt_ledger {
             let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
                 tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
                 poisoned.into_inner()
             });
-            guard.record(
+            guard.record_v2(
                 receipt_str.clone(),
-                tool_name.to_owned(),
+                attestation,
                 persisted_input.to_string(),
                 result_text.clone(),
-                ts,
-                Some(approval_outcome.to_owned()),
             );
         }
         let tagged = match content {
@@ -1026,11 +1254,18 @@ async fn dispatch_single_tool(
         (tagged, Some(receipt_str))
     };
 
+    // WHY(#6808): the persisted record's result text follows the declared
+    // policy even though the LLM-facing `result_block` above does not --
+    // the model mid-turn needs the real output; the trace does not.
+    let recorded_result = redacted_trace_result(&redaction, &content.text_summary());
+    let outcome_detail = outcome_detail
+        .as_deref()
+        .map(|detail| redacted_trace_result(&redaction, detail));
     let call = ToolCall {
         id: tool_id.to_owned(),
         name: tool_name.to_owned(),
         input: persisted_input.clone(),
-        result: Some(content.text_summary()),
+        result: Some(recorded_result),
         is_error,
         duration_ms,
         approval: None,
@@ -1152,7 +1387,8 @@ pub(super) async fn dispatch_tool_items(
                     &mut tool_results,
                     stream_tx,
                     tool_ctx,
-                    DeniedToolCall {
+                    tools,
+                    &DeniedToolCall {
                         id,
                         name,
                         input,
@@ -1180,7 +1416,8 @@ pub(super) async fn dispatch_tool_items(
                 &mut tool_results,
                 stream_tx,
                 tool_ctx,
-                DeniedToolCall {
+                tools,
+                &DeniedToolCall {
                     id: tool_id,
                     name: tool_name,
                     input: tool_input,
@@ -1204,72 +1441,85 @@ pub(super) async fn dispatch_tool_items(
         // for persistence in `all_tool_calls`; only the executor sees resolved
         // values.
         let mut substituted_args = tool_input.clone();
-        if let Some(services) = &tool_ctx.services
-            && let Err(e) = substitute_in_json(&mut substituted_args, &services.secret_vault)
-        {
-            let msg = format!("Tool error: {e}");
-            crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
-            let outcome = SingleToolOutcome {
-                call: ToolCall {
-                    id: tool_id.clone(),
-                    name: tool_name.clone(),
-                    input: tool_input.clone(),
-                    result: Some(msg.clone()),
-                    is_error: true,
-                    duration_ms: 0,
-                    approval: None,
-                    receipt: None,
-                    outcome_detail: None,
-                },
-                result_block: ContentBlock::ToolResult {
-                    tool_use_id: tool_id.clone(),
-                    content: ToolResultContent::text(msg),
-                    is_error: Some(true),
-                },
-                is_error: true,
-            };
-            let is_error = record_tool_outcome(
-                all_tool_calls,
-                &mut tool_results,
-                stream_tx,
-                tool_ctx,
-                outcome,
-            );
-            let input_hash = simple_hash(tool_input);
-            match loop_detector.record(tool_name, &input_hash, is_error) {
-                LoopVerdict::Ok => {}
-                LoopVerdict::Warn { message, .. } => {
-                    record_undispatched_calls(
-                        all_tool_calls,
-                        &mut unexecuted,
-                        &mut tool_results,
-                        stream_tx,
-                        tool_ctx,
-                        tool_items.get(index + 1..).unwrap_or(&[]),
-                    );
-                    return Ok(DispatchResult {
-                        blocks: tool_results,
-                        loop_warning: Some(message),
-                        unexecuted,
-                    });
-                }
-                LoopVerdict::Halt { pattern, .. } => {
-                    return Err(error::LoopDetectedSnafu {
-                        iterations,
-                        pattern,
-                    }
-                    .build());
-                }
-            }
-            continue;
-        }
-
-        let approval_input = ToolInput {
+        let substitution_failed = tool_ctx.services.as_ref().is_some_and(|services| {
+            substitute_in_json(&mut substituted_args, &services.secret_vault).is_err()
+        });
+        let unprepared_input = ToolInput {
             name: tool_name_id,
             tool_use_id: tool_id.clone(),
             arguments: substituted_args,
         };
-        let approval = match tools.approval_requirement_for_input(&approval_input) {
+        let prepared_input = if substitution_failed {
+            Err("Tool error: secret substitution failed")
+        } else {
+            tools
+                .prepare_input(&unprepared_input, tool_ctx)
+                .map_err(|_error| "Tool error: input preparation failed")
+        };
+        let prepared_input = match prepared_input {
+            Ok(prepared) => prepared,
+            Err(message) => {
+                let msg = message.to_owned();
+                let recorded_message =
+                    redacted_trace_result(&redaction_policy_for(tools, tool_name), &msg);
+                crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
+                let outcome = SingleToolOutcome {
+                    call: ToolCall {
+                        id: tool_id.clone(),
+                        name: tool_name.clone(),
+                        input: redacted_surface_input(tools, tool_name, tool_input),
+                        result: Some(recorded_message),
+                        is_error: true,
+                        duration_ms: 0,
+                        approval: None,
+                        receipt: None,
+                        outcome_detail: None,
+                    },
+                    result_block: ContentBlock::ToolResult {
+                        tool_use_id: tool_id.clone(),
+                        content: ToolResultContent::text(msg),
+                        is_error: Some(true),
+                    },
+                    is_error: true,
+                };
+                let is_error = record_tool_outcome(
+                    all_tool_calls,
+                    &mut tool_results,
+                    stream_tx,
+                    tool_ctx,
+                    outcome,
+                );
+                let input_hash = simple_hash(tool_input);
+                match loop_detector.record(tool_name, &input_hash, is_error) {
+                    LoopVerdict::Ok => {}
+                    LoopVerdict::Warn { message, .. } => {
+                        record_undispatched_calls(
+                            all_tool_calls,
+                            &mut unexecuted,
+                            &mut tool_results,
+                            stream_tx,
+                            tool_ctx,
+                            tools,
+                            tool_items.get(index + 1..).unwrap_or(&[]),
+                        );
+                        return Ok(DispatchResult {
+                            blocks: tool_results,
+                            loop_warning: Some(message),
+                            unexecuted,
+                        });
+                    }
+                    LoopVerdict::Halt { pattern, .. } => {
+                        return Err(error::LoopDetectedSnafu {
+                            iterations,
+                            pattern,
+                        }
+                        .build());
+                    }
+                }
+                continue;
+            }
+        };
+        let approval = match tools.approval_requirement_for_input(prepared_input.as_tool_input()) {
             Ok(approval) => approval,
             Err(e) => {
                 record_denied_call(
@@ -1278,7 +1528,8 @@ pub(super) async fn dispatch_tool_items(
                     &mut tool_results,
                     stream_tx,
                     tool_ctx,
-                    DeniedToolCall {
+                    tools,
+                    &DeniedToolCall {
                         id: tool_id,
                         name: tool_name,
                         input: tool_input,
@@ -1289,6 +1540,15 @@ pub(super) async fn dispatch_tool_items(
                 continue;
             }
         };
+
+        // WHY(#6808): compute the durable/replay copy once from the
+        // placeholder-form model input. It feeds `ToolStart`, persisted
+        // `ToolCall`, hooks, replay approval, and the receipt ledger's display
+        // copy. The executor and live approver use separately redacted views
+        // of the prepared input; Receipt V2 binds that exact input with a
+        // session-keyed commitment. The loop detector still hashes the
+        // model-emitted original because redaction is not its concern.
+        let trace_input = redacted_surface_input(tools, tool_name, tool_input);
 
         // WHY(#3958, ADR-005): one decision boundary protects streaming,
         // fallback, and batch dispatch. Unknown future requirements block.
@@ -1328,10 +1588,44 @@ pub(super) async fn dispatch_tool_items(
                 APPROVAL_OUTCOME_ADVISORY_AUTO
             }
             ApprovalRequirement::Required | ApprovalRequirement::Mandatory | _ => {
-                emit_approval_required(
-                    stream_tx, tool_ctx, tool_id, tool_name, tool_input, approval,
+                // The connected approver sees the minimum policy-permitted
+                // evidence from the exact prepared input it is authorizing.
+                // Replay/history receives the independently produced trace
+                // copy, which never contains vault/file-expanded values.
+                let mut live_input = prepared_input.as_tool_input().arguments.clone();
+                // Vault values are known secrets regardless of length or
+                // shape. Preserve that provenance from the placeholder-form
+                // input before the generic/declared policy pass.
+                redact_resolved_secrets_in_prepared_json(
+                    tool_input,
+                    &unprepared_input.arguments,
+                    &mut live_input,
                 );
-                let (choice, outcome) = if let Some(gate) = approval_gate {
+                let live_approval_input = redacted_live_approval_input(
+                    tools,
+                    &prepared_input.as_tool_input().name,
+                    &live_input,
+                );
+                let approval_event_available = emit_approval_required(
+                    stream_tx,
+                    tool_ctx,
+                    tool_id,
+                    tool_name,
+                    LiveApprovalEvidence::new(live_approval_input),
+                    &trace_input,
+                    approval,
+                );
+                let (choice, outcome) = if !approval_event_available {
+                    warn!(
+                        tool = tool_name.as_str(),
+                        tool_id = tool_id.as_str(),
+                        "approval-required tool call could not reach approver - default-deny"
+                    );
+                    (
+                        ApprovalChoice::Denied,
+                        APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED,
+                    )
+                } else if let Some(gate) = approval_gate {
                     let choice = gate.await_decision(tool_id).await;
                     (choice, choice.as_wire_str())
                 } else {
@@ -1357,6 +1651,11 @@ pub(super) async fn dispatch_tool_items(
                             "Tool '{tool_name}' execution denied by approval policy: \
                              {approval} approval requires an approval gate."
                         )
+                    } else if outcome == APPROVAL_OUTCOME_EVENT_UNAVAILABLE_DENIED {
+                        format!(
+                            "Tool '{tool_name}' execution denied by approval policy: \
+                             the live approval event was unavailable."
+                        )
                     } else {
                         format!("Tool '{tool_name}' execution denied by user.")
                     };
@@ -1366,7 +1665,8 @@ pub(super) async fn dispatch_tool_items(
                         &mut tool_results,
                         stream_tx,
                         tool_ctx,
-                        DeniedToolCall {
+                        tools,
+                        &DeniedToolCall {
                             id: tool_id,
                             name: tool_name,
                             input: tool_input,
@@ -1380,18 +1680,19 @@ pub(super) async fn dispatch_tool_items(
             }
         };
 
-        emit_tool_start(stream_tx, tool_ctx, tool_id, tool_name, tool_input);
+        emit_tool_start(stream_tx, tool_ctx, tool_id, tool_name, &trace_input);
 
         let mut outcome = dispatch_single_tool(
             tool_id,
             tool_name,
-            &approval_input,
-            tool_input,
+            &prepared_input,
+            &trace_input,
             tools,
             tool_ctx,
             max_tool_result_bytes,
             receipt_signer,
             receipt_ledger,
+            approval,
             approval_outcome,
         )
         .await?;
@@ -1415,6 +1716,7 @@ pub(super) async fn dispatch_tool_items(
                     &mut tool_results,
                     stream_tx,
                     tool_ctx,
+                    tools,
                     tool_items.get(index + 1..).unwrap_or(&[]),
                 );
                 return Ok(DispatchResult {

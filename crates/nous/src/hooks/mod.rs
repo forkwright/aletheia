@@ -86,7 +86,11 @@ pub(crate) struct AfterToolContext<'a> {
     pub tool_use_id: &'a str,
     /// The tool name that was executed.
     pub tool_name: &'a str,
-    /// The tool input that was sent.
+    /// The policy-redacted record of the tool input (#6808): what the
+    /// dispatch layer persisted for this call, after the tool's declared
+    /// `RedactionPolicy` was applied to the placeholder-form arguments. Not
+    /// necessarily the executor's resolved arguments (vault substitution)
+    /// nor the model-emitted original.
     pub tool_input: &'a serde_json::Value,
     /// The tool result content, preserving missing-result semantics.
     pub tool_result: ToolResultRecord<'a>,

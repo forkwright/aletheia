@@ -143,7 +143,7 @@ pub(crate) struct UsageData {
 /// `content`, `is_error`. Clients consuming both streams must handle both
 /// shapes. Unifying the field names is a breaking wire change tracked by
 /// #5785.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(tag = "type")]
 #[non_exhaustive]
 pub(crate) enum TurnStreamEvent {
@@ -169,7 +169,9 @@ pub(crate) enum TurnStreamEvent {
     /// Provider-reported content block start.
     #[serde(rename = "provider_content_block_start")]
     ProviderContentBlockStart { index: u32, block_type: String },
-    /// Provider-reported partial JSON for a tool-use content block.
+    /// Provider tool-input lifecycle delta. The payload is a fixed redaction
+    /// marker because partial JSON arrives before per-tool policy can be
+    /// resolved; the later `ToolUse` event carries policy-aware input.
     #[serde(rename = "provider_input_json_delta")]
     ProviderInputJsonDelta { partial_json: String },
     /// Provider-reported content block stop.

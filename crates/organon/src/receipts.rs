@@ -8,13 +8,111 @@ use regex::Regex;
 use sha2::Sha256;
 use snafu::Snafu;
 
+use crate::types::RedactionPolicy;
+
 const RECEIPT_SEPARATOR: &str = "\x1f"; // ASCII unit separator
+const RECEIPT_V2_DOMAIN: &[u8] = b"aletheia.tool-receipt.v2";
+const RECEIPT_V2_INPUT_DOMAIN: &[u8] = b"aletheia.tool-receipt.v2.input";
+const RECEIPT_V2_OUTPUT_DOMAIN: &[u8] = b"aletheia.tool-receipt.v2.output";
+
+/// Version of the tuple authenticated by a receipt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceiptVersion {
+    /// Legacy receipt over durable display arguments/result text.
+    V1,
+    /// Receipt over keyed commitments to the actual prepared input/output plus the
+    /// approval and redaction decisions that admitted the call.
+    V2,
+}
+
+/// Version-two receipt tuple.
+///
+/// Raw executor inputs and outputs are intentionally absent. Their
+/// session-keyed commitments bind the receipt to what ran without turning the
+/// ledger into an offline oracle for low-entropy credentials.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReceiptAttestationV2 {
+    /// Provider tool-use identity, binding an approval decision to one call
+    /// rather than merely to every invocation of the same registered tool.
+    pub tool_use_id: String,
+    /// Registered tool identity.
+    pub tool_name: String,
+    /// Session-keyed commitment to canonical JSON after vault,
+    /// file-reference, and declared path-string expansion.
+    ///
+    /// This attests the exact input passed to the executor, not filesystem
+    /// inode identity across the final validate-to-I/O race.
+    pub input_commitment: String,
+    /// Session-keyed commitment to the exact bounded result content delivered
+    /// to the model, before the receipt citation is appended.
+    pub output_commitment: String,
+    /// Effective approval requirement derived for this concrete call.
+    pub approval_requirement: String,
+    /// Approval-gate or automatic decision that admitted execution.
+    pub approval_outcome: String,
+    /// Declared redaction-policy identity applied to durable surfaces.
+    pub redaction_policy: RedactionPolicy,
+    /// Timestamp included in the authenticated tuple.
+    pub ts: jiff::Timestamp,
+}
+
+fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Array(values) => {
+            serde_json::Value::Array(values.iter().map(canonicalize_json).collect())
+        }
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<&String> = map.keys().collect();
+            keys.sort_unstable();
+            let mut canonical = serde_json::Map::new();
+            for key in keys {
+                if let Some(value) = map.get(key) {
+                    canonical.insert(key.clone(), canonicalize_json(value));
+                }
+            }
+            serde_json::Value::Object(canonical)
+        }
+        scalar => scalar.clone(),
+    }
+}
+
+fn update_v2_field(mac: &mut Hmac<Sha256>, value: &str) {
+    let len = u64::try_from(value.len()).unwrap_or(u64::MAX);
+    mac.update(&len.to_be_bytes());
+    mac.update(value.as_bytes());
+}
+
+fn update_v2_policy(mac: &mut Hmac<Sha256>, policy: &RedactionPolicy) {
+    match policy {
+        RedactionPolicy::None => mac.update(&[0]),
+        RedactionPolicy::Full => mac.update(&[1]),
+        RedactionPolicy::Fields(fields) => {
+            mac.update(&[2]);
+            mac.update(
+                &u64::try_from(fields.len())
+                    .unwrap_or(u64::MAX)
+                    .to_be_bytes(),
+            );
+            for field in fields {
+                update_v2_field(mac, field);
+            }
+        }
+    }
+}
 
 /// Ephemeral per-session HMAC signer. The 32-byte key is never persisted,
 /// never serialized, and never sent to the model.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ReceiptSigner {
     key: [u8; 32],
+}
+
+impl std::fmt::Debug for ReceiptSigner {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReceiptSigner")
+            .field("key", &"[REDACTED]")
+            .finish()
+    }
 }
 
 impl ReceiptSigner {
@@ -23,6 +121,54 @@ impl ReceiptSigner {
     pub fn new_session() -> Self {
         Self {
             key: rand::random(),
+        }
+    }
+
+    #[expect(
+        clippy::expect_used,
+        reason = "32-byte key is always valid for Hmac<Sha256>"
+    )]
+    fn commitment(&self, domain: &[u8], value: &serde_json::Value) -> String {
+        let canonical = canonicalize_json(value).to_string();
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.key)
+            .expect("32-byte key is valid for Hmac<Sha256>");
+        mac.update(domain);
+        update_v2_field(&mut mac, &canonical);
+        let tag = mac.finalize();
+        koina::base64::encode_url_safe_no_pad(&tag.into_bytes())
+    }
+
+    /// Build a version-two attestation from the exact prepared executor input
+    /// and bounded result content.
+    ///
+    /// The commitments use this signer's ephemeral session key, so the
+    /// attestation can be retained on a redacted durable surface without
+    /// exposing a reusable plain digest of a secret-bearing payload.
+    #[must_use]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the attested execution identity is deliberately explicit"
+    )]
+    pub fn attest_v2(
+        &self,
+        tool_use_id: impl Into<String>,
+        tool_name: impl Into<String>,
+        prepared_input: &serde_json::Value,
+        output: &serde_json::Value,
+        approval_requirement: impl Into<String>,
+        approval_outcome: impl Into<String>,
+        redaction_policy: RedactionPolicy,
+        ts: jiff::Timestamp,
+    ) -> ReceiptAttestationV2 {
+        ReceiptAttestationV2 {
+            tool_use_id: tool_use_id.into(),
+            tool_name: tool_name.into(),
+            input_commitment: self.commitment(RECEIPT_V2_INPUT_DOMAIN, prepared_input),
+            output_commitment: self.commitment(RECEIPT_V2_OUTPUT_DOMAIN, output),
+            approval_requirement: approval_requirement.into(),
+            approval_outcome: approval_outcome.into(),
+            redaction_policy,
+            ts,
         }
     }
 
@@ -90,6 +236,60 @@ impl ReceiptSigner {
         mac.verify_slice(&decoded)
             .map_err(|_e| VerifyError::HmacMismatch)
     }
+
+    /// Sign a version-two attestation. Returns base64url without padding.
+    #[must_use]
+    #[expect(
+        clippy::expect_used,
+        reason = "32-byte key is always valid for Hmac<Sha256>"
+    )]
+    pub fn sign_v2(&self, attestation: &ReceiptAttestationV2) -> String {
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.key)
+            .expect("32-byte key is valid for Hmac<Sha256>");
+        mac.update(RECEIPT_V2_DOMAIN);
+        update_v2_field(&mut mac, &attestation.tool_use_id);
+        update_v2_field(&mut mac, &attestation.tool_name);
+        update_v2_field(&mut mac, &attestation.input_commitment);
+        update_v2_field(&mut mac, &attestation.output_commitment);
+        update_v2_field(&mut mac, &attestation.approval_requirement);
+        update_v2_field(&mut mac, &attestation.approval_outcome);
+        update_v2_policy(&mut mac, &attestation.redaction_policy);
+        update_v2_field(&mut mac, &attestation.ts.to_string());
+        let tag = mac.finalize();
+        koina::base64::encode_url_safe_no_pad(&tag.into_bytes())
+    }
+
+    /// Verify a version-two receipt against its attestation.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VerifyError::Decode`] for invalid base64url or
+    /// [`VerifyError::HmacMismatch`] when any authenticated field differs.
+    pub fn verify_v2(
+        &self,
+        receipt: &str,
+        attestation: &ReceiptAttestationV2,
+    ) -> Result<(), VerifyError> {
+        let decoded = koina::base64::decode_url_safe_no_pad_strict(receipt)
+            .map_err(|source| VerifyError::Decode { source })?;
+        #[expect(
+            clippy::expect_used,
+            reason = "32-byte key is always valid for Hmac<Sha256>"
+        )]
+        let mut mac = Hmac::<Sha256>::new_from_slice(&self.key)
+            .expect("32-byte key is valid for Hmac<Sha256>");
+        mac.update(RECEIPT_V2_DOMAIN);
+        update_v2_field(&mut mac, &attestation.tool_use_id);
+        update_v2_field(&mut mac, &attestation.tool_name);
+        update_v2_field(&mut mac, &attestation.input_commitment);
+        update_v2_field(&mut mac, &attestation.output_commitment);
+        update_v2_field(&mut mac, &attestation.approval_requirement);
+        update_v2_field(&mut mac, &attestation.approval_outcome);
+        update_v2_policy(&mut mac, &attestation.redaction_policy);
+        update_v2_field(&mut mac, &attestation.ts.to_string());
+        mac.verify_slice(&decoded)
+            .map_err(|_e| VerifyError::HmacMismatch)
+    }
 }
 
 /// Default maximum number of receipts retained per session.
@@ -130,6 +330,10 @@ pub struct EmittedReceipt {
     /// provenance, so they are left as a named remainder rather than
     /// fabricated.
     pub approval_outcome: Option<String>,
+    /// Authenticated tuple version.
+    pub version: ReceiptVersion,
+    /// Version-two attestation, absent for legacy entries.
+    pub attestation_v2: Option<ReceiptAttestationV2>,
 }
 
 impl EmittedReceipt {
@@ -150,6 +354,8 @@ impl EmittedReceipt {
             result,
             ts,
             approval_outcome,
+            version: ReceiptVersion::V1,
+            attestation_v2: None,
         }
     }
 }
@@ -200,6 +406,36 @@ impl ReceiptLedger {
 
         // WHY: cap the in-memory ledger so long-running sessions do not grow
         // without bound. Eviction is FIFO; recent receipts are retained. (#5677)
+        while self.order.len() > self.capacity {
+            if let Some(oldest) = self.order.pop_front() {
+                self.entries.remove(&oldest);
+            }
+        }
+    }
+
+    /// Record a version-two receipt while retaining only redacted display
+    /// payloads alongside the session-keyed attestation.
+    pub fn record_v2(
+        &mut self,
+        receipt: String,
+        attestation: ReceiptAttestationV2,
+        redacted_args_json: String,
+        redacted_result: String,
+    ) {
+        let entry = EmittedReceipt {
+            receipt: receipt.clone(),
+            tool_name: attestation.tool_name.clone(),
+            args_json: redacted_args_json,
+            result: redacted_result,
+            ts: attestation.ts,
+            approval_outcome: Some(attestation.approval_outcome.clone()),
+            version: ReceiptVersion::V2,
+            attestation_v2: Some(attestation),
+        };
+        if self.entries.insert(receipt.clone(), entry).is_some() {
+            return;
+        }
+        self.order.push_back(receipt);
         while self.order.len() > self.capacity {
             if let Some(oldest) = self.order.pop_front() {
                 self.entries.remove(&oldest);
@@ -264,18 +500,21 @@ pub fn scan_and_verify(
                     receipt: token.clone(),
                 })?;
 
-        signer
-            .verify(
+        let verified = match (&entry.version, &entry.attestation_v2) {
+            (ReceiptVersion::V2, Some(attestation)) => signer.verify_v2(&token, attestation),
+            (ReceiptVersion::V1, None) => signer.verify(
                 &token,
                 &entry.tool_name,
                 &entry.args_json,
                 &entry.result,
                 entry.ts,
-            )
-            .map_err(|source| HallucinationDetected::ReceiptInvalid {
-                receipt: token,
-                source,
-            })?;
+            ),
+            _ => Err(VerifyError::HmacMismatch),
+        };
+        verified.map_err(|source| HallucinationDetected::ReceiptInvalid {
+            receipt: token,
+            source,
+        })?;
     }
 
     Ok(())
@@ -401,6 +640,105 @@ mod tests {
             .verify("!!!bad!!!", "read_file", "args", "result", ts)
             .unwrap_err();
         assert!(matches!(err, VerifyError::Decode { .. }));
+    }
+
+    #[test]
+    fn v2_receipt_binds_prepared_input_policy_and_decision() {
+        let signer = make_signer();
+        let ts = jiff::Timestamp::now();
+        let attestation = signer.attest_v2(
+            "toolu_1",
+            "http_request",
+            &serde_json::json!({"headers": {"x": "resolved"}, "url": "https://example.test"}),
+            &serde_json::json!("ok"),
+            "mandatory",
+            "approved",
+            RedactionPolicy::Fields(vec!["headers".to_owned()]),
+            ts,
+        );
+        let token = signer.sign_v2(&attestation);
+        assert!(signer.verify_v2(&token, &attestation).is_ok());
+
+        let mut changed = attestation.clone();
+        changed.approval_outcome = "denied".to_owned();
+        assert!(matches!(
+            signer.verify_v2(&token, &changed),
+            Err(VerifyError::HmacMismatch)
+        ));
+
+        let mut changed = attestation.clone();
+        changed.tool_use_id = "toolu_2".to_owned();
+        assert!(matches!(
+            signer.verify_v2(&token, &changed),
+            Err(VerifyError::HmacMismatch)
+        ));
+
+        let mut changed = attestation.clone();
+        changed.redaction_policy = RedactionPolicy::Full;
+        assert!(matches!(
+            signer.verify_v2(&token, &changed),
+            Err(VerifyError::HmacMismatch)
+        ));
+    }
+
+    #[test]
+    fn v2_input_commitment_is_canonical_across_object_key_order() {
+        let signer = make_signer();
+        let first = signer.attest_v2(
+            "toolu_1",
+            "tool",
+            &serde_json::json!({"b": 2, "a": {"d": 4, "c": 3}}),
+            &serde_json::json!("result"),
+            "none",
+            "auto_approved",
+            RedactionPolicy::None,
+            jiff::Timestamp::now(),
+        );
+        let second = signer.attest_v2(
+            "toolu_1",
+            "tool",
+            &serde_json::json!({"a": {"c": 3, "d": 4}, "b": 2}),
+            &serde_json::json!("result"),
+            "none",
+            "auto_approved",
+            RedactionPolicy::None,
+            first.ts,
+        );
+        assert_eq!(first.input_commitment, second.input_commitment);
+    }
+
+    #[test]
+    fn v2_commitments_are_session_keyed_and_signer_debug_hides_the_key() {
+        let first_signer = make_signer();
+        let second_signer = make_signer();
+        let input = serde_json::json!({"pin": "1234"});
+        let output = serde_json::json!("ok");
+        let ts = jiff::Timestamp::now();
+        let first = first_signer.attest_v2(
+            "toolu_1",
+            "tool",
+            &input,
+            &output,
+            "mandatory",
+            "approved",
+            RedactionPolicy::Full,
+            ts,
+        );
+        let second = second_signer.attest_v2(
+            "toolu_1",
+            "tool",
+            &input,
+            &output,
+            "mandatory",
+            "approved",
+            RedactionPolicy::Full,
+            ts,
+        );
+
+        assert_ne!(first.input_commitment, second.input_commitment);
+        let debug = format!("{first_signer:?}");
+        assert!(debug.contains("[REDACTED]"));
+        assert!(!debug.contains("1234"));
     }
 
     #[test]

@@ -7,7 +7,7 @@ use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
 use crate::builtins::poiesis::json_data_property;
-use crate::builtins::workspace::validate_path;
+use crate::builtins::workspace::validate_prepared_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -25,6 +25,10 @@ fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str
 pub(crate) struct RenderXlsxReportExecutor;
 
 impl ToolExecutor for RenderXlsxReportExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["out_path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -66,7 +70,7 @@ impl ToolExecutor for RenderXlsxReportExecutor {
 
             // Optional: write to a caller-provided path in addition to returning bytes.
             if let Some(out_path) = extract_opt_str(args, "out_path") {
-                let validated = match validate_path(out_path, ctx, &input.name) {
+                let validated = match validate_prepared_path(out_path, ctx, &input.name) {
                     Ok(path) => path,
                     Err(e) => {
                         return Ok(ToolResult::error(format!(
@@ -173,7 +177,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 
