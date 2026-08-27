@@ -1,10 +1,7 @@
 //! XLSX workbook diffing implementation.
 
-use std::io::Cursor;
-
 use indexmap::IndexMap;
-use poiesis_ooxml_parse::{extract_shared_strings, parse_sheet_entries, parse_workbook_rels};
-use zip::ZipArchive;
+use poiesis_ooxml_parse::read_workbook_parts;
 
 use crate::CellDiff;
 use crate::error::Result;
@@ -73,61 +70,20 @@ fn extract_cells_from_worksheet(xml_data: &str, shared_strings: &[String]) -> Sh
 }
 
 /// Extract sheet names and cell data from XLSX archive, preserving workbook order.
+///
+/// A sheet whose worksheet part is missing from the archive still appears in
+/// the result, with an empty cell map — a diff against a version of the
+/// workbook where that sheet has content must report the difference rather
+/// than silently omitting the sheet.
 fn read_workbook(bytes: &[u8]) -> Result<WorkbookData> {
-    let cursor = Cursor::new(bytes);
-    let mut archive =
-        ZipArchive::new(cursor).map_err(|e| crate::DiffError::ZipError { source: e })?;
-
-    let shared_strings = if let Ok(mut file) = archive.by_name("xl/sharedStrings.xml") {
-        let mut content = String::new();
-        std::io::Read::read_to_string(&mut file, &mut content)
-            .map_err(|e| crate::DiffError::Io { source: e })?;
-        extract_shared_strings(&content)
-    } else {
-        Vec::new()
-    };
+    let parts = read_workbook_parts(bytes)?;
 
     let mut workbook_data: WorkbookData = IndexMap::new();
-
-    let workbook_xml = {
-        let mut file = archive
-            .by_name("xl/workbook.xml")
-            .map_err(|e| crate::DiffError::ZipError { source: e })?;
-        let mut content = String::new();
-        std::io::Read::read_to_string(&mut file, &mut content)
-            .map_err(|e| crate::DiffError::Io { source: e })?;
-        content
-    };
-
-    let rels_xml = if let Ok(mut file) = archive.by_name("xl/_rels/workbook.xml.rels") {
-        let mut content = String::new();
-        std::io::Read::read_to_string(&mut file, &mut content)
-            .map_err(|e| crate::DiffError::Io { source: e })?;
-        content
-    } else {
-        String::new()
-    };
-
-    let rels = parse_workbook_rels(&rels_xml);
-    let sheet_entries = parse_sheet_entries(&workbook_xml);
-
-    for (sheet_name, _rid) in &sheet_entries {
-        workbook_data.insert(sheet_name.clone(), IndexMap::new());
-    }
-
-    for (sheet_idx, (sheet_name, rid)) in sheet_entries.iter().enumerate() {
-        let worksheet_path = rels.get(rid).map_or_else(
-            || format!("xl/worksheets/sheet{}.xml", sheet_idx + 1),
-            |target| format!("xl/{target}"),
-        );
-        if let Ok(mut file) = archive.by_name(&worksheet_path) {
-            let mut content = String::new();
-            std::io::Read::read_to_string(&mut file, &mut content)
-                .map_err(|e| crate::DiffError::Io { source: e })?;
-            if let Some(cell_map) = workbook_data.get_mut(sheet_name) {
-                *cell_map = extract_cells_from_worksheet(&content, &shared_strings);
-            }
-        }
+    for (sheet_name, content) in parts.sheets {
+        let cells = content
+            .map(|xml| extract_cells_from_worksheet(&xml, &parts.shared_strings))
+            .unwrap_or_default();
+        workbook_data.insert(sheet_name, cells);
     }
 
     Ok(workbook_data)
