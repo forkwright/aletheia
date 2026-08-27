@@ -193,9 +193,12 @@ impl CcProvider {
         max_tokens: u32,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<process::CcOutput> {
-        let content_started = std::cell::Cell::new(false);
+        // WHY: AtomicBool rather than Cell -- the latch is shared between the
+        // operation closure and the retry classifier, and this future must stay
+        // Send. Cell<bool> is not Sync, so &Cell cannot be held across the await.
+        let content_started = std::sync::atomic::AtomicBool::new(false);
         let mut on_delta = |text: &str| {
-            content_started.set(true);
+            content_started.store(true, std::sync::atomic::Ordering::Relaxed);
             on_event(StreamEvent::TextDelta {
                 text: text.to_owned(),
             });
@@ -216,7 +219,7 @@ impl CcProvider {
                 )
             },
             |err| {
-                if content_started.get() {
+                if content_started.load(std::sync::atomic::Ordering::Relaxed) {
                     warn!(
                         provider = %self.name,
                         error = %err,
