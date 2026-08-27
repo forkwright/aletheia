@@ -21,9 +21,7 @@ use koina::secret::SecretString;
 use crate::RetryPolicy;
 use crate::anthropic::StreamEvent;
 use crate::anthropic::pricing::estimate_cost;
-use crate::concurrency::{
-    AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome, concurrency_outcome,
-};
+use crate::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, concurrency_outcome};
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ModelPricing};

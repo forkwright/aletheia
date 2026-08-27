@@ -105,6 +105,11 @@ mod tests {
     use super::*;
 
     async fn response_with_retry_after(value: Option<&str>) -> Response {
+        // WHY: this helper builds a bare reqwest client rather than going through
+        // `AnthropicClient`/`OpenAiProvider`, which is where the crate installs the
+        // rustls provider. Without this, `reqwest::get` panics with "No rustls
+        // crypto provider is configured".
+        let _ = rustls::crypto::ring::default_provider().install_default(); // kanon:ignore RUST/no-silent-result-swallow WHY: install_default is idempotent; Err on a second call is expected and safe to discard
         let server = MockServer::start().await;
         let mut template = ResponseTemplate::new(429);
         if let Some(value) = value {

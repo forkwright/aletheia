@@ -25,7 +25,6 @@ use parking_lot::Mutex;
 use tokio::sync::Notify;
 use tower::{Layer, Service};
 
-use crate::error::Result;
 use crate::types::CompletionResponse;
 
 // Encoded request outcomes stored in `ConcurrencyPermit::outcome` as `u8`.
@@ -58,7 +57,7 @@ pub enum RequestOutcome {
 /// and decreases it. Any other error is neutral and leaves the limit unchanged,
 /// since it is not evidence the endpoint itself is overloaded.
 #[must_use]
-pub fn concurrency_outcome(result: &Result<CompletionResponse>) -> RequestOutcome {
+pub fn concurrency_outcome(result: &crate::error::Result<CompletionResponse>) -> RequestOutcome {
     // kanon:ignore RUST/pub-visibility
     match result {
         Ok(_) => RequestOutcome::Success,
@@ -472,11 +471,11 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::error::{self, Result};
+    use crate::error;
     use crate::types::{ContentBlock, StopReason, Usage};
 
-    fn ok_response() -> Result<CompletionResponse> {
-        Ok(CompletionResponse {
+    fn ok_response() -> CompletionResponse {
+        CompletionResponse {
             id: "resp-1".to_owned(),
             model: "test-model".to_owned(),
             stop_reason: StopReason::EndTurn,
@@ -487,17 +486,17 @@ mod tests {
             usage: Usage::default(),
             cost_usd: None,
             duration_ms: None,
-        })
+        }
     }
 
-    fn retryable_error() -> Result<CompletionResponse> {
+    fn retryable_error() -> error::Result<CompletionResponse> {
         Err(error::RateLimitedSnafu {
             retry_after_ms: 100_u64,
         }
         .build())
     }
 
-    fn non_retryable_error() -> Result<CompletionResponse> {
+    fn non_retryable_error() -> error::Result<CompletionResponse> {
         Err(error::AuthFailedSnafu {
             message: "invalid key".to_owned(),
         }
@@ -506,7 +505,10 @@ mod tests {
 
     #[test]
     fn concurrency_outcome_table() {
-        assert_eq!(concurrency_outcome(&ok_response()), RequestOutcome::Success);
+        assert_eq!(
+            concurrency_outcome(&Ok(ok_response())),
+            RequestOutcome::Success
+        );
         assert_eq!(
             concurrency_outcome(&retryable_error()),
             RequestOutcome::Overload
