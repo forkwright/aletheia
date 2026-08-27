@@ -39,10 +39,6 @@ id = "RUSTSEC-2026-0235"
 reason = "rkyv out-of-bounds read on archives containing Rc/Arc with mismatched pointer metadata — transitive only: rust_decimal 1.42.1 → spreadsheet-ods + typst-library, both document-generation deps of poiesis. Patched is rkyv >= 0.8.17, a major bump three levels up: rust_decimal's optional archive support must move to 0.8 first, then spreadsheet-ods and typst-library. Not reachable here — the flaw requires DESERIALIZING an untrusted rkyv archive, and no aletheia crate uses rkyv (zero matches under crates/); it is linked only because rust_decimal offers archive support to those two crates. Revisit when rust_decimal ships rkyv 0.8. Tracked in #6606"
 
 [[advisories.ignore]]
-id = "RUSTSEC-2025-0134"
-reason = "rustls-pemfile unmaintained — transitive via qdrant-client→tonic; no safe upgrade. cargo-deny advisory-DB version does not trigger but crate present (2.2.0); keeps sync with .cargo/audit.toml"
-
-[[advisories.ignore]]
 id = "RUSTSEC-2026-0186"
 reason = "memmap2 unsound (unchecked pointer offset) — transitive via candle-core (safetensors mmap) + grep-searcher, pinned ^0.9; unsound offset path not exercised. cargo-deny does not trigger; keeps sync with .cargo/audit.toml. review-by: 2026-12-01"
 
