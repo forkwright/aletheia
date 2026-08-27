@@ -15,7 +15,7 @@ use crate::types::{
     ToolInput, ToolResult, ToolResultBlock, ToolStability, ToolTag,
 };
 
-use super::workspace::{extract_opt_u64, extract_str, validate_path};
+use super::workspace::{extract_opt_u64, extract_str, validate_prepared_path};
 
 /// WHY: Full filesystem paths in error messages leak instance directory
 /// structure to the LLM. Show workspace-relative path instead.
@@ -56,6 +56,10 @@ fn detect_media_kind(path: &Path) -> Option<MediaKind> {
 struct ViewFileExecutor;
 
 impl ToolExecutor for ViewFileExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -64,7 +68,7 @@ impl ToolExecutor for ViewFileExecutor {
         Box::pin(async {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
-            let path = validate_path(path_str, ctx, &input.name)?;
+            let path = validate_prepared_path(path_str, ctx, &input.name)?;
 
             // WHY: A symlink validated against allowed_roots could point outside
             // the workspace. Resolve and re-validate so the actual target is
@@ -75,7 +79,11 @@ impl ToolExecutor for ViewFileExecutor {
             {
                 match std::fs::canonicalize(&path) {
                     Ok(resolved) => {
-                        validate_path(&resolved.to_string_lossy(), ctx, &input.name)?;
+                        if resolved != path {
+                            return Ok(ToolResult::error(
+                                "prepared path target changed before file access",
+                            ));
+                        }
                     }
                     Err(e) => {
                         return Ok(ToolResult::error(format!("cannot resolve symlink: {e}")));
@@ -251,7 +259,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             rollback: RollbackSupport::Supported,
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

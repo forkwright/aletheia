@@ -458,7 +458,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             rollback: RollbackSupport::Supported,
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(katharos_def(), Box::new(KatharosExecutor))?;
     registry.declare_capability(
         ToolName::from_static("katharos"),
@@ -475,7 +475,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

@@ -10,7 +10,7 @@ use poiesis_theme::sinks::emit_reference_docx;
 use crate::builtins::poiesis::{
     extract_zip_entry, json_data_property, resolve_report_theme, rewrite_zip,
 };
-use crate::builtins::workspace::validate_path;
+use crate::builtins::workspace::validate_prepared_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -22,6 +22,10 @@ use crate::types::{
 pub(crate) struct RenderDocxReportExecutor;
 
 impl ToolExecutor for RenderDocxReportExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["out_path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -91,7 +95,7 @@ impl ToolExecutor for RenderDocxReportExecutor {
 
             // Optional: write to a caller-provided path in addition to returning bytes.
             if let Some(out_path) = args.get("out_path").and_then(serde_json::Value::as_str) {
-                let validated = match validate_path(out_path, ctx, &input.name) {
+                let validated = match validate_prepared_path(out_path, ctx, &input.name) {
                     Ok(path) => path,
                     Err(e) => {
                         return Ok(ToolResult::error(format!(
@@ -211,7 +215,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

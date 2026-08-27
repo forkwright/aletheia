@@ -106,13 +106,60 @@ fn exact_topk(present: &[usize], query: [f32; 4], k: usize) -> Vec<i64> {
     scored.into_iter().take(k).map(|(_, id)| id).collect()
 }
 
-fn recall(approx: &[i64], exact: &[i64]) -> f64 {
+fn recall_hits(approx: &[i64], exact: &[i64]) -> usize {
     let exact_set: HashSet<_> = exact.iter().collect();
-    let hits = approx.iter().filter(|id| exact_set.contains(id)).count();
-    #[expect(clippy::cast_precision_loss, reason = "small test-scale counts")]
-    {
-        hits as f64 / exact.len() as f64
+    approx.iter().filter(|id| exact_set.contains(id)).count()
+}
+
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+struct RecallMeasurement {
+    hits: usize,
+    possible: usize,
+}
+
+impl RecallMeasurement {
+    fn meets_percent_floor(self, floor_percent: usize) -> bool {
+        self.possible > 0 && self.hits * 100 >= self.possible * floor_percent
     }
+
+    #[expect(clippy::cast_precision_loss, reason = "small test-scale counts")]
+    fn average(self) -> f64 {
+        self.hits as f64 / self.possible as f64
+    }
+}
+
+#[derive(serde::Serialize)]
+struct RecallSidecar<'a> {
+    schema_version: u8,
+    test: &'static str,
+    phases: &'a BTreeMap<&'static str, RecallMeasurement>,
+}
+
+const RECALL_SIDECAR_ENV: &str = "ALETHEIA_HNSW_RECALL_SIDECAR";
+const RECALL_TEST_NAME: &str = concat!(
+    "runtime::hnsw::close_reopen_tests::",
+    "close_reopen_preserves_recall_across_inserts_and_deletes"
+);
+const POST_REOPEN_PHASE: &str = "post-reopen";
+const POST_DELETE_REOPEN_PHASE: &str = "post-delete-reopen";
+
+fn write_recall_sidecar(phases: &BTreeMap<&'static str, RecallMeasurement>) {
+    let Some(path) = std::env::var_os(RECALL_SIDECAR_ENV) else {
+        return;
+    };
+    let sidecar = RecallSidecar {
+        schema_version: 1,
+        test: RECALL_TEST_NAME,
+        phases,
+    };
+    let mut bytes = serde_json::to_vec_pretty(&sidecar).expect("serialize recall sidecar");
+    bytes.push(b'\n');
+    std::fs::write(&path, bytes).unwrap_or_else(|error| {
+        panic!(
+            "write recall sidecar {}: {error}",
+            Path::new(&path).display()
+        )
+    });
 }
 
 /// The current entry point's own id, read the same way production search
@@ -159,6 +206,16 @@ fn entry_point_id(db: &TestDb) -> i64 {
 /// per-run floor tight enough to be a precise regression gate is not
 /// available without seeding the RNG and pinning `PriorityQueue`'s hasher,
 /// which is out of this wave's scope.
+///
+/// #6952's discriminator harness receives each phase as integer hit/possible
+/// counts through a versioned JSON sidecar. It independently consumes typed
+/// nextest events to prove that this exact test started and completed once.
+/// This keeps exact zero distinct from missing or unparsable evidence and
+/// avoids deriving measurements from human failure text. The post-delete
+/// assertion remains split so an exact zero (no relevant neighbours in the
+/// result set) reads differently from a sub-floor nonzero miss. Neither
+/// observation identifies its cause; the discriminator records condition and
+/// order evidence without turning that evidence into a diagnosis.
 #[test]
 fn close_reopen_preserves_recall_across_inserts_and_deletes() {
     let dir = tempfile::tempdir().unwrap();
@@ -190,11 +247,20 @@ fn close_reopen_preserves_recall_across_inserts_and_deletes() {
     let step = n / 16;
     let query_targets: Vec<usize> = (1..16).map(|k| (ep + k * step) % n).collect();
     let queries: Vec<[f32; 4]> = query_targets.iter().map(|&i| vec_for(i)).collect();
+    let mut recall_phases = BTreeMap::new();
 
     {
         let db = open(path);
-        let avg = average_recall(&db, &queries, &present, 10);
-        assert!(avg >= 0.85, "post-reopen average recall too low ({avg:.2})");
+        let measured = measure_recall(&db, &queries, &present, 10);
+        recall_phases.insert(POST_REOPEN_PHASE, measured);
+        write_recall_sidecar(&recall_phases);
+        assert!(
+            measured.meets_percent_floor(85),
+            "post-reopen average recall too low ({:.2}; {}/{} hits)",
+            measured.average(),
+            measured.hits,
+            measured.possible
+        );
     }
 
     let to_delete: Vec<i64> = {
@@ -222,27 +288,45 @@ fn close_reopen_preserves_recall_across_inserts_and_deletes() {
                 );
             }
         }
-        let avg = average_recall(&db, &queries, &remaining, 10);
+        let measured = measure_recall(&db, &queries, &remaining, 10);
+        recall_phases.insert(POST_DELETE_REOPEN_PHASE, measured);
+        write_recall_sidecar(&recall_phases);
         assert!(
-            avg >= 0.05,
-            "post-delete-and-reopen average recall too low ({avg:.2})"
+            measured.hits > 0,
+            "post-delete-and-reopen average recall is exactly 0.00 — every query returned zero \
+             relevant neighbours. This is a different failure class from a sub-floor nonzero \
+             miss, but the observation alone does not identify its cause. #6952: do not retry it \
+             into passing; reproduce it with the hnsw-recall-discriminator workflow before \
+             classifying it"
+        );
+        assert!(
+            measured.meets_percent_floor(5),
+            "post-delete-and-reopen average recall {:.2} ({}/{} hits) is below the 0.05 floor but nonzero — \
+             the index came back alive and degraded, a different failure class than the \
+             intermittent exact 0.00. #6952: a sustained sub-floor distribution is evidence the \
+             floor itself needs re-deriving (raise it toward the sibling's 0.85, or document what \
+             makes this path genuinely worse), not a flake to retry",
+            measured.average(),
+            measured.hits,
+            measured.possible
         );
     }
 }
 
-fn average_recall(db: &TestDb, queries: &[[f32; 4]], present: &[usize], k: usize) -> f64 {
-    let per_query: Vec<f64> = queries
-        .iter()
-        .map(|&q| {
-            let approx = search(db, q, k);
-            let exact = exact_topk(present, q, k);
-            recall(&approx, &exact)
-        })
-        .collect();
-    #[expect(clippy::cast_precision_loss, reason = "small test-scale counts")]
-    {
-        per_query.iter().sum::<f64>() / per_query.len() as f64
+fn measure_recall(
+    db: &TestDb,
+    queries: &[[f32; 4]],
+    present: &[usize],
+    k: usize,
+) -> RecallMeasurement {
+    let mut measured = RecallMeasurement::default();
+    for &query in queries {
+        let approx = search(db, query, k);
+        let exact = exact_topk(present, query, k);
+        measured.hits += recall_hits(&approx, &exact);
+        measured.possible += exact.len();
     }
+    measured
 }
 
 #[derive(Clone)]

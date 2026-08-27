@@ -494,4 +494,31 @@ mod capability_governance_tests {
         );
         Ok(())
     }
+
+    /// Sibling gate (#6808): a `RedactionPolicy::Fields` name that is not a
+    /// property of the tool's input schema matches nothing on every call,
+    /// so the field the author meant to redact passes through in cleartext.
+    /// Misspellings die here, at declaration review, rather than silently
+    /// per call.
+    #[test]
+    fn declared_redaction_fields_exist_in_the_tool_input_schema() -> Result<()> {
+        let mut registry = ToolRegistry::new();
+        register_all(&mut registry)?;
+
+        let mut invalid: Vec<String> = Vec::new();
+        for def in registry.definitions() {
+            let name =
+                koina::id::ToolName::new(def.name.as_str()).expect("registered name is valid");
+            let metadata = registry.capability_metadata(&name);
+            for field in metadata.redaction.unrecognized_fields(&def.input_schema) {
+                invalid.push(format!("{}.{field}", def.name.as_str()));
+            }
+        }
+
+        assert!(
+            invalid.is_empty(),
+            "declared redaction fields must exist in the tool's input schema; invalid: {invalid:?}"
+        );
+        Ok(())
+    }
 }

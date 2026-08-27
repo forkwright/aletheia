@@ -22,6 +22,7 @@ use crate::types::{
 
 use super::workspace::{
     extract_opt_bool, extract_opt_str, extract_opt_u64, extract_str, validate_path,
+    validate_prepared_path,
 };
 
 /// WHY: Close TOCTOU window between `validate_path` and actual filesystem access.
@@ -32,12 +33,13 @@ fn canonicalize_and_revalidate(
     ctx: &ToolContext,
     tool_name: &ToolName,
 ) -> crate::error::Result<PathBuf> {
-    if validated_path.exists()
-        && let Ok(canonical) = std::fs::canonicalize(&validated_path)
-        && canonical != validated_path
-    {
-        validate_path(&canonical.to_string_lossy(), ctx, tool_name)?;
-        return Ok(canonical);
+    let current = validate_path(&validated_path.to_string_lossy(), ctx, tool_name)?;
+    if current != validated_path {
+        return Err(crate::error::InvalidInputSnafu {
+            name: tool_name.clone(),
+            reason: "prepared path target changed before filesystem access".to_owned(),
+        }
+        .build());
     }
     Ok(validated_path)
 }
@@ -115,6 +117,14 @@ impl GrepExecutor {
 }
 
 impl ToolExecutor for GrepExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
+    fn workspace_default_path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -137,7 +147,7 @@ impl ToolExecutor for GrepExecutor {
             let glob_filter = extract_opt_str(&input.arguments, "glob");
 
             let path = match extract_opt_str(&input.arguments, "path") {
-                Some(p) => validate_path(p, ctx, &input.name)?,
+                Some(p) => validate_prepared_path(p, ctx, &input.name)?,
                 None => ctx.workspace.clone(),
             };
 
@@ -271,6 +281,14 @@ impl FindExecutor {
 }
 
 impl ToolExecutor for FindExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
+    fn workspace_default_path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -292,7 +310,7 @@ impl ToolExecutor for FindExecutor {
             let max_depth = extract_opt_u64(&input.arguments, "maxDepth");
 
             let path = match extract_opt_str(&input.arguments, "path") {
-                Some(p) => validate_path(p, ctx, &input.name)?,
+                Some(p) => validate_prepared_path(p, ctx, &input.name)?,
                 None => ctx.workspace.clone(),
             };
 
@@ -439,6 +457,14 @@ fn try_find_fallback(
 struct LsExecutor;
 
 impl ToolExecutor for LsExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
+    fn workspace_default_path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -448,7 +474,7 @@ impl ToolExecutor for LsExecutor {
             let show_all = extract_opt_bool(&input.arguments, "all").unwrap_or(false);
 
             let path = match extract_opt_str(&input.arguments, "path") {
-                Some(p) => validate_path(p, ctx, &input.name)?,
+                Some(p) => validate_prepared_path(p, ctx, &input.name)?,
                 None => ctx.workspace.clone(),
             };
 
@@ -567,7 +593,7 @@ pub(crate) fn register_with_sandbox(
                 rollback: RollbackSupport::Supported,
                 ..ToolCapabilityMetadata::default()
             },
-        );
+        )?;
     }
     Ok(())
 }

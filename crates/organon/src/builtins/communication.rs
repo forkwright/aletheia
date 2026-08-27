@@ -173,7 +173,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(sessions_ask_def(), Box::new(SessionsAskExecutor))?;
     registry.declare_capability(
         ToolName::from_static("sessions_ask"), // kanon:ignore RUST/expect
@@ -185,7 +185,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(sessions_send_def(), Box::new(SessionsSendExecutor))?;
     registry.declare_capability(
         ToolName::from_static("sessions_send"), // kanon:ignore RUST/expect
@@ -197,7 +197,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

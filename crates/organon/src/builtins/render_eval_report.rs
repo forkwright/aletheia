@@ -7,7 +7,7 @@ use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
 use crate::builtins::poiesis::json_data_property;
-use crate::builtins::workspace::validate_path;
+use crate::builtins::workspace::validate_prepared_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -19,6 +19,10 @@ use crate::types::{
 struct RenderEvalReportExecutor;
 
 impl ToolExecutor for RenderEvalReportExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["out_path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -46,7 +50,7 @@ impl ToolExecutor for RenderEvalReportExecutor {
 
             let validated_out_path =
                 if let Some(out_path) = args.get("out_path").and_then(serde_json::Value::as_str) {
-                    match validate_path(out_path, ctx, &input.name) {
+                    match validate_prepared_path(out_path, ctx, &input.name) {
                         Ok(path) => Some(path),
                         Err(e) => {
                             return Ok(ToolResult::error(format!(
@@ -167,7 +171,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

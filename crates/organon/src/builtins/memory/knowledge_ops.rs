@@ -431,16 +431,16 @@ pub(super) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register(memory_retract_def(), Box::new(MemoryRetractExecutor))?;
     registry.register(memory_forget_def(), Box::new(MemoryForgetExecutor))?;
     registry.register(memory_audit_def(), Box::new(MemoryAuditExecutor))?;
-    declare_capabilities(registry);
+    declare_capabilities(registry)?;
     Ok(())
 }
 
 /// Governance metadata for the knowledge-ops tools, grounded in each
 /// executor's knowledge-store call. Split out of [`register`] to keep that
 /// function under clippy's `too_many_lines` threshold; `declare_capability`
-/// is a no-op on an unregistered name, so this must simply run after the
+/// rejects an unregistered name, so this must run after the
 /// `registry.register` calls above.
-fn declare_capabilities(registry: &mut ToolRegistry) {
+fn declare_capabilities(registry: &mut ToolRegistry) -> Result<()> {
     let declare = |registry: &mut ToolRegistry, name: &'static str, rollback: RollbackSupport| {
         registry.declare_capability(
             ToolName::from_static(name),
@@ -450,9 +450,9 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                 rollback,
                 ..ToolCapabilityMetadata::default()
             },
-        );
+        )
     };
-    declare(registry, "memory_search", RollbackSupport::Supported);
+    declare(registry, "memory_search", RollbackSupport::Supported)?;
     declare(
         registry,
         "memory_correct",
@@ -462,7 +462,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      this tool"
                 .to_owned(),
         },
-    );
+    )?;
     declare(
         registry,
         "memory_retract",
@@ -471,7 +471,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      exists"
                 .to_owned(),
         },
-    );
+    )?;
     declare(
         registry,
         "memory_forget",
@@ -480,8 +480,9 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      design; there is no un-forget path"
                 .to_owned(),
         },
-    );
-    declare(registry, "memory_audit", RollbackSupport::Supported);
+    )?;
+    declare(registry, "memory_audit", RollbackSupport::Supported)?;
+    Ok(())
 }
 
 #[cfg(test)]

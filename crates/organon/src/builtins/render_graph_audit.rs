@@ -7,7 +7,7 @@ use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
 use crate::builtins::poiesis::json_data_property;
-use crate::builtins::workspace::validate_path;
+use crate::builtins::workspace::validate_prepared_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -69,6 +69,10 @@ async fn emit_graph_audit_from_default_store() -> std::result::Result<serde_json
 }
 
 impl ToolExecutor for RenderGraphAuditExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["out_path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -116,7 +120,7 @@ impl ToolExecutor for RenderGraphAuditExecutor {
 
             // Optional: write to a caller-provided path in addition to returning bytes.
             if let Some(out_path) = args.get("out_path").and_then(serde_json::Value::as_str) {
-                let validated = match validate_path(out_path, ctx, &input.name) {
+                let validated = match validate_prepared_path(out_path, ctx, &input.name) {
                     Ok(path) => path,
                     Err(e) => {
                         return Ok(ToolResult::error(format!(
@@ -240,7 +244,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 
