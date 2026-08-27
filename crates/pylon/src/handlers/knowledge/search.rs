@@ -11,8 +11,8 @@ use crate::state::KnowledgeState;
 use super::SimilarFact;
 use super::{
     EntityRelationship, ExplainCandidate, ExplainDecision, ExplainQuery, ExplainResponse,
-    FactorScoreBreakdown, FactsQuery, RecallWeightsView, SearchQuery, SearchResponse, SearchResult,
-    TimelineEvent, TimelineQuery, TimelineResponse, default_order, default_sort,
+    FactorScoreBreakdown, FactsQuery, SearchQuery, SearchResponse, SearchResult, TimelineEvent,
+    TimelineQuery, TimelineResponse, default_order, default_sort,
 };
 
 /// Score a fact stream using the same multi-factor recall engine as the turn
@@ -293,15 +293,7 @@ pub async fn explain(
 
     Ok(Json(ExplainResponse {
         query: query.q,
-        weights: RecallWeightsView {
-            vector_similarity: explanation.weights.vector_similarity,
-            decay: explanation.weights.decay,
-            relevance: explanation.weights.relevance,
-            epistemic_tier: explanation.weights.epistemic_tier,
-            access_frequency: explanation.weights.access_frequency,
-            relationship_proximity: explanation.weights.relationship_proximity,
-            graph_importance: explanation.weights.graph_importance,
-        },
+        weights: explanation.weights.into(),
         total_candidates: selected.len() + dropped.len(),
         selected,
         dropped,
