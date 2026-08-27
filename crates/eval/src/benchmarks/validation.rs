@@ -193,10 +193,7 @@ impl core::fmt::Display for BenchmarkValidationIssue {
 pub(crate) async fn load_validated_dataset<T>(
     path: impl AsRef<Path> + Send,
     mut options: BenchmarkValidationOptions,
-    parse: impl FnOnce(
-        &[u8],
-        &BenchmarkValidationOptions,
-    ) -> io::Result<(T, BenchmarkValidationReport)>,
+    parse: impl FnOnce(&[u8], &BenchmarkValidationOptions) -> io::Result<(T, BenchmarkValidationReport)>,
 ) -> io::Result<(T, BenchmarkValidationReport)> {
     let path_ref = path.as_ref();
     if options.dataset_path.is_none() {
