@@ -59,7 +59,7 @@ them.
 
 | Client | State | Notes |
 |---|---|---|
-| Desktop | working | Full `ConnectionState` taxonomy — `Disconnected`/`Connecting`/`Connected`/`ConnectedDegraded{status}`/`Reconnecting{attempt}`/`TimedOut`/`Failed{reason}` (`crates/theatron/proskenion/src/views/connect.rs:154-176`), each with distinct copy and color; in-flight connects are cancelable; exponential-backoff reconnection is implemented and tested (`services/connection.rs:331-410`). No-auth-required is a clean path (empty token maps to `None`, `connect.rs:187`). |
+| Desktop | working | Full `ConnectionState` taxonomy — `Disconnected`/`Connecting`/`Connected`/`ConnectedDegraded{status}`/`Reconnecting{attempt}`/`TimedOut`/`Failed{reason}` (`crates/theatron/proskenion/src/views/connect.rs:154-176`), each with distinct copy and color; in-flight connects are cancelable; exponential-backoff reconnection is implemented (`services/connection.rs:331-410`) and tested (`state/connection.rs:257-280`, `services/connection.rs:796-838`). No-auth-required is a clean path (empty token maps to `None`, `connect.rs:187`). |
 | TUI | working pre-launch only | Token resolves once at startup (`--token`/`ALETHEIA_TOKEN`/`tui.toml`, OS keyring or AES-256-GCM file fallback). `set_token()` exists on the client but has zero call sites in koilon — there is no in-session re-auth path; an expired token requires quitting and relaunching. The startup failure message for a rejected token reuses `Error::GatewayUnreachable`'s fixed "Server not running" template, which is wrong advice for this specific case. **Important — [#6818](https://github.com/forkwright/aletheia/issues/6818).** |
 | API | partial | `Claims::from_request_parts` (`crates/pylon/src/extract.rs:29-86`) cleanly distinguishes `auth_mode=none` from everything else, but a missing header, a non-`Bearer` header, and an expired/malformed/revoked token all collapse into the identical `ApiError::Unauthorized` — a client cannot render "log in" versus "re-authenticate" differently. **Important — [#6826](https://github.com/forkwright/aletheia/issues/6826).** |
 
@@ -68,7 +68,7 @@ them.
 | Client | State | Notes |
 |---|---|---|
 | TUI | working, most complete surface | Distinct `StreamPhase`-driven loading indicator with per-tool-call status; empty/first-run, loading, and error states are all present and distinct (`crates/theatron/koilon/src/view/chat/mod.rs:109-131`); 30s stall warning, 60s stall message (does not auto-cancel despite the `STALL_CANCEL_SECS` name — user must Ctrl+C). A mid-stream error now commits the partial response, tool-call record, and a terminal error marker instead of leaving retry-vulnerable text in the streaming buffer (`crates/theatron/koilon/src/update/streaming/mod.rs:470-510`, regression coverage in `streaming/tests.rs:414-458,667-716`). |
-| Desktop | working | Four distinct branches — initial-loading / post-load-empty / loaded / error (`crates/theatron/proskenion/src/views/chat.rs:895-936`); mid-turn error shown both inline and as a dismissable banner with one-click retry that reuses the client turn id (`chat.rs:1213-1286`); older-message pagination has its own "Loading older messages..." state. |
+| Desktop | working | Four distinct branches — initial-loading / post-load-empty / loaded / error (`crates/theatron/proskenion/src/views/chat.rs:895-936`); mid-turn error shown both inline and as a dismissable banner (`chat.rs:1213-1286`), with one-click retry that reuses the client turn id (`chat.rs:633-646,709-716,870-878`); older-message pagination has its own "Loading older messages..." state. |
 | API | implemented | The turn wire vocabulary (`message_start`/`text_delta`/`tool_use`/`tool_result`/`message_complete`/`error`/`replay_gap`/`turn_abort`) is the canonical contract per `docs/HARNESS-LIFECYCLE.md` stage 4; retry is a client convention with no dedicated endpoint (tracked at aletheia#6790, named in that document). |
 
 ## Permission and approval flows
@@ -87,12 +87,12 @@ are per-turn stream events (`crates/pylon/src/stream_dto.rs`), delivered on
 `GET /sessions/{id}/turns/{turn_id}/events` — and both clients hold exactly
 one such stream open at a time (koilon: `ConnectionState.stream_rx:
 Option<mpsc::Receiver<StreamEvent>>` / `.active_turn_id: Option<TurnId>`,
-`crates/theatron/koilon/src/app/mod.rs:91-92`). The separate, always-open
+`crates/theatron/koilon/src/app/mod.rs:92-93`). The separate, always-open
 domain-event connection both clients also hold (`GET
 /api/v1/events/subscribe`) never carries an approval event — verified against
 every real `EventBus::publish` call site in the workspace, which covers only
 turn lifecycle, `fact.created`, `nous.lifecycle`, and `credential.*`
-(`crates/pylon/src/event_bus_dto.rs:21-30`). The client-side `SseEvent` type
+(`crates/pylon/src/event_bus_dto.rs:21-35`). The client-side `SseEvent` type
 defines several more variants than pylon ever emits (`ToolCalled`,
 `ToolFailed`, `StatusUpdate`, `SessionCreated`, ... —
 `crates/theatron/skene/src/api/types/mod.rs:487-650`, parsed by
