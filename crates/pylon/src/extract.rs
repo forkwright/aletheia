@@ -71,24 +71,21 @@ impl FromRequestParts<Arc<AppState>> for Claims {
                 location: snafu::location!(),
             })?;
 
-        let claims = state
-            .auth_facade
-            .validate_token(token)
-            .map_err(|err| {
-                let reason = token_rejection_reason(&err);
-                // WHY(#6826): the wire response stays coarse, but the
-                // validator's cause (expired vs malformed vs revoked) is
-                // operator-visible in logs instead of discarded.
-                tracing::info!(
-                    reason = reason.as_str(),
-                    error = %err,
-                    "bearer token rejected"
-                );
-                ApiError::Unauthorized {
-                    reason,
-                    location: snafu::location!(),
-                }
-            })?;
+        let claims = state.auth_facade.validate_token(token).map_err(|err| {
+            let reason = token_rejection_reason(&err);
+            // WHY(#6826): the wire response stays coarse, but the
+            // validator's cause (expired vs malformed vs revoked) is
+            // operator-visible in logs instead of discarded.
+            tracing::info!(
+                reason = reason.as_str(),
+                error = %err,
+                "bearer token rejected"
+            );
+            ApiError::Unauthorized {
+                reason,
+                location: snafu::location!(),
+            }
+        })?;
 
         Ok(Self {
             sub: claims.sub,

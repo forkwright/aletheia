@@ -173,9 +173,7 @@ impl UnauthorizedReason {
     pub(crate) fn www_authenticate_value(self) -> &'static str {
         match self {
             Self::MissingCredentials | Self::MalformedAuthorizationHeader => "Bearer",
-            Self::InvalidToken | Self::TokenExpired => {
-                "Bearer error=\"invalid_token\""
-            }
+            Self::InvalidToken | Self::TokenExpired => "Bearer error=\"invalid_token\"",
         }
     }
 }

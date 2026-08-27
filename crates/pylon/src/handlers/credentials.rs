@@ -582,21 +582,18 @@ fn require_credential_operator(state: &AppState, headers: &HeaderMap) -> Result<
             reason: UnauthorizedReason::MalformedAuthorizationHeader,
             location: snafu::location!(),
         })?;
-    let claims = state
-        .auth_facade
-        .validate_token(token)
-        .map_err(|err| {
-            let reason = crate::extract::token_rejection_reason(&err);
-            tracing::info!(
-                reason = reason.as_str(),
-                error = %err,
-                "bearer token rejected"
-            );
-            ApiError::Unauthorized {
-                reason,
-                location: snafu::location!(),
-            }
-        })?;
+    let claims = state.auth_facade.validate_token(token).map_err(|err| {
+        let reason = crate::extract::token_rejection_reason(&err);
+        tracing::info!(
+            reason = reason.as_str(),
+            error = %err,
+            "bearer token rejected"
+        );
+        ApiError::Unauthorized {
+            reason,
+            location: snafu::location!(),
+        }
+    })?;
     state
         .auth_facade
         .authorize(&claims, &Action::ManageCredentials)
