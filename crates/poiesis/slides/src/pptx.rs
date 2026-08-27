@@ -680,5 +680,4 @@ mod tests {
         let bytes = r.render(&sample_doc()).expect("PPTX render failed");
         assert_eq!(&bytes[..2], b"PK", "PPTX output should be a valid ZIP");
     }
-
 }

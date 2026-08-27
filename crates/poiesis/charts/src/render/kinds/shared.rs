@@ -45,7 +45,6 @@ pub(crate) fn aria_label(chart: &Chart) -> String {
     }
 }
 
-
 /// Compute a nice-rounded domain from data values.
 ///
 /// `lo` is clamped to zero so bar/column/area charts keep a data baseline at
