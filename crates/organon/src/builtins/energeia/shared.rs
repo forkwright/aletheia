@@ -60,7 +60,9 @@ pub(super) fn require_str<'a>(
     args: &'a serde_json::Value,
     field: &str,
 ) -> std::result::Result<&'a str, String> {
-    extract_str_with(args, field, |field| format!("missing required field '{field}'"))
+    extract_str_with(args, field, |field| {
+        format!("missing required field '{field}'")
+    })
 }
 
 /// Extract an optional string field from tool arguments.
