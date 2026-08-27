@@ -301,6 +301,8 @@ pub(super) fn build_nous_runtime_config(
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test setup assertions")]
 mod tests {
+    use std::io::Write as _;
+
     use hermeneus::complexity::{ComplexityConfig, ComplexityInput, ModelTier, route_model};
     use taxis::config::{AgentBehaviorDefaults, AletheiaConfig, NousDefinition};
     use taxis::oikos::Oikos;
@@ -316,6 +318,13 @@ mod tests {
             build_nous_runtime_config(config, &oikos, &[], "custom");
 
         nous_config.generation.complexity
+    }
+
+    fn write_fixture(path: &std::path::Path, content: &str) {
+        let mut file = std::fs::File::create(path).expect("create pack fixture");
+        file.write_all(content.as_bytes())
+            .expect("write pack fixture");
+        file.sync_all().expect("sync pack fixture");
     }
 
     #[test]
@@ -343,6 +352,46 @@ mod tests {
             default.max_prompt_additions_bytes,
             thesauros::manifest::DEFAULT_MAX_PROMPT_ADDITIONS_BYTES
         );
+    }
+
+    #[test]
+    fn pack_domains_are_a_global_routing_namespace_across_loaded_packs() {
+        let instance = TempDir::new().expect("create instance temp directory");
+        let routing_pack = instance.path().join("routing-pack");
+        let context_pack = instance.path().join("context-pack");
+        std::fs::create_dir_all(&routing_pack).expect("create routing pack");
+        std::fs::create_dir_all(&context_pack).expect("create context pack");
+        write_fixture(
+            &routing_pack.join("pack.toml"),
+            "name = \"routing-pack\"\nversion = \"1.0\"\n\n[overlays.custom]\ndomains = [\"shared-domain\"]\n",
+        );
+        write_fixture(
+            &context_pack.join("pack.toml"),
+            "name = \"context-pack\"\nversion = \"1.0\"\n\n[[context]]\npath = \"shared.md\"\nagents = [\"shared-domain\"]\n",
+        );
+        write_fixture(&context_pack.join("shared.md"), "cross-pack context");
+
+        let packs = thesauros::loader::load_packs(&[routing_pack, context_pack]);
+        assert_eq!(packs.len(), 2, "both contract-test packs must load");
+
+        let config = AletheiaConfig::default();
+        let oikos = Oikos::from_root(instance.path());
+        let (nous_config, _pipeline_config) =
+            build_nous_runtime_config(&config, &oikos, &packs, "custom");
+        assert!(
+            nous_config
+                .domains
+                .iter()
+                .any(|domain| domain == "shared-domain"),
+            "a domain contributed by one pack enters the agent's combined routing namespace"
+        );
+
+        // This is the exact filter call used by NousManager::spawn_actor.
+        // Domains are deliberately global agent routing attributes, so a
+        // section in another loaded pack may opt into the shared tag.
+        let sections = packs[1].sections_for_agent_or_domains("custom", &nous_config.domains);
+        assert_eq!(sections.len(), 1);
+        assert_eq!(sections[0].content, "cross-pack context");
     }
 
     #[test]

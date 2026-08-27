@@ -3,7 +3,7 @@
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use snafu::ResultExt;
+use snafu::{ResultExt, ensure};
 use tracing::{info, warn};
 
 use crate::error::{self, Result};
@@ -46,7 +46,7 @@ pub struct LoadedPack {
     manifest: PackManifest,
     /// Resolved context sections with file contents read.
     sections: Vec<PackSection>,
-    /// Absolute path to the pack root.
+    /// Canonical absolute path that anchors this pack's filesystem authority.
     root: PathBuf,
 }
 
@@ -86,7 +86,7 @@ impl LoadedPack {
         &self.sections
     }
 
-    /// Configured pack root.
+    /// Canonical pack root used for all pack-owned filesystem authority.
     #[must_use]
     pub fn root(&self) -> &Path {
         &self.root
@@ -273,14 +273,19 @@ fn load_single_pack_inner(
     pack_root: &Path,
     policy: &OverlayPolicy,
 ) -> std::result::Result<(LoadedPack, Vec<PackIssue>), PackLoadFailure> {
-    let manifest = manifest::load_manifest(pack_root).map_err(|error| PackLoadFailure {
+    let canonical_root = canonicalize_pack_root(pack_root).map_err(|error| PackLoadFailure {
+        manifest_name: None,
+        component: PackComponent::Manifest,
+        error,
+    })?;
+    let manifest = manifest::load_manifest(&canonical_root).map_err(|error| PackLoadFailure {
         manifest_name: None,
         component: PackComponent::Manifest,
         error,
     })?;
     let manifest_name = manifest.name.clone();
     let (sections, mut issues) =
-        resolve_context_sections(pack_root, &manifest).map_err(|error| PackLoadFailure {
+        resolve_context_sections(&canonical_root, &manifest).map_err(|error| PackLoadFailure {
             manifest_name: Some(manifest_name),
             component: PackComponent::Context,
             error,
@@ -290,10 +295,29 @@ fn load_single_pack_inner(
         instance_id,
         manifest,
         sections,
-        root: pack_root.to_path_buf(),
+        root: canonical_root,
     };
     issues.extend(apply_overlay_policy(&mut pack, policy));
     Ok((pack, issues))
+}
+
+/// Resolve one configured pack path exactly once before reading any pack-owned
+/// data or deriving subprocess authority from it.
+///
+/// SECURITY: keeping a configured symlink as [`LoadedPack::root`] would let an
+/// operator-admitted pack alias be retargeted after registration. The command
+/// path would remain bound to its original file identity while the later cwd
+/// and Landlock read grant resolved the alias to a different hierarchy. A
+/// single canonical root keeps manifest/context reads, command validation,
+/// subprocess cwd, and sandbox grants anchored to the same chosen path.
+fn canonicalize_pack_root(pack_root: &Path) -> Result<PathBuf> {
+    ensure!(
+        pack_root.is_dir(),
+        error::PackNotFoundSnafu { path: pack_root }
+    );
+    pack_root
+        .canonicalize()
+        .context(error::ReadFileSnafu { path: pack_root })
 }
 
 /// Resolve all context entries into sections with file contents.
@@ -1026,10 +1050,10 @@ system_prompt_additions = ["aaaaa", "bbbbb", "c"]
     }
 
     #[test]
-    fn pack_root_stored() {
+    fn pack_root_is_stored_as_canonical_authority() {
         let dir = setup_pack(&[("pack.toml", "name = \"root-test\"\nversion = \"1.0\"\n")]);
         let pack = load_single_pack(dir.path()).unwrap();
-        assert_eq!(pack.root, dir.path());
+        assert_eq!(pack.root, dir.path().canonicalize().unwrap());
     }
 
     #[test]

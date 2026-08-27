@@ -156,15 +156,67 @@ async fn run_pack_command_with_retry(
     stdin: Vec<u8>,
     timeout: Duration,
 ) -> Result<organon::subprocess::SubprocessOutput, SubprocessError> {
+    let runner = executor.runner.clone();
+    run_pack_command_with_retry_using(
+        executor,
+        ctx,
+        stdin,
+        timeout,
+        move |request, attempt_ctx| {
+            let runner = runner.clone();
+            let command_path = executor.command_path.clone();
+            let expected_identity = executor.expected_identity;
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    // Keep the production recheck in the blocking task so it
+                    // runs after scheduler handoff, directly before Organon
+                    // prepares and spawns this attempt.
+                    expected_identity
+                        .verify(&command_path)
+                        .map_err(|reason| command_identity_error(&command_path, &reason))?;
+                    runner.run(request, &attempt_ctx)
+                })
+                .await
+                .map_err(|e| SubprocessError::Wait(std::io::Error::other(e.to_string())))?
+            }
+        },
+    )
+    .await
+}
+
+/// Run a pack command with an injected single-attempt operation.
+///
+/// The injection keeps retry policy deterministic in tests. Production passes
+/// the real [`SubprocessRunner`] operation above.
+async fn run_pack_command_with_retry_using<RunAttempt, AttemptFuture>(
+    executor: &ShellToolExecutor,
+    ctx: &ToolContext,
+    stdin: Vec<u8>,
+    timeout: Duration,
+    mut run_attempt: RunAttempt,
+) -> Result<organon::subprocess::SubprocessOutput, SubprocessError>
+where
+    RunAttempt: FnMut(SubprocessRequest, ToolContext) -> AttemptFuture,
+    AttemptFuture: Future<Output = Result<organon::subprocess::SubprocessOutput, SubprocessError>>,
+{
     let mut last_err = None;
     for attempt in 0..4 {
-        let runner = executor.runner.clone();
-        let ctx = ctx.clone();
         let request = build_request(executor, stdin.clone(), timeout);
 
-        let result = tokio::task::spawn_blocking(move || runner.run(request, &ctx))
-            .await
-            .map_err(|e| SubprocessError::Wait(std::io::Error::other(e.to_string())))?;
+        // SECURITY: ETXTBSY is retryable, but the wait between attempts is
+        // also a file-swap window. Revalidate immediately before *every*
+        // spawn attempt, not only once before entering this loop.
+        //
+        // Residual boundary: Organon still executes `command_path` by path.
+        // A mutation after this stat and before the kernel resolves exec is a
+        // narrower remaining race; eliminating it requires descriptor-based
+        // execution (fexecve/execveat), not another path check.
+        executor
+            .expected_identity
+            .verify(&executor.command_path)
+            .map_err(|reason| command_identity_error(&executor.command_path, &reason))?;
+
+        let result = run_attempt(request, ctx.clone()).await;
 
         match result {
             Ok(output) => return Ok(output),
@@ -179,6 +231,16 @@ async fn run_pack_command_with_retry(
     Err(last_err.unwrap_or_else(|| {
         SubprocessError::Spawn(std::io::Error::other("spawn failed after retry attempts"))
     }))
+}
+
+fn command_identity_error(command_path: &Path, reason: &str) -> SubprocessError {
+    SubprocessError::Spawn(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        format!(
+            "tool command {} changed since registration: {reason}",
+            command_path.display()
+        ),
+    ))
 }
 
 /// Build the subprocess request for one invocation, applying the tool's

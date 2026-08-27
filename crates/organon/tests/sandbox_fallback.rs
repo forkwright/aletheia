@@ -27,8 +27,8 @@ mod linux {
     }
 
     /// Permissive mode must succeed and execute the tool regardless of whether
-    /// Landlock is available on the running kernel. This covers the graceful
-    /// degradation path for kernels that lack Landlock support (#943).
+    /// the full Landlock baseline is available on the running kernel. This
+    /// covers graceful degradation on absent or pre-v5 Landlock (#943).
     #[test]
     fn permissive_fallback_succeeds_regardless_of_landlock_availability() {
         let dir = tempfile::tempdir().expect("tempdir creation must succeed");
@@ -59,11 +59,11 @@ mod linux {
         );
     }
 
-    /// Strict enforcement must return a clear, named error when Landlock is
-    /// unavailable: never an opaque "Permission denied (os error 13)".
-    /// When Landlock IS available the command executes normally.
+    /// Strict enforcement must return a clear, named error when the full
+    /// Landlock v5 filesystem-rights baseline is unavailable: never an opaque
+    /// "Permission denied (os error 13)". At ABI v5+ the command executes.
     #[test]
-    fn strict_enforcement_returns_clear_error_when_landlock_unavailable() {
+    fn strict_enforcement_returns_clear_error_without_full_landlock_baseline() {
         let dir = tempfile::tempdir().expect("tempdir creation must succeed");
         let config = SandboxConfig {
             enabled: true,
@@ -75,9 +75,9 @@ mod linux {
         let mut cmd = std::process::Command::new("echo");
         cmd.arg("unreachable");
 
-        if probe_landlock_abi().is_none() {
+        if probe_landlock_abi().is_none_or(|abi| abi < 5) {
             let err = apply_sandbox(&mut cmd, policy)
-                .expect_err("enforcing mode must fail when Landlock is unavailable");
+                .expect_err("enforcing mode must fail without the full Landlock baseline");
             let msg = err.to_string();
             assert!(
                 msg.contains("Landlock") || msg.contains("ABI"),
@@ -91,7 +91,7 @@ mod linux {
             let result = apply_sandbox(&mut cmd, policy);
             assert!(
                 result.is_ok(),
-                "enforcing mode must succeed when Landlock is available: {result:?}"
+                "enforcing mode must succeed with the full Landlock baseline: {result:?}"
             );
         }
     }

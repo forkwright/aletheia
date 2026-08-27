@@ -484,6 +484,183 @@ async fn shell_executor_runs_script() {
     assert!(result.content.text_summary().contains("hello"));
 }
 
+// SECURITY: the configured pack path can itself be a symlink. Retargeting
+// that alias after registration must not change either the subprocess cwd or
+// the hierarchy later granted to the sandbox.
+#[cfg(unix)]
+#[tokio::test]
+async fn registered_tool_keeps_canonical_root_after_pack_alias_retarget() {
+    let container = TempDir::new().expect("create test container");
+    let decoy_container = tempfile::Builder::new()
+        .prefix("aletheia-root-grant-")
+        .tempdir_in(std::env::current_dir().expect("resolve test working directory"))
+        .expect("create decoy outside the system temp grant");
+    let original_root = container.path().join("original-pack");
+    let decoy_root = decoy_container.path();
+    let configured_alias = container.path().join("configured-pack");
+    fs::create_dir_all(original_root.join("tools")).expect("create original tool directory");
+    fs::create_dir_all(decoy_root.join("tools")).expect("create decoy tool directory");
+
+    let manifest =
+        std::fs::File::create(original_root.join("pack.toml")).expect("create original manifest");
+    std::io::Write::write_all(
+        &mut &manifest,
+        b"name = \"root-anchor\"\nversion = \"1.0\"\n\n[[tools]]\nname = \"show_root\"\ndescription = \"Show physical cwd\"\ncommand = \"tools/show-root.sh\"\n",
+    )
+    .expect("write original manifest");
+    manifest.sync_all().expect("sync original manifest");
+    drop(manifest);
+
+    let script = std::fs::File::create(original_root.join("tools/show-root.sh"))
+        .expect("create root-reporting script");
+    std::io::Write::write_all(&mut &script, b"#!/bin/sh\npwd -P")
+        .expect("write root-reporting script");
+    script.sync_all().expect("sync root-reporting script");
+    drop(script);
+    make_executable(&container, "original-pack/tools/show-root.sh");
+
+    std::os::unix::fs::symlink(&original_root, &configured_alias)
+        .expect("create configured absolute pack alias");
+    let packs = crate::loader::load_packs(std::slice::from_ref(&configured_alias));
+    assert_eq!(
+        packs.len(),
+        1,
+        "pack must load through its configured alias"
+    );
+    let canonical_root = original_root
+        .canonicalize()
+        .expect("canonicalize original pack root");
+    assert_eq!(
+        packs[0].root(),
+        canonical_root,
+        "load admission must retain the chosen canonical authority root"
+    );
+
+    let mut registry = ToolRegistry::new();
+    let failures =
+        register_pack_tools_with_sandbox(&packs, &mut registry, unsandboxed_test_config());
+    assert!(failures.is_empty(), "registration failures: {failures:?}");
+
+    fs::remove_file(&configured_alias).expect("remove original pack alias");
+    std::os::unix::fs::symlink(&decoy_root, &configured_alias)
+        .expect("retarget configured alias to decoy");
+
+    let input = ToolInput {
+        name: ToolName::new("show_root").expect("valid root tool name"),
+        tool_use_id: "toolu_root_anchor".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let result = registry
+        .execute(&input, &test_ctx(&container))
+        .await
+        .expect("root-reporting tool must return a result");
+    assert!(!result.is_error, "unexpected tool error: {result:?}");
+    assert_eq!(
+        result.content.text_summary().trim(),
+        canonical_root.to_string_lossy().as_ref(),
+        "retargeting the configured alias must not redirect cwd authority"
+    );
+}
+
+// SECURITY: exercise the same alias-retarget attack through the actual Linux
+// Landlock grant. The decoy is outside ToolContext.workspace; only a stale
+// alias used as the pack read grant could make its marker readable.
+#[cfg(target_os = "linux")]
+#[tokio::test]
+async fn canonical_pack_root_prevents_retargeted_sandbox_read_grant() {
+    let sandbox = organon::sandbox::SandboxConfig {
+        enabled: true,
+        enforcement: organon::sandbox::SandboxEnforcement::Enforcing,
+        egress: organon::sandbox::EgressPolicy::Allow,
+        nproc_limit: 4096,
+        ..organon::sandbox::SandboxConfig::default()
+    };
+    let guarantees = organon::sandbox::diagnostic_guarantees(&sandbox);
+    if guarantees.landlock != organon::sandbox::GuaranteeStatus::Active
+        || guarantees.seccomp != organon::sandbox::GuaranteeStatus::Active
+    {
+        return;
+    }
+
+    // Keep the fixture outside the system temp directory: the default
+    // sandbox grants that directory read/write authority, which would make
+    // a sibling "secret" readable for an unrelated reason and turn this
+    // regression into a false proof.
+    let container = tempfile::Builder::new()
+        .prefix("aletheia-root-grant-")
+        .tempdir_in(std::env::current_dir().expect("resolve test working directory"))
+        .expect("create test container outside the system temp grant");
+    let original_root = container.path().join("original-pack");
+    let decoy_root = container.path().join("decoy-pack");
+    let configured_alias = container.path().join("configured-pack");
+    fs::create_dir_all(original_root.join("tools")).expect("create original tool directory");
+    fs::create_dir_all(&decoy_root).expect("create decoy pack directory");
+
+    let manifest =
+        std::fs::File::create(original_root.join("pack.toml")).expect("create original manifest");
+    std::io::Write::write_all(
+        &mut &manifest,
+        b"name = \"root-grant\"\nversion = \"1.0\"\n\n[[tools]]\nname = \"read_decoy\"\ndescription = \"Attempt sibling read\"\ncommand = \"tools/read-decoy.sh\"\n",
+    )
+    .expect("write original manifest");
+    manifest.sync_all().expect("sync original manifest");
+    drop(manifest);
+
+    let script = std::fs::File::create(original_root.join("tools/read-decoy.sh"))
+        .expect("create decoy-reading script");
+    std::io::Write::write_all(&mut &script, b"#!/bin/sh\ncat tools/secret-link")
+        .expect("write decoy-reading script");
+    script.sync_all().expect("sync decoy-reading script");
+    drop(script);
+    make_executable(&container, "original-pack/tools/read-decoy.sh");
+    let marker = "sandbox-alias-retarget-leak";
+    let secret =
+        std::fs::File::create(decoy_root.join("tools/secret-link")).expect("create decoy secret");
+    std::io::Write::write_all(&mut &secret, marker.as_bytes()).expect("write decoy secret");
+    secret.sync_all().expect("sync decoy secret");
+    drop(secret);
+    std::os::unix::fs::symlink(
+        decoy_root.join("tools/secret-link"),
+        original_root.join("tools/secret-link"),
+    )
+    .expect("create original-pack escape symlink");
+
+    std::os::unix::fs::symlink(&original_root, &configured_alias)
+        .expect("create configured pack alias");
+    let packs = crate::loader::load_packs(std::slice::from_ref(&configured_alias));
+    assert_eq!(packs.len(), 1, "pack must load through configured alias");
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools_with_sandbox(&packs, &mut registry, sandbox);
+    assert!(failures.is_empty(), "registration failures: {failures:?}");
+
+    fs::remove_file(&configured_alias).expect("remove original pack alias");
+    std::os::unix::fs::symlink(&decoy_root, &configured_alias)
+        .expect("retarget configured alias to decoy");
+
+    let mut ctx = test_ctx(&container);
+    ctx.workspace.clone_from(&original_root);
+    let input = ToolInput {
+        name: ToolName::new("read_decoy").expect("valid test tool name"),
+        tool_use_id: "toolu_root_grant".to_owned(),
+        arguments: serde_json::json!({}),
+    };
+    let result = registry
+        .execute(&input, &ctx)
+        .await
+        .expect("decoy-reading tool must return a result");
+    assert!(result.is_error, "sandbox must deny the sibling read");
+    assert!(
+        !result.content.text_summary().contains(marker),
+        "retargeted configured alias must not widen the pack read grant"
+    );
+    let diagnostics = result.diagnostics.expect("command diagnostics");
+    assert_eq!(diagnostics.exit_code, Some(1));
+    assert!(
+        diagnostics.sandbox_violations.is_empty(),
+        "the sandbox must install successfully and deny the read at runtime"
+    );
+}
+
 // SECURITY(#5213): a file swapped in at the registered path after
 // registration must be refused at execution, not silently run under the
 // tool's original, reviewed name.
@@ -532,6 +709,62 @@ async fn shell_executor_refuses_a_swapped_command_file() {
             .contains("changed since registration"),
         "error must explain why: {}",
         result.content.text_summary()
+    );
+}
+
+// SECURITY: a swap in the ETXTBSY backoff window must be caught before the
+// next spawn. The attempt operation is injected so the regression is
+// deterministic and does not depend on scheduler timing or a live busy file.
+#[cfg(unix)]
+#[tokio::test]
+async fn shell_executor_rechecks_identity_before_every_retry_attempt() {
+    let dir = setup_pack_dir(&[("tools/echo.sh", "#!/bin/sh\ncat")]);
+    make_executable(&dir, "tools/echo.sh");
+    let executor = test_executor(&dir, "tools/echo.sh", 5000);
+    let ctx = test_ctx(&dir);
+    let mut attempts = 0_u8;
+
+    let result = run_pack_command_with_retry_using(
+        &executor,
+        &ctx,
+        Vec::new(),
+        Duration::from_secs(5),
+        |_request, _attempt_ctx| {
+            attempts = attempts.saturating_add(1);
+            let result = if attempts == 1 {
+                // Model the first path-based spawn returning ETXTBSY after an
+                // attacker changes the registered path during that attempt.
+                let swapped = std::fs::File::create(&executor.command_path)
+                    .expect("open registered command for retry-window swap");
+                std::io::Write::write_all(&mut &swapped, b"#!/bin/sh\necho swapped-during-retry")
+                    .expect("replace registered command during retry window");
+                swapped.sync_all().expect("sync retry-window replacement");
+                drop(swapped);
+                make_executable(&dir, "tools/echo.sh");
+                Err(SubprocessError::Spawn(std::io::Error::from_raw_os_error(
+                    26,
+                )))
+            } else {
+                Ok(organon::subprocess::SubprocessOutput {
+                    exit_code: 0,
+                    stdout: "replacement ran".to_owned(),
+                    stderr: String::new(),
+                    duration: Duration::ZERO,
+                })
+            };
+            std::future::ready(result)
+        },
+    )
+    .await;
+
+    let error = result.expect_err("the second attempt must refuse the changed command");
+    assert_eq!(
+        attempts, 1,
+        "identity refusal must happen before retry spawn"
+    );
+    assert!(
+        error.to_string().contains("changed since registration"),
+        "retry refusal must preserve the identity-mismatch reason: {error}"
     );
 }
 

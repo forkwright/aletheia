@@ -545,15 +545,15 @@ impl SandboxPolicy {
     fn apply_landlock(&self) -> std::io::Result<()> {
         use landlock::{
             ABI, Access, AccessFs, BitFlags, PathBeneath, PathFd, Ruleset, RulesetAttr,
-            RulesetCreatedAttr, RulesetStatus,
+            RulesetCreatedAttr,
         };
 
-        // WHY: Use the highest filesystem-relevant ABI the crate supports so
-        // the ruleset handles all known access types. The crate's best-effort
-        // mechanism silently drops flags the running kernel does not recognize,
-        // making this safe across kernel versions. V5 added IoctlDev; without
-        // handling it on V5+ kernels, ioctl on device files (/dev/null,
-        // /dev/tty) would be uncontrolled by the sandbox policy.
+        // WHY: Use the highest filesystem-relevant ABI required by this policy
+        // so the ruleset handles every requested access type. V5 added
+        // IoctlDev; without handling it, ioctl on device files (/dev/null,
+        // /dev/tty) would be uncontrolled. Parent-side admission rejects an
+        // older ABI in enforcing mode, and the child check below rejects a
+        // partially enforced ruleset as defense in depth.
         let abi = ABI::V5;
 
         let read_access = AccessFs::ReadFile | AccessFs::ReadDir;
@@ -602,8 +602,9 @@ impl SandboxPolicy {
 
         // WHY: IoctlDev (V5+) controls ioctl on device files. Grant it to
         // /dev so child processes can perform terminal operations and interact
-        // with device nodes like /dev/null and /dev/tty. On pre-V5 kernels
-        // this flag is silently dropped by the crate's best-effort mechanism.
+        // with device nodes like /dev/null and /dev/tty. The crate's
+        // best-effort compatibility layer drops this flag on pre-V5 kernels;
+        // enforcing mode rejects that partial result below.
         let dev = [PathBuf::from("/dev")];
         let ruleset = add(ruleset, &dev, read_access | AccessFs::IoctlDev)?;
 
@@ -611,20 +612,7 @@ impl SandboxPolicy {
             .restrict_self()
             .map_err(|e| std::io::Error::other(format!("Landlock restrict_self failed: {e}")))?;
 
-        match status.ruleset {
-            // NOTE: sandbox enforcement active, no action needed
-            RulesetStatus::FullyEnforced | RulesetStatus::PartiallyEnforced => {}
-            RulesetStatus::NotEnforced => {
-                if self.enforcement == SandboxEnforcement::Enforcing {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Unsupported,
-                        "Landlock not supported by kernel",
-                    ));
-                }
-            }
-        }
-
-        Ok(())
+        require_full_landlock_status(status.ruleset, self.enforcement)
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -682,6 +670,32 @@ impl SandboxPolicy {
     )]
     fn apply_seccomp(&self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn require_full_landlock_status(
+    status: landlock::RulesetStatus,
+    enforcement: SandboxEnforcement,
+) -> std::io::Result<()> {
+    match status {
+        landlock::RulesetStatus::FullyEnforced => Ok(()),
+        landlock::RulesetStatus::PartiallyEnforced
+            if enforcement == SandboxEnforcement::Enforcing =>
+        {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Landlock ruleset was only partially enforced; required V5 filesystem rights \
+                 are unavailable",
+            ))
+        }
+        landlock::RulesetStatus::NotEnforced if enforcement == SandboxEnforcement::Enforcing => {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Unsupported,
+                "Landlock not supported by kernel",
+            ))
+        }
+        landlock::RulesetStatus::PartiallyEnforced | landlock::RulesetStatus::NotEnforced => Ok(()),
     }
 }
 
@@ -776,6 +790,27 @@ static LANDLOCK_ABI: std::sync::LazyLock<Option<i32>> = std::sync::LazyLock::new
     abi
 });
 
+/// Minimum kernel Landlock ABI covering every filesystem right requested by
+/// [`SandboxPolicy::apply_landlock`].
+///
+/// V5 added `LANDLOCK_ACCESS_FS_IOCTL_DEV`, which this policy both handles and
+/// grants narrowly under `/dev`. The landlock crate's best-effort layer drops
+/// that right on ABI 1-4 and reports partial enforcement, so those kernels may
+/// not be classified as `Active` for an enforcing caller.
+#[cfg(target_os = "linux")]
+const REQUIRED_LANDLOCK_ABI: i32 = 5;
+
+#[cfg(target_os = "linux")]
+fn landlock_guarantee_status(abi: Option<i32>, enforcement: SandboxEnforcement) -> GuaranteeStatus {
+    if abi.is_some_and(|version| version >= REQUIRED_LANDLOCK_ABI) {
+        GuaranteeStatus::Active
+    } else if enforcement == SandboxEnforcement::Enforcing {
+        GuaranteeStatus::Unavailable
+    } else {
+        GuaranteeStatus::Degraded
+    }
+}
+
 /// Derive the sandbox guarantee status used for parent-side admission and
 /// operator diagnostics.
 ///
@@ -815,16 +850,7 @@ pub fn diagnostic_guarantees(config: &SandboxConfig) -> SandboxGuarantees {
 #[cfg(target_os = "linux")]
 #[must_use]
 fn probe_guarantees(policy: &SandboxPolicy) -> SandboxGuarantees {
-    let landlock = match *LANDLOCK_ABI {
-        Some(_) => GuaranteeStatus::Active,
-        None => {
-            if policy.enforcement == SandboxEnforcement::Enforcing {
-                GuaranteeStatus::Unavailable
-            } else {
-                GuaranteeStatus::Degraded
-            }
-        }
-    };
+    let landlock = landlock_guarantee_status(*LANDLOCK_ABI, policy.enforcement);
     let seccomp = seccomp_guarantee_status(policy);
     let egress = egress_guarantee_status(policy, seccomp);
     SandboxGuarantees {
@@ -914,9 +940,11 @@ fn egress_guarantee_status(policy: &SandboxPolicy, seccomp: GuaranteeStatus) -> 
 /// Landlock, and every failed or non-positive probe are collapsed to `None`.
 ///
 /// `LANDLOCK_ABI` caches this value for [`probe_guarantees`].
-/// [`apply_sandbox`] treats absence as `Unavailable` in enforcing mode and
-/// `Degraded` in permissive mode. A positive ABI proves only API availability;
-/// creating and installing the child ruleset can still fail.
+/// [`apply_sandbox`] requires ABI v5 or newer in enforcing mode because the
+/// policy handles `IoctlDev`; no ABI, or an older positive ABI, is
+/// `Unavailable` in enforcing mode and `Degraded` in permissive mode. Even a
+/// sufficient positive ABI is only a parent-side capability probe: creating
+/// and installing the child ruleset can still fail.
 #[cfg(target_os = "linux")]
 #[must_use]
 pub fn probe_landlock_abi() -> Option<i32> {
@@ -985,8 +1013,8 @@ fn warn_sandbox_degradation(guarantees: SandboxGuarantees, policy: &SandboxPolic
             // WHY: pre_exec cannot safely log; warn in the parent where tracing works.
             tracing::warn!(
                 enforcement = "permissive",
-                "Landlock unavailable, filesystem sandbox degraded; \
-                 set enforcement=enforcing and ensure kernel supports Landlock (5.13+)"
+                "full Landlock V5 filesystem-rights baseline unavailable, sandbox degraded; \
+                 set enforcement=enforcing and use a kernel with Landlock ABI v5+"
             );
         }
         // WHY: Warn ONCE per process when Landlock is available but enforcement is permissive,
@@ -1101,7 +1129,7 @@ pub fn apply_sandbox(
     if policy.enforcement == SandboxEnforcement::Enforcing {
         if guarantees.landlock == GuaranteeStatus::Unavailable {
             return Err(std::io::Error::other(
-                "Landlock not available on this kernel (ABI probe returned none); \
+                "the kernel does not provide the full Landlock V5 filesystem-rights baseline; \
                  tool execution blocked by enforcing sandbox. \
                  Set enforcement=permissive to run without sandboxing.",
             ));

@@ -137,11 +137,14 @@ Input schema properties support types: `string`, `number`, `integer`, `boolean`,
 5. Stderr handling is operator-only: content is never copied into the model-visible result or diagnostics. The operator log receives stable warning metadata (tool, exit code, byte count), while arbitrary subprocess bytes are discarded instead of relying on pattern redaction
 6. Output is truncated at 50KB
 
+Before every spawn attempt — including each `ETXTBSY` retry — the runtime rechecks the command's registration-time filesystem identity. Execution is still path-based: a mutation after that check but before the kernel resolves `exec` remains a narrower race whose full removal requires descriptor-based execution (`fexecve`/`execveat`).
+
 Diagnostics also record the exit code, wall-clock duration, and — when the sandbox itself refuses to start the command — the stable `sandbox_setup_failed` category, distinguishing "sandbox refused" from "command failed" without copying OS or policy detail across the model boundary.
 
 ### Security
 
-- Command paths are resolved relative to the pack root and canonicalized
+- The configured pack root is canonicalized once at load admission. Manifest/context reads, command validation, subprocess cwd, and sandbox read grants all retain that same authority path, so retargeting a configured symlink later cannot redirect the grant. Renaming or mount-replacing the canonical hierarchy itself remains a filesystem-owner boundary; eliminating that race requires descriptor-pinned cwd and sandbox rules
+- Command paths are resolved relative to that canonical pack root and canonicalized
 - Paths that resolve outside the pack root are rejected (no traversal)
 - No shell interpolation: commands receive input only via stdin
 - Tools are registered with category `Domain` in the tool registry
@@ -154,7 +157,7 @@ Diagnostics also record the exit code, wall-clock duration, and — when the san
 
 Pack tools are shell scripts executed directly via their shebang line, so they are Unix-first by default. The `platforms` field makes a tool's support explicit:
 
-- **Linux**: when the deployment enables an enforcing sandbox and the host supports Landlock and seccomp, filesystem, syscall, resource, and egress restrictions can all be active. Registration fails when an enforcing host cannot provide the baseline guarantees.
+- **Linux**: when the deployment enables an enforcing sandbox and the host supports the full Landlock ABI v5 filesystem-rights baseline plus seccomp, filesystem, syscall, resource, and egress restrictions can all be active. Registration fails when an enforcing host cannot provide every baseline guarantee; a merely partial Landlock ruleset is never admitted as active.
 - **macOS and other Unix**: timeout and process-group kill apply, but Landlock, seccomp, egress isolation, and resource limits are unavailable. Enforcing mode refuses pack tools; permissive mode runs with reduced controls and reports each reduced guarantee in pack health.
 - **Windows**: pack shell tools are not currently supported. The manifest deliberately has no `windows` platform value until native execution, process-tree cleanup, and CI coverage exist.
 
@@ -186,6 +189,8 @@ Domain merging at startup:
 1. Static domains from `aletheia.toml` agent definitions
 2. Pack overlay domains (union across all loaded packs)
 3. Combined domains stored on the agent's config
+
+Domain tags are deliberately a global routing namespace, not pack-local authority grants. A context section in any loaded pack opts into that namespace by listing a tag in `agents`, so a domain contributed by one pack may select a tagged section from another pack. Packs are operator-configured together, and domains remain low-impact routing metadata; the separate high-impact powers below still require explicit operator policy.
 
 ### High-impact overlay powers
 
