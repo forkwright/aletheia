@@ -48,7 +48,7 @@ pub enum Relation {
     FactMultiplicity,
     /// Source fact/session side-index for consolidated facts (schema v19).
     ConsolidationProvenance,
-    /// Graph-algorithm scores per entity (PageRank, community cluster).
+    /// Graph-algorithm scores per entity (`PageRank`, community cluster).
     GraphScores,
     /// Applied schema version and per-migration stamps.
     SchemaVersion,
