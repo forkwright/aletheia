@@ -289,9 +289,9 @@ fn now_iso8601_roundtrips_as_jiff_zoned() {
 }
 
 #[test]
-fn millis_from_duration_converts() {
+fn saturating_millis_converts() {
     let d = Duration::from_millis(42);
-    assert_eq!(millis_from_duration(&d), 42, "should convert to 42ms");
+    assert_eq!(saturating_millis(&d), 42, "should convert to 42ms");
 }
 
 #[test]

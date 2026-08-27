@@ -1,6 +1,7 @@
 //! Dataset validation support for memory benchmarks.
 
 use std::io;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
@@ -175,6 +176,44 @@ impl core::fmt::Display for BenchmarkValidationIssue {
         }
         write!(f, " field={}: {}", self.field, self.message)
     }
+}
+
+/// Read a dataset file and hand its bytes to a schema-specific parser,
+/// filling in `options.dataset_path` from `path` when the caller left it
+/// unset.
+///
+/// Owns the loading/provenance lifecycle shared by every benchmark dataset
+/// (`LoCoMo`, `LongMemEval`, ...): path bookkeeping and the async byte read.
+/// `parse` stays each dataset's own `from_bytes_with_options`.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read, or if `parse` fails to parse
+/// or validate the bytes.
+pub(crate) async fn load_validated_dataset<T>(
+    path: impl AsRef<Path> + Send,
+    mut options: BenchmarkValidationOptions,
+    parse: impl FnOnce(
+        &[u8],
+        &BenchmarkValidationOptions,
+    ) -> io::Result<(T, BenchmarkValidationReport)>,
+) -> io::Result<(T, BenchmarkValidationReport)> {
+    let path_ref = path.as_ref();
+    if options.dataset_path.is_none() {
+        options.dataset_path = Some(path_ref.display().to_string());
+    }
+    let bytes = tokio::fs::read(path_ref).await?;
+    parse(&bytes, &options)
+}
+
+/// Trim a field and return it as `Some` when non-empty, `None` otherwise.
+///
+/// Shared normalization for dataset identifiers (`sample_id`, `question_id`,
+/// ...) that are optional-but-meaningful once trimmed.
+#[must_use]
+pub(crate) fn optional_nonempty_string(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
 /// Filter empty evidence refs and trim surviving refs.
