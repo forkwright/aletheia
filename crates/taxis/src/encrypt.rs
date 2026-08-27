@@ -447,7 +447,7 @@ fn encrypt_external_tool_auth_leaves(
         let Some(entries) = tools.get_mut(class).and_then(toml::Value::as_table_mut) else {
             continue;
         };
-        for entry in entries.values_mut() {
+        for (_, entry) in entries.iter_mut() {
             let Some(auth) = entry
                 .as_table_mut()
                 .and_then(|entry| entry.get_mut("auth"))
