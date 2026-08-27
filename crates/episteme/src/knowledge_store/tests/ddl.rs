@@ -80,6 +80,52 @@ fn query_templates_contain_params() {
     assert!(queries::HYBRID_SEARCH_BASE.contains("ReciprocalRankFusion"));
 }
 
+/// Schema-coverage gate (#5309): every relation the store creates must have
+/// typed query metadata, and every typed relation must exist in a fresh
+/// store. A DDL added without a matching [`crate::query::Relation`] variant
+/// fails this test.
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn typed_schema_covers_every_store_relation() {
+    use std::collections::BTreeSet;
+
+    let store = KnowledgeStore::open_mem().expect("open_mem");
+    let rows = store
+        .run_script_read_only("::relations", std::collections::BTreeMap::new())
+        .expect("list relations");
+    let mut store_relations = BTreeSet::new();
+    for row in rows.rows() {
+        let name = row
+            .first()
+            .and_then(crate::engine::DataValue::get_str)
+            .expect("relation listing must return string names");
+        // Index sub-relations (`facts:content_fts`, `embeddings:semantic_idx`)
+        // are maintained through their owning relation's DDL; they are not
+        // standalone knowledge relations.
+        if name.contains(':') {
+            continue;
+        }
+        store_relations.insert(name.to_owned());
+    }
+
+    let typed: BTreeSet<String> = crate::query::Relation::ALL
+        .iter()
+        .map(|r| crate::query::Relation::name(*r).to_owned())
+        .collect();
+
+    let missing_metadata: Vec<&String> = store_relations.difference(&typed).collect();
+    let missing_relation: Vec<&String> = typed.difference(&store_relations).collect();
+
+    assert!(
+        missing_metadata.is_empty(),
+        "store relations missing typed query metadata: {missing_metadata:?}"
+    );
+    assert!(
+        missing_relation.is_empty(),
+        "typed relations absent from a fresh store: {missing_relation:?}"
+    );
+}
+
 #[cfg(feature = "mneme-engine")]
 #[test]
 fn build_hybrid_query_empty_seeds() {
