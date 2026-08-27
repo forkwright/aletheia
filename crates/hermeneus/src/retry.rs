@@ -3,11 +3,44 @@
 use std::time::Duration;
 
 use koina::retry::{BackoffStrategy, retry_after_or_strategy_delay};
+use reqwest::Response;
 
 use crate::error;
 use crate::models::{BACKOFF_BASE_MS, BACKOFF_MAX_MS, DEFAULT_MAX_RETRIES};
 
 const MIN_BACKOFF_MS: u64 = 100;
+
+/// Parse a response's `retry-after` header as whole seconds and convert to
+/// milliseconds.
+///
+/// Accepted syntax is a bare non-negative integer (RFC 9110's delay-seconds
+/// form); the HTTP-date form is not accepted. Overflow policy: `u64::parse`
+/// rejects any value that would not fit, so an absurd header is treated the
+/// same as a missing one rather than wrapping or saturating.
+pub(crate) fn extract_retry_after(response: &Response) -> Option<u64> {
+    response
+        .headers()
+        .get("retry-after")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok())
+        .map(|secs| secs * 1000)
+}
+
+/// Format an error and its full source chain into a single message string.
+///
+/// WHY(#4885/#4887/#5875): reqwest's `Display` can hide the underlying
+/// transport cause ("connection reset by peer"). Retry classification scans
+/// for those cause words in the full chain when deciding whether a
+/// pre-content streaming failure can be retried.
+pub(crate) fn error_chain_message(prefix: &str, err: &dyn std::error::Error) -> String {
+    let mut parts = vec![format!("{prefix}: {err}")];
+    let mut source = err.source();
+    while let Some(s) = source {
+        parts.push(s.to_string());
+        source = s.source();
+    }
+    parts.join(": ")
+}
 
 /// Runtime retry attempts and exponential backoff policy for LLM providers.
 ///
@@ -60,5 +93,93 @@ impl RetryPolicy {
             retry_after,
             Some(Duration::from_millis(MIN_BACKOFF_MS)),
         )
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    use super::*;
+
+    async fn response_with_retry_after(value: Option<&str>) -> Response {
+        let server = MockServer::start().await;
+        let mut template = ResponseTemplate::new(429);
+        if let Some(value) = value {
+            template = template.insert_header("retry-after", value);
+        }
+        Mock::given(method("GET"))
+            .respond_with(template)
+            .mount(&server)
+            .await;
+        reqwest::get(server.uri()).await.expect("mock request")
+    }
+
+    #[tokio::test]
+    async fn extract_retry_after_table() {
+        let cases: &[(Option<&str>, Option<u64>)] = &[
+            (Some("30"), Some(30_000)),
+            (Some("0"), Some(0)),
+            (None, None),
+            (Some("not-a-number"), None),
+            (Some("Wed, 21 Oct 2026 07:28:00 GMT"), None),
+            (Some("-5"), None),
+        ];
+        for (header, expected) in cases {
+            let response = response_with_retry_after(*header).await;
+            assert_eq!(
+                extract_retry_after(&response),
+                *expected,
+                "header {header:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn error_chain_message_flattens_full_source_chain() {
+        #[derive(Debug)]
+        struct Root;
+        impl std::fmt::Display for Root {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "connection reset by peer")
+            }
+        }
+        impl std::error::Error for Root {}
+
+        #[derive(Debug)]
+        struct Wrapper(Root);
+        impl std::fmt::Display for Wrapper {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "stream read failed")
+            }
+        }
+        impl std::error::Error for Wrapper {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                Some(&self.0)
+            }
+        }
+
+        let message = error_chain_message("prefix", &Wrapper(Root));
+        assert_eq!(
+            message,
+            "prefix: stream read failed: connection reset by peer"
+        );
+    }
+
+    #[test]
+    fn error_chain_message_without_source_is_just_the_prefix_and_message() {
+        #[derive(Debug)]
+        struct Leaf;
+        impl std::fmt::Display for Leaf {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "leaf error")
+            }
+        }
+        impl std::error::Error for Leaf {}
+
+        let message = error_chain_message("prefix", &Leaf);
+        assert_eq!(message, "prefix: leaf error");
     }
 }
