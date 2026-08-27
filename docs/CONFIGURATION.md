@@ -947,13 +947,11 @@ Training data capture configuration.
 
 ## timeouts
 
-Deployment-tunable timeout thresholds. WHY configurable: the operator approval wait matters for both UX (long enough to read the overlay) and safety (short enough that a dropped client connection denies rather than hangs indefinitely).
+Deployment-tunable timeout thresholds. WHY configurable: the operator approval wait matters for both UX (long enough to read the overlay) and safety (short enough that a dropped client connection denies rather than hangs indefinitely). NOTE: real LLM-call wall-clock timeouts are controlled by `providerBehavior.nonStreamingTimeoutSecs`, not by this section.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `approvalTimeoutSecs` | integer | 120 | Maximum wall-clock seconds a Required/Mandatory tool call waits for an operator approval decision before defaulting to deny. WHY configurable (#5011): approval lifetime is part of the execution safety contract — it controls how long an irreversible action blocks the pipeline and what a dropped client connection does. It was previously an unowned constant in `nous::approval`. Valid range: 5–3600. Default: 120 (matches the desktop daily-driver UX — long enough to read the overlay, short enough that a dropped connection denies rather than hangs). |
-
-Real LLM-call wall-clock timeouts are controlled by [`providerBehavior.nonStreamingTimeoutSecs`](#providerbehavior), not by this section.
 
 ## capacity
 
