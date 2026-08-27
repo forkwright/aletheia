@@ -49,7 +49,7 @@ check() {
         return
     fi
 
-    # Redirection keeps grep -q's early exit from SIGPIPE-failing a producer
+    # WHY: Redirection keeps grep -q's early exit from SIGPIPE-failing a producer
     # under the script-wide pipefail setting.
     if [[ -n "$pattern" ]] && ! grep -qE "$pattern" <<<"$output"; then
         fail "$desc (output missing pattern: $pattern)"
@@ -201,7 +201,7 @@ fi
 section "Import (missing file — expect error)"
 check "import with missing file exits non-zero" 1 "" -- \
     import /nonexistent/path/to/agent.json --dry-run 2>/dev/null || true  # NOTE: intentional - failure is non-fatal here
-# Capture output and status separately: piping the expected failure into grep
+# WHY: Capture output and status separately: piping the expected failure into grep
 # under pipefail would make a successful diagnostic match look false.
 IMPORT_EXIT=0
 IMPORT_OUT=$("$BINARY" import /nonexistent/file.agent.json 2>&1) || IMPORT_EXIT=$?
