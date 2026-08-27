@@ -6,6 +6,9 @@ mod gliner;
 #[cfg(feature = "nuextract")]
 mod nuextract;
 
+#[cfg(any(feature = "gliner", feature = "nuextract"))]
+mod support;
+
 use eidos::bookkeeping::{
     BookkeepingProvider, BookkeepingResult, Extraction, ExtractionSchema, ProviderFailedSnafu,
 };
