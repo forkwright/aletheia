@@ -64,27 +64,11 @@ fn run_repl(instance_root: Option<&PathBuf>) -> Result<()> {
 
     let oikos = super::resolve_oikos(instance_root)?;
     let knowledge_path = oikos.knowledge_cohort_db("shared");
+    super::require_knowledge_store_exists(&oikos, &knowledge_path)?;
 
-    if !knowledge_path.exists() && !oikos.knowledge_db().exists() {
-        snafu::whatever!(
-            "knowledge store not initialized at {}\n  \
-             The store is created lazily by the running server. Either:\n    \
-               1. Start the server once to bootstrap it:  aletheia\n    \
-               2. Or route this command through a running server with --url",
-            knowledge_path.display()
-        );
-    }
-
-    let config = taxis::loader::load_config(&oikos).ok().map_or_else(
-        mneme::knowledge_store::KnowledgeConfig::default,
-        |config| {
-            let embedding = config.embedding.to_embedding_config();
-            mneme::knowledge_store::KnowledgeConfig {
-                dim: config.embedding.dimension,
-                embedding_model: embedding.effective_model_name(),
-                ..Default::default()
-            }
-        },
+    let config = crate::knowledge_config::knowledge_config_from_loaded(
+        taxis::loader::load_config(&oikos).ok().as_ref(),
+        false,
     );
     let store = mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
         .whatever_context("failed to open knowledge store")?;
