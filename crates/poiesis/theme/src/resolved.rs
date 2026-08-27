@@ -115,21 +115,31 @@ impl ResolvedTheme {
     pub fn lookup_family(&self, name: &str) -> Option<&[String]> {
         self.r#type.family.get(name).map(Vec::as_slice)
     }
-}
 
-/// Resolve a font-family stack to the single typeface name an OOXML/DOCX
-/// sink writes into a schema slot that takes exactly one typeface — the
-/// stack's first entry, or `Calibri` when the stack is empty or absent.
-///
-/// Shared by every sink whose target format has no concept of a font-family
-/// fallback list (`theme1.xml`'s `<a:latin>`, a `reference.docx` style); a
-/// sink that *can* express a stack (CSS, Typst) should emit the whole thing
-/// via [`ResolvedTheme::lookup_family`] instead of calling this.
-#[must_use]
-pub fn primary_typeface(family: Option<&[String]>) -> String {
-    family
-        .and_then(|stack| stack.first().cloned())
-        .unwrap_or_else(|| "Calibri".to_owned())
+    /// The single typeface name to write into a schema slot that takes exactly
+    /// one — the first entry of the first named family stack that resolves, or
+    /// `Calibri` when none does.
+    ///
+    /// `families` is a preference order, so a sink wanting "serif, else sans"
+    /// passes `&["serif", "sans"]`.
+    ///
+    /// WHY this is a method on `ResolvedTheme` rather than a free function the
+    /// sinks share: this crate's rule is that each sink owns its serialization
+    /// and cross-sink emission shares nothing beyond `ResolvedTheme` itself.
+    /// Choosing a typeface out of a family stack is a fact about the resolved
+    /// theme and carries no format knowledge, so it belongs on that type — where
+    /// every sink may read it without sharing anything else.
+    ///
+    /// A sink whose format *can* express a fallback list (CSS, Typst) should
+    /// emit the whole stack via [`ResolvedTheme::lookup_family`] instead.
+    #[must_use]
+    pub fn primary_typeface(&self, families: &[&str]) -> String {
+        families
+            .iter()
+            .find_map(|name| self.lookup_family(name))
+            .and_then(|stack| stack.first().cloned())
+            .unwrap_or_else(|| "Calibri".to_owned())
+    }
 }
 
 fn resolve_color_map(

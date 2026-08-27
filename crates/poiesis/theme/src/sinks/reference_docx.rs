@@ -11,7 +11,7 @@ use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
 use crate::error::ThemeError;
-use crate::resolved::{ResolvedTheme, primary_typeface};
+use crate::resolved::ResolvedTheme;
 
 // WHY: standardised OOXML identifier URI, not an endpoint
 const NS_W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -100,8 +100,8 @@ fn pack_entry(
 }
 
 fn build_styles_xml(theme: &ResolvedTheme) -> String {
-    let serif = primary_typeface(theme.lookup_family("serif"));
-    let sans = primary_typeface(theme.lookup_family("sans"));
+    let serif = theme.primary_typeface(&["serif"]);
+    let sans = theme.primary_typeface(&["sans"]);
     let ink = theme
         .lookup_color("ink")
         .or_else(|| theme.lookup_color("surface:ink"))

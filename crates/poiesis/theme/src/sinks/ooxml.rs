@@ -4,7 +4,7 @@ use poiesis_core::escape_xml;
 use snafu::ResultExt;
 
 use crate::error::{SinkSnafu, ThemeError};
-use crate::resolved::{ResolvedTheme, primary_typeface};
+use crate::resolved::ResolvedTheme;
 use crate::tokens::HexColor;
 
 // WHY: the `xmlns:a` value below is the ECMA-376 DrawingML namespace
@@ -98,8 +98,8 @@ fn write_theme_xml(out: &mut String, theme: &ResolvedTheme) -> std::fmt::Result 
     writeln!(out, "    </a:clrScheme>")?;
 
     // ── fontScheme ───────────────────────────────────────────────────────────
-    let major = primary_typeface(theme.lookup_family("serif").or(theme.lookup_family("sans")));
-    let minor = primary_typeface(theme.lookup_family("sans"));
+    let major = theme.primary_typeface(&["serif", "sans"]);
+    let minor = theme.primary_typeface(&["sans"]);
     writeln!(
         out,
         r#"    <a:fontScheme name="{}">"#,
