@@ -285,7 +285,7 @@ async fn fields_policy_redacts_named_field_and_passes_others() {
     let tool = "_test_redaction_fields";
     let input = serde_json::json!({
         "url": "https://acme.corp/api",
-        "headers": {"PRIVATE-TOKEN": "tok-value"},
+        "headers": "PRIVATE-TOKEN: tok-value",
     });
     let tools = registry_with_redaction(
         tool,
