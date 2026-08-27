@@ -1,51 +1,16 @@
 //! Shared model catalog loaded from the compiled model seed.
 
-use std::fmt;
 use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 
 const MODEL_SEED_TOML: &str = include_str!("../data/model-seed.toml");
 
-/// Model capability tier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum ModelTier {
-    /// No model call required; a deterministic fast path can handle it.
-    #[serde(rename = "no_llm", alias = "no-llm")]
-    NoLlm,
-    /// Fast, cheap, sufficient for simple queries.
-    Haiku,
-    /// Balanced capability and cost.
-    Sonnet,
-    /// Maximum capability for hard problems.
-    Opus,
-}
-
-impl fmt::Display for ModelTier {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::NoLlm => f.write_str("no_llm"),
-            Self::Haiku => f.write_str("haiku"),
-            Self::Sonnet => f.write_str("sonnet"),
-            Self::Opus => f.write_str("opus"),
-        }
-    }
-}
-
-/// Provider family that owns a model catalog entry.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-#[non_exhaustive]
-pub enum ModelProvider {
-    /// Anthropic Messages API models.
-    Anthropic,
-    /// Codex CLI models.
-    Codex,
-    /// Kimi CLI models.
-    Kimi,
-}
+// WHY (#7025): `ModelTier`, `ModelProvider`, and the `*Seed` deserialization
+// structs below are spliced in from `model_seed_schema.rs`, the exact same
+// file `build.rs` splices in. One schema, one accepted language — see that
+// file's header.
+include!("model_seed_schema.rs");
 
 /// Built-in task role whose default model is a tier reference.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,55 +55,6 @@ pub struct ModelMenuOption {
     pub value: &'static str,
     /// Human-readable menu label derived from the model identifier.
     pub label: &'static str,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelSeed {
-    as_of: String,
-    cache: CacheSeed,
-    tiers: TierSeed,
-    task_roles: TaskRoleSeed,
-    models: Vec<ModelEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct CacheSeed {
-    read_ratio: f64,
-    write_ratio: f64,
-}
-
-#[derive(Debug, Deserialize)]
-struct TierSeed {
-    opus: String,
-    sonnet: String,
-    haiku: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct TaskRoleSeed {
-    coder: ModelTier,
-    researcher: ModelTier,
-    reviewer: ModelTier,
-    explorer: ModelTier,
-    runner: ModelTier,
-    prosoche: ModelTier,
-    extraction: ModelTier,
-    triage_prompt: ModelTier,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelEntry {
-    id: String,
-    provider: ModelProvider,
-    tier: ModelTier,
-    family: String,
-    context_tokens: u32,
-    input_cost_per_mtok: Option<f64>,
-    output_cost_per_mtok: Option<f64>,
-    #[serde(default)]
-    menu: bool,
-    #[serde(default)]
-    recommended: bool,
 }
 
 // WHY (#5635): `data/model-seed.toml` is parsed at build time in `build.rs`;
