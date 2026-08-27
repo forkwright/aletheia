@@ -49,7 +49,9 @@ check() {
         return
     fi
 
-    if [[ -n "$pattern" ]] && ! echo "$output" | grep -qE "$pattern"; then
+    # Redirection keeps grep -q's early exit from SIGPIPE-failing a producer
+    # under the script-wide pipefail setting.
+    if [[ -n "$pattern" ]] && ! grep -qE "$pattern" <<<"$output"; then
         fail "$desc (output missing pattern: $pattern)"
         return
     fi
@@ -74,7 +76,7 @@ check_graceful() {
         return
     fi
 
-    if [[ -n "$pattern" ]] && ! echo "$output" | grep -qiE "$pattern"; then
+    if [[ -n "$pattern" ]] && ! grep -qiE "$pattern" <<<"$output"; then
         fail "$desc (output missing pattern: $pattern)"
         return
     fi
@@ -140,22 +142,22 @@ check "backup --help"         0 "backup" -- backup --help
 check "maintenance --help"    0 "maintenance" -- maintenance --help
 check "maintenance status --help"   0 "" -- maintenance status --help
 check "maintenance run --help"      0 "" -- maintenance run --help
-check "tls --help"            0 "tls\|TLS\|certificate" -- tls --help
+check "tls --help"            0 "tls|TLS|certificate" -- tls --help
 check "tls generate --help"   0 "" -- tls generate --help
 check "status --help"         0 "status" -- status --help
-check "credential --help"     0 "credential\|Credential" -- credential --help
+check "credential --help"     0 "credential|Credential" -- credential --help
 check "credential status --help"  0 "" -- credential status --help
 check "credential refresh --help" 0 "" -- credential refresh --help
-check "eval --help"           0 "eval\|scenario" -- eval --help
-check "export --help"         0 "export\|agent" -- export --help
-check "tui --help"            0 "tui\|dashboard" -- tui --help
-check "migrate-memory --help" 0 "migrat\|qdrant\|Qdrant" -- migrate-memory --help
-check "init --help"           0 "init\|instance" -- init --help
-check "import --help"         0 "import\|agent" -- import --help
+check "eval --help"           0 "eval|scenario" -- eval --help
+check "export --help"         0 "export|agent" -- export --help
+check "tui --help"            0 "tui|dashboard" -- tui --help
+check "migrate-memory --help" 0 "migrat|qdrant|Qdrant" -- migrate-memory --help
+check "init --help"           0 "init|instance" -- init --help
+check "import --help"         0 "import|agent" -- import --help
 check "seed-skills --help"    0 "skill" -- seed-skills --help
-check "export-skills --help"  0 "skill\|export" -- export-skills --help
-check "review-skills --help"  0 "skill\|review" -- review-skills --help
-check "completions --help"    0 "completions\|shell" -- completions --help
+check "export-skills --help"  0 "skill|export" -- export-skills --help
+check "review-skills --help"  0 "skill|review" -- review-skills --help
+check "completions --help"    0 "completions|shell" -- completions --help
 
 section "Shell completions (offline)"
 check "completions bash exits 0"  0 "" -- completions bash
@@ -165,7 +167,7 @@ check "completions fish exits 0"  0 "" -- completions fish
 
 # Verify that the bash completion output contains function/command markers
 COMP_OUTPUT=$("$BINARY" completions bash 2>&1)
-if echo "$COMP_OUTPUT" | grep -qE "^(function |_aletheia|complete )"; then
+if grep -qE "^(function |_aletheia|complete )" <<<"$COMP_OUTPUT"; then
     pass "completions bash output looks like valid bash completion"
 else
     fail "completions bash output missing expected completion markers"
@@ -173,12 +175,12 @@ fi
 
 section "Health (graceful failure without server)"
 check_graceful "health gracefully fails without server" \
-    "error\|connect\|refused\|unreachable\|failed" -- \
+    "error|connect|refused|unreachable|failed" -- \
     health --url "http://127.0.0.1:19999"
 
 section "Status (graceful failure without instance)"
 check_graceful "status gracefully fails without server" \
-    "error\|connect\|refused\|unreachable\|failed\|status" -- \
+    "error|connect|refused|unreachable|failed|status" -- \
     status --url "http://127.0.0.1:19999"
 
 section "Init (non-destructive)"
@@ -190,7 +192,7 @@ INIT_EXIT=0
 INIT_OUT=$("$BINARY" init --instance-root "$TMPDIR_INIT/instance" --yes 2>&1) || INIT_EXIT=$?
 if [[ "$INIT_EXIT" -le 1 ]]; then
     pass "init --yes exits cleanly (exit ${INIT_EXIT})"
-elif echo "$INIT_OUT" | grep -qiE "api.?key|anthropic|credential|error"; then
+elif grep -qiE "api.?key|anthropic|credential|error" <<<"$INIT_OUT"; then
     pass "init --yes fails with useful error message"
 else
     fail "init --yes panicked or produced no useful output (exit ${INIT_EXIT})"
@@ -199,7 +201,10 @@ fi
 section "Import (missing file — expect error)"
 check "import with missing file exits non-zero" 1 "" -- \
     import /nonexistent/path/to/agent.json --dry-run 2>/dev/null || true  # NOTE: intentional - failure is non-fatal here
-if "$BINARY" import /nonexistent/file.agent.json 2>&1 | grep -qiE "no such|not found|error|cannot"; then
+# The command is expected to fail, so capture it before matching; piping that
+# exit 1 into grep under pipefail would make a successful match look false.
+IMPORT_OUT=$("$BINARY" import /nonexistent/file.agent.json 2>&1) || true
+if grep -qiE "no such|not found|error|cannot" <<<"$IMPORT_OUT"; then
     pass "import missing file produces useful error"
 else
     fail "import missing file produced no error message"
