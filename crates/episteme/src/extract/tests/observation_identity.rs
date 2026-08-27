@@ -62,10 +62,12 @@ fn same_triple_from_two_sessions_yields_distinct_observation_ids() {
         .persist(&extraction, &store, "session:b", "syn")
         .expect("second persist should succeed");
 
-    let id_a = super::super::engine::observation_fact_id("syn", "session:a", "Alice", "prefers", "Rust")
-        .expect("valid fact id");
-    let id_b = super::super::engine::observation_fact_id("syn", "session:b", "Alice", "prefers", "Rust")
-        .expect("valid fact id");
+    let id_a =
+        super::super::engine::observation_fact_id("syn", "session:a", "Alice", "prefers", "Rust")
+            .expect("valid fact id");
+    let id_b =
+        super::super::engine::observation_fact_id("syn", "session:b", "Alice", "prefers", "Rust")
+            .expect("valid fact id");
     assert_ne!(
         id_a, id_b,
         "identical triples from different sessions must not share an observation id"
@@ -114,10 +116,12 @@ fn re_persisting_same_session_is_retry_safe() {
 #[cfg(feature = "mneme-engine")]
 #[test]
 fn same_subject_predicate_different_object_yields_distinct_ids() {
-    let id_rust = super::super::engine::observation_fact_id("syn", "session:a", "Alice", "prefers", "Rust")
-        .expect("valid fact id");
-    let id_go = super::super::engine::observation_fact_id("syn", "session:a", "Alice", "prefers", "Go")
-        .expect("valid fact id");
+    let id_rust =
+        super::super::engine::observation_fact_id("syn", "session:a", "Alice", "prefers", "Rust")
+            .expect("valid fact id");
+    let id_go =
+        super::super::engine::observation_fact_id("syn", "session:a", "Alice", "prefers", "Go")
+            .expect("valid fact id");
     assert_ne!(id_rust, id_go);
 }
 
@@ -127,7 +131,13 @@ fn same_subject_predicate_different_object_yields_distinct_ids() {
 #[test]
 fn observation_id_is_bounded_for_long_inputs() {
     let long_subject = "x".repeat(10_000);
-    let id = super::super::engine::observation_fact_id("syn", "session:a", &long_subject, "prefers", "Rust")
-        .expect("long inputs still produce a valid fact id");
+    let id = super::super::engine::observation_fact_id(
+        "syn",
+        "session:a",
+        &long_subject,
+        "prefers",
+        "Rust",
+    )
+    .expect("long inputs still produce a valid fact id");
     assert!(id.as_str().len() <= 256);
 }

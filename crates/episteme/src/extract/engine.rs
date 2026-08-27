@@ -740,13 +740,19 @@ Rules:
                 continue;
             }
             let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
-            let id = observation_fact_id(nous_id, source, &fact.subject, &fact.predicate, &fact.object)
-                .map_err(|e| {
-                    PersistSnafu {
-                        message: e.to_string(),
-                    }
-                    .build()
-                })?;
+            let id = observation_fact_id(
+                nous_id,
+                source,
+                &fact.subject,
+                &fact.predicate,
+                &fact.object,
+            )
+            .map_err(|e| {
+                PersistSnafu {
+                    message: e.to_string(),
+                }
+                .build()
+            })?;
             let classified_type = fact.fact_type.as_deref().map_or_else(
                 || crate::knowledge::FactType::classify(&content),
                 crate::knowledge::FactType::from_str_lossy,
