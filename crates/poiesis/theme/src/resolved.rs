@@ -117,6 +117,21 @@ impl ResolvedTheme {
     }
 }
 
+/// Resolve a font-family stack to the single typeface name an OOXML/DOCX
+/// sink writes into a schema slot that takes exactly one typeface — the
+/// stack's first entry, or `Calibri` when the stack is empty or absent.
+///
+/// Shared by every sink whose target format has no concept of a font-family
+/// fallback list (`theme1.xml`'s `<a:latin>`, a `reference.docx` style); a
+/// sink that *can* express a stack (CSS, Typst) should emit the whole thing
+/// via [`ResolvedTheme::lookup_family`] instead of calling this.
+#[must_use]
+pub fn primary_typeface(family: Option<&[String]>) -> String {
+    family
+        .and_then(|stack| stack.first().cloned())
+        .unwrap_or_else(|| "Calibri".to_owned())
+}
+
 fn resolve_color_map(
     theme_id: &ThemeId,
     role: &IndexMap<String, HexColor>,

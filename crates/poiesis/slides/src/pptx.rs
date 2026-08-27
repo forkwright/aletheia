@@ -14,8 +14,7 @@
 use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
 
-use poiesis_core::{Block, Document, Renderer, RichText};
-use quick_xml::escape::escape;
+use poiesis_core::{Block, Document, Renderer, RichText, escape_xml as xml_escape};
 use snafu::Snafu;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -252,11 +251,6 @@ fn write_entry(
         .map_err(|e| PptxError::Pptx {
             message: e.to_string(),
         })
-}
-
-/// Escape text for XML character data using `quick-xml`.
-fn xml_escape(s: &str) -> String {
-    escape(s).to_string()
 }
 
 fn build_content_types(slides: &[SlideContent]) -> String {
@@ -687,11 +681,4 @@ mod tests {
         assert_eq!(&bytes[..2], b"PK", "PPTX output should be a valid ZIP");
     }
 
-    #[test]
-    fn xml_escape_handles_special_chars() {
-        assert_eq!(
-            xml_escape("a&b<c>d\"e'f"),
-            "a&amp;b&lt;c&gt;d&quot;e&apos;f"
-        );
-    }
 }

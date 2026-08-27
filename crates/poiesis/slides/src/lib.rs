@@ -29,7 +29,7 @@ pub use pptx::PptxRenderer;
 pub use error::Error;
 
 #[cfg(feature = "pptx")]
-use poiesis_core::{Block, Document, ListItem, Metadata, Renderer, RichText, Span};
+use poiesis_core::{Block, Document, ListItem, Metadata, Renderer, RichText};
 #[cfg(feature = "pptx")]
 use serde_json::Value;
 #[cfg(feature = "pptx")]
@@ -115,20 +115,22 @@ pub fn render_pptx(data: &Value) -> Result<Vec<u8>> {
         } else {
             blocks.push(Block::Heading {
                 level: 1,
-                text: plain(title),
+                text: RichText::from(title),
             });
         }
 
         if let Some(content) = slide.get("content").and_then(Value::as_array) {
             for item in content {
                 if let Some(text) = item.get("text").and_then(Value::as_str) {
-                    blocks.push(Block::Paragraph(plain(text)));
+                    blocks.push(Block::Paragraph(RichText::from(text)));
                 }
                 if let Some(bullets) = item.get("bullets").and_then(Value::as_array) {
                     let items: Vec<ListItem> = bullets
                         .iter()
                         .filter_map(|b| b.as_str())
-                        .map(|s| ListItem { content: plain(s) })
+                        .map(|s| ListItem {
+                            content: RichText::from(s),
+                        })
                         .collect();
                     blocks.push(Block::List {
                         ordered: false,
@@ -226,13 +228,6 @@ pub fn inspect_pptx(bytes: &[u8]) -> Result<PresentationSummary> {
 }
 
 // ── Helpers ──
-
-#[cfg(feature = "pptx")]
-fn plain(s: &str) -> RichText {
-    RichText {
-        spans: vec![Span::Plain(s.to_owned())],
-    }
-}
 
 #[cfg(feature = "pptx")]
 fn extract_slide_number(name: &str) -> Option<usize> {

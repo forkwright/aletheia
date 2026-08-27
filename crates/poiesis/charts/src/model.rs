@@ -22,6 +22,7 @@
 //! the same parse-don't-validate constructors as Rust callers; an
 //! invariant violated at deserialize time becomes a typed [`crate::Error`].
 
+pub use poiesis_core::FactId;
 use poiesis_core::RichText;
 use serde::{Deserialize, Serialize};
 
@@ -119,14 +120,6 @@ impl ChartKind {
         }
     }
 }
-
-/// Newtype wrapping a factbase entry identifier.
-///
-/// `FactId` is the only path for a numeric datum to enter a chart. Free-text
-/// labels can be a [`CiteOrText::Text`]; data values cannot.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct FactId(pub String);
 
 /// A citation reference into the factbase.
 ///
@@ -508,7 +501,7 @@ mod tests {
 
     fn cite(id: &str, value: f64) -> FactCite {
         FactCite {
-            id: FactId(id.to_owned()),
+            id: FactId::new(id.to_owned()).expect("valid fact id"),
             value,
             unit: Unit::Number,
         }

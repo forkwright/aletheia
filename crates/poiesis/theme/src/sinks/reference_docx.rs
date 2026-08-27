@@ -11,7 +11,7 @@ use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
 
 use crate::error::ThemeError;
-use crate::resolved::ResolvedTheme;
+use crate::resolved::{ResolvedTheme, primary_typeface};
 
 // WHY: standardised OOXML identifier URI, not an endpoint
 const NS_W: &str = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -160,12 +160,6 @@ fn word_document_xml() -> String {
   </w:body>
 </w:document>"#,
     )
-}
-
-fn primary_typeface(family: Option<&[String]>) -> String {
-    family
-        .and_then(|stack| stack.first().cloned())
-        .unwrap_or_else(|| "Calibri".to_owned())
 }
 
 static CONTENT_TYPES: LazyLock<String> = LazyLock::new(|| {

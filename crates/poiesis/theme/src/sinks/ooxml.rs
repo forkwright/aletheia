@@ -1,9 +1,10 @@
 use std::fmt::Write;
 
+use poiesis_core::escape_xml;
 use snafu::ResultExt;
 
 use crate::error::{SinkSnafu, ThemeError};
-use crate::resolved::ResolvedTheme;
+use crate::resolved::{ResolvedTheme, primary_typeface};
 use crate::tokens::HexColor;
 
 // WHY: the `xmlns:a` value below is the ECMA-376 DrawingML namespace
@@ -207,20 +208,6 @@ fn color_for<'a>(theme: &'a ResolvedTheme, refs: &[&str]) -> Option<&'a HexColor
         }
     }
     None
-}
-
-fn primary_typeface(family: Option<&[String]>) -> String {
-    family
-        .and_then(|stack| stack.first().cloned())
-        .unwrap_or_else(|| "Calibri".to_owned())
-}
-
-fn escape_xml(input: &str) -> String {
-    input
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]

@@ -6502,6 +6502,7 @@ dependencies = [
  "include_dir",
  "indexmap",
  "jiff",
+ "quick-xml 0.41.0",
  "serde",
  "serde_json",
  "snafu",
@@ -6669,6 +6670,7 @@ version = "0.43.0"
 dependencies = [
  "indexmap",
  "jiff",
+ "poiesis-core",
  "regex",
  "serde",
  "serde_json",

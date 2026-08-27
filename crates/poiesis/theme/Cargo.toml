@@ -13,6 +13,7 @@ publish = false
 # Re-enable `std` so `IndexMap<K, V>` (without explicit hasher type) compiles.
 indexmap = { version = "=2.14.0", default-features = false, features = ["serde", "std"] }
 jiff = { workspace = true }
+poiesis-core = { path = "../core" }
 regex = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

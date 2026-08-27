@@ -105,32 +105,6 @@ pub fn parse_sheet_entries(workbook_xml: &str) -> Vec<(String, String)> {
     entries
 }
 
-/// Parse sheet names from `xl/workbook.xml` in workbook order.
-///
-/// Returns the `name` attribute of each `<sheet>` element. The caller is
-/// responsible for correlating these names with worksheet ZIP entry paths.
-pub fn parse_sheet_names(workbook_xml: &str) -> Vec<String> {
-    let mut sheet_names = Vec::new();
-    // WHY: rust_xlsxwriter emits compact XML — multiple sheet tags may share a line.
-    for sheet_xml in workbook_xml.split("<sheet").skip(1) {
-        let Some(start) = sheet_xml.find("name=\"") else {
-            continue;
-        };
-        let after_name = start + 6;
-        let Some(rest) = sheet_xml.get(after_name..) else {
-            continue;
-        };
-        let Some(end) = rest.find('"') else {
-            continue;
-        };
-        let Some(sheet_name) = rest.get(..end) else {
-            continue;
-        };
-        sheet_names.push(sheet_name.to_string());
-    }
-    sheet_names
-}
-
 /// Parse `xl/_rels/workbook.xml.rels` into an `rId -> target` map.
 ///
 /// Targets are relative to the `xl/` directory. Only `Relationship` elements
@@ -234,18 +208,6 @@ mod tests {
         let xml = r#"<workbook><sheets><sheet name="Alpha" r:id="rId1"/><sheet name="Orphan"/></sheets></workbook>"#;
         let result = parse_sheet_entries(xml);
         assert_eq!(result, vec![("Alpha".to_string(), "rId1".to_string())]);
-    }
-
-    #[test]
-    fn parse_sheet_names_returns_names_in_order() {
-        let xml = r#"<workbook><sheets><sheet name="Alpha" r:id="rId1"/><sheet name="Beta" r:id="rId2"/></sheets></workbook>"#;
-        let result = parse_sheet_names(xml);
-        assert_eq!(result, vec!["Alpha", "Beta"]);
-    }
-
-    #[test]
-    fn parse_sheet_names_no_sheets_returns_empty() {
-        assert!(parse_sheet_names("<workbook><sheets/></workbook>").is_empty());
     }
 
     #[test]
