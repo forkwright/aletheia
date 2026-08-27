@@ -10,7 +10,9 @@
 
 use std::path::Path;
 
-use eidos::bookkeeping::{BookkeepingError, BookkeepingResult, ConversationMessage, ProviderFailedSnafu};
+use eidos::bookkeeping::{
+    BookkeepingError, BookkeepingResult, ConversationMessage, ProviderFailedSnafu,
+};
 use tokenizers::Tokenizer;
 
 /// Flatten a conversation into a single text block for model input.
