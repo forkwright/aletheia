@@ -427,4 +427,23 @@ mod tests {
                 .any(|note| note.contains("sandbox is disabled"))
         );
     }
+
+    #[test]
+    fn default_permissive_seccomp_reduction_is_reported_explicitly() {
+        let sandbox = organon::sandbox::SandboxConfig::default();
+        assert_eq!(
+            sandbox.enforcement,
+            organon::sandbox::SandboxEnforcement::Permissive
+        );
+
+        let notes = platform_notes(&sandbox);
+        assert!(
+            notes.iter().any(|note| {
+                note.contains("syscall (seccomp)")
+                    && note.contains("degraded")
+                    && note.contains("Permissive")
+            }),
+            "startup notes must disclose log-only permissive seccomp: {notes:?}"
+        );
+    }
 }

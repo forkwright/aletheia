@@ -612,7 +612,7 @@ impl SandboxPolicy {
             .restrict_self()
             .map_err(|e| std::io::Error::other(format!("Landlock restrict_self failed: {e}")))?;
 
-        require_full_landlock_status(status.ruleset, self.enforcement)
+        require_full_landlock_status(&status.ruleset, self.enforcement)
     }
 
     #[cfg(not(target_os = "linux"))]
@@ -675,27 +675,24 @@ impl SandboxPolicy {
 
 #[cfg(target_os = "linux")]
 fn require_full_landlock_status(
-    status: landlock::RulesetStatus,
+    status: &landlock::RulesetStatus,
     enforcement: SandboxEnforcement,
 ) -> std::io::Result<()> {
+    if enforcement != SandboxEnforcement::Enforcing {
+        return Ok(());
+    }
+
     match status {
         landlock::RulesetStatus::FullyEnforced => Ok(()),
-        landlock::RulesetStatus::PartiallyEnforced
-            if enforcement == SandboxEnforcement::Enforcing =>
-        {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "Landlock ruleset was only partially enforced; required V5 filesystem rights \
-                 are unavailable",
-            ))
-        }
-        landlock::RulesetStatus::NotEnforced if enforcement == SandboxEnforcement::Enforcing => {
-            Err(std::io::Error::new(
-                std::io::ErrorKind::Unsupported,
-                "Landlock not supported by kernel",
-            ))
-        }
-        landlock::RulesetStatus::PartiallyEnforced | landlock::RulesetStatus::NotEnforced => Ok(()),
+        landlock::RulesetStatus::PartiallyEnforced => Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Landlock ruleset was only partially enforced; required V5 filesystem rights are \
+             unavailable",
+        )),
+        landlock::RulesetStatus::NotEnforced => Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "Landlock not supported by kernel",
+        )),
     }
 }
 
@@ -815,11 +812,13 @@ fn landlock_guarantee_status(abi: Option<i32>, enforcement: SandboxEnforcement) 
 /// operator diagnostics.
 ///
 /// Landlock status comes from the cached ABI probe. Seccomp status reflects
-/// whether this build supports the current architecture. Egress is
-/// `Unrestricted` for `Allow`; `Deny` and a loopback-only `Allowlist` track the
-/// seccomp fallback capability, while a non-loopback allowlist is
-/// `Unavailable` under enforcing mode and `Degraded` under permissive mode
-/// because the child mechanism cannot honor it.
+/// both architecture support and enforcement mode: permissive mode installs a
+/// log-only filter, so it is `Degraded` even on a supported architecture.
+/// Egress is `Unrestricted` for `Allow`; `Deny` and a loopback-only
+/// `Allowlist` track the independently blocking network-namespace/seccomp
+/// fallback capability, while a non-loopback allowlist is `Unavailable` under
+/// enforcing mode and `Degraded` under permissive mode because the child
+/// mechanism cannot honor it.
 ///
 /// [`apply_sandbox`] rejects `Unavailable` guarantees in enforcing mode and
 /// logs degraded ones in permissive mode. This is a preflight classification,
@@ -852,7 +851,7 @@ pub fn diagnostic_guarantees(config: &SandboxConfig) -> SandboxGuarantees {
 fn probe_guarantees(policy: &SandboxPolicy) -> SandboxGuarantees {
     let landlock = landlock_guarantee_status(*LANDLOCK_ABI, policy.enforcement);
     let seccomp = seccomp_guarantee_status(policy);
-    let egress = egress_guarantee_status(policy, seccomp);
+    let egress = egress_guarantee_status(policy);
     SandboxGuarantees {
         landlock,
         seccomp,
@@ -881,12 +880,16 @@ fn probe_guarantees(policy: &SandboxPolicy) -> SandboxGuarantees {
 #[cfg(target_os = "linux")]
 #[must_use]
 fn seccomp_guarantee_status(policy: &SandboxPolicy) -> GuaranteeStatus {
-    if cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
-        GuaranteeStatus::Active
-    } else if policy.enforcement == SandboxEnforcement::Enforcing {
-        GuaranteeStatus::Unavailable
-    } else {
+    if policy.enforcement == SandboxEnforcement::Permissive {
+        // WHY(#5215): apply_seccomp selects SeccompAction::Log in permissive
+        // mode. The filter is installed on supported architectures, but it
+        // observes blocked syscalls instead of enforcing their denial, so an
+        // `Active` status would overstate the actual guarantee.
         GuaranteeStatus::Degraded
+    } else if cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+        GuaranteeStatus::Active
+    } else {
+        GuaranteeStatus::Unavailable
     }
 }
 
@@ -901,18 +904,31 @@ fn seccomp_guarantee_status(policy: &SandboxPolicy) -> GuaranteeStatus {
 /// (`allowlist_is_loopback_only`) is within that real capability and tracks
 /// the same kernel/arch support `Deny` does. An allowlist with any
 /// non-loopback entry is NOT: those entries can never be reached, so
-/// reporting the same status `Deny` gets (as a bare `_ => seccomp` match
+/// reporting the same status `Deny` gets (as a bare fallback-capability match
 /// once did here) would tell an operator their listed destinations are
 /// enforced when the mechanism can never provide that -- indistinguishable
 /// from `deny` in every observable way except the name.
 #[cfg(target_os = "linux")]
 #[must_use]
-fn egress_guarantee_status(policy: &SandboxPolicy, seccomp: GuaranteeStatus) -> GuaranteeStatus {
+fn egress_guarantee_status(policy: &SandboxPolicy) -> GuaranteeStatus {
+    // WHY: Unlike the general syscall filter, the egress seccomp fallback
+    // always uses Errno and therefore blocks sockets even when overall sandbox
+    // enforcement is permissive. Track that architecture capability
+    // independently so truthful log-only syscall status does not falsely
+    // downgrade an egress restriction that is actually enforced.
+    let blocking_capability = if cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+        GuaranteeStatus::Active
+    } else if policy.enforcement == SandboxEnforcement::Enforcing {
+        GuaranteeStatus::Unavailable
+    } else {
+        GuaranteeStatus::Degraded
+    };
+
     match policy.egress {
         EgressPolicy::Allow => GuaranteeStatus::Unrestricted,
         EgressPolicy::Allowlist => {
             if allowlist_is_loopback_only(&policy.egress_allowlist) {
-                seccomp
+                blocking_capability
             } else if policy.enforcement == SandboxEnforcement::Enforcing {
                 GuaranteeStatus::Unavailable
             } else {
@@ -920,14 +936,14 @@ fn egress_guarantee_status(policy: &SandboxPolicy, seccomp: GuaranteeStatus) -> 
             }
         }
         // WHY: covers both `Deny` and any unrecognized future variant --
-        // a separate `EgressPolicy::Deny => seccomp` arm is identical to
-        // this one and clippy::match_same_arms rejects it. EgressPolicy
+        // a separate `EgressPolicy::Deny => blocking_capability` arm is
+        // identical to this one and clippy::match_same_arms rejects it. EgressPolicy
         // is `#[non_exhaustive]` (single-owned by taxis, ARCHITECTURE
         // #4846), so an unrecognized future variant gets the same
         // conservative `seccomp` guarantee status `Deny` does, rather
         // than claiming `Allow`'s `Unrestricted` guarantee for something
         // never actually verified.
-        _ => seccomp,
+        _ => blocking_capability,
     }
 }
 
@@ -1018,31 +1034,39 @@ fn warn_sandbox_degradation(guarantees: SandboxGuarantees, policy: &SandboxPolic
             );
         }
         // WHY: Warn ONCE per process when Landlock is available but enforcement is permissive,
-        // so operators know syscall violations are only logged, not blocked.
+        // so operators know missing mechanisms do not block startup.
         (GuaranteeStatus::Active, SandboxEnforcement::Permissive) => {
             use std::sync::atomic::{AtomicBool, Ordering};
             static WARNED: AtomicBool = AtomicBool::new(false);
             if !WARNED.swap(true, Ordering::Relaxed) {
                 tracing::warn!(
                     enforcement = "permissive",
-                    "sandbox enforcement=permissive: policy violations are logged but not \
-                     blocked. Set enforcement=enforcing for production deployments."
+                    "sandbox enforcement=permissive: unavailable mechanisms degrade instead of \
+                     blocking startup. Set enforcement=enforcing for production deployments."
                 );
             }
         }
         _ => {}
     }
     if guarantees.seccomp == GuaranteeStatus::Degraded {
-        tracing::warn!(
-            enforcement = "permissive",
-            "seccomp unavailable on this architecture; syscall sandbox degraded"
-        );
+        if cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+            tracing::warn!(
+                enforcement = "permissive",
+                "seccomp is log-only under permissive enforcement; dangerous syscalls are not \
+                 blocked"
+            );
+        } else {
+            tracing::warn!(
+                enforcement = "permissive",
+                "seccomp unavailable on this architecture; syscall sandbox degraded"
+            );
+        }
     }
     if guarantees.egress == GuaranteeStatus::Degraded {
         tracing::warn!(
             enforcement = "permissive",
             egress = ?policy.egress,
-            "egress filtering degraded on this architecture"
+            "requested egress policy cannot be fully enforced"
         );
     }
     warn_egress_policy(policy);
