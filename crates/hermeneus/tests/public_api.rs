@@ -52,7 +52,7 @@ mod model_constants {
                 "exponential backoff requires factor >= 2"
             );
             assert!(
-                BACKOFF_MAX_MS >= BACKOFF_BASE_MS * BACKOFF_FACTOR,
+                BACKOFF_MAX_MS >= BACKOFF_BASE_MS * u64::from(BACKOFF_FACTOR),
                 "max must allow at least one full backoff step"
             );
         }
