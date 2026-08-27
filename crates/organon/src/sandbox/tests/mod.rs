@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use koina::system::{Environment, RealSystem};
 
 use super::config::expand_tilde;
+#[cfg(target_os = "linux")]
+use super::policy::REQUIRED_LANDLOCK_ABI;
 use super::*;
 mod egress;
 

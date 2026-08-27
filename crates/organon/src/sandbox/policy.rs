@@ -798,7 +798,7 @@ static LANDLOCK_ABI: std::sync::LazyLock<Option<i32>> = std::sync::LazyLock::new
 /// that right on ABI 1-4 and reports partial enforcement, so those kernels may
 /// not be classified as `Active` for an enforcing caller.
 #[cfg(target_os = "linux")]
-const REQUIRED_LANDLOCK_ABI: i32 = 5;
+pub(super) const REQUIRED_LANDLOCK_ABI: i32 = 5;
 
 #[cfg(target_os = "linux")]
 fn landlock_guarantee_status(abi: Option<i32>, enforcement: SandboxEnforcement) -> GuaranteeStatus {
