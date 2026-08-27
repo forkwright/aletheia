@@ -27,6 +27,18 @@ tokio = { workspace = true }
 toml = { workspace = true }
 tracing = { workspace = true }
 
+# Shared bearer-token secret storage (#7027): OS keyring, AES-256-GCM
+# encrypted fallback, atomic secure writes. WHY not `workspace = true` for
+# aes-gcm/keyring/zeroize: proskenion is a standalone cargo workspace (GTK
+# deps break the root workspace) and declares these as direct dependencies
+# rather than workspace ones, so skene — built inside both workspaces —
+# pins the same versions directly here instead of requiring a
+# workspace.dependencies entry that only one of the two workspaces has.
+aes-gcm = "0.11"
+keyring = "4"
+zeroize = { version = "1", default-features = false, features = ["std"] }
+bathron = { workspace = true }
+
 [dev-dependencies]
 pulldown-cmark = "0.13"
 tempfile = "3"
