@@ -201,13 +201,16 @@ fi
 section "Import (missing file — expect error)"
 check "import with missing file exits non-zero" 1 "" -- \
     import /nonexistent/path/to/agent.json --dry-run 2>/dev/null || true  # NOTE: intentional - failure is non-fatal here
-# The command is expected to fail, so capture it before matching; piping that
-# exit 1 into grep under pipefail would make a successful match look false.
-IMPORT_OUT=$("$BINARY" import /nonexistent/file.agent.json 2>&1) || true
-if grep -qiE "no such|not found|error|cannot" <<<"$IMPORT_OUT"; then
+# Capture output and status separately: piping the expected failure into grep
+# under pipefail would make a successful diagnostic match look false.
+IMPORT_EXIT=0
+IMPORT_OUT=$("$BINARY" import /nonexistent/file.agent.json 2>&1) || IMPORT_EXIT=$?
+if [[ "$IMPORT_EXIT" -eq 0 ]]; then
+    fail "import missing file unexpectedly succeeded"
+elif grep -qiE "no such|not found|error|cannot" <<<"$IMPORT_OUT"; then
     pass "import missing file produces useful error"
 else
-    fail "import missing file produced no error message"
+    fail "import missing file produced no error message (exit ${IMPORT_EXIT})"
 fi
 
 section "Seed-skills (dry-run with missing dir — expect error)"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import stat
 import subprocess
 import tempfile
@@ -60,6 +61,13 @@ case "$*" in
         exit 1
         ;;
     "init --instance-root "*) echo "instance created" ;;
+    "import /nonexistent/file.agent.json")
+        echo "file not found" >&2
+        if [[ "${FAKE_IMPORT_SUCCEEDS:-0}" == "1" ]]; then
+            exit 0
+        fi
+        exit 1
+        ;;
     "import "*)
         echo "file not found" >&2
         exit 1
@@ -73,6 +81,25 @@ esac
 class SmokeTestHarness(unittest.TestCase):
     """Exercise the release harness without building or running Aletheia."""
 
+    def _run_harness(self, **extra_env: str) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "aletheia"
+            binary.write_text(textwrap.dedent(FAKE_CLI), encoding="utf-8")
+            binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
+
+            env = os.environ.copy()
+            env.pop("FAKE_IMPORT_SUCCEEDS", None)
+            env.update(extra_env)
+            return subprocess.run(
+                ["bash", str(SMOKE_TEST), "--binary", str(binary)],
+                cwd=REPO_ROOT,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+            )
+
     def test_full_harness_handles_ere_alternatives_and_pipefail(self) -> None:
         """WHY: release run 32992452554 exposed two shell-specific false-negative
         shapes. Escaping `|` made 13 ERE alternations literal, while `grep -q`
@@ -80,24 +107,21 @@ class SmokeTestHarness(unittest.TestCase):
         under `pipefail`. An expected exit 1 piped into grep had the same effect.
         The fake CLI chooses later alternatives, emits a large completion, and fails
         missing imports so any observed regression makes the complete harness fail."""
-        with tempfile.TemporaryDirectory() as tmp:
-            binary = Path(tmp) / "aletheia"
-            binary.write_text(textwrap.dedent(FAKE_CLI), encoding="utf-8")
-            binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
-
-            result = subprocess.run(
-                ["bash", str(SMOKE_TEST), "--binary", str(binary)],
-                cwd=REPO_ROOT,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                check=False,
-            )
+        result = self._run_harness()
 
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn("Results", result.stdout)
         self.assertIn("51 passed", result.stdout)
         self.assertNotIn("Failed tests:", result.stdout)
+
+    def test_matching_import_error_cannot_hide_a_success_exit(self) -> None:
+        """A diagnostic-looking string does not prove the command rejected input."""
+        result = self._run_harness(FAKE_IMPORT_SUCCEEDS="1")
+
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("import missing file unexpectedly succeeded", result.stdout)
+        self.assertIn("50 passed", result.stdout)
+        self.assertIn("1 failed", result.stdout)
 
 
 if __name__ == "__main__":
