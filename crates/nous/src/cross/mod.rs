@@ -102,7 +102,14 @@ pub enum DeliveryState {
     TimedOut,
 }
 
-/// A message from one nous to another.
+/// An explicit, capability-bounded message from one nous to another.
+///
+/// This envelope deliberately does not inherit the sender's ambient session,
+/// pipeline history, working state, or model configuration. The target receives
+/// only the fields the sender placed here and reconstructs execution under its
+/// own configuration and authority. Keeping that boundary explicit prevents a
+/// cross-nous call from silently propagating caller state; shared context must
+/// be an explicit payload or independently persisted state.
 #[derive(Debug, Clone)]
 pub struct CrossNousMessage {
     /// Unique message identifier.

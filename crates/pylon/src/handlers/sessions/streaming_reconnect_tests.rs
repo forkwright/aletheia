@@ -152,6 +152,62 @@ async fn reconnect_completed_buffer_reports_completed_replay_only() {
 }
 
 #[tokio::test]
+async fn live_approval_evidence_is_never_reconstructed_on_reconnect() {
+    let (state, _tmp) = reconnect_test_state().await;
+    let buffer = state
+        .turn_buffer_registry
+        .get_or_create("ses-a", "turn-approval-redaction")
+        .await;
+    let handle = TurnBufferHandle::new(buffer);
+    let live_secret = "live-only-approval-evidence";
+    let live = PylonTurnStreamEvent::ToolApprovalRequired {
+        turn_id: "turn-approval-redaction".to_owned(),
+        tool_name: "http_request".to_owned(),
+        tool_id: "tool-1".to_owned(),
+        input: serde_json::json!({"url": live_secret}),
+        risk: "critical".to_owned(),
+        reason: "approval required".to_owned(),
+    };
+    let replay = PylonTurnStreamEvent::ToolApprovalRequired {
+        turn_id: "turn-approval-redaction".to_owned(),
+        tool_name: "http_request".to_owned(),
+        tool_id: "tool-1".to_owned(),
+        input: serde_json::json!({"url": "[REDACTED]"}),
+        risk: "critical".to_owned(),
+        reason: "approval required".to_owned(),
+    };
+
+    let (_, returned_live) = record_turn_event_with_live(&handle, &replay, &live)
+        .await
+        .expect("approval event recorded");
+    assert!(
+        serde_json::to_string(&returned_live)
+            .expect("serialize live event")
+            .contains(live_secret),
+        "the connected approver receives the independently supplied live evidence"
+    );
+    handle.mark_completed().await;
+
+    let sse = reconnect_turn(
+        axum::extract::State(state),
+        claims(Role::Operator, None),
+        HeaderMap::new(),
+        reconnect_path_for("turn-approval-redaction"),
+    )
+    .await
+    .expect("reconnect should succeed");
+    let body = response_body(sse).await;
+    assert!(
+        !body.contains(live_secret),
+        "reconnect leaked live evidence: {body}"
+    );
+    assert!(
+        body.contains("[REDACTED]"),
+        "reconnect omitted replay-safe evidence: {body}"
+    );
+}
+
+#[tokio::test]
 async fn reconnect_failed_buffer_reports_failed_replay_only() {
     let (state, _tmp) = reconnect_test_state().await;
     let buffer = state

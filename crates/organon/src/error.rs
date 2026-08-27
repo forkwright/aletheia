@@ -29,6 +29,22 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Governance metadata was declared more than once for one tool.
+    #[snafu(display("duplicate capability declaration: {name}"))]
+    DuplicateCapability {
+        name: ToolName,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Governance metadata disagrees with the registered tool definition.
+    #[snafu(display("invalid capability declaration for tool: {name}"))]
+    InvalidCapabilityDeclaration {
+        name: ToolName,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Tool input failed validation.
     #[snafu(display("invalid input for tool {name}: {reason}"))]
     InvalidInput {

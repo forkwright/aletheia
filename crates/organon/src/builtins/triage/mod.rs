@@ -33,7 +33,7 @@ use prompt_gen::generate_prompt;
 use scoring::{compute_priority_score, score_relevance};
 
 use super::workspace::{
-    extract_opt_f64, extract_opt_str, extract_opt_u64, extract_str, validate_path,
+    extract_opt_f64, extract_opt_str, extract_opt_u64, extract_str, validate_prepared_path,
 };
 
 /// A parsed GitHub issue with extracted metadata.
@@ -155,6 +155,10 @@ impl IssueTriageExecutor {
 }
 
 impl ToolExecutor for IssueTriageExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["staging_dir"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -224,7 +228,7 @@ impl ToolExecutor for IssueTriageExecutor {
                 pb.partial_cmp(&pa).unwrap_or(std::cmp::Ordering::Equal)
             });
 
-            let staging = match validate_path(staging_dir, ctx, &input.name) {
+            let staging = match validate_prepared_path(staging_dir, ctx, &input.name) {
                 Ok(p) => p,
                 Err(e) => return Ok(ToolResult::error(e.to_string())),
             };
@@ -245,6 +249,10 @@ impl ToolExecutor for IssueTriageExecutor {
 struct IssueApproveExecutor;
 
 impl ToolExecutor for IssueApproveExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["staging_dir", "queue_dir"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -255,11 +263,11 @@ impl ToolExecutor for IssueApproveExecutor {
             let queue_dir = extract_str(&input.arguments, "queue_dir", &input.name)?;
             let prompt_id = extract_str(&input.arguments, "prompt_id", &input.name)?;
 
-            let staging = match validate_path(staging_dir, ctx, &input.name) {
+            let staging = match validate_prepared_path(staging_dir, ctx, &input.name) {
                 Ok(p) => p,
                 Err(e) => return Ok(ToolResult::error(e.to_string())),
             };
-            let queue = match validate_path(queue_dir, ctx, &input.name) {
+            let queue = match validate_prepared_path(queue_dir, ctx, &input.name) {
                 Ok(p) => p,
                 Err(e) => return Ok(ToolResult::error(e.to_string())),
             };
@@ -906,7 +914,7 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
             rollback: RollbackSupport::Supported,
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.declare_capability(
         ToolName::from_static("issue_triage"), // kanon:ignore RUST/expect
         ToolCapabilityMetadata {
@@ -919,7 +927,7 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.declare_capability(
         ToolName::from_static("issue_approve"), // kanon:ignore RUST/expect
         ToolCapabilityMetadata {
@@ -933,7 +941,7 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

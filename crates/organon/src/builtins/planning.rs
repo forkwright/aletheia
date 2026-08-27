@@ -519,7 +519,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         plan_verify_criteria_def(),
         Box::new(PlanVerifyCriteriaExecutor),
     )?;
-    declare_capabilities(registry);
+    declare_capabilities(registry)?;
     Ok(())
 }
 
@@ -527,12 +527,12 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 ///
 /// Split out of [`register`] (rather than interleaved per-tool) to keep that
 /// function under clippy's `too_many_lines` threshold; `declare_capability`
-/// is a no-op on an unregistered name, so the only ordering requirement is
+/// rejects an unregistered name, so the only ordering requirement is
 /// that this runs after the `registry.register` calls above. All planning
 /// mutations flow through the `PlanningService` trait to the filesystem-backed
 /// project workspace (persisted project state files), which has no general
 /// undo mechanism.
-fn declare_capabilities(registry: &mut ToolRegistry) {
+fn declare_capabilities(registry: &mut ToolRegistry) -> Result<()> {
     let declare = |registry: &mut ToolRegistry, name: &'static str, rollback: RollbackSupport| {
         registry.declare_capability(
             koina::id::ToolName::from_static(name),
@@ -542,7 +542,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                 rollback,
                 ..ToolCapabilityMetadata::default()
             },
-        );
+        )
     };
     declare(
         registry,
@@ -552,7 +552,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      delete path exists through this tool"
                 .to_owned(),
         },
-    );
+    )?;
     // WHY a loop: plan_research, plan_requirements, and plan_discuss are all
     // thin lifecycle-transition executors with identical rollback semantics;
     // one shared declaration keeps this function under clippy's
@@ -567,7 +567,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                          (plan_verify's revert_to_*)"
                     .to_owned(),
             },
-        );
+        )?;
     }
     declare(
         registry,
@@ -578,7 +578,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      revert_to_* inverses"
                 .to_owned(),
         },
-    );
+    )?;
     declare(
         registry,
         "plan_execute",
@@ -588,7 +588,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      inverse transition"
                 .to_owned(),
         },
-    );
+    )?;
     declare(
         registry,
         "plan_verify",
@@ -597,8 +597,8 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      terminal; every transition is persisted to the project state files"
                 .to_owned(),
         },
-    );
-    declare(registry, "plan_status", RollbackSupport::Supported);
+    )?;
+    declare(registry, "plan_status", RollbackSupport::Supported)?;
     declare(
         registry,
         "plan_step_complete",
@@ -607,7 +607,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      transition exists"
                 .to_owned(),
         },
-    );
+    )?;
     declare(
         registry,
         "plan_step_fail",
@@ -616,8 +616,9 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      no inverse transition exists"
                 .to_owned(),
         },
-    );
-    declare(registry, "plan_verify_criteria", RollbackSupport::Supported);
+    )?;
+    declare(registry, "plan_verify_criteria", RollbackSupport::Supported)?;
+    Ok(())
 }
 
 #[cfg(test)]

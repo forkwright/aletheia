@@ -11,8 +11,9 @@ use crate::error::{self, Result};
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::sandbox::{SandboxConfig, SandboxEnforcement};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
-    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
+    InputSchema, PropertyDef, PropertyType, RedactionPolicy, Reversibility, RollbackSupport,
+    ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult,
+    ToolStability, ToolTag,
 };
 
 use super::sandbox::{ComputerUseSessionConfig, execute_sandboxed_action};
@@ -103,7 +104,10 @@ impl ToolExecutor for ComputerUseExecutor {
                 )));
             };
 
-            tracing::info!(action = %action, "computer_use: dispatching action");
+            // SECURITY(#5015): the action may contain typed text, coordinates,
+            // or other operator-private payload. The action identity itself is
+            // not needed to operate this dispatch log.
+            tracing::info!("computer_use: dispatching action");
 
             // WHY: execute_sandboxed_action performs blocking I/O (subprocess
             // spawn, file reads, thread::sleep). Use spawn_blocking to avoid
@@ -290,8 +294,15 @@ pub fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> Result<
             rollback: RollbackSupport::Unsupported {
                 reason: "GUI actions such as clicks and keystrokes have no undo path".to_owned(),
             },
+            // WHY text: the `type_text` action types its argument verbatim
+            // into whatever window holds focus — including password fields —
+            // so the typed string must not land in trace surfaces.
+            // Computer-use actions are never inspectable payloads, including
+            // live approval prompts. A fixed Full marker is the entire public
+            // representation; no action type, coordinate, or typed text leaks.
+            redaction: RedactionPolicy::Full,
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }

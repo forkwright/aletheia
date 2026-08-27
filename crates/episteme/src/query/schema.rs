@@ -48,17 +48,18 @@ pub enum Relation {
     FactMultiplicity,
     /// Source fact/session side-index for consolidated facts (schema v19).
     ConsolidationProvenance,
-    /// Graph-algorithm scores per entity (PageRank, community cluster).
+    /// Graph-algorithm scores per entity (`PageRank`, community cluster).
     GraphScores,
     /// Applied schema version and per-migration stamps.
     SchemaVersion,
 }
 
 impl Relation {
-    /// Every relation the knowledge store creates at the current schema
-    /// version. The schema-coverage test compares this set against a live
-    /// store's `::relations` listing so a DDL added without typed metadata
-    /// fails the test suite.
+    /// Every core knowledge relation created by fresh `KnowledgeStore` schema
+    /// initialization. The schema-coverage test compares this set against a
+    /// fresh store's `::relations` listing. Engine-owned index sub-relations
+    /// and runtime-added operational relations are excluded.
+    #[cfg(test)]
     pub(crate) const ALL: &[Self] = &[
         Self::Facts,
         Self::Entities,

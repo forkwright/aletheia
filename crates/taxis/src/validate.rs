@@ -323,6 +323,31 @@ fn validate_agents(value: &Value, errors: &mut Vec<String>) {
             ));
         }
     }
+
+    if let Some(agents) = value.get("list").and_then(Value::as_array) {
+        let mut defaults = Vec::new();
+        for (index, agent) in agents.iter().enumerate() {
+            if agent.get("default").and_then(Value::as_bool) != Some(true) {
+                continue;
+            }
+            defaults.push(index);
+            if agent.get("enabled").and_then(Value::as_bool) == Some(false) {
+                errors.push(format!(
+                    "agents.list[{index}] cannot be both default and disabled"
+                ));
+            }
+        }
+        if defaults.len() > 1 {
+            errors.push(format!(
+                "agents.list must contain at most one default agent; found defaults at indexes {}",
+                defaults
+                    .iter()
+                    .map(usize::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
 }
 
 fn validate_model_route(value: &Value, path: &str, errors: &mut Vec<String>) {

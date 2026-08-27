@@ -174,6 +174,87 @@ pub(crate) fn validate_path(raw: &str, ctx: &ToolContext, tool_name: &ToolName) 
     Ok(canonical)
 }
 
+/// Revalidate a registry-prepared canonical path immediately before use.
+///
+/// Production dispatch passes absolute canonical strings produced by
+/// [`prepare_path_arguments`]. If filesystem state changed during approval and
+/// the same string now resolves to a different target, fail closed instead of
+/// silently executing against an identity the approval/receipt did not bind.
+pub(crate) fn validate_prepared_path(
+    raw: &str,
+    ctx: &ToolContext,
+    tool_name: &ToolName,
+) -> Result<PathBuf> {
+    let current = validate_path(raw, ctx, tool_name)?;
+    let prepared = Path::new(raw);
+    if prepared.is_absolute() && current.as_path() != prepared {
+        return Err(error::InvalidInputSnafu {
+            name: tool_name.clone(),
+            reason: "prepared path target changed before execution".to_owned(),
+        }
+        .build());
+    }
+    Ok(current)
+}
+
+fn canonical_path_argument(
+    raw: &str,
+    ctx: &ToolContext,
+    tool_name: &ToolName,
+) -> Result<serde_json::Value> {
+    let canonical = validate_path(raw, ctx, tool_name)?;
+    let path = canonical.to_str().ok_or_else(|| {
+        error::InvalidInputSnafu {
+            name: tool_name.clone(),
+            reason: "canonical path is not valid UTF-8".to_owned(),
+        }
+        .build()
+    })?;
+    Ok(serde_json::Value::String(path.to_owned()))
+}
+
+/// Canonicalize every present path field in an executor's argument object.
+///
+/// Registry schema validation runs before this helper, so a present field is
+/// guaranteed to be a string. Fields listed in `workspace_defaults` are
+/// materialized with the canonical workspace when absent; other optional
+/// fields remain absent.
+pub(crate) fn prepare_path_arguments(
+    input: &ToolInput,
+    ctx: &ToolContext,
+    fields: &[&str],
+    workspace_defaults: &[&str],
+) -> Result<serde_json::Value> {
+    let mut arguments = input.arguments.clone();
+    for field in fields {
+        if arguments.get(*field).is_none() {
+            continue;
+        }
+        let raw = extract_str(&arguments, field, &input.name)?.to_owned();
+        let canonical = canonical_path_argument(&raw, ctx, &input.name)?;
+        if let Some(object) = arguments.as_object_mut() {
+            object.insert((*field).to_owned(), canonical);
+        }
+    }
+    for field in workspace_defaults {
+        if arguments.get(*field).is_some() {
+            continue;
+        }
+        let workspace = ctx.workspace.to_str().ok_or_else(|| {
+            error::InvalidInputSnafu {
+                name: input.name.clone(),
+                reason: "workspace path is not valid UTF-8".to_owned(),
+            }
+            .build()
+        })?;
+        let canonical = canonical_path_argument(workspace, ctx, &input.name)?;
+        if let Some(object) = arguments.as_object_mut() {
+            object.insert((*field).to_owned(), canonical);
+        }
+    }
+    Ok(arguments)
+}
+
 pub(crate) fn normalize(path: &Path) -> PathBuf {
     let mut result = PathBuf::new();
     for component in path.components() {
@@ -236,6 +317,10 @@ fn err_result(msg: String) -> ToolResult {
 struct ReadExecutor;
 
 impl ToolExecutor for ReadExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -244,10 +329,11 @@ impl ToolExecutor for ReadExecutor {
         Box::pin(async {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let max_lines = extract_opt_u64(&input.arguments, "maxLines");
-            // WHY: validate_path returns the canonical path (symlinks resolved),
-            // so the I/O below operates on the resolved target, not the original
-            // symlink. This eliminates the symlink-swap TOCTOU window.
-            let path = validate_path(path_str, ctx, &input.name)?;
+            // WHY: dispatch supplied a canonical path string and this check
+            // rejects retargeting across the approval wait. A final local
+            // validate-to-I/O race still exists for path-based OS APIs; Receipt
+            // V2 attests the exact executor-bound input, not inode identity.
+            let path = validate_prepared_path(path_str, ctx, &input.name)?;
 
             let max_read = ctx.tool_config.max_read_bytes;
             match std::fs::metadata(&path) {
@@ -307,6 +393,10 @@ impl ToolExecutor for ReadExecutor {
 struct WriteExecutor;
 
 impl ToolExecutor for WriteExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -316,7 +406,7 @@ impl ToolExecutor for WriteExecutor {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let content = extract_str(&input.arguments, "content", &input.name)?;
             let append = extract_opt_bool(&input.arguments, "append").unwrap_or(false);
-            let path = validate_path(path_str, ctx, &input.name)?;
+            let path = validate_prepared_path(path_str, ctx, &input.name)?;
 
             // WHY: Enforce content size limit to prevent disk exhaustion.
             let max_write = ctx.tool_config.max_write_bytes;
@@ -371,6 +461,10 @@ impl ToolExecutor for WriteExecutor {
 struct EditExecutor;
 
 impl ToolExecutor for EditExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -380,7 +474,7 @@ impl ToolExecutor for EditExecutor {
             let path_str = extract_str(&input.arguments, "path", &input.name)?;
             let old_text = extract_str(&input.arguments, "old_text", &input.name)?;
             let new_text = extract_str(&input.arguments, "new_text", &input.name)?;
-            let path = validate_path(path_str, ctx, &input.name)?;
+            let path = validate_prepared_path(path_str, ctx, &input.name)?;
 
             if let Some(protected) = protected_path_class(&path, &ctx.workspace) {
                 return Ok(err_result(format!(
@@ -603,7 +697,7 @@ pub(crate) fn register(
             rollback: RollbackSupport::Supported,
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(write_def(), Box::new(WriteExecutor))?;
     registry.declare_capability(
         ToolName::from_static("write"), // kanon:ignore RUST/expect
@@ -617,7 +711,7 @@ pub(crate) fn register(
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(edit_def(), Box::new(EditExecutor))?;
     registry.declare_capability(
         ToolName::from_static("edit"), // kanon:ignore RUST/expect
@@ -631,7 +725,7 @@ pub(crate) fn register(
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.register(exec_def(), Box::new(ExecExecutor { sandbox }))?;
     registry.declare_capability(
         ToolName::from_static("exec"), // kanon:ignore RUST/expect
@@ -644,7 +738,7 @@ pub(crate) fn register(
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 
