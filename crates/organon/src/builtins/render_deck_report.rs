@@ -19,7 +19,7 @@ use poiesis_core::envelope::Meta;
 use poiesis_deck::DeckRenderer;
 
 use crate::builtins::poiesis::{json_data_property, media_type_for_format};
-use crate::builtins::workspace::validate_path;
+use crate::builtins::workspace::validate_prepared_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -33,6 +33,10 @@ const SUPPORTED_FORMATS: &[&str] = &["html", "pdf"];
 pub(crate) struct RenderDeckReportExecutor;
 
 impl ToolExecutor for RenderDeckReportExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["out_path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -99,7 +103,7 @@ impl ToolExecutor for RenderDeckReportExecutor {
                 };
 
             if let Some(out_path) = args.get("out_path").and_then(serde_json::Value::as_str) {
-                let validated = match validate_path(out_path, ctx, &input.name) {
+                let validated = match validate_prepared_path(out_path, ctx, &input.name) {
                     Ok(path) => path,
                     Err(e) => {
                         return Ok(ToolResult::error(format!(
@@ -313,7 +317,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
             },
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     Ok(())
 }
 

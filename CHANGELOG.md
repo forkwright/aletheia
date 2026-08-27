@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.43.0](https://github.com/forkwright/aletheia/compare/v0.42.3...v0.43.0) (2026-08-26)
+
+
+### Features
+
+* **organon:** classify all built-in tools with capability metadata ([#6994](https://github.com/forkwright/aletheia/issues/6994)) ([9ec5ad3](https://github.com/forkwright/aletheia/commit/9ec5ad352765edb773e094821b5dbf2101412271))
+
+
+### Bug Fixes
+
+* **aletheia-routing:** explicit unknown categories, fallback provenance, external-channel privacy boundary ([#6997](https://github.com/forkwright/aletheia/issues/6997)) ([bd1d7ac](https://github.com/forkwright/aletheia/commit/bd1d7ac20af4d3655f506a7e23696b47eb2c56e8))
+* **organon,ci:** declare rustix for all unix targets; make the release smoke step loud and hermetic ([#7000](https://github.com/forkwright/aletheia/issues/7000)) ([2bac938](https://github.com/forkwright/aletheia/commit/2bac938c3464ef5c402285e85f93ed223036b360))
+
 ## [0.42.3](https://github.com/forkwright/aletheia/compare/v0.42.2...v0.42.3) (2026-08-25)
 
 

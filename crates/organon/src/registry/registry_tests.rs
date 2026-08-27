@@ -5,14 +5,34 @@ use koina::id::{NousId, SessionId};
 use super::*;
 use crate::surface::ENABLE_TOOL;
 use crate::types::{
-    ApprovalRequirement, InputSchema, PropertyDef, PropertyType, Reversibility, ToolCallCapability,
-    ToolCallCapabilityRule,
+    ApprovalRequirement, InputSchema, PropertyDef, PropertyType, RedactionPolicy, Reversibility,
+    ToolCallCapability, ToolCallCapabilityRule, ToolCapabilityMetadata,
 };
 
 /// Mock executor that captures calls for verification.
 struct MockExecutor {
     calls: Arc<Mutex<Vec<ToolName>>>,
     response: String,
+}
+
+struct WorkspaceDefaultPathExecutor;
+
+impl ToolExecutor for WorkspaceDefaultPathExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
+    fn workspace_default_path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
+    fn execute<'a>(
+        &'a self,
+        _input: &'a ToolInput,
+        _ctx: &'a ToolContext,
+    ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
+        Box::pin(async { Ok(ToolResult::text("ok")) })
+    }
 }
 
 impl ToolExecutor for MockExecutor {
@@ -125,6 +145,152 @@ fn lookup_missing() {
     assert!(
         reg.get_def(&name).is_none(),
         "expected reg.get_def(&name).is_none() to be true"
+    );
+}
+
+#[test]
+fn capability_declaration_rejects_unknown_tool() {
+    let mut reg = ToolRegistry::new();
+    let name = ToolName::from_static("missing");
+
+    let err = reg
+        .declare_capability(name, ToolCapabilityMetadata::default())
+        .expect_err("unknown declaration must fail closed");
+
+    assert!(matches!(err, crate::error::Error::ToolNotFound { .. }));
+}
+
+#[test]
+fn capability_declaration_rejects_field_absent_from_schema() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _) = mock_executor("ok");
+    let name = ToolName::from_static("read");
+    reg.register(make_def("read", ToolCategory::Workspace), exec)
+        .expect("register");
+
+    let err = reg
+        .declare_capability(
+            name.clone(),
+            ToolCapabilityMetadata {
+                redaction: RedactionPolicy::Fields(vec!["dynamic-secret-key".to_owned()]),
+                ..ToolCapabilityMetadata::default()
+            },
+        )
+        .expect_err("schema-invalid declaration must fail closed");
+
+    assert!(matches!(
+        err,
+        crate::error::Error::InvalidCapabilityDeclaration { .. }
+    ));
+    assert_eq!(
+        reg.capability_metadata(&name),
+        ToolCapabilityMetadata::default(),
+        "a rejected declaration must not partially install metadata"
+    );
+}
+
+#[test]
+fn capability_declaration_rejects_duplicate_declaration_without_replacing_first() {
+    let mut reg = ToolRegistry::new();
+    let (exec, _) = mock_executor("ok");
+    let name = ToolName::from_static("read");
+    reg.register(make_def("read", ToolCategory::Workspace), exec)
+        .expect("register");
+    let first = ToolCapabilityMetadata {
+        owner: "first-owner".to_owned(),
+        ..ToolCapabilityMetadata::default()
+    };
+    reg.declare_capability(name.clone(), first.clone())
+        .expect("first declaration");
+
+    let err = reg
+        .declare_capability(
+            name.clone(),
+            ToolCapabilityMetadata {
+                owner: "replacement-owner".to_owned(),
+                ..ToolCapabilityMetadata::default()
+            },
+        )
+        .expect_err("duplicate declaration must fail closed");
+
+    assert!(matches!(
+        err,
+        crate::error::Error::DuplicateCapability { .. }
+    ));
+    assert_eq!(reg.capability_metadata(&name), first);
+}
+
+#[test]
+fn capability_declaration_rejects_empty_and_duplicate_field_policies() {
+    for fields in [vec![], vec!["path".to_owned(), "path".to_owned()]] {
+        let mut reg = ToolRegistry::new();
+        let (exec, _) = mock_executor("ok");
+        let name = ToolName::from_static("read");
+        let mut def = make_def("read", ToolCategory::Workspace);
+        def.input_schema
+            .properties
+            .insert("path".to_owned(), PropertyDef::default());
+        reg.register(def, exec).expect("register");
+
+        let err = reg
+            .declare_capability(
+                name.clone(),
+                ToolCapabilityMetadata {
+                    redaction: RedactionPolicy::Fields(fields),
+                    ..ToolCapabilityMetadata::default()
+                },
+            )
+            .expect_err("malformed Fields declaration must fail closed");
+
+        assert!(matches!(
+            err,
+            crate::error::Error::InvalidCapabilityDeclaration { .. }
+        ));
+        assert_eq!(
+            reg.capability_metadata(&name),
+            ToolCapabilityMetadata::default()
+        );
+    }
+}
+
+#[test]
+fn prepare_input_canonicalizes_declared_paths_and_materializes_workspace_default() {
+    let dir = tempfile::TempDir::new().expect("temp workspace");
+    let workspace = dir.path().canonicalize().expect("canonical workspace");
+    std::fs::create_dir_all(workspace.join("nested")).expect("nested directory");
+    let mut ctx = mock_ctx();
+    ctx.workspace = workspace.clone();
+    ctx.allowed_roots = vec![workspace.clone()];
+
+    let mut def = make_def("path_tool", ToolCategory::Workspace);
+    def.input_schema.properties.insert(
+        "path".to_owned(),
+        PropertyDef {
+            property_type: PropertyType::String,
+            ..PropertyDef::default()
+        },
+    );
+    let mut registry = ToolRegistry::new();
+    registry
+        .register(def, Box::new(WorkspaceDefaultPathExecutor))
+        .expect("valid path declaration");
+
+    let explicit = tool_input("path_tool", serde_json::json!({"path": "nested/.."}));
+    let prepared = registry
+        .prepare_input(&explicit, &ctx)
+        .expect("prepare explicit path");
+    assert_eq!(
+        prepared.as_tool_input().arguments["path"].as_str(),
+        workspace.to_str()
+    );
+
+    let implicit = tool_input("path_tool", serde_json::json!({}));
+    let prepared = registry
+        .prepare_input(&implicit, &ctx)
+        .expect("prepare default path");
+    assert_eq!(
+        prepared.as_tool_input().arguments["path"].as_str(),
+        workspace.to_str()
     );
 }
 

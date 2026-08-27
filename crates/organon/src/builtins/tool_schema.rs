@@ -215,7 +215,7 @@ pub(crate) fn register_with_pairs(
             rollback: RollbackSupport::Supported,
             ..ToolCapabilityMetadata::default()
         },
-    );
+    )?;
     registry.set_tool_schema_snapshot(Some(schemas));
     Ok(())
 }

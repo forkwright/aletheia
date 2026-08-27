@@ -31,7 +31,7 @@ use poiesis_verify::Verifier;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
-use crate::builtins::workspace::validate_path;
+use crate::builtins::workspace::validate_prepared_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -251,7 +251,7 @@ async fn write_document_out_path(
     tool_name: &koina::id::ToolName,
     bytes: &[u8],
 ) -> Option<ToolResult> {
-    let validated = match validate_path(out_path, ctx, tool_name) {
+    let validated = match validate_prepared_path(out_path, ctx, tool_name) {
         Ok(path) => path,
         Err(e) => {
             return Some(ToolResult::error(format!(
@@ -293,6 +293,10 @@ fn build_document_result(format: &str, bytes: &[u8]) -> ToolResult {
 struct GenerateDocumentExecutor;
 
 impl ToolExecutor for GenerateDocumentExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["out_path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -546,10 +550,14 @@ fn render_typst_report_capability_rule() -> ToolCallCapabilityRule {
 struct LintReportExecutor;
 
 impl ToolExecutor for LintReportExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             let args = &input.arguments;
@@ -563,7 +571,11 @@ impl ToolExecutor for LintReportExecutor {
             let text: &str = if let Some(t) = extract_opt_str(args, "text") {
                 t
             } else if let Some(path_str) = extract_opt_str(args, "path") {
-                match std::fs::read_to_string(path_str) {
+                let path = match validate_prepared_path(path_str, ctx, &input.name) {
+                    Ok(path) => path,
+                    Err(e) => return Ok(ToolResult::error(e.to_string())),
+                };
+                match std::fs::read_to_string(path) {
                     Ok(s) => {
                         text_owned = s;
                         &text_owned
@@ -668,10 +680,14 @@ fn lint_report_def() -> ToolDef {
 struct VerifyReportExecutor;
 
 impl ToolExecutor for VerifyReportExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["path"]
+    }
+
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
-        _ctx: &'a ToolContext,
+        ctx: &'a ToolContext,
     ) -> Pin<Box<dyn Future<Output = Result<ToolResult>> + Send + 'a>> {
         Box::pin(async move {
             let args = &input.arguments;
@@ -690,8 +706,11 @@ impl ToolExecutor for VerifyReportExecutor {
                     };
                 verifier.verify(&manifest)
             } else if let Some(path_str) = extract_opt_str(args, "path") {
-                let path = std::path::Path::new(path_str);
-                match verifier.verify_file(path) {
+                let path = match validate_prepared_path(path_str, ctx, &input.name) {
+                    Ok(path) => path,
+                    Err(e) => return Ok(ToolResult::error(e.to_string())),
+                };
+                match verifier.verify_file(&path) {
                     Ok(r) => r,
                     Err(e) => {
                         return Ok(ToolResult::error(format!(
@@ -780,6 +799,10 @@ fn verify_report_def() -> ToolDef {
 struct RenderTypstReportExecutor;
 
 impl ToolExecutor for RenderTypstReportExecutor {
+    fn path_arguments(&self) -> &'static [&'static str] {
+        &["out_path"]
+    }
+
     #[expect(
         clippy::too_many_lines,
         reason = "tool executor wires the full report render path"
@@ -875,7 +898,7 @@ impl ToolExecutor for RenderTypstReportExecutor {
 
             // NOTE: Write to a caller-provided path in addition to returning bytes.
             if let Some(out_path) = extract_opt_str(args, "out_path") {
-                let validated = match validate_path(out_path, ctx, &input.name) {
+                let validated = match validate_prepared_path(out_path, ctx, &input.name) {
                     Ok(path) => path,
                     Err(e) => {
                         return Ok(ToolResult::error(format!(
@@ -1177,7 +1200,7 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
         Box::new(RenderTypstReportExecutor),
     )?;
     registry.register(qa_gate_def(), Box::new(QaGateExecutor))?;
-    declare_capabilities(registry);
+    declare_capabilities(registry)?;
     Ok(())
 }
 
@@ -1185,10 +1208,10 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 ///
 /// Split out of [`register`] (rather than interleaved per-tool) purely to
 /// keep that function under clippy's `too_many_lines` threshold;
-/// `declare_capability` is a no-op on an unregistered name, so the only
+/// `declare_capability` rejects an unregistered name, so the only
 /// ordering requirement is that this runs after the `registry.register`
 /// calls above.
-fn declare_capabilities(registry: &mut ToolRegistry) {
+fn declare_capabilities(registry: &mut ToolRegistry) -> Result<()> {
     // WHY Experimental on every tool below: the whole poiesis family is
     // behind `#[cfg(feature = "poiesis")]` (see
     // crates/organon/src/builtins/mod.rs) -- not compiled by default.
@@ -1201,7 +1224,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                 rollback,
                 ..ToolCapabilityMetadata::default()
             },
-        );
+        )
     };
     declare(
         registry,
@@ -1212,9 +1235,9 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      contents"
                 .to_owned(),
         },
-    );
-    declare(registry, "lint_report", RollbackSupport::Supported);
-    declare(registry, "verify_report", RollbackSupport::Supported);
+    )?;
+    declare(registry, "lint_report", RollbackSupport::Supported)?;
+    declare(registry, "verify_report", RollbackSupport::Supported)?;
     declare(
         registry,
         "render_typst_report",
@@ -1223,8 +1246,9 @@ fn declare_capabilities(registry: &mut ToolRegistry) {
                      disk, overwriting any existing file without retaining its prior contents"
                 .to_owned(),
         },
-    );
-    declare(registry, "qa_gate", RollbackSupport::Supported);
+    )?;
+    declare(registry, "qa_gate", RollbackSupport::Supported)?;
+    Ok(())
 }
 
 #[cfg(test)]
