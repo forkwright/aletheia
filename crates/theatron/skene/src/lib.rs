@@ -20,6 +20,9 @@ pub mod id;
 /// SSE wire protocol parser for reqwest response streams.
 pub mod sse;
 
+/// Shared chat-transcript text projections used by both first-party frontends.
+pub mod text;
+
 /// Install the rustls crypto provider for tests that build reqwest clients.
 /// Production installs it at startup; tests must install explicitly.
 #[cfg(test)]
@@ -34,9 +37,10 @@ mod tests {
     use super::*;
     #[test]
     fn public_modules_exist() {
-        // WHY: smoke test verifying the five public modules compile and link
+        // WHY: smoke test verifying the public modules compile and link
         let _ = std::any::type_name::<super::api::ApiClient>();
         let _ = std::any::type_name_of_val(&super::discovery::discover_server);
         let _ = std::any::type_name::<super::id::NousId>();
+        let _ = std::any::type_name_of_val(&super::text::append_terminal_notice);
     }
 }

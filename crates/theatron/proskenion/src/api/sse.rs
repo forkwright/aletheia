@@ -175,7 +175,7 @@ async fn run_sse_connection(
                     String::new()
                 }
             };
-            let message = extract_error_message(&body, status.as_u16(), reason);
+            let message = format_http_error_body(status.as_u16(), reason, &body);
             tracing::warn!("SSE error: {message}");
             failed_attempts = failed_attempts.saturating_add(1);
             lost_at.get_or_insert_with(Instant::now);
@@ -298,11 +298,6 @@ fn advance_backoff(current: std::time::Duration) -> std::time::Duration {
     (current * 2).min(MAX_BACKOFF)
 }
 
-/// Extract a human-readable error message from an HTTP error response body.
-fn extract_error_message(body: &str, status_code: u16, reason: &str) -> String {
-    format_http_error_body(status_code, reason, body)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,7 +349,7 @@ mod tests {
     fn extract_error_message_json() {
         let body = r#"{"message":"rate limited"}"#;
         assert_eq!(
-            extract_error_message(body, 429, "Too Many Requests"),
+            format_http_error_body(429, "Too Many Requests", body),
             "rate limited"
         );
     }
@@ -362,7 +357,7 @@ mod tests {
     #[test]
     fn extract_error_message_fallback() {
         assert_eq!(
-            extract_error_message("not json", 500, "Internal"),
+            format_http_error_body(500, "Internal", "not json"),
             "500 Internal"
         );
     }
@@ -370,13 +365,13 @@ mod tests {
     #[test]
     fn extract_error_message_error_field() {
         let body = r#"{"error":"forbidden"}"#;
-        assert_eq!(extract_error_message(body, 403, "Forbidden"), "forbidden");
+        assert_eq!(format_http_error_body(403, "Forbidden", body), "forbidden");
     }
 
     #[test]
     fn extract_error_message_preserves_pylon_envelope() {
         let body = r#"{"error":{"code":"validation_error","message":"invalid subscription","request_id":"req-http","details":{"errors":[{"field":"topic","code":"required","message":"topic is required"}]}}}"#;
-        let message = extract_error_message(body, 422, "Unprocessable Entity");
+        let message = format_http_error_body(422, "Unprocessable Entity", body);
         assert!(message.contains("invalid subscription"));
         assert!(message.contains("status 422"));
         assert!(message.contains("code validation_error"));
