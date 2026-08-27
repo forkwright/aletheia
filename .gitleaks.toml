@@ -32,6 +32,22 @@ tags = ["token", "jwt"]
 # Allowlisted paths — instance/ is gitignored so shouldn't appear,
 # but be defensive
 [allowlist]
+# WHY a regex allowlist rather than more path entries: the phone-number rule
+# cannot distinguish a reserved test number from a real one, so every file that
+# gains a synthetic Signal number has been added to `paths` by hand -- two
+# already, and a third (init/scaffold.rs) failed the scan on PR #7003 while
+# carrying the `pii-allow:` marker the convention says makes it intentional.
+# The agora crate alone holds a dozen more sites. Enumerating files makes the
+# allowlist grow with the test suite and turns a real leak into one more entry
+# nobody reads.
+#
+# NANP reserves 555 for fiction in two shapes, and both appear in this tree:
+# area-code 555 (+1555XXXXXXX, e.g. +15551234567) and exchange 555
+# (+1NPA555XXXX). Neither is assignable to a subscriber, so neither can be a
+# real number. Real numbers still match the rule.
+regexes = [
+  '''\+1(?:555[0-9]{7}|[0-9]{3}555[0-9]{4})''',
+]
 paths = [
   '''vendor/''',
   '''crates/mneme-engine/''',
