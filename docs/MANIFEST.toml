@@ -106,6 +106,13 @@ evergreen = true
 description = "Full feature-flag matrix and cross-crate interactions; release-feature coverage is script-derived."
 
 [[doc]]
+path = "docs/FJALL-EVALUATION.md"
+type = "decision-record"
+evergreen = true
+description = "Storage-engine evaluation: verdict to keep fjall as the krites backend. Closes #2290."
+decided = "2026-04-06"
+
+[[doc]]
 path = "docs/glossary.md"
 type = "authored"
 evergreen = true
@@ -261,6 +268,13 @@ path = "docs/test-tiers.md"
 type = "authored"
 evergreen = true
 description = "Cargo feature-flag test tiers balancing coverage against build time and resources."
+
+[[doc]]
+path = "docs/TRANSLATION-TAX.md"
+type = "decision-record"
+evergreen = true
+description = "Boundary analysis of six component boundaries where internal state narrows into a channel. Research for #3504."
+decided = "2026-04-17"
 
 [[doc]]
 path = "docs/TUI-CONTRACT.md"
