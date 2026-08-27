@@ -15,6 +15,8 @@ pub mod id;
 pub mod knowledge;
 /// Uniform provenance metadata for fleet artefacts.
 pub mod meta;
+/// Canonical SKILL.md wire shape and renderer.
+pub mod skill_md;
 
 /// Re-export bookkeeping provider contracts and DTOs at crate root.
 pub use bookkeeping::{
