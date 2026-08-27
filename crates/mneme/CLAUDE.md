@@ -45,6 +45,7 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 | `episteme` | `extract` | `ConversationMessage`, `ExtractionConfig`, `ExtractionEngine`, `ExtractionError`, `ExtractionProvider`, `ExtractedToolCall`, `LlmCallSnafu` | always |
 | `episteme` | `instinct` | `ToolObservation`, `ToolOutcome`, `sanitize_parameters`, `truncate_context_summary`, constants | always |
 | `episteme` | `knowledge_store` | `HybridQuery`, `KnowledgeConfig`, `KnowledgeStore`, `QueryResult`, `scoped_visibility_rules` | `mneme-engine` |
+| `episteme` | `knowledge_store::snapshot` | `verified_copy_snapshot`, `pre_migration_snapshot`, `copy_excluding_psyche`, `count_data_keyspace_rows`, `verify_restorable`, `staging_sibling`, `MissingSource`, `SnapshotProgress`, `SilentProgress`, `SnapshotError` — the one verified fjall snapshot algorithm, policy-parameterized for callers beyond episteme's own pre-migration use (`aletheia`'s golden-set harness — aletheia#7036) | `storage-fjall` |
 | `episteme` | `recall` | `FactorScores`, `RecallEngine`, `RecallWeights`, `ScoredResult` | always |
 | `episteme` | `skill` | `SkillContent`, `export_skills_to_cc`, `parse_skill_md`, `scan_skill_dir` | always |
 | `episteme` | `skills` | `CandidateTracker`, `ContentEvidenceRef`, `ExtractedSkill`, `PendingSkill`, `SkillCandidate`, `SkillExtractionAudit`, `SkillExtractor`, `SkillObservationEvidence`, `SkillReviewAudit`, `SkillReviewDecision`, `SkillReviewInput`, `SkillSourceEvidence`, `ToolCallRecord`, `TrackResult`, `tool_sequence_hash` + `extract` submodule | always |

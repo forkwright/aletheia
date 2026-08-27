@@ -1,4 +1,5 @@
-//! Pre-migration verified snapshot (aletheia#5779, plan §8.5).
+//! Verified fjall snapshot copy: one algorithm, two callers
+//! (aletheia#5779 plan §8.5; aletheia#7036 consolidation).
 //!
 //! Placement is load-bearing. Migrations run after
 //! [`super::KnowledgeStore::open_fjall`] already holds the fjall lock
@@ -27,7 +28,7 @@
 //!
 //! **Verified, not copied-and-assumed.** A copy that returned `Ok` is not
 //! "backed up" — that is exactly the claim the fleet's `preserve` doctrine
-//! exists to refuse. [`pre_migration_snapshot`] takes a record count from
+//! exists to refuse. [`verified_copy_snapshot`] takes a record count from
 //! `source` before copying, and [`verify_restorable`] opens the copy with
 //! zero background workers, asserts fjall's own on-disk marker is present
 //! (never letting fjall's create-or-recover silently manufacture an empty
@@ -39,13 +40,28 @@
 //! `<dir>.new` sibling, gets verified there, and only then replaces
 //! `<dir>` — so a failed copy or a failed verify leaves the last known-good
 //! snapshot untouched.
+//!
+//! **One algorithm, caller-supplied policy.** [`verified_copy_snapshot`] is
+//! the single implementation of copy → stage → marker-check → reopen →
+//! count → verify → promote. Everything a caller can legitimately vary sits
+//! outside it as an argument rather than as a second copy of the algorithm:
+//! which path components are refused below the root, what a missing source
+//! means (`MissingSource`), and how the pre-copy row count is reported
+//! (`SnapshotProgress`). [`pre_migration_snapshot`] is this module's own
+//! caller — the pre-migration production policy — and
+//! `aletheia/src/bin/golden_set_harness.rs` is the other, with its own
+//! shared-cohort-only policy. A fix to the fail-closed discipline here
+//! (symlink refusal, marker checking, row-count verification, promotion)
+//! reaches both by construction.
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
-/// Path component name refused at any depth *below* a snapshot's root. The
-/// psyche partition holds private identity-continuity content that must
-/// never be duplicated outside its owning directory tree — not even into a
-/// crash-recovery snapshot with a looser retention/access story
+/// Path component name refused at any depth *below* a snapshot's root by
+/// [`pre_migration_snapshot`]'s policy. The psyche partition holds private
+/// identity-continuity content that must never be duplicated outside its
+/// owning directory tree — not even into a crash-recovery snapshot with a
+/// looser retention/access story
 /// (`~/aletheia/instance/data/knowledge.fjall/shared/psyche/`).
 ///
 /// This does **not** refuse a snapshot whose *root* is itself named
@@ -59,7 +75,10 @@ use std::path::{Path, PathBuf};
 /// [`super::KnowledgeStore::migrate_to_cohort_layout`] before the cohort
 /// split existed — and copying it would duplicate psyche-classified content
 /// outside its owning tree under a foreign cohort's snapshot, which is
-/// exactly what this per-descendant check still prevents.
+/// exactly what this per-descendant check still prevents. Other callers
+/// (e.g. the golden-set harness) pass their own refused-component list to
+/// [`copy_excluding_psyche`] rather than this constant, but currently agree
+/// with it exactly.
 const REFUSED_COMPONENT: &str = "psyche";
 
 /// Name of fjall's single on-disk keyspace, matching
@@ -80,21 +99,77 @@ const DATA_KEYSPACE: &str = "data";
 #[cfg(feature = "storage-fjall")]
 const FJALL_VERSION_MARKER: &str = "version";
 
+/// A verified-copy-snapshot failure, carrying a fully formatted message.
+/// Deliberately caller-agnostic: [`pre_migration_snapshot`] adapts it into
+/// `crate::error::Result`; a binary-crate caller (e.g. the golden-set
+/// harness) adapts it into its own `anyhow::Result` with `.map_err`. Neither
+/// caller needs its own copy of the wording this module already produces.
+#[cfg(feature = "storage-fjall")]
+#[derive(Debug)]
+pub struct SnapshotError(String);
+
+#[cfg(feature = "storage-fjall")]
+impl fmt::Display for SnapshotError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+#[cfg(feature = "storage-fjall")]
+impl std::error::Error for SnapshotError {}
+
+/// Caller policy for what a missing `source` means to
+/// [`verified_copy_snapshot`].
+#[cfg(feature = "storage-fjall")]
+pub enum MissingSource {
+    /// Nothing to protect — return `snapshot_dir` unchanged. This is
+    /// [`pre_migration_snapshot`]'s policy: a missing source means the store
+    /// has never been created (first boot), which is a legitimate state.
+    NoOp,
+    /// The caller requires an existing source (e.g. a golden-set harness
+    /// snapshotting a cohort that must already have data); its absence is a
+    /// hard error naming `what`.
+    Error { what: &'static str },
+}
+
+/// Optional per-copy progress reporting, invoked once with the row count
+/// taken from `source` before the copy runs. Exists purely for caller-side
+/// stderr/logging (e.g. the golden-set harness's "N row(s) in source"
+/// line); it never affects correctness or control flow.
+#[cfg(feature = "storage-fjall")]
+pub trait SnapshotProgress {
+    fn source_counted(&self, _source: &Path, _rows: u64) {}
+}
+
+/// A [`SnapshotProgress`] that reports nothing. [`pre_migration_snapshot`]'s
+/// policy — production migration snapshots run silently.
+#[cfg(feature = "storage-fjall")]
+pub struct SilentProgress;
+
+#[cfg(feature = "storage-fjall")]
+impl SnapshotProgress for SilentProgress {}
+
 /// Recursively copy `source` into `dest`, refusing any path component
-/// literally named `psyche` **below** `source` itself — not the root. See
-/// [`REFUSED_COMPONENT`] for why the root is deliberately exempt. Symlinks
-/// (and any other non-regular entry) are refused outright rather than
-/// silently skipped: a store whose partition is symlinked to another volume
-/// must not produce a snapshot that looks complete but is truncated.
+/// literally matching an entry of `refused_components` found **below**
+/// `source` itself — not the root. See [`REFUSED_COMPONENT`] for why
+/// [`pre_migration_snapshot`]'s root is deliberately exempt from its own
+/// policy. Symlinks (and any other non-regular entry) are refused outright
+/// rather than silently skipped: a store whose partition is symlinked to
+/// another volume must not produce a snapshot that looks complete but is
+/// truncated.
 ///
 /// # Errors
 /// Returns an error if a filesystem operation fails partway through, or if
 /// a non-regular filesystem entry (symlink, device node, ...) is
 /// encountered anywhere in the tree. On error the destination may hold a
 /// partial copy; callers must not treat a partial copy as a usable snapshot
-/// (see [`pre_migration_snapshot`], which gates on a subsequent open-and-read
+/// (see [`verified_copy_snapshot`], which gates on a subsequent open-and-read
 /// against a pre-copy record count, not on this function alone).
-pub fn copy_excluding_psyche(source: &Path, dest: &Path) -> std::io::Result<()> {
+pub fn copy_excluding_psyche(
+    source: &Path,
+    dest: &Path,
+    refused_components: &[&str],
+) -> std::io::Result<()> {
     let metadata = std::fs::symlink_metadata(source)?;
     if metadata.is_dir() {
         std::fs::create_dir_all(dest)?;
@@ -103,10 +178,10 @@ pub fn copy_excluding_psyche(source: &Path, dest: &Path) -> std::io::Result<()> 
             let Some(name) = entry.path().file_name().map(std::ffi::OsStr::to_os_string) else {
                 continue;
             };
-            if name == REFUSED_COMPONENT {
+            if refused_components.iter().any(|refused| name == *refused) {
                 continue;
             }
-            copy_excluding_psyche(&entry.path(), &dest.join(&name))?;
+            copy_excluding_psyche(&entry.path(), &dest.join(&name), refused_components)?;
         }
         Ok(())
     } else if metadata.is_file() {
@@ -117,7 +192,7 @@ pub fn copy_excluding_psyche(source: &Path, dest: &Path) -> std::io::Result<()> 
         // yield a snapshot that verifies clean while missing everything
         // reachable only through the link (aletheia#5779 F2).
         Err(std::io::Error::other(format!(
-            "refusing to copy non-regular filesystem entry at {}: a pre-migration snapshot must not silently truncate",
+            "refusing to copy non-regular filesystem entry at {}: a verified snapshot must not silently truncate",
             source.display()
         )))
     }
@@ -127,7 +202,7 @@ pub fn copy_excluding_psyche(source: &Path, dest: &Path) -> std::io::Result<()> 
 /// snapshot directory itself. See module docs: write-new, verify, then
 /// replace.
 #[cfg(feature = "storage-fjall")]
-fn staging_sibling(snapshot_dir: &Path) -> PathBuf {
+pub fn staging_sibling(snapshot_dir: &Path) -> PathBuf {
     let mut name = snapshot_dir
         .file_name()
         .map(std::ffi::OsStr::to_os_string)
@@ -140,31 +215,39 @@ fn staging_sibling(snapshot_dir: &Path) -> PathBuf {
 /// verify it is genuinely restorable before promoting it into place: opens
 /// the COPY (never `source`) with zero background workers and performs a
 /// real full-scan read whose record count must equal a count taken from
-/// `source` before the copy ran.
-///
-/// If `source` does not exist yet (first boot, store not yet created),
-/// this is a no-op — there is nothing to protect. Callers are expected to
-/// gate the (expensive) call itself on whether a schema migration might
-/// actually run this boot — see
-/// [`super::KnowledgeStore::open_fjall`] — so this function does not
-/// re-derive that decision; it always does the full protective work when
-/// asked to.
+/// `source` before the copy ran. `refused_components` and
+/// `on_missing_source` are the caller-supplied policy this algorithm has
+/// otherwise had duplicated around it (aletheia#7036); `progress` is an
+/// optional caller-side reporting hook.
 ///
 /// # Errors
 /// Returns an error if the pre-copy count cannot be taken, if the copy
 /// cannot be made, or if the copy cannot be opened and read back with a
-/// record count matching the pre-copy count. "The copy call returned `Ok`"
-/// is never, on its own, treated as "backed up" — that is exactly the claim
-/// the fleet's `preserve` doctrine exists to refuse. On any failure the
-/// prior verified snapshot at `snapshot_dir` (if one exists) is left
-/// untouched.
+/// record count matching the pre-copy count — or, per `on_missing_source`,
+/// if `source` does not exist. "The copy call returned `Ok`" is never, on
+/// its own, treated as "backed up" — that is exactly the claim the fleet's
+/// `preserve` doctrine exists to refuse. On any failure the prior verified
+/// snapshot at `snapshot_dir` (if one exists) is left untouched.
 #[cfg(feature = "storage-fjall")]
-pub fn pre_migration_snapshot(source: &Path, snapshot_dir: &Path) -> crate::error::Result<PathBuf> {
+pub fn verified_copy_snapshot(
+    source: &Path,
+    snapshot_dir: &Path,
+    refused_components: &[&str],
+    on_missing_source: &MissingSource,
+    progress: &dyn SnapshotProgress,
+) -> Result<PathBuf, SnapshotError> {
     if !source.exists() {
-        return Ok(snapshot_dir.to_path_buf());
+        return match on_missing_source {
+            MissingSource::NoOp => Ok(snapshot_dir.to_path_buf()),
+            MissingSource::Error { what } => Err(SnapshotError(format!(
+                "{what} does not exist at {} — nothing to snapshot",
+                source.display()
+            ))),
+        };
     }
 
     let source_count = count_data_keyspace_rows(source)?;
+    progress.source_counted(source, source_count);
 
     let staging_dir = staging_sibling(snapshot_dir);
     // WHY: clear a stale `.new` left by a prior crashed attempt — never the
@@ -173,15 +256,12 @@ pub fn pre_migration_snapshot(source: &Path, snapshot_dir: &Path) -> crate::erro
     // mixed-generation data.
     let _ = std::fs::remove_dir_all(&staging_dir);
 
-    copy_excluding_psyche(source, &staging_dir).map_err(|e| {
-        crate::error::MigrationIntegritySnafu {
-            message: format!(
-                "pre-migration snapshot copy from {} to {} failed: {e}",
-                source.display(),
-                staging_dir.display()
-            ),
-        }
-        .build()
+    copy_excluding_psyche(source, &staging_dir, refused_components).map_err(|e| {
+        SnapshotError(format!(
+            "verified snapshot copy from {} to {} failed: {e}",
+            source.display(),
+            staging_dir.display()
+        ))
     })?;
 
     verify_restorable(&staging_dir, source_count)?;
@@ -197,17 +277,43 @@ pub fn pre_migration_snapshot(source: &Path, snapshot_dir: &Path) -> crate::erro
     // promotes it — one wasted pass, never data loss.
     let _ = std::fs::remove_dir_all(snapshot_dir);
     std::fs::rename(&staging_dir, snapshot_dir).map_err(|e| {
-        crate::error::MigrationIntegritySnafu {
-            message: format!(
-                "pre-migration snapshot verified at {} but could not be promoted to {}: {e}",
-                staging_dir.display(),
-                snapshot_dir.display()
-            ),
-        }
-        .build()
+        SnapshotError(format!(
+            "verified snapshot at {} could not be promoted to {}: {e}",
+            staging_dir.display(),
+            snapshot_dir.display()
+        ))
     })?;
 
     Ok(snapshot_dir.to_path_buf())
+}
+
+/// Pre-migration verified snapshot: [`verified_copy_snapshot`] with this
+/// module's own production policy — refuse [`REFUSED_COMPONENT`] below the
+/// root, treat a missing source as a first-boot no-op
+/// ([`MissingSource::NoOp`]), and report nothing ([`SilentProgress`]).
+/// Callers are expected to gate the (expensive) call itself on whether a
+/// schema migration might actually run this boot — see
+/// [`super::KnowledgeStore::open_fjall`] — so this function does not
+/// re-derive that decision; it always does the full protective work when
+/// asked to.
+///
+/// # Errors
+/// See [`verified_copy_snapshot`].
+#[cfg(feature = "storage-fjall")]
+pub fn pre_migration_snapshot(source: &Path, snapshot_dir: &Path) -> crate::error::Result<PathBuf> {
+    verified_copy_snapshot(
+        source,
+        snapshot_dir,
+        &[REFUSED_COMPONENT],
+        &MissingSource::NoOp,
+        &SilentProgress,
+    )
+    .map_err(|e| {
+        crate::error::MigrationIntegritySnafu {
+            message: format!("pre-migration snapshot: {e}"),
+        }
+        .build()
+    })
 }
 
 /// Count records in `dir`'s `"data"` fjall keyspace via a brief,
@@ -216,7 +322,7 @@ pub fn pre_migration_snapshot(source: &Path, snapshot_dir: &Path) -> crate::erro
 /// real fjall store, which is a legitimate state (e.g. a parent directory
 /// created but never opened).
 #[cfg(feature = "storage-fjall")]
-fn count_data_keyspace_rows(dir: &Path) -> crate::error::Result<u64> {
+pub fn count_data_keyspace_rows(dir: &Path) -> Result<u64, SnapshotError> {
     use fjall::Readable as _;
 
     if !dir.join(FJALL_VERSION_MARKER).is_file() {
@@ -227,13 +333,10 @@ fn count_data_keyspace_rows(dir: &Path) -> crate::error::Result<u64> {
         .worker_threads_unchecked(0)
         .open()
         .map_err(|e| {
-            crate::error::MigrationIntegritySnafu {
-                message: format!(
-                    "pre-migration snapshot: failed to open source {} to take its pre-copy record count: {e}",
-                    dir.display()
-                ),
-            }
-            .build()
+            SnapshotError(format!(
+                "failed to open {} to take its pre-copy record count: {e}",
+                dir.display()
+            ))
         })?;
 
     if !db.keyspace_exists(DATA_KEYSPACE) {
@@ -242,28 +345,30 @@ fn count_data_keyspace_rows(dir: &Path) -> crate::error::Result<u64> {
     let keyspace = db
         .keyspace(DATA_KEYSPACE, fjall::KeyspaceCreateOptions::default)
         .map_err(|e| {
-            crate::error::MigrationIntegritySnafu {
-                message: format!(
-                    "pre-migration snapshot: source {} 'data' keyspace did not open for counting: {e}",
-                    dir.display()
-                ),
-            }
-            .build()
-        })?;
-    let count = db.read_tx().len(&keyspace).map_err(|e| {
-        crate::error::MigrationIntegritySnafu {
-            message: format!(
-                "pre-migration snapshot: failed to count records in source {}: {e}",
+            SnapshotError(format!(
+                "'data' keyspace at {} did not open for counting: {e}",
                 dir.display()
-            ),
-        }
-        .build()
-    })?;
+            ))
+        })?;
+    let count = db
+        .read_tx()
+        .len(&keyspace)
+        .map_err(|e| SnapshotError(format!("failed to count records in {}: {e}", dir.display())))?;
     Ok(u64::try_from(count).unwrap_or(u64::MAX))
 }
 
+/// **Verified, not copied-and-assumed.** Opens the COPY (never `source`)
+/// with zero background workers and performs a real full-scan read whose
+/// record count must equal `expected_count` (taken from `source` before the
+/// copy). Fails closed: never lets fjall's create-or-recover silently
+/// manufacture an empty keyspace and call that "verified".
+///
+/// # Errors
+/// Returns an error if `snapshot_dir` carries no fjall version marker, does
+/// not open, has no `"data"` keyspace, cannot be fully read, or its restored
+/// record count does not equal `expected_count`.
 #[cfg(feature = "storage-fjall")]
-fn verify_restorable(snapshot_dir: &Path, expected_count: u64) -> crate::error::Result<()> {
+pub fn verify_restorable(snapshot_dir: &Path, expected_count: u64) -> Result<(), SnapshotError> {
     use fjall::Readable as _;
 
     // F2 (proven empirically): refuse to even call into fjall until its own
@@ -271,13 +376,10 @@ fn verify_restorable(snapshot_dir: &Path, expected_count: u64) -> crate::error::
     // a missing/never-copied snapshot as "create a fresh empty one" and
     // every check below "passes" against that empty store.
     if !snapshot_dir.join(FJALL_VERSION_MARKER).is_file() {
-        return Err(crate::error::MigrationIntegritySnafu {
-            message: format!(
-                "pre-migration snapshot at {} carries no fjall version marker — it was never actually written; refusing to open it (fjall's create-or-recover would silently manufacture an empty one)",
-                snapshot_dir.display()
-            ),
-        }
-        .build());
+        return Err(SnapshotError(format!(
+            "snapshot at {} carries no fjall version marker — it was never actually written; refusing to open it (fjall's create-or-recover would silently manufacture an empty one)",
+            snapshot_dir.display()
+        )));
     }
 
     let db = fjall::SingleWriterTxDatabase::builder(snapshot_dir)
@@ -290,13 +392,10 @@ fn verify_restorable(snapshot_dir: &Path, expected_count: u64) -> crate::error::
         .worker_threads_unchecked(0)
         .open()
         .map_err(|e| {
-            crate::error::MigrationIntegritySnafu {
-                message: format!(
-                    "pre-migration snapshot at {} did not open — not verified-restorable: {e}",
-                    snapshot_dir.display()
-                ),
-            }
-            .build()
+            SnapshotError(format!(
+                "snapshot at {} did not open — not verified-restorable: {e}",
+                snapshot_dir.display()
+            ))
         })?;
 
     // F2 (proven empirically): `Database::keyspace(name, create_options)`
@@ -304,49 +403,37 @@ fn verify_restorable(snapshot_dir: &Path, expected_count: u64) -> crate::error::
     // copy would silently manufacture the very keyspace being verified.
     // `keyspace_exists` never creates anything.
     if !db.keyspace_exists(DATA_KEYSPACE) {
-        return Err(crate::error::MigrationIntegritySnafu {
-            message: format!(
-                "pre-migration snapshot at {} opened but its 'data' keyspace does not exist — not verified-restorable",
-                snapshot_dir.display()
-            ),
-        }
-        .build());
+        return Err(SnapshotError(format!(
+            "snapshot at {} opened but its 'data' keyspace does not exist — not verified-restorable",
+            snapshot_dir.display()
+        )));
     }
 
     let keyspace = db
         .keyspace(DATA_KEYSPACE, fjall::KeyspaceCreateOptions::default)
         .map_err(|e| {
-            crate::error::MigrationIntegritySnafu {
-                message: format!(
-                    "pre-migration snapshot at {} opened but its 'data' keyspace did not — not verified-restorable: {e}",
-                    snapshot_dir.display()
-                ),
-            }
-            .build()
+            SnapshotError(format!(
+                "snapshot at {} 'data' keyspace did not open — not verified-restorable: {e}",
+                snapshot_dir.display()
+            ))
         })?;
 
     // WHY: a genuine full-scan read (`Readable::len`), not the O(1)
     // `approximate_len()` — "verified restorable" means the copy can
     // actually be read end to end, not merely that its metadata opened.
     let restored_count = db.read_tx().len(&keyspace).map_err(|e| {
-        crate::error::MigrationIntegritySnafu {
-            message: format!(
-                "pre-migration snapshot at {} opened but a full read failed — not verified-restorable: {e}",
-                snapshot_dir.display()
-            ),
-        }
-        .build()
+        SnapshotError(format!(
+            "snapshot at {} opened but a full read failed — not verified-restorable: {e}",
+            snapshot_dir.display()
+        ))
     })?;
     let restored_count = u64::try_from(restored_count).unwrap_or(u64::MAX);
 
     if restored_count != expected_count {
-        return Err(crate::error::MigrationIntegritySnafu {
-            message: format!(
-                "pre-migration snapshot at {} restored {restored_count} record(s) but the source held {expected_count} before the copy — not verified-restorable",
-                snapshot_dir.display()
-            ),
-        }
-        .build());
+        return Err(SnapshotError(format!(
+            "snapshot at {} restored {restored_count} record(s) but the source held {expected_count} before the copy — not verified-restorable",
+            snapshot_dir.display()
+        )));
     }
 
     Ok(())
@@ -376,7 +463,7 @@ mod tests {
         write(&src.path().join("a.txt"), "hello");
         write(&src.path().join("nested/b.txt"), "world");
 
-        copy_excluding_psyche(src.path(), dst.path()).expect("copy");
+        copy_excluding_psyche(src.path(), dst.path(), &[REFUSED_COMPONENT]).expect("copy");
 
         assert_eq!(
             std::fs::read_to_string(dst.path().join("a.txt")).expect("read copied a.txt"),
@@ -396,7 +483,7 @@ mod tests {
         write(&src.path().join("psyche/secret.txt"), "private");
         write(&src.path().join("public.txt"), "fine");
 
-        copy_excluding_psyche(src.path(), dst.path()).expect("copy");
+        copy_excluding_psyche(src.path(), dst.path(), &[REFUSED_COMPONENT]).expect("copy");
 
         assert!(
             !dst.path().join("psyche").exists(),
@@ -415,7 +502,7 @@ mod tests {
         write(&src.path().join("shared/psyche/lock"), "lock");
         write(&src.path().join("shared/other/data.bin"), "ok");
 
-        copy_excluding_psyche(src.path(), dst.path()).expect("copy");
+        copy_excluding_psyche(src.path(), dst.path(), &[REFUSED_COMPONENT]).expect("copy");
 
         assert!(
             !dst.path().join("shared/psyche").exists(),
@@ -435,7 +522,7 @@ mod tests {
         write(&psyche_root.join("0.jnl"), "journal");
         write(&psyche_root.join("data.bin"), "cohort data");
 
-        copy_excluding_psyche(&psyche_root, dst.path()).expect("copy");
+        copy_excluding_psyche(&psyche_root, dst.path(), &[REFUSED_COMPONENT]).expect("copy");
 
         assert!(
             dst.path().join("0.jnl").exists(),
@@ -452,7 +539,7 @@ mod tests {
         std::os::unix::fs::symlink(src.path().join("real.bin"), src.path().join("linked.bin"))
             .expect("create symlink fixture");
 
-        let err = copy_excluding_psyche(src.path(), dst.path())
+        let err = copy_excluding_psyche(src.path(), dst.path(), &[REFUSED_COMPONENT])
             .expect_err("a symlinked entry must be refused, not silently skipped");
         assert!(
             err.to_string().contains("non-regular"),
@@ -470,6 +557,29 @@ mod tests {
         let result = pre_migration_snapshot(&source, &snapshot_dir).expect("no-op for first boot");
         assert_eq!(result, snapshot_dir);
         assert!(!snapshot_dir.exists());
+    }
+
+    #[cfg(feature = "storage-fjall")]
+    #[test]
+    fn missing_source_with_error_policy_fails_instead_of_no_op() {
+        let base = tempfile::tempdir().expect("tempdir");
+        let source = base.path().join("does-not-exist");
+        let snapshot_dir = base.path().join("snapshot");
+
+        let err = verified_copy_snapshot(
+            &source,
+            &snapshot_dir,
+            &[REFUSED_COMPONENT],
+            &MissingSource::Error {
+                what: "shared cohort",
+            },
+            &SilentProgress,
+        )
+        .expect_err("Error policy must not silently no-op");
+        assert!(
+            err.to_string().contains("shared cohort"),
+            "expected the caller-supplied description in the error, got: {err}"
+        );
     }
 
     #[cfg(feature = "storage-fjall")]

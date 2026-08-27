@@ -9,11 +9,11 @@
 //!    - hardcodes [`SHARED_COHORT`] as the only cohort it will ever resolve
 //!      (`--cohort` does not exist as a CLI argument anywhere in [`Args`] —
 //!      there is no code path that can point this tool at `psyche`);
-//!    - independently refuses, in [`copy_excluding_psyche`], any path
-//!      component literally named `psyche` found *below* the copy root,
+//!    - independently refuses, via `mneme::knowledge_store::snapshot::copy_excluding_psyche`,
+//!      any path component literally named `psyche` found *below* the copy root,
 //!      even though the root is guaranteed by construction to be `shared`
 //!      (defense in depth against a legacy drag-along nested `psyche` dir —
-//!      see the doc comment on [`copy_excluding_psyche`]);
+//!      see that function's doc comment in episteme);
 //!    - is covered by tests (`tests::` below) proving both refusals, not
 //!      merely documenting them.
 //!
@@ -32,12 +32,14 @@
 //!    directory first, verifies the copy is genuinely restorable (fjall
 //!    version marker present, and a full-scan record count matches a
 //!    pre-copy count taken from the source), and only ever queries the
-//!    verified copy. The pattern is ported from
-//!    `crates/episteme/src/knowledge_store/snapshot.rs` (`wave1/migration-atomicity`,
-//!    aletheia#5779) — the write-new / verify / replace staging, the
-//!    zero-background-worker verification open, and the fjall version-marker
-//!    fail-closed check are all the same discipline, adapted here for a
-//!    read-only eval tool rather than a pre-migration backup.
+//!    verified copy. It does this by calling
+//!    `mneme::knowledge_store::snapshot::verified_copy_snapshot` — the same
+//!    write-new / verify / replace algorithm
+//!    `crates/episteme/src/knowledge_store/snapshot.rs` uses for
+//!    pre-migration snapshots (`wave1/migration-atomicity`, aletheia#5779) —
+//!    with this tool's own policy (shared-cohort-only refusal, hard error on
+//!    a missing source, stderr progress reporting) passed in as arguments
+//!    rather than reimplemented (aletheia#7036).
 //!
 //! # What this tool does NOT do (see `docs/RECALL-GOLDEN-SET.md`)
 //!
@@ -63,28 +65,14 @@ use serde::{Deserialize, Serialize};
 /// such flag. See module docs, constraint 1.
 const SHARED_COHORT: &str = "shared";
 
-/// Path component name refused at any depth *below* the copy root, mirroring
-/// `crates/episteme/src/knowledge_store/snapshot.rs::REFUSED_COMPONENT`
-/// (`wave1/migration-atomicity`). Belt-and-suspenders: [`SHARED_COHORT`]
-/// already guarantees the copy root is never `psyche` itself, but a legacy
+/// Path component name refused at any depth *below* the copy root, passed to
+/// `mneme::knowledge_store::snapshot::verified_copy_snapshot`
+/// (aletheia#7036). Belt-and-suspenders: [`SHARED_COHORT`] already
+/// guarantees the copy root is never `psyche` itself, but a legacy
 /// drag-along nested `psyche` directory inside `shared` (pre-cohort-split
 /// content, per that module's own doc rationale) must still never reach the
 /// snapshot.
 const REFUSED_COMPONENT: &str = "psyche";
-
-/// fjall's single on-disk keyspace name for an episteme cohort store,
-/// matching `krites/src/storage/fjall_backend.rs:69` and
-/// `episteme/src/knowledge_store/snapshot.rs::DATA_KEYSPACE`.
-const DATA_KEYSPACE: &str = "data";
-
-/// fjall's own version-marker filename (not re-exported by the `fjall`
-/// crate — `fjall::file::VERSION_MARKER` lives in a private module). Its
-/// absence is what makes `fjall::Database::open` (`== create_or_recover`)
-/// silently *create* a fresh empty keyspace instead of opening an existing
-/// one; checking for it ourselves before calling into fjall is what makes
-/// this tool fail closed instead of "verifying" an empty directory. See
-/// `episteme/src/knowledge_store/snapshot.rs::FJALL_VERSION_MARKER`.
-const FJALL_VERSION_MARKER: &str = "version";
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -175,8 +163,10 @@ fn run(args: &Args) -> anyhow::Result<()> {
             "REUSE: verifying existing snapshot at {} (not re-copying; may be stale relative to the live source)",
             snapshot_dir.display()
         );
-        let count = count_data_keyspace_rows(&snapshot_dir)?;
-        verify_restorable(&snapshot_dir, count)?;
+        let count = mneme::knowledge_store::snapshot::count_data_keyspace_rows(&snapshot_dir)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        mneme::knowledge_store::snapshot::verify_restorable(&snapshot_dir, count)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
         snapshot_dir
     } else {
         copy_and_verify_shared_cohort(&source, &snapshot_dir)?
@@ -494,64 +484,19 @@ fn run_one_query(
     rec
 }
 
-// ── Copy-and-verify (ported from episteme/src/knowledge_store/snapshot.rs,
-//    wave1/migration-atomicity, aletheia#5779) ───────────────────────────
-
-/// Recursively copy `source` into `dest`, refusing any path component
-/// literally named `psyche` **below** `source` itself — not the root (the
-/// root is guaranteed by [`SHARED_COHORT`] + [`assert_is_shared_cohort`] to
-/// never be `psyche` in this tool). Symlinks and any other non-regular
-/// entry are refused outright rather than silently skipped: a partition
-/// symlinked to another volume must not produce a snapshot that looks
-/// complete but is truncated.
-///
-/// # Errors
-/// Returns an error if a filesystem operation fails partway through, or a
-/// non-regular entry (symlink, device node, ...) is encountered anywhere in
-/// the tree. On error the destination may hold a partial copy; callers must
-/// not treat that as usable (see [`copy_and_verify_shared_cohort`], which
-/// gates on a subsequent open-and-read against a pre-copy count).
-fn copy_excluding_psyche(source: &Path, dest: &Path) -> std::io::Result<()> {
-    let metadata = std::fs::symlink_metadata(source)?;
-    if metadata.is_dir() {
-        std::fs::create_dir_all(dest)?;
-        for entry in std::fs::read_dir(source)? {
-            let entry = entry?;
-            let Some(name) = entry.path().file_name().map(std::ffi::OsStr::to_os_string) else {
-                continue;
-            };
-            if name == REFUSED_COMPONENT {
-                continue;
-            }
-            copy_excluding_psyche(&entry.path(), &dest.join(&name))?;
-        }
-        Ok(())
-    } else if metadata.is_file() {
-        std::fs::copy(source, dest).map(|_bytes| ())
-    } else {
-        Err(std::io::Error::other(format!(
-            "refusing to copy non-regular filesystem entry at {}: a golden-set snapshot must not silently truncate",
-            source.display()
-        )))
-    }
-}
-
-/// Sibling path used as the staging target for a new copy — never the live
-/// snapshot directory itself. Write-new, verify, then replace: the previous
-/// verified snapshot is never deleted before its replacement exists.
-fn staging_sibling(snapshot_dir: &Path) -> PathBuf {
-    let mut name = snapshot_dir
-        .file_name()
-        .map(std::ffi::OsStr::to_os_string)
-        .unwrap_or_default();
-    name.push(".new");
-    snapshot_dir.with_file_name(name)
-}
+// ── Copy-and-verify (episteme::knowledge_store::snapshot owns the
+//    algorithm; this tool supplies its own policy — aletheia#7036) ───────
 
 /// Copy `source` (must already be the verified `shared` cohort path — see
 /// [`assert_is_shared_cohort`]) into a freshly verified snapshot at
-/// `snapshot_dir`, following the write-new / verify / replace discipline
-/// from `episteme/src/knowledge_store/snapshot.rs::pre_migration_snapshot`.
+/// `snapshot_dir`. Thin policy wrapper around
+/// `mneme::knowledge_store::snapshot::verified_copy_snapshot` — the
+/// copy/stage/marker-check/reopen/count/verify/promote algorithm is owned by
+/// episteme (`crates/episteme/src/knowledge_store/snapshot.rs`); this tool
+/// supplies only its own policy: refuse [`REFUSED_COMPONENT`] below the copy
+/// root, treat a missing source as a hard error (unlike the first-boot
+/// no-op that policy is for pre-migration snapshots), and print the
+/// pre-copy row count to stderr (aletheia#7036).
 ///
 /// # Errors
 /// Returns an error if the source does not exist, the pre-copy count cannot
@@ -559,165 +504,39 @@ fn staging_sibling(snapshot_dir: &Path) -> PathBuf {
 /// back with a record count matching the pre-copy count. On any failure the
 /// prior verified snapshot at `snapshot_dir` (if one exists) is left
 /// untouched.
+///
+/// Gated on `recall` (not merely `storage-fjall`, though `recall` implies
+/// it — see `Cargo.toml`): `mneme::knowledge_store` itself only exists
+/// behind `mneme-engine`, which only `recall` turns on for this crate. This
+/// tool is dead weight without `recall` regardless (see [`main`]), but the
+/// `bare-minimum` / `minimal-mcp` / etc. `--no-default-features` recipes in
+/// `scripts/release-feature-policy.toml` still `cargo check` every bin in
+/// this crate, so an ungated reference here would fail those, not just this
+/// tool's own runtime bail-out.
+#[cfg(feature = "recall")]
 fn copy_and_verify_shared_cohort(source: &Path, snapshot_dir: &Path) -> anyhow::Result<PathBuf> {
-    if !source.exists() {
-        anyhow::bail!(
-            "shared cohort does not exist at {} — nothing to snapshot (has the instance ever run recall?)",
-            source.display()
-        );
+    use mneme::knowledge_store::snapshot::{MissingSource, SnapshotProgress};
+
+    struct EprintlnProgress;
+    impl SnapshotProgress for EprintlnProgress {
+        fn source_counted(&self, source: &Path, rows: u64) {
+            eprintln!(
+                "COPY: {rows} row(s) in source shared cohort at {}",
+                source.display()
+            );
+        }
     }
 
-    let source_count = count_data_keyspace_rows(source)?;
-    eprintln!(
-        "COPY: {} row(s) in source shared cohort at {}",
-        source_count,
-        source.display()
-    );
-
-    let staging_dir = staging_sibling(snapshot_dir);
-    // WHY: clear a stale `.new` left by a prior crashed attempt — never the
-    // live `snapshot_dir`. A leftover partial copy from an earlier crash
-    // must not silently merge with this run's copy.
-    let _ = std::fs::remove_dir_all(&staging_dir);
-
-    copy_excluding_psyche(source, &staging_dir).map_err(|e| {
-        anyhow::anyhow!(
-            "golden-set snapshot copy from {} to {} failed: {e}",
-            source.display(),
-            staging_dir.display()
-        )
-    })?;
-
-    verify_restorable(&staging_dir, source_count)?;
-
-    // WHY: POSIX rename(2) cannot atomically replace a non-empty directory.
-    // Removing the old snapshot first is safe here specifically because
-    // staging_dir has already been fully verified restorable above: a crash
-    // in the narrow window between this removal and the rename leaves
-    // staging_dir in place, still fully valid, and the next attempt's
-    // stale-.new cleanup re-copies rather than promotes it.
-    let _ = std::fs::remove_dir_all(snapshot_dir);
-    std::fs::rename(&staging_dir, snapshot_dir).map_err(|e| {
-        anyhow::anyhow!(
-            "golden-set snapshot verified at {} but could not be promoted to {}: {e}",
-            staging_dir.display(),
-            snapshot_dir.display()
-        )
-    })?;
-
-    Ok(snapshot_dir.to_path_buf())
-}
-
-/// Count records in `dir`'s `"data"` fjall keyspace via a brief, sequential,
-/// opened-then-immediately-dropped handle with zero background workers —
-/// never held concurrently with anything else, and never spinning up
-/// flush/compaction threads for a throwaway count. Returns `0` if `dir` is
-/// not (yet) a real fjall store.
-fn count_data_keyspace_rows(dir: &Path) -> anyhow::Result<u64> {
-    use fjall::Readable as _;
-
-    if !dir.join(FJALL_VERSION_MARKER).is_file() {
-        return Ok(0);
-    }
-
-    let db = fjall::SingleWriterTxDatabase::builder(dir)
-        .worker_threads_unchecked(0)
-        .open()
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "failed to open {} to take its record count: {e}",
-                dir.display()
-            )
-        })?;
-
-    if !db.keyspace_exists(DATA_KEYSPACE) {
-        return Ok(0);
-    }
-    let keyspace = db
-        .keyspace(DATA_KEYSPACE, fjall::KeyspaceCreateOptions::default)
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "'data' keyspace at {} did not open for counting: {e}",
-                dir.display()
-            )
-        })?;
-    let count = db
-        .read_tx()
-        .len(&keyspace)
-        .map_err(|e| anyhow::anyhow!("failed to count records in {}: {e}", dir.display()))?;
-    Ok(u64::try_from(count).unwrap_or(u64::MAX))
-}
-
-/// **Verified, not copied-and-assumed.** Opens the COPY (never `source`)
-/// with zero background workers and performs a real full-scan read whose
-/// record count must equal `expected_count` (taken from `source` before the
-/// copy). Fails closed: never lets fjall's create-or-recover silently
-/// manufacture an empty keyspace and call that "verified".
-fn verify_restorable(snapshot_dir: &Path, expected_count: u64) -> anyhow::Result<()> {
-    use fjall::Readable as _;
-
-    // F2 (episteme#5779, proven empirically): refuse to even call into fjall
-    // until its own marker file is confirmed present — otherwise
-    // `Database::open` treats a missing/never-copied snapshot as "create a
-    // fresh empty one" and every check below "passes" against that empty store.
-    if !snapshot_dir.join(FJALL_VERSION_MARKER).is_file() {
-        anyhow::bail!(
-            "snapshot at {} carries no fjall version marker — it was never actually written; refusing to open it \
-             (fjall's create-or-recover would silently manufacture an empty one)",
-            snapshot_dir.display()
-        );
-    }
-
-    let db = fjall::SingleWriterTxDatabase::builder(snapshot_dir)
-        .worker_threads_unchecked(0)
-        .open()
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "snapshot at {} did not open — not verified-restorable: {e}",
-                snapshot_dir.display()
-            )
-        })?;
-
-    // F2: `Database::keyspace(name, create_options)` CREATES the keyspace
-    // when absent — calling it directly on an empty copy would silently
-    // manufacture the very keyspace being verified. `keyspace_exists` never
-    // creates anything.
-    if !db.keyspace_exists(DATA_KEYSPACE) {
-        anyhow::bail!(
-            "snapshot at {} opened but its 'data' keyspace does not exist — not verified-restorable",
-            snapshot_dir.display()
-        );
-    }
-
-    let keyspace = db
-        .keyspace(DATA_KEYSPACE, fjall::KeyspaceCreateOptions::default)
-        .map_err(|e| {
-            anyhow::anyhow!(
-                "snapshot at {} 'data' keyspace did not open — not verified-restorable: {e}",
-                snapshot_dir.display()
-            )
-        })?;
-
-    // WHY: a genuine full-scan read (Readable::len), not the O(1)
-    // approximate_len() — "verified restorable" means the copy can actually
-    // be read end to end, not merely that its metadata opened.
-    let restored_count = db.read_tx().len(&keyspace).map_err(|e| {
-        anyhow::anyhow!(
-            "snapshot at {} opened but a full read failed — not verified-restorable: {e}",
-            snapshot_dir.display()
-        )
-    })?;
-    let restored_count = u64::try_from(restored_count).unwrap_or(u64::MAX);
-
-    if restored_count != expected_count {
-        anyhow::bail!(
-            "snapshot at {} restored {restored_count} record(s) but the source held {expected_count} before the \
-             copy — not verified-restorable",
-            snapshot_dir.display()
-        );
-    }
-
-    Ok(())
+    mneme::knowledge_store::snapshot::verified_copy_snapshot(
+        source,
+        snapshot_dir,
+        &[REFUSED_COMPONENT],
+        &MissingSource::Error {
+            what: "shared cohort (has the instance ever run recall?)",
+        },
+        &EprintlnProgress,
+    )
+    .map_err(|e| anyhow::anyhow!("golden-set {e}"))
 }
 
 #[cfg(test)]
@@ -779,7 +598,12 @@ mod tests {
         write(&src.path().join("a.txt"), "hello");
         write(&src.path().join("nested/b.txt"), "world");
 
-        copy_excluding_psyche(src.path(), dst.path()).expect("copy");
+        mneme::knowledge_store::snapshot::copy_excluding_psyche(
+            src.path(),
+            dst.path(),
+            &[REFUSED_COMPONENT],
+        )
+        .expect("copy");
 
         assert_eq!(
             std::fs::read_to_string(dst.path().join("a.txt")).unwrap(),
@@ -802,7 +626,12 @@ mod tests {
         write(&src.path().join("sub/psyche/lock"), "lock");
         write(&src.path().join("sub/other/data.bin"), "ok");
 
-        copy_excluding_psyche(src.path(), dst.path()).expect("copy");
+        mneme::knowledge_store::snapshot::copy_excluding_psyche(
+            src.path(),
+            dst.path(),
+            &[REFUSED_COMPONENT],
+        )
+        .expect("copy");
 
         assert!(
             !dst.path().join("sub/psyche").exists(),
@@ -819,8 +648,12 @@ mod tests {
         std::os::unix::fs::symlink(src.path().join("real.bin"), src.path().join("linked.bin"))
             .unwrap();
 
-        let err = copy_excluding_psyche(src.path(), dst.path())
-            .expect_err("a symlinked entry must be refused, not silently skipped");
+        let err = mneme::knowledge_store::snapshot::copy_excluding_psyche(
+            src.path(),
+            dst.path(),
+            &[REFUSED_COMPONENT],
+        )
+        .expect_err("a symlinked entry must be refused, not silently skipped");
         assert!(err.to_string().contains("non-regular"), "got: {err}");
     }
 
@@ -831,7 +664,7 @@ mod tests {
             .open()
             .expect("open source fjall db");
         let keyspace = db
-            .keyspace(DATA_KEYSPACE, fjall::KeyspaceCreateOptions::default)
+            .keyspace("data", fjall::KeyspaceCreateOptions::default)
             .expect("open data keyspace");
         let mut tx = db.write_tx();
         for (k, v) in rows {
@@ -848,7 +681,8 @@ mod tests {
         let empty_dir = base.path().join("not-a-store");
         std::fs::create_dir_all(&empty_dir).unwrap();
 
-        let err = verify_restorable(&empty_dir, 0).expect_err("no marker must never verify");
+        let err = mneme::knowledge_store::snapshot::verify_restorable(&empty_dir, 0)
+            .expect_err("no marker must never verify");
         assert!(err.to_string().contains("version marker"), "got: {err}");
     }
 
@@ -858,7 +692,8 @@ mod tests {
         let dir = base.path().join("store");
         seed_fjall_store(&dir, &[("k1", "v1")]);
 
-        let err = verify_restorable(&dir, 999).expect_err("count mismatch must fail closed");
+        let err = mneme::knowledge_store::snapshot::verify_restorable(&dir, 999)
+            .expect_err("count mismatch must fail closed");
         assert!(err.to_string().contains("restored 1 record"), "got: {err}");
     }
 
@@ -889,7 +724,7 @@ mod tests {
             .open()
             .expect("open verified snapshot");
         let keyspace = db
-            .keyspace(DATA_KEYSPACE, fjall::KeyspaceCreateOptions::default)
+            .keyspace("data", fjall::KeyspaceCreateOptions::default)
             .unwrap();
         let read_tx = db.read_tx();
         assert_eq!(
@@ -911,15 +746,21 @@ mod tests {
         copy_and_verify_shared_cohort(&source, &snapshot_dir).expect("first snapshot");
 
         // NOTE: simulate a crashed prior retry leaving a stale .new sibling.
-        std::fs::create_dir_all(staging_sibling(&snapshot_dir).join("garbage")).unwrap();
+        std::fs::create_dir_all(
+            mneme::knowledge_store::snapshot::staging_sibling(&snapshot_dir).join("garbage"),
+        )
+        .unwrap();
         seed_fjall_store(&source, &[("k1", "v1"), ("k2", "v2")]);
         copy_and_verify_shared_cohort(&source, &snapshot_dir).expect("second snapshot");
 
         assert!(
-            !staging_sibling(&snapshot_dir).exists(),
+            !mneme::knowledge_store::snapshot::staging_sibling(&snapshot_dir).exists(),
             ".new staging dir must not survive promotion"
         );
-        assert_eq!(count_data_keyspace_rows(&snapshot_dir).unwrap(), 2);
+        assert_eq!(
+            mneme::knowledge_store::snapshot::count_data_keyspace_rows(&snapshot_dir).unwrap(),
+            2
+        );
     }
 
     // ── Query set loading ─────────────────────────────────────────────────
