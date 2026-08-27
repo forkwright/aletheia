@@ -542,7 +542,7 @@ async fn registered_tool_keeps_canonical_root_after_pack_alias_retarget() {
     assert!(failures.is_empty(), "registration failures: {failures:?}");
 
     fs::remove_file(&configured_alias).expect("remove original pack alias");
-    std::os::unix::fs::symlink(&decoy_root, &configured_alias)
+    std::os::unix::fs::symlink(decoy_root, &configured_alias)
         .expect("retarget configured alias to decoy");
 
     let input = ToolInput {
