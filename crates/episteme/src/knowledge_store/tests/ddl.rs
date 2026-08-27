@@ -80,10 +80,11 @@ fn query_templates_contain_params() {
     assert!(queries::HYBRID_SEARCH_BASE.contains("ReciprocalRankFusion"));
 }
 
-/// Schema-coverage gate (#5309): every relation the store creates must have
-/// typed query metadata, and every typed relation must exist in a fresh
-/// store. A DDL added without a matching [`crate::query::Relation`] variant
-/// fails this test.
+/// Schema-coverage gate (#5309): every core knowledge relation created by a
+/// fresh [`KnowledgeStore`] must have typed query metadata, and every typed
+/// relation must exist in that fresh store. Engine-owned index sub-relations
+/// and runtime-added operational relations are excluded. A core knowledge DDL
+/// added without a matching [`crate::query::Relation`] variant fails this test.
 #[cfg(feature = "mneme-engine")]
 #[test]
 fn typed_schema_covers_every_store_relation() {
