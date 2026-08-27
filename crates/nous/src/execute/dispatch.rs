@@ -1460,13 +1460,15 @@ pub(super) async fn dispatch_tool_items(
             Ok(prepared) => prepared,
             Err(message) => {
                 let msg = message.to_owned();
+                let recorded_message =
+                    redacted_trace_result(&redaction_policy_for(tools, tool_name), &msg);
                 crate::metrics::record_tool_failure(tool_ctx.nous_id.as_ref(), tool_name);
                 let outcome = SingleToolOutcome {
                     call: ToolCall {
                         id: tool_id.clone(),
                         name: tool_name.clone(),
                         input: redacted_surface_input(tools, tool_name, tool_input),
-                        result: Some(msg.clone()),
+                        result: Some(recorded_message),
                         is_error: true,
                         duration_ms: 0,
                         approval: None,

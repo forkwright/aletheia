@@ -252,6 +252,35 @@ async fn full_policy_redacts_recorded_input_and_result() {
 }
 
 #[tokio::test]
+async fn full_policy_redacts_preparation_failure_on_durable_surfaces() {
+    let tool = "_test_redaction_full_preparation_failure";
+    let tools =
+        registry_with_redaction(tool, Reversibility::FullyReversible, RedactionPolicy::Full);
+    let mut ctx = test_tool_ctx();
+    ctx.services = Some(tool_services_with_secret("present", "available"));
+    let input = serde_json::json!({"auth": "{{secret:missing}}"});
+
+    let outcome = dispatch_one_with_ctx(&tools, tool, input, &ctx, None, None).await;
+
+    let call = only_call(&outcome);
+    assert!(call.is_error);
+    assert_eq!(call.result.as_deref(), Some("[REDACTED]"));
+    assert_eq!(
+        call.input,
+        serde_json::json!({"__redaction__": "[REDACTED]"})
+    );
+    let streamed = outcome
+        .events
+        .iter()
+        .find_map(|event| match event {
+            TurnStreamEvent::ToolResult { result, .. } => Some(result.as_str()),
+            _ => None,
+        })
+        .expect("tool result event");
+    assert_eq!(streamed, "[REDACTED]");
+}
+
+#[tokio::test]
 async fn fields_policy_redacts_named_field_and_passes_others() {
     let tool = "_test_redaction_fields";
     let input = serde_json::json!({
@@ -269,12 +298,12 @@ async fn fields_policy_redacts_named_field_and_passes_others() {
     let call = only_call(&outcome);
     assert_eq!(
         json_field(&call.input, "headers"),
-        serde_json::json!("[REDACTED]"),
+        &serde_json::json!("[REDACTED]"),
         "declared field redacted in the persisted record"
     );
     assert_eq!(
         json_field(&call.input, "url"),
-        serde_json::json!("https://acme.corp/api"),
+        &serde_json::json!("https://acme.corp/api"),
         "undeclared field passes through"
     );
     assert!(
@@ -403,12 +432,12 @@ async fn approval_prompt_and_tool_start_carry_redacted_input() {
         .expect("approval-required event emitted");
     assert_eq!(
         json_field(&approval_input, "text"),
-        serde_json::json!("[REDACTED]"),
+        &serde_json::json!("[REDACTED]"),
         "the approval prompt redacts the declared field"
     );
     assert_eq!(
         json_field(&approval_input, "action"),
-        serde_json::json!("type_text"),
+        &serde_json::json!("type_text"),
         "the approval prompt keeps undeclared fields legible"
     );
     assert_eq!(
@@ -426,7 +455,7 @@ async fn approval_prompt_and_tool_start_carry_redacted_input() {
         .expect("tool-start event emitted");
     assert_eq!(
         json_field(&start_input, "text"),
-        serde_json::json!("[REDACTED]"),
+        &serde_json::json!("[REDACTED]"),
         "the tool-start event carries the same redacted copy"
     );
 }
@@ -436,7 +465,8 @@ async fn live_approval_uses_prepared_input_while_replay_and_history_keep_placeho
     let tool = "_test_redaction_live_prepared";
     let tools = registry_with_redaction(tool, Reversibility::Irreversible, RedactionPolicy::None);
     let dir = tempfile::TempDir::new().expect("temp workspace");
-    std::fs::write(dir.path().join("payload.txt"), "expanded approval prose")
+    tokio::fs::write(dir.path().join("payload.txt"), "expanded approval prose")
+        .await
         .expect("write file-ref fixture");
     let mut ctx = test_tool_ctx();
     ctx.workspace = dir.path().to_path_buf();
@@ -521,7 +551,8 @@ async fn live_approval_uses_canonical_path_while_replay_keeps_model_path() {
     let dir = tempfile::TempDir::new().expect("temp workspace");
     let long_segment = "canonical-path-segment-that-exceeds-thirty-two-bytes";
     std::fs::create_dir_all(dir.path().join(long_segment)).expect("create long path fixture");
-    std::fs::write(dir.path().join(long_segment).join("target.txt"), "fixture")
+    tokio::fs::write(dir.path().join(long_segment).join("target.txt"), "fixture")
+        .await
         .expect("write path fixture");
     let workspace = dir.path().canonicalize().expect("canonical workspace");
     let canonical = workspace
@@ -812,7 +843,8 @@ async fn receipt_v2_binds_vault_and_file_expanded_input_without_storing_it() {
         )
         .expect("valid path-aware capability declaration");
     let dir = tempfile::TempDir::new().expect("temp workspace");
-    std::fs::write(dir.path().join("payload.txt"), "expanded private prose")
+    tokio::fs::write(dir.path().join("payload.txt"), "expanded private prose")
+        .await
         .expect("write file-ref fixture");
     let mut ctx = test_tool_ctx();
     ctx.workspace = dir.path().to_path_buf();
@@ -912,12 +944,12 @@ async fn denied_call_record_is_redacted_too() {
     assert!(call.is_error, "denied call recorded as error");
     assert_eq!(
         json_field(&call.input, "text"),
-        serde_json::json!("[REDACTED]"),
+        &serde_json::json!("[REDACTED]"),
         "a denied call's recorded input follows the same policy"
     );
     assert_eq!(
         json_field(&call.input, "action"),
-        serde_json::json!("type_text"),
+        &serde_json::json!("type_text"),
         "undeclared fields stay legible on the denial record"
     );
 }

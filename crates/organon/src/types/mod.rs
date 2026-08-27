@@ -782,14 +782,14 @@ impl Default for RollbackSupport {
 /// Input/output redaction policy for trace and audit surfaces.
 ///
 /// ARCHITECTURE(#4543, #6808): enforced at the dispatch layer
-/// (`nous::execute::dispatch`). Durable/replay `ToolStart`, approval,
-/// `ToolResult`, persisted `ToolCall`, hook, and receipt-ledger surfaces use a
-/// redacted placeholder-form copy. A separately typed live approval event
-/// applies the same policy to the prepared input so the connected operator can
-/// authorize what will actually execute; that evidence is neither serialized
-/// nor reconstructed on reconnect. The in-turn LLM-facing result block is not
-/// redacted because the model that emitted the call needs the real result to
-/// continue the turn.
+/// (`nous::execute::dispatch`). Durable/replay `ToolStart`, approval replay,
+/// `ToolResult`, persisted `ToolCall`, post-execution hook, and receipt-ledger
+/// surfaces use a redacted placeholder-form copy. A separately typed live
+/// approval event applies the same policy to the prepared input so the connected
+/// operator can authorize what will actually execute; that evidence is neither
+/// serialized nor reconstructed on reconnect. The in-turn LLM-facing result
+/// block is not redacted because the model that emitted the call needs the real
+/// result to continue the turn.
 ///
 /// Precedence with the secret vault (#3569), stated once here:
 /// Durable/replay copies receive generic secret redaction before this policy.
