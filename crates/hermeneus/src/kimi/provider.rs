@@ -14,14 +14,13 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
-use koina::system::{Environment, RealSystem};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
-use crate::RetryPolicy;
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::provider::{LlmProvider, MatchKind};
-use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
+use crate::subprocess_provider;
+use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::parse;
 use super::process;
@@ -95,28 +94,27 @@ impl KimiProvider {
                 .build());
             }
         } else {
-            find_kimi_binary()?
+            subprocess_provider::find_binary(
+                "kimi",
+                &[".local/bin/kimi", ".cargo/bin/kimi"],
+                "kimi CLI binary not found in PATH or ~/.local/bin. Install kimi-cli with `uv tool install kimi-cli`",
+            )?
         };
 
-        let working_directory = if let Some(ref path) = config.working_directory {
-            if path.is_dir() {
-                path.clone()
-            } else {
-                return Err(error::ProviderInitSnafu {
-                    message: format!(
-                        "configured kimi working directory does not exist: {}",
-                        path.display()
-                    ),
-                }
-                .build());
-            }
-        } else {
-            std::env::current_dir().map_err(|e| {
+        let working_directory = match subprocess_provider::validate_working_directory(
+            config.working_directory.as_deref(),
+            "kimi",
+        )? {
+            Some(path) => path,
+            // WHY: unlike cc/codex, Kimi's subprocess cwd is mandatory (not
+            // inherited implicitly), so an unconfigured directory resolves
+            // to the process's own current directory rather than `None`.
+            None => std::env::current_dir().map_err(|e| {
                 error::ProviderInitSnafu {
                     message: format!("failed to resolve current directory for kimi: {e}"),
                 }
                 .build()
-            })?
+            })?,
         };
 
         info!(
@@ -151,31 +149,6 @@ impl KimiProvider {
         }
     }
 
-    /// Format message history into a single prompt string for Kimi.
-    fn format_prompt(request: &CompletionRequest) -> String {
-        if request.messages.len() == 1
-            && let Some(msg) = request.messages.first()
-        {
-            return msg.content.text();
-        }
-
-        let mut parts = Vec::new();
-
-        for msg in &request.messages {
-            let label = match msg.role {
-                Role::User => "Human",
-                Role::Assistant => "Assistant",
-                Role::System => "System",
-            };
-            let text = extract_text_content(&msg.content);
-            if !text.is_empty() {
-                parts.push(format!("{label}: {text}"));
-            }
-        }
-
-        parts.join("\n\n")
-    }
-
     /// Run the Kimi subprocess for a non-streaming completion, retrying the
     /// subprocess itself (not just the surrounding call) on a transient
     /// spawn or timeout failure.
@@ -193,34 +166,13 @@ impl KimiProvider {
         prompt: &str,
         max_tokens: u32,
     ) -> Result<process::KimiOutput> {
-        let retry_policy = RetryPolicy::default();
-        let mut last_error = None;
-        for attempt in 0..=retry_policy.max_retries {
-            if attempt > 0 {
-                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
-            }
-            match process::run_completion(process_config, system, prompt, max_tokens).await {
-                Ok(output) => return Ok(output),
-                Err(err) => {
-                    if attempt == retry_policy.max_retries || !err.is_retryable() {
-                        return Err(err);
-                    }
-                    warn!(
-                        provider = "kimi",
-                        attempt,
-                        error = %err,
-                        "Kimi subprocess call failed; retrying"
-                    );
-                    last_error = Some(err);
-                }
-            }
-        }
-        Err(last_error.unwrap_or_else(|| {
-            error::ApiRequestSnafu {
-                message: "Kimi subprocess retry loop exhausted with no recorded error".to_owned(),
-            }
-            .build()
-        }))
+        subprocess_provider::run_with_retry(
+            self.name(),
+            "Kimi subprocess",
+            || process::run_completion(process_config, system, prompt, max_tokens),
+            |_| false,
+        )
+        .await
     }
 
     /// Run the Kimi subprocess for a streaming completion, retrying a
@@ -239,59 +191,38 @@ impl KimiProvider {
         max_tokens: u32,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<process::KimiOutput> {
-        let retry_policy = RetryPolicy::default();
-        let mut last_error = None;
-        let mut content_started = false;
-        for attempt in 0..=retry_policy.max_retries {
-            if attempt > 0 {
-                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
-            }
-            let mut on_delta = |text: &str| {
-                content_started = true;
-                on_event(StreamEvent::TextDelta {
-                    text: text.to_owned(),
-                });
-            };
-            match process::run_streaming(process_config, system, prompt, max_tokens, &mut on_delta)
-                .await
-            {
-                Ok(output) => return Ok(output),
-                Err(err) => {
-                    if content_started {
-                        warn!(
-                            provider = "kimi",
-                            error = %err,
-                            "Kimi subprocess streaming failed after content started; cannot retry"
-                        );
-                        return Err(err);
-                    }
-                    if attempt == retry_policy.max_retries || !err.is_retryable() {
-                        return Err(err);
-                    }
+        let content_started = std::cell::Cell::new(false);
+        let mut on_delta = |text: &str| {
+            content_started.set(true);
+            on_event(StreamEvent::TextDelta {
+                text: text.to_owned(),
+            });
+        };
+        subprocess_provider::run_with_retry(
+            self.name(),
+            "Kimi subprocess streaming",
+            || process::run_streaming(process_config, system, prompt, max_tokens, &mut on_delta),
+            |err| {
+                if content_started.get() {
                     warn!(
-                        provider = "kimi",
-                        attempt,
+                        provider = %self.name,
                         error = %err,
-                        "Kimi subprocess streaming call failed before any content; retrying"
+                        "Kimi subprocess streaming failed after content started; cannot retry"
                     );
-                    last_error = Some(err);
+                    true
+                } else {
+                    false
                 }
-            }
-        }
-        Err(last_error.unwrap_or_else(|| {
-            error::ApiRequestSnafu {
-                message: "Kimi subprocess streaming retry loop exhausted with no recorded error"
-                    .to_owned(),
-            }
-            .build()
-        }))
+            },
+        )
+        .await
     }
 
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         crate::seat_bridged::reject_tool_bearing_request(self.name(), "kimi", request.tools.len())?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        let prompt = Self::format_prompt(request);
+        let prompt = subprocess_provider::format_prompt(request);
         let system = request.system.as_deref();
         let process_config = process::KimiProcessConfig {
             kimi_binary: &self.kimi_binary,
@@ -313,38 +244,11 @@ impl KimiProvider {
                 model,
                 output.message_id.as_deref(),
             )?;
-            // WHY(#4658): Kimi reports input_cache_read and input_cache_creation;
-            // emit them so prompt-cache usage is visible in provider metrics.
-            crate::metrics::record_cache_tokens(
-                self.name(),
-                response.usage.cache_read_tokens,
-                response.usage.cache_write_tokens,
-            );
             Ok(response)
         }
         .await;
 
-        match &outcome {
-            Ok(response) => {
-                crate::metrics::record_completion(
-                    self.name(),
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
-                    response.cost_usd.unwrap_or(0.0),
-                    true,
-                );
-                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
-            }
-            Err(e) => {
-                let status = if e.is_retryable() {
-                    "rate_limited"
-                } else {
-                    "error"
-                };
-                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
-                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
-            }
-        }
+        subprocess_provider::record_completion_metrics(self.name(), model, start, &outcome);
         outcome
     }
 
@@ -356,7 +260,7 @@ impl KimiProvider {
         crate::seat_bridged::reject_tool_bearing_request(self.name(), "kimi", request.tools.len())?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        let prompt = Self::format_prompt(request);
+        let prompt = subprocess_provider::format_prompt(request);
         let system = request.system.as_deref();
         let process_config = process::KimiProcessConfig {
             kimi_binary: &self.kimi_binary,
@@ -384,63 +288,12 @@ impl KimiProvider {
                 model,
                 output.message_id.as_deref(),
             )?;
-            // WHY(#4658): Streaming Kimi output preserves cache tokens; emit them
-            // for metrics parity with the non-streaming path.
-            crate::metrics::record_cache_tokens(
-                self.name(),
-                response.usage.cache_read_tokens,
-                response.usage.cache_write_tokens,
-            );
             Ok(response)
         }
         .await;
 
-        match &outcome {
-            Ok(response) => {
-                crate::metrics::record_completion(
-                    self.name(),
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
-                    response.cost_usd.unwrap_or(0.0),
-                    true,
-                );
-                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
-            }
-            Err(e) => {
-                let status = if e.is_retryable() {
-                    "rate_limited"
-                } else {
-                    "error"
-                };
-                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
-                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
-            }
-        }
+        subprocess_provider::record_completion_metrics(self.name(), model, start, &outcome);
         outcome
-    }
-}
-
-fn extract_text_content(content: &Content) -> String {
-    match content {
-        Content::Text(s) => s.clone(),
-        Content::Blocks(blocks) => {
-            let parts: Vec<String> = blocks
-                .iter()
-                .filter_map(|block| match block {
-                    ContentBlock::Text { text, .. } if !text.is_empty() => Some(text.to_owned()),
-                    ContentBlock::ToolResult { content, .. } => {
-                        let summary = content.text_summary();
-                        if summary.is_empty() {
-                            None
-                        } else {
-                            Some(summary)
-                        }
-                    }
-                    _ => None,
-                })
-                .collect();
-            parts.join("\n")
-        }
     }
 }
 
@@ -506,46 +359,16 @@ impl LlmProvider for KimiProvider {
     }
 }
 
-/// Find the `kimi` binary in `PATH`.
-fn find_kimi_binary() -> Result<PathBuf> {
-    let paths = RealSystem.var_os("PATH").unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<OsString>, not Result — empty PATH is a valid fallback
-    for dir in std::env::split_paths(&paths) {
-        let candidate = dir.join("kimi");
-        if candidate.is_file() {
-            debug!(path = %candidate.display(), "found kimi binary in PATH");
-            return Ok(candidate);
-        }
-    }
-
-    if let Some(home) = RealSystem.var_os("HOME") {
-        let home = PathBuf::from(home);
-        for subdir in &[".local/bin/kimi", ".cargo/bin/kimi"] {
-            let candidate = home.join(subdir);
-            if candidate.is_file() {
-                tracing::info!(
-                    path = %candidate.display(),
-                    "found kimi binary outside PATH (consider adding its directory to PATH)"
-                );
-                return Ok(candidate);
-            }
-        }
-    }
-
-    Err(error::ProviderInitSnafu {
-        message: "kimi CLI binary not found in PATH or ~/.local/bin. Install kimi-cli with `uv tool install kimi-cli`"
-            .to_owned(),
-    }
-    .build())
-}
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::Error;
-    use crate::types::ToolDefinition;
+    use crate::types::{ContentBlock, ToolDefinition};
 
     #[test]
     fn match_specificity_prefers_prefix_and_exact() {
         let provider = KimiProvider {
+            name: "kimi".to_owned(),
             kimi_binary: PathBuf::from("kimi"),
             working_directory: PathBuf::from("."),
             default_model: koina::models::names::kimi().to_owned(),
@@ -569,6 +392,7 @@ mod tests {
         // `reject_tool_bearing_request` hard-fail is the backstop for
         // anything that slips through, not the primary mechanism.
         let provider = KimiProvider {
+            name: "kimi".to_owned(),
             kimi_binary: PathBuf::from("kimi"),
             working_directory: PathBuf::from("."),
             default_model: koina::models::names::kimi().to_owned(),
@@ -658,6 +482,7 @@ mod tests {
 
     fn flaky_provider(kimi_binary: PathBuf) -> KimiProvider {
         KimiProvider {
+            name: "kimi".to_owned(),
             kimi_binary,
             working_directory: std::env::temp_dir(),
             default_model: koina::models::names::kimi().to_owned(),
@@ -666,7 +491,7 @@ mod tests {
     }
 
     fn single_message_request() -> CompletionRequest {
-        use crate::types::Message;
+        use crate::types::{Content, Message, Role};
 
         CompletionRequest {
             model: koina::models::names::kimi().to_owned(),

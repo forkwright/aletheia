@@ -9,19 +9,18 @@
 //! timeouts produce [`Error::ApiRequest`].
 
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
-use koina::system::{Environment, RealSystem};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
-use crate::RetryPolicy;
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind};
 use crate::seat_bridged::SeatBridgedProvider;
-use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
+use crate::subprocess_provider;
+use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::parse;
 use super::process;
@@ -99,10 +98,18 @@ impl CcProvider {
                 .build());
             }
         } else {
-            find_cc_binary()?
+            subprocess_provider::find_binary(
+                "claude",
+                &[".local/bin/claude", ".claude/bin/claude"],
+                "claude CLI binary not found in PATH or ~/.local/bin. \
+                 Install Claude Code: https://docs.anthropic.com/en/docs/claude-code",
+            )?
         };
 
-        let working_directory = validate_working_directory(config.working_directory.as_deref())?;
+        let working_directory = subprocess_provider::validate_working_directory(
+            config.working_directory.as_deref(),
+            "claude",
+        )?;
 
         info!(
             provider = %config.name,
@@ -135,38 +142,6 @@ impl CcProvider {
         }
     }
 
-    /// Format message history into a single prompt string for CC.
-    ///
-    /// CC's `-p` mode accepts a flat text prompt. For multi-turn conversations,
-    /// we format the history as labeled sections so the model has full context.
-    fn format_prompt(request: &CompletionRequest) -> String {
-        // WHY: CC in `-p` mode doesn't support multi-turn natively.
-        // We format the conversation as a structured prompt that preserves
-        // the turn structure. The last user message is what CC will respond to.
-        if request.messages.len() == 1
-            && let Some(msg) = request.messages.first()
-        {
-            // Single message: pass directly (most common case for aletheia).
-            return msg.content.text();
-        }
-
-        let mut parts = Vec::new();
-
-        for msg in &request.messages {
-            let label = match msg.role {
-                Role::User => "Human",
-                Role::Assistant => "Assistant",
-                Role::System => "System",
-            };
-            let text = extract_text_content(&msg.content);
-            if !text.is_empty() {
-                parts.push(format!("{label}: {text}"));
-            }
-        }
-
-        parts.join("\n\n")
-    }
-
     /// Run the CC subprocess for a non-streaming completion, retrying once
     /// the subprocess itself (not just the surrounding call) on a transient
     /// spawn or timeout failure.
@@ -183,44 +158,23 @@ impl CcProvider {
         prompt: &str,
         max_tokens: u32,
     ) -> Result<process::CcOutput> {
-        let retry_policy = RetryPolicy::default();
-        let mut last_error = None;
-        for attempt in 0..=retry_policy.max_retries {
-            if attempt > 0 {
-                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
-            }
-            match process::run_completion(
-                &self.cc_binary,
-                self.working_directory.as_deref(),
-                model,
-                system,
-                prompt,
-                max_tokens,
-                self.timeout,
-            )
-            .await
-            {
-                Ok(output) => return Ok(output),
-                Err(err) => {
-                    if attempt == retry_policy.max_retries || !err.is_retryable() {
-                        return Err(err);
-                    }
-                    warn!(
-                        provider = %self.name,
-                        attempt,
-                        error = %err,
-                        "CC subprocess call failed; retrying"
-                    );
-                    last_error = Some(err);
-                }
-            }
-        }
-        Err(last_error.unwrap_or_else(|| {
-            error::ApiRequestSnafu {
-                message: "CC subprocess retry loop exhausted with no recorded error".to_owned(),
-            }
-            .build()
-        }))
+        subprocess_provider::run_with_retry(
+            self.name(),
+            "CC subprocess",
+            || {
+                process::run_completion(
+                    &self.cc_binary,
+                    self.working_directory.as_deref(),
+                    model,
+                    system,
+                    prompt,
+                    max_tokens,
+                    self.timeout,
+                )
+            },
+            |_| false,
+        )
+        .await
     }
 
     /// Run the CC subprocess for a streaming completion, retrying a
@@ -239,61 +193,42 @@ impl CcProvider {
         max_tokens: u32,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<process::CcOutput> {
-        let retry_policy = RetryPolicy::default();
-        let mut last_error = None;
-        let mut content_started = false;
-        for attempt in 0..=retry_policy.max_retries {
-            if attempt > 0 {
-                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
-            }
-            let mut on_delta = |text: &str| {
-                content_started = true;
-                on_event(StreamEvent::TextDelta {
-                    text: text.to_owned(),
-                });
-            };
-            match process::run_streaming(
-                &self.cc_binary,
-                self.working_directory.as_deref(),
-                model,
-                system,
-                prompt,
-                max_tokens,
-                self.timeout,
-                &mut on_delta,
-            )
-            .await
-            {
-                Ok(output) => return Ok(output),
-                Err(err) => {
-                    if content_started {
-                        warn!(
-                            provider = %self.name,
-                            error = %err,
-                            "CC subprocess streaming failed after content started; cannot retry"
-                        );
-                        return Err(err);
-                    }
-                    if attempt == retry_policy.max_retries || !err.is_retryable() {
-                        return Err(err);
-                    }
+        let content_started = std::cell::Cell::new(false);
+        let mut on_delta = |text: &str| {
+            content_started.set(true);
+            on_event(StreamEvent::TextDelta {
+                text: text.to_owned(),
+            });
+        };
+        subprocess_provider::run_with_retry(
+            self.name(),
+            "CC subprocess streaming",
+            || {
+                process::run_streaming(
+                    &self.cc_binary,
+                    self.working_directory.as_deref(),
+                    model,
+                    system,
+                    prompt,
+                    max_tokens,
+                    self.timeout,
+                    &mut on_delta,
+                )
+            },
+            |err| {
+                if content_started.get() {
                     warn!(
                         provider = %self.name,
-                        attempt,
                         error = %err,
-                        "CC subprocess streaming call failed before any content; retrying"
+                        "CC subprocess streaming failed after content started; cannot retry"
                     );
-                    last_error = Some(err);
+                    true
+                } else {
+                    false
                 }
-            }
-        }
-        Err(last_error.unwrap_or_else(|| {
-            error::ApiRequestSnafu {
-                message: "CC subprocess streaming retry loop exhausted with no recorded error"
-                    .to_owned(),
-            }
-            .build()
-        }))
+            },
+        )
+        .await
     }
 
     /// Execute a non-streaming completion via CC subprocess.
@@ -305,7 +240,7 @@ impl CcProvider {
         )?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        let prompt = Self::format_prompt(request);
+        let prompt = subprocess_provider::format_prompt(request);
         let system = request.system.as_deref();
 
         let outcome: Result<CompletionResponse> = async {
@@ -320,38 +255,11 @@ impl CcProvider {
                 model,
                 output.session_id.as_deref(),
             )?;
-            // WHY(#4658): CC reports cache read/write tokens; record them so
-            // prompt-cache usage is visible in provider metrics.
-            crate::metrics::record_cache_tokens(
-                self.name(),
-                response.usage.cache_read_tokens,
-                response.usage.cache_write_tokens,
-            );
             Ok(response)
         }
         .await;
 
-        match &outcome {
-            Ok(response) => {
-                crate::metrics::record_completion(
-                    self.name(),
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
-                    response.cost_usd.unwrap_or(0.0),
-                    true,
-                );
-                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
-            }
-            Err(e) => {
-                let status = if e.is_retryable() {
-                    "rate_limited"
-                } else {
-                    "error"
-                };
-                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
-                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
-            }
-        }
+        subprocess_provider::record_completion_metrics(self.name(), model, start, &outcome);
         outcome
     }
 
@@ -368,7 +276,7 @@ impl CcProvider {
         )?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        let prompt = Self::format_prompt(request);
+        let prompt = subprocess_provider::format_prompt(request);
         let system = request.system.as_deref();
 
         let outcome: Result<CompletionResponse> = async {
@@ -383,66 +291,12 @@ impl CcProvider {
                 model,
                 output.session_id.as_deref(),
             )?;
-            // WHY(#4658): Streaming CC output preserves cache tokens; emit them
-            // for metrics parity with the non-streaming path.
-            crate::metrics::record_cache_tokens(
-                self.name(),
-                response.usage.cache_read_tokens,
-                response.usage.cache_write_tokens,
-            );
             Ok(response)
         }
         .await;
 
-        match &outcome {
-            Ok(response) => {
-                crate::metrics::record_completion(
-                    self.name(),
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
-                    response.cost_usd.unwrap_or(0.0),
-                    true,
-                );
-                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
-            }
-            Err(e) => {
-                let status = if e.is_retryable() {
-                    "rate_limited"
-                } else {
-                    "error"
-                };
-                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
-                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
-            }
-        }
+        subprocess_provider::record_completion_metrics(self.name(), model, start, &outcome);
         outcome
-    }
-}
-
-/// Extract plain text from content, joining blocks if structured.
-fn extract_text_content(content: &Content) -> String {
-    match content {
-        Content::Text(s) => s.clone(),
-        Content::Blocks(blocks) => {
-            let parts: Vec<String> = blocks
-                .iter()
-                .filter_map(|block| match block {
-                    ContentBlock::Text { text, .. } if !text.is_empty() => Some(text.to_owned()),
-                    ContentBlock::ToolResult { content, .. } => {
-                        let summary = content.text_summary();
-                        if summary.is_empty() {
-                            None
-                        } else {
-                            Some(summary)
-                        }
-                    }
-                    // Thinking, server tool use, web search, code execution have
-                    // no text representation for CC's flat prompt format.
-                    _ => None,
-                })
-                .collect();
-            parts.join("\n")
-        }
     }
 }
 
@@ -554,103 +408,11 @@ impl SeatBridgedProvider for CcProvider {
     }
 }
 
-fn validate_working_directory(path: Option<&Path>) -> Result<Option<PathBuf>> {
-    match path {
-        Some(path) if path.is_dir() => Ok(Some(path.to_path_buf())),
-        Some(path) => Err(error::ProviderInitSnafu {
-            message: format!(
-                "configured claude working directory does not exist: {}",
-                path.display()
-            ),
-        }
-        .build()),
-        None => Ok(None),
-    }
-}
-
-/// Find the `claude` binary in `PATH`.
-fn find_cc_binary() -> Result<PathBuf> {
-    // 1. Search PATH (standard resolution).
-    let paths = RealSystem.var_os("PATH").unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<OsString>, not Result — empty PATH is a valid fallback
-    for dir in std::env::split_paths(&paths) {
-        let candidate = dir.join("claude");
-        if candidate.is_file() {
-            debug!(path = %candidate.display(), "found claude binary in PATH");
-            return Ok(candidate);
-        }
-    }
-
-    // 2. Check well-known installation paths (covers systemd user sessions
-    //    where ~/.local/bin may not be in PATH — see #3106).
-    if let Some(home) = RealSystem.var_os("HOME") {
-        let home = PathBuf::from(home);
-        for subdir in &[".local/bin/claude", ".claude/bin/claude"] {
-            let candidate = home.join(subdir);
-            if candidate.is_file() {
-                tracing::info!(
-                    path = %candidate.display(),
-                    "found claude binary outside PATH (consider adding its directory to PATH)"
-                );
-                return Ok(candidate);
-            }
-        }
-    }
-
-    Err(error::ProviderInitSnafu {
-        message: "claude CLI binary not found in PATH or ~/.local/bin. \
-                  Install Claude Code: https://docs.anthropic.com/en/docs/claude-code"
-            .to_owned(),
-    }
-    .build())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::Error;
     use crate::types::{CompletionRequest, Content, ContentBlock, Message, Role, ToolDefinition};
-
-    #[test]
-    fn format_prompt_single_message() {
-        let request = CompletionRequest {
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text("hello world".to_owned()),
-                cache_breakpoint: false,
-            }],
-            ..Default::default()
-        };
-        let prompt = CcProvider::format_prompt(&request);
-        assert_eq!(prompt, "hello world");
-    }
-
-    #[test]
-    fn format_prompt_multi_turn() {
-        let request = CompletionRequest {
-            messages: vec![
-                Message {
-                    role: Role::User,
-                    content: Content::Text("What is 2+2?".to_owned()),
-                    cache_breakpoint: false,
-                },
-                Message {
-                    role: Role::Assistant,
-                    content: Content::Text("4".to_owned()),
-                    cache_breakpoint: false,
-                },
-                Message {
-                    role: Role::User,
-                    content: Content::Text("And 3+3?".to_owned()),
-                    cache_breakpoint: false,
-                },
-            ],
-            ..Default::default()
-        };
-        let prompt = CcProvider::format_prompt(&request);
-        assert!(prompt.contains("Human: What is 2+2?"));
-        assert!(prompt.contains("Assistant: 4"));
-        assert!(prompt.contains("Human: And 3+3?"));
-    }
 
     #[test]
     fn resolve_model_strips_prefix() {
