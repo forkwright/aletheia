@@ -6,6 +6,9 @@ use energeia::cron::CronLockStore;
 use energeia::orchestrator::Orchestrator;
 use energeia::store::EnergeiaStore;
 
+use crate::builtins::workspace::{
+    extract_opt_bool, extract_opt_str, extract_opt_u64, extract_str_with,
+};
 use crate::types::ToolResult;
 
 // ── Services ────────────────────────────────────────────────────────────────
@@ -57,19 +60,17 @@ pub(super) fn require_str<'a>(
     args: &'a serde_json::Value,
     field: &str,
 ) -> std::result::Result<&'a str, String> {
-    args.get(field)
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| format!("missing required field '{field}'"))
+    extract_str_with(args, field, |field| format!("missing required field '{field}'"))
 }
 
 /// Extract an optional string field from tool arguments.
 pub(super) fn opt_str<'a>(args: &'a serde_json::Value, field: &str) -> Option<&'a str> {
-    args.get(field).and_then(|v| v.as_str())
+    extract_opt_str(args, field)
 }
 
 /// Extract an optional u64 field from tool arguments.
 pub(super) fn opt_u64(args: &serde_json::Value, field: &str) -> Option<u64> {
-    args.get(field).and_then(serde_json::Value::as_u64)
+    extract_opt_u64(args, field)
 }
 
 /// Extract an optional finite f64 field from tool arguments.
@@ -89,7 +90,7 @@ pub(super) fn opt_f64(
 
 /// Extract an optional bool field from tool arguments.
 pub(super) fn opt_bool(args: &serde_json::Value, field: &str) -> Option<bool> {
-    args.get(field).and_then(serde_json::Value::as_bool)
+    extract_opt_bool(args, field)
 }
 
 /// Serialize a value to a pretty-printed JSON `ToolResult`.
