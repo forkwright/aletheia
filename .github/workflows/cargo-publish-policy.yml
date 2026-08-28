@@ -1,0 +1,38 @@
+# WHY: every in-repo crate must set `publish = false` -- this workspace is
+# not published to crates.io, and a manifest missing that line is one `cargo
+# publish` away from shipping internal code. The check already runs as a
+# `.kanon-ci.toml` stage, but that file drives the forge/local `kanon gate`
+# path only; nothing under `.github/` read it, so a PR gated purely through
+# GitHub Actions carried no publish-policy enforcement at all (aletheia#6990).
+name: Cargo publish policy
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: every crate manifest sets publish = false
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): this job only reads Cargo.toml manifests -- no build,
+          # no git history walk. blob:none is sufficient for a working-tree
+          # read (metadata-only-job class defect, #6757).
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Check every crate manifest sets publish = false
+        run: python3 scripts/check-cargo-publish-policy.py
