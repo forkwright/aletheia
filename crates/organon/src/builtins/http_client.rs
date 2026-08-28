@@ -161,7 +161,7 @@ fn format_send_error(err: &reqwest::Error) -> String {
     let mut rendered = format!("request failed: {err}");
     let mut source: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(err);
     while let Some(cause) = source {
-        rendered.push_str(&format!(": {cause}"));
+        let _ = write!(rendered, ": {cause}");
         source = cause.source();
     }
     rendered

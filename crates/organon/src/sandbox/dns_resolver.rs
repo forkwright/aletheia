@@ -100,7 +100,8 @@ impl Resolve for PolicyDnsResolver {
                 validated.push(addr);
             }
 
-            Ok(Box::new(validated.into_iter()) as Addrs)
+            let addrs: Addrs = Box::new(validated.into_iter());
+            Ok(addrs)
         })
     }
 }

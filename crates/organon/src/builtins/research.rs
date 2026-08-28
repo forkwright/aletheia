@@ -463,6 +463,18 @@ mod tests {
         // connect-time resolution. It proves the property the reopened
         // issue asked for directly: the internal peer is never connected
         // to, not merely that its response is discarded after the fact.
+        struct RebindResolver(std::net::SocketAddr);
+        impl koina::http::HostResolver for RebindResolver {
+            fn resolve_host<'a>(
+                &'a self,
+                _host: &'a str,
+                _port: u16,
+            ) -> koina::http::ResolveHostFuture<'a> {
+                let addr = self.0;
+                Box::pin(async move { Ok(vec![addr]) })
+            }
+        }
+
         install_crypto_provider();
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -477,18 +489,6 @@ mod tests {
         let accept_attempt = tokio::spawn(async move {
             tokio::time::timeout(std::time::Duration::from_millis(500), listener.accept()).await
         });
-
-        struct RebindResolver(std::net::SocketAddr);
-        impl koina::http::HostResolver for RebindResolver {
-            fn resolve_host<'a>(
-                &'a self,
-                _host: &'a str,
-                _port: u16,
-            ) -> koina::http::ResolveHostFuture<'a> {
-                let addr = self.0;
-                Box::pin(async move { Ok(vec![addr]) })
-            }
-        }
 
         let gate = Arc::new(EgressGate::new(crate::sandbox::EgressPolicy::Allow, &[]));
         let pinned_resolver = Arc::new(crate::sandbox::PolicyDnsResolver::with_resolver(
