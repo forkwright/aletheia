@@ -175,16 +175,15 @@ mod tests {
 
     use jiff::Timestamp;
 
-    use crate::engine::{SessionEvent, SessionResult};
     use crate::http::mock::{MockEngine, MockOutcome};
     use crate::orchestrator::OrchestratorConfig;
     use crate::pipeline::PipelineStage as _;
     use crate::pipeline::context::PipelineContext;
     use crate::pipeline::execution::ExecutionStage;
     use crate::pipeline::preparation::PreparationStage;
+    use crate::pipeline::test_support::{AlwaysPassQa, success_mock_outcome};
     use crate::prompt::PromptSpec;
-    use crate::qa::QaGate;
-    use crate::types::{DispatchSpec, MechanicalIssue, QaResult, QaVerdict, SessionStatus};
+    use crate::types::{DispatchSpec, SessionStatus};
 
     use super::PostProcessingStage;
 
@@ -196,59 +195,6 @@ mod tests {
         }
         entries.sort_by_key(tokio::fs::DirEntry::file_name);
         entries
-    }
-
-    struct AlwaysPassQa;
-
-    impl QaGate for AlwaysPassQa {
-        fn evaluate<'a>(
-            &'a self,
-            prompt: &'a crate::qa::PromptSpec,
-            pr_number: u64,
-            _diff: &'a str,
-        ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = crate::error::Result<QaResult>> + Send + 'a>,
-        > {
-            use jiff::Timestamp;
-            Box::pin(async move {
-                Ok(QaResult {
-                    prompt_number: prompt.prompt_number,
-                    pr_number,
-                    verdict: QaVerdict::Pass,
-                    criteria_results: vec![],
-                    mechanical_issues: vec![],
-                    reasons: vec![],
-                    cost_usd: 0.0,
-                    evaluated_at: Timestamp::now(),
-                    semantic_evaluated: false,
-                })
-            })
-        }
-
-        fn mechanical_check(
-            &self,
-            _diff: &str,
-            _prompt: &crate::qa::PromptSpec,
-        ) -> Vec<MechanicalIssue> {
-            vec![]
-        }
-    }
-
-    fn success_mock_outcome(session_id: &str, cost: f64, turns: u32) -> MockOutcome {
-        MockOutcome::Success {
-            events: vec![SessionEvent::TurnComplete { turn: turns }],
-            result: SessionResult {
-                session_id: session_id.to_owned(),
-                cost_usd: cost,
-                num_turns: turns,
-                duration_ms: 100,
-                success: true,
-                result_text: Some("done".to_owned()),
-                model: Some("claude-3-5-sonnet".to_owned()),
-                cache_hit_tokens: 0,
-                cache_miss_tokens: 0,
-            },
-        }
     }
 
     fn make_context_with_prompts(
