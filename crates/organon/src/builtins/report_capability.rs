@@ -172,8 +172,8 @@ impl ReportToolEffect {
 mod tests {
     use super::*;
 
-    fn classify(rule: &ToolCallCapabilityRule, args: serde_json::Value) -> ToolCallCapability {
-        rule.classify(&args).expect("classification succeeds")
+    fn classify(rule: &ToolCallCapabilityRule, args: &serde_json::Value) -> ToolCallCapability {
+        rule.classify(args).expect("classification succeeds")
     }
 
     #[test]
@@ -188,11 +188,11 @@ mod tests {
         };
         let rule = effect.capability_rule();
 
-        let present = classify(&rule, serde_json::json!({"out_path": "/tmp/x.pptx"}));
+        let present = classify(&rule, &serde_json::json!({"out_path": "/tmp/x.pptx"}));
         assert_eq!(present.groups, vec![ToolGroupId::Edit]);
         assert_eq!(present.reversibility, Reversibility::PartiallyReversible);
 
-        let absent = classify(&rule, serde_json::json!({}));
+        let absent = classify(&rule, &serde_json::json!({}));
         assert_eq!(absent.groups, vec![ToolGroupId::Read]);
         assert_eq!(absent.reversibility, Reversibility::FullyReversible);
     }
@@ -232,14 +232,14 @@ mod tests {
         // out_path present -> write, regardless of format.
         let write = classify(
             &rule,
-            serde_json::json!({"format": "pdf", "out_path": "/tmp/x.pdf"}),
+            &serde_json::json!({"format": "pdf", "out_path": "/tmp/x.pdf"}),
         );
         assert_eq!(write.groups, vec![ToolGroupId::Edit]);
         assert_eq!(write.reversibility, Reversibility::PartiallyReversible);
 
         // format == pdf, no out_path -> elevated subprocess classification,
         // not the same FullyReversible read as a no-op call.
-        let subprocess_only = classify(&rule, serde_json::json!({"format": "pdf"}));
+        let subprocess_only = classify(&rule, &serde_json::json!({"format": "pdf"}));
         assert_eq!(
             subprocess_only.groups,
             vec![ToolGroupId::Read, ToolGroupId::Command]
@@ -247,7 +247,7 @@ mod tests {
         assert_eq!(subprocess_only.reversibility, Reversibility::Reversible);
 
         // Neither axis active -> plain memory-only read.
-        let plain = classify(&rule, serde_json::json!({"format": "html"}));
+        let plain = classify(&rule, &serde_json::json!({"format": "html"}));
         assert_eq!(plain.groups, vec![ToolGroupId::Read]);
         assert_eq!(plain.reversibility, Reversibility::FullyReversible);
     }

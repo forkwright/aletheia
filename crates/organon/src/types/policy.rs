@@ -331,8 +331,7 @@ impl ToolCallCapabilityRule {
             Self::Decision { cases, default } => Ok(cases
                 .iter()
                 .find(|case| case.conditions.iter().all(|c| c.holds(arguments)))
-                .map(|case| case.capability.clone())
-                .unwrap_or_else(|| default.clone())),
+                .map_or_else(|| default.clone(), |case| case.capability.clone())),
         }
     }
 }
