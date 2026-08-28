@@ -33,6 +33,9 @@ pub struct PackToolFailure {
     pub pack_name: String,
     /// Name of the tool that failed.
     pub tool_name: String,
+    /// Whether the failed tool was declared `required = true` (#5208): a
+    /// required tool's failure fails the whole pack rather than degrading it.
+    pub required: bool,
     /// The underlying validation or registration error.
     pub error: error::Error,
 }
@@ -380,6 +383,7 @@ fn register_pack_tools_impl(
                 pack_instance_id: pack.instance_id(),
                 pack_name: pack.name().to_owned(),
                 tool_name: tool_def.name.clone(),
+                required: tool_def.required,
                 error: failure,
             });
         }

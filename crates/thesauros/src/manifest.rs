@@ -196,6 +196,15 @@ pub struct PackToolDef {
     /// skipped at registration and the pack is marked degraded.
     #[serde(default)]
     pub platforms: Vec<String>,
+    /// Whether the pack is unusable without this tool (#5208).
+    ///
+    /// A `false` (default) tool that fails validation or registration skips
+    /// just that tool and marks the pack `degraded`, matching every other
+    /// tool-level failure. A `true` tool failing the same way fails the
+    /// whole pack (`PackStatus::Failed`), the same escalation a
+    /// `Priority::Required` context entry already gets.
+    #[serde(default)]
+    pub required: bool,
 }
 
 fn default_tool_timeout() -> u64 {
@@ -1005,6 +1014,7 @@ command = "{command}"
             write_paths: Vec::new(),
             egress: None,
             platforms: Vec::new(),
+            required: false,
         };
         let json = serde_json::to_string(&tool).unwrap();
         let back: PackToolDef = serde_json::from_str(&json).unwrap();
@@ -1017,6 +1027,25 @@ command = "{command}"
             back.input_schema.unwrap().properties["query"].property_type,
             "string"
         );
+    }
+
+    #[test]
+    fn tool_required_defaults_to_false_when_absent() {
+        // WHY(#5208): an existing pack.toml with no `required` key must keep
+        // its pre-#5208 behavior -- a failing tool degrades, not fails, the
+        // pack.
+        let toml = "name = \"strict\"\nversion = \"1.0\"\n\n[[tools]]\nname = \"t\"\n\
+                     description = \"d\"\ncommand = \"tools/t.sh\"\n";
+        let manifest: PackManifest = toml::from_str(toml).expect("manifest should parse");
+        assert!(!manifest.tools[0].required);
+    }
+
+    #[test]
+    fn tool_required_true_parses() {
+        let toml = "name = \"strict\"\nversion = \"1.0\"\n\n[[tools]]\nname = \"t\"\n\
+                     description = \"d\"\ncommand = \"tools/t.sh\"\nrequired = true\n";
+        let manifest: PackManifest = toml::from_str(toml).expect("manifest should parse");
+        assert!(manifest.tools[0].required);
     }
 
     #[test]

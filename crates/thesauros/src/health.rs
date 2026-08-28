@@ -160,6 +160,15 @@ impl PackHealth {
         }
         self.issues.push(issue);
     }
+
+    /// Record an issue that fails the whole pack outright (#5208): a
+    /// `required = true` tool failing registration, matching the escalation
+    /// a `Priority::Required` context entry already gets at load. `Failed`
+    /// is terminal and this only ever moves a pack toward it.
+    pub(crate) fn fail_with(&mut self, issue: PackIssue) {
+        self.status = PackStatus::Failed;
+        self.issues.push(issue);
+    }
 }
 
 /// Aggregated health of every configured pack.
@@ -207,15 +216,23 @@ impl PackReport {
 
     /// Fold tool registration failures into the per-pack records.
     ///
-    /// A pack whose tool fails to register stays active but degrades.
+    /// A pack whose non-required tool fails to register stays active but
+    /// degrades; a pack whose `required = true` tool fails is marked
+    /// `failed` outright (#5208).
     pub fn record_tool_failures(&mut self, failures: &[PackToolFailure]) {
         for failure in failures {
             let issue = PackIssue {
                 component: PackComponent::Tool,
                 severity: Severity::Error,
                 message: format!(
-                    "tool '{}' failed to register: {}",
-                    failure.tool_name, failure.error
+                    "tool '{}' failed to register: {}{}",
+                    failure.tool_name,
+                    failure.error,
+                    if failure.required {
+                        " (required tool -- pack failed)"
+                    } else {
+                        ""
+                    }
                 ),
             };
             if let Some(health) = self
@@ -223,7 +240,11 @@ impl PackReport {
                 .iter_mut()
                 .find(|p| p.instance_id == failure.pack_instance_id)
             {
-                health.push_issue(issue);
+                if failure.required {
+                    health.fail_with(issue);
+                } else {
+                    health.push_issue(issue);
+                }
             } else {
                 // WHY: registration only sees loaded packs, so a missing
                 // entry means a loader/registration mismatch. Keep the
@@ -233,7 +254,11 @@ impl PackReport {
                     failure.pack_name.clone(),
                     PathBuf::new(),
                 );
-                health.push_issue(issue);
+                if failure.required {
+                    health.fail_with(issue);
+                } else {
+                    health.push_issue(issue);
+                }
                 self.packs.push(health);
             }
         }

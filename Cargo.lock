@@ -7146,6 +7146,7 @@ dependencies = [
  "symbolon",
  "taxis",
  "tempfile",
+ "thesauros",
  "tokio",
  "tokio-stream",
  "tokio-util",

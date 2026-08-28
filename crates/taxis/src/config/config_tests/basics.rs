@@ -321,6 +321,38 @@ surprise = true
 }
 
 #[test]
+fn required_packs_default_to_fail_startup() {
+    // WHY(#5208): a pack config with no `packRequiredFailureMode` key must
+    // fail startup on an unmet required pack, matching the same default
+    // `[tools.requiredFailureMode]` already uses.
+    let config = AletheiaConfig::default();
+    assert!(config.required_packs.is_empty());
+    assert_eq!(
+        config.pack_required_failure_mode,
+        RequiredFailureMode::FailStartup
+    );
+}
+
+#[test]
+fn required_packs_and_failure_mode_parse() {
+    let toml = r#"
+packs = ["/srv/packs/engineering", "/srv/packs/research"]
+requiredPacks = ["/srv/packs/engineering"]
+packRequiredFailureMode = "degraded"
+"#;
+    let config: AletheiaConfig = toml::from_str(toml).expect("parse packs config");
+
+    assert_eq!(
+        config.required_packs,
+        vec![std::path::PathBuf::from("/srv/packs/engineering")]
+    );
+    assert_eq!(
+        config.pack_required_failure_mode,
+        RequiredFailureMode::Degraded
+    );
+}
+
+#[test]
 fn knowledge_roundtrip_with_serendipity_weight() {
     let config = KnowledgeConfig {
         recall_serendipity_weight: 0.25,
