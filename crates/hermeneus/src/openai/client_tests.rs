@@ -5,6 +5,7 @@ use std::time::Duration;
 use koina::secret::SecretString;
 
 use super::*;
+use crate::concurrency::RequestOutcome;
 use crate::models::BACKOFF_MAX_MS;
 
 #[test]
