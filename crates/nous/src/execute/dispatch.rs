@@ -14,6 +14,7 @@ use hermeneus::secret::{
 };
 use hermeneus::types::{ContentBlock, ToolDefinition, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
+#[cfg(test)]
 use koina::ulid::Ulid;
 use organon::registry::{PreparedToolInput, ToolRegistry};
 use organon::surface::{
