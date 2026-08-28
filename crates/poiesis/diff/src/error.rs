@@ -30,3 +30,12 @@ pub enum DiffError {
         source: std::io::Error,
     },
 }
+
+impl From<poiesis_ooxml_parse::ArchiveError> for DiffError {
+    fn from(err: poiesis_ooxml_parse::ArchiveError) -> Self {
+        match err {
+            poiesis_ooxml_parse::ArchiveError::Zip { source } => Self::ZipError { source },
+            poiesis_ooxml_parse::ArchiveError::Io { source } => Self::Io { source },
+        }
+    }
+}

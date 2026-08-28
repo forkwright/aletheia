@@ -150,7 +150,7 @@ fn stream_turn_with_read_timeout(
                     String::new()
                 }
             };
-            let message = extract_error_message(&body, status.as_u16(), reason);
+            let message = format_http_error_body(status.as_u16(), reason, &body);
             if tx.send(StreamEvent::Error(message)).await.is_err() {
                 tracing::debug!("stream receiver dropped before HTTP error");
             }
@@ -224,11 +224,6 @@ fn stream_turn_with_read_timeout(
     tokio::spawn(task.instrument(span));
 
     rx
-}
-
-/// Extract a human-readable error message from an HTTP error response body.
-fn extract_error_message(body: &str, status_code: u16, reason: &str) -> String {
-    format_http_error_body(status_code, reason, body)
 }
 
 fn str_field<'a>(json: &'a serde_json::Value, field: &str, event_type: &str) -> Option<&'a str> {
@@ -997,7 +992,7 @@ mod tests {
     fn extract_error_message_json() {
         let body = r#"{"message":"rate limited"}"#;
         assert_eq!(
-            extract_error_message(body, 429, "Too Many Requests"),
+            format_http_error_body(429, "Too Many Requests", body),
             "rate limited"
         );
     }
@@ -1005,7 +1000,7 @@ mod tests {
     #[test]
     fn extract_error_message_preserves_pylon_envelope() {
         let body = r#"{"error":{"code":"validation_error","message":"invalid stream request","request_id":"req-http","details":{"errors":[{"field":"message","code":"required","message":"message is required"}]}}}"#;
-        let message = extract_error_message(body, 422, "Unprocessable Entity");
+        let message = format_http_error_body(422, "Unprocessable Entity", body);
         assert!(message.contains("invalid stream request"));
         assert!(message.contains("status 422"));
         assert!(message.contains("code validation_error"));
@@ -1016,7 +1011,7 @@ mod tests {
     #[test]
     fn extract_error_message_fallback() {
         assert_eq!(
-            extract_error_message("not json", 500, "Internal"),
+            format_http_error_body(500, "Internal", "not json"),
             "500 Internal"
         );
     }

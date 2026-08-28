@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 
 use crate::state::meta::{JournalEvent, JournalEventType, SystemReflectionStore, heatmap_color};
+use crate::state::metrics::{format_tokens, format_uptime};
 use crate::views::meta::{CARD_LABEL, CARD_STYLE, CARD_SUB, CARD_VALUE, GRID_STYLE, MUTED_TEXT};
 
 const DAY_LABELS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -371,45 +372,10 @@ fn journal_badge_bg(event_type: JournalEventType) -> &'static str {
 
 // -- Formatters ---------------------------------------------------------------
 
-fn format_uptime(seconds: u64) -> String {
-    let days = seconds / 86400;
-    let hours = (seconds % 86400) / 3600;
-    let mins = (seconds % 3600) / 60;
-
-    if days > 0 {
-        format!("{days}d {hours}h")
-    } else if hours > 0 {
-        format!("{hours}h {mins}m")
-    } else {
-        format!("{mins}m")
-    }
-}
-
 fn format_cost(value: f64) -> String {
     if value < 0.01 && value > 0.0 {
         format!("${value:.4}")
     } else {
         format!("${value:.2}")
-    }
-}
-
-#[expect(
-    clippy::cast_precision_loss,
-    reason = "display-only: sub-token precision irrelevant"
-)]
-#[expect(
-    clippy::as_conversions,
-    reason = "u64 to f64 for human-readable formatting"
-)]
-fn format_tokens(count: u64) -> String {
-    const K: u64 = 1_000;
-    const M: u64 = 1_000_000;
-
-    if count >= M {
-        format!("{:.1}M", count as f64 / M as f64)
-    } else if count >= K {
-        format!("{:.1}K", count as f64 / K as f64)
-    } else {
-        count.to_string()
     }
 }
