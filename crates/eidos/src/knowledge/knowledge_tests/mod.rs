@@ -6,8 +6,6 @@
 //! Split from the monolithic `knowledge_test.rs` (2196 lines) to satisfy
 //! `RUST/file-too-long`. Each submodule is a coherent subject.
 
-use super::*;
-
 mod entities_facts;
 mod ids;
 mod path_validation;
