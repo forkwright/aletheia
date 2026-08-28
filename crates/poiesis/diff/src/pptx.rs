@@ -1,44 +1,20 @@
 //! PPTX presentation diffing implementation.
 
 use std::collections::BTreeMap;
-use std::io::Cursor;
 
-use poiesis_ooxml_parse::extract_text_from_slide;
-use zip::ZipArchive;
+use poiesis_ooxml_parse::{extract_text_from_slide, read_pptx_slides};
 
 use crate::SlideDiff;
 use crate::error::Result;
 
-/// Read slide contents from PPTX archive.
+/// Read slide contents from PPTX archive, keyed by 0-based slide position.
 fn read_presentation(bytes: &[u8]) -> Result<BTreeMap<usize, String>> {
-    let cursor = Cursor::new(bytes);
-    let mut archive =
-        ZipArchive::new(cursor).map_err(|e| crate::DiffError::ZipError { source: e })?;
-
-    let mut slides: BTreeMap<usize, String> = BTreeMap::new();
-
-    let mut slide_idx = 1;
-    loop {
-        let slide_path = format!("ppt/slides/slide{slide_idx}.xml");
-        match archive.by_name(&slide_path) {
-            Ok(mut file) => {
-                let mut content = String::new();
-                std::io::Read::read_to_string(&mut file, &mut content)
-                    .map_err(|e| crate::DiffError::Io { source: e })?;
-                let text = extract_text_from_slide(&content);
-                slides.insert(slide_idx - 1, text);
-                slide_idx += 1;
-            }
-            Err(zip::result::ZipError::FileNotFound) => {
-                break;
-            }
-            Err(e) => {
-                return Err(crate::DiffError::ZipError { source: e });
-            }
-        }
-    }
-
-    Ok(slides)
+    let slides = read_pptx_slides(bytes)?;
+    Ok(slides
+        .iter()
+        .enumerate()
+        .map(|(idx, xml)| (idx, extract_text_from_slide(xml)))
+        .collect())
 }
 
 pub(crate) fn diff_presentations_impl(a: &[u8], b: &[u8]) -> Result<Vec<SlideDiff>> {

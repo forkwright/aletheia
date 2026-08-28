@@ -321,7 +321,8 @@ source = "{credential_source}"
     );
     // WHY: single-agent init always produces a single-agent config.
     // Append permissive sandbox defaults so the agent is functional on kernels
-    // without Landlock and can execute scripts from HOME: closes #1247.
+    // without the full Landlock ABI v5 baseline and can execute scripts from
+    // HOME: closes #1247.
     config.push_str(SINGLE_AGENT_SANDBOX_TOML);
     config
 }
@@ -330,13 +331,15 @@ source = "{credential_source}"
 ///
 /// WHY: Single-agent local deployments need to run scripts from the operator's
 /// home directory and should not be blocked by strict Landlock enforcement
-/// when kernels do not support it. `enforcement=permissive` keeps the agent
-/// functional on older kernels; `extraExecPaths = ["~"]` grants exec access
-/// to HOME so scripts installed there are reachable: closes #1247.
+/// when kernels do not provide every filesystem right the policy requests.
+/// `enforcement=permissive` keeps the agent functional on older kernels;
+/// `extraExecPaths = ["~"]` grants exec access to HOME so scripts installed
+/// there are reachable: closes #1247.
 const SINGLE_AGENT_SANDBOX_TOML: &str = r#"
 # --- Sandbox ---
 # Single-agent permissive defaults: enforcement falls back gracefully on
-# kernels without Landlock and HOME is added to exec paths for local scripts.
+# kernels without the full Landlock ABI v5 baseline, and HOME is added to exec
+# paths for local scripts.
 [sandbox]
 enforcement = "permissive"
 extraExecPaths = ["~"]

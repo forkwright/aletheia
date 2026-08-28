@@ -32,7 +32,7 @@ use snafu::IntoError;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument;
 
-use crate::error::{self, Result};
+use crate::error::{self, Result, store_err};
 use crate::types::DispatchSpec;
 
 /// Policy for handling overlap between scheduled fires of the same task.
@@ -711,13 +711,6 @@ impl CronScheduler {
         }
         failed
     }
-}
-
-fn store_err(context: &str, e: impl std::fmt::Display) -> error::Error {
-    error::StoreSnafu {
-        message: format!("{context}: {e}"),
-    }
-    .build()
 }
 
 /// Apply a random signed jitter to a base timestamp.

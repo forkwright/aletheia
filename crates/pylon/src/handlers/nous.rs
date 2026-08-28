@@ -11,7 +11,6 @@ use koina::id::NousId;
 use nous::config::NousConfig;
 use nous::cross::AddressMask;
 use organon::surface::{DenialReason, SurfaceEntry, SurfaceEntryKind, SurfaceInputs};
-use organon::types::{ApprovalRequirement, Reversibility};
 use symbolon::types::Role;
 use taxis::config::{AletheiaConfig, NousDefinition};
 
@@ -156,8 +155,8 @@ fn tool_summary_from_surface_entry(
             .map_or_else(|| "server".to_owned(), |category| category.to_string()),
         reversibility: entry.reversibility.to_string(),
         approval: entry.approval.to_string(),
-        requires_approval: approval_requires_prompt(entry.approval),
-        destructive: reversibility_is_destructive(entry.reversibility),
+        requires_approval: entry.approval.requires_prompt(),
+        destructive: entry.reversibility.is_destructive(),
         groups: entry
             .groups
             .iter()
@@ -169,20 +168,6 @@ fn tool_summary_from_surface_entry(
         metadata_verified: true,
         auto_activate: entry.auto_activate,
     }
-}
-
-fn approval_requires_prompt(approval: ApprovalRequirement) -> bool {
-    matches!(
-        approval,
-        ApprovalRequirement::Required | ApprovalRequirement::Mandatory
-    )
-}
-
-fn reversibility_is_destructive(reversibility: Reversibility) -> bool {
-    matches!(
-        reversibility,
-        Reversibility::PartiallyReversible | Reversibility::Irreversible
-    )
 }
 
 fn denial_reason_label(reason: DenialReason) -> &'static str {

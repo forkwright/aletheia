@@ -10,6 +10,8 @@ use std::sync::OnceLock;
 use regex::Regex;
 use snafu::Snafu;
 
+use crate::regex_util::compile_regex;
+
 /// Errors from the pre-injection scan.
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
@@ -137,15 +139,4 @@ fn threat_patterns() -> &'static [(&'static str, Regex)] {
             ),
         ]
     })
-}
-
-/// Compile a regex literal known at compile time to be valid.
-fn compile_regex(re: &str) -> Regex {
-    #[expect(
-        clippy::expect_used,
-        reason = "compile-time-constant regex literals cannot fail"
-    )]
-    {
-        Regex::new(re).expect("compile-time-constant regex literals cannot fail")
-    }
 }

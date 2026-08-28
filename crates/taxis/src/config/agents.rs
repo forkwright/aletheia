@@ -123,38 +123,11 @@ impl<'de> Deserialize<'de> for AgentToolGroupPolicy {
 
 /// Per-factor scoring weights for the recall pipeline.
 ///
-/// Lives in taxis so operators can tune them per-agent via TOML without
-/// creating a taxis → nous dependency.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[serde(default)]
-pub struct RecallWeights {
-    /// Temporal decay weight (0.0--1.0).
-    pub decay: f64,
-    /// Content relevance weight (0.0--1.0).
-    pub relevance: f64,
-    /// Epistemic tier weight (0.0--1.0).
-    pub epistemic_tier: f64,
-    /// Knowledge-graph relationship proximity weight (0.0--1.0).
-    pub relationship_proximity: f64,
-    /// Access frequency weight (0.0--1.0).
-    pub access_frequency: f64,
-    /// Graph `PageRank` importance weight (0.0--1.0).
-    pub graph_importance: f64,
-}
-
-impl Default for RecallWeights {
-    fn default() -> Self {
-        Self {
-            decay: 0.5,
-            relevance: 0.5,
-            epistemic_tier: 0.3,
-            relationship_proximity: 0.1,
-            access_frequency: 0.0,
-            graph_importance: 0.0,
-        }
-    }
-}
+/// Defined once in [`eidos::recall::RecallWeights`] — the canonical
+/// definition — and re-exported here so operators keep tuning them per-agent
+/// via TOML under the `taxis::config` path, without a second struct (and a
+/// second set of defaults) drifting from nous's copy.
+pub use eidos::recall::RecallWeights;
 
 /// Recall pipeline settings for a nous agent.
 ///

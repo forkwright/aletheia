@@ -67,6 +67,8 @@ pub mod metadata;
 pub mod renderer;
 /// Inline rich text spans: plain, bold, italic, code, cite, links.
 pub mod rich_text;
+/// One escaping policy for every XML-shaped Poiesis output.
+pub mod xml;
 
 pub use block::{Block, Image, ListItem, Note, NoteKind, Table};
 pub use document::Document;
@@ -84,6 +86,7 @@ pub use factbase::{
 pub use ids::{ClaimId, ComponentId, DataSourceId, FactId, SheetName, ThemeId};
 pub use qa::{QaIssue, QaIssueKind, QaReport};
 pub use scalar::{AspectRatio, Money, Scalar, ScalarKind, Tolerance, Unit};
+pub use xml::escape_xml;
 
 /// The typed output of a renderer in the envelope-aware world.
 ///

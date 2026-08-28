@@ -157,6 +157,9 @@ fn tui_event_tool_use_type() {
         tool_name: "search".to_owned(),
         tool_id: "t1".to_owned(),
         input: serde_json::json!({}),
+        turn_id: None,
+        session_id: None,
+        request_id: None,
     };
     assert_eq!(event.event_type(), "tool_use");
 }
@@ -170,6 +173,9 @@ fn tui_event_tool_result_type() {
         is_error: false,
         duration_ms: 42,
         outcome: Some("success".to_owned()),
+        turn_id: None,
+        session_id: None,
+        request_id: None,
     };
     assert_eq!(event.event_type(), "tool_result");
 }

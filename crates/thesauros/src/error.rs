@@ -76,6 +76,17 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// Context file contains a bootstrap file-ref interpolation marker.
+    #[snafu(display(
+        "context file contains forbidden {{{{file:...}}}} interpolation: {}",
+        path.display()
+    ))]
+    ContextFileInterpolation {
+        path: PathBuf,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Tool command script not found at declared path.
     #[snafu(display("tool command not found: {}", path.display()))]
     ToolCommandNotFound {
@@ -120,24 +131,6 @@ pub enum Error {
         location: snafu::Location,
     },
 
-    /// Pack name fails validation (must be 1--64 alphanumeric/hyphen characters).
-    #[snafu(display(
-        "invalid pack name '{name}': must be 1-64 characters, alphanumeric and hyphens only"
-    ))]
-    InvalidPackName {
-        name: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
-    /// Pack version is an empty string.
-    #[snafu(display("pack '{pack}' has an empty version string"))]
-    InvalidPackVersion {
-        pack: String,
-        #[snafu(implicit)]
-        location: snafu::Location,
-    },
-
     /// Pack tool declares a zero-millisecond timeout.
     #[snafu(display(
         "pack '{pack}' tool '{tool}' has an invalid timeout of {timeout}ms: must be non-zero"
@@ -146,6 +139,16 @@ pub enum Error {
         pack: String,
         tool: String,
         timeout: u64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// Manifest failed validation; every problem found is listed at once so a
+    /// pack author can fix them in one pass instead of one load per problem.
+    #[snafu(display("pack '{pack}' manifest is invalid: {}", issues.join("; ")))]
+    InvalidManifest {
+        pack: String,
+        issues: Vec<String>,
         #[snafu(implicit)]
         location: snafu::Location,
     },

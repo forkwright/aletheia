@@ -15,12 +15,12 @@
 use std::fmt::Write as _;
 
 use super::shared::{
-    domain_bounds, emit_caption, emit_legend, emit_svg_open, escape_xml, idx_to_f64, legend_needed,
-    ticks_for_axis,
+    domain_bounds, emit_axes, emit_caption, emit_data_labels, emit_gridlines, emit_legend,
+    emit_svg_open, idx_to_f64, legend_needed,
 };
 use crate::Result;
-use crate::format::{coord, format_number};
-use crate::model::{AxisSpec, Chart, CiteOrText, Unit};
+use crate::format::coord;
+use crate::model::Chart;
 use crate::render::canvas::{Canvas, PlotBox};
 use crate::scale::Scale;
 use crate::theme::{ColorMode, ResolvedTheme};
@@ -90,74 +90,6 @@ pub fn emit(
     Ok(out)
 }
 
-fn emit_gridlines(
-    out: &mut String,
-    y_scale: &Scale,
-    plot: &PlotBox,
-    lo: f64,
-    hi: f64,
-    axis: &AxisSpec,
-) {
-    out.push_str("<g class=\"gridlines\">");
-    for tick in ticks_for_axis(axis, lo, hi) {
-        let y = y_scale.map(tick);
-        let _ = write!(
-            out,
-            "<line x1=\"{x1}\" y1=\"{y}\" x2=\"{x2}\" y2=\"{y}\" stroke=\"#e5e7eb\" stroke-width=\"1\"/>",
-            x1 = coord(plot.x0),
-            y = coord(y),
-            x2 = coord(plot.x1),
-        );
-    }
-    out.push_str("</g>");
-}
-
-fn emit_axes(
-    out: &mut String,
-    chart: &Chart,
-    y_scale: &Scale,
-    plot: &PlotBox,
-    band_w: f64,
-    theme: &ResolvedTheme,
-    lo: f64,
-    hi: f64,
-    axis: &AxisSpec,
-) {
-    out.push_str("<g class=\"axes\">");
-
-    for tick in ticks_for_axis(axis, lo, hi) {
-        let y = y_scale.map(tick);
-        let label = escape_xml(&format_number(tick, axis.format, Unit::Number));
-        let _ = write!(
-            out,
-            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{font}\">{label}</text>",
-            x = coord(plot.x0 - 8.0),
-            y = coord(y),
-            font = theme.font_sans,
-        );
-    }
-
-    if let Some(series) = chart.series.first() {
-        for (j, point) in series.points.iter().enumerate() {
-            let cx = plot.x0 + band_w * idx_to_f64(j) + band_w * 0.5;
-            let label = match &point.label {
-                Some(CiteOrText::Text(t)) => escape_xml(t),
-                Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
-                None => String::new(),
-            };
-            let _ = write!(
-                out,
-                "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-family=\"{font}\">{label}</text>",
-                x = coord(cx),
-                y = coord(plot.y1 + 24.0),
-                font = theme.font_sans,
-            );
-        }
-    }
-
-    out.push_str("</g>");
-}
-
 fn emit_lines(
     out: &mut String,
     chart: &Chart,
@@ -201,40 +133,6 @@ fn emit_lines(
     Ok(())
 }
 
-fn emit_data_labels(
-    out: &mut String,
-    chart: &Chart,
-    y_scale: &Scale,
-    plot: &PlotBox,
-    band_w: f64,
-    theme: &ResolvedTheme,
-    mode: ColorMode,
-) -> Result<()> {
-    out.push_str("<g class=\"labels\">");
-    for (i, series) in chart.series.iter().enumerate() {
-        let fill = theme.fill_for(&series.tone, mode, i)?;
-        for (j, point) in series.points.iter().enumerate() {
-            let cx = plot.x0 + band_w * idx_to_f64(j) + band_w * 0.5;
-            let cy = y_scale.map(point.y.value);
-            let label = escape_xml(&format_number(
-                point.y.value,
-                chart.axes.y_left.format,
-                point.y.unit,
-            ));
-            let _ = write!(
-                out,
-                "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" dominant-baseline=\"auto\" font-family=\"{font}\" fill=\"{fill}\">{label}</text>",
-                x = coord(cx),
-                y = coord(cy - 14.0),
-                font = theme.font_sans,
-                fill = fill,
-            );
-        }
-    }
-    out.push_str("</g>");
-    Ok(())
-}
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
@@ -247,7 +145,7 @@ mod tests {
 
     fn line_spec() -> Chart {
         let cite = |id: &str, v: f64, u: Unit| FactCite {
-            id: FactId(id.to_owned()),
+            id: FactId::new(id.to_owned()).expect("valid fact id"),
             value: v,
             unit: u,
         };
@@ -336,7 +234,7 @@ mod tests {
                     label: Some(CiteOrText::Text("A".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("f4".to_owned()),
+                        id: FactId::new("f4".to_owned()).expect("valid fact id"),
                         value: 5.0,
                         unit: Unit::Number,
                     },
@@ -345,7 +243,7 @@ mod tests {
                     label: Some(CiteOrText::Text("B".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("f5".to_owned()),
+                        id: FactId::new("f5".to_owned()).expect("valid fact id"),
                         value: 25.0,
                         unit: Unit::Number,
                     },
@@ -354,7 +252,7 @@ mod tests {
                     label: Some(CiteOrText::Text("C".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("f6".to_owned()),
+                        id: FactId::new("f6".to_owned()).expect("valid fact id"),
                         value: 10.0,
                         unit: Unit::Number,
                     },

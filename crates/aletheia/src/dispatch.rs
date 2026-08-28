@@ -992,14 +992,7 @@ mod tests {
             planning: None,
             knowledge: None,
             working_checkpoint_store: None,
-            http_clients: ToolHttpClients {
-                general: reqwest::Client::new(),
-                ssrf_safe: reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .unwrap_or_else(|_| reqwest::Client::new()),
-            },
+            http_clients: ToolHttpClients::new(),
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: Vec::new(),
             server_tool_config: organon::types::ServerToolConfig::default(),

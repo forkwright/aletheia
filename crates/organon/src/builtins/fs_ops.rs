@@ -28,19 +28,10 @@ use crate::types::{
 };
 
 use super::filesystem_policy::protected_path_class;
-use super::workspace::{extract_opt_bool, extract_str, validate_path, validate_prepared_path};
-
-/// Sanitize a path to just its filename for error messages.
-///
-/// WHY: Full filesystem paths in error messages sent to the LLM leak instance
-/// directory structure. Mirrors `workspace::sanitize_path_in_msg` (kept local
-/// to this module to avoid making that helper `pub(crate)`).
-fn sanitize(path: &Path) -> String {
-    path.file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("<path>")
-        .to_owned()
-}
+use super::workspace::{
+    extract_opt_bool, extract_str, sanitize_path_in_msg as sanitize, validate_path,
+    validate_prepared_path,
+};
 
 /// Re-canonicalize a path immediately before a filesystem mutation and re-check
 /// it against the same `allowed_roots` invariant used by `validate_path`.

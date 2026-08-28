@@ -27,6 +27,9 @@ Domain pack loader: parses pack.toml manifests, resolves context files, register
 | `LoadedPack` | `loader.rs` | Fully resolved pack: manifest, sections with file content read, root path |
 | `PackSection` | `loader.rs` | Resolved context section: name, content, priority, agent filter, pack name |
 | `PackInputSchema` | `manifest.rs` | Tool input schema: type, properties, required fields |
+| `OverlayPolicy` | `manifest.rs` | Operator opt-in policy for high-impact overlay powers (model, agency, prompt additions) |
+| `PackHealth` | `health.rs` | Per-pack activation state (Active/Degraded/Failed) with structured issues |
+| `PackReport` | `health.rs` | Aggregated pack health plus host platform notes |
 
 ## Patterns
 
@@ -36,6 +39,9 @@ Domain pack loader: parses pack.toml manifests, resolves context files, register
 - **Shell tool execution**: Pack tools run as shell scripts with JSON input on stdin, stdout captured as result. ProcessGuard prevents orphan processes.
 - **ETXTBSY retry**: Shell executor makes up to 4 attempts total (3 retries) on ETXTBSY (errno 26) with exponential backoff (1 ms, 4 ms, 16 ms) to handle races between file writes and exec.
 - **Context file size limit**: Context files are read up to `MAX_CONTEXT_FILE_BYTES` (512 KiB). Files exceeding the limit are rejected with `ContextFileTooLarge` to prevent startup OOM from oversized or unbounded files.
+- **Sealed effective pack**: `LoadedPack` fields stay private. Downstream crates inspect them through read-only accessors so only the loader can construct policy-admitted context and overlays.
+- **Literal untrusted prompt text**: Pack-controlled text that can reach bootstrap rejects `{{file:...}}` at the manifest/context loader boundary. Trusted instance-root expansion happens later and must not amplify pack authority or bypass pack byte caps.
+- **Fail-closed manifest schema**: Manifest DTOs deny unknown fields at every nesting level so misspelled policy keys cannot silently inherit a wider default.
 
 ## Common tasks
 

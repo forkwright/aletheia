@@ -24,12 +24,12 @@ pub const API_HEALTH: &str = "/api/health";
 /// CSRF/anti-drive-by request header name first-party clients send on every
 /// state-changing request.
 ///
-/// WHY(#4823, #5059): the header name and its compiled default value were
-/// previously duplicated independently in `taxis::config::CsrfConfig` and
-/// each theatron client (skene, proskenion). A canonical constant here is
-/// the single source of truth; those sites reference it instead of
-/// restating the string literal. `pylon`'s own `client.rs` and `eval`'s
-/// client still carry an independent copy — same class, not yet migrated.
+/// WHY(#4823, #5059, #7012): the header name and its compiled default value
+/// were previously duplicated independently in `taxis::config::CsrfConfig`,
+/// each theatron client (skene, proskenion), `pylon`'s own `client.rs`, and
+/// `eval`'s client. A canonical constant here is the single source of
+/// truth; every first-party client references it instead of restating the
+/// string literal.
 pub const CSRF_HEADER_NAME: &str = "x-requested-with";
 
 /// Compiled default value for [`CSRF_HEADER_NAME`].

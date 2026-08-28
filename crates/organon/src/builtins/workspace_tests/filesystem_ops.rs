@@ -217,7 +217,7 @@ async fn exec_permissive_sandbox_runs_tool_regardless_of_landlock_availability()
 
 #[cfg(target_os = "linux")]
 #[tokio::test]
-async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() {
+async fn exec_enforcing_sandbox_returns_clear_error_without_full_landlock_baseline() {
     use crate::sandbox::probe_landlock_abi;
 
     let dir = tempfile::tempdir().expect("create temp dir");
@@ -235,10 +235,10 @@ async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() 
     .expect("execute");
 
     match probe_landlock_abi() {
-        None => {
+        None | Some(1..=4) => {
             assert!(
                 result.is_error,
-                "enforcing mode must error when Landlock unavailable"
+                "enforcing mode must error without the full Landlock baseline"
             );
             let msg = result.content.text_summary();
             assert!(
@@ -250,12 +250,13 @@ async fn exec_enforcing_sandbox_returns_clear_error_when_landlock_unavailable() 
                 "error must name Landlock or ABI: {msg}"
             );
         }
-        Some(_) => {
+        Some(5..) => {
             assert!(
                 !result.is_error,
-                "enforcing mode must succeed when Landlock is available"
+                "enforcing mode must succeed with the full Landlock baseline"
             );
         }
+        Some(i32::MIN..=0) => unreachable!("Landlock probes never return non-positive ABIs"),
     }
 }
 

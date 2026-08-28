@@ -12,7 +12,7 @@ publish = false
 workspace = true
 
 [dependencies]
-koina = { path = "../koina" }
+koina = { path = "../koina", features = ["rustls-provider"] }
 jiff = { workspace = true }
 parking_lot = "0.12"
 prometheus-client = { workspace = true }

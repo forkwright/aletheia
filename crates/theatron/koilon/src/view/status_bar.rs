@@ -12,6 +12,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::app::App;
 use crate::keybindings;
 use crate::theme::Theme;
+use crate::view::presentation::format_token_count;
 
 pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let line1 = render_keybindings(app, area.width, theme);
@@ -495,16 +496,6 @@ fn context_gauge_spans(app: &App, theme: &Theme) -> Vec<Span<'static>> {
     }
 
     spans
-}
-
-fn format_token_count(n: u32) -> String {
-    if n >= 1_000_000 {
-        format!("{}M", n / 1_000_000)
-    } else if n >= 1_000 {
-        format!("{}K", n / 1_000)
-    } else {
-        format!("{n}")
-    }
 }
 
 #[cfg(test)]

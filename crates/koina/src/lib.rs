@@ -12,6 +12,9 @@ pub mod base64;
 pub mod cleanup;
 /// Credential provider trait for dynamic API key resolution.
 pub mod credential;
+/// Process-wide rustls crypto provider installation.
+#[cfg(feature = "rustls-provider")]
+pub mod crypto;
 /// Shared configuration defaults (token budgets, iteration limits).
 pub mod defaults;
 /// Disk space monitoring: threshold checks, cached monitor, write guards.
@@ -27,10 +30,15 @@ pub mod event;
 pub mod fjall;
 /// Restricted filesystem helpers for writing sensitive files.
 pub mod fs;
+/// Full-text-search query sanitization shared by every Krites-backed FTS
+/// query path ([`fts::sanitize_fts_query`]).
+pub mod fts;
 /// Shared HTTP constants (content types, auth prefix, API paths).
 pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
+/// Shared pretty-or-compact JSON display projection ([`json::pretty_or_compact`]).
+pub mod json;
 /// Composite memory-health scoring formula, shared by proskenion (client)
 /// and pylon (server) so the two never carry independent copies of the
 /// weights.

@@ -1307,6 +1307,7 @@ pub async fn stream_turn(
                                 (event.clone(), event)
                             }
                             TurnStreamEvent::ToolStart {
+                                identity,
                                 tool_id,
                                 tool_name,
                                 input,
@@ -1315,11 +1316,16 @@ pub async fn stream_turn(
                                     tool_name,
                                     tool_id,
                                     input,
+                                    // WHY(#5016): forward nous's canonical turn
+                                    // identity; pylon never substitutes its own.
+                                    turn_id: Some(identity.turn_id.to_string()),
+                                    session_id: Some(identity.session_id),
+                                    request_id: identity.request_id,
                                 };
                                 (event.clone(), event)
                             }
                             TurnStreamEvent::ToolApprovalRequired {
-                                turn_id: _nous_turn_id,
+                                identity,
                                 tool_id,
                                 tool_name,
                                 input,
@@ -1327,6 +1333,11 @@ pub async fn stream_turn(
                                 risk,
                                 reason,
                             } => {
+                                // WHY: the approval registry stays keyed on the
+                                // ULID pylon supplied to nous for this turn —
+                                // identical to `identity.turn_id` on this path,
+                                // but the registry key is pylon's own contract
+                                // with the approval endpoints.
                                 approval_registry
                                     .register_tool(
                                         &approval_session_id,
@@ -1336,31 +1347,43 @@ pub async fn stream_turn(
                                     )
                                     .await;
                                 let live = PylonTurnStreamEvent::ToolApprovalRequired {
-                                    turn_id: approval_turn_id.clone(),
+                                    turn_id: identity.turn_id.to_string(),
                                     tool_name: tool_name.clone(),
                                     tool_id: tool_id.clone(),
                                     input: input.into_inner(),
                                     risk: risk.clone(),
                                     reason: reason.clone(),
+                                    session_id: Some(identity.session_id.clone()),
+                                    request_id: identity.request_id.clone(),
                                 };
                                 let replay = PylonTurnStreamEvent::ToolApprovalRequired {
-                                    turn_id: approval_turn_id.clone(),
+                                    turn_id: identity.turn_id.to_string(),
                                     tool_name,
                                     tool_id,
                                     input: replay_input,
                                     risk,
                                     reason,
+                                    session_id: Some(identity.session_id),
+                                    request_id: identity.request_id,
                                 };
                                 (live, replay)
                             }
-                            TurnStreamEvent::ToolApprovalResolved { tool_id, decision } => {
+                            TurnStreamEvent::ToolApprovalResolved {
+                                identity,
+                                tool_id,
+                                decision,
+                            } => {
                                 let event = PylonTurnStreamEvent::ToolApprovalResolved {
                                     tool_id,
                                     decision,
+                                    turn_id: Some(identity.turn_id.to_string()),
+                                    session_id: Some(identity.session_id),
+                                    request_id: identity.request_id,
                                 };
                                 (event.clone(), event)
                             }
                             TurnStreamEvent::ToolResult {
+                                identity,
                                 tool_id,
                                 tool_name,
                                 result,
@@ -1375,6 +1398,9 @@ pub async fn stream_turn(
                                     is_error,
                                     duration_ms,
                                     outcome: Some(outcome),
+                                    turn_id: Some(identity.turn_id.to_string()),
+                                    session_id: Some(identity.session_id),
+                                    request_id: identity.request_id,
                                 };
                                 (event.clone(), event)
                             }
@@ -2107,29 +2133,20 @@ fn classify_llm_error(err: &hermeneus::error::Error) -> (String, String) {
     }
 }
 
-/// Regex matching common secret patterns in error messages.
-///
-/// WHY: match common key prefixes (sk-ant-, sk-, key-, bearer tokens)
-/// and hex/base64 sequences that look like credentials (32+ chars).
-#[expect(
-    clippy::expect_used,
-    reason = "compile-time-constant regex literals cannot fail"
-)]
-static SECRET_PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(
-        r"(?i)(sk-ant-[a-zA-Z0-9_-]+|sk-[a-zA-Z0-9_-]{20,}|key-[a-zA-Z0-9_-]{20,}|bearer\s+[a-zA-Z0-9._-]{20,}|[a-f0-9]{40,})"
-    )
-    .expect("compile-time-constant regex literals cannot fail") // INVARIANT: regex literal is validated at compile time
-});
-
-/// Strip potential secrets (API keys, bearer tokens) from an error message
-/// before including it in a client-visible SSE event.
+/// Strip potential secrets (API keys, bearer tokens, JWTs, password-like
+/// key=value pairs) from an error message before including it in a
+/// client-visible SSE event.
 ///
 /// WHY(#844): error messages from providers may contain credential fragments
-/// in rejection messages (e.g. "invalid key sk-ant-..."). This strips
-/// anything that looks like a secret token.
+/// in rejection messages (e.g. "invalid key sk-ant-...").
+///
+/// WHY(#7020): delegates to the canonical `koina::redact::redact_sensitive`
+/// policy rather than maintaining a second, divergent pattern table — the
+/// prior local regex lacked koina's JWT and `password|secret|api_key=value`
+/// coverage, so those shapes reached SSE clients unredacted while the log
+/// path (which already goes through koina) masked them.
 fn redact_secrets(msg: &str) -> String {
-    SECRET_PATTERN.replace_all(msg, "[REDACTED]").into_owned()
+    koina::redact::redact_sensitive(msg)
 }
 
 /// Emit turn result as individual SSE events with buffer recording.

@@ -47,9 +47,14 @@ pub enum ApiError {
         location: snafu::Location,
     },
 
-    /// Missing or invalid authentication credentials (401).
-    #[snafu(display("unauthorized"))]
+    /// Authentication credentials were missing or rejected (401).
+    ///
+    /// WHY(#6826): `reason` distinguishes "no credential presented" from
+    /// "credential presented but rejected" so a client can render "log in"
+    /// versus "re-authenticate" instead of guessing from a wire-identical 401.
+    #[snafu(display("unauthorized ({})", reason.as_str()))]
     Unauthorized {
+        reason: UnauthorizedReason,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -125,6 +130,52 @@ pub enum ApiError {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+}
+
+/// Why a request failed authentication.
+///
+/// WHY(#6826): missing credentials, a malformed `Authorization` header, and a
+/// rejected Bearer token are different operator states (never logged in vs
+/// misconfigured client vs expired/revoked session) that were previously
+/// wire-identical. The string form is carried in the error envelope's
+/// `details.reason` field; `code` stays `"unauthorized"` so existing clients
+/// matching on it keep working.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnauthorizedReason {
+    /// No `Authorization` header was present on the request.
+    MissingCredentials,
+    /// An `Authorization` header was present but not `Bearer`-prefixed.
+    MalformedAuthorizationHeader,
+    /// A Bearer token was presented but failed validation (malformed, bad
+    /// signature, wrong kind, or revoked).
+    InvalidToken,
+    /// A Bearer token was presented and well-formed but past its expiry.
+    TokenExpired,
+}
+
+impl UnauthorizedReason {
+    /// Stable wire string carried in `details.reason`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingCredentials => "missing_credentials",
+            Self::MalformedAuthorizationHeader => "malformed_authorization_header",
+            Self::InvalidToken => "invalid_token",
+            Self::TokenExpired => "token_expired",
+        }
+    }
+
+    /// RFC 6750 `WWW-Authenticate` challenge value for this failure.
+    ///
+    /// A rejected token carries `error="invalid_token"`; absent or malformed
+    /// credentials get the bare challenge (the request never presented a
+    /// well-formed credential to find fault with).
+    pub(crate) fn www_authenticate_value(self) -> &'static str {
+        match self {
+            Self::MissingCredentials | Self::MalformedAuthorizationHeader => "Bearer",
+            Self::InvalidToken | Self::TokenExpired => "Bearer error=\"invalid_token\"",
+        }
+    }
 }
 
 /// Best-effort failure-taxonomy classification from an HTTP status alone.
@@ -224,15 +275,22 @@ impl ApiError {
     }
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let (category, recoverability, next_action) = self.classify();
-        let (status, code, details) = match &self {
+impl ApiError {
+    /// Maps a variant to its `(status, code, details)` triple.
+    ///
+    /// WHY: split out of `into_response` — folding this match back in pushes
+    /// that function past clippy's line ceiling (`clippy::too_many_lines`).
+    fn status_code_details(&self) -> (StatusCode, &str, Option<serde_json::Value>) {
+        match self {
             Self::SessionNotFound { .. } => (StatusCode::NOT_FOUND, "session_not_found", None),
             Self::NousNotFound { .. } => (StatusCode::NOT_FOUND, "nous_not_found", None),
             Self::BadRequest { .. } => (StatusCode::BAD_REQUEST, "bad_request", None),
             Self::Internal { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", None),
-            Self::Unauthorized { .. } => (StatusCode::UNAUTHORIZED, "unauthorized", None),
+            Self::Unauthorized { reason, .. } => (
+                StatusCode::UNAUTHORIZED,
+                "unauthorized",
+                Some(serde_json::json!({ "reason": reason.as_str() })),
+            ),
             Self::NotFound { .. } => (StatusCode::NOT_FOUND, "not_found", None),
             Self::RateLimited {
                 retry_after_secs, ..
@@ -273,7 +331,14 @@ impl IntoResponse for ApiError {
                 code.as_str(),
                 retry_after_secs.map(|secs| serde_json::json!({ "retry_after_secs": secs })),
             ),
-        };
+        }
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let (category, recoverability, next_action) = self.classify();
+        let (status, code, details) = self.status_code_details();
 
         // WHY: retry_after_secs must be extracted before self is moved into client_message construction below.
         let retry_after_secs = if let Self::RateLimited {
@@ -286,6 +351,15 @@ impl IntoResponse for ApiError {
         } = &self
         {
             *retry_after_secs
+        } else {
+            None
+        };
+
+        // WHY(#6826): RFC 6750 challenge — 401 responses must say what scheme
+        // is expected, and a rejected token is flagged `invalid_token` so a
+        // client can tell "re-authenticate" apart from "no credential sent".
+        let www_authenticate = if let Self::Unauthorized { reason, .. } = &self {
+            Some(reason.www_authenticate_value())
         } else {
             None
         };
@@ -321,6 +395,13 @@ impl IntoResponse for ApiError {
                 axum::http::header::RETRY_AFTER,
                 axum::http::HeaderValue::from_str(&secs.to_string())
                     .unwrap_or_else(|_| axum::http::HeaderValue::from_static("60")),
+            );
+        }
+
+        if let Some(challenge) = www_authenticate {
+            response.headers_mut().insert(
+                axum::http::header::WWW_AUTHENTICATE,
+                axum::http::HeaderValue::from_static(challenge),
             );
         }
 
@@ -958,6 +1039,7 @@ mod tests {
             ),
             (
                 ApiError::Unauthorized {
+                    reason: UnauthorizedReason::MissingCredentials,
                     location: snafu::location!(),
                 },
                 "config",

@@ -3,7 +3,8 @@
 #![expect(
     clippy::string_slice,
     clippy::default_trait_access,
-    reason = "integration test: assertions parse ASCII citation markers and use explicit defaults"
+    clippy::expect_used,
+    reason = "integration test: assertions parse ASCII citation markers, use explicit defaults, and expect() on fixture constructors"
 )]
 
 use std::env;
@@ -193,7 +194,7 @@ fn chart_image(first: f64, second: f64) -> Image {
                     label: Some(poiesis_charts::CiteOrText::Text("JAN".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("rev-1".to_owned()),
+                        id: FactId::new("rev-1").expect("valid fact id"),
                         value: first,
                         unit: Unit::Number,
                     },
@@ -202,7 +203,7 @@ fn chart_image(first: f64, second: f64) -> Image {
                     label: Some(poiesis_charts::CiteOrText::Text("FEB".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("rev-2".to_owned()),
+                        id: FactId::new("rev-2").expect("valid fact id"),
                         value: second,
                         unit: Unit::Number,
                     },

@@ -462,6 +462,7 @@ mod tests {
             "gateway.rateLimit",
             "channels",
             "bindings",
+            "packOverlays",
             "providerBehavior.nonStreamingTimeoutSecs",
             "messaging.pollIntervalMs",
             "messaging.bufferCapacity",
@@ -506,6 +507,18 @@ mod tests {
                 requires_restart(path),
                 "startup-captured messaging authority {path} must require restart"
             );
+        }
+    }
+
+    #[test]
+    fn pack_overlay_authority_requires_restart() {
+        for path in [
+            "packOverlays.allowModelOverrides",
+            "packOverlays.allowAgencyOverrides",
+            "packOverlays.allowPromptAdditions",
+            "packOverlays.maxPromptAdditionBytes",
+        ] {
+            assert!(requires_restart(path), "{path} should require restart");
         }
     }
 

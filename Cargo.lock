@@ -4823,6 +4823,7 @@ dependencies = [
  "rand 0.10.2",
  "regex",
  "rustix",
+ "rustls",
  "serde",
  "serde_json",
  "snafu",
@@ -6501,6 +6502,7 @@ dependencies = [
  "include_dir",
  "indexmap",
  "jiff",
+ "quick-xml 0.41.0",
  "serde",
  "serde_json",
  "snafu",
@@ -6598,6 +6600,8 @@ name = "poiesis-ooxml-parse"
 version = "0.43.0"
 dependencies = [
  "quick-xml 0.41.0",
+ "snafu",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -6644,6 +6648,7 @@ name = "poiesis-slides"
 version = "0.43.0"
 dependencies = [
  "poiesis-core",
+ "poiesis-ooxml-parse",
  "quick-xml 0.41.0",
  "serde",
  "serde_json",
@@ -6668,6 +6673,7 @@ version = "0.43.0"
 dependencies = [
  "indexmap",
  "jiff",
+ "poiesis-core",
  "regex",
  "serde",
  "serde_json",

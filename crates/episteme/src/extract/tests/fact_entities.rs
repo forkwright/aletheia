@@ -60,7 +60,14 @@ fn extraction_links_fact_to_subject_and_object_entities() {
         "fact must link to both its subject and object entities"
     );
 
-    let fact_id = crate::id::FactId::new("alice-prefers-0").expect("valid fact id");
+    let fact_id = super::super::engine::observation_fact_id(
+        "syn",
+        "session:test",
+        "Alice",
+        "prefers",
+        "Rust",
+    )
+    .expect("valid fact id");
     let linked = store
         .list_entities_for_facts(&[fact_id])
         .expect("list linked entities");
@@ -105,7 +112,14 @@ fn extraction_skips_unknown_entity_references() {
         "only the known subject entity is linked; the unknown object is skipped"
     );
 
-    let fact_id = crate::id::FactId::new("bob-deployed-0").expect("valid fact id");
+    let fact_id = super::super::engine::observation_fact_id(
+        "syn",
+        "session:test",
+        "Bob",
+        "deployed",
+        "Postgres",
+    )
+    .expect("valid fact id");
     let linked = store
         .list_entities_for_facts(&[fact_id])
         .expect("list linked entities");

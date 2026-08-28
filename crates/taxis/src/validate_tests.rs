@@ -2449,3 +2449,46 @@ fn training_rejects_empty_path() {
         "error should cite training.path: {err:?}"
     );
 }
+
+#[test]
+fn pack_overlays_defaults_are_restrictive() {
+    // WHY(#5220): high-impact pack overlay powers default to off.
+    let config = crate::config::AletheiaConfig::default();
+    assert!(!config.pack_overlays.allow_model_overrides);
+    assert!(!config.pack_overlays.allow_agency_overrides);
+    assert!(!config.pack_overlays.allow_prompt_additions);
+    assert_eq!(config.pack_overlays.max_prompt_addition_bytes, 4096);
+}
+
+#[test]
+fn pack_overlays_parses_opt_ins() {
+    let json = r#"{"packOverlays": {"allowModelOverrides": true, "allowAgencyOverrides": true, "allowPromptAdditions": true, "maxPromptAdditionBytes": 2048}}"#;
+    let config: crate::config::AletheiaConfig = serde_json::from_str(json).unwrap();
+    assert!(config.pack_overlays.allow_model_overrides);
+    assert!(config.pack_overlays.allow_agency_overrides);
+    assert!(config.pack_overlays.allow_prompt_additions);
+    assert_eq!(config.pack_overlays.max_prompt_addition_bytes, 2048);
+}
+
+#[test]
+fn pack_overlays_rejects_unknown_field() {
+    let json = r#"{"packOverlays": {"allowModelOverride": true}}"#;
+    let result: Result<crate::config::AletheiaConfig, _> = serde_json::from_str(json);
+    assert!(result.is_err(), "unknown packOverlays field should fail");
+}
+
+#[test]
+fn rejects_zero_prompt_cap_when_prompt_additions_allowed() {
+    let section = json!({ "allowPromptAdditions": true, "maxPromptAdditionBytes": 0 });
+    let result = validate_section("packOverlays", &section);
+    assert!(
+        result.is_err(),
+        "a zero cap with prompt additions allowed must be rejected"
+    );
+}
+
+#[test]
+fn accepts_pack_overlays_empty_section() {
+    let section = json!({});
+    assert!(validate_section("packOverlays", &section).is_ok());
+}

@@ -5,10 +5,39 @@
 //! workbook metadata from Office Open XML parts. They intentionally avoid
 //! pulling in a full XML parser; callers that need structural validation
 //! should use a dedicated OOXML library.
+//!
+//! [`read_pptx_slides`] and [`read_workbook_parts`] additionally own the ZIP
+//! archive plumbing (part enumeration, sheet/rels resolution) that both
+//! `poiesis-inspect` and `poiesis-diff` need before they can apply their own
+//! per-part transform.
 
 use std::collections::HashMap;
+use std::io::{Cursor, Read};
 
 use quick_xml::escape::unescape;
+use snafu::Snafu;
+use zip::ZipArchive;
+
+/// Error type for shared OOXML archive-reading operations.
+#[derive(Debug, Snafu)]
+pub enum ArchiveError {
+    /// Failed to parse or read from the ZIP archive.
+    #[snafu(display("failed to parse ZIP archive: {source}"))]
+    Zip {
+        /// Source error from the zip crate.
+        source: zip::result::ZipError,
+    },
+
+    /// IO error while reading an archive part.
+    #[snafu(display("IO error: {source}"))]
+    Io {
+        /// Source IO error.
+        source: std::io::Error,
+    },
+}
+
+/// Result alias for shared OOXML archive-reading operations.
+pub type ArchiveResult<T> = std::result::Result<T, ArchiveError>;
 
 fn push_xml_text(output: &mut String, raw: &str) {
     match unescape(raw) {
@@ -105,32 +134,6 @@ pub fn parse_sheet_entries(workbook_xml: &str) -> Vec<(String, String)> {
     entries
 }
 
-/// Parse sheet names from `xl/workbook.xml` in workbook order.
-///
-/// Returns the `name` attribute of each `<sheet>` element. The caller is
-/// responsible for correlating these names with worksheet ZIP entry paths.
-pub fn parse_sheet_names(workbook_xml: &str) -> Vec<String> {
-    let mut sheet_names = Vec::new();
-    // WHY: rust_xlsxwriter emits compact XML — multiple sheet tags may share a line.
-    for sheet_xml in workbook_xml.split("<sheet").skip(1) {
-        let Some(start) = sheet_xml.find("name=\"") else {
-            continue;
-        };
-        let after_name = start + 6;
-        let Some(rest) = sheet_xml.get(after_name..) else {
-            continue;
-        };
-        let Some(end) = rest.find('"') else {
-            continue;
-        };
-        let Some(sheet_name) = rest.get(..end) else {
-            continue;
-        };
-        sheet_names.push(sheet_name.to_string());
-    }
-    sheet_names
-}
-
 /// Parse `xl/_rels/workbook.xml.rels` into an `rId -> target` map.
 ///
 /// Targets are relative to the `xl/` directory. Only `Relationship` elements
@@ -169,6 +172,151 @@ pub fn parse_workbook_rels(rels_xml: &str) -> HashMap<String, String> {
         map.insert(id.to_string(), target.to_string());
     }
     map
+}
+
+/// Parse the `N` out of a `ppt/slides/slideN.xml` part name.
+///
+/// Returns `None` for any entry that is not a numbered slide part, which is
+/// what filters `slideLayout`/`slideMaster` and `_rels` entries out of the
+/// enumeration.
+fn slide_number(name: &str) -> Option<u32> {
+    let stem = name
+        .strip_prefix("ppt/slides/slide")?
+        .strip_suffix(".xml")?;
+    stem.parse().ok()
+}
+
+/// Read every `ppt/slides/slideN.xml` part from a PPTX archive, gap-safe and
+/// ordered by slide number.
+///
+/// WHY: slide part names are not guaranteed contiguous -- deleting a slide in
+/// `PowerPoint` leaves the remaining part names unrenumbered, so a deck can hold
+/// slide1, slide2 and slide4. Probing slide{n} upward and stopping at the
+/// first missing index silently drops every slide past the gap. Enumerating
+/// the archive and sorting by slide number reads the whole deck regardless of
+/// where the gaps fall.
+///
+/// # Errors
+///
+/// Returns an error if `bytes` is not a valid ZIP archive or a slide part
+/// cannot be read.
+pub fn read_pptx_slides(bytes: &[u8]) -> ArchiveResult<Vec<String>> {
+    let cursor = Cursor::new(bytes);
+    let mut archive = ZipArchive::new(cursor).map_err(|source| ArchiveError::Zip { source })?;
+
+    let mut numbered: Vec<(u32, String)> = (0..archive.len())
+        .map(|i| {
+            archive
+                .by_index(i)
+                .map(|f| f.name().to_owned())
+                .map_err(|source| ArchiveError::Zip { source })
+        })
+        .collect::<ArchiveResult<Vec<String>>>()?
+        .into_iter()
+        .filter_map(|name| slide_number(&name).map(|n| (n, name)))
+        .collect();
+    numbered.sort_by_key(|(n, _)| *n);
+
+    let mut slides = Vec::with_capacity(numbered.len());
+    for (_, name) in &numbered {
+        let mut file = archive
+            .by_name(name)
+            .map_err(|source| ArchiveError::Zip { source })?;
+        let mut content = String::new();
+        file.read_to_string(&mut content)
+            .map_err(|source| ArchiveError::Io { source })?;
+        slides.push(content);
+    }
+
+    Ok(slides)
+}
+
+/// Shared parts of an XLSX workbook read from its archive.
+///
+/// Carries the raw material every worksheet reader needs; each caller applies
+/// its own transform (text concatenation, cell-map extraction, ...) to the
+/// worksheet XML in `sheets`.
+#[non_exhaustive]
+#[derive(Debug, Clone)]
+pub struct WorkbookParts {
+    /// Shared string table from `xl/sharedStrings.xml`, empty when the part
+    /// is absent.
+    pub shared_strings: Vec<String>,
+    /// `(sheet_name, worksheet_xml)` pairs in workbook order.
+    ///
+    /// `worksheet_xml` is `None` when the worksheet part resolved from
+    /// `xl/workbook.xml` and its rels is missing from the archive; callers
+    /// decide how to represent an absent sheet.
+    pub sheets: Vec<(String, Option<String>)>,
+}
+
+/// Read the shared parts of an XLSX workbook: the shared-string table and
+/// each sheet's worksheet XML, in workbook order.
+///
+/// Resolves each sheet's worksheet path via `xl/_rels/workbook.xml.rels`,
+/// falling back to the conventional `xl/worksheets/sheet{n}.xml` name when a
+/// sheet has no matching relationship.
+///
+/// # Errors
+///
+/// Returns an error if `bytes` is not a valid ZIP archive, or if the required
+/// `xl/workbook.xml` part cannot be read.
+pub fn read_workbook_parts(bytes: &[u8]) -> ArchiveResult<WorkbookParts> {
+    let cursor = Cursor::new(bytes);
+    let mut archive = ZipArchive::new(cursor).map_err(|source| ArchiveError::Zip { source })?;
+
+    let shared_strings = if let Ok(mut file) = archive.by_name("xl/sharedStrings.xml") {
+        let mut content = String::new();
+        file.read_to_string(&mut content)
+            .map_err(|source| ArchiveError::Io { source })?;
+        extract_shared_strings(&content)
+    } else {
+        Vec::new()
+    };
+
+    let workbook_xml = {
+        let mut file = archive
+            .by_name("xl/workbook.xml")
+            .map_err(|source| ArchiveError::Zip { source })?;
+        let mut content = String::new();
+        file.read_to_string(&mut content)
+            .map_err(|source| ArchiveError::Io { source })?;
+        content
+    };
+
+    let rels_xml = if let Ok(mut file) = archive.by_name("xl/_rels/workbook.xml.rels") {
+        let mut content = String::new();
+        file.read_to_string(&mut content)
+            .map_err(|source| ArchiveError::Io { source })?;
+        content
+    } else {
+        String::new()
+    };
+
+    let rels = parse_workbook_rels(&rels_xml);
+    let sheet_entries = parse_sheet_entries(&workbook_xml);
+
+    let mut sheets = Vec::with_capacity(sheet_entries.len());
+    for (idx, (sheet_name, rid)) in sheet_entries.into_iter().enumerate() {
+        let worksheet_path = rels.get(&rid).map_or_else(
+            || format!("xl/worksheets/sheet{}.xml", idx + 1),
+            |target| format!("xl/{target}"),
+        );
+        let content = if let Ok(mut file) = archive.by_name(&worksheet_path) {
+            let mut content = String::new();
+            file.read_to_string(&mut content)
+                .map_err(|source| ArchiveError::Io { source })?;
+            Some(content)
+        } else {
+            None
+        };
+        sheets.push((sheet_name, content));
+    }
+
+    Ok(WorkbookParts {
+        shared_strings,
+        sheets,
+    })
 }
 
 #[cfg(test)]
@@ -237,18 +385,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_sheet_names_returns_names_in_order() {
-        let xml = r#"<workbook><sheets><sheet name="Alpha" r:id="rId1"/><sheet name="Beta" r:id="rId2"/></sheets></workbook>"#;
-        let result = parse_sheet_names(xml);
-        assert_eq!(result, vec!["Alpha", "Beta"]);
-    }
-
-    #[test]
-    fn parse_sheet_names_no_sheets_returns_empty() {
-        assert!(parse_sheet_names("<workbook><sheets/></workbook>").is_empty());
-    }
-
-    #[test]
     fn parse_workbook_rels_builds_rid_to_target_map() {
         let xml = r#"<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
             <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
@@ -275,6 +411,179 @@ mod tests {
         assert_eq!(
             result.get("rId1"),
             Some(&"worksheets/sheet1.xml".to_string())
+        );
+    }
+
+    /// Build a PPTX whose slide parts carry exactly the given numbers,
+    /// written to the archive in the order supplied.
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn pptx_with_numbered_slides(slides: &[(u32, &str)]) -> Vec<u8> {
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        let mut cursor = Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options = SimpleFileOptions::default()
+            .last_modified_time(zip::DateTime::DEFAULT)
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        for (number, text) in slides {
+            let slide = format!(
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:sp><p:txBody><a:p><a:r><a:t>{text}</a:t></a:r></a:p></p:txBody></p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>"#
+            );
+            let name = format!("ppt/slides/slide{number}.xml");
+            zip.start_file(&name, options).expect("start slide part");
+            zip.write_all(slide.as_bytes()).expect("write slide part");
+        }
+
+        zip.finish().expect("finish zip");
+        cursor.into_inner()
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn read_pptx_slides_reads_past_a_numbering_gap() {
+        // WHY: deleting a slide in PowerPoint leaves the surviving part names
+        // unrenumbered, so slide3 can be absent while slide4 exists. Probing
+        // upward from slide1 and stopping at the first missing index returned
+        // only the first two slides and silently dropped the rest.
+        let bytes = pptx_with_numbered_slides(&[(1, "first"), (2, "second"), (4, "fourth")]);
+        let slides = read_pptx_slides(&bytes).expect("read must succeed");
+
+        let texts: Vec<String> = slides
+            .iter()
+            .map(|xml| extract_text_from_slide(xml))
+            .collect();
+        assert_eq!(
+            texts,
+            vec!["first".to_owned(), "second".to_owned(), "fourth".to_owned()],
+            "every slide part must be read, including those past a numbering gap"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn read_pptx_slides_orders_by_number_not_archive_order() {
+        // WHY: ZIP entry order is arbitrary, so slide order must come from the
+        // part number rather than the order the parts happen to be stored in.
+        let bytes = pptx_with_numbered_slides(&[(3, "third"), (1, "first"), (2, "second")]);
+        let slides = read_pptx_slides(&bytes).expect("read must succeed");
+
+        let texts: Vec<String> = slides
+            .iter()
+            .map(|xml| extract_text_from_slide(xml))
+            .collect();
+        assert_eq!(
+            texts,
+            vec!["first".to_owned(), "second".to_owned(), "third".to_owned()],
+            "slides must be ordered by slide number"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn read_pptx_slides_ignores_non_slide_parts() {
+        // WHY: sibling prefixes under `ppt/` hold template parts whose names
+        // also begin with `slide`, and `_rels` entries repeat the slide part
+        // names. Only the exact `ppt/slides/slideN.xml` shape is a slide.
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        let mut cursor = Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options = SimpleFileOptions::default()
+            .last_modified_time(zip::DateTime::DEFAULT)
+            .compression_method(zip::CompressionMethod::Deflated);
+        for name in [
+            "ppt/slideLayouts/slideLayout1.xml",
+            "ppt/slideMasters/slideMaster1.xml",
+            "ppt/slides/_rels/slide1.xml.rels",
+        ] {
+            zip.start_file(name, options).expect("start part");
+            zip.write_all(b"<x/>").expect("write part");
+        }
+        zip.finish().expect("finish zip");
+        let bytes = cursor.into_inner();
+
+        let slides = read_pptx_slides(&bytes).expect("read must succeed");
+        assert!(
+            slides.is_empty(),
+            "non-slide parts must not be counted, got: {slides:?}"
+        );
+    }
+
+    /// Build an XLSX whose workbook declares sheets `Alpha` (backed by
+    /// `xl/worksheets/sheet1.xml`) and `Ghost` (declared in `xl/workbook.xml`
+    /// but never written to the archive, with no rels part to resolve it).
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn xlsx_with_missing_worksheet() -> Vec<u8> {
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        const WORKBOOK: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Alpha" sheetId="1" r:id="rId1"/>
+    <sheet name="Ghost" sheetId="2" r:id="rId2"/>
+  </sheets>
+</workbook>"#;
+
+        const SHEET1: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1"><v>1</v></c></row>
+  </sheetData>
+</worksheet>"#;
+
+        let mut cursor = Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options = SimpleFileOptions::default()
+            .last_modified_time(zip::DateTime::DEFAULT)
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        zip.start_file("xl/workbook.xml", options)
+            .expect("start workbook.xml");
+        zip.write_all(WORKBOOK.as_bytes())
+            .expect("write workbook.xml");
+
+        zip.start_file("xl/worksheets/sheet1.xml", options)
+            .expect("start sheet1.xml");
+        zip.write_all(SHEET1.as_bytes()).expect("write sheet1.xml");
+
+        zip.finish().expect("finish zip");
+        cursor.into_inner()
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn read_workbook_parts_marks_missing_worksheet_as_none() {
+        let bytes = xlsx_with_missing_worksheet();
+        let parts = read_workbook_parts(&bytes).expect("read must succeed");
+
+        assert_eq!(
+            parts.sheets.len(),
+            2,
+            "every declared sheet must appear, even when its worksheet part is missing"
+        );
+        let (alpha_name, alpha_content) = parts.sheets.first().expect("Alpha entry present");
+        assert_eq!(alpha_name, "Alpha");
+        assert!(alpha_content.is_some(), "Alpha's worksheet part is present");
+
+        let (ghost_name, ghost_content) = parts.sheets.get(1).expect("Ghost entry present");
+        assert_eq!(ghost_name, "Ghost");
+        assert!(
+            ghost_content.is_none(),
+            "Ghost has no resolvable worksheet part, and must read as absent rather than erroring"
         );
     }
 }

@@ -18,8 +18,24 @@ use organon::types::{
 use tracing::info;
 
 use crate::error;
+use crate::health::PackInstanceId;
 use crate::loader::LoadedPack;
 use crate::manifest::{PackInputSchema, PackToolDef};
+
+/// A pack tool that failed validation or registration, with the pack and
+/// tool it belongs to so the failure can be folded into
+/// [`crate::health::PackReport`] (#5208).
+#[derive(Debug)]
+pub struct PackToolFailure {
+    /// Stable identity of the configured pack occurrence.
+    pub pack_instance_id: PackInstanceId,
+    /// Name of the pack declaring the tool.
+    pub pack_name: String,
+    /// Name of the tool that failed.
+    pub tool_name: String,
+    /// The underlying validation or registration error.
+    pub error: error::Error,
+}
 
 /// Executes a pack-declared shell script with JSON input on stdin.
 struct ShellToolExecutor {
@@ -29,6 +45,37 @@ struct ShellToolExecutor {
     timeout_ms: u64,
     /// Identity of `command_path` captured at registration time (#5213).
     expected_identity: FileIdentity,
+    /// Whether the tool declared `egress = "none"` (#5214).
+    deny_egress: bool,
+}
+
+/// Map a subprocess failure to an error result carrying machine-readable
+/// diagnostics.
+///
+/// WHY(#5212): a sandbox/setup refusal is a different recovery path from a
+/// command that ran and exited non-zero, so setup failures surface as
+/// `sandbox_violations` rather than only a human-readable message.
+fn subprocess_failure(error: &SubprocessError) -> ToolResult {
+    let (message, sandbox_violations) = match error {
+        SubprocessError::SandboxSetup(_) => (
+            "tool sandbox setup failed",
+            vec!["sandbox_setup_failed".to_owned()],
+        ),
+        SubprocessError::Spawn(_) => ("tool process could not start", Vec::new()),
+        SubprocessError::Stdin(_) => ("tool input delivery failed", Vec::new()),
+        SubprocessError::Wait(_) => ("tool process wait failed", Vec::new()),
+        SubprocessError::Timeout(_) => ("tool command timed out", Vec::new()),
+    };
+    // Full OS/sandbox errors belong in the operator log. They can contain paths or other
+    // process detail, so only stable categories cross into model-visible ToolResult fields.
+    tracing::warn!(error = %error, "pack tool subprocess failed");
+    let diagnostics = ToolDiagnostics {
+        exit_code: None,
+        stderr: None,
+        sandbox_violations,
+        duration_ms: 0,
+    };
+    ToolResult::error(message).with_diagnostics(diagnostics)
 }
 
 impl ToolExecutor for ShellToolExecutor {
@@ -60,7 +107,7 @@ impl ToolExecutor for ShellToolExecutor {
                 run_pack_command_with_retry(self, ctx, json_input.into_bytes(), timeout).await;
             let output_result = match output_result {
                 Ok(output) => output,
-                Err(e) => return Ok(ToolResult::error(e.to_string())),
+                Err(e) => return Ok(subprocess_failure(&e)),
             };
 
             let code = output_result.exit_code;
@@ -85,6 +132,10 @@ impl ToolExecutor for ShellToolExecutor {
 
             let diagnostics = ToolDiagnostics {
                 exit_code: Some(code),
+                // SECURITY(#5212): ToolDiagnostics renders into the model-visible turn.
+                // Stderr is arbitrary subprocess output and no finite pattern redactor can
+                // prove it secret-free, so keep it out of this surface. The warning above
+                // gives operators the exit code and byte count without copying the content.
                 stderr: None,
                 sandbox_violations: Vec::new(),
                 duration_ms: u64::try_from(output_result.duration.as_millis()).unwrap_or(u64::MAX),
@@ -105,21 +156,67 @@ async fn run_pack_command_with_retry(
     stdin: Vec<u8>,
     timeout: Duration,
 ) -> Result<organon::subprocess::SubprocessOutput, SubprocessError> {
+    let runner = executor.runner.clone();
+    run_pack_command_with_retry_using(
+        executor,
+        ctx,
+        stdin,
+        timeout,
+        move |request, attempt_ctx| {
+            let runner = runner.clone();
+            let command_path = executor.command_path.clone();
+            let expected_identity = executor.expected_identity;
+            async move {
+                tokio::task::spawn_blocking(move || {
+                    // Keep the production recheck in the blocking task so it
+                    // runs after scheduler handoff, directly before Organon
+                    // prepares and spawns this attempt.
+                    expected_identity
+                        .verify(&command_path)
+                        .map_err(|reason| command_identity_error(&command_path, &reason))?;
+                    runner.run(request, &attempt_ctx)
+                })
+                .await
+                .map_err(|e| SubprocessError::Wait(std::io::Error::other(e.to_string())))?
+            }
+        },
+    )
+    .await
+}
+
+/// Run a pack command with an injected single-attempt operation.
+///
+/// The injection keeps retry policy deterministic in tests. Production passes
+/// the real [`SubprocessRunner`] operation above.
+async fn run_pack_command_with_retry_using<RunAttempt, AttemptFuture>(
+    executor: &ShellToolExecutor,
+    ctx: &ToolContext,
+    stdin: Vec<u8>,
+    timeout: Duration,
+    mut run_attempt: RunAttempt,
+) -> Result<organon::subprocess::SubprocessOutput, SubprocessError>
+where
+    RunAttempt: FnMut(SubprocessRequest, ToolContext) -> AttemptFuture,
+    AttemptFuture: Future<Output = Result<organon::subprocess::SubprocessOutput, SubprocessError>>,
+{
     let mut last_err = None;
     for attempt in 0..4 {
-        let runner = executor.runner.clone();
-        let ctx = ctx.clone();
-        let request =
-            SubprocessRequest::new(executor.command_path.clone(), executor.pack_root.clone())
-                .stdin_bytes(stdin.clone())
-                .timeout(timeout)
-                .max_output_bytes(MAX_OUTPUT_BYTES)
-                .allow_read_path(executor.pack_root.clone())
-                .allow_exec_path(executor.command_path.clone());
+        let request = build_request(executor, stdin.clone(), timeout);
 
-        let result = tokio::task::spawn_blocking(move || runner.run(request, &ctx))
-            .await
-            .map_err(|e| SubprocessError::Wait(std::io::Error::other(e.to_string())))?;
+        // SECURITY: ETXTBSY is retryable, but the wait between attempts is
+        // also a file-swap window. Revalidate immediately before *every*
+        // spawn attempt, not only once before entering this loop.
+        //
+        // Residual boundary: Organon still executes `command_path` by path.
+        // A mutation after this stat and before the kernel resolves exec is a
+        // narrower remaining race; eliminating it requires descriptor-based
+        // execution (fexecve/execveat), not another path check.
+        executor
+            .expected_identity
+            .verify(&executor.command_path)
+            .map_err(|reason| command_identity_error(&executor.command_path, &reason))?;
+
+        let result = run_attempt(request, ctx.clone()).await;
 
         match result {
             Ok(output) => return Ok(output),
@@ -136,6 +233,36 @@ async fn run_pack_command_with_retry(
     }))
 }
 
+fn command_identity_error(command_path: &Path, reason: &str) -> SubprocessError {
+    SubprocessError::Spawn(std::io::Error::new(
+        std::io::ErrorKind::PermissionDenied,
+        format!(
+            "tool command {} changed since registration: {reason}",
+            command_path.display()
+        ),
+    ))
+}
+
+/// Build the subprocess request for one invocation, applying the tool's
+/// egress narrowing on top of the pack-root read/exec grants (#5214).
+fn build_request(
+    executor: &ShellToolExecutor,
+    stdin: Vec<u8>,
+    timeout: Duration,
+) -> SubprocessRequest {
+    let mut request =
+        SubprocessRequest::new(executor.command_path.clone(), executor.pack_root.clone())
+            .stdin_bytes(stdin)
+            .timeout(timeout)
+            .max_output_bytes(MAX_OUTPUT_BYTES)
+            .allow_read_path(executor.pack_root.clone())
+            .allow_exec_path(executor.command_path.clone());
+    if executor.deny_egress {
+        request = request.deny_egress();
+    }
+    request
+}
+
 fn is_text_file_busy(error: &SubprocessError) -> bool {
     matches!(error, SubprocessError::Spawn(e) if e.raw_os_error() == Some(26))
 }
@@ -143,8 +270,12 @@ fn is_text_file_busy(error: &SubprocessError) -> bool {
 /// Register all tools from loaded packs into the tool registry.
 ///
 /// Validates each tool's command path and schema, then registers it.
-/// Invalid tools are skipped with warnings; errors are collected and returned.
-pub fn register_pack_tools(packs: &[LoadedPack], registry: &mut ToolRegistry) -> Vec<error::Error> {
+/// Invalid tools are skipped with warnings; per-tool failures are returned
+/// with their pack association for health reporting.
+pub fn register_pack_tools(
+    packs: &[LoadedPack],
+    registry: &mut ToolRegistry,
+) -> Vec<PackToolFailure> {
     register_pack_tools_with_sandbox(packs, registry, organon::sandbox::SandboxConfig::default())
 }
 
@@ -158,7 +289,7 @@ pub fn register_pack_tools_with_sandbox(
     packs: &[LoadedPack],
     registry: &mut ToolRegistry,
     sandbox: organon::sandbox::SandboxConfig,
-) -> Vec<error::Error> {
+) -> Vec<PackToolFailure> {
     register_pack_tools_impl(packs, registry, sandbox, None)
 }
 
@@ -173,7 +304,7 @@ pub fn register_pack_tools_with_sandbox_and_limits(
     registry: &mut ToolRegistry,
     sandbox: organon::sandbox::SandboxConfig,
     subprocess_timeout_secs: u64,
-) -> Vec<error::Error> {
+) -> Vec<PackToolFailure> {
     let max_timeout_ms = subprocess_timeout_secs.saturating_mul(1_000);
     register_pack_tools_impl(packs, registry, sandbox, Some(max_timeout_ms))
 }
@@ -183,51 +314,82 @@ fn register_pack_tools_impl(
     registry: &mut ToolRegistry,
     sandbox: organon::sandbox::SandboxConfig,
     max_timeout_ms: Option<u64>,
-) -> Vec<error::Error> {
+) -> Vec<PackToolFailure> {
     let mut errors = Vec::new();
+    let baseline_failure =
+        enforcing_baseline_failure(&sandbox, organon::sandbox::diagnostic_guarantees(&sandbox));
+    let mut deny_egress_sandbox = sandbox.clone();
+    deny_egress_sandbox.egress = organon::sandbox::EgressPolicy::Deny;
+    deny_egress_sandbox.egress_allowlist.clear();
+    let egress_none_enforceable = egress_none_is_enforceable(
+        &deny_egress_sandbox,
+        organon::sandbox::diagnostic_guarantees(&deny_egress_sandbox),
+    );
     let runner = SubprocessRunner::new(sandbox);
 
     for pack in packs {
+        let manifest = pack.manifest();
         // WHY: snapshot error count before this pack to compute per-pack failures
         // without contaminating counts from prior packs
         let errors_before = errors.len();
 
-        for tool_def in &pack.manifest.tools {
-            match prepare_tool(
-                tool_def,
-                &pack.root,
-                &pack.manifest.name,
-                runner.clone(),
-                max_timeout_ms,
-            ) {
+        for tool_def in &manifest.tools {
+            let prepared = if let Some(reason) = baseline_failure.as_deref() {
+                Err(tool_registration_error(
+                    tool_def,
+                    pack.name(),
+                    reason.to_owned(),
+                ))
+            } else if tool_def.egress.as_deref() == Some("none") && !egress_none_enforceable {
+                Err(tool_registration_error(
+                    tool_def,
+                    pack.name(),
+                    "egress = \"none\" requires an enabled enforcing sandbox with an active \
+                     egress-denial guarantee"
+                        .to_owned(),
+                ))
+            } else {
+                prepare_tool(
+                    tool_def,
+                    pack.root(),
+                    pack.name(),
+                    runner.clone(),
+                    max_timeout_ms,
+                )
+            };
+            let failure = match prepared {
                 Ok((def, executor)) => match registry.register(def, executor) {
                     Ok(()) => {
                         info!(
                             tool = %tool_def.name,
-                            pack = %pack.manifest.name,
+                            pack = %pack.name(),
                             "pack tool registered"
                         );
+                        continue;
                     }
-                    Err(e) => {
-                        let err = error::Error::ToolRegistration {
-                            tool_name: tool_def.name.clone(),
-                            pack_name: pack.manifest.name.clone(),
-                            reason: e.to_string(),
-                            location: snafu::location!(),
-                        };
-                        errors.push(err);
-                    }
+                    Err(e) => error::Error::ToolRegistration {
+                        tool_name: tool_def.name.clone(),
+                        pack_name: pack.name().to_owned(),
+                        reason: e.to_string(),
+                        location: snafu::location!(),
+                    },
                 },
-                Err(e) => errors.push(e),
-            }
+                Err(e) => e,
+            };
+            errors.push(PackToolFailure {
+                pack_instance_id: pack.instance_id(),
+                pack_name: pack.name().to_owned(),
+                tool_name: tool_def.name.clone(),
+                error: failure,
+            });
         }
 
-        if !pack.manifest.tools.is_empty() {
+        if !manifest.tools.is_empty() {
             let pack_errors = errors.len() - errors_before;
-            let registered = pack.manifest.tools.len() - pack_errors;
+            let registered = manifest.tools.len() - pack_errors;
             if registered > 0 {
                 info!(
-                    pack = %pack.manifest.name,
+                    pack = %pack.name(),
                     tools = registered,
                     "pack tools registered"
                 );
@@ -236,6 +398,52 @@ fn register_pack_tools_impl(
     }
 
     errors
+}
+
+/// Refuse all pack tools when an enforcing sandbox cannot provide its
+/// baseline filesystem, syscall, and configured egress guarantees.
+/// Registration-time refusal is honest; marking a tool active and waiting
+/// for first execution is not.
+fn enforcing_baseline_failure(
+    sandbox: &organon::sandbox::SandboxConfig,
+    guarantees: organon::sandbox::SandboxGuarantees,
+) -> Option<String> {
+    if !sandbox.enabled || sandbox.enforcement != organon::sandbox::SandboxEnforcement::Enforcing {
+        return None;
+    }
+
+    let mut unavailable = Vec::new();
+    if guarantees.landlock != organon::sandbox::GuaranteeStatus::Active {
+        unavailable.push(format!("filesystem={}", guarantees.landlock));
+    }
+    if guarantees.seccomp != organon::sandbox::GuaranteeStatus::Active {
+        unavailable.push(format!("syscall={}", guarantees.seccomp));
+    }
+    if !matches!(
+        guarantees.egress,
+        organon::sandbox::GuaranteeStatus::Active | organon::sandbox::GuaranteeStatus::Unrestricted
+    ) {
+        unavailable.push(format!("egress={}", guarantees.egress));
+    }
+    if unavailable.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "enforcing sandbox baseline is unavailable ({})",
+            unavailable.join(", ")
+        ))
+    }
+}
+
+/// Whether an explicit per-tool egress denial can be promised at
+/// registration time.
+fn egress_none_is_enforceable(
+    sandbox: &organon::sandbox::SandboxConfig,
+    guarantees: organon::sandbox::SandboxGuarantees,
+) -> bool {
+    sandbox.enabled
+        && sandbox.enforcement == organon::sandbox::SandboxEnforcement::Enforcing
+        && guarantees.egress == organon::sandbox::GuaranteeStatus::Active
 }
 
 /// Validate and convert a single pack tool definition into organon types.
@@ -261,10 +469,17 @@ fn prepare_tool(
         });
     }
 
+    // WHY: the platform check runs first among the contract checks so an
+    // unsupported host reports the real reason (platform mismatch) instead
+    // of a secondary validation error for a tool that would never run here.
+    validate_platform_support(tool_def, pack_name)?;
+
     let (command_path, expected_identity) = validate_command_path(pack_root, &tool_def.command)?;
     let groups = parse_groups(tool_def, pack_name)?;
     let tags = parse_tags(tool_def, pack_name)?;
     let reversibility = parse_reversibility(tool_def, pack_name)?;
+    reject_unbound_authority(tool_def, pack_name)?;
+    let deny_egress = parse_egress(tool_def, pack_name)?;
 
     let input_schema = match &tool_def.input_schema {
         Some(schema) => convert_input_schema(schema, &tool_def.name)?,
@@ -319,9 +534,92 @@ fn prepare_tool(
         runner,
         timeout_ms: effective_timeout_ms,
         expected_identity,
+        deny_egress,
     });
 
     Ok((def, executor))
+}
+
+/// Reject manifest-controlled daemon/process authority (#5214).
+///
+/// The fields remain reserved for a future operator-owned per-tool grant,
+/// but a pack manifest alone is not an authorization mechanism.
+fn reject_unbound_authority(tool_def: &PackToolDef, pack_name: &str) -> Result<(), error::Error> {
+    if !tool_def.env.is_empty() {
+        return Err(tool_registration_error(
+            tool_def,
+            pack_name,
+            "pack env grants require an operator-owned per-tool policy".to_owned(),
+        ));
+    }
+    if !tool_def.write_paths.is_empty() {
+        return Err(tool_registration_error(
+            tool_def,
+            pack_name,
+            "pack write grants require intersection with operator policy".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// Parse the tool's declared egress intent (#5214). Only `"none"` tightens
+/// the sandbox policy; `"inherit"`/absent leaves the deployment policy
+/// unchanged. A pack can never widen egress beyond the deployment policy.
+fn parse_egress(tool_def: &PackToolDef, pack_name: &str) -> Result<bool, error::Error> {
+    match tool_def.egress.as_deref() {
+        None | Some("inherit") => Ok(false),
+        Some("none") => Ok(true),
+        Some(other) => Err(tool_registration_error(
+            tool_def,
+            pack_name,
+            format!("unknown egress intent: {other} (expected \"none\" or \"inherit\")"),
+        )),
+    }
+}
+
+/// Refuse registration when the tool's declared `platforms` do not cover
+/// this host (#5215).
+///
+/// WHY: absent `platforms` defaults to `["unix"]` — a pack tool is a
+/// shebang-executed script, which needs a Unix exec environment. Skipping
+/// (with a registration failure recorded in pack health) beats registering
+/// a tool that can only fail at exec time on an unsupported host.
+fn validate_platform_support(tool_def: &PackToolDef, pack_name: &str) -> Result<(), error::Error> {
+    for platform in &tool_def.platforms {
+        if !matches!(platform.as_str(), "linux" | "macos" | "unix") {
+            return Err(tool_registration_error(
+                tool_def,
+                pack_name,
+                format!(
+                    "unknown platform '{platform}' (expected \"linux\", \"macos\", or \"unix\")"
+                ),
+            ));
+        }
+    }
+
+    let declared: Vec<&str> = if tool_def.platforms.is_empty() {
+        vec!["unix"]
+    } else {
+        tool_def.platforms.iter().map(String::as_str).collect()
+    };
+    let supported = declared.iter().any(|p| match *p {
+        "linux" => cfg!(target_os = "linux"),
+        "macos" => cfg!(target_os = "macos"),
+        "unix" => cfg!(unix),
+        _ => false,
+    });
+    if supported {
+        return Ok(());
+    }
+    Err(tool_registration_error(
+        tool_def,
+        pack_name,
+        format!(
+            "tool supports platforms [{}], but this host is '{}' — tool skipped",
+            declared.join(", "),
+            std::env::consts::OS
+        ),
+    ))
 }
 
 fn parse_groups(tool_def: &PackToolDef, pack_name: &str) -> Result<Vec<ToolGroupId>, error::Error> {
@@ -418,14 +716,7 @@ fn validate_command_path(
     // == "/etc/passwd"`), so this also closes that join-level surprise, not
     // just an early-exit optimization over the canonicalize-based check below.
     let declared = Path::new(command);
-    let is_relative_in_pack = !declared.is_absolute()
-        && declared.components().all(|c| {
-            matches!(
-                c,
-                std::path::Component::Normal(_) | std::path::Component::CurDir
-            )
-        });
-    if !is_relative_in_pack {
+    if !crate::manifest::is_relative_in_pack_path(declared) {
         return Err(error::Error::ToolCommandEscape {
             path: declared.to_path_buf(),
             location: snafu::location!(),

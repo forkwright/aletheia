@@ -13,6 +13,8 @@
 
 /// Error types for domain pack operations.
 pub mod error;
+/// Structured per-pack health reporting ([`health::PackReport`]).
+pub mod health;
 /// Pack loading and context resolution into [`loader::LoadedPack`] values.
 pub mod loader;
 /// Pack manifest parsing: reads `pack.toml` into [`manifest::PackManifest`].

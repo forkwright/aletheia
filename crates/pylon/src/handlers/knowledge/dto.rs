@@ -355,6 +355,11 @@ pub struct ExplainCandidate {
 }
 
 /// Recall weights reported by the explain endpoint.
+///
+/// Mirrors every field of [`mneme::recall::RecallWeights`] (the canonical
+/// eleven-factor engine weights) via `From` below, so a new engine factor
+/// reaches the wire the moment it is added there rather than needing a
+/// second hand-copied field here.
 #[derive(Debug, Serialize, ToSchema)]
 #[expect(
     missing_docs,
@@ -368,6 +373,28 @@ pub struct RecallWeightsView {
     pub access_frequency: f64,
     pub relationship_proximity: f64,
     pub graph_importance: f64,
+    pub serendipity: f64,
+    pub surprise: f64,
+    pub evidence_coverage: f64,
+    pub convergence: f64,
+}
+
+impl From<mneme::recall::RecallWeights> for RecallWeightsView {
+    fn from(w: mneme::recall::RecallWeights) -> Self {
+        Self {
+            vector_similarity: w.vector_similarity,
+            decay: w.decay,
+            relevance: w.relevance,
+            epistemic_tier: w.epistemic_tier,
+            access_frequency: w.access_frequency,
+            relationship_proximity: w.relationship_proximity,
+            graph_importance: w.graph_importance,
+            serendipity: w.serendipity,
+            surprise: w.surprise,
+            evidence_coverage: w.evidence_coverage,
+            convergence: w.convergence,
+        }
+    }
 }
 
 /// Explain response exposing the candidate set, factor scores, weights, and

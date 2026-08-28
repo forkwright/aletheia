@@ -5,8 +5,9 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::app::App;
-use crate::state::{ControlMutationStatus, SearchResultKind, SessionSearchOverlay};
+use crate::state::{SearchResultKind, SessionSearchOverlay};
 use crate::theme::Theme;
+use crate::view::presentation::push_mutation_status;
 
 use super::overlay_block;
 
@@ -172,41 +173,6 @@ pub(super) fn render_session_picker(
     let block = overlay_block(&title, theme);
     let paragraph = Paragraph::new(lines).block(block);
     frame.render_widget(paragraph, area);
-}
-
-fn push_mutation_status<'a>(
-    lines: &mut Vec<Line<'a>>,
-    status: &'a ControlMutationStatus,
-    theme: &Theme,
-) {
-    match status {
-        ControlMutationStatus::Idle => {}
-        ControlMutationStatus::Pending { action_id } => {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(vec![
-                Span::styled("  Pending: ", theme.style_muted()),
-                Span::styled(action_id.clone(), theme.style_warning()),
-            ]));
-        }
-        ControlMutationStatus::Succeeded { action_id } => {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(vec![
-                Span::styled("  Confirmed: ", theme.style_muted()),
-                Span::styled(action_id.clone(), theme.style_success()),
-            ]));
-        }
-        ControlMutationStatus::Failed { action_id, message } => {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(vec![
-                Span::styled("  Failed: ", theme.style_muted()),
-                Span::styled(action_id.clone(), theme.style_error_bold()),
-            ]));
-            lines.push(Line::from(Span::styled(
-                format!("  {message}"),
-                theme.style_error(),
-            )));
-        }
-    }
 }
 
 pub(super) fn render_session_search(

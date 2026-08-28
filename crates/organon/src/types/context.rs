@@ -169,9 +169,17 @@ pub struct ToolHttpClients {
 }
 
 impl ToolHttpClients {
-    /// Build a `ToolHttpClients` suitable for unit tests.
-    #[cfg(test)]
-    pub(crate) fn for_tests() -> Self {
+    /// Build the default paired HTTP clients: a general-purpose client with
+    /// default redirect behavior, and an SSRF-safe client with auto-redirect
+    /// disabled per the type's documented contract.
+    ///
+    /// WHY: the general/SSRF-safe pairing was previously restated at every
+    /// runtime and test construction site (`aletheia::runtime`,
+    /// `aletheia::dispatch`, integration tests, `nous` actor tests). One
+    /// constructor is the canonical policy; call sites -- production and
+    /// test alike -- adopt it rather than rebuilding the pair by hand.
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             general: reqwest::Client::new(),
             ssrf_safe: reqwest::Client::builder()
@@ -180,6 +188,12 @@ impl ToolHttpClients {
                 .build()
                 .unwrap_or_else(|_| reqwest::Client::new()),
         }
+    }
+}
+
+impl Default for ToolHttpClients {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

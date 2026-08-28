@@ -40,6 +40,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [feature_flags](#feature_flags)
 - [embedding](#embedding)
 - [packs](#packs)
+- [packOverlays](#packoverlays)
 - [maintenance](#maintenance)
 - [pricing](#pricing)
 - [sandbox](#sandbox)
@@ -154,12 +155,12 @@ Per-factor scoring weights (factor scores for non-vector signals).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `decay` | float | 0.5 | Temporal decay weight (0.0--1.0). |
-| `relevance` | float | 0.5 | Content relevance weight (0.0--1.0). |
-| `epistemicTier` | float | 0.3 | Epistemic tier weight (0.0--1.0). |
-| `relationshipProximity` | float | 0.1 | Knowledge-graph relationship proximity weight (0.0--1.0). |
-| `accessFrequency` | float | 0.0 | Access frequency weight (0.0--1.0). |
-| `graphImportance` | float | 0.0 | Graph `PageRank` importance weight (0.0--1.0). |
+| `decay` | float | 0.5 | Temporal decay weight (0.0-1.0). |
+| `relevance` | float | 0.5 | Content relevance weight (0.0-1.0). |
+| `epistemicTier` | float | 0.3 | Epistemic tier weight (0.0-1.0). |
+| `relationshipProximity` | float | 0.1 | Knowledge-graph relationship proximity weight (0.0-1.0). |
+| `accessFrequency` | float | 0.0 | Access frequency weight (0.0-1.0). |
+| `graphImportance` | float | 0.1 | Graph `PageRank` importance weight (0.0-1.0). |
 
 #### agents.defaults.behavior
 
@@ -324,12 +325,12 @@ Per-factor scoring weights (factor scores for non-vector signals).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `decay` | float | 0.5 | Temporal decay weight (0.0--1.0). |
-| `relevance` | float | 0.5 | Content relevance weight (0.0--1.0). |
-| `epistemicTier` | float | 0.3 | Epistemic tier weight (0.0--1.0). |
-| `relationshipProximity` | float | 0.1 | Knowledge-graph relationship proximity weight (0.0--1.0). |
-| `accessFrequency` | float | 0.0 | Access frequency weight (0.0--1.0). |
-| `graphImportance` | float | 0.0 | Graph `PageRank` importance weight (0.0--1.0). |
+| `decay` | float | 0.5 | Temporal decay weight (0.0-1.0). |
+| `relevance` | float | 0.5 | Content relevance weight (0.0-1.0). |
+| `epistemicTier` | float | 0.3 | Epistemic tier weight (0.0-1.0). |
+| `relationshipProximity` | float | 0.1 | Knowledge-graph relationship proximity weight (0.0-1.0). |
+| `accessFrequency` | float | 0.0 | Access frequency weight (0.0-1.0). |
+| `graphImportance` | float | 0.1 | Graph `PageRank` importance weight (0.0-1.0). |
 
 #### agents.list.behavior
 
@@ -635,6 +636,17 @@ External domain pack paths (directories containing pack.toml).
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `packs` | path[] | [] | External domain pack paths (directories containing pack.toml). |
+
+## packOverlays
+
+Operator opt-in for high-impact pack overlay powers (model, agency, durable system-prompt additions). WHY off by default (#5220): a domain pack must not silently switch models, raise tool-iteration limits, or inject non-truncatable prompt text. Powers not enabled here are stripped at pack load and recorded in the pack health report.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `allowModelOverrides` | bool | false | Allow packs to override an agent's primary model. |
+| `allowAgencyOverrides` | bool | false | Allow packs to override an agent's agency level. |
+| `allowPromptAdditions` | bool | false | Allow packs to inject durable system-prompt additions. |
+| `maxPromptAdditionBytes` | integer | 4096 | Total byte cap for one pack's system-prompt additions per agent; additions past the cap are dropped whole, never truncated mid-string. |
 
 ## maintenance
 
@@ -972,7 +984,7 @@ Deployment-tunable LLM retry and backoff parameters. WHY configurable: retry agg
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `maxAttempts` | integer | 3 | Maximum number of retry attempts after an initial transient failure. The total number of LLM calls is `max_attempts + 1`. Set to `0` to disable retries. Valid range: 0–10. Default: 3. |
-| `backoffBaseMs` | integer | 1_000 | Initial exponential backoff delay in milliseconds. Each successive retry doubles this delay until `backoff_max_ms` is reached. Valid range: 100–30000. Default: 1000. |
+| `backoffBaseMs` | integer | 1000 | Initial exponential backoff delay in milliseconds. Each successive retry doubles this delay until `backoff_max_ms` is reached. Valid range: 100–30000. Default: 1000. |
 | `backoffMaxMs` | integer | 30_000 | Maximum backoff delay cap in milliseconds. No retry will wait longer than this value regardless of how many attempts have failed. Valid range: `backoff_base_ms`–300000. Default: 30000. |
 
 ## nousBehavior
@@ -1876,6 +1888,29 @@ packs = [
     "/srv/aletheia/packs/engineering",
     "/srv/aletheia/packs/research",
 ]
+```
+
+### packOverlays
+
+Operator opt-in for high-impact pack overlay powers. All off by default:
+a pack that declares `model`, `agency`, or `system_prompt_additions` in
+its overlays has them stripped at load (recorded in the pack health
+report) until the matching switch is enabled. See
+[PACKS.md](PACKS.md#overlays).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `packOverlays.allowModelOverrides` | bool | false | Allow packs to override an agent's primary model. |
+| `packOverlays.allowAgencyOverrides` | bool | false | Allow packs to override an agent's agency level. |
+| `packOverlays.allowPromptAdditions` | bool | false | Allow packs to inject durable system-prompt additions. |
+| `packOverlays.maxPromptAdditionBytes` | int | 4096 | Total byte cap per pack per agent for system-prompt additions. |
+
+```toml
+[packOverlays]
+allowModelOverrides = false
+allowAgencyOverrides = false
+allowPromptAdditions = false
+maxPromptAdditionBytes = 4096
 ```
 
 ### sandbox

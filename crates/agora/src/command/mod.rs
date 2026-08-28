@@ -158,57 +158,14 @@ pub fn parse(text: &str) -> Option<Command> {
     Some(cmd)
 }
 
+/// WHY(#7020): delegates to the canonical `koina::redact::redact_argv` policy
+/// shared with Eval's `EvalProvenance::redacted_args`, rather than a second
+/// independently-tuned flag/prefix table — the two had diverged (e.g.
+/// `xox`/`ghp_`-prefixed bare values were Agora-only, `ak-`/`pk-`-prefixed
+/// values were Eval-only), so identical commands persisted with different
+/// credential coverage depending on which crate recorded them.
 fn redact_args(args: &str) -> String {
-    let mut out = Vec::new();
-    let mut redact_next = false;
-
-    for token in args.split_whitespace() {
-        if redact_next {
-            out.push("[REDACTED]".to_owned());
-            redact_next = false;
-            continue;
-        }
-
-        if let Some((key, _value)) = token.split_once('=')
-            && is_sensitive_arg_name(key.trim_start_matches('-'))
-        {
-            out.push(format!("{key}=[REDACTED]"));
-            continue;
-        }
-
-        if is_sensitive_arg_name(token.trim_start_matches('-')) {
-            out.push(token.to_owned());
-            redact_next = true;
-            continue;
-        }
-
-        if looks_like_secret(token) {
-            out.push("[REDACTED]".to_owned());
-        } else {
-            out.push(token.to_owned());
-        }
-    }
-
-    out.join(" ")
-}
-
-fn is_sensitive_arg_name(name: &str) -> bool {
-    let normalized = name.to_ascii_lowercase().replace(['-', '_'], "");
-    matches!(
-        normalized.as_str(),
-        "apikey" | "bearer" | "passphrase" | "password" | "secret" | "token"
-    )
-}
-
-fn looks_like_secret(token: &str) -> bool {
-    let lower = token.to_ascii_lowercase();
-    lower.starts_with("sk-")
-        || lower.starts_with("xox")
-        || lower.starts_with("ghp_")
-        || (token.len() >= 48
-            && token
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.')))
+    koina::redact::redact_argv(args.split_whitespace()).join(" ")
 }
 
 /// Agent-level status snapshot passed by the binary into the command context.

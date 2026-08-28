@@ -97,6 +97,38 @@ impl DataConfig {
     }
 }
 
+/// Operator opt-in switches for high-impact pack overlay powers (#5220).
+///
+/// All powers default to off: a pack declaring `model`, `agency`, or
+/// `system_prompt_additions` in its overlays has them stripped at load
+/// (recorded in pack health) until the operator enables the matching switch.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct PackOverlaysConfig {
+    /// Allow packs to override an agent's primary model.
+    pub allow_model_overrides: bool,
+    /// Allow packs to override an agent's agency level.
+    pub allow_agency_overrides: bool,
+    /// Allow packs to inject durable system-prompt additions.
+    pub allow_prompt_additions: bool,
+    /// Total byte cap for one pack's system-prompt additions per agent;
+    /// additions past the cap are dropped whole, never truncated mid-string.
+    pub max_prompt_addition_bytes: u64,
+}
+
+impl Default for PackOverlaysConfig {
+    fn default() -> Self {
+        Self {
+            allow_model_overrides: false,
+            allow_agency_overrides: false,
+            allow_prompt_additions: false,
+            max_prompt_addition_bytes: 4096,
+        }
+    }
+}
+
 /// Root configuration for an Aletheia instance.
 // kanon:ignore RUST/no-debug-derive-on-public-types
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -132,6 +164,14 @@ pub struct AletheiaConfig {
     pub embedding: EmbeddingSettings,
     /// External domain pack paths (directories containing pack.toml).
     pub packs: Vec<PathBuf>,
+    /// Operator opt-in for high-impact pack overlay powers (model, agency,
+    /// durable system-prompt additions).
+    ///
+    /// WHY off by default (#5220): a domain pack must not silently switch
+    /// models, raise tool-iteration limits, or inject non-truncatable prompt
+    /// text. Powers not enabled here are stripped at pack load and recorded
+    /// in the pack health report.
+    pub pack_overlays: PackOverlaysConfig,
     /// Periodic maintenance task configuration (trace rotation, drift detection, etc.).
     pub maintenance: MaintenanceSettings,
     /// Per-model pricing for LLM cost metrics. Keyed by model name.

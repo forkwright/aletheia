@@ -131,6 +131,21 @@ struct PackRuntimeOverlay {
     max_tool_iterations: u32,
 }
 
+/// Map the operator's `[packOverlays]` config to thesauros's load-time
+/// policy (#5220). Enforcement happens at pack load; by the time overlays
+/// reach [`apply_pack_overlays`], unapproved powers are already stripped.
+pub(super) fn overlay_policy_from_config(
+    config: &taxis::config::PackOverlaysConfig,
+) -> thesauros::manifest::OverlayPolicy {
+    thesauros::manifest::OverlayPolicy {
+        allow_model_overrides: config.allow_model_overrides,
+        allow_agency_overrides: config.allow_agency_overrides,
+        allow_prompt_additions: config.allow_prompt_additions,
+        max_prompt_additions_bytes: usize::try_from(config.max_prompt_addition_bytes)
+            .unwrap_or(usize::MAX),
+    }
+}
+
 fn apply_pack_overlays(
     resolved: &ResolvedNousConfig,
     packs: &[thesauros::loader::LoadedPack],
@@ -164,7 +179,7 @@ fn apply_pack_overlays(
                     warn!(
                         agent = %agent_id,
                         agency = %other,
-                        pack = %pack.manifest.name,
+                        pack = %pack.name(),
                         "unknown agency level in pack overlay, skipping"
                     );
                     continue;
@@ -287,6 +302,8 @@ pub(super) fn build_nous_runtime_config(
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test setup assertions")]
 mod tests {
+    use std::io::Write as _;
+
     use hermeneus::complexity::{ComplexityConfig, ComplexityInput, ModelTier, route_model};
     use taxis::config::{AgentBehaviorDefaults, AletheiaConfig, NousDefinition};
     use taxis::oikos::Oikos;
@@ -302,6 +319,86 @@ mod tests {
             build_nous_runtime_config(config, &oikos, &[], "custom");
 
         nous_config.generation.complexity
+    }
+
+    fn write_fixture(path: &std::path::Path, content: &str) {
+        let mut file = std::fs::File::create(path).expect("create pack fixture");
+        file.write_all(content.as_bytes())
+            .expect("write pack fixture");
+        file.sync_all().expect("sync pack fixture");
+    }
+
+    #[test]
+    fn pack_overlays_config_maps_to_overlay_policy() {
+        let config = taxis::config::PackOverlaysConfig {
+            allow_model_overrides: true,
+            allow_agency_overrides: false,
+            allow_prompt_additions: true,
+            max_prompt_addition_bytes: 512,
+        };
+        let policy = super::overlay_policy_from_config(&config);
+        assert!(policy.allow_model_overrides);
+        assert!(!policy.allow_agency_overrides);
+        assert!(policy.allow_prompt_additions);
+        assert_eq!(policy.max_prompt_additions_bytes, 512);
+
+        // WHY(#5220): fail-safe default — every high-impact power is off
+        // until the operator opts in.
+        let default =
+            super::overlay_policy_from_config(&taxis::config::PackOverlaysConfig::default());
+        assert!(!default.allow_model_overrides);
+        assert!(!default.allow_agency_overrides);
+        assert!(!default.allow_prompt_additions);
+        assert_eq!(
+            default.max_prompt_additions_bytes,
+            thesauros::manifest::DEFAULT_MAX_PROMPT_ADDITIONS_BYTES
+        );
+    }
+
+    #[test]
+    fn pack_domains_are_a_global_routing_namespace_across_loaded_packs() {
+        let instance = TempDir::new().expect("create instance temp directory");
+        let routing_pack = instance.path().join("routing-pack");
+        let context_pack = instance.path().join("context-pack");
+        std::fs::create_dir_all(&routing_pack).expect("create routing pack");
+        std::fs::create_dir_all(&context_pack).expect("create context pack");
+        write_fixture(
+            &routing_pack.join("pack.toml"),
+            "name = \"routing-pack\"\nversion = \"1.0\"\n\n[overlays.custom]\ndomains = [\"shared-domain\"]\n",
+        );
+        write_fixture(
+            &context_pack.join("pack.toml"),
+            "name = \"context-pack\"\nversion = \"1.0\"\n\n[[context]]\npath = \"shared.md\"\nagents = [\"shared-domain\"]\n",
+        );
+        write_fixture(&context_pack.join("shared.md"), "cross-pack context");
+
+        let packs = thesauros::loader::load_packs(&[routing_pack, context_pack]);
+        assert_eq!(packs.len(), 2, "both contract-test packs must load");
+
+        let config = AletheiaConfig::default();
+        let oikos = Oikos::from_root(instance.path());
+        let (nous_config, _pipeline_config) =
+            build_nous_runtime_config(&config, &oikos, &packs, "custom");
+        assert!(
+            nous_config
+                .domains
+                .iter()
+                .any(|domain| domain == "shared-domain"),
+            "a domain contributed by one pack enters the agent's combined routing namespace"
+        );
+
+        // This is the exact filter call used by NousManager::spawn_actor.
+        // Domains are deliberately global agent routing attributes, so a
+        // section in another loaded pack may opt into the shared tag.
+        let sections = packs
+            .get(1)
+            .expect("second contract-test pack")
+            .sections_for_agent_or_domains("custom", &nous_config.domains);
+        assert_eq!(sections.len(), 1);
+        assert_eq!(
+            sections.first().expect("one matching section").content,
+            "cross-pack context"
+        );
     }
 
     #[test]

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use snafu::ResultExt;
 use tracing::instrument;
 
+use koina::http::{CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE};
 use koina::secret::SecretString;
 
 use crate::error::{self, Result};
@@ -282,7 +283,7 @@ impl EvalClient {
         self.http
             .post(&url)
             .header("content-type", "application/json")
-            .header("x-requested-with", "aletheia")
+            .header(CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE)
             .json(body)
             .send()
             .await
@@ -315,7 +316,7 @@ impl EvalClient {
             .http
             .post(url)
             .header("content-type", "application/json")
-            .header("x-requested-with", "aletheia");
+            .header(CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE);
         if let Some(ref token) = self.token {
             req = req.header("authorization", format!("Bearer {}", token.expose_secret()));
         }
@@ -323,7 +324,10 @@ impl EvalClient {
     }
 
     async fn authed_delete(&self, url: &str) -> Result<reqwest::Response> {
-        let mut req = self.http.delete(url).header("x-requested-with", "aletheia");
+        let mut req = self
+            .http
+            .delete(url)
+            .header(CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE);
         if let Some(ref token) = self.token {
             req = req.header("authorization", format!("Bearer {}", token.expose_secret()));
         }

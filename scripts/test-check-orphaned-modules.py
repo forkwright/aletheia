@@ -191,6 +191,42 @@ def test_walk_crate_path_attr_redirect_resolves() -> None:
         expect("path-attr redirect has no unresolved", result.unresolved == [], f"got {result.unresolved!r}")
 
 
+def test_walk_crate_include_bang_resolves() -> None:
+    # WHY: verified against crates/koina/src/models.rs, which splices
+    # model_seed_schema.rs in bodily (rather than declaring it a `mod`) so
+    # the exact same types validate the seed data at both build time
+    # (build.rs) and run time -- a file no `mod` chain reaches at all, but
+    # not dead. include!'s path is relative to the FILE containing the
+    # call, not sibling-directory `mod` resolution.
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        crate_dir = write_crate(
+            root,
+            {
+                "lib.rs": "mod models;\n",
+                "models.rs": 'include!("schema.rs");\n',
+                "schema.rs": "pub struct Seed;\n",
+            },
+        )
+        result = CHECK.walk_crate("fixture", crate_dir, repo_root=root)
+        expect("include!'d file is not orphaned", orphans(result) == set(), f"got {orphans(result)!r}")
+        expect("include! has no unresolved", result.unresolved == [], f"got {result.unresolved!r}")
+
+
+def test_walk_crate_detects_unresolved_include() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        crate_dir = write_crate(
+            root,
+            {
+                "lib.rs": "mod models;\n",
+                "models.rs": 'include!("missing.rs");\n',
+            },
+        )
+        result = CHECK.walk_crate("fixture", crate_dir, repo_root=root)
+        expect("one unresolved include", len(result.unresolved) == 1, f"got {result.unresolved!r}")
+
+
 def main() -> int:
     tests = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for t in tests:

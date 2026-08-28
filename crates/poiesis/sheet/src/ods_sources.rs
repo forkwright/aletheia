@@ -2,30 +2,19 @@
 //!
 //! Mirrors [`crate::sources::append_sources_sheet`] (B-007 §5) on
 //! `spreadsheet-ods`'s `WorkBook`/`Sheet` API instead of `rust_xlsxwriter`.
-//! The row content and the "provenance ledger, not a formatted presentation
-//! cell" convention (every value rendered through `Display`, not `poiesis-sheet`'s
-//! number-format machinery) are identical to the XLSX Sources sheet; only the
-//! underlying cell-write calls differ per format.
+//! The fact-collection and per-row projection logic it shares with the XLSX
+//! backend lives in [`crate::sources_row`]; this module only writes cells.
 
-use std::collections::HashSet;
-
-use poiesis_core::bodies::{Workbook, WorkbookCell};
-use poiesis_core::factbase::{Expr, Factbase, Source};
-use poiesis_core::ids::FactId;
-use poiesis_core::scalar::Scalar;
+use poiesis_core::bodies::Workbook;
+use poiesis_core::factbase::Factbase;
 use spreadsheet_ods::{Sheet as OdsSheet, WorkBook as OdsWorkBook};
 
 use crate::error::WorkbookError;
 use crate::ods_workbook::OdsStyles;
+use crate::sources_row::{HEADERS, SHEET_NAME, cited_fact_ids, project_rows};
 
 /// Shorthand for sources-sheet results.
 type Result<T> = std::result::Result<T, WorkbookError>;
-
-/// Reserved worksheet name for the provenance sheet, matching the XLSX
-/// Sources sheet's [`crate::sources`] convention.
-const SHEET_NAME: &str = "Sources";
-
-const HEADERS: [&str; 6] = ["Fact ID", "Value", "Unit", "Source", "Detail", "Captured"];
 
 /// Append a "Sources" worksheet tracing every fact `wb` cites back to
 /// `factbase`, in first-cited order.
@@ -46,6 +35,7 @@ pub(crate) fn append_ods_sources_sheet(
     if cited.is_empty() {
         return Ok(());
     }
+    let rows = project_rows(&cited, factbase)?;
 
     let mut sheet = OdsSheet::new(SHEET_NAME);
 
@@ -54,103 +44,30 @@ pub(crate) fn append_ods_sources_sheet(
         sheet.set_styled_value(0, col_u32, *label, &styles.header);
     }
 
-    for (row_idx, id) in cited.iter().enumerate() {
-        let fact = factbase
-            .facts
-            .get(id)
-            .ok_or_else(|| WorkbookError::UnknownFact {
-                id: id.as_str().to_owned(),
-            })?;
-        let row = u32::try_from(row_idx).map_err(|e| WorkbookError::OdsWrite {
+    for (row_idx, row) in rows.iter().enumerate() {
+        let row_num = u32::try_from(row_idx).map_err(|e| WorkbookError::OdsWrite {
             message: format!("row index {row_idx} exceeds u32 max: {e}"),
         })? + 1;
-        let (source_kind, detail) = describe_source(&fact.source);
 
-        sheet.set_value(row, 0, fact.id.as_str());
-        sheet.set_value(row, 1, scalar_display(&fact.value));
-        sheet.set_value(row, 2, fact.unit.to_string());
-        sheet.set_value(row, 3, source_kind);
-        sheet.set_value(row, 4, detail);
-        sheet.set_value(row, 5, fact.captured.to_string());
+        sheet.set_value(row_num, 0, row.id.as_str());
+        sheet.set_value(row_num, 1, row.value.as_str());
+        sheet.set_value(row_num, 2, row.unit.as_str());
+        sheet.set_value(row_num, 3, row.source_kind);
+        sheet.set_value(row_num, 4, row.detail.as_str());
+        sheet.set_value(row_num, 5, row.captured.as_str());
     }
 
     ods_wb.push_sheet(sheet);
     Ok(())
 }
 
-/// Collect the [`FactId`]s cited by `wb`'s cells, first-seen order,
-/// deduplicated across every sheet/row/column.
-fn cited_fact_ids(wb: &Workbook) -> Vec<FactId> {
-    let mut seen = HashSet::new();
-    let mut ordered = Vec::new();
-    for sheet in &wb.sheets {
-        for row in &sheet.rows {
-            for cell in row {
-                if let WorkbookCell::Cite { fact } = cell
-                    && seen.insert(fact.clone())
-                {
-                    ordered.push(fact.clone());
-                }
-            }
-        }
-    }
-    ordered
-}
-
-/// Render a [`Scalar`] as plain display text for the Sources sheet.
-fn scalar_display(scalar: &Scalar) -> String {
-    match scalar {
-        Scalar::Count { value } => value.to_string(),
-        Scalar::Money { value } => value.to_string(),
-        Scalar::Ratio { value } => value.to_string(),
-        Scalar::Text { value } => value.clone(),
-        Scalar::Date { value } => value.to_string(),
-    }
-}
-
-/// Classify a [`Source`] into a short kind tag and a human-readable detail
-/// string for the Sources sheet's `Source` / `Detail` columns.
-fn describe_source(source: &Source) -> (&'static str, String) {
-    match source {
-        Source::Sql {
-            data_source,
-            query,
-            table,
-        } => ("sql", format!("{data_source} :: table {table} :: {query}")),
-        Source::Derived { formula, inputs } => (
-            "derived",
-            format!("{} <- [{}]", describe_expr(formula), join_fact_ids(inputs)),
-        ),
-        Source::Reference { fact } => ("reference", format!("-> {fact}")),
-        Source::Manual { note, captured_by } => ("manual", format!("{note} (by {captured_by})")),
-        Source::File { path, locator } => ("file", format!("{}#{locator}", path.display())),
-    }
-}
-
-/// Render a [`Expr`] as a short infix formula string.
-fn describe_expr(expr: &Expr) -> String {
-    match expr {
-        Expr::Add { a, b } => format!("{a} + {b}"),
-        Expr::Sub { a, b } => format!("{a} - {b}"),
-        Expr::Mul { a, b } => format!("{a} * {b}"),
-        Expr::Div { a, b } => format!("{a} / {b}"),
-        Expr::Sum { terms } => format!("sum({})", join_fact_ids(terms)),
-    }
-}
-
-fn join_fact_ids(ids: &[FactId]) -> String {
-    ids.iter()
-        .map(FactId::as_str)
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use poiesis_core::bodies::Sheet;
-    use poiesis_core::ids::SheetName;
-    use poiesis_core::scalar::ScalarKind;
+    use poiesis_core::bodies::{Sheet, WorkbookCell};
+    use poiesis_core::factbase::Source;
+    use poiesis_core::ids::{FactId, SheetName};
+    use poiesis_core::scalar::{Scalar, ScalarKind};
 
     use super::*;
     use crate::ods_workbook::OdsStyles;

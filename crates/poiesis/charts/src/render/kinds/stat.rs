@@ -73,7 +73,7 @@ pub fn emit(
 
     let series_name = match &series.name {
         CiteOrText::Text(t) => t.clone(),
-        CiteOrText::Cite(id) => id.0.clone(),
+        CiteOrText::Cite(id) => id.as_str().to_owned(),
     };
 
     let aria = if series_name.is_empty() {
@@ -127,7 +127,7 @@ pub fn emit(
     if let Some(title) = &chart.title {
         let title_text = match title {
             CiteOrText::Text(t) => t.clone(),
-            CiteOrText::Cite(id) => id.0.clone(),
+            CiteOrText::Cite(id) => id.as_str().to_owned(),
         };
         let _ = write!(
             out,
@@ -181,7 +181,7 @@ mod tests {
 
     fn cite(id: &str, v: f64, unit: Unit) -> FactCite {
         FactCite {
-            id: FactId(id.to_owned()),
+            id: FactId::new(id.to_owned()).expect("valid fact id"),
             value: v,
             unit,
         }
