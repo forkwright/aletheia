@@ -22,6 +22,8 @@ use taxis::config::CompactionStrategyKind;
 pub(crate) mod full;
 pub(crate) mod micro;
 pub(crate) mod prompts;
+#[cfg(test)]
+pub(crate) mod test_support;
 
 /// Per-tool-type TTL configuration for microcompaction.
 ///
