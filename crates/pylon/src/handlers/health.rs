@@ -1738,7 +1738,8 @@ fn subsystem_domain_packs(state: &HealthState, generated_at: &str) -> SubsystemS
         })),
         suggested_action: (status != "healthy").then_some(
             "Check startup logs for `domain pack loaded` / `failed to load domain pack`; \
-             each pack's `issues` array in `details` names the failing component and reason.",
+             each pack's `issues` array in `details` names the failing component and reason."
+                .to_owned(),
         ),
     }
 }
