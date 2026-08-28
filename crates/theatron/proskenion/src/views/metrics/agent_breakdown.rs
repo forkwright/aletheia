@@ -124,7 +124,11 @@ fn sort_th(
     };
     let label = label.to_string();
     let aria_sort = if is_active {
-        if *sort_dir.read() == SortDir::Desc { "descending" } else { "ascending" }
+        if *sort_dir.read() == SortDir::Desc {
+            "descending"
+        } else {
+            "ascending"
+        }
     } else {
         "none"
     };
