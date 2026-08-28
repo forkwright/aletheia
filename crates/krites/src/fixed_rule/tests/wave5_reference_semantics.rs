@@ -313,7 +313,7 @@ proptest! {
 }
 
 /// Bidirectional-chain-plus-extra-edges generator: every node keeps out-degree
-/// >= 1, so `power_iteration_reference`'s per-node division by out-degree never
+/// `>= 1`, so `power_iteration_reference`'s per-node division by out-degree never
 /// hits zero. `page_rank`'s dangling-node behavior (out-degree 0) is identical
 /// on both shells since they share the numeric core, so it is out of scope for
 /// an equivalence test between them.
