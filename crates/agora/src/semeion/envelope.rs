@@ -122,6 +122,7 @@ pub(crate) fn extract_message(
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: JSON key indexing on known-present keys"
