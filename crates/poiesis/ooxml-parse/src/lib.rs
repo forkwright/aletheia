@@ -216,7 +216,7 @@ fn slide_number(name: &str) -> Option<u32> {
 /// ordered by slide number.
 ///
 /// WHY: slide part names are not guaranteed contiguous -- deleting a slide in
-/// PowerPoint leaves the remaining part names unrenumbered, so a deck can hold
+/// `PowerPoint` leaves the remaining part names unrenumbered, so a deck can hold
 /// slide1, slide2 and slide4. Probing slide{n} upward and stopping at the
 /// first missing index silently drops every slide past the gap. Enumerating
 /// the archive and sorting by slide number reads the whole deck regardless of
