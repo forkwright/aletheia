@@ -1317,7 +1317,7 @@ mod tests {
         let store = harness.session_store.lock().await;
         assert!(
             store
-                .get_history(&invocation.session_id, None)
+                .get_history(invocation.session_id.as_str(), None)
                 .expect("conversation history")
                 .is_empty(),
             "command lifecycle rows must stay out of conversation history"

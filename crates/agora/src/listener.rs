@@ -805,7 +805,7 @@ mod tests {
         }
 
         fn name(&self) -> &'static str {
-            self.id()
+            "partially-failed-provider"
         }
 
         fn capabilities(&self) -> &crate::types::ChannelCapabilities {
@@ -857,7 +857,7 @@ mod tests {
         }
 
         fn name(&self) -> &'static str {
-            self.id()
+            "cooperative-cancellation-provider"
         }
 
         fn capabilities(&self) -> &crate::types::ChannelCapabilities {
@@ -908,7 +908,7 @@ mod tests {
         }
 
         fn name(&self) -> &'static str {
-            self.id()
+            "unexpected-cancellation-provider"
         }
 
         fn capabilities(&self) -> &crate::types::ChannelCapabilities {
