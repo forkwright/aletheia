@@ -20,7 +20,7 @@ use agora::command::{self, AgentSnapshot, ChannelSnapshot, CommandContext};
 use agora::dedupe::DedupeFilter;
 use agora::listener::ChannelListener;
 use agora::registry::ChannelRegistry;
-use agora::router::{MessageRouter, reply_target};
+use agora::router::{MessageRouter, RouteDecision, reply_target};
 use agora::types::{InboundMessage, SendParams};
 use nous::manager::NousManager;
 use organon::types::BlackboardViewer;
@@ -220,6 +220,26 @@ async fn dispatch_one(
         return;
     }
 
+    dispatch_turn(
+        &msg,
+        &decision,
+        &session_key,
+        &nous_manager,
+        &channel_registry,
+    )
+    .await;
+}
+
+/// Sends a plain (non-command) turn to the routed nous agent and replies with
+/// its result. Split out of `dispatch_one` to keep routing/command
+/// interception separate from turn execution.
+async fn dispatch_turn(
+    msg: &InboundMessage,
+    decision: &RouteDecision<'_>,
+    session_key: &str,
+    nous_manager: &NousManager,
+    channel_registry: &ChannelRegistry,
+) {
     let Some(handle) = nous_manager.get(decision.nous_id) else {
         warn!(
             nous_id = %decision.nous_id,
@@ -243,7 +263,7 @@ async fn dispatch_one(
         channel: Arc::from(msg.channel.as_str()),
     };
     let turn_result = match handle
-        .send_turn_with_ingress(&session_key, &msg.text, ingress)
+        .send_turn_with_ingress(session_key, &msg.text, ingress)
         .await
     {
         Ok(result) => result,
@@ -254,10 +274,10 @@ async fn dispatch_one(
     };
 
     send_reply(
-        &msg,
+        msg,
         &turn_result.content,
         ReplyPurpose::Turn,
-        &channel_registry,
+        channel_registry,
     )
     .await;
 }
@@ -504,15 +524,12 @@ fn command_conversation_id(msg: &InboundMessage) -> String {
     hasher.update(b"aletheia.agora.command-conversation.v1\0");
     hash_field(&mut hasher, "channel", &msg.channel);
     hash_optional_field(&mut hasher, "account", msg.account_id.as_deref());
-    match msg.group_id.as_deref() {
-        Some(group_id) => {
-            hash_field(&mut hasher, "kind", "group");
-            hash_field(&mut hasher, "conversation", group_id);
-        }
-        None => {
-            hash_field(&mut hasher, "kind", "direct");
-            hash_field(&mut hasher, "conversation", &msg.sender);
-        }
+    if let Some(group_id) = msg.group_id.as_deref() {
+        hash_field(&mut hasher, "kind", "group");
+        hash_field(&mut hasher, "conversation", group_id);
+    } else {
+        hash_field(&mut hasher, "kind", "direct");
+        hash_field(&mut hasher, "conversation", &msg.sender);
     }
     format!("sha256:{}", hex_lower(&hasher.finalize()))
 }

@@ -1139,13 +1139,15 @@ impl RuntimeBuilder {
         let ready_rx = nous_manager.ready_rx();
         let (_channel_registry, _dispatch_handle) = start_inbound_dispatch(
             &task_tracker,
-            &self.config,
-            &nous_manager,
-            Arc::clone(&session_store),
-            ready_rx,
-            signal_provider.as_ref(),
-            matrix_provider.as_ref(),
-            &shutdown_token,
+            InboundDispatchDeps {
+                config: &self.config,
+                nous_manager: &nous_manager,
+                session_store: Arc::clone(&session_store),
+                ready_rx,
+                signal_provider: signal_provider.as_ref(),
+                matrix_provider: matrix_provider.as_ref(),
+                shutdown_token: &shutdown_token,
+            },
         )?;
 
         if self.daemons {
@@ -1378,8 +1380,8 @@ mod cron_executor;
 #[cfg(feature = "recall")]
 use setup::open_knowledge_stores;
 use setup::{
-    LazyEmbeddingProvider, build_matrix_provider, build_provider_registry, build_signal_provider,
-    build_tool_registry, sandbox_config, start_inbound_dispatch,
+    InboundDispatchDeps, LazyEmbeddingProvider, build_matrix_provider, build_provider_registry,
+    build_signal_provider, build_tool_registry, sandbox_config, start_inbound_dispatch,
 };
 
 #[cfg(test)]

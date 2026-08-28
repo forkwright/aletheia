@@ -1343,16 +1343,32 @@ pub(super) fn build_matrix_provider(
     Some(Arc::new(provider))
 }
 
+/// Wiring inputs for [`start_inbound_dispatch`], grouped so the function
+/// itself takes a fixed two-argument shape regardless of how many channel
+/// providers or lifecycle handles the caller must thread through.
+pub(super) struct InboundDispatchDeps<'a> {
+    pub config: &'a AletheiaConfig,
+    pub nous_manager: &'a Arc<NousManager>,
+    pub session_store: Arc<Mutex<SessionStore>>,
+    pub ready_rx: tokio::sync::watch::Receiver<bool>,
+    pub signal_provider: Option<&'a Arc<SignalProvider>>,
+    pub matrix_provider: Option<&'a Arc<MatrixProvider>>,
+    pub shutdown_token: &'a CancellationToken,
+}
+
 pub(super) fn start_inbound_dispatch(
     task_tracker: &TaskTracker,
-    config: &AletheiaConfig,
-    nous_manager: &Arc<NousManager>,
-    session_store: Arc<Mutex<SessionStore>>,
-    ready_rx: tokio::sync::watch::Receiver<bool>,
-    signal_provider: Option<&Arc<SignalProvider>>,
-    matrix_provider: Option<&Arc<MatrixProvider>>,
-    shutdown_token: &CancellationToken,
+    deps: InboundDispatchDeps<'_>,
 ) -> Result<(Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>)> {
+    let InboundDispatchDeps {
+        config,
+        nous_manager,
+        session_store,
+        ready_rx,
+        signal_provider,
+        matrix_provider,
+        shutdown_token,
+    } = deps;
     let mut channel_registry =
         ChannelRegistry::new().with_outbound_policy(config.messaging.outbound.clone());
     let mut listen_providers: Vec<&dyn ChannelProvider> = Vec::new();
