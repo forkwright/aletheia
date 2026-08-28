@@ -669,20 +669,27 @@ impl RuntimeBuilder {
                 let failed_required = failed_required_pack_names(&pack_report, &required_paths);
                 if !failed_required.is_empty() {
                     let joined = failed_required.join(", ");
+                    // WHY the `_` arm fails startup rather than naming
+                    // `FailStartup`: `RequiredFailureMode` is `#[non_exhaustive]` in
+                    // taxis, so a variant added there compiles here without anyone
+                    // deciding what it means. Failing closed is the only safe
+                    // default -- a mode this build does not understand must not
+                    // silently continue in a degraded state with required packs
+                    // missing. `FailStartup` is also the enum's `#[default]`.
                     match self.config.pack_required_failure_mode {
-                        RequiredFailureMode::FailStartup => {
-                            snafu::whatever!(
-                                "required domain pack(s) failed to load: {joined} (see pack \
-                                 health issues above for the failing component and reason; set \
-                                 pack_required_failure_mode = \"degraded\" to continue \
-                                 startup instead)"
-                            );
-                        }
                         RequiredFailureMode::Degraded => {
                             warn!(
                                 packs = %joined,
                                 "required domain pack(s) failed to load; continuing per \
                                  pack_required_failure_mode = \"degraded\""
+                            );
+                        }
+                        _ => {
+                            snafu::whatever!(
+                                "required domain pack(s) failed to load: {joined} (see pack \
+                                 health issues above for the failing component and reason; set \
+                                 pack_required_failure_mode = \"degraded\" to continue \
+                                 startup instead)"
                             );
                         }
                     }
