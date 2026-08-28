@@ -4756,10 +4756,6 @@ workspace = "nous/{agent_id}"
     /// input + result reference — without leaking redacted secret values.
     #[cfg(feature = "recall")]
     #[test]
-    #[expect(
-        clippy::too_many_lines,
-        reason = "exhaustive provenance fixture plus full review-surface assertions"
-    )]
     fn review_skills_list_renders_full_provenance_without_leaking_secrets() {
         use episteme::skills::{
             CandidateTracker, ContentEvidenceRef, ExtractedSkill, PendingSkill,
