@@ -1,11 +1,9 @@
-//! Duration distribution: percentile bars, trend chart, and summary table.
+//! Duration distribution: percentile bars and summary table.
 
 use dioxus::prelude::*;
 
-use crate::components::chart::{
-    LineChart, LinePoint, LineSeries, PercentileBarChart, PercentileEntry, SERIES_COLORS,
-};
-use crate::state::tool_metrics::{TimeSeriesBucket, ToolStat, tools_by_duration};
+use crate::components::chart::{PercentileBarChart, PercentileEntry};
+use crate::state::tool_metrics::{ToolStat, tools_by_duration};
 
 // -- Component ----------------------------------------------------------------
 
@@ -38,71 +36,5 @@ pub(crate) fn ToolDurationView(tools: Vec<ToolStat>) -> Element {
             PercentileBarChart { entries: perc_entries }
 
         }
-    }
-}
-
-/// Standalone duration trend chart for the top 5 slowest tools.
-///
-/// Shown in the full tools overview to surface performance degradation.
-#[component]
-pub(crate) fn DurationTrendView(
-    tools: Vec<ToolStat>,
-    time_series: Vec<TimeSeriesBucket>,
-) -> Element {
-    if time_series.is_empty() {
-        return rsx! {
-            div { style: "color: var(--text-muted); font-size: var(--text-xs);", "No time series data." }
-        };
-    }
-
-    let sorted = tools_by_duration(&tools);
-    let top5: Vec<&ToolStat> = sorted.into_iter().take(5).collect();
-
-    if top5.is_empty() {
-        return rsx! {
-            div { style: "color: var(--text-muted); font-size: var(--text-xs);", "No duration data." }
-        };
-    }
-
-    // Use median duration (p50) as the series value. We only have per-bucket
-    // invocation counts, so we use a constant p50 as a flat proxy.
-    // WHY: Until the server provides per-bucket duration stats, this chart shows
-    // relative volume-weighted duration as an approximation. Swap when available.
-    let series: Vec<LineSeries> = top5
-        .iter()
-        .enumerate()
-        .map(|(i, tool)| {
-            let points = time_series
-                .iter()
-                .map(|bucket| {
-                    // Proxy: scale p50 by bucket share of total calls.
-                    let bucket_count = *bucket.counts.get(&tool.name).unwrap_or(&0);
-                    LinePoint {
-                        label: bucket.date.clone(),
-                        value: if bucket_count > 0 {
-                            {
-                                #[expect(
-                                    clippy::as_conversions,
-                                    reason = "u64 ms to f64 for chart point"
-                                )]
-                                let v = tool.p50_ms as f64;
-                                v
-                            }
-                        } else {
-                            0.0
-                        },
-                    }
-                })
-                .collect();
-            LineSeries {
-                name: tool.name.clone(),
-                color: SERIES_COLORS[i % SERIES_COLORS.len()].to_string(),
-                points,
-            }
-        })
-        .collect();
-
-    rsx! {
-        LineChart { series, height: 150 }
     }
 }
