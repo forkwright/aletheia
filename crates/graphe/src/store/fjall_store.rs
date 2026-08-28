@@ -729,6 +729,32 @@ struct NoteTxParts<'a> {
     sessions: &'a fjall::SingleWriterTxKeyspace,
 }
 
+/// Every partition [`SessionStore::finalize_turn_with_type`] writes to,
+/// opened once up front so the transaction body only reasons about writes.
+struct FinalizeTurnTxParts {
+    sessions: fjall::SingleWriterTxKeyspace,
+    messages: fjall::SingleWriterTxKeyspace,
+    usage: fjall::SingleWriterTxKeyspace,
+    tool_audit: fjall::SingleWriterTxKeyspace,
+    notes: fjall::SingleWriterTxKeyspace,
+    counters: fjall::SingleWriterTxKeyspace,
+    turns: fjall::SingleWriterTxKeyspace,
+}
+
+impl FinalizeTurnTxParts {
+    fn open(store: &SessionStore) -> Result<Self> {
+        Ok(Self {
+            sessions: store.partition("sessions")?,
+            messages: store.partition("messages")?,
+            usage: store.partition("usage")?,
+            tool_audit: store.partition("tool_audit")?,
+            notes: store.partition("notes")?,
+            counters: store.partition("counters")?,
+            turns: store.partition("turns")?,
+        })
+    }
+}
+
 struct NoteDeleteKeys {
     gid_keys: Vec<Vec<u8>>,
     gid_idx_keys: Vec<Vec<u8>>,
@@ -2938,6 +2964,60 @@ impl SessionStore {
         Ok(record)
     }
 
+    /// Append every structured tool audit row for a turn, in order, and
+    /// return the ids [`SessionStore::write_turn_record_in_tx`] links from
+    /// the durable [`TurnRecord`].
+    fn append_tool_audit_records_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        parts: &FinalizeTurnTxParts,
+        session_id: &str,
+        nous_id: &str,
+        specs: &[FinalizeToolAuditRecord<'_>],
+    ) -> Result<Vec<i64>> {
+        let mut ids = Vec::with_capacity(specs.len());
+        for spec in specs {
+            let id = Self::append_tool_audit_record_in_tx(
+                tx,
+                &parts.tool_audit,
+                &parts.counters,
+                session_id,
+                nous_id,
+                spec,
+            )?;
+            ids.push(id);
+        }
+        Ok(ids)
+    }
+
+    /// Persist a turn's terminal lifecycle note, when the request carries one.
+    fn finalize_completion_note_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        parts: &FinalizeTurnTxParts,
+        session_id: &str,
+        nous_id: &str,
+        note: FinalizeNote<'_>,
+    ) -> Result<i64> {
+        Self::put_note_in_tx(
+            tx,
+            NoteTxParts {
+                notes: &parts.notes,
+                counters: &parts.counters,
+                sessions: &parts.sessions,
+            },
+            PutNoteSpec {
+                session_id,
+                nous_id,
+                category: note.category,
+                content: note.content,
+                opts: PutNoteOpts {
+                    created_at: None,
+                    provided_id: None,
+                    validate_category: true,
+                },
+            },
+        )
+    }
+
     /// Persist a complete conversational turn in a single transaction.
     ///
     /// This batches session creation, message appends, usage recording, and
@@ -2970,19 +3050,12 @@ impl SessionStore {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-        let sessions_part = self.partition("sessions")?;
-        let messages_part = self.partition("messages")?;
-        let usage_part = self.partition("usage")?;
-        let tool_audit_part = self.partition("tool_audit")?;
-        let notes_part = self.partition("notes")?;
-        let counters_part = self.partition("counters")?;
-        let turns_part = self.partition("turns")?;
-
+        let parts = FinalizeTurnTxParts::open(self)?;
         let mut tx = self.db.write_tx();
 
         let find_outcome = Self::find_or_create_session_in_tx(
             &mut tx,
-            &sessions_part,
+            &parts.sessions,
             FindOrCreateSessionSpec {
                 id: request.session_id,
                 nous_id: request.nous_id,
@@ -2999,9 +3072,9 @@ impl SessionStore {
         for spec in request.messages {
             let seq = Self::append_message_in_tx(
                 &mut tx,
-                &messages_part,
-                &sessions_part,
-                &counters_part,
+                &parts.messages,
+                &parts.sessions,
+                &parts.counters,
                 &mut session,
                 spec,
             )?;
@@ -3016,45 +3089,27 @@ impl SessionStore {
 
         let mut usage_recorded = false;
         if let Some(usage) = request.usage {
-            Self::record_usage_in_tx(&mut tx, &usage_part, &sessions_part, usage)?;
+            Self::record_usage_in_tx(&mut tx, &parts.usage, &parts.sessions, usage)?;
             usage_recorded = true;
         }
 
-        let mut tool_audit_records_persisted = 0usize;
-        let mut tool_audit_ids = Vec::with_capacity(request.tool_audit_records.len());
-        for spec in request.tool_audit_records {
-            let id = Self::append_tool_audit_record_in_tx(
-                &mut tx,
-                &tool_audit_part,
-                &counters_part,
-                session.id.as_str(),
-                request.nous_id,
-                spec,
-            )?;
-            tool_audit_ids.push(id);
-            tool_audit_records_persisted += 1;
-        }
+        let tool_audit_ids = Self::append_tool_audit_records_in_tx(
+            &mut tx,
+            &parts,
+            session.id.as_str(),
+            request.nous_id,
+            request.tool_audit_records,
+        )?;
+        let tool_audit_records_persisted = tool_audit_ids.len();
 
         let mut note_id = None;
         if let Some(note) = request.completion_note {
-            note_id = Some(Self::put_note_in_tx(
+            note_id = Some(Self::finalize_completion_note_in_tx(
                 &mut tx,
-                NoteTxParts {
-                    notes: &notes_part,
-                    counters: &counters_part,
-                    sessions: &sessions_part,
-                },
-                PutNoteSpec {
-                    session_id: session.id.as_str(),
-                    nous_id: request.nous_id,
-                    category: note.category,
-                    content: note.content,
-                    opts: PutNoteOpts {
-                        created_at: None,
-                        provided_id: None,
-                        validate_category: true,
-                    },
-                },
+                &parts,
+                session.id.as_str(),
+                request.nous_id,
+                note,
             )?);
         }
 
@@ -3062,7 +3117,7 @@ impl SessionStore {
         if let Some(turn_record_spec) = request.turn_record {
             Self::write_turn_record_in_tx(
                 &mut tx,
-                &turns_part,
+                &parts.turns,
                 session.id.as_str(),
                 &turn_record_spec,
                 request.usage,
