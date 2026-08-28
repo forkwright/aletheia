@@ -215,9 +215,26 @@ pub(crate) async fn execute_command(app: &mut App) {
         return;
     }
 
-    // Persist command to history (deduplicate consecutive duplicates)
-    if app.interaction.command_history.last().map(|s| s.as_str()) != Some(&input) {
-        app.interaction.command_history.push(input.clone());
+    let (cmd_name, args) = match input.split_once(' ') {
+        Some((cmd, rest)) => (cmd, rest.trim()),
+        None => (input.as_str(), ""),
+    };
+
+    // Persist command to history (deduplicate consecutive duplicates).
+    //
+    // WHY(#6818): `:reauth <token>` carries a bearer token as its argument.
+    // Recording the raw input would write that secret in plaintext to the
+    // on-disk command-history file and keep it recallable (Ctrl+R / up
+    // arrow) for the rest of the session — the same class of leak
+    // `SecretString`/`secret_store.rs` exist to prevent everywhere else in
+    // this crate. Only the command name is recorded for it.
+    let history_entry = if cmd_name == "reauth" {
+        cmd_name.to_string()
+    } else {
+        input.clone()
+    };
+    if app.interaction.command_history.last().map(|s| s.as_str()) != Some(history_entry.as_str()) {
+        app.interaction.command_history.push(history_entry);
         if app.interaction.command_history.len() > app::MAX_COMMAND_HISTORY {
             app.interaction
                 .command_history
@@ -225,11 +242,6 @@ pub(crate) async fn execute_command(app: &mut App) {
         }
         app::save_command_history(&app.config, &app.interaction.command_history);
     }
-
-    let (cmd_name, args) = match input.split_once(' ') {
-        Some((cmd, rest)) => (cmd, rest.trim()),
-        None => (input.as_str(), ""),
-    };
 
     match cmd_name {
         "quit" | "q" => app.should_quit = true,
@@ -347,6 +359,13 @@ pub(crate) async fn execute_command(app: &mut App) {
         "editor" | "edit" | "e" => {
             super::editor::handle_open(app);
         }
+        "reauth" => {
+            if args.is_empty() {
+                app.viewport.error_toast = Some(ErrorToast::new("Usage: :reauth <token>".into()));
+            } else {
+                execute_reauth(app, args).await;
+            }
+        }
         _ => {
             app.viewport.error_toast =
                 Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
@@ -383,6 +402,25 @@ fn execute_recall(app: &mut App, _query: &str) {
     app.viewport.error_toast = Some(ErrorToast::new(
         "Semantic recall API not available - pending pylon support.".into(),
     ));
+}
+
+/// Handle `:reauth <token>` (#6818): replace the running session's
+/// credential without restarting.
+///
+/// `token` is never echoed back in any toast — only success/failure and,
+/// on failure, the typed [`crate::error::Error`]'s own message (which
+/// itself never contains the token: see `Error::AuthRejected` and
+/// `ApiError::Auth`'s fixed display strings).
+async fn execute_reauth(app: &mut App, token: &str) {
+    match app.reauthenticate(token).await {
+        Ok(()) => {
+            app.viewport.error_toast =
+                Some(ErrorToast::new("Re-authenticated. Token replaced.".into()));
+        }
+        Err(e) => {
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Re-auth failed: {e}")));
+        }
+    }
 }
 
 async fn execute_rename(app: &mut App, name: &str) {

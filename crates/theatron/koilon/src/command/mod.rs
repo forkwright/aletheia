@@ -206,6 +206,13 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Navigation,
         shortcut: None,
     },
+    Command {
+        name: "reauth",
+        aliases: &[],
+        description: "Replace an expired/invalid token without restarting",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;
