@@ -2629,7 +2629,7 @@ mod tests {
     }
 
     /// Like [`make_server_state`], but `auth_mode = "token"` with a real
-    /// in-memory `AuthFacade` — for stdio-identity tests (kanon#5184) that
+    /// in-memory `AuthFacade` — for stdio-identity tests (#5184) that
     /// need a validator to check a bearer token against.
     fn make_token_auth_state(
         store: Arc<tokio::sync::Mutex<mneme::store::SessionStore>>,

@@ -30,7 +30,7 @@ pub struct DiaporeiaServer {
     pub(crate) state: Arc<DiaporeiaState>,
     pub(crate) rate_limiter: Arc<RateLimiter>,
     /// Fixed identity for a stdio MCP session, resolved once at startup
-    /// (kanon#5184).
+    /// (#5184).
     ///
     /// `None` for the streamable HTTP transport, and for stdio under
     /// `auth_mode == "none"`, where every request resolves its own principal
@@ -68,7 +68,7 @@ impl DiaporeiaServer {
     }
 
     /// Bind a fixed identity for the lifetime of a stdio MCP session
-    /// (kanon#5184).
+    /// (#5184).
     ///
     /// Overrides [`resolve_caller`] for every request this instance serves.
     /// Used only by [`crate::transport::serve_stdio`] under an authenticated

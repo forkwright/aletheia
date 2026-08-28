@@ -100,7 +100,7 @@ fn caller_from_claims(claims: Claims) -> McpCaller {
 }
 
 /// Environment variable carrying the bearer token that identifies a stdio
-/// MCP session's fixed principal (kanon#5184).
+/// MCP session's fixed principal (#5184).
 ///
 /// Stdio has no per-request HTTP context to carry a bearer token the way the
 /// streamable HTTP transport does — [`bearer_token_from_context`] reads a

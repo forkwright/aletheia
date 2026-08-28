@@ -117,7 +117,7 @@ pub fn streamable_http_router_with_config(
 /// Reads JSON-RPC from stdin, writes to stdout. Blocks until the connection
 /// closes or the shutdown token fires.
 ///
-/// # Identity (kanon#5184)
+/// # Identity (#5184)
 ///
 /// Stdio carries no per-request HTTP context, so the per-request bearer
 /// resolution the streamable HTTP transport uses can never succeed here —
