@@ -61,7 +61,7 @@ pub(crate) struct BatchPersistOutcome {
     pub(crate) admission_rejected: Vec<(String, String)>,
 }
 
-fn tx_error(err: crate::engine::MultiTransactionError) -> crate::error::Error {
+fn tx_error(err: &crate::engine::MultiTransactionError) -> crate::error::Error {
     crate::error::EngineQuerySnafu {
         message: err.to_string(),
     }
@@ -136,7 +136,7 @@ impl KnowledgeStore {
                 params,
             ))) {
                 let _ = tx.abort();
-                return Err(tx_error(err));
+                return Err(tx_error(&err));
             }
             outcome.entities_inserted += 1;
         }
@@ -148,7 +148,7 @@ impl KnowledgeStore {
                 params,
             ))) {
                 let _ = tx.abort();
-                return Err(tx_error(err));
+                return Err(tx_error(&err));
             }
             outcome.relationships_inserted += 1;
         }
@@ -161,7 +161,7 @@ impl KnowledgeStore {
                 params,
             ))) {
                 let _ = tx.abort();
-                return Err(tx_error(err));
+                return Err(tx_error(&err));
             }
             outcome.facts_inserted += 1;
 
@@ -215,7 +215,7 @@ impl KnowledgeStore {
             }
         }
 
-        tx.commit().map_err(tx_error)?;
+        tx.commit().map_err(|err| tx_error(&err))?;
 
         // WHY: metrics must reflect what actually committed, not what a
         // mid-batch statement merely succeeded at inside the still-open
