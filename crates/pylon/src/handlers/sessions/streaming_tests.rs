@@ -482,8 +482,7 @@ fn redact_strips_bearer_token() {
 
 #[test]
 fn redact_strips_jwt() {
-    // pii-allow: synthetic 3-segment JWT shape, redactor self-test
-    let msg = "rejected token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
+    let msg = "rejected token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"; // pii-allow: synthetic 3-segment JWT shape, redactor self-test + gitleaks:allow
     let redacted = redact_secrets(msg);
     assert!(
         !redacted.contains("dozjgNryP4J3jVmNHl0w5N"),
