@@ -10,9 +10,9 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 use crate::app::{AgentStatus, App, BackendHealth, ContextActionsOverlay, Overlay};
 use crate::diff;
 use crate::keybindings;
-use crate::state::ControlMutationStatus;
 use crate::theme::Theme;
 use crate::view::centered_rect;
+use crate::view::presentation::{format_token_count, push_mutation_status};
 
 /// Width percentage for the default (help/agent/session) popup.
 const POPUP_WIDTH_PCT: u16 = 60;
@@ -334,41 +334,6 @@ fn render_plan_approval(
     frame.render_widget(paragraph, area);
 }
 
-fn push_mutation_status<'a>(
-    lines: &mut Vec<Line<'a>>,
-    status: &'a ControlMutationStatus,
-    theme: &Theme,
-) {
-    match status {
-        ControlMutationStatus::Idle => {}
-        ControlMutationStatus::Pending { action_id } => {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(vec![
-                Span::styled("  Pending: ", theme.style_muted()),
-                Span::styled(action_id.clone(), theme.style_warning()),
-            ]));
-        }
-        ControlMutationStatus::Succeeded { action_id } => {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(vec![
-                Span::styled("  Confirmed: ", theme.style_muted()),
-                Span::styled(action_id.clone(), theme.style_success()),
-            ]));
-        }
-        ControlMutationStatus::Failed { action_id, message } => {
-            lines.push(Line::raw(""));
-            lines.push(Line::from(vec![
-                Span::styled("  Failed: ", theme.style_muted()),
-                Span::styled(action_id.clone(), theme.style_error_bold()),
-            ]));
-            lines.push(Line::from(Span::styled(
-                format!("  {message}"),
-                theme.style_error(),
-            )));
-        }
-    }
-}
-
 fn render_system_status(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines = vec![Line::raw("")];
     let section_style = Style::default()
@@ -588,8 +553,8 @@ fn render_context_budget(app: &App, frame: &mut Frame, area: Rect, theme: &Theme
     let token_line = match (used, total) {
         (Some(u), Some(t)) => format!(
             "{pct}%  {bar}  ({} / {} tokens)",
-            format_tokens(u),
-            format_tokens(t)
+            format_token_count(u),
+            format_token_count(t)
         ),
         _ => format!("{pct}%  {bar}"),
     };
@@ -631,16 +596,6 @@ fn render_context_budget(app: &App, frame: &mut Frame, area: Rect, theme: &Theme
         .wrap(Wrap { trim: false })
         .style(ratatui::style::Style::default());
     frame.render_widget(para, inner);
-}
-
-fn format_tokens(n: u32) -> String {
-    if n >= 1_000_000 {
-        format!("{}M", n / 1_000_000)
-    } else if n >= 1_000 {
-        format!("{}K", n / 1_000)
-    } else {
-        format!("{n}")
-    }
 }
 
 fn render_decision_card(

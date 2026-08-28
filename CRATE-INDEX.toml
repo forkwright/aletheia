@@ -420,7 +420,7 @@ purpose = ""
 path = "crates/poiesis/ooxml-parse"
 depends_on = []
 dev_depends_on = []
-used_by = ["poiesis", "poiesis-diff", "poiesis-inspect"]
+used_by = ["poiesis", "poiesis-diff", "poiesis-inspect", "poiesis-slides"]
 
 [crates.poiesis-scaffold]
 path = "crates/poiesis/scaffold"
@@ -448,7 +448,7 @@ xlsx = "XLSX backend via rust_xlsxwriter"
 path = "crates/poiesis/slides"
 layer = "tool"
 purpose = "PPTX presentation rendering backend for poiesis"
-depends_on = ["poiesis-core"]
+depends_on = ["poiesis-core", "poiesis-ooxml-parse"]
 used_by = ["organon", "poiesis"]
 dev_depends_on = []
 

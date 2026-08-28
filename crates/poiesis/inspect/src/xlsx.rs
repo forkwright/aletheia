@@ -1,10 +1,7 @@
 //! XLSX workbook text extraction implementation.
 
-use std::io::Cursor;
-
 use indexmap::IndexMap;
-use poiesis_ooxml_parse::{extract_shared_strings, parse_sheet_entries, parse_workbook_rels};
-use zip::ZipArchive;
+use poiesis_ooxml_parse::read_workbook_parts;
 
 use crate::WorkbookSummary;
 use crate::error::Result;
@@ -43,53 +40,12 @@ fn extract_text_from_worksheet(xml_data: &str, shared_strings: &[String]) -> Str
 }
 
 pub(crate) fn inspect_xlsx_impl(bytes: &[u8]) -> Result<WorkbookSummary> {
-    let cursor = Cursor::new(bytes);
-    let mut archive =
-        ZipArchive::new(cursor).map_err(|e| crate::InspectError::ZipError { source: e })?;
-
-    let shared_strings = if let Ok(mut file) = archive.by_name("xl/sharedStrings.xml") {
-        let mut content = String::new();
-        std::io::Read::read_to_string(&mut file, &mut content)
-            .map_err(|e| crate::InspectError::Io { source: e })?;
-        extract_shared_strings(&content)
-    } else {
-        Vec::new()
-    };
+    let parts = read_workbook_parts(bytes)?;
 
     let mut sheets: IndexMap<String, String> = IndexMap::new();
-
-    let workbook_xml = {
-        let mut file = archive
-            .by_name("xl/workbook.xml")
-            .map_err(|e| crate::InspectError::ZipError { source: e })?;
-        let mut content = String::new();
-        std::io::Read::read_to_string(&mut file, &mut content)
-            .map_err(|e| crate::InspectError::Io { source: e })?;
-        content
-    };
-
-    let rels_xml = if let Ok(mut file) = archive.by_name("xl/_rels/workbook.xml.rels") {
-        let mut content = String::new();
-        std::io::Read::read_to_string(&mut file, &mut content)
-            .map_err(|e| crate::InspectError::Io { source: e })?;
-        content
-    } else {
-        String::new()
-    };
-
-    let rels = parse_workbook_rels(&rels_xml);
-    let sheet_entries = parse_sheet_entries(&workbook_xml);
-
-    for (idx, (sheet_name, rid)) in sheet_entries.into_iter().enumerate() {
-        let worksheet_path = rels.get(&rid).map_or_else(
-            || format!("xl/worksheets/sheet{}.xml", idx + 1),
-            |target| format!("xl/{target}"),
-        );
-        if let Ok(mut file) = archive.by_name(&worksheet_path) {
-            let mut content = String::new();
-            std::io::Read::read_to_string(&mut file, &mut content)
-                .map_err(|e| crate::InspectError::Io { source: e })?;
-            let text = extract_text_from_worksheet(&content, &shared_strings);
+    for (sheet_name, content) in parts.sheets {
+        if let Some(content) = content {
+            let text = extract_text_from_worksheet(&content, &parts.shared_strings);
             sheets.insert(sheet_name, text);
         }
     }
