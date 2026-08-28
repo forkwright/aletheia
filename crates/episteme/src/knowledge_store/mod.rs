@@ -1634,23 +1634,10 @@ impl KnowledgeStore {
         use std::collections::BTreeMap;
 
         use crate::engine::DataValue;
-        let script = r"
-            ?[id, valid_from, content, nous_id, confidence, tier, valid_to,
-              superseded_by, source_session_id, recorded_at,
-              access_count, last_accessed_at, stability_hours, fact_type,
-              is_forgotten, forgotten_at, forget_reason, scope, project_id,
-              visibility, sensitivity] :=
-                *facts{id, valid_from, content, nous_id, confidence, tier,
-                       valid_to, superseded_by, source_session_id, recorded_at,
-                       access_count, last_accessed_at, stability_hours, fact_type,
-                       is_forgotten, forgotten_at, forget_reason, scope, project_id,
-                       visibility, sensitivity},
-                id = $id
-        ";
         let mut params = BTreeMap::new();
         params.insert("id".to_owned(), DataValue::Str(id.into()));
-        let rows = self.run_read(script, params)?;
-        marshal::rows_to_raw_facts(rows)
+        let rows = self.run_read(&queries::fact_by_id(), params)?;
+        marshal::rows_to_facts(rows, "")
     }
 
     pub(super) fn run_mut(
