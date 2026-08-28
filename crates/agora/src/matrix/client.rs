@@ -329,9 +329,8 @@ mod tests {
                 Duration::from_millis(10),
             )
             .expect("client");
-            let error = match client.sync(None).await {
-                Ok(_) => panic!("invalid next_batch was accepted"),
-                Err(error) => error,
+            let Err(error) = client.sync(None).await else {
+                panic!("invalid next_batch was accepted");
             };
             assert!(
                 matches!(&error, error::Error::Protocol { .. }),
@@ -369,9 +368,8 @@ mod tests {
             Duration::from_millis(10),
         )
         .expect("client");
-        let error = match client.sync(None).await {
-            Ok(_) => panic!("redirect was followed"),
-            Err(error) => error,
+        let Err(error) = client.sync(None).await else {
+            panic!("redirect was followed");
         };
         assert!(
             matches!(&error, error::Error::Api { status: 302, .. }),

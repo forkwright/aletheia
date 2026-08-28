@@ -690,8 +690,6 @@ mod tests {
 
     #[tokio::test]
     async fn listener_drop_aborts_owned_tasks_promptly() {
-        let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
-
         struct NotifyOnDrop(Option<tokio::sync::oneshot::Sender<()>>);
 
         impl Drop for NotifyOnDrop {
@@ -701,6 +699,8 @@ mod tests {
                 }
             }
         }
+
+        let (_tx, rx) = mpsc::channel::<InboundMessage>(16);
 
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();

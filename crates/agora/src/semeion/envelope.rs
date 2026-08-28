@@ -376,10 +376,6 @@ fn unsupported_data_kind(raw: &serde_json::Value) -> Option<UnsupportedContentKi
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "test: JSON key indexing on known-present keys"
-)]
 mod tests {
     use super::*;
 

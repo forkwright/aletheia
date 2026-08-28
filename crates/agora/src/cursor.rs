@@ -256,6 +256,7 @@ mod tests {
         let store = FileCursorStore::new(dir.path().to_path_buf());
         store.save("matrix", "primary", "s-1").expect("save");
         let path = store.path_for("matrix", "primary");
+        #[expect(clippy::disallowed_methods, reason = "test setup writes fixtures")]
         std::fs::write(&path, "{not json").expect("corrupt");
         let error = store
             .load("matrix", "primary")
