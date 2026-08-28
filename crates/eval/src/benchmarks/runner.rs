@@ -24,6 +24,7 @@ use tracing::{info, instrument, warn};
 use crate::client::EvalClient;
 use crate::error::Result;
 use crate::provenance::{EvalProvenance, generate_eval_run_id};
+use crate::util::saturating_millis;
 
 use super::{
     BenchmarkIngestionSummary, BenchmarkQuestion, BenchmarkReport, MemoryBenchmark, QuestionResult,
@@ -359,7 +360,7 @@ impl BenchmarkRunner {
             }
             Err(_) => {
                 let e = crate::error::TimeoutSnafu {
-                    elapsed_ms: millis_from_duration(self.config.question_timeout),
+                    elapsed_ms: saturating_millis(&self.config.question_timeout),
                 }
                 .build();
                 warn!(
@@ -634,10 +635,6 @@ fn build_transcript_markdown(question: &BenchmarkQuestion) -> String {
         }
     }
     out
-}
-
-fn millis_from_duration(duration: Duration) -> u64 {
-    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 fn score_for_status(

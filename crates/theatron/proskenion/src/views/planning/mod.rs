@@ -4,7 +4,6 @@ pub(crate) mod category_proposal;
 pub(crate) mod checkpoints;
 pub(crate) mod dashboard;
 pub(crate) mod discussion;
-pub(crate) mod discussion_detail;
 pub(crate) mod execution;
 pub(crate) mod gap_analysis;
 pub(crate) mod project_detail;
