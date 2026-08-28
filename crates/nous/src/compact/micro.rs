@@ -259,6 +259,7 @@ pub(crate) fn is_cleared(msg: &PipelineMessage) -> bool {
 )]
 mod tests {
     use super::*;
+    use crate::compact::test_support::make_text_msg;
 
     fn make_tool_msg(
         tool_name: &str,
@@ -271,10 +272,6 @@ mod tests {
             format_tool_result(tool_name, created_at, content),
             token_estimate,
         )
-    }
-
-    fn make_text_msg(role: &str, content: &str, tokens: i64) -> PipelineMessage {
-        PipelineMessage::text(role, content, tokens)
     }
 
     #[test]

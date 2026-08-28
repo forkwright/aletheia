@@ -163,18 +163,10 @@ pub fn emit(
 mod tests {
     use super::*;
     use crate::model::{
-        Axes, Chart, ChartKind, CiteOrText, FactCite, FactId, LegendSpec, Point, Series,
-        SeriesStyle, ToneRef, Unit,
+        Axes, Chart, ChartKind, CiteOrText, LegendSpec, Point, Series, SeriesStyle, ToneRef,
     };
     use crate::render::canvas::DeckCanvas;
-
-    fn cite(id: &str, v: f64) -> FactCite {
-        FactCite {
-            id: FactId::new(id.to_owned()).expect("valid fact id"),
-            value: v,
-            unit: Unit::Number,
-        }
-    }
+    use crate::render::kinds::shared::test_support::cite;
 
     fn pie_chart(values: &[(f64, &str)]) -> Chart {
         let points: Vec<Point> = values

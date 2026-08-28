@@ -397,9 +397,7 @@ mod tests {
     use super::*;
 
     fn fresh_registry() -> MetricsRegistry {
-        let r = MetricsRegistry::new();
-        r.with_registry(register);
-        r
+        koina::metrics::fresh_registry_with(register)
     }
 
     /// The current value of one exact label series, or 0 when it is absent.
@@ -420,10 +418,7 @@ mod tests {
     }
 
     fn encode(r: &MetricsRegistry) -> String {
-        let mut buf = String::new();
-        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
-        r.encode(&mut buf).unwrap();
-        buf
+        koina::metrics::encode_to_string(r)
     }
 
     fn live_for(tool_name: &str) -> Vec<LiveInvocation> {

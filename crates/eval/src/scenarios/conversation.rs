@@ -1,12 +1,12 @@
 //! Conversation scenarios: message flow, SSE, history.
 
-use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, MessageRole};
 use crate::scenario::{
     Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval, validate_response,
 };
+use crate::scenarios::first_nous_id;
 use crate::sse;
 
 #[tracing::instrument(skip_all)]
@@ -37,13 +37,9 @@ impl Scenario for ConversationSendSse {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = super::unique_key("conv", "sse");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
                     let events = client
                         .send_message(&session.id, "Hello, this is an eval test.")
                         .await?;
@@ -88,13 +84,9 @@ impl Scenario for ConversationHistoryReflects {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = super::unique_key("conv", "history");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
                     let _ = client
                         .send_message(&session.id, "Eval history test message.")
                         .await?;
@@ -151,13 +143,9 @@ impl Scenario for ConversationMultiTurn {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = super::unique_key("conv", "multi");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
                     let _ = client
                         .send_message(&session.id, "First eval message.")
                         .await?;
@@ -209,13 +197,9 @@ impl Scenario for ConversationEmptyRejected {
                     // WHY: pylon returns 422 Unprocessable Entity for validation
                     // failures (empty content). See pylon::error::ApiError::Validation
                     // and the `send_message_empty_content_returns_422` test.
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = super::unique_key("conv", "empty");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
                     match client.send_message(&session.id, "").await {
                         Err(crate::error::Error::UnexpectedStatus { status, .. }) => {
                             assert_eval(status == 422, format!("expected 422, got {status}"))

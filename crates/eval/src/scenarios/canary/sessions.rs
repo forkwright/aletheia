@@ -1,10 +1,10 @@
-use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, MessageRole, SessionStatus};
 use crate::scenario::{
     Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval, validate_response,
 };
+use crate::scenarios::first_nous_id;
 use crate::sse;
 
 /// Create session → send message → get history → verify consistency
@@ -29,13 +29,9 @@ impl Scenario for SessionCreateSendHistory {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "session-lifecycle");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     let test_msg = "Canary session test message 12345";
                     let _ = client.send_message(&session.id, test_msg).await?;
@@ -88,13 +84,9 @@ impl Scenario for SessionMultiTurnContext {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "session-context");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     let _ = client
                         .send_message(&session.id, "My favorite color is blue.")
@@ -145,13 +137,9 @@ impl Scenario for SessionCloseReopenRestore {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "session-restore");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     let _ = client
                         .send_message(&session.id, "Session persistence test.")
@@ -214,13 +202,9 @@ impl Scenario for SessionConcurrentOrdering {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "session-ordering");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     // Send messages in known order
                     let _ = client
@@ -277,13 +261,9 @@ impl Scenario for SessionLargeContextDistillation {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "session-distillation");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     // Send several substantive messages to build context
                     for i in 1..=5 {

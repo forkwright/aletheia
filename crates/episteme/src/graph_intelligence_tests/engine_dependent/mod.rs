@@ -18,4 +18,6 @@
 mod engine_tests_part1;
 #[cfg(feature = "mneme-engine")]
 mod engine_tests_part2;
+#[cfg(feature = "mneme-engine")]
+mod support;
 mod top_level;

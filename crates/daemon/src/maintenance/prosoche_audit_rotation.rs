@@ -98,13 +98,10 @@ fn parse_report_date(path: &Path) -> Option<Date> {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use jiff::{Timestamp, ToSpan};
+    use jiff::ToSpan;
 
     use super::*;
-
-    fn utc_today() -> Date {
-        Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date()
-    }
+    use crate::maintenance::test_support::utc_today;
 
     fn report_name(date: Date) -> String {
         format!("{FILENAME_PREFIX}{date}T04-05-06-123456789Z.json")

@@ -114,23 +114,12 @@ fn parse_audit_date(path: &Path) -> Option<Date> {
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use std::fs;
-    use std::os::unix::fs::PermissionsExt;
     use std::time::SystemTime;
 
-    use jiff::{Timestamp, ToSpan};
+    use jiff::ToSpan;
 
     use super::*;
-
-    fn write_fixture(path: &std::path::Path, content: &str) {
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "test fixture: synchronous write in non-async test context"
-        )]
-        fs::write(path, content).expect("write");
-        let mut perms = fs::metadata(path).unwrap().permissions();
-        perms.set_mode(0o644);
-        fs::set_permissions(path, perms).unwrap();
-    }
+    use crate::maintenance::test_support::{utc_today, write_fixture};
 
     /// Set a file's mtime to `days_ago` days in the past.
     ///
@@ -146,10 +135,6 @@ mod tests {
             .open(path)
             .expect("open for mtime");
         file.set_modified(mtime).expect("set mtime");
-    }
-
-    fn utc_today() -> Date {
-        Timestamp::now().to_zoned(jiff::tz::TimeZone::UTC).date()
     }
 
     fn date_days_ago(days: u32) -> Date {

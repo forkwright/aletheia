@@ -25,6 +25,11 @@ pub(crate) mod validation;
 /// After-action JSONL record building and file management.
 pub(crate) mod after_action;
 
+/// Shared `#[cfg(test)]` scaffolding (QA gate stubs, outcome fixtures) for
+/// every stage's test module.
+#[cfg(test)]
+pub(crate) mod test_support;
+
 // Re-export stage implementations for use by the orchestrator.
 pub(crate) use execution::ExecutionStage;
 pub(crate) use health_check::HealthCheckStage;
@@ -126,47 +131,11 @@ mod tests {
     use crate::http::mock::{MockEngine, MockOutcome};
     use crate::orchestrator::OrchestratorConfig;
     use crate::pipeline::context::PipelineContext;
+    use crate::pipeline::test_support::AlwaysPassQa;
     use crate::prompt::PromptSpec;
-    use crate::qa::QaGate;
-    use crate::types::{DispatchSpec, MechanicalIssue, QaResult, QaVerdict, SessionStatus};
+    use crate::types::{DispatchSpec, SessionStatus};
 
     use super::DispatchPipeline;
-
-    struct AlwaysPassQa;
-
-    impl QaGate for AlwaysPassQa {
-        fn evaluate<'a>(
-            &'a self,
-            prompt: &'a crate::qa::PromptSpec,
-            pr_number: u64,
-            _diff: &'a str,
-        ) -> std::pin::Pin<
-            Box<dyn std::future::Future<Output = crate::error::Result<QaResult>> + Send + 'a>,
-        > {
-            use jiff::Timestamp;
-            Box::pin(async move {
-                Ok(QaResult {
-                    prompt_number: prompt.prompt_number,
-                    pr_number,
-                    verdict: QaVerdict::Pass,
-                    criteria_results: vec![],
-                    mechanical_issues: vec![],
-                    reasons: vec![],
-                    cost_usd: 0.0,
-                    evaluated_at: Timestamp::now(),
-                    semantic_evaluated: false,
-                })
-            })
-        }
-
-        fn mechanical_check(
-            &self,
-            _diff: &str,
-            _prompt: &crate::qa::PromptSpec,
-        ) -> Vec<MechanicalIssue> {
-            vec![]
-        }
-    }
 
     fn make_context(mock_outcomes: Vec<MockOutcome>, prompts: Vec<PromptSpec>) -> PipelineContext {
         let engine = Arc::new(MockEngine::new(mock_outcomes));

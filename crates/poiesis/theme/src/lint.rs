@@ -258,16 +258,10 @@ const DANGEROUS_TYPEFACES: &[&str] = &[
     reason = "test assertions; bounds asserted by surrounding test setup"
 )]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
-    use crate::registry::Registry;
 
     fn protos() -> ResolvedTheme {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let registry = Registry::load_dir(&dir).expect("load protos");
-        let id = crate::registry::parse_theme_id("protos").expect("parse protos");
-        registry.resolve(&id).expect("resolve protos")
+        crate::protos()
     }
 
     // ── THEME/raw-color-literal ──────────────────────────────────────────────

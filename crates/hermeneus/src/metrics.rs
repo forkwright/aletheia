@@ -317,16 +317,11 @@ mod tests {
 
     /// Set up a fresh registry with this crate's metrics registered.
     fn fresh_registry() -> MetricsRegistry {
-        let r = MetricsRegistry::new();
-        r.with_registry(register);
-        r
+        koina::metrics::fresh_registry_with(register)
     }
 
     fn encode(r: &MetricsRegistry) -> String {
-        let mut buf = String::new();
-        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
-        r.encode(&mut buf).unwrap();
-        buf
+        koina::metrics::encode_to_string(r)
     }
 
     #[test]
