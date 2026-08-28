@@ -1,4 +1,9 @@
 //! Shared entity/relationship/store fixtures for engine-dependent graph tests.
+// WHY: the test modules these fixtures came from each carried this expectation;
+// consolidating the bodies here moved them out from under it, and the workspace
+// denies `expect_used`.
+#![expect(clippy::expect_used, reason = "test assertions")]
+
 use crate::knowledge::{Entity, Relationship};
 use crate::knowledge_store::KnowledgeStore;
 

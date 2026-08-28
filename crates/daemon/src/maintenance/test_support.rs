@@ -1,4 +1,9 @@
 //! Shared filesystem and date fixtures for maintenance-task tests.
+// WHY: the `mod tests` blocks these fixtures came from each carried this
+// expectation; consolidating the bodies here moved them out from under it, and
+// the workspace denies `expect_used`.
+#![expect(clippy::expect_used, reason = "test assertions")]
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
