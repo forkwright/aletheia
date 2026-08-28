@@ -37,6 +37,8 @@ use std::sync::LazyLock;
 
 use regex::Regex;
 
+use crate::regex_util::compile_regex as compile;
+
 /// Redaction marker template. Callers produce the final marker via
 /// [`marker`].
 const MARKER_PREFIX: &str = "[REDACTED:";
@@ -73,17 +75,6 @@ struct Pattern {
     kind: &'static str,
     /// Compiled regex matching the PII to redact.
     re: Regex,
-}
-
-/// Compile a regex literal known at compile time to be valid.
-fn compile(re: &str) -> Regex {
-    #[expect(
-        clippy::expect_used,
-        reason = "compile-time-constant regex literals cannot fail"
-    )]
-    {
-        Regex::new(re).expect("compile-time-constant regex literals cannot fail")
-    }
 }
 
 /// Ordered list of redaction patterns.

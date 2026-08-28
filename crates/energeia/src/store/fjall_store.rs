@@ -8,7 +8,7 @@ use eidos::knowledge::{
     Visibility,
 };
 
-use crate::error::{self, Result};
+use crate::error::{self, Result, store_err};
 use crate::store::queries;
 use crate::store::records::{
     CiValidationRecord, CiValidationStatus, DispatchExport, DispatchId, DispatchRecord,
@@ -29,13 +29,6 @@ const STALE_RUNNING_DISPATCH_THRESHOLD_HOURS: i64 = 1;
 
 /// Partition name for energeia state within the shared fjall database.
 const PARTITION_NAME: &str = "energeia";
-
-fn store_err(context: &str, e: impl std::fmt::Display) -> error::Error {
-    error::StoreSnafu {
-        message: format!("{context}: {e}"),
-    }
-    .build()
-}
 
 fn ser_err(context: &str, e: impl std::fmt::Display) -> error::Error {
     error::SerializationSnafu {

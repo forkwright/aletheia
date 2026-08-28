@@ -53,7 +53,7 @@ fn test_default_interval_is_five_seconds() {
 
 #[test]
 fn test_build_form_body_str() {
-    let mut params = HashMap::new();
+    let mut params: HashMap<String, String> = HashMap::new();
     params.insert(
         "grant_type".to_string(),
         "urn:ietf:params:oauth:grant-type:device_code".to_string(),
@@ -61,7 +61,7 @@ fn test_build_form_body_str() {
     params.insert("device_code".to_string(), "abc123".to_string());
     params.insert("client_id".to_string(), "my client".to_string());
 
-    let body = build_form_body_str(&params);
+    let body = build_form_body(&params);
 
     // HashMap iteration order is not guaranteed, so check for presence of each param
     assert!(body.contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code"));
@@ -72,16 +72,16 @@ fn test_build_form_body_str() {
 
 #[test]
 fn test_build_form_body_str_empty() {
-    let params = HashMap::new();
-    let body = build_form_body_str(&params);
+    let params: HashMap<String, String> = HashMap::new();
+    let body = build_form_body(&params);
     assert!(body.is_empty());
 }
 
 #[test]
 fn test_build_form_body_str_single_param() {
-    let mut params = HashMap::new();
+    let mut params: HashMap<String, String> = HashMap::new();
     params.insert("key".to_string(), "value".to_string());
-    let body = build_form_body_str(&params);
+    let body = build_form_body(&params);
     assert_eq!(body, "key=value");
 }
 

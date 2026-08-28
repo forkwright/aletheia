@@ -13,6 +13,7 @@ use mneme::types::{Message, Role, Session, ToolAuditRecord, UsageRecord};
 use crate::error::{ApiError, BadRequestSnafu, InternalSnafu, NousNotFoundSnafu};
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::insights::anomaly::detect_anomalies;
+use crate::insights::usize_to_f64;
 use crate::state::InsightsState;
 use crate::types::insights::{
     AgentCostRow, AgentPerformance, AgentPerformanceListResponse, AgentTokenRow,
@@ -29,15 +30,6 @@ use crate::types::insights::{
 /// Does not panic — saturates at `i32::MAX`.
 fn i64_to_f64(n: i64) -> f64 {
     f64::from(i32::try_from(n).unwrap_or(i32::MAX))
-}
-
-/// Convert `usize` to `f64` losslessly for values that fit in `u32`.
-///
-/// # Panics
-///
-/// Does not panic — saturates at `u32::MAX`.
-fn usize_to_f64(n: usize) -> f64 {
-    f64::from(u32::try_from(n).unwrap_or(u32::MAX))
 }
 
 /// GET /api/v1/metrics/agents: list performance metrics for all agents.

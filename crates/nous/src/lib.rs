@@ -52,6 +52,8 @@ pub(crate) mod execute;
 pub(crate) mod extraction;
 /// Turn finalization: persists messages and emits post-turn events.
 pub(crate) mod finalize;
+/// Shared big-endian/zero-padded key codec for fjall-backed stores.
+pub(crate) mod fjall_keys;
 /// Cloneable handle for sending commands to a `NousActor`.
 pub mod handle;
 /// Conversation history retrieval and token-budgeted formatting.
@@ -79,6 +81,8 @@ pub mod recall;
 // the `recipe_order` field) are exercised only by the module's own
 // `#[cfg(test)]` block. Stays `pub`.
 pub mod recipes;
+/// Shared compile-time regex construction for pattern tables.
+pub(crate) mod regex_util;
 /// Parallel research orchestrator: spawns domain researchers via the sub-agent system.
 // WHY(#6750): same dead-code trap as `competence` above — zero real callers,
 // only exercised by its own `#[cfg(test)]` block. Stays `pub`.
