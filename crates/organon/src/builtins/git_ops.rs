@@ -564,27 +564,14 @@ fn git_checkout_def() -> ToolDef {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use std::collections::HashSet;
     use std::process::Command;
-    use std::sync::{Arc, RwLock};
-
-    use koina::id::{NousId, SessionId};
 
     use crate::types::ToolContext;
 
     use super::*;
 
     fn test_ctx(dir: &std::path::Path) -> ToolContext {
-        ToolContext {
-            nous_id: NousId::new("alice").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: dir.to_path_buf(),
-            allowed_roots: vec![dir.to_path_buf()],
-            services: None,
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-        }
+        crate::testing::make_test_context_at(dir)
     }
 
     fn init_repo(dir: &std::path::Path) {

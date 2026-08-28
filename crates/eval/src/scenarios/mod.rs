@@ -7,9 +7,26 @@ mod health;
 mod nous;
 mod session;
 
+use snafu::OptionExt as _;
+
+use crate::client::EvalClient;
+use crate::error::{NoAgentsAvailableSnafu, Result};
 use crate::scenario::Scenario;
 
 pub use canary::{CanaryProvider, canary_scenarios};
+
+/// Return the id of the first agent the backend reports, or
+/// [`crate::error::Error::NoAgentsAvailable`] if none are registered.
+///
+/// Every scenario family (`conversation`, `session`, `canary`, and the
+/// `cognitive` probes) needs exactly one agent id to act as; this is the
+/// single place that resolves it so a backend invariant change (what
+/// "no agents" looks like) is a one-line edit, not a coordinated one.
+pub(super) async fn first_nous_id(client: &EvalClient) -> Result<String> {
+    let nous_list = client.list_nous().await?;
+    let nous = nous_list.first().context(NoAgentsAvailableSnafu)?;
+    Ok(nous.id.clone())
+}
 
 /// Return all built-in scenarios in execution order.
 #[tracing::instrument(skip_all)]

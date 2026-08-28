@@ -191,41 +191,14 @@ pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use std::collections::HashSet;
-    use std::sync::{Arc, RwLock};
+    use koina::id::ToolName;
 
-    use koina::id::{NousId, SessionId, ToolName};
-
-    use crate::testing::install_crypto_provider;
-    use crate::types::{ServerToolConfig, ToolContext, ToolHttpClients, ToolInput, ToolServices};
+    use crate::types::{ToolContext, ToolInput};
 
     use super::*;
 
     fn mock_ctx() -> ToolContext {
-        install_crypto_provider();
-        ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: std::path::PathBuf::from("/tmp/test"),
-            allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-            services: Some(Arc::new(ToolServices {
-                working_checkpoint_store: None,
-                cross_nous: None,
-                messenger: None,
-                note_store: None,
-                blackboard_store: None,
-                spawn: None,
-                planning: None,
-                knowledge: None,
-                http_clients: ToolHttpClients::new(),
-                secret_vault: hermeneus::secret::SecretVault::new(),
-                lazy_tool_catalog: vec![],
-                server_tool_config: ServerToolConfig::default(),
-            })),
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-        }
+        crate::testing::make_test_context_with_services()
     }
 
     #[tokio::test]

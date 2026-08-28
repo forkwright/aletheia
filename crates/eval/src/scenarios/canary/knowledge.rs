@@ -5,11 +5,12 @@ use crate::client::EvalClient;
 use crate::scenario::{
     Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval,
 };
+use crate::scenarios::first_nous_id;
 use crate::sse;
 
 use super::support::{
     assert_fact_provenance, assert_search_selected, fact_json, facts_for_marker, find_fact,
-    find_search_fact, first_nous_id, ingest_json_facts, unique_fact_id, unique_marker,
+    find_search_fact, ingest_json_facts, unique_fact_id, unique_marker,
 };
 
 /// Ingest technical knowledge → verify durable search and provenance
