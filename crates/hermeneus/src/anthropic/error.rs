@@ -6,6 +6,7 @@ use tracing::warn;
 
 use super::wire::WireErrorResponse;
 use crate::error::{self, ApiErrorContext, Result};
+use crate::retry::extract_retry_after;
 
 /// Maximum bytes of a provider error body preserved in logs.
 ///
@@ -94,16 +95,6 @@ pub(crate) fn map_request_error(err: &reqwest::Error) -> error::Error {
 /// Parse a response body as JSON, mapping parse failures to `ParseResponse`.
 pub(crate) fn parse_response_body<T: serde::de::DeserializeOwned>(body: &str) -> Result<T> {
     serde_json::from_str(body).context(error::ParseResponseSnafu)
-}
-
-/// Extract `retry-after` header value as milliseconds.
-fn extract_retry_after(response: &Response) -> Option<u64> {
-    response
-        .headers()
-        .get("retry-after")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse::<u64>().ok())
-        .map(|secs| secs * 1000)
 }
 
 /// Default retry delay for SSE stream rate-limit and overload errors.

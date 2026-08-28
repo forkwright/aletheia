@@ -73,9 +73,6 @@ SANCTIONED = {
     "crates/organon/src/builtins/http_client.rs": (
         "this is send_with_safe_redirects -- the checkpoint every other site routes through"
     ),
-    "crates/organon/src/builtins/research.rs": (
-        "this is get_with_safe_redirects -- research's copy of the same loop"
-    ),
 }
 
 # Sites that do not route through the checkpoint and do not need to. A reason here is

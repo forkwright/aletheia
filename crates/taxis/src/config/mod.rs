@@ -148,9 +148,12 @@ pub struct AletheiaConfig {
     pub training: eidos::training::TrainingConfig,
     /// Deployment-tunable timeout thresholds.
     ///
-    /// WHY configurable: LLM call timeouts vary by provider and network
-    /// conditions; operators running behind proxies or on slow links need to
-    /// adjust without code changes.
+    /// WHY configurable: the operator approval wait matters for both UX
+    /// (long enough to read the overlay) and safety (short enough that a
+    /// dropped client connection denies rather than hangs indefinitely).
+    ///
+    /// NOTE: real LLM-call wall-clock timeouts are controlled by
+    /// `providerBehavior.nonStreamingTimeoutSecs`, not by this section.
     pub timeouts: TimeoutsConfig,
     /// Deployment-tunable capacity limits for tool output and context windows.
     ///
