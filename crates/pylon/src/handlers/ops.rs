@@ -2,7 +2,7 @@
 
 use axum::Json;
 use axum::extract::State;
-use organon::types::{ApprovalRequirement, Reversibility, ToolDef};
+use organon::types::{ApprovalRequirement, ToolDef};
 use symbolon::types::Role;
 use tracing::warn;
 
