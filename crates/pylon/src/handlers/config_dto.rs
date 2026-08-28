@@ -76,7 +76,7 @@ pub struct ChannelsConfig {
     pub matrix: Option<Value>,
 }
 
-/// Closed OpenAPI shape for a binding's source selector.
+/// Closed `OpenAPI` shape for a binding's source selector.
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ChannelSourceKind {
@@ -84,7 +84,7 @@ pub enum ChannelSourceKind {
     Group,
 }
 
-/// Closed OpenAPI shape for command authority on a binding.
+/// Closed `OpenAPI` shape for command authority on a binding.
 #[derive(serde::Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum CommandTier {
