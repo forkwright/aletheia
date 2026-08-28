@@ -7,6 +7,7 @@ use std::pin::Pin;
 use indexmap::IndexMap;
 use poiesis_diff::{diff_presentations, diff_workbooks};
 
+use crate::builtins::workspace::base64_decode;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -96,10 +97,6 @@ impl ToolExecutor for DiffReportExecutor {
             Ok(ToolResult::text(diff_result))
         })
     }
-}
-
-fn base64_decode(s: &str) -> std::result::Result<Vec<u8>, String> {
-    koina::base64::decode(s).map_err(|e| e.to_string())
 }
 
 fn col_index_to_letter(col: u32) -> String {

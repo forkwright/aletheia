@@ -270,20 +270,50 @@ pub(crate) fn normalize(path: &Path) -> PathBuf {
     result
 }
 
+/// Extract a required string field, mapping a missing or wrong-typed field through a
+/// caller-selected error adapter. Shared by every built-in that needs a required-string
+/// extractor but disagrees on the error type it returns -- `extract_str` below adapts to
+/// the crate's typed error, while report tools (`scaffold_report`, `poiesis`) adapt to
+/// `ToolResult` directly.
+pub(crate) fn extract_str_with<'a, E>(
+    args: &'a serde_json::Value,
+    field: &str,
+    on_missing: impl FnOnce(&str) -> E,
+) -> std::result::Result<&'a str, E> {
+    args.get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| on_missing(field))
+}
+
 pub(crate) fn extract_str<'a>(
     args: &'a serde_json::Value,
     field: &str,
     tool_name: &ToolName,
 ) -> Result<&'a str> {
-    args.get(field)
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            error::InvalidInputSnafu {
-                name: tool_name.clone(),
-                reason: format!("missing or invalid field: {field}"),
-            }
-            .build()
-        })
+    extract_str_with(args, field, |field| {
+        error::InvalidInputSnafu {
+            name: tool_name.clone(),
+            reason: format!("missing or invalid field: {field}"),
+        }
+        .build()
+    })
+}
+
+/// Extract a required string field, mapping absence to a `ToolResult::error` carrying
+/// the crate's standard "missing required argument" message. Convenience wrapper around
+/// `extract_str_with` for report tools that return `ToolResult` directly rather than the
+/// crate's typed error (`scaffold_report`, `poiesis`).
+#[expect(
+    clippy::result_large_err,
+    reason = "ToolResult grew by receipt field; boxing would change public API"
+)]
+pub(crate) fn extract_str_or_tool_error<'a>(
+    args: &'a serde_json::Value,
+    field: &str,
+) -> std::result::Result<&'a str, ToolResult> {
+    extract_str_with(args, field, |field| {
+        ToolResult::error(format!("missing required argument: {field}"))
+    })
 }
 
 pub(crate) fn extract_opt_u64(args: &serde_json::Value, field: &str) -> Option<u64> {
@@ -300,6 +330,13 @@ pub(crate) fn extract_opt_str<'a>(args: &'a serde_json::Value, field: &str) -> O
 
 pub(crate) fn extract_opt_f64(args: &serde_json::Value, field: &str) -> Option<f64> {
     args.get(field).and_then(serde_json::Value::as_f64)
+}
+
+/// Decode a base64 string, stringifying the underlying error for tool-facing display.
+/// Shared by report tools that accept a base64-encoded document (`diff_report`,
+/// `inspect_report`).
+pub(crate) fn base64_decode(s: &str) -> std::result::Result<Vec<u8>, String> {
+    koina::base64::decode(s).map_err(|e| e.to_string())
 }
 
 /// Maximum file size the read tool will process.
