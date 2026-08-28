@@ -10,39 +10,15 @@ use mneme::recall::ScoredResult;
 
 /// Per-factor base scores for the recall pipeline.
 ///
-/// These values are placed directly into the non-vector
+/// Defined once in [`eidos::recall::RecallWeights`] — the canonical
+/// definition, re-exported through `taxis::config` — so nous and taxis share
+/// exactly one struct and one set of defaults instead of two that can (and
+/// did) drift. These values are placed directly into the non-vector
 /// [`mneme::recall::FactorScores`] fields. Only vector similarity is computed
 /// from the actual embedding distance; decay, relevance, tier, proximity, frequency,
 /// and graph importance use these configured values as their scores. Operators
 /// override the defaults in taxis config.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RecallWeights {
-    /// Temporal decay weight (0.0-1.0).
-    pub decay: f64,
-    /// Content relevance weight (0.0-1.0).
-    pub relevance: f64,
-    /// Epistemic tier weight (0.0-1.0).
-    pub epistemic_tier: f64,
-    /// Knowledge-graph relationship proximity weight (0.0-1.0).
-    pub relationship_proximity: f64,
-    /// Access frequency weight (0.0-1.0).
-    pub access_frequency: f64,
-    /// Graph `PageRank` importance weight (0.0-1.0).
-    pub graph_importance: f64,
-}
-
-impl Default for RecallWeights {
-    fn default() -> Self {
-        Self {
-            decay: 0.5,
-            relevance: 0.5,
-            epistemic_tier: 0.3,
-            relationship_proximity: 0.1,
-            access_frequency: 0.0,
-            graph_importance: 0.1,
-        }
-    }
-}
+pub use taxis::config::RecallWeights;
 
 /// Configuration for the recall stage.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,14 +167,7 @@ impl From<taxis::config::RecallSettings> for RecallConfig {
             max_recall_tokens: s.max_recall_tokens,
             iterative: s.iterative,
             max_cycles: s.max_cycles,
-            weights: RecallWeights {
-                decay: s.weights.decay,
-                relevance: s.weights.relevance,
-                epistemic_tier: s.weights.epistemic_tier,
-                relationship_proximity: s.weights.relationship_proximity,
-                access_frequency: s.weights.access_frequency,
-                graph_importance: s.weights.graph_importance,
-            },
+            weights: s.weights,
             // NOTE: the surprise/evidence engine weights + tunables are not
             //       carried by RecallSettings; they are sourced from the
             //       knowledge behavior config at NousConfig assembly (see

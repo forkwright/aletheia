@@ -167,46 +167,18 @@ pub fn render_pptx(data: &Value) -> Result<Vec<u8>> {
 #[cfg(feature = "pptx")]
 #[instrument(skip_all, fields(bytes_len = bytes.len()))]
 pub fn inspect_pptx(bytes: &[u8]) -> Result<PresentationSummary> {
-    let cursor = std::io::Cursor::new(bytes);
-    let mut archive = zip::ZipArchive::new(cursor).map_err(|e| Error::ZipRead {
+    // WHY: the gap-safe enumeration lives once, in poiesis-ooxml-parse. Probing
+    // slide{n} upward and stopping at the first missing index silently drops
+    // every slide past a gap, and gaps are normal -- deleting a slide in
+    // PowerPoint leaves the remaining part names unrenumbered.
+    let slides = poiesis_ooxml_parse::read_pptx_slides(bytes).map_err(|e| Error::ZipRead {
         message: e.to_string(),
     })?;
 
-    let mut slide_names: Vec<String> = Vec::new();
-    for i in 0..archive.len() {
-        let file = archive.by_index(i).map_err(|e| Error::ZipRead {
-            message: e.to_string(),
-        })?;
-        let name = file.name();
-        if name.starts_with("ppt/slides/slide")
-            && std::path::Path::new(name)
-                .extension()
-                .is_some_and(|ext| ext.eq_ignore_ascii_case("xml"))
-        {
-            slide_names.push(name.to_owned());
-        }
-    }
+    let mut summaries: Vec<SlideSummary> = Vec::with_capacity(slides.len());
 
-    // WHY: ZIP entry order is arbitrary — sort by slide number so the
-    // summary order is deterministic.
-    slide_names.sort_by(|a, b| {
-        let num_a = extract_slide_number(a).unwrap_or(0);
-        let num_b = extract_slide_number(b).unwrap_or(0);
-        num_a.cmp(&num_b)
-    });
-
-    let mut summaries: Vec<SlideSummary> = Vec::with_capacity(slide_names.len());
-
-    for name in &slide_names {
-        let mut file = archive.by_name(name).map_err(|e| Error::ZipRead {
-            message: e.to_string(),
-        })?;
-        let mut xml = String::new();
-        std::io::Read::read_to_string(&mut file, &mut xml).map_err(|e| Error::ZipRead {
-            message: e.to_string(),
-        })?;
-
-        let texts = extract_text_runs(&xml)?;
+    for xml in &slides {
+        let texts = extract_text_runs(xml)?;
         let (title, bullets) = if texts.is_empty() {
             (String::new(), Vec::new())
         } else {
@@ -232,13 +204,6 @@ fn plain(s: &str) -> RichText {
     RichText {
         spans: vec![Span::Plain(s.to_owned())],
     }
-}
-
-#[cfg(feature = "pptx")]
-fn extract_slide_number(name: &str) -> Option<usize> {
-    let stem = name.strip_prefix("ppt/slides/slide")?;
-    let num_str = stem.strip_suffix(".xml")?;
-    num_str.parse().ok()
 }
 
 #[cfg(feature = "pptx")]

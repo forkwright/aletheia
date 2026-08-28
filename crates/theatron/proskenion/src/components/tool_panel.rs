@@ -1,6 +1,7 @@
 //! Expandable tool call panel component.
 
 use dioxus::prelude::*;
+use koina::json::pretty_or_compact;
 
 use crate::state::tools::ToolCallState;
 
@@ -131,7 +132,7 @@ pub(crate) fn ToolPanel(tool: ToolCallState) -> Element {
                 div { style: "{SECTION_LABEL_STYLE}", "Input" }
                 div {
                     style: "{CODE_BLOCK_STYLE}",
-                    "{format_json(input)}"
+                    "{pretty_or_compact(input)}"
                 }
             }
 
@@ -169,11 +170,6 @@ fn format_duration(ms: u64) -> String {
     }
 }
 
-/// Pretty-print a JSON value for display in the tool panel.
-fn format_json(value: &serde_json::Value) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -193,9 +189,9 @@ mod tests {
     }
 
     #[test]
-    fn format_json_pretty_prints() {
+    fn pretty_or_compact_pretty_prints() {
         let val = serde_json::json!({"key": "value"});
-        let formatted = format_json(&val);
+        let formatted = pretty_or_compact(&val);
         assert!(formatted.contains("key"), "should contain the key");
         assert!(
             formatted.contains('\n'),

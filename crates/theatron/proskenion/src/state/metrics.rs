@@ -464,6 +464,22 @@ pub(crate) fn format_cost(value: f64) -> String {
     format!("${value:.2}")
 }
 
+/// Format an uptime duration as `"<d>d <h>h"`, `"<h>h <m>m"`, or `"<m>m"`,
+/// dropping the coarser unit once it is zero.
+pub(crate) fn format_uptime(seconds: u64) -> String {
+    let days = seconds / 86400;
+    let hours = (seconds % 86400) / 3600;
+    let mins = (seconds % 3600) / 60;
+
+    if days > 0 {
+        format!("{days}d {hours}h")
+    } else if hours > 0 {
+        format!("{hours}h {mins}m")
+    } else {
+        format!("{mins}m")
+    }
+}
+
 // -- Date helpers -------------------------------------------------------------
 
 /// Today's date as an ISO-8601 string (YYYY-MM-DD).
@@ -710,6 +726,26 @@ mod tests {
     fn format_cost_two_decimals() {
         assert_eq!(format_cost(1.5), "$1.50");
         assert_eq!(format_cost(0.001), "$0.00");
+    }
+
+    #[test]
+    fn format_uptime_minutes_only() {
+        assert_eq!(format_uptime(300), "5m");
+    }
+
+    #[test]
+    fn format_uptime_hours_and_minutes() {
+        assert_eq!(format_uptime(3900), "1h 5m");
+    }
+
+    #[test]
+    fn format_uptime_days_and_hours() {
+        assert_eq!(format_uptime(90000), "1d 1h");
+    }
+
+    #[test]
+    fn format_uptime_zero_is_zero_minutes() {
+        assert_eq!(format_uptime(0), "0m");
     }
 
     #[test]

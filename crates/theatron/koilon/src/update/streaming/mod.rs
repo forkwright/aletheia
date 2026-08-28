@@ -1,3 +1,5 @@
+use skene::text::append_terminal_notice;
+
 use crate::api::types::{Plan, TurnOutcome};
 use crate::app::App;
 use crate::id::{NousId, ToolId, TurnId};
@@ -68,23 +70,6 @@ fn terminal_failure_notice(stop_reason: Option<&str>, error: Option<&str>) -> Op
         }
         (None, None) => "turn failed".to_string(),
     })
-}
-
-fn append_terminal_notice(mut text: String, notice: &str) -> String {
-    if text.is_empty() {
-        format!("[{notice}]")
-    } else {
-        if text.ends_with("\n\n") {
-            text.push('[');
-        } else if text.ends_with('\n') {
-            text.push_str("\n[");
-        } else {
-            text.push_str("\n\n[");
-        }
-        text.push_str(notice);
-        text.push(']');
-        text
-    }
 }
 
 fn commit_assistant_message(

@@ -3,6 +3,7 @@
 use dioxus::prelude::*;
 use skeue::EmptyState;
 
+use crate::state::metrics::format_uptime;
 use crate::state::ops::{HealthCheckInfo, HealthStatus, ServiceHealthStore};
 
 const PANEL_STYLE: &str = "\
@@ -147,20 +148,6 @@ fn short_sha(sha: &str) -> &str {
     sha.get(..7).unwrap_or(sha)
 }
 
-fn format_uptime(seconds: u64) -> String {
-    let days = seconds / 86400;
-    let hours = (seconds % 86400) / 3600;
-    let mins = (seconds % 3600) / 60;
-
-    if days > 0 {
-        format!("{days}d {hours}h")
-    } else if hours > 0 {
-        format!("{hours}h {mins}m")
-    } else {
-        format!("{mins}m")
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,20 +160,5 @@ mod tests {
     #[test]
     fn short_sha_keeps_short_input() {
         assert_eq!(short_sha("abc123"), "abc123");
-    }
-
-    #[test]
-    fn format_uptime_minutes_only() {
-        assert_eq!(format_uptime(300), "5m");
-    }
-
-    #[test]
-    fn format_uptime_hours_and_minutes() {
-        assert_eq!(format_uptime(3900), "1h 5m");
-    }
-
-    #[test]
-    fn format_uptime_days_and_hours() {
-        assert_eq!(format_uptime(90000), "1d 1h");
     }
 }

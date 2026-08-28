@@ -31,6 +31,8 @@ pub mod fs;
 pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
 pub mod id;
+/// Shared pretty-or-compact JSON display projection ([`json::pretty_or_compact`]).
+pub mod json;
 /// Composite memory-health scoring formula, shared by proskenion (client)
 /// and pylon (server) so the two never carry independent copies of the
 /// weights.
