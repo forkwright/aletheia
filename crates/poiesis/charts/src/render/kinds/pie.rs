@@ -163,8 +163,7 @@ pub fn emit(
 mod tests {
     use super::*;
     use crate::model::{
-        Axes, Chart, ChartKind, CiteOrText, LegendSpec, Point, Series, SeriesStyle,
-        ToneRef,
+        Axes, Chart, ChartKind, CiteOrText, LegendSpec, Point, Series, SeriesStyle, ToneRef,
     };
     use crate::render::canvas::DeckCanvas;
     use crate::render::kinds::shared::test_support::cite;
