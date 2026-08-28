@@ -8,6 +8,7 @@
 use std::time::Duration;
 
 use koina::id::ToolName;
+use koina::ulid::Ulid;
 use organon::registry::ToolRegistry;
 use organon::types::{RedactionPolicy, Reversibility, ToolCapabilityMetadata};
 use tokio::sync::mpsc;
@@ -728,7 +729,7 @@ async fn saturated_live_stream_defaults_to_deny_without_pre_timeout_blocking() {
     event_tx
         .try_send(TurnStreamEvent::ToolApprovalResolved {
             identity: TurnEventIdentity {
-                turn_id: "test-turn".to_owned(),
+                turn_id: Ulid::new(),
                 session_id: "test-session".to_owned(),
                 request_id: None,
             },

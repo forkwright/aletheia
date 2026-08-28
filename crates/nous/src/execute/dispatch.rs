@@ -14,6 +14,7 @@ use hermeneus::secret::{
 };
 use hermeneus::types::{ContentBlock, ToolDefinition, ToolResultBlock, ToolResultContent};
 use koina::id::ToolName;
+use koina::ulid::Ulid;
 use organon::registry::{PreparedToolInput, ToolRegistry};
 use organon::surface::{
     DenialReason, EffectiveToolSurface, SurfaceAvailability, SurfaceEntryKind, SurfaceLookup,
@@ -555,6 +556,10 @@ pub(crate) fn is_denial_outcome(outcome: &str) -> bool {
 /// matching `tool_use_id` in the following user message. A `LoopVerdict::Warn` ends
 /// dispatch early, so without this the trailing calls would carry no result at all and
 /// the next request would be rejected for unpaired blocks.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "forwards record_denied_call's own parameter list plus the batch of remaining items"
+)]
 fn record_undispatched_calls(
     all_tool_calls: &mut Vec<ToolCall>,
     unexecuted: &mut Vec<String>,
@@ -644,6 +649,10 @@ fn record_stream_send_error<T>(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "mirrors TurnStreamEvent::ToolApprovalRequired's own field list"
+)]
 fn emit_approval_required(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
@@ -710,6 +719,10 @@ struct DeniedToolCall<'a> {
     approval: Option<&'a str>,
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "carries the same stream/context/identity parameters every emit_* sibling in this module takes"
+)]
 fn record_denied_call(
     all_tool_calls: &mut Vec<ToolCall>,
     unexecuted: &mut Vec<String>,
@@ -1335,7 +1348,7 @@ pub(super) async fn dispatch_tools(
     // not identity propagation (that is covered by execute-level streaming
     // tests), so a placeholder identity keeps them unchanged.
     let identity = TurnEventIdentity {
-        turn_id: "test-turn".to_owned(),
+        turn_id: Ulid::new(),
         session_id: "test-session".to_owned(),
         request_id: None,
     };

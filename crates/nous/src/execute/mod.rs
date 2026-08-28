@@ -637,7 +637,7 @@ async fn run_execute_loop(
     // turn emits — the ULID minted on SessionState (gateway-supplied for HTTP
     // turns), the owning session, and the gateway request id (#4853).
     let event_identity = crate::stream::TurnEventIdentity {
-        turn_id: session.turn_id.to_string(),
+        turn_id: session.turn_id,
         session_id: session.id.clone(),
         request_id: session.request_id.clone(),
     };

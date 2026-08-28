@@ -1,6 +1,7 @@
 //! Real-time streaming events for the turn pipeline.
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
+use koina::ulid::Ulid;
 
 /// Authoritative identity of the turn emitting a tool-lifecycle event (#5016).
 ///
@@ -13,8 +14,7 @@ use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TurnEventIdentity {
     /// Canonical turn identifier (ULID), stable across actor restarts.
-    // kanon:ignore RUST/primitive-for-domain-id WHY: stream-event wire identity; the ULID is minted on SessionState and only stringified here
-    pub turn_id: String,
+    pub turn_id: Ulid,
     /// Session that owns the turn.
     // kanon:ignore RUST/primitive-for-domain-id WHY: stream events cross a process boundary into pylon DTOs; both sides carry the session id as a plain string
     pub session_id: String,

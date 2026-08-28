@@ -1318,7 +1318,7 @@ pub async fn stream_turn(
                                     input,
                                     // WHY(#5016): forward nous's canonical turn
                                     // identity; pylon never substitutes its own.
-                                    turn_id: Some(identity.turn_id),
+                                    turn_id: Some(identity.turn_id.to_string()),
                                     session_id: Some(identity.session_id),
                                     request_id: identity.request_id,
                                 };
@@ -1347,7 +1347,7 @@ pub async fn stream_turn(
                                     )
                                     .await;
                                 let live = PylonTurnStreamEvent::ToolApprovalRequired {
-                                    turn_id: identity.turn_id.clone(),
+                                    turn_id: identity.turn_id.to_string(),
                                     tool_name: tool_name.clone(),
                                     tool_id: tool_id.clone(),
                                     input: input.into_inner(),
@@ -1357,7 +1357,7 @@ pub async fn stream_turn(
                                     request_id: identity.request_id.clone(),
                                 };
                                 let replay = PylonTurnStreamEvent::ToolApprovalRequired {
-                                    turn_id: identity.turn_id,
+                                    turn_id: identity.turn_id.to_string(),
                                     tool_name,
                                     tool_id,
                                     input: replay_input,
@@ -1376,7 +1376,7 @@ pub async fn stream_turn(
                                 let event = PylonTurnStreamEvent::ToolApprovalResolved {
                                     tool_id,
                                     decision,
-                                    turn_id: Some(identity.turn_id),
+                                    turn_id: Some(identity.turn_id.to_string()),
                                     session_id: Some(identity.session_id),
                                     request_id: identity.request_id,
                                 };
@@ -1398,7 +1398,7 @@ pub async fn stream_turn(
                                     is_error,
                                     duration_ms,
                                     outcome: Some(outcome),
-                                    turn_id: Some(identity.turn_id),
+                                    turn_id: Some(identity.turn_id.to_string()),
                                     session_id: Some(identity.session_id),
                                     request_id: identity.request_id,
                                 };

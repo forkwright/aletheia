@@ -1035,7 +1035,7 @@ async fn tool_lifecycle_events_carry_canonical_turn_identity() {
 
     let mut session = test_session();
     session.request_id = Some("req-5016".to_owned());
-    let expected_turn_id = session.turn_id.to_string();
+    let expected_turn_id = session.turn_id;
 
     execute_streaming(
         &test_pipeline_ctx(),
@@ -1054,10 +1054,10 @@ async fn tool_lifecycle_events_carry_canonical_turn_identity() {
     drop(tx);
     let mut tool_events = 0;
     while let Ok(event) = rx.try_recv() {
-        let identity = match event {
-            TurnStreamEvent::ToolStart { identity, .. }
-            | TurnStreamEvent::ToolResult { identity, .. } => identity,
-            _ => continue,
+        let (TurnStreamEvent::ToolStart { identity, .. }
+        | TurnStreamEvent::ToolResult { identity, .. }) = event
+        else {
+            continue;
         };
         tool_events += 1;
         assert_eq!(
