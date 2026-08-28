@@ -101,7 +101,7 @@ fn make_runtime_prosoche_fact() -> episteme::knowledge::Fact {
     let now = jiff::Timestamp::now();
     let mut fact =
         eidos::test_fixtures::make_fact("fact-runtime-prosoche-001", "test-nous", "test content");
-    fact.fact_type = "observation".to_owned();
+    "observation".clone_into(&mut fact.fact_type);
     fact.temporal = episteme::knowledge::FactTemporal {
         valid_from: now,
         valid_to: episteme::knowledge::far_future(),

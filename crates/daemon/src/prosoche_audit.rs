@@ -2098,7 +2098,7 @@ mod consistency_multi_path_tests {
 
     fn make_fact(id: &str, content: &str) -> episteme::knowledge::Fact {
         let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
-        fact.fact_type = "observation".to_owned();
+        "observation".clone_into(&mut fact.fact_type);
         fact.temporal = episteme::knowledge::FactTemporal {
             valid_from: jiff::Timestamp::now(),
             valid_to: jiff::Timestamp::from_second(253_402_207_200).expect("far future"),

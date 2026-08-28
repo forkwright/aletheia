@@ -32,7 +32,7 @@ fn open_fjall_store(dim: usize) -> (tempfile::TempDir, Arc<KnowledgeStore>) {
 
 fn fact(id: &str, content: &str) -> Fact {
     let mut fact = eidos::test_fixtures::make_fact(id, "syn", content);
-    fact.fact_type = "observation".to_owned();
+    "observation".clone_into(&mut fact.fact_type);
     fact.temporal = FactTemporal {
         valid_from: ts(),
         valid_to: mneme::knowledge::far_future(),

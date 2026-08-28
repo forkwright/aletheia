@@ -10,7 +10,7 @@ fn test_nous_id(name: &str) -> koina::id::NousId {
 
 fn make_test_fact(tier: EpistemicTier, recorded_at: jiff::Timestamp) -> Fact {
     let mut fact = crate::test_fixtures::make_fact("f-test", "syn", "test fact");
-    fact.fact_type = "observation".to_owned();
+    "observation".clone_into(&mut fact.fact_type);
     fact.temporal = FactTemporal {
         valid_from: recorded_at,
         valid_to: far_future(),

@@ -3572,7 +3572,7 @@ workspace = "nous/{agent_id}"
         use mneme::knowledge::EpistemicTier;
 
         let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
-        fact.fact_type = "test".to_owned();
+        "test".clone_into(&mut fact.fact_type);
         fact.provenance.confidence = 0.95;
         fact.provenance.tier = EpistemicTier::Verified;
         fact
@@ -3661,7 +3661,7 @@ workspace = "nous/{agent_id}"
             KnowledgeStore::open_fjall(&knowledge_path, KnowledgeConfig::default()).unwrap();
 
         let mut fact = eidos::test_fixtures::make_fact("fact-rt-001", nous_id, "Alice likes Rust");
-        fact.fact_type = "preference".to_owned();
+        "preference".clone_into(&mut fact.fact_type);
         fact.provenance.confidence = 0.95;
         fact.provenance.tier = EpistemicTier::Verified;
 
@@ -4826,7 +4826,7 @@ workspace = "nous/{agent_id}"
             "review-nous",
             &pending.to_json().expect("pending serializes"),
         );
-        fact.fact_type = "skill_pending".to_owned();
+        "skill_pending".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: now,

@@ -21,7 +21,7 @@ fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&st
     })
     .expect("skill content serializes to JSON");
     let mut fact = make_fact(id, nous_id, &content);
-    fact.fact_type = "skill".to_owned();
+    "skill".clone_into(&mut fact.fact_type);
     fact.provenance.confidence = 0.5;
     fact.provenance.tier = EpistemicTier::Assumed;
     fact.provenance.stability_hours = 2190.0;
@@ -51,7 +51,7 @@ fn make_pending_skill_fact(id: &str, nous_id: &str, skill_name: &str) -> Fact {
     };
     let content = pending.to_json().expect("pending skill serializes");
     let mut fact = make_fact(id, nous_id, &content);
-    fact.fact_type = "skill_pending".to_owned();
+    "skill_pending".clone_into(&mut fact.fact_type);
     fact.provenance.confidence = 0.6;
     fact.provenance.source_session_id = Some("session-1".to_owned());
     fact
@@ -75,7 +75,7 @@ fn make_skill_fact_with_tools(
     })
     .expect("skill content serializes to JSON");
     let mut fact = make_fact(id, nous_id, &content);
-    fact.fact_type = "skill".to_owned();
+    "skill".clone_into(&mut fact.fact_type);
     fact.provenance.confidence = 0.5;
     fact.provenance.tier = EpistemicTier::Assumed;
     fact.provenance.stability_hours = 2190.0;

@@ -229,7 +229,7 @@ fn fact_scope_none_omitted_in_json() {
 #[test]
 fn fact_scope_some_included_in_json() {
     let mut fact = crate::test_fixtures::make_fact("f-scoped", "syn", "team project fact");
-    fact.fact_type = "project".to_owned();
+    "project".clone_into(&mut fact.fact_type);
     fact.scope = Some(MemoryScope::Project);
     fact.temporal = FactTemporal {
         valid_from: test_timestamp("2026-03-01"),

@@ -861,7 +861,7 @@ mod tests {
 
         let mut fact =
             crate::test_fixtures::make_fact("fact-1", "nous-alpha", "operator prefers dense PRs");
-        fact.fact_type = "identity".to_owned();
+        "identity".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: "2026-01-01T00:00:00Z".parse().expect("valid timestamp"),
             valid_to: far_future(),

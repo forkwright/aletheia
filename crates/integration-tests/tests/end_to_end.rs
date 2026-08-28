@@ -123,7 +123,7 @@ async fn build_capturing_with_knowledge_store() -> (TestHarness, Arc<Mutex<Vec<C
 fn recall_fact(id: &str, content: &str) -> Fact {
     let now = "2026-03-01T00:00:00Z".parse().expect("valid timestamp");
     let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
-    fact.fact_type = "observation".to_owned();
+    "observation".clone_into(&mut fact.fact_type);
     fact.temporal = FactTemporal {
         valid_from: now,
         valid_to: mneme::knowledge::far_future(),

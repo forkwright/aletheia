@@ -16,7 +16,7 @@ use super::proposal::{
 
 fn make_fact(id: &str, confidence: f64, tier: EpistemicTier, recorded_at: Timestamp) -> Fact {
     let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", &format!("test fact {id}"));
-    fact.fact_type = "preference".to_owned();
+    "preference".clone_into(&mut fact.fact_type);
     fact.temporal = FactTemporal {
         valid_from: recorded_at,
         valid_to: recorded_at,

@@ -640,7 +640,7 @@ mod relevance_fetch_tests {
         use mneme::knowledge::{EpistemicTier, FactTemporal};
 
         let mut fact = eidos::test_fixtures::make_fact(id, "alice", content);
-        fact.fact_type = "knowledge".to_owned();
+        "knowledge".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: jiff::Timestamp::UNIX_EPOCH,
             valid_to: timestamp(4_102_444_800),

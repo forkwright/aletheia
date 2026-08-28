@@ -32,7 +32,7 @@ fn open_store(dim: usize) -> Arc<KnowledgeStore> {
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
     let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
-    fact.fact_type = "inference".to_owned();
+    "inference".clone_into(&mut fact.fact_type);
     fact.temporal = FactTemporal {
         valid_from: ts(TS_2026),
         valid_to: far_future(),

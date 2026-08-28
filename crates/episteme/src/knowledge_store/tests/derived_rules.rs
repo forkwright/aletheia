@@ -40,7 +40,7 @@ fn make_fact_with_tier(
 ) {
     let now = jiff::Timestamp::now();
     let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
-    fact.fact_type = "observation".to_owned();
+    "observation".clone_into(&mut fact.fact_type);
     fact.temporal = FactTemporal {
         valid_from: now,
         valid_to: far_future(),
@@ -161,7 +161,7 @@ fn causal_chain_direct_edge_appears_in_derived_facts() {
     let now = jiff::Timestamp::now();
     let make = |id: &str, content: &str| {
         let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
-        fact.fact_type = "observation".to_owned();
+        "observation".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),
@@ -208,7 +208,7 @@ fn causal_chain_transitive_confidence_is_product() {
     let now = jiff::Timestamp::now();
     let make = |id: &str| {
         let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", id);
-        fact.fact_type = "observation".to_owned();
+        "observation".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),
@@ -256,7 +256,7 @@ fn causal_chain_low_confidence_pruned() {
     let now = jiff::Timestamp::now();
     let make = |id: &str| {
         let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", id);
-        fact.fact_type = "observation".to_owned();
+        "observation".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),
@@ -512,7 +512,7 @@ fn query_derived_facts_by_rule_prefix_filters_correctly() {
     let now = jiff::Timestamp::now();
     let make = |id: &str, content: &str| {
         let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
-        fact.fact_type = "observation".to_owned();
+        "observation".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),

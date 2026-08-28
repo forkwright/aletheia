@@ -553,7 +553,7 @@ fn ts() -> jiff::Timestamp {
 
 fn fact(id: &str, nous_id: &str, content: &str) -> Fact {
     let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
-    fact.fact_type = "observation".to_owned();
+    "observation".clone_into(&mut fact.fact_type);
     fact.temporal = FactTemporal {
         valid_from: ts(),
         valid_to: mneme::knowledge::far_future(),

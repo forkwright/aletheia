@@ -264,7 +264,7 @@ fn fact_with_supersession() {
 #[test]
 fn fact_with_session_source() {
     let mut fact = crate::test_fixtures::make_fact("f-src", "syn", "extracted from conversation");
-    fact.fact_type = "relationship".to_owned();
+    "relationship".clone_into(&mut fact.fact_type);
     fact.scope = Some(MemoryScope::Project);
     fact.temporal = FactTemporal {
         valid_from: test_timestamp("2026-03-01"),

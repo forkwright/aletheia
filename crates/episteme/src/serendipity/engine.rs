@@ -298,7 +298,7 @@ mod tests {
     fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         let now = jiff::Timestamp::now();
         let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
-        fact.fact_type = "observation".to_owned();
+        "observation".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),

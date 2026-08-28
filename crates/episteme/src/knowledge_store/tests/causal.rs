@@ -15,7 +15,7 @@ use crate::knowledge_store::KnowledgeStore;
 fn make_fact(id: &str, content: &str) -> Fact {
     let now = jiff::Timestamp::now();
     let mut fact = crate::test_fixtures::make_fact(id, "test-nous", content);
-    fact.fact_type = "observation".to_owned();
+    "observation".clone_into(&mut fact.fact_type);
     fact.temporal = FactTemporal {
         valid_from: now,
         valid_to: far_future(),

@@ -63,7 +63,7 @@ mod fixtures {
     pub fn make_test_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         let now = jiff::Timestamp::now();
         let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
-        fact.fact_type = "test".to_owned();
+        "test".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),
@@ -1381,7 +1381,7 @@ async fn skill_always_vs_lazy_partitioning_in_system_prompt() {
     for (i, (skill_json, _is_always)) in sample_skills_fixture().iter().enumerate() {
         let mut fact = make_test_fact(&format!("skill-{i}"), "skill-agent", "");
         fact.content = skill_json.clone();
-        fact.fact_type = "skill".to_owned();
+        "skill".clone_into(&mut fact.fact_type);
         store.insert_fact(&fact).expect("insert skill");
     }
 

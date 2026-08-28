@@ -723,7 +723,7 @@ fn make_contract_fact(id: &str, content: &str, confidence: f64) -> mneme::knowle
     use mneme::knowledge::FactTemporal;
 
     let mut fact = eidos::test_fixtures::make_fact(id, TEST_NOUS_ID, content);
-    fact.fact_type = "knowledge".to_owned();
+    "knowledge".clone_into(&mut fact.fact_type);
     fact.temporal = FactTemporal {
         valid_from: jiff::Timestamp::UNIX_EPOCH,
         valid_to: jiff::Timestamp::UNIX_EPOCH,

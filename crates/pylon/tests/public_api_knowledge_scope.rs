@@ -294,7 +294,7 @@ async fn assert_scope_forbidden(response: axum::response::Response) {
 
 fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64) -> mneme::knowledge::Fact {
     let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
-    fact.fact_type = "knowledge".to_owned();
+    "knowledge".clone_into(&mut fact.fact_type);
     fact.temporal = mneme::knowledge::FactTemporal {
         valid_from: jiff::Timestamp::UNIX_EPOCH,
         valid_to: jiff::Timestamp::UNIX_EPOCH,

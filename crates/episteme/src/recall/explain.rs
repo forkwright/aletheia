@@ -302,7 +302,7 @@ mod tests {
         access_count: u32,
     ) -> Fact {
         let mut fact = eidos::test_fixtures::make_fact(id, "alice", content);
-        fact.fact_type = "knowledge".to_owned();
+        "knowledge".clone_into(&mut fact.fact_type);
         fact.temporal = FactTemporal {
             valid_from: recorded_at,
             valid_to: recorded_at,
