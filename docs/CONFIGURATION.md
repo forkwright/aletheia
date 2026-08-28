@@ -968,7 +968,7 @@ Deployment-tunable LLM retry and backoff parameters. WHY configurable: retry agg
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `maxAttempts` | integer | 3 | Maximum number of retry attempts after an initial transient failure. The total number of LLM calls is `max_attempts + 1`. Set to `0` to disable retries. Valid range: 0–10. Default: 3. |
-| `backoffBaseMs` | integer | 1_000 | Initial exponential backoff delay in milliseconds. Each successive retry doubles this delay until `backoff_max_ms` is reached. Valid range: 100–30000. Default: 1000. |
+| `backoffBaseMs` | integer | 1000 | Initial exponential backoff delay in milliseconds. Each successive retry doubles this delay until `backoff_max_ms` is reached. Valid range: 100–30000. Default: 1000. |
 | `backoffMaxMs` | integer | 30_000 | Maximum backoff delay cap in milliseconds. No retry will wait longer than this value regardless of how many attempts have failed. Valid range: `backoff_base_ms`–300000. Default: 30000. |
 
 ## nousBehavior
