@@ -58,15 +58,21 @@ BLOCK_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 LINE_COMMENT_RE = re.compile(r"//[^\n]*")
 
 # `#[path = "..."]` first and preserved verbatim -- its string content is
-# read below by PATH_ATTR_RE and must survive this pass. Then raw/byte-raw
-# strings (`r"..."`, `br#"..."#`, hash count 0-8 covers every occurrence in
-# this repo and anything higher is not idiomatic Rust), then normal/byte
-# strings with escape-aware quote matching, then char literals --
+# read below by PATH_ATTR_RE and must survive this pass. `include!("...")`
+# next, also preserved verbatim -- its content is a same-crate file spliced
+# in bodily (e.g. koina's `models.rs` splicing `model_seed_schema.rs` so the
+# same types validate at build time and run time), so that file's `mod`
+# declarations, once found, must be resolved from the INCLUDING file's own
+# position, not treated as unreachable just because no `mod` names it. Then
+# raw/byte-raw strings (`r"..."`, `br#"..."#`, hash count 0-8 covers every
+# occurrence in this repo and anything higher is not idiomatic Rust), then
+# normal/byte strings with escape-aware quote matching, then char literals --
 # `'(?:\\.|[^'\\\n])'` requires a closing quote immediately after one
 # char/escape, which is what tells a char literal (`'{'`) apart from a
 # lifetime (`'a`, no closing quote nearby).
 LITERAL_RE = re.compile(
     r'(?P<pathattr>#\[path[ \t]*=[ \t]*"[^"]*"\])'
+    r'|(?P<includelit>include!\([ \t]*"[^"]*"[ \t]*\))'
     r'|b?r(?P<hashes>#{0,8})".*?"(?P=hashes)'
     r"|b?\"(?:[^\"\\]|\\.)*\""
     r"|'(?:\\.|[^'\\\n])'",
@@ -76,7 +82,12 @@ LITERAL_RE = re.compile(
 
 def _blank_literal(m: re.Match[str]) -> str:
     pathattr = m.group("pathattr")
-    return pathattr if pathattr is not None else ""
+    if pathattr is not None:
+        return pathattr
+    includelit = m.group("includelit")
+    if includelit is not None:
+        return includelit
+    return ""
 
 
 def strip_comments(text: str) -> str:
@@ -96,11 +107,18 @@ def strip_comments(text: str) -> str:
 # - moddecl: `mod name;` or `mod name {`. The leading negative lookbehind
 #   stops an identifier merely ending in "mod" (e.g. `custom_mod xyz;`) from
 #   false-positiving as a declaration.
+# - include: `include!("relative/path.rs")` -- a same-crate file spliced in
+#   bodily rather than declared as a submodule (koina's build-time/run-time
+#   schema share is the one instance in this repo). Resolved relative to the
+#   INCLUDING file's own directory, per `include!`'s actual path semantics --
+#   deliberately NOT the sibling-directory `mod` resolution `module_dir`
+#   implements, since an included file is not a submodule.
 TOKEN_RE = re.compile(
     r"(?P<lbrace>\{)"
     r"|(?P<rbrace>\})"
     r"|(?P<attr>#\[[^\]]*\])"
     r"|(?<![A-Za-z0-9_])(?:pub(?:\([^)]*\))?[ \t]+)?mod[ \t]+(?P<modname>[A-Za-z_][A-Za-z0-9_]*)[ \t\n]*(?P<modterm>[;{])"
+    r'|include!\([ \t]*"(?P<incpath>[^"]*)"[ \t]*\)'
 )
 PATH_ATTR_RE = re.compile(r'^#\[path[ \t]*=[ \t]*"([^"]+)"\]$')
 
@@ -110,6 +128,7 @@ class ModDecl:
     name: str
     virtual_path: tuple[str, ...]  # ancestor inline-mod names, outermost first
     path_attr: str | None
+    include_path: str | None = None  # set instead of the above for an `include!(...)` hit
 
 
 def scan_mod_decls(text: str) -> list[ModDecl]:
@@ -144,6 +163,9 @@ def scan_mod_decls(text: str) -> list[ModDecl]:
             attr_m = PATH_ATTR_RE.match(m.group("attr"))
             if attr_m is not None:
                 pending_path_attr = attr_m.group(1)
+        elif m.group("incpath") is not None:
+            decls.append(ModDecl(name="", virtual_path=(), path_attr=None, include_path=m.group("incpath")))
+            pending_path_attr = None
         else:
             name, terminator = m.group("modname"), m.group("modterm")
             virtual_path = tuple(s for s in stack if s is not None)
@@ -165,6 +187,10 @@ def module_dir(rs_file: Path) -> Path:
 
 
 def resolve_mod(decl: ModDecl, from_file: Path) -> Path | None:
+    if decl.include_path is not None:
+        target = (from_file.parent / decl.include_path).resolve()
+        return target if target.is_file() else None
+
     if decl.path_attr is not None:
         target = (from_file.parent / decl.path_attr).resolve()
         return target if target.is_file() else None
@@ -230,8 +256,13 @@ def walk_crate(name: str, crate_dir: Path, repo_root: Path = REPO_ROOT) -> Crate
         for decl in scan_mod_decls(text):
             target = resolve_mod(decl, current)
             if target is None:
-                loc = "/".join((*decl.virtual_path, decl.name))
-                result.unresolved.append(f"{current.relative_to(repo_root)}: mod {loc}; -> no target file")
+                if decl.include_path is not None:
+                    result.unresolved.append(
+                        f'{current.relative_to(repo_root)}: include!("{decl.include_path}") -> no target file'
+                    )
+                else:
+                    loc = "/".join((*decl.virtual_path, decl.name))
+                    result.unresolved.append(f"{current.relative_to(repo_root)}: mod {loc}; -> no target file")
                 continue
             target = target.resolve()
             if target not in seen:

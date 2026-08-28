@@ -551,31 +551,6 @@ item = "kind"
 count = 1
 
 [[site]]
-file = "crates/koina/build.rs"
-item = "CacheSeed"
-count = 1
-
-[[site]]
-file = "crates/koina/build.rs"
-item = "ModelEntry"
-count = 1
-
-[[site]]
-file = "crates/koina/build.rs"
-item = "ModelSeed"
-count = 1
-
-[[site]]
-file = "crates/koina/build.rs"
-item = "TaskRoleSeed"
-count = 1
-
-[[site]]
-file = "crates/koina/build.rs"
-item = "TierSeed"
-count = 1
-
-[[site]]
 file = "crates/krites/src/data/expr/expr_impl.rs"
 item = "get_variables"
 count = 1

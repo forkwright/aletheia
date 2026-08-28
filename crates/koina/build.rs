@@ -5,70 +5,21 @@
 //! `include_str!` only checks existence, then panics on first access. Parsing it
 //! here converts the production crash path into a build error.
 //!
-//! The structs below intentionally mirror the private `ModelSeed` types in
-//! `src/models.rs`; keep them in sync.
+//! WHY (#7025): the schema below is not a hand-maintained copy of the runtime
+//! `ModelSeed` types — it IS them, via `include!` of
+//! `src/model_seed_schema.rs`, the single file both this build script and
+//! `src/models.rs` splice in. A build that accepts a seed is therefore
+//! guaranteed to accept the same seed at runtime, because there is only one
+//! schema to accept it against.
 
 use std::env;
 use std::io;
 use std::path::PathBuf;
 
-use serde::Deserialize;
-
-// Fields are read only by serde during validation; suppress dead-code noise
-// from the build-time lint pass.
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct ModelSeed {
-    as_of: String,
-    cache: CacheSeed,
-    tiers: TierSeed,
-    task_roles: TaskRoleSeed,
-    models: Vec<ModelEntry>,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct CacheSeed {
-    read_ratio: f64,
-    write_ratio: f64,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct TierSeed {
-    opus: String,
-    sonnet: String,
-    haiku: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct TaskRoleSeed {
-    coder: String,
-    researcher: String,
-    reviewer: String,
-    explorer: String,
-    runner: String,
-    prosoche: String,
-    extraction: String,
-    triage_prompt: String,
-}
-
-#[allow(dead_code)]
-#[derive(Debug, Deserialize)]
-struct ModelEntry {
-    id: String,
-    provider: String,
-    tier: String,
-    family: String,
-    context_tokens: u32,
-    input_cost_per_mtok: Option<f64>,
-    output_cost_per_mtok: Option<f64>,
-    #[serde(default)]
-    menu: bool,
-    #[serde(default)]
-    recommended: bool,
-}
+include!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/src/model_seed_schema.rs"
+));
 
 fn main() -> io::Result<()> {
     let manifest_dir = PathBuf::from(
@@ -76,8 +27,10 @@ fn main() -> io::Result<()> {
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?,
     );
     let seed_path = manifest_dir.join("data/model-seed.toml");
+    let schema_path = manifest_dir.join("src/model_seed_schema.rs");
 
     println!("cargo:rerun-if-changed={}", seed_path.display());
+    println!("cargo:rerun-if-changed={}", schema_path.display());
 
     let seed_text = std::fs::read_to_string(&seed_path)?;
     toml::from_str::<ModelSeed>(&seed_text)
