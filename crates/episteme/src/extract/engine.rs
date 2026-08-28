@@ -54,6 +54,7 @@ pub(crate) fn observation_fact_id(
     object: &str,
 ) -> Result<crate::id::FactId, eidos::id::IdValidationError> {
     use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
 
     let mut hasher = Sha256::new();
     for field in [nous_id, source, subject, predicate, object] {
@@ -61,11 +62,12 @@ pub(crate) fn observation_fact_id(
         hasher.update(field.as_bytes());
     }
     let digest = hasher.finalize();
-    let hash_suffix: String = digest
-        .iter()
-        .take(8)
-        .map(|byte| format!("{byte:02x}"))
-        .collect();
+    let mut hash_suffix = String::with_capacity(16);
+    for byte in digest.iter().take(8) {
+        // WHY discard the Result: writing hex digits into a String never
+        // fails, and `expect_used` is denied crate-wide.
+        let _ = write!(hash_suffix, "{byte:02x}");
+    }
     let subject_slug: String = slugify(subject).chars().take(60).collect();
     let predicate_slug: String = slugify(predicate).chars().take(60).collect();
     crate::id::FactId::new(format!("obs-{subject_slug}-{predicate_slug}-{hash_suffix}"))
