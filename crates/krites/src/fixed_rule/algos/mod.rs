@@ -1,8 +1,15 @@
 //! Graph algorithm implementations as fixed rules.
 //!
-//! Every module here is sovereign. The `_native.rs` filenames these were
-//! authored under, and the `#[path]` attributes that reached them, are retired
-//! along with the derived siblings that made the distinction mean something.
+//! Every module here is sovereign except `pagerank`, which is still landed
+//! **dual**: the derived implementation stays the default, and a fresh
+//! sovereign rewrite sits behind the `krites_sovereign_pagerank` feature
+//! (RETIREMENT-PLAN.md wave 5, "the live 3" — PageRank has a live episteme
+//! consumer via embedded Datalog, unlike the 19 zero-call-site algorithms
+//! that already went through this same land-dark/soak/delete cycle). The
+//! `_native.rs` filenames the other 19 were authored under, and the
+//! `#[path]` attributes that reached them, were retired once their soak
+//! completed; `pagerank_native.rs` carries the same suffix for the same
+//! reason and will drop it the same way.
 pub(crate) mod kcore;
 
 pub(crate) mod all_pairs_shortest_path;
@@ -13,7 +20,13 @@ pub(crate) mod dfs;
 pub(crate) mod kruskal;
 pub(crate) mod label_propagation;
 pub(crate) mod louvain;
+
+#[cfg(not(feature = "krites_sovereign_pagerank"))]
 pub(crate) mod pagerank;
+#[cfg(feature = "krites_sovereign_pagerank")]
+#[path = "pagerank_native.rs"]
+pub(crate) mod pagerank;
+
 pub(crate) mod prim;
 pub(crate) mod random_walk;
 pub(crate) mod shortest_path_bfs;

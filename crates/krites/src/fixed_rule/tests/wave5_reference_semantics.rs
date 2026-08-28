@@ -3,9 +3,17 @@
 //! These compare each fixed rule's *observable* output against an
 //! independent reference computed straight from the algorithm's textbook
 //! definition inside the test itself — never against the derived
-//! implementation's internals. The wave-5 algorithm set landed
-//! sovereign-by-default, so these tests exercise the sovereign
-//! implementations directly.
+//! implementation's internals. The 19 zero-call-site algorithms in this
+//! wave landed sovereign-by-default, so those tests exercise the sovereign
+//! implementations directly. `PageRank` is one of wave 5's "live 3"
+//! (RETIREMENT-PLAN.md §5) and is still landed **dual** — the tests below
+//! query it through `PageRank(...)` without selecting a feature, so they
+//! run against whichever shell is compiled: the CozoDB-derived one by
+//! default, and the sovereign `pagerank_native.rs` shell under
+//! `--features krites_sovereign_pagerank`. Both shells delegate to the same
+//! already-sovereign numeric core (`fixed_rule::csr::page_rank`), so this
+//! is a genuine equivalence check on the option-parsing glue, not a
+//! restatement of the core's own math.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
@@ -300,6 +308,129 @@ proptest! {
                     group_b
                 );
             }
+        }
+    }
+}
+
+/// Bidirectional-chain-plus-extra-edges generator: every node keeps out-degree
+/// >= 1, so `power_iteration_reference`'s per-node division by out-degree never
+/// hits zero. `page_rank`'s dangling-node behavior (out-degree 0) is identical
+/// on both shells since they share the numeric core, so it is out of scope for
+/// an equivalence test between them.
+fn connected_directed_edges(n: usize, extra: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    let mut edges = vec![];
+    for i in 0..n.saturating_sub(1) {
+        edges.push((i, i + 1));
+        edges.push((i + 1, i));
+    }
+    for &(src, dst) in extra {
+        if src < n && dst < n && src != dst {
+            edges.push((src, dst));
+        }
+    }
+    edges
+}
+
+/// Independent power-iteration reference, coded straight from Page et al.
+/// (1999) rather than calling `fixed_rule::csr::page_rank` — this is the same
+/// numeric core both the derived and sovereign shells delegate to, so calling
+/// it here would test the core against itself and prove nothing about the
+/// shells being replaced.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "test: small proptest node/degree counts fit f64 exactly"
+)]
+fn power_iteration_reference(
+    n: usize,
+    edges: &[(usize, usize)],
+    damping: f64,
+    tolerance: f64,
+    max_iterations: usize,
+) -> Vec<f64> {
+    let mut out_degree = vec![0usize; n];
+    let mut in_neighbors: Vec<Vec<usize>> = vec![vec![]; n];
+    for &(src, dst) in edges {
+        out_degree[src] += 1;
+        in_neighbors[dst].push(src);
+    }
+
+    let initial = 1.0 / n as f64;
+    let base = (1.0 - damping) / n as f64;
+    let mut scores = vec![initial; n];
+    let mut out_scores: Vec<f64> = (0..n).map(|i| initial / out_degree[i] as f64).collect();
+
+    for _ in 0..max_iterations {
+        let mut new_scores = vec![0.0; n];
+        let mut error = 0.0_f64;
+        for node in 0..n {
+            let incoming: f64 = in_neighbors[node].iter().map(|&src| out_scores[src]).sum();
+            new_scores[node] = base + damping * incoming;
+            error += (new_scores[node] - scores[node]).abs();
+        }
+        scores = new_scores;
+        out_scores = (0..n).map(|i| scores[i] / out_degree[i] as f64).collect();
+        if error < tolerance {
+            break;
+        }
+    }
+    scores
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(25))]
+
+    /// `PageRank`'s per-node converged score must agree with an independent
+    /// power-iteration reference on the same directed graph — RETIREMENT-PLAN.md
+    /// wave 5's own gate for "the live 3" ("PageRank convergence and
+    /// sum-to-one"; sum-to-one is covered separately by
+    /// `proptest_algos::pagerank_scores_sum_to_one`, which this test leaves
+    /// alone rather than duplicating). Runs against whichever shell is
+    /// compiled — see the module doc comment.
+    #[test]
+    fn pagerank_agrees_with_power_iteration_reference(
+        n in 3usize..8,
+        extra in proptest::collection::vec(arb_edge_pair(8), 0..5),
+    ) {
+        let edges = connected_directed_edges(n, &extra);
+        let literal = edges
+            .iter()
+            .map(|(s, d)| format!("[{s}, {d}]"))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let damping = 0.85_f64;
+        let tolerance = 0.0001_f64;
+        let max_iterations = 100_usize;
+        let reference = power_iteration_reference(n, &edges, damping, tolerance, max_iterations);
+
+        let query = format!(
+            "edges[src, dst] <- [{literal}]\n\
+             ?[node, rank] <~ PageRank(edges[], iterations: {max_iterations})"
+        );
+        let db = DbInstance::default();
+        let res = db.run_default(&query).expect("PageRank query should execute").rows;
+
+        let mut observed: BTreeMap<i64, f64> = BTreeMap::new();
+        for row in &res {
+            let node = row[0].get_int().expect("node should be an int");
+            let rank = row[1].get_float().expect("rank should be a float");
+            observed.insert(node, rank);
+        }
+
+        prop_assert_eq!(observed.len(), n, "PageRank should return one row per node");
+        for (node, &expected) in reference.iter().enumerate() {
+            let actual = *observed
+                .get(&(node as i64))
+                .expect("every node should have a PageRank row");
+            // WHY 1e-3, not 1e-6 like the Dijkstra comparison above: the fixed
+            // rule's numeric core iterates in f32 (crate::fixed_rule::csr::page_rank),
+            // while this reference iterates in f64 -- rounding accumulates over
+            // up to 100 iterations, and 1e-3 is well inside PageRank's own
+            // convergence tolerance (0.0001 per-iteration delta, summed over N nodes).
+            prop_assert!(
+                (actual - expected).abs() < 1e-3,
+                "node {node}: PageRank={actual}, power-iteration reference={expected}"
+            );
         }
     }
 }
