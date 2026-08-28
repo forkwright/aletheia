@@ -46,7 +46,7 @@ use tracing::Instrument;
 
 use skene::api::error::{format_error_fields_for_display, format_http_error_body};
 use skene::events::StreamEvent;
-use skene::id::{ApiNousId, PlanId, RequestId, ApiSessionId, ToolId, TurnId};
+use skene::id::{ApiNousId, ApiSessionId, PlanId, RequestId, ToolId, TurnId};
 
 struct StreamTurnRequest<'a> {
     base_url: &'a str,

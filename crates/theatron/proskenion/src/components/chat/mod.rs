@@ -45,7 +45,7 @@ use std::time::{Duration, Instant};
 
 use skene::api::types::TurnOutcome;
 use skene::events::StreamEvent;
-use skene::id::{ApiNousId, RequestId, ApiSessionId, TurnId};
+use skene::id::{ApiNousId, ApiSessionId, RequestId, TurnId};
 use skene::text::append_terminal_notice;
 
 use crate::state::events::{ConnectionState, StreamingState, ToolCallInfo};

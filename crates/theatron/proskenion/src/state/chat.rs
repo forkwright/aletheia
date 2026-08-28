@@ -1,6 +1,6 @@
 //! Chat session and message state for the desktop chat view.
 
-use skene::id::{ApiNousId, RequestId, ApiSessionId, TurnId};
+use skene::id::{ApiNousId, ApiSessionId, RequestId, TurnId};
 
 /// Session selected by another view for the chat route to activate.
 #[derive(Debug, Clone, PartialEq, Eq)]

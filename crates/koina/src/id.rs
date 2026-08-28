@@ -41,7 +41,7 @@ pub fn newtype_id_validate(value: &str, kind: &'static str) -> Result<(), IdErro
             actual: value.len(),
         });
     }
-    if value.chars().any(|c| c.is_control()) {
+    if value.chars().any(char::is_control) {
         return Err(IdError::InvalidFormat {
             kind,
             value: value.to_owned(),
