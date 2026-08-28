@@ -154,12 +154,12 @@ Per-factor scoring weights (factor scores for non-vector signals).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `decay` | float | 0.5 | Temporal decay weight (0.0--1.0). |
-| `relevance` | float | 0.5 | Content relevance weight (0.0--1.0). |
-| `epistemicTier` | float | 0.3 | Epistemic tier weight (0.0--1.0). |
-| `relationshipProximity` | float | 0.1 | Knowledge-graph relationship proximity weight (0.0--1.0). |
-| `accessFrequency` | float | 0.0 | Access frequency weight (0.0--1.0). |
-| `graphImportance` | float | 0.0 | Graph `PageRank` importance weight (0.0--1.0). |
+| `decay` | float | 0.5 | Temporal decay weight (0.0-1.0). |
+| `relevance` | float | 0.5 | Content relevance weight (0.0-1.0). |
+| `epistemicTier` | float | 0.3 | Epistemic tier weight (0.0-1.0). |
+| `relationshipProximity` | float | 0.1 | Knowledge-graph relationship proximity weight (0.0-1.0). |
+| `accessFrequency` | float | 0.0 | Access frequency weight (0.0-1.0). |
+| `graphImportance` | float | 0.1 | Graph `PageRank` importance weight (0.0-1.0). |
 
 #### agents.defaults.behavior
 
@@ -324,12 +324,12 @@ Per-factor scoring weights (factor scores for non-vector signals).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `decay` | float | 0.5 | Temporal decay weight (0.0--1.0). |
-| `relevance` | float | 0.5 | Content relevance weight (0.0--1.0). |
-| `epistemicTier` | float | 0.3 | Epistemic tier weight (0.0--1.0). |
-| `relationshipProximity` | float | 0.1 | Knowledge-graph relationship proximity weight (0.0--1.0). |
-| `accessFrequency` | float | 0.0 | Access frequency weight (0.0--1.0). |
-| `graphImportance` | float | 0.0 | Graph `PageRank` importance weight (0.0--1.0). |
+| `decay` | float | 0.5 | Temporal decay weight (0.0-1.0). |
+| `relevance` | float | 0.5 | Content relevance weight (0.0-1.0). |
+| `epistemicTier` | float | 0.3 | Epistemic tier weight (0.0-1.0). |
+| `relationshipProximity` | float | 0.1 | Knowledge-graph relationship proximity weight (0.0-1.0). |
+| `accessFrequency` | float | 0.0 | Access frequency weight (0.0-1.0). |
+| `graphImportance` | float | 0.1 | Graph `PageRank` importance weight (0.0-1.0). |
 
 #### agents.list.behavior
 
