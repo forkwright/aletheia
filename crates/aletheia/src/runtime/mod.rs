@@ -409,11 +409,24 @@ impl RuntimeBuilder {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
 
+        // SECURITY(#5229): one gate, shared by every reqwest client this
+        // build() constructs, so the address a client actually connects to
+        // is pinned to the address `PolicyDnsResolver` validated for it --
+        // not a fresh, independently-checked gate per client that happens
+        // to agree today.
+        let egress_gate = Arc::new(organon::sandbox::EgressGate::from_config(&sandbox_config(
+            &self.config,
+        )));
+
         // WHY: canonical general/SSRF-safe client pair (organon::types::ToolHttpClients),
         // built once and shared: the recall source registry needs the same
         // redirect-disabled, 30s-timeout policy as the SSRF-safe tool client
         // rather than restating it.
-        let tool_http_clients = ToolHttpClients::new();
+        // SECURITY(#5229): propagate rather than degrade -- a client built
+        // without the policy resolver would connect to whatever DNS returns
+        // at connect time, which is the rebinding window this closes.
+        let tool_http_clients = ToolHttpClients::with_gate(Arc::clone(&egress_gate))
+            .whatever_context("failed to build SSRF-pinned HTTP clients")?;
 
         info!(root = %self.oikos.root().display(), "instance discovered");
 
@@ -649,8 +662,17 @@ impl RuntimeBuilder {
         // executor's `send_with_safe_redirects` call follows and revalidates
         // each hop itself. A client that auto-follows would return an
         // already-redirected response, silently skipping that revalidation.
+        //
+        // SECURITY(#5229): `dns_resolver` shares the same `egress_gate` as
+        // `tool_http_clients` above, so this third, independently-built
+        // client pins its connections to the validated address exactly like
+        // the first-party tool clients rather than carrying its own,
+        // unpinned resolution.
         let external_tools_client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
+            .dns_resolver(Arc::new(organon::sandbox::PolicyDnsResolver::new(
+                Arc::clone(&egress_gate),
+            )))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         let tool_manifest = crate::external_tools::register_external_tools(
