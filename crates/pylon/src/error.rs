@@ -275,10 +275,13 @@ impl ApiError {
     }
 }
 
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        let (category, recoverability, next_action) = self.classify();
-        let (status, code, details) = match &self {
+impl ApiError {
+    /// Maps a variant to its `(status, code, details)` triple.
+    ///
+    /// WHY: split out of `into_response` — folding this match back in pushes
+    /// that function past clippy's line ceiling (`clippy::too_many_lines`).
+    fn status_code_details(&self) -> (StatusCode, &'static str, Option<serde_json::Value>) {
+        match self {
             Self::SessionNotFound { .. } => (StatusCode::NOT_FOUND, "session_not_found", None),
             Self::NousNotFound { .. } => (StatusCode::NOT_FOUND, "nous_not_found", None),
             Self::BadRequest { .. } => (StatusCode::BAD_REQUEST, "bad_request", None),
@@ -328,7 +331,14 @@ impl IntoResponse for ApiError {
                 code.as_str(),
                 retry_after_secs.map(|secs| serde_json::json!({ "retry_after_secs": secs })),
             ),
-        };
+        }
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let (category, recoverability, next_action) = self.classify();
+        let (status, code, details) = self.status_code_details();
 
         // WHY: retry_after_secs must be extracted before self is moved into client_message construction below.
         let retry_after_secs = if let Self::RateLimited {
