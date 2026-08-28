@@ -9,11 +9,8 @@
 use std::collections::BTreeMap;
 
 use mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
-use mneme::id::{EmbeddingId, EntityId, FactId};
-use mneme::knowledge::{
-    EmbeddedChunk, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
-    FactTemporal, Relationship,
-};
+use mneme::id::{EmbeddingId, EntityId};
+use mneme::knowledge::{EmbeddedChunk, Entity, EpistemicTier, Fact, FactTemporal, Relationship};
 use mneme::knowledge_store::{HybridQuery, KnowledgeConfig, KnowledgeStore};
 
 const TS_2026: &str = "2026-01-01T00:00:00Z";
@@ -29,58 +26,23 @@ fn ts(s: &str) -> jiff::Timestamp {
 }
 
 fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: EpistemicTier) -> Fact {
-    Fact {
-        id: FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content: content.to_owned(),
-        fact_type: String::new(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: ts(TS_2026),
-            valid_to: far_future(),
-            recorded_at: ts(TS_RECORDED),
-        },
-        provenance: FactProvenance {
-            confidence,
-            tier,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
-        visibility: mneme::knowledge::Visibility::Private,
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+    fact.temporal = FactTemporal {
+        valid_from: ts(TS_2026),
+        valid_to: far_future(),
+        recorded_at: ts(TS_RECORDED),
+    };
+    fact.provenance.confidence = confidence;
+    fact.provenance.tier = tier;
+    fact
 }
 
 fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {
-    Entity {
-        id: EntityId::new(id).expect("valid test id"),
-        name: name.to_owned(),
-        entity_type: entity_type.to_owned(),
-        aliases: vec![],
-        created_at: ts(TS_RECORDED),
-        updated_at: ts(TS_RECORDED),
-    }
+    eidos::test_fixtures::make_entity(id, name, entity_type)
 }
 
 fn make_relationship(src: &str, dst: &str, relation: &str, weight: f64) -> Relationship {
-    Relationship {
-        src: EntityId::new(src).expect("valid test id"),
-        dst: EntityId::new(dst).expect("valid test id"),
-        relation: relation.to_owned(),
-        weight,
-        created_at: ts(TS_RECORDED),
-    }
+    eidos::test_fixtures::make_relationship(src, dst, relation, weight)
 }
 
 fn make_chunk(
@@ -110,37 +72,19 @@ fn fact_round_trip() {
     })
     .expect("open_mem");
 
-    let fact = Fact {
-        id: FactId::new("f-1").expect("valid test id"),
-        nous_id: "syn".to_owned(),
-        content: "The researcher published findings on memory consolidation".to_owned(),
-        fact_type: String::new(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: ts(TS_2026),
-            valid_to: far_future(),
-            recorded_at: ts(TS_RECORDED),
-        },
-        provenance: FactProvenance {
-            confidence: 0.95,
-            tier: EpistemicTier::Verified,
-            source_session_id: Some("ses-abc".to_owned()),
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
-        visibility: mneme::knowledge::Visibility::Private,
+    let mut fact = eidos::test_fixtures::make_fact(
+        "f-1",
+        "syn",
+        "The researcher published findings on memory consolidation",
+    );
+    fact.temporal = FactTemporal {
+        valid_from: ts(TS_2026),
+        valid_to: far_future(),
+        recorded_at: ts(TS_RECORDED),
     };
+    fact.provenance.confidence = 0.95;
+    fact.provenance.tier = EpistemicTier::Verified;
+    fact.provenance.source_session_id = Some("ses-abc".to_owned());
 
     store.insert_fact(&fact).expect("insert");
     let results = store.query_facts("syn", "2026-06-01", 10).expect("query");

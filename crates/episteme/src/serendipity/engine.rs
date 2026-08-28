@@ -270,10 +270,7 @@ fn fact_entity_ids(store: &KnowledgeStore, fact_id: &str) -> crate::error::Resul
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use crate::id::{EntityId, FactId};
-    use crate::knowledge::{
-        Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
-        FactTemporal, Relationship, Visibility, far_future,
-    };
+    use crate::knowledge::{Entity, EpistemicTier, Fact, FactTemporal, Relationship, far_future};
 
     use super::*;
 
@@ -300,37 +297,16 @@ mod tests {
 
     fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         let now = jiff::Timestamp::now();
-        Fact {
-            id: FactId::new(id).expect("valid fact id"),
-            nous_id: nous_id.to_owned(),
-            content: content.to_owned(),
-            fact_type: "observation".to_owned(),
-            scope: None,
-            project_id: None,
-            sensitivity: FactSensitivity::Public,
-            visibility: Visibility::Private,
-            temporal: FactTemporal {
-                valid_from: now,
-                valid_to: far_future(),
-                recorded_at: now,
-            },
-            provenance: FactProvenance {
-                confidence: 0.9,
-                tier: EpistemicTier::Verified,
-                source_session_id: Some("test-session".to_owned()),
-                stability_hours: 720.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
-        }
+        let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+        fact.fact_type = "observation".to_owned();
+        fact.temporal = FactTemporal {
+            valid_from: now,
+            valid_to: far_future(),
+            recorded_at: now,
+        };
+        fact.provenance.tier = EpistemicTier::Verified;
+        fact.provenance.source_session_id = Some("test-session".to_owned());
+        fact
     }
 
     // WHY (#5865): the pass is read-only — it must report zero mutations

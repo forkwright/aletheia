@@ -413,43 +413,20 @@ impl AdmissionPolicy for StructuredAdmissionPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::knowledge::{
-        EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-    };
+    use crate::knowledge::{Fact, FactTemporal};
 
     fn make_fact(content: &str, confidence: f64, fact_type: &str) -> Fact {
         let now = jiff::Timestamp::now();
-        Fact {
-            id: crate::id::FactId::new("test-fact-id").unwrap_or_else(|_| unreachable!()),
-            nous_id: "test-nous".to_owned(),
-            fact_type: fact_type.to_owned(),
-            content: content.to_owned(),
-            scope: None,
-            project_id: None,
-            temporal: FactTemporal {
-                valid_from: now,
-                valid_to: crate::knowledge::far_future(),
-                recorded_at: now,
-            },
-            provenance: FactProvenance {
-                confidence,
-                tier: EpistemicTier::Inferred,
-                source_session_id: None,
-                stability_hours: 0.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
-            sensitivity: crate::knowledge::FactSensitivity::Public,
-            visibility: crate::knowledge::Visibility::Private,
-        }
+        let mut fact = eidos::test_fixtures::make_fact("test-fact-id", "test-nous", content);
+        fact.fact_type = fact_type.to_owned();
+        fact.temporal = FactTemporal {
+            valid_from: now,
+            valid_to: crate::knowledge::far_future(),
+            recorded_at: now,
+        };
+        fact.provenance.confidence = confidence;
+        fact.provenance.stability_hours = 0.0;
+        fact
     }
 
     #[test]

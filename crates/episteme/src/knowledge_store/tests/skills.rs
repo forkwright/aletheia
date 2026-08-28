@@ -4,11 +4,9 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use crate::knowledge::{
-    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-};
+use crate::knowledge::{EpistemicTier, Fact};
 use crate::skills::{PendingSkill, SkillReviewAudit, SkillReviewInput, SkillSourceEvidence};
-use crate::test_fixtures::{make_fact, make_store, test_ts};
+use crate::test_fixtures::{make_fact, make_store};
 
 fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&str]) -> Fact {
     let content = serde_json::to_string(&crate::skill::SkillContent {
@@ -22,37 +20,12 @@ fn make_skill_fact(id: &str, nous_id: &str, skill_name: &str, domain_tags: &[&st
         always: false,
     })
     .expect("skill content serializes to JSON");
-    Fact {
-        id: crate::id::FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content,
-        fact_type: "skill".to_owned(),
-        temporal: FactTemporal {
-            valid_from: test_ts("2026-01-01"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.5,
-            tier: EpistemicTier::Assumed,
-            source_session_id: None,
-            stability_hours: 2190.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    }
+    let mut fact = make_fact(id, nous_id, &content);
+    fact.fact_type = "skill".to_owned();
+    fact.provenance.confidence = 0.5;
+    fact.provenance.tier = EpistemicTier::Assumed;
+    fact.provenance.stability_hours = 2190.0;
+    fact
 }
 
 fn make_pending_skill_fact(id: &str, nous_id: &str, skill_name: &str) -> Fact {
@@ -77,37 +50,11 @@ fn make_pending_skill_fact(id: &str, nous_id: &str, skill_name: &str) -> Fact {
         observations: Vec::new(),
     };
     let content = pending.to_json().expect("pending skill serializes");
-    Fact {
-        id: crate::id::FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content,
-        fact_type: "skill_pending".to_owned(),
-        temporal: FactTemporal {
-            valid_from: test_ts("2026-01-01"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.6,
-            tier: EpistemicTier::Inferred,
-            source_session_id: Some("session-1".to_owned()),
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    }
+    let mut fact = make_fact(id, nous_id, &content);
+    fact.fact_type = "skill_pending".to_owned();
+    fact.provenance.confidence = 0.6;
+    fact.provenance.source_session_id = Some("session-1".to_owned());
+    fact
 }
 
 fn make_skill_fact_with_tools(
@@ -127,37 +74,12 @@ fn make_skill_fact_with_tools(
         always: false,
     })
     .expect("skill content serializes to JSON");
-    Fact {
-        id: crate::id::FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content,
-        fact_type: "skill".to_owned(),
-        temporal: FactTemporal {
-            valid_from: test_ts("2026-01-01"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: test_ts("2026-03-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.5,
-            tier: EpistemicTier::Assumed,
-            source_session_id: None,
-            stability_hours: 2190.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    }
+    let mut fact = make_fact(id, nous_id, &content);
+    fact.fact_type = "skill".to_owned();
+    fact.provenance.confidence = 0.5;
+    fact.provenance.tier = EpistemicTier::Assumed;
+    fact.provenance.stability_hours = 2190.0;
+    fact
 }
 
 #[test]

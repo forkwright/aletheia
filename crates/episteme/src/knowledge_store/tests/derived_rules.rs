@@ -11,8 +11,8 @@
 use eidos::id::{CausalEdgeId, EntityId, FactId};
 
 use crate::knowledge::{
-    CausalEdge, CausalRelationType, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle,
-    FactProvenance, FactSensitivity, FactTemporal, TemporalOrdering, far_future,
+    CausalEdge, CausalRelationType, Entity, EpistemicTier, FactTemporal, TemporalOrdering,
+    far_future,
 };
 use crate::knowledge_store::{DerivedFreshness, KnowledgeStore};
 
@@ -39,37 +39,15 @@ fn make_fact_with_tier(
     tier: EpistemicTier,
 ) {
     let now = jiff::Timestamp::now();
-    let fact = Fact {
-        id: FactId::new(id).expect("valid fact id"),
-        nous_id: "test-nous".to_owned(),
-        content: content.to_owned(),
-        fact_type: "observation".to_owned(),
-        temporal: FactTemporal {
-            valid_from: now,
-            valid_to: far_future(),
-            recorded_at: now,
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier,
-            source_session_id: Some("test-session".to_owned()),
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
+    let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
+    fact.fact_type = "observation".to_owned();
+    fact.temporal = FactTemporal {
+        valid_from: now,
+        valid_to: far_future(),
+        recorded_at: now,
     };
+    fact.provenance.tier = tier;
+    fact.provenance.source_session_id = Some("test-session".to_owned());
     store
         .insert_fact(&fact)
         .expect("insert fact should succeed");
@@ -181,36 +159,15 @@ fn causal_chain_direct_edge_appears_in_derived_facts() {
 
     // Two facts with a direct causal edge.
     let now = jiff::Timestamp::now();
-    let make = |id: &str, content: &str| Fact {
-        id: FactId::new(id).expect("valid"),
-        nous_id: "test-nous".to_owned(),
-        content: content.to_owned(),
-        fact_type: "observation".to_owned(),
-        temporal: FactTemporal {
+    let make = |id: &str, content: &str| {
+        let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
+        fact.fact_type = "observation".to_owned();
+        fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),
             recorded_at: now,
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
+        };
+        fact
     };
 
     store
@@ -249,36 +206,15 @@ fn causal_chain_transitive_confidence_is_product() {
     let store = KnowledgeStore::open_mem().expect("open_mem");
 
     let now = jiff::Timestamp::now();
-    let make = |id: &str| Fact {
-        id: FactId::new(id).expect("valid"),
-        nous_id: "test-nous".to_owned(),
-        content: id.to_owned(),
-        fact_type: "observation".to_owned(),
-        temporal: FactTemporal {
+    let make = |id: &str| {
+        let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", id);
+        fact.fact_type = "observation".to_owned();
+        fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),
             recorded_at: now,
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
+        };
+        fact
     };
 
     store.insert_fact(&make("fa")).expect("fa");
@@ -318,36 +254,15 @@ fn causal_chain_low_confidence_pruned() {
     let store = KnowledgeStore::open_mem().expect("open_mem");
 
     let now = jiff::Timestamp::now();
-    let make = |id: &str| Fact {
-        id: FactId::new(id).expect("valid"),
-        nous_id: "test-nous".to_owned(),
-        content: id.to_owned(),
-        fact_type: "observation".to_owned(),
-        temporal: FactTemporal {
+    let make = |id: &str| {
+        let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", id);
+        fact.fact_type = "observation".to_owned();
+        fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),
             recorded_at: now,
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
+        };
+        fact
     };
 
     store.insert_fact(&make("g1")).expect("g1");
@@ -595,36 +510,15 @@ fn query_derived_facts_by_rule_prefix_filters_correctly() {
 
     // causal edge from fact-dave to fact-report
     let now = jiff::Timestamp::now();
-    let make = |id: &str, content: &str| Fact {
-        id: FactId::new(id).expect("valid"),
-        nous_id: "test-nous".to_owned(),
-        content: content.to_owned(),
-        fact_type: "observation".to_owned(),
-        temporal: FactTemporal {
+    let make = |id: &str, content: &str| {
+        let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
+        fact.fact_type = "observation".to_owned();
+        fact.temporal = FactTemporal {
             valid_from: now,
             valid_to: far_future(),
             recorded_at: now,
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
+        };
+        fact
     };
     store
         .insert_fact(&make("fact-dave", "dave does analysis"))

@@ -198,9 +198,7 @@ fn build_hybrid_query_accepts_valid_seed_ids() {
 #[cfg(feature = "mneme-engine")]
 #[test]
 fn hybrid_search_empty_seeds_returns_results() {
-    use crate::knowledge::{
-        EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-    };
+    use crate::knowledge::EmbeddedChunk;
 
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig {
@@ -209,39 +207,7 @@ fn hybrid_search_empty_seeds_returns_results() {
     })
     .expect("open_mem");
 
-    let fact = Fact {
-        id: crate::id::FactId::new("f1").expect("valid test id"),
-        nous_id: "test".to_owned(),
-        content: "Rust systems programming".to_owned(),
-        fact_type: String::new(),
-        temporal: FactTemporal {
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
-                .expect("valid test timestamp"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                .expect("valid test timestamp"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    };
+    let fact = crate::test_fixtures::make_fact("f1", "test", "Rust systems programming");
     store.insert_fact(&fact).expect("insert fact");
 
     let chunk = EmbeddedChunk {
@@ -285,10 +251,7 @@ fn hybrid_search_empty_seeds_returns_results() {
     reason = "integration test with setup/assert phases"
 )]
 fn hybrid_search_graph_aggregation() {
-    use crate::knowledge::{
-        EmbeddedChunk, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
-        FactTemporal, Relationship,
-    };
+    use crate::knowledge::{EmbeddedChunk, Entity, Relationship};
 
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig {
@@ -297,39 +260,7 @@ fn hybrid_search_graph_aggregation() {
     })
     .expect("open_mem");
 
-    let f1 = Fact {
-        id: crate::id::FactId::new("f1").expect("valid test id"),
-        nous_id: "test".to_owned(),
-        content: "Rust systems programming".to_owned(),
-        fact_type: String::new(),
-        temporal: FactTemporal {
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
-                .expect("valid test timestamp"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                .expect("valid test timestamp"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    };
+    let f1 = crate::test_fixtures::make_fact("f1", "test", "Rust systems programming");
     store.insert_fact(&f1).expect("insert f1");
     store
         .insert_embedding(&EmbeddedChunk {
@@ -344,39 +275,7 @@ fn hybrid_search_graph_aggregation() {
         })
         .expect("insert f1 embedding");
 
-    let f2 = Fact {
-        id: crate::id::FactId::new("f2").expect("valid test id"),
-        nous_id: "test".to_owned(),
-        content: "Rust memory safety".to_owned(),
-        fact_type: String::new(),
-        temporal: FactTemporal {
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
-                .expect("valid test timestamp"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                .expect("valid test timestamp"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    };
+    let f2 = crate::test_fixtures::make_fact("f2", "test", "Rust memory safety");
     store.insert_fact(&f2).expect("insert f2");
     store
         .insert_embedding(&EmbeddedChunk {
@@ -469,10 +368,7 @@ fn hybrid_search_graph_aggregation() {
 #[cfg(feature = "mneme-engine")]
 #[test]
 fn hybrid_search_two_signal_no_graph() {
-    use crate::knowledge::{
-        EmbeddedChunk, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
-        FactTemporal,
-    };
+    use crate::knowledge::{EmbeddedChunk, Entity};
 
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig {
@@ -481,39 +377,8 @@ fn hybrid_search_two_signal_no_graph() {
     })
     .expect("open_mem");
 
-    let fact = Fact {
-        id: crate::id::FactId::new("f-twosig").expect("valid test id"),
-        nous_id: "test".to_owned(),
-        content: "unique harpsichord melody testing".to_owned(),
-        fact_type: String::new(),
-        temporal: FactTemporal {
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
-                .expect("valid test timestamp"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                .expect("valid test timestamp"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    };
+    let fact =
+        crate::test_fixtures::make_fact("f-twosig", "test", "unique harpsichord melody testing");
     store.insert_fact(&fact).expect("insert fact");
 
     store
@@ -567,10 +432,6 @@ fn hybrid_search_two_signal_no_graph() {
 #[cfg(feature = "mneme-engine")]
 #[test]
 fn hybrid_search_absent_signal_rank_is_negative_one() {
-    use crate::knowledge::{
-        EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-    };
-
     let dim = 4;
     let store = KnowledgeStore::open_mem_with_config(KnowledgeConfig {
         dim,
@@ -578,39 +439,8 @@ fn hybrid_search_absent_signal_rank_is_negative_one() {
     })
     .expect("open_mem");
 
-    let fact = Fact {
-        id: crate::id::FactId::new("f-bm25-only").expect("valid test id"),
-        nous_id: "test".to_owned(),
-        content: "unique xylophone testing keyword".to_owned(),
-        fact_type: String::new(),
-        temporal: FactTemporal {
-            valid_from: crate::knowledge::parse_timestamp("2026-01-01")
-                .expect("valid test timestamp"),
-            valid_to: crate::knowledge::far_future(),
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                .expect("valid test timestamp"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    };
+    let fact =
+        crate::test_fixtures::make_fact("f-bm25-only", "test", "unique xylophone testing keyword");
     store.insert_fact(&fact).expect("insert fact");
 
     let results = store

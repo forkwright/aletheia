@@ -49,6 +49,7 @@ tracing = { workspace = true }
 tempfile = { workspace = true }
 
 [dev-dependencies]
+eidos = { path = "../eidos", features = ["test-support"] }
 episteme = { path = "../episteme", default-features = false, features = [
     "storage-fjall",
 ] }

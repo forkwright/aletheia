@@ -88,6 +88,7 @@ dianoia = { path = "../dianoia" }
 oikonomos = { path = "../daemon" }
 
 [dev-dependencies]
+eidos = { path = "../eidos", features = ["test-support"] }
 hermeneus = { path = "../hermeneus", features = ["test-utils"] }
 mneme = { path = "../mneme", features = ["test-support"] }
 symbolon = { path = "../symbolon", features = ["test-support"] }

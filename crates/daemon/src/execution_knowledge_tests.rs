@@ -99,37 +99,16 @@ fn current_facts(
 #[cfg(feature = "knowledge-store")]
 fn make_runtime_prosoche_fact() -> episteme::knowledge::Fact {
     let now = jiff::Timestamp::now();
-    episteme::knowledge::Fact {
-        id: episteme::id::FactId::new("fact-runtime-prosoche-001").expect("valid id"),
-        nous_id: "test-nous".to_owned(),
-        fact_type: "observation".to_owned(),
-        content: "test content".to_owned(),
-        scope: None,
-        project_id: None,
-        temporal: episteme::knowledge::FactTemporal {
-            valid_from: now,
-            valid_to: episteme::knowledge::far_future(),
-            recorded_at: now,
-        },
-        provenance: episteme::knowledge::FactProvenance {
-            confidence: 0.9,
-            tier: episteme::knowledge::EpistemicTier::Verified,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: episteme::knowledge::FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: episteme::knowledge::FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: episteme::knowledge::FactSensitivity::Public,
-        visibility: episteme::knowledge::Visibility::Private,
-    }
+    let mut fact =
+        eidos::test_fixtures::make_fact("fact-runtime-prosoche-001", "test-nous", "test content");
+    fact.fact_type = "observation".to_owned();
+    fact.temporal = episteme::knowledge::FactTemporal {
+        valid_from: now,
+        valid_to: episteme::knowledge::far_future(),
+        recorded_at: now,
+    };
+    fact.provenance.tier = episteme::knowledge::EpistemicTier::Verified;
+    fact
 }
 
 #[cfg(feature = "knowledge-store")]

@@ -7,45 +7,22 @@
 use crate::id::CausalEdgeId;
 use crate::id::FactId;
 use crate::knowledge::{
-    CausalEdge, CausalRelationType, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
-    FactTemporal, TemporalOrdering, far_future,
+    CausalEdge, CausalRelationType, Fact, FactTemporal, TemporalOrdering, far_future,
 };
 use crate::knowledge_store::KnowledgeStore;
 
 /// Helper: create a minimal fact with the given ID and content.
 fn make_fact(id: &str, content: &str) -> Fact {
     let now = jiff::Timestamp::now();
-    Fact {
-        id: FactId::new(id).expect("valid test id"),
-        nous_id: "test-nous".to_owned(),
-        content: content.to_owned(),
-        fact_type: "observation".to_owned(),
-        temporal: FactTemporal {
-            valid_from: now,
-            valid_to: far_future(),
-            recorded_at: now,
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: Some("test-session".to_owned()),
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    }
+    let mut fact = crate::test_fixtures::make_fact(id, "test-nous", content);
+    fact.fact_type = "observation".to_owned();
+    fact.temporal = FactTemporal {
+        valid_from: now,
+        valid_to: far_future(),
+        recorded_at: now,
+    };
+    fact.provenance.source_session_id = Some("test-session".to_owned());
+    fact
 }
 
 /// Helper: create a causal edge.

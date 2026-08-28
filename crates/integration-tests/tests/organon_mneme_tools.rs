@@ -25,10 +25,7 @@ use koina::id::ToolName;
 use koina::id::{NousId, SessionId};
 use mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
 use mneme::id::{EmbeddingId, FactId};
-use mneme::knowledge::{
-    EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
-    FactTemporal, Visibility,
-};
+use mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact, FactTemporal};
 use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 use mneme::store::SessionStore;
 use nous::adapters::{SessionBlackboardAdapter, SessionNoteAdapter};
@@ -555,37 +552,18 @@ fn ts() -> jiff::Timestamp {
 }
 
 fn fact(id: &str, nous_id: &str, content: &str) -> Fact {
-    Fact {
-        id: FactId::new(id).expect("valid fact id"),
-        nous_id: nous_id.to_owned(),
-        content: content.to_owned(),
-        fact_type: "observation".to_owned(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: ts(),
-            valid_to: mneme::knowledge::far_future(),
-            recorded_at: ts(),
-        },
-        provenance: FactProvenance {
-            confidence: 0.95,
-            tier: EpistemicTier::Verified,
-            source_session_id: Some("ses-organon".to_owned()),
-            stability_hours: mneme::knowledge::default_stability_hours("observation"),
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+    fact.fact_type = "observation".to_owned();
+    fact.temporal = FactTemporal {
+        valid_from: ts(),
+        valid_to: mneme::knowledge::far_future(),
+        recorded_at: ts(),
+    };
+    fact.provenance.confidence = 0.95;
+    fact.provenance.tier = EpistemicTier::Verified;
+    fact.provenance.source_session_id = Some("ses-organon".to_owned());
+    fact.provenance.stability_hours = mneme::knowledge::default_stability_hours("observation");
+    fact
 }
 
 fn embedded_chunk(

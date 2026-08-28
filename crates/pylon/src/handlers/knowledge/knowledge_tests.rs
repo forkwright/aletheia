@@ -15,41 +15,17 @@ use crate::extract::Claims;
 use crate::state::KnowledgeState;
 
 fn make_fact(id: &str, content: &str, confidence: f64) -> mneme::knowledge::Fact {
-    use mneme::id::FactId;
-    use mneme::knowledge::{
-        EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
+    use mneme::knowledge::FactTemporal;
+    let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
+    fact.fact_type = "knowledge".to_owned();
+    fact.temporal = FactTemporal {
+        valid_from: jiff::Timestamp::UNIX_EPOCH,
+        valid_to: jiff::Timestamp::UNIX_EPOCH,
+        recorded_at: jiff::Timestamp::UNIX_EPOCH,
     };
-    mneme::knowledge::Fact {
-        id: FactId::new(id).unwrap(),
-        nous_id: "test-nous".to_owned(),
-        fact_type: "knowledge".to_owned(),
-        content: content.to_owned(),
-        temporal: FactTemporal {
-            valid_from: jiff::Timestamp::UNIX_EPOCH,
-            valid_to: jiff::Timestamp::UNIX_EPOCH,
-            recorded_at: jiff::Timestamp::UNIX_EPOCH,
-        },
-        provenance: FactProvenance {
-            confidence,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 24.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
-        scope: None,
-        project_id: None,
-        visibility: mneme::knowledge::Visibility::Private,
-    }
+    fact.provenance.confidence = confidence;
+    fact.provenance.stability_hours = 24.0;
+    fact
 }
 
 #[test]

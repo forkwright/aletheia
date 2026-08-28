@@ -9,9 +9,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::knowledge::{
-    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, ForgetReason,
-};
+use crate::knowledge::ForgetReason;
 use crate::test_fixtures::{make_fact, make_store};
 #[test]
 fn run_script_read_only_basic() {
@@ -333,39 +331,11 @@ fn concurrent_inserts() {
         .map(|i| {
             let s = Arc::clone(&store);
             std::thread::spawn(move || {
-                let fact = Fact {
-                    id: crate::id::FactId::new(format!("f-concurrent-{i}")).expect("valid test id"),
-                    nous_id: "agent-a".to_owned(),
-                    content: format!("Concurrent fact {i}"),
-                    fact_type: String::new(),
-                    temporal: FactTemporal {
-                        valid_from: crate::knowledge::parse_timestamp("2026-01-01")
-                            .expect("valid test timestamp"),
-                        valid_to: crate::knowledge::far_future(),
-                        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                            .expect("valid test timestamp"),
-                    },
-                    provenance: FactProvenance {
-                        confidence: 0.9,
-                        tier: EpistemicTier::Inferred,
-                        source_session_id: None,
-                        stability_hours: 720.0,
-                    },
-                    lifecycle: FactLifecycle {
-                        superseded_by: None,
-                        is_forgotten: false,
-                        forgotten_at: None,
-                        forget_reason: None,
-                    },
-                    access: FactAccess {
-                        access_count: 0,
-                        last_accessed_at: None,
-                    },
-                    sensitivity: crate::knowledge::FactSensitivity::Public,
-                    visibility: crate::knowledge::Visibility::Private,
-                    scope: None,
-                    project_id: None,
-                };
+                let fact = make_fact(
+                    &format!("f-concurrent-{i}"),
+                    "agent-a",
+                    &format!("Concurrent fact {i}"),
+                );
                 s.insert_fact(&fact).expect("concurrent insert");
             })
         })

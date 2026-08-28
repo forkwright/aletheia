@@ -3569,42 +3569,13 @@ workspace = "nous/{agent_id}"
 
     #[cfg(feature = "recall")]
     fn sample_fact(id: &str, nous_id: &str, content: &str) -> mneme::knowledge::Fact {
-        use mneme::knowledge::{
-            EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
-            FactTemporal, Visibility, far_future, parse_timestamp,
-        };
+        use mneme::knowledge::EpistemicTier;
 
-        Fact {
-            id: mneme::id::FactId::new(id).unwrap(),
-            nous_id: nous_id.to_owned(),
-            content: content.to_owned(),
-            fact_type: "test".to_owned(),
-            scope: None,
-            project_id: None,
-            sensitivity: FactSensitivity::Public,
-            visibility: Visibility::Private,
-            temporal: FactTemporal {
-                valid_from: parse_timestamp("2026-01-01T00:00:00Z").unwrap(),
-                valid_to: far_future(),
-                recorded_at: parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
-            },
-            provenance: FactProvenance {
-                confidence: 0.95,
-                tier: EpistemicTier::Verified,
-                source_session_id: None,
-                stability_hours: 720.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
-        }
+        let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+        fact.fact_type = "test".to_owned();
+        fact.provenance.confidence = 0.95;
+        fact.provenance.tier = EpistemicTier::Verified;
+        fact
     }
 
     #[cfg(feature = "recall")]
@@ -3679,11 +3650,8 @@ workspace = "nous/{agent_id}"
 
     #[cfg(feature = "recall")]
     fn seed_typed_knowledge(oikos: &Oikos, nous_id: &str) {
-        use mneme::id::{EntityId, FactId};
-        use mneme::knowledge::{
-            Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
-            FactSensitivity, FactTemporal, Relationship, Visibility, far_future, parse_timestamp,
-        };
+        use mneme::id::EntityId;
+        use mneme::knowledge::{Entity, EpistemicTier, Relationship, parse_timestamp};
         use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
         let knowledge_path = knowledge_path_for_nous(oikos, nous_id);
@@ -3692,37 +3660,10 @@ workspace = "nous/{agent_id}"
         let store =
             KnowledgeStore::open_fjall(&knowledge_path, KnowledgeConfig::default()).unwrap();
 
-        let fact = Fact {
-            id: FactId::new("fact-rt-001").unwrap(),
-            nous_id: nous_id.to_owned(),
-            content: "Alice likes Rust".to_owned(),
-            fact_type: "preference".to_owned(),
-            scope: None,
-            project_id: None,
-            sensitivity: FactSensitivity::Public,
-            visibility: Visibility::Private,
-            temporal: FactTemporal {
-                valid_from: parse_timestamp("2026-01-01T00:00:00Z").unwrap(),
-                valid_to: far_future(),
-                recorded_at: parse_timestamp("2026-03-01T00:00:00Z").unwrap(),
-            },
-            provenance: FactProvenance {
-                confidence: 0.95,
-                tier: EpistemicTier::Verified,
-                source_session_id: None,
-                stability_hours: 720.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
-        };
+        let mut fact = eidos::test_fixtures::make_fact("fact-rt-001", nous_id, "Alice likes Rust");
+        fact.fact_type = "preference".to_owned();
+        fact.provenance.confidence = 0.95;
+        fact.provenance.tier = EpistemicTier::Verified;
 
         let entity1 = Entity {
             id: EntityId::new("entity-rt-001").unwrap(),
@@ -4824,10 +4765,7 @@ workspace = "nous/{agent_id}"
             CandidateTracker, ContentEvidenceRef, ExtractedSkill, PendingSkill,
             SkillExtractionAudit, ToolCallRecord,
         };
-        use mneme::knowledge::{
-            EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
-            FactTemporal, Visibility,
-        };
+        use mneme::knowledge::FactTemporal;
 
         // Build a candidate on the live tracker path so its evidence carries a
         // real sequence hash and redacted tool input rather than hand-built
@@ -4883,37 +4821,18 @@ workspace = "nous/{agent_id}"
         let pending = PendingSkill::new_with_provenance(&extracted, &candidate, audit);
 
         let now = jiff::Timestamp::now();
-        let fact = Fact {
-            id: mneme::id::FactId::new("01ARZ3NDEKTSV4RRFFQ69G5FAV").expect("valid fact id"),
-            nous_id: "review-nous".to_owned(),
-            content: pending.to_json().expect("pending serializes"),
-            fact_type: "skill_pending".to_owned(),
-            scope: None,
-            project_id: None,
-            sensitivity: FactSensitivity::Public,
-            visibility: Visibility::Private,
-            temporal: FactTemporal {
-                valid_from: now,
-                valid_to: now,
-                recorded_at: now,
-            },
-            provenance: FactProvenance {
-                confidence: 0.6,
-                tier: EpistemicTier::Inferred,
-                source_session_id: None,
-                stability_hours: 720.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
+        let mut fact = eidos::test_fixtures::make_fact(
+            "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "review-nous",
+            &pending.to_json().expect("pending serializes"),
+        );
+        fact.fact_type = "skill_pending".to_owned();
+        fact.temporal = FactTemporal {
+            valid_from: now,
+            valid_to: now,
+            recorded_at: now,
         };
+        fact.provenance.confidence = 0.6;
 
         // Exercise the exact `review-skills list` rendering path: parse the
         // fact content back, then format it for review.

@@ -15,6 +15,4 @@ mod scopes;
 mod validate_memory_path;
 mod verification;
 
-pub(super) fn test_timestamp(s: &str) -> jiff::Timestamp {
-    parse_timestamp(s).expect("valid test timestamp")
-}
+pub(super) use crate::test_fixtures::test_ts as test_timestamp;

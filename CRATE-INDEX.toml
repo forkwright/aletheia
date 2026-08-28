@@ -16,7 +16,7 @@ layer = "cli"
 purpose = "Aletheia cognitive agent runtime"
 depends_on = ["agora", "aletheia-routing", "dianoia", "diaporeia", "dokimion", "energeia", "episteme", "gnosis", "hermeneus", "koilon", "koina", "melete", "mneme", "nous", "oikonomos", "organon", "poiesis-inspect", "pylon", "symbolon", "taxis", "thesauros"]
 used_by = []
-dev_depends_on = []
+dev_depends_on = ["eidos"]
 
 [crates.aletheia.features]
 cc-provider = "Claude Code subprocess provider"
@@ -124,7 +124,7 @@ path = "crates/eidos"
 layer = "types"
 purpose = "Shared knowledge types for the Aletheia memory layer"
 depends_on = ["koina"]
-used_by = ["aletheia-sessions-migrate", "energeia", "episteme", "graphe", "krites", "mneme", "organon", "pylon", "taxis"]
+used_by = ["aletheia-sessions-migrate", "energeia", "episteme", "graphe", "integration-tests", "krites", "mneme", "organon", "pylon", "taxis"]
 dev_depends_on = []
 
 [crates.eidos.features]
@@ -210,7 +210,7 @@ test-utils = "mock LLM provider (legacy alias)"
 path = "crates/integration-tests"
 layer = "ops"
 purpose = "Cross-crate integration test suite exercising multi-crate pipelines end-to-end"
-depends_on = ["dokimion", "hermeneus", "koina", "mneme", "nous", "organon", "pylon", "symbolon", "taxis", "thesauros"]
+depends_on = ["dokimion", "eidos", "hermeneus", "koina", "mneme", "nous", "organon", "pylon", "symbolon", "taxis", "thesauros"]
 used_by = []
 dev_depends_on = []
 
@@ -315,7 +315,7 @@ layer = "ops"
 purpose = "Per-nous background task runner, cron scheduling, maintenance services, prosoche attention, watchdog"
 depends_on = ["aletheia-routing", "episteme", "koina", "mneme", "taxis"]
 used_by = ["aletheia", "pylon"]
-dev_depends_on = []
+dev_depends_on = ["eidos"]
 
 [crates.oikonomos.features]
 default = "fjall backend"
