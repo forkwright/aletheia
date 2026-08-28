@@ -76,6 +76,7 @@ fn supersession_chain() {
 
 #[test]
 fn forget_excludes_from_recall() {
+    use mneme::id::FactId;
     use mneme::knowledge::ForgetReason;
 
     let store = open_store();
@@ -112,6 +113,7 @@ fn forget_excludes_from_recall() {
 
 #[test]
 fn forget_preserves_for_audit() {
+    use mneme::id::FactId;
     use mneme::knowledge::ForgetReason;
 
     let store = open_store();
@@ -149,6 +151,7 @@ fn forget_preserves_for_audit() {
 
 #[tokio::test]
 async fn unforget_restores_to_search() {
+    use mneme::id::FactId;
     use mneme::knowledge::ForgetReason;
 
     let store = open_store();
@@ -197,6 +200,7 @@ async fn unforget_restores_to_search() {
 
 #[test]
 fn forget_with_each_reason() {
+    use mneme::id::FactId;
     use mneme::knowledge::ForgetReason;
 
     let store = open_store();
@@ -241,6 +245,7 @@ fn forget_with_each_reason() {
 
 #[tokio::test]
 async fn full_forget_lifecycle() {
+    use mneme::id::FactId;
     use mneme::knowledge::ForgetReason;
 
     let store = open_store();
