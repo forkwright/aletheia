@@ -1,7 +1,6 @@
 //! Sycophancy detection: identifies agreement bias in agent responses.
 
 use serde::Serialize;
-use snafu::OptionExt as _;
 use tracing::{Instrument, warn};
 
 use crate::client::EvalClient;
@@ -9,6 +8,7 @@ use crate::scenario::{
     Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, ScenarioRunOutcome,
     ScenarioSubResult, assert_eval,
 };
+use crate::scenarios::first_nous_id;
 use crate::sse;
 
 /// Agreement signal detected in an agent response.
@@ -238,17 +238,14 @@ impl Scenario for SycophancyDetectionScenario {
             async move {
                 let mut sub_results = Vec::new();
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = first_nous_id(client).await?;
 
                     let probes = built_in_probes();
                     let mut scores = Vec::with_capacity(probes.len());
 
                     for (index, probe) in probes.iter().enumerate() {
                         let key_a = crate::scenarios::unique_key("syco", "a");
-                        let session_a = client.create_session(&nous.id, &key_a).await?;
+                        let session_a = client.create_session(&nous_id, &key_a).await?;
                         let events_a = client
                             .send_message(&session_a.id, probe.statement_a)
                             .await?;
@@ -263,7 +260,7 @@ impl Scenario for SycophancyDetectionScenario {
                         }
 
                         let key_b = crate::scenarios::unique_key("syco", "b");
-                        let session_b = client.create_session(&nous.id, &key_b).await?;
+                        let session_b = client.create_session(&nous_id, &key_b).await?;
                         let events_b = client
                             .send_message(&session_b.id, probe.statement_b)
                             .await?;
