@@ -20,11 +20,22 @@
 //! | `notes`         | `{session_id}:{auto_id_padded_20}`                     | JSON `AgentNote`         |
 //! | `notes`         | `gid:{global_note_id_padded_20}`                       | `{session_id}:{auto_id}` |
 //! | `notes`         | `note_gid_idx:{session_id}:{global_note_id_padded_20}` | `""` (reverse index)     |
+//! | `turns`         | `{session_id}:{turn_seq_padded_20}`                    | JSON `TurnRecord`        |
+//! | `turns`         | `next_turn_seq:{session_id}`                           | big-endian `u64`         |
+//! | `turns`         | `turn_id_idx:{turn_id}`                                | `{session_id}:{turn_seq}`|
 //! | `blackboard`    | `{key}`                                                | JSON `BlackboardRow`     |
 //! | `counters`      | `{counter_name}`                                       | big-endian `u64`         |
 //!
 //! Sequence numbers are zero-padded to 20 digits so lexicographic ordering
 //! matches numeric ordering — enabling range scans for `get_history`.
+//!
+//! The `turns` partition (aletheia#5267) is additive: its `turn_seq` is a
+//! fresh persistent counter local to that partition, unrelated to the
+//! ULID-derived `turn_seq` already stored on `UsageRecord`/`ToolAuditRecord`
+//! rows. No existing partition's key layout or value shape changed, so
+//! opening a pre-#5267 store needs no migration — the `turns` partition and
+//! its counter are simply absent until the first call to
+//! [`SessionStore::finalize_turn`] that supplies a `turn_record` spec.
 //!
 //! # Timestamps
 //!
@@ -69,7 +80,8 @@ use crate::error::{self, Result};
 use crate::metrics;
 use crate::types::{
     AgentNote, BlackboardRow, BlackboardVisibility, Message, Role, Session, SessionMetrics,
-    SessionOrigin, SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
+    SessionOrigin, SessionStatus, SessionType, ToolAuditRecord, TurnRecord, TurnRecordStatus,
+    UsageRecord,
 };
 
 fn storage_error(message: impl Into<String>) -> error::Error {
@@ -568,6 +580,36 @@ pub struct FinalizeToolAuditRecord<'a> {
     pub receipt: Option<&'a str>,
 }
 
+/// Durable [`TurnRecord`] to write atomically with a finalized turn
+/// (aletheia#5267).
+///
+/// WHY a separate request type rather than reusing `TurnRecord` directly:
+/// the store itself owns the session-local `turn_seq` allocation, the
+/// `message_seq_range` (derived from the messages this same request just
+/// appended), the `tool_audit_ids` (derived from the audit rows this same
+/// request just appended), and `note_id` (derived from `completion_note`) —
+/// none of those are known to the caller before this transaction runs.
+#[derive(Debug, Clone, Copy)]
+pub struct FinalizeTurnRecordSpec<'a> {
+    /// Canonical turn identity (ULID rendered as a string).
+    pub turn_id: &'a str,
+    /// Lifecycle status to record.
+    pub status: TurnRecordStatus,
+    /// ISO 8601 timestamp when the turn was accepted.
+    pub started_at: &'a str,
+    /// ISO 8601 timestamp when the turn reached a terminal status.
+    pub completed_at: Option<&'a str>,
+    /// Provider instance that served the turn, when known.
+    pub provider: Option<&'a str>,
+    /// Stop reason reported by the pipeline, when known.
+    pub stop_reason: Option<&'a str>,
+    /// Total cost in USD for the turn, when the provider reported one.
+    pub cost_usd: Option<f64>,
+    /// Client- or pipeline-supplied idempotency key. `None` falls back to
+    /// `turn_id` at write time.
+    pub idempotency_key: Option<&'a str>,
+}
+
 /// Request to persist a complete conversational turn in a single transaction.
 ///
 /// WHY: grouping session creation, message appends, usage recording, and the
@@ -595,6 +637,10 @@ pub struct FinalizeTurnRequest<'a> {
     pub tool_audit_records: &'a [FinalizeToolAuditRecord<'a>],
     /// Terminal lifecycle note to commit atomically with the turn, when known.
     pub completion_note: Option<FinalizeNote<'a>>,
+    /// Durable [`TurnRecord`] to write atomically with this turn
+    /// (aletheia#5267). `None` skips the `turns` partition entirely — a
+    /// caller not yet migrated to turn records gets the pre-#5267 behavior.
+    pub turn_record: Option<FinalizeTurnRecordSpec<'a>>,
 }
 
 /// Result of a batched turn finalization.
@@ -606,6 +652,8 @@ pub struct FinalizeTurnResult {
     pub usage_recorded: bool,
     /// Number of structured tool audit records appended.
     pub tool_audit_records_persisted: usize,
+    /// Whether a durable `TurnRecord` was written (aletheia#5267).
+    pub turn_record_persisted: bool,
 }
 
 // WHY: the counter is thread-local so concurrent unit tests do not interfere;
@@ -1263,6 +1311,32 @@ impl SessionStore {
         Ok(keys)
     }
 
+    /// Collect a session's `turns` partition rows plus their `turn_id_idx`
+    /// lookup keys, so [`SessionStore::delete_session`] removes both without
+    /// leaving a dangling index entry (aletheia#5267).
+    fn turn_record_keys_for_session_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        turns_part: &fjall::SingleWriterTxKeyspace,
+        session_id: &str,
+    ) -> Result<Vec<Vec<u8>>> {
+        use fjall::Readable;
+
+        let prefix = format!("{session_id}:");
+        let upper = format!("{session_id};\x00");
+        let mut keys = Vec::new();
+        for guard in tx.range(turns_part, prefix.as_str()..upper.as_str()) {
+            let (k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall delete_session turns scan: {e}")))?;
+            let record =
+                serde_json::from_slice::<TurnRecord>(&v).context(error::StoredJsonSnafu)?;
+            keys.push(k.to_vec());
+            keys.push(format!("turn_id_idx:{}", record.turn_id).into_bytes());
+        }
+        keys.push(format!("next_turn_seq:{session_id}").into_bytes());
+        Ok(keys)
+    }
+
     fn note_gid_delete_keys_for_session_in_tx(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         notes_part: &fjall::SingleWriterTxKeyspace,
@@ -1912,6 +1986,7 @@ impl SessionStore {
         let tool_audit_part = self.partition("tool_audit")?;
         let distillations_part = self.partition("distillations")?;
         let notes_part = self.partition("notes")?;
+        let turns_part = self.partition("turns")?;
 
         let mut tx = self.db.write_tx();
 
@@ -1965,6 +2040,8 @@ impl SessionStore {
         let note_delete_keys =
             Self::note_gid_delete_keys_for_session_in_tx(&mut tx, &notes_part, id)?;
 
+        let turn_keys = Self::turn_record_keys_for_session_in_tx(&mut tx, &turns_part, id)?;
+
         for key in &msg_keys {
             tx.remove(&messages_part, key.as_slice());
         }
@@ -1975,6 +2052,9 @@ impl SessionStore {
         }
         for key in &tool_audit_keys {
             tx.remove(&tool_audit_part, key.as_slice());
+        }
+        for key in &turn_keys {
+            tx.remove(&turns_part, key.as_slice());
         }
 
         for key in &dist_keys {
@@ -2759,7 +2839,7 @@ impl SessionStore {
         session_id: &str,
         nous_id: &str,
         spec: &FinalizeToolAuditRecord<'_>,
-    ) -> Result<()> {
+    ) -> Result<i64> {
         use fjall::Readable;
 
         let id_counter = match tx
@@ -2790,7 +2870,72 @@ impl SessionStore {
 
         tx.insert(tool_audit_part, key.as_str(), data.as_slice());
         tx.insert(counters_part, "tool_audit_id", encode_u64(id_counter));
-        Ok(())
+        Ok(id_counter as i64) // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
+    }
+
+    /// Allocate the next session-local `turn_seq` and persist a durable
+    /// [`TurnRecord`] plus its `turn_id_idx` lookup entry (aletheia#5267).
+    ///
+    /// WHY a fresh counter local to the `turns` partition rather than
+    /// reusing `UsageRecord`/`ToolAuditRecord`'s ULID-derived `turn_seq`:
+    /// this is meant to be the durable session-local sequence those types
+    /// never had (see the module-level `# Key schema` doc); tying it to the
+    /// existing ULID fold would just move the same non-monotonic-by-time
+    /// derivation into the new type instead of fixing it.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "internal tx helper; every argument is a distinct link this record carries per its Finding"
+    )]
+    fn write_turn_record_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        turns_part: &fjall::SingleWriterTxKeyspace,
+        session_id: &str,
+        spec: &FinalizeTurnRecordSpec<'_>,
+        usage: Option<&UsageRecord>,
+        message_seq_range: Option<(i64, i64)>,
+        tool_audit_ids: Vec<i64>,
+        note_id: Option<i64>,
+    ) -> Result<TurnRecord> {
+        use fjall::Readable;
+
+        let seq_key = format!("next_turn_seq:{session_id}");
+        let current_seq = match tx
+            .get(turns_part, seq_key.as_str())
+            .map_err(|e| storage_error(format!("fjall turn_seq read: {e}")))?
+        {
+            None => 0u64,
+            Some(b) => try_decode_u64(&b, "next_turn_seq")?,
+        };
+        let turn_seq = current_seq + 1;
+
+        let record = TurnRecord {
+            turn_id: spec.turn_id.to_owned(),
+            session_id: session_id.to_owned(),
+            turn_seq: turn_seq as i64, // kanon:ignore RUST/as-cast — internal counter from encode_u64; exceeds i64::MAX only after >9e18 increments
+            status: spec.status,
+            started_at: spec.started_at.to_owned(),
+            completed_at: spec.completed_at.map(str::to_owned),
+            provider: spec.provider.map(str::to_owned),
+            model: usage.and_then(|u| u.model.clone()),
+            stop_reason: spec.stop_reason.map(str::to_owned),
+            usage: usage.cloned(),
+            cost_usd: spec.cost_usd,
+            idempotency_key: Some(spec.idempotency_key.unwrap_or(spec.turn_id).to_owned()),
+            message_seq_range,
+            tool_audit_ids,
+            note_id,
+            reconstructed: false,
+        };
+
+        let key = format!("{session_id}:{}", pad_u64(turn_seq));
+        let data = serde_json::to_vec(&record).context(error::StoredJsonSnafu)?;
+        let idx_key = format!("turn_id_idx:{}", spec.turn_id);
+
+        tx.insert(turns_part, key.as_str(), data.as_slice());
+        tx.insert(turns_part, idx_key.as_str(), key.as_bytes());
+        tx.insert(turns_part, seq_key.as_str(), encode_u64(turn_seq));
+
+        Ok(record)
     }
 
     /// Persist a complete conversational turn in a single transaction.
@@ -2831,6 +2976,7 @@ impl SessionStore {
         let tool_audit_part = self.partition("tool_audit")?;
         let notes_part = self.partition("notes")?;
         let counters_part = self.partition("counters")?;
+        let turns_part = self.partition("turns")?;
 
         let mut tx = self.db.write_tx();
 
@@ -2849,8 +2995,9 @@ impl SessionStore {
         let mut session = find_outcome.session.clone();
 
         let mut messages_persisted = 0usize;
+        let mut message_seq_range: Option<(i64, i64)> = None;
         for spec in request.messages {
-            Self::append_message_in_tx(
+            let seq = Self::append_message_in_tx(
                 &mut tx,
                 &messages_part,
                 &sessions_part,
@@ -2858,6 +3005,10 @@ impl SessionStore {
                 &mut session,
                 spec,
             )?;
+            message_seq_range = Some(match message_seq_range {
+                None => (seq, seq),
+                Some((start, _end)) => (start, seq),
+            });
             messages_persisted += 1;
             #[cfg(test)]
             test_finalize_failure::maybe_fail_after_messages(messages_persisted)?;
@@ -2870,8 +3021,9 @@ impl SessionStore {
         }
 
         let mut tool_audit_records_persisted = 0usize;
+        let mut tool_audit_ids = Vec::with_capacity(request.tool_audit_records.len());
         for spec in request.tool_audit_records {
-            Self::append_tool_audit_record_in_tx(
+            let id = Self::append_tool_audit_record_in_tx(
                 &mut tx,
                 &tool_audit_part,
                 &counters_part,
@@ -2879,11 +3031,13 @@ impl SessionStore {
                 request.nous_id,
                 spec,
             )?;
+            tool_audit_ids.push(id);
             tool_audit_records_persisted += 1;
         }
 
+        let mut note_id = None;
         if let Some(note) = request.completion_note {
-            Self::put_note_in_tx(
+            note_id = Some(Self::put_note_in_tx(
                 &mut tx,
                 NoteTxParts {
                     notes: &notes_part,
@@ -2901,7 +3055,22 @@ impl SessionStore {
                         validate_category: true,
                     },
                 },
+            )?);
+        }
+
+        let mut turn_record_persisted = false;
+        if let Some(turn_record_spec) = request.turn_record {
+            Self::write_turn_record_in_tx(
+                &mut tx,
+                &turns_part,
+                session.id.as_str(),
+                &turn_record_spec,
+                request.usage,
+                message_seq_range,
+                tool_audit_ids,
+                note_id,
             )?;
+            turn_record_persisted = true;
         }
 
         tx.commit().map_err(|e| {
@@ -2926,6 +3095,7 @@ impl SessionStore {
             messages_persisted,
             usage_recorded,
             tool_audit_records_persisted,
+            turn_record_persisted,
         })
     }
 
@@ -3004,6 +3174,132 @@ impl SessionStore {
         }
 
         Ok(records)
+    }
+
+    // ── Turn records (aletheia#5267) ─────────────────────────────────────
+
+    /// Look up the durable `TurnRecord` for a canonical `turn_id`.
+    ///
+    /// Returns `Ok(None)` both when no such turn was ever finalized and
+    /// when it was finalized before this type existed — callers that must
+    /// distinguish "never happened" from "happened, but pre-dates durable
+    /// turn records" want [`Self::turn_record_or_legacy`] instead.
+    #[instrument(skip(self))]
+    pub fn turn_record(&self, session_id: &str, turn_id: &str) -> Result<Option<TurnRecord>> {
+        use fjall::Readable;
+
+        let turns_part = self.partition("turns")?;
+        let snap = self.db.read_tx();
+
+        let idx_key = format!("turn_id_idx:{turn_id}");
+        let Some(row_key_bytes) = snap
+            .get(&turns_part, idx_key.as_str())
+            .map_err(|e| storage_error(format!("fjall turn_record idx read: {e}")))?
+        else {
+            return Ok(None);
+        };
+        let row_key = String::from_utf8_lossy(&row_key_bytes).into_owned();
+        let Some(data) = snap
+            .get(&turns_part, row_key.as_str())
+            .map_err(|e| storage_error(format!("fjall turn_record row read: {e}")))?
+        else {
+            return Ok(None);
+        };
+        let record: TurnRecord = serde_json::from_slice(&data).context(error::StoredJsonSnafu)?;
+        if record.session_id != session_id {
+            // WHY: a turn_id index entry pointing at a different session
+            // means the id was never valid for this session — treat it the
+            // same as absent rather than returning another session's data.
+            return Ok(None);
+        }
+        Ok(Some(record))
+    }
+
+    /// Get all durable turn records for a session, oldest first.
+    #[instrument(skip(self))]
+    pub fn turn_records_for_session(&self, session_id: &str) -> Result<Vec<TurnRecord>> {
+        use fjall::Readable;
+
+        let turns_part = self.partition("turns")?;
+        let prefix = format!("{session_id}:");
+        let upper = format!("{session_id};\x00");
+        let snap = self.db.read_tx();
+
+        let mut records = Vec::new();
+        for guard in snap.range(&turns_part, prefix.as_str()..upper.as_str()) {
+            let (_k, v) = guard
+                .into_inner()
+                .map_err(|e| storage_error(format!("fjall turn_records_for_session range: {e}")))?;
+            records.push(serde_json::from_slice::<TurnRecord>(&v).context(error::StoredJsonSnafu)?);
+        }
+        records.sort_by_key(|r| r.turn_seq);
+        Ok(records)
+    }
+
+    /// Look up a turn's durable record, reconstructing a best-effort,
+    /// honestly-partial one from the `usage`/`tool_audit` rows when the
+    /// turn predates [`TurnRecord`] (aletheia#5267).
+    ///
+    /// `legacy_turn_seq` is the ULID-derived `turn_seq` that
+    /// `UsageRecord`/`ToolAuditRecord` rows for this turn carry (see
+    /// `nous::finalize::turn_seq_from_ulid`) — the only surviving key that
+    /// still ties those pre-#5267 rows to this turn.
+    ///
+    /// A reconstructed record cannot recover `status` (reported as
+    /// [`TurnRecordStatus::Unknown`] rather than guessed), `provider`,
+    /// `stop_reason`, `cost_usd`, or `message_seq_range` — those were never
+    /// durably recorded before this type existed. This is deliberately a
+    /// compatibility reader rather than a backfill migration: a migration
+    /// would have to fabricate exactly those same unrecoverable fields to
+    /// produce a "complete-looking" row, which is worse than a caller
+    /// seeing the honest gap.
+    ///
+    /// # Errors
+    /// Returns an error if a read or a JSON decode fails.
+    #[instrument(skip(self))]
+    pub fn turn_record_or_legacy(
+        &self,
+        session_id: &str,
+        turn_id: &str,
+        legacy_turn_seq: i64,
+    ) -> Result<Option<TurnRecord>> {
+        if let Some(record) = self.turn_record(session_id, turn_id)? {
+            return Ok(Some(record));
+        }
+
+        let usage = self
+            .get_usage_for_session(session_id)?
+            .into_iter()
+            .find(|u| u.turn_seq == legacy_turn_seq);
+        let Some(usage) = usage else {
+            return Ok(None);
+        };
+
+        let tool_audit_ids = self
+            .tool_audit_records_for_session(session_id)?
+            .into_iter()
+            .filter(|t| t.turn_seq == legacy_turn_seq)
+            .map(|t| t.id)
+            .collect();
+
+        Ok(Some(TurnRecord {
+            turn_id: turn_id.to_owned(),
+            session_id: session_id.to_owned(),
+            turn_seq: legacy_turn_seq,
+            status: TurnRecordStatus::Unknown,
+            started_at: usage.created_at.clone(),
+            completed_at: Some(usage.created_at.clone()),
+            provider: None,
+            model: usage.model.clone(),
+            stop_reason: None,
+            usage: Some(usage),
+            cost_usd: None,
+            idempotency_key: Some(turn_id.to_owned()),
+            message_seq_range: None,
+            tool_audit_ids,
+            note_id: None,
+            reconstructed: true,
+        }))
     }
 
     // ── Agent notes ───────────────────────────────────────────────────────

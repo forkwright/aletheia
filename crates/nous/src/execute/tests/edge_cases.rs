@@ -561,6 +561,7 @@ fn store_with_persisted_tool_history() -> mneme::store::SessionStore {
             usage: None,
             tool_audit_records: &audits,
             completion_note: None,
+            turn_record: None,
         })
         .expect("finalize turn");
     store

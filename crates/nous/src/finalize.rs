@@ -16,9 +16,10 @@ use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
 
 use mneme::store::{
-    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest, SessionStore,
+    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRecordSpec,
+    FinalizeTurnRequest, SessionStore,
 };
-use mneme::types::{Role, UsageRecord};
+use mneme::types::{Role, TurnRecordStatus, UsageRecord};
 
 use crate::error;
 use crate::pipeline::TurnResult;
@@ -268,6 +269,30 @@ fn terminal_status_for_result(result: &TurnResult) -> TurnAttemptStatus {
     }
 }
 
+/// Map nous's richer turn-attempt lifecycle status onto the durable
+/// store-level `TurnRecordStatus` (aletheia#5267).
+///
+/// WHY a separate mapping rather than one shared enum: `TurnAttemptStatus`
+/// also carries mid-flight states (`Accepted`, `Running`, `FinalizePending`,
+/// `FinalizeFailed`) that only ever exist as transient notes inside nous's
+/// own recovery protocol -- `finalize` always calls this with a *terminal*
+/// status (see `terminal_status_for_result`), so those variants collapse to
+/// `Pending`/`Failed` here rather than needing their own `TurnRecordStatus`
+/// member that a durable row would never actually carry.
+fn turn_record_status_for(status: TurnAttemptStatus) -> TurnRecordStatus {
+    match status {
+        TurnAttemptStatus::Accepted
+        | TurnAttemptStatus::Running
+        | TurnAttemptStatus::FinalizePending => TurnRecordStatus::Pending,
+        TurnAttemptStatus::Completed => TurnRecordStatus::Completed,
+        TurnAttemptStatus::Degraded => TurnRecordStatus::Degraded,
+        TurnAttemptStatus::Failed | TurnAttemptStatus::FinalizeFailed => TurnRecordStatus::Failed,
+        TurnAttemptStatus::Cancelled => TurnRecordStatus::Cancelled,
+        TurnAttemptStatus::Timeout => TurnRecordStatus::Timeout,
+        TurnAttemptStatus::ApprovalDenied => TurnRecordStatus::ApprovalDenied,
+    }
+}
+
 fn turn_attempt_record(
     session: &SessionState,
     result: &TurnResult,
@@ -398,6 +423,26 @@ pub(crate) fn finalize(
     );
     let completed_content = crate::turn_record::serialize_turn_attempt(&completed)?;
 
+    // WHY(#5267): `started_at` uses this finalize attempt's own pending
+    // marker rather than the turn's original accept time -- the pipeline's
+    // true turn-accept instant (tracked in-memory as `turn_started_at_ms`
+    // on the actor, for health polling) is not threaded into this module.
+    // This is still a real, non-fabricated timestamp, never a guess; a
+    // finalize retry after a crash naturally reports a later `started_at`
+    // than the original attempt, which is honest about what this module
+    // can actually observe.
+    let turn_id_string = session.turn_id.to_string();
+    let turn_record_spec = FinalizeTurnRecordSpec {
+        turn_id: &turn_id_string,
+        status: turn_record_status_for(terminal_status),
+        started_at: &pending.created_at,
+        completed_at: Some(&completed.created_at),
+        provider: result.provider_used.as_deref(),
+        stop_reason: Some(result.stop_reason.as_str()),
+        cost_usd: result.usage.cost_usd,
+        idempotency_key: None,
+    };
+
     let finalized = store
         .finalize_turn(&FinalizeTurnRequest {
             session_id: &session.id,
@@ -412,6 +457,7 @@ pub(crate) fn finalize(
                 category: crate::turn_record::TURN_NOTE_CATEGORY,
                 content: &completed_content,
             }),
+            turn_record: Some(turn_record_spec),
         })
         .context(error::StoreSnafu)?;
 

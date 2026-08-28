@@ -6,13 +6,15 @@
 )]
 
 use super::{
-    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest,
-    SessionStatusCounts, SessionStore, test_finalize_failure, test_persist_counter,
+    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRecordSpec,
+    FinalizeTurnRequest, SessionStatusCounts, SessionStore, test_finalize_failure,
+    test_persist_counter,
 };
 use crate::error::Error;
 use crate::test_fixtures::test_store;
 use crate::types::{
-    BlackboardRow, BlackboardVisibility, Role, SessionStatus, SessionType, UsageRecord,
+    BlackboardRow, BlackboardVisibility, Role, SessionStatus, SessionType, TurnRecordStatus,
+    UsageRecord,
 };
 use tempfile::TempDir;
 
@@ -938,9 +940,26 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
             usage: None,
             tool_audit_records: &audit_records,
             completion_note: None,
+            turn_record: Some(FinalizeTurnRecordSpec {
+                turn_id: "01ARZ3NDEKTSV4RRFFQ69G5FAD",
+                status: TurnRecordStatus::Completed,
+                started_at: "2026-03-05T09:59:59.000Z",
+                completed_at: Some("2026-03-05T10:00:00.000Z"),
+                provider: None,
+                stop_reason: None,
+                cost_usd: None,
+                idempotency_key: None,
+            }),
         })
         .expect("record tool audit");
 
+    assert!(
+        store
+            .turn_record("ses-x", "01ARZ3NDEKTSV4RRFFQ69G5FAD")
+            .expect("turn record read")
+            .is_some(),
+        "turn record should exist before delete"
+    );
     assert!(
         !store
             .get_usage_for_session("ses-x")
@@ -993,6 +1012,20 @@ fn delete_session_removes_usage_distillation_and_note_rows() {
     assert!(
         store.find_session_by_id("ses-x").expect("lookup").is_none(),
         "session row must be removed"
+    );
+    assert!(
+        store
+            .turn_record("ses-x", "01ARZ3NDEKTSV4RRFFQ69G5FAD")
+            .expect("turn record read")
+            .is_none(),
+        "turn record row must be removed"
+    );
+    assert!(
+        store
+            .turn_records_for_session("ses-x")
+            .expect("turn records for session")
+            .is_empty(),
+        "turn records partition must have no leftover rows for the deleted session"
     );
 }
 
@@ -1277,6 +1310,16 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
             category: "context",
             content: r#"{"status":"completed"}"#,
         }),
+        turn_record: Some(FinalizeTurnRecordSpec {
+            turn_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            status: TurnRecordStatus::Completed,
+            started_at: "2026-03-05T09:59:59.000Z",
+            completed_at: Some("2026-03-05T10:00:00.000Z"),
+            provider: Some("anthropic"),
+            stop_reason: Some("end_turn"),
+            cost_usd: Some(0.005),
+            idempotency_key: None,
+        }),
     };
 
     let result = store
@@ -1284,6 +1327,32 @@ fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
         .expect("finalize_turn should succeed");
     assert_eq!(result.messages_persisted, 2);
     assert!(result.usage_recorded);
+    assert!(result.turn_record_persisted);
+
+    let turn_record = store
+        .turn_record(session_id, "01ARZ3NDEKTSV4RRFFQ69G5FAV")
+        .expect("read turn record")
+        .expect("turn record must exist");
+    assert_eq!(turn_record.session_id, session_id);
+    assert_eq!(turn_record.turn_seq, 1);
+    assert_eq!(turn_record.status, TurnRecordStatus::Completed);
+    assert_eq!(turn_record.provider.as_deref(), Some("anthropic"));
+    assert_eq!(turn_record.stop_reason.as_deref(), Some("end_turn"));
+    assert_eq!(turn_record.cost_usd, Some(0.005));
+    assert_eq!(
+        turn_record.idempotency_key.as_deref(),
+        Some("01ARZ3NDEKTSV4RRFFQ69G5FAV"),
+        "idempotency_key must default to turn_id when the caller supplies none"
+    );
+    assert_eq!(turn_record.message_seq_range, Some((1, 2)));
+    assert!(turn_record.tool_audit_ids.is_empty());
+    assert!(turn_record.note_id.is_some());
+    assert!(!turn_record.reconstructed);
+    assert_eq!(
+        turn_record.usage.as_ref().map(|u| u.turn_seq),
+        Some(7),
+        "denormalized usage on the turn record must match the usage row written this turn"
+    );
     assert_eq!(
         test_persist_counter::count(),
         1,
@@ -1349,6 +1418,7 @@ fn finalize_turn_persists_structured_tool_audit_records() {
         usage: Some(&usage),
         tool_audit_records: &audits,
         completion_note: None,
+        turn_record: None,
     };
 
     let result = store.finalize_turn(&request).expect("finalize turn");
@@ -1381,6 +1451,30 @@ fn finalize_turn_persists_structured_tool_audit_records() {
             .expect("other session audit records")
             .is_empty(),
         "session-scoped audit read must not leak records from other sessions"
+    );
+
+    // WHY(#5267): this turn never wrote a `turns` partition row
+    // (`turn_record: None` above) -- it is exactly the pre-#5267 shape
+    // `turn_record_or_legacy` exists to serve.
+    let legacy = store
+        .turn_record_or_legacy(session_id, "01ARZ3NDEKTSV4RRFFQ69G5FAL", 9)
+        .expect("compat read")
+        .expect("legacy usage row must reconstruct a turn record");
+    assert!(legacy.reconstructed, "reconstructed rows must say so");
+    assert_eq!(legacy.status, TurnRecordStatus::Unknown);
+    assert_eq!(legacy.turn_seq, 9);
+    assert_eq!(legacy.model.as_deref(), Some("test-model"));
+    assert_eq!(legacy.tool_audit_ids, vec![session_records[0].id]);
+    assert!(
+        legacy.provider.is_none(),
+        "provider was never durable before #5267 and must not be guessed"
+    );
+    assert!(
+        store
+            .turn_record_or_legacy(session_id, "01ARZ3NDEKTSV4RRFFQ69G5FAL", 999)
+            .expect("compat read")
+            .is_none(),
+        "a turn_seq with no usage row and no turn record must read as absent, not reconstructed"
     );
 }
 
@@ -1428,6 +1522,7 @@ fn finalize_turn_failure_inside_message_batch_rolls_back_and_retry_is_clean() {
             category: "context",
             content: r#"{"status":"completed"}"#,
         }),
+        turn_record: None,
     };
 
     test_finalize_failure::fail_after_messages(1);

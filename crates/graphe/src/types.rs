@@ -369,6 +369,131 @@ pub struct ToolAuditRecord {
     pub created_at: String,
 }
 
+/// Lifecycle status of a durable [`TurnRecord`] (aletheia#5267).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum TurnRecordStatus {
+    /// Turn was accepted and is running; no terminal outcome yet.
+    Pending,
+    /// Turn completed with a normal assistant response.
+    Completed,
+    /// Turn completed via a degraded-mode synthetic response.
+    Degraded,
+    /// Turn failed before producing a durable response.
+    Failed,
+    /// Turn was cancelled by operator or system.
+    Cancelled,
+    /// Turn timed out.
+    Timeout,
+    /// A tool call in this turn was denied by the approval gate.
+    ApprovalDenied,
+    /// Reconstructed from rows written before this type existed
+    /// ([`crate::store::SessionStore::turn_record_or_legacy`]); the true
+    /// terminal outcome was never durably recorded and cannot be recovered.
+    Unknown,
+}
+
+impl TurnRecordStatus {
+    /// Return the wire-format string for this status.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Completed => "completed",
+            Self::Degraded => "degraded",
+            Self::Failed => "failed",
+            Self::Cancelled => "cancelled",
+            Self::Timeout => "timeout",
+            Self::ApprovalDenied => "approval_denied",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Authoritative durable record binding one conversational turn's request,
+/// response, tool activity, model metadata, and accounting together
+/// (aletheia#5267).
+///
+/// WHY: before this type, joining a turn's messages, usage, and tool-audit
+/// rows required correlating three partitions by a ULID-derived `turn_seq`
+/// with no row that named the turn itself as first-class — replay, crash
+/// recovery, UI diagnostics, and billing all had to reconstruct a turn's
+/// boundary rather than read one. This type is additive: existing
+/// `Session`/`Message`/`UsageRecord`/`ToolAuditRecord` rows and their key
+/// schemas are unchanged, so no store-schema-version bump is needed. Rows
+/// written before this type existed have no `TurnRecord` at all;
+/// [`crate::store::SessionStore::turn_record_or_legacy`] reconstructs a
+/// best-effort, honestly-partial one from the surviving
+/// `usage`/`tool_audit` rows rather than requiring a backfill migration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TurnRecord {
+    /// Canonical turn identity (ULID rendered as a string), stable across
+    /// finalize retries.
+    pub turn_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: turn ids are minted as koina::ulid::Ulid by nous's pipeline and rendered to a string at the pipeline boundary; graphe does not depend on nous's id types, so this stores the caller's canonical string form verbatim
+    /// Session this turn belongs to.
+    pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: raw foreign key to Session.id; must preserve the stored byte form exactly (UUID, ULID, or legacy ses_) or joins break, so it cannot be a normalizing newtype
+    /// Session-local sequence number, monotonically increasing per session.
+    ///
+    /// Distinct from `UsageRecord::turn_seq`/`ToolAuditRecord::turn_seq` (a
+    /// ULID-derived key retained there for their existing idempotency
+    /// contract) — this is a real persistent counter maintained in the
+    /// `turns` partition, so ordering a session's turns never depends on
+    /// reinterpreting ULID timestamp bits (aletheia#5267).
+    pub turn_seq: i64,
+    /// Lifecycle status at the moment this record was written.
+    pub status: TurnRecordStatus,
+    /// ISO 8601 timestamp when the turn was accepted.
+    pub started_at: String,
+    /// ISO 8601 timestamp when the turn reached a terminal status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+    /// Provider instance that served the turn (e.g. an LLM provider name),
+    /// when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// Actual model that served the turn — may differ from the session's
+    /// configured model on fallback or degraded routing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Stop reason reported by the pipeline (`end_turn`,
+    /// `max_tool_iterations`, ...), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
+    /// Token usage for the turn, denormalized alongside the `usage`
+    /// partition row so a reader can join a turn's accounting without a
+    /// second lookup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<UsageRecord>,
+    /// Total cost in USD for the turn, when the provider reported one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
+    /// Client- or pipeline-supplied idempotency key for this turn. Callers
+    /// with no separate client-generated token pass `turn_id` itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
+    /// Inclusive `[start, end]` session-local message sequence range
+    /// persisted for this turn, or `None` if no messages were persisted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_seq_range: Option<(i64, i64)>,
+    /// Global `tool_audit` row ids persisted for this turn.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_audit_ids: Vec<i64>,
+    /// Global `notes` row id for the lifecycle/event record committed with
+    /// this turn (e.g. nous's turn-attempt note), when one was written.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note_id: Option<i64>,
+    /// `true` when this record was reconstructed by
+    /// [`crate::store::SessionStore::turn_record_or_legacy`] from pre-#5267
+    /// rows rather than written directly by `finalize_turn`. Reconstructed
+    /// rows cannot recover `status` (reported as
+    /// [`TurnRecordStatus::Unknown`]), `provider`, `stop_reason`,
+    /// `cost_usd`, or `message_seq_range`, since none of those had a
+    /// durable home before this type existed.
+    #[serde(default)]
+    pub reconstructed: bool,
+}
+
 /// Visibility classification for a blackboard entry (aletheia#5032).
 ///
 /// WHY: `Shared` is `#[default]` so rows written before this taxonomy
@@ -676,5 +801,78 @@ mod tests {
         assert!(is_reserved_session_prefix("cross:foo"));
         assert!(!is_reserved_session_prefix("foo:cross:"));
         assert!(!is_reserved_session_prefix("Cross:foo"));
+    }
+
+    #[test]
+    fn turn_record_status_all_variants_have_stable_wire_strings() {
+        let all = [
+            TurnRecordStatus::Pending,
+            TurnRecordStatus::Completed,
+            TurnRecordStatus::Degraded,
+            TurnRecordStatus::Failed,
+            TurnRecordStatus::Cancelled,
+            TurnRecordStatus::Timeout,
+            TurnRecordStatus::ApprovalDenied,
+            TurnRecordStatus::Unknown,
+        ];
+        let strs: Vec<&str> = all.iter().map(|s| s.as_str()).collect();
+        for s in &strs {
+            assert!(!s.is_empty());
+        }
+        let mut sorted = strs.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), strs.len(), "wire strings must be unique");
+    }
+
+    #[test]
+    fn turn_record_serde_roundtrip_minimal() {
+        let record = TurnRecord {
+            turn_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned(),
+            session_id: "ses-1".to_owned(),
+            turn_seq: 1,
+            status: TurnRecordStatus::Completed,
+            started_at: "2026-08-27T00:00:00.000Z".to_owned(),
+            completed_at: Some("2026-08-27T00:00:01.000Z".to_owned()),
+            provider: Some("anthropic".to_owned()),
+            model: Some("claude-sonnet-5".to_owned()),
+            stop_reason: Some("end_turn".to_owned()),
+            usage: None,
+            cost_usd: Some(0.01),
+            idempotency_key: Some("01ARZ3NDEKTSV4RRFFQ69G5FAV".to_owned()),
+            message_seq_range: Some((1, 2)),
+            tool_audit_ids: vec![1, 2],
+            note_id: Some(3),
+            reconstructed: false,
+        };
+        let json = serde_json::to_string(&record).expect("serialize");
+        let back: TurnRecord = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.turn_id, record.turn_id);
+        assert_eq!(back.turn_seq, record.turn_seq);
+        assert_eq!(back.status, record.status);
+        assert_eq!(back.message_seq_range, record.message_seq_range);
+        assert_eq!(back.tool_audit_ids, record.tool_audit_ids);
+    }
+
+    #[test]
+    fn turn_record_deserializes_from_pre_5267_shape_without_new_fields() {
+        // WHY: a TurnRecord this old cannot exist on disk (the type is new),
+        // but the additive-field convention this crate uses everywhere else
+        // (client_turn_id, BlackboardVisibility, ...) requires every new
+        // field to default cleanly from a JSON object that omits it —
+        // this asserts that contract for TurnRecord specifically.
+        let minimal = serde_json::json!({
+            "turn_id": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "session_id": "ses-1",
+            "turn_seq": 1,
+            "status": "completed",
+            "started_at": "2026-08-27T00:00:00.000Z",
+        });
+        let record: TurnRecord =
+            serde_json::from_value(minimal).expect("minimal shape must deserialize");
+        assert!(record.completed_at.is_none());
+        assert!(record.usage.is_none());
+        assert!(record.tool_audit_ids.is_empty());
+        assert!(!record.reconstructed);
     }
 }
