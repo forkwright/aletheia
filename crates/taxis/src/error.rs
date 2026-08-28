@@ -262,6 +262,20 @@ pub enum Error {
         #[snafu(implicit)]
         location: snafu::Location,
     },
+
+    /// The legacy `[data.retention]` alias and the canonical
+    /// `[maintenance.retention]` owner are both set in `aletheia.toml` with
+    /// conflicting values (#5327).
+    #[snafu(display(
+        "config has conflicting retention settings: `[data.retention]` (legacy) and \
+         `[maintenance.retention]` (canonical) disagree -- remove `[data.retention]` \
+         from aletheia.toml, or make both tables identical. `maintenance.retention` is \
+         the sole runtime retention-enforcement owner"
+    ))]
+    RetentionAliasConflict {
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
 }
 
 /// Convenience alias for `Result<T, Error>`.

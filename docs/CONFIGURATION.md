@@ -524,7 +524,7 @@ Runtime data lifecycle settings.
 
 ### data.retention
 
-Retention policy mirrored into `maintenance.retention` for compatibility.
+DEPRECATED (#5327): legacy alias for `maintenance.retention`, the sole runtime retention-enforcement owner. Set `maintenance.retention` directly instead. Mirrored into `maintenance.retention` at load time only when the canonical path is absent from the file; a file setting both paths with conflicting values fails to load.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -1680,8 +1680,13 @@ The effective thresholds for a running agent are exposed by
 
 ### data
 
+`data.retention` is a deprecated legacy alias -- set retention under
+`maintenance.retention` (the canonical, sole runtime enforcement owner)
+instead:
+
 ```toml
-[data.retention]
+[maintenance.retention]
+enabled = true
 closedSessionTtlDays = 90
 archiveBeforeDelete = true
 ```

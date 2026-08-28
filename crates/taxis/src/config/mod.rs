@@ -87,7 +87,11 @@ pub struct WorkspaceSettings {
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct DataConfig {
-    /// Retention policy mirrored into `maintenance.retention` for compatibility.
+    /// DEPRECATED (#5327): legacy alias for `maintenance.retention`, the
+    /// sole runtime retention-enforcement owner. Set `maintenance.retention`
+    /// directly instead. Mirrored into `maintenance.retention` at load time
+    /// only when the canonical path is absent from the file; a file setting
+    /// both paths with conflicting values fails to load.
     pub retention: RetentionSettings,
 }
 
