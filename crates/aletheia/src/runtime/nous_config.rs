@@ -390,9 +390,15 @@ mod tests {
         // This is the exact filter call used by NousManager::spawn_actor.
         // Domains are deliberately global agent routing attributes, so a
         // section in another loaded pack may opt into the shared tag.
-        let sections = packs[1].sections_for_agent_or_domains("custom", &nous_config.domains);
+        let sections = packs
+            .get(1)
+            .expect("second contract-test pack")
+            .sections_for_agent_or_domains("custom", &nous_config.domains);
         assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].content, "cross-pack context");
+        assert_eq!(
+            sections.first().expect("one matching section").content,
+            "cross-pack context"
+        );
     }
 
     #[test]
