@@ -231,6 +231,10 @@ impl ProviderCapabilities {
 /// on; a provider declares only what its adapter actually does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
+#[expect(
+    clippy::struct_excessive_bools,
+    reason = "capability flags are inherently boolean"
+)]
 pub struct StreamingCapability {
     /// Events reflect genuine incremental progress from the underlying
     /// transport (SSE, or a subprocess's own incremental stdout) as it
