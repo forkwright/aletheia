@@ -43,10 +43,10 @@ async fn main() -> Result<()> {
         default_hook(info);
     }));
 
-    // WHY: install_default returns Err if a provider is already installed
-    // (e.g. a dependency called install_default first). That is harmless.
-    // kanon:ignore RUST/no-silent-result-swallow — install_default returns Err when provider already installed by dependency; harmless
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    // WHY: koina::crypto::install_default_provider() treats an
+    // already-installed provider (e.g. a dependency installed first) as
+    // steady state, not an error.
+    let _ = koina::crypto::install_default_provider();
 
     let cli = Cli::parse();
 

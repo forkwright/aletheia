@@ -223,6 +223,10 @@ pub struct NousManager {
     #[cfg(feature = "knowledge-store")]
     knowledge_stores: HashMap<String, Arc<KnowledgeStore>>,
     packs: Arc<Vec<LoadedPack>>,
+    /// Structured health of the configured domain packs (#5208): what
+    /// loaded, what degraded, what failed. Read path for future
+    /// daemon/API/desktop surfaces.
+    pack_report: thesauros::health::PackReport,
     router: Option<Arc<crate::cross::CrossNousRouter>>,
     tool_services: Option<Arc<ToolServices>>,
     ready_tx: watch::Sender<bool>,
@@ -284,6 +288,7 @@ impl NousManager {
             // kanon:ignore RUST/no-result-unwrap-or-default — Option<HashMap>; empty map when knowledge-store feature is absent
             knowledge_stores: knowledge_stores.unwrap_or_default(),
             packs,
+            pack_report: thesauros::health::PackReport::default(),
             router,
             tool_services,
             ready_tx,
@@ -331,6 +336,22 @@ impl NousManager {
     pub fn with_empirical_router(mut self, router: Arc<dyn Router>) -> Self {
         self.empirical_router = Some(router);
         self
+    }
+
+    /// Attach the structured domain-pack health report (#5208).
+    ///
+    /// The report is a startup snapshot: packs are loaded once before any
+    /// actor spawns, so their health cannot change underneath a reader.
+    #[must_use]
+    pub fn with_pack_report(mut self, report: thesauros::health::PackReport) -> Self {
+        self.pack_report = report;
+        self
+    }
+
+    /// Structured health of the configured domain packs.
+    #[must_use]
+    pub fn pack_report(&self) -> &thesauros::health::PackReport {
+        &self.pack_report
     }
 
     /// Signal that all actors are spawned and the system is ready for inbound messages.
@@ -432,7 +453,7 @@ impl NousManager {
                 for addition in pack.system_prompt_additions_for_agent(&id) {
                     let tokens = estimator.estimate(&addition);
                     sections.push(BootstrapSection {
-                        name: format!("[{}] system-prompt", pack.manifest.name),
+                        name: format!("[{}] system-prompt", pack.name()),
                         priority: crate::bootstrap::SectionPriority::Important,
                         content: addition,
                         tokens,
@@ -1387,11 +1408,16 @@ async fn supervise_health_poller(
 }
 
 /// Calculate exponential backoff: 5s, 15s, 45s, 2min, up to `max_secs` cap.
+///
+/// Delegates to [`koina::retry::BackoffStrategy::Exponential`].
 fn calculate_backoff(restart_count: u32, max_secs: u64) -> Duration {
-    let base_secs: u64 = 5;
-    let multiplier = 3u64.saturating_pow(restart_count);
-    let secs = base_secs.saturating_mul(multiplier);
-    Duration::from_secs(secs).min(Duration::from_secs(max_secs))
+    use koina::retry::BackoffStrategy;
+    let strategy = BackoffStrategy::Exponential {
+        base: Duration::from_secs(5),
+        factor: 3,
+        max_delay: Duration::from_secs(max_secs),
+    };
+    strategy.delay_for_attempt(restart_count)
 }
 
 #[cfg(test)]

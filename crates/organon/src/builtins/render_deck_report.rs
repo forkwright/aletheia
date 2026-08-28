@@ -19,13 +19,13 @@ use poiesis_core::envelope::Meta;
 use poiesis_deck::DeckRenderer;
 
 use crate::builtins::poiesis::{json_data_property, media_type_for_format};
+use crate::builtins::report_capability::{ReportOutputEffect, ReportToolEffect, SubprocessEffect};
 use crate::builtins::workspace::validate_prepared_path;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 const SUPPORTED_FORMATS: &[&str] = &["html", "pdf"];
@@ -277,46 +277,39 @@ fn render_deck_report_def() -> ToolDef {
     }
 }
 
-// WHY keyed on `out_path`, not `format`: this mirrors every sibling report
-// tool's capability rule (`render_pptx_report_capability_rule`,
-// `generate_document`'s out_path handling) — presence of a filesystem
-// write is the axis the capability-rule system is built to classify on.
-// Known simplification: a `format: "pdf"` call with no `out_path` still
-// spawns a real Chromium subprocess (a lesser but non-zero risk vs a
-// disk write) at the lower capability level; `ToolCallCapabilityRule`
-// only supports single-argument classification today, and adding a
-// compound rule kind is a larger, separate change.
-fn render_deck_report_capability_rule() -> ToolCallCapabilityRule {
-    ToolCallCapabilityRule::argument_presence(
-        "out_path",
-        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
-        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
-    )
+// ARCHITECTURE(#7030): unlike every sibling report tool, this one declares a
+// `subprocess` effect alongside its `out_path` write effect. A `format:
+// "pdf"` call with no `out_path` still spawns a real Chromium subprocess --
+// a lesser but non-zero risk vs a disk write, and a real one vs a call that
+// touches nothing at all -- so `ReportToolEffect::capability_rule` composes
+// the two axes with a `ToolCallCapabilityRule::Decision` instead of
+// collapsing the PDF/no-write case into the same `Read` + `FullyReversible`
+// classification as a no-op call.
+fn render_deck_report_effect() -> ReportToolEffect {
+    ReportToolEffect {
+        owner: "organon::builtins::render_deck_report",
+        output: ReportOutputEffect::CallerFile {
+            argument: "out_path",
+            artifact: "the rendered HTML/PDF",
+        },
+        subprocess: Some(SubprocessEffect {
+            argument: "format",
+            values: &["pdf"],
+        }),
+    }
 }
 
 /// Register the `render_deck_report` tool.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
+    let effect = render_deck_report_effect();
     registry.register_with_call_capability(
         render_deck_report_def(),
-        render_deck_report_capability_rule(),
+        effect.capability_rule(),
         Box::new(RenderDeckReportExecutor),
     )?;
     registry.declare_capability(
         koina::id::ToolName::from_static("render_deck_report"), // kanon:ignore RUST/expect
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::render_deck_report".to_owned(),
-            // WHY Experimental: this module is behind `#[cfg(feature =
-            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
-            // compiled by default.
-            stability: ToolStability::Experimental,
-            rollback: RollbackSupport::PartialSupport {
-                reason: "rendering runs in memory; a caller-provided out_path writes the \
-                         rendered HTML/PDF to disk, overwriting any existing file without \
-                         retaining its prior contents"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
-        },
+        effect.capability_metadata(),
     )?;
     Ok(())
 }
@@ -378,6 +371,52 @@ mod tests {
                 .expect("approval"),
             ApprovalRequirement::Required,
             "out_path present means disk write"
+        );
+    }
+
+    #[test]
+    fn render_deck_report_pdf_with_no_out_path_is_not_a_plain_read() {
+        let mut registry = ToolRegistry::new();
+        register(&mut registry).expect("register");
+
+        let no_write_html = ToolInput {
+            name: ToolName::from_static("render_deck_report"),
+            tool_use_id: "toolu_test".to_owned(),
+            arguments: serde_json::json!({
+                "data": {"aspect": {"width": 16, "height": 9}, "slides": []},
+                "format": "html",
+            }),
+        };
+        let pdf_no_out_path = ToolInput {
+            name: ToolName::from_static("render_deck_report"),
+            tool_use_id: "toolu_test".to_owned(),
+            arguments: serde_json::json!({
+                "data": {"aspect": {"width": 16, "height": 9}, "slides": []},
+                "format": "pdf",
+            }),
+        };
+
+        let html_capability = registry
+            .call_capability(&no_write_html)
+            .expect("html capability");
+        let pdf_capability = registry
+            .call_capability(&pdf_no_out_path)
+            .expect("pdf capability");
+
+        assert_ne!(
+            html_capability, pdf_capability,
+            "a subprocess-backed PDF render must not read identically to a call that spawns nothing"
+        );
+        assert!(
+            pdf_capability.groups.contains(&ToolGroupId::Command),
+            "PDF-without-out_path spawns Chromium, so it must carry the Command group"
+        );
+        assert_eq!(
+            registry
+                .approval_requirement_for_input(&pdf_no_out_path)
+                .expect("approval"),
+            ApprovalRequirement::Advisory,
+            "a subprocess spawn with no persisted effect warrants advisory approval, not none"
         );
     }
 

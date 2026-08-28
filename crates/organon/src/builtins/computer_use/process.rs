@@ -116,7 +116,10 @@ mod tests {
 
         for var in DISPLAY_ENV_VARS {
             assert!(
-                request.allowed_env_vars_for_test().contains(var),
+                request
+                    .allowed_env_vars_for_test()
+                    .iter()
+                    .any(|v| v.as_str() == *var),
                 "display request should preserve {var}"
             );
         }

@@ -95,7 +95,7 @@ fn build_spec(chart: &Chart, theme: &ResolvedTheme, canvas: &Canvas) -> Value {
 fn chart_title(chart: &Chart) -> Option<String> {
     match &chart.title {
         Some(CiteOrText::Text(t)) => Some(t.clone()),
-        Some(CiteOrText::Cite(id)) => Some(id.0.clone()),
+        Some(CiteOrText::Cite(id)) => Some(id.as_str().to_owned()),
         None => None,
     }
 }
@@ -117,7 +117,7 @@ fn build_heatmap_rows(chart: &Chart) -> Vec<Value> {
                 "x": x_name,
                 "y": y_name,
                 "value": point.y.value,
-                "fact_id": &point.y.id.0,
+                "fact_id": point.y.id.as_str(),
             }));
         }
     }
@@ -133,7 +133,7 @@ fn build_generic_rows(chart: &Chart) -> Vec<Value> {
                 "series": s_name,
                 "category": point_label(point),
                 "value": point.y.value,
-                "fact_id": &point.y.id.0,
+                "fact_id": point.y.id.as_str(),
             }));
         }
     }
@@ -143,14 +143,14 @@ fn build_generic_rows(chart: &Chart) -> Vec<Value> {
 fn series_name(series: &Series) -> String {
     match &series.name {
         CiteOrText::Text(t) => t.clone(),
-        CiteOrText::Cite(id) => id.0.clone(),
+        CiteOrText::Cite(id) => id.as_str().to_owned(),
     }
 }
 
 fn point_label(point: &Point) -> String {
     match &point.label {
         Some(CiteOrText::Text(t)) => t.clone(),
-        Some(CiteOrText::Cite(id)) => id.0.clone(),
+        Some(CiteOrText::Cite(id)) => id.as_str().to_owned(),
         None => String::new(),
     }
 }
@@ -244,7 +244,7 @@ mod tests {
                     label: Some(CiteOrText::Text("ColA".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("f1".to_owned()),
+                        id: FactId::new("f1".to_owned()).expect("valid fact id"),
                         value: 42.0,
                         unit: Unit::Number,
                     },
@@ -330,7 +330,7 @@ mod tests {
                     label: Some(CiteOrText::Text("A".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("f2".to_owned()),
+                        id: FactId::new("f2".to_owned()).expect("valid fact id"),
                         value: 10.0,
                         unit: Unit::Number,
                     },
@@ -398,7 +398,7 @@ mod tests {
                         label: Some(CiteOrText::Text("A".to_owned())),
                         x: None,
                         y: FactCite {
-                            id: FactId("b1".to_owned()),
+                            id: FactId::new("b1".to_owned()).expect("valid fact id"),
                             value: 1.0,
                             unit: Unit::Number,
                         },
@@ -407,7 +407,7 @@ mod tests {
                         label: Some(CiteOrText::Text("A".to_owned())),
                         x: None,
                         y: FactCite {
-                            id: FactId("b2".to_owned()),
+                            id: FactId::new("b2".to_owned()).expect("valid fact id"),
                             value: 2.0,
                             unit: Unit::Number,
                         },
@@ -442,7 +442,7 @@ mod tests {
                     label: Some(CiteOrText::Text("Src".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("s1".to_owned()),
+                        id: FactId::new("s1".to_owned()).expect("valid fact id"),
                         value: 5.0,
                         unit: Unit::Number,
                     },

@@ -90,7 +90,7 @@ mod tests {
 
     fn combo_spec() -> Chart {
         let cite = |id: &str, v: f64| FactCite {
-            id: FactId(id.to_owned()),
+            id: FactId::new(id.to_owned()).expect("valid fact id"),
             value: v,
             unit: Unit::Number,
         };
@@ -328,7 +328,7 @@ mod tests {
 
     fn cite(value: f64) -> FactCite {
         FactCite {
-            id: FactId(format!("fact-{value}")),
+            id: FactId::new(format!("fact-{value}")).expect("valid fact id"),
             value,
             unit: Unit::Number,
         }

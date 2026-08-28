@@ -12,12 +12,12 @@ use super::policy_with_system_paths;
 
 // ── Failure modes (fail-closed behavior) ──
 
-/// Test that enforcing mode fails closed when Landlock is unavailable.
+/// Test that enforcing mode fails closed without the full Landlock baseline.
 #[cfg(target_os = "linux")]
 #[test]
-fn enforcing_fails_closed_when_landlock_unavailable() {
+fn enforcing_fails_closed_without_full_landlock_baseline() {
     // WHY: a unit test cannot force a Landlock-less kernel, so branch on the
-    // probe: assert the error shape when absent, the success path when present.
+    // probe: assert the error shape below ABI v5, the success path at v5+.
     let workspace = tempfile::tempdir().expect("create workspace");
 
     let policy = SandboxPolicy {
@@ -33,22 +33,22 @@ fn enforcing_fails_closed_when_landlock_unavailable() {
     let mut cmd = Command::new("echo");
     cmd.arg("test");
 
-    if probe_landlock_abi().is_none() {
+    if probe_landlock_abi().is_none_or(|abi| abi < REQUIRED_LANDLOCK_ABI) {
         let result = apply_sandbox(&mut cmd, policy);
         assert!(
             result.is_err(),
-            "enforcing mode must fail when Landlock is unavailable"
+            "enforcing mode must fail without every required Landlock right"
         );
         let err_msg = result.unwrap_err().to_string();
         assert!(
-            err_msg.contains("Landlock not available"),
+            err_msg.contains("Landlock V5"),
             "error must mention Landlock: {err_msg}"
         );
     } else {
         let result = apply_sandbox(&mut cmd, policy);
         assert!(
             result.is_ok(),
-            "enforcing mode should work with Landlock available"
+            "enforcing mode should work with the full Landlock baseline"
         );
     }
 }
@@ -67,6 +67,10 @@ fn enforcing_fails_closed_when_landlock_unavailable() {
 #[cfg(target_os = "linux")]
 #[test]
 fn enforcing_fails_closed_for_unenforceable_egress_allowlist() {
+    if probe_landlock_abi().is_none_or(|abi| abi < REQUIRED_LANDLOCK_ABI) {
+        return;
+    }
+
     let workspace = tempfile::tempdir().expect("create workspace");
     let policy = SandboxPolicy {
         enabled: true,
@@ -90,10 +94,10 @@ fn enforcing_fails_closed_for_unenforceable_egress_allowlist() {
     );
 }
 
-/// Test that permissive mode fails open (logs but continues) when Landlock is unavailable.
+/// Test that permissive mode fails open without the full Landlock baseline.
 #[cfg(target_os = "linux")]
 #[test]
-fn permissive_fails_open_when_landlock_unavailable() {
+fn permissive_fails_open_without_full_landlock_baseline() {
     let workspace = tempfile::tempdir().expect("create workspace");
 
     // WHY: full system paths so binaries can still execute under the sandbox.

@@ -1,5 +1,3 @@
-#![expect(clippy::expect_used, reason = "test assertions")]
-
 //! Split from `filesystem_tests.rs` (839 lines) to satisfy `RUST/file-too-long`.
 
 use super::*;

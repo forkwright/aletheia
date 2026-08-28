@@ -308,7 +308,7 @@ fn emit_x_labels(
         let cx = plot.x0 + band_w * idx_to_f64(i) + band_w * 0.5;
         let label = match &point.label {
             Some(CiteOrText::Text(t)) => escape_xml(t),
-            Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
+            Some(CiteOrText::Cite(id)) => escape_xml(id.as_str()),
             None => String::new(),
         };
         let _ = write!(
@@ -342,7 +342,7 @@ mod tests {
 
     fn sample_spec() -> Chart {
         let cite = |id: &str, v: f64, u: Unit| FactCite {
-            id: FactId(id.to_owned()),
+            id: FactId::new(id.to_owned()).expect("valid fact id"),
             value: v,
             unit: u,
         };

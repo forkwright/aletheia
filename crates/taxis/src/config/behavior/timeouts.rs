@@ -61,8 +61,9 @@ impl Default for CapacityConfig {
 /// Deployment-tunable LLM retry and backoff parameters.
 ///
 /// Controls how Hermeneus HTTP providers retry transient failures. Defaults
-/// match the constants in `hermeneus::models` so that omitting this section
-/// produces identical behaviour.
+/// match `koina::defaults` (also the source hermeneus re-exports its own
+/// retry constants from) so that omitting this section produces identical
+/// behaviour.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -87,13 +88,14 @@ pub struct RetrySettings {
 
 impl Default for RetrySettings {
     fn default() -> Self {
-        // WHY: values mirror hermeneus::models::{DEFAULT_MAX_RETRIES, BACKOFF_BASE_MS,
-        // BACKOFF_MAX_MS} so that omitting [retry] from aletheia.toml produces
-        // identical behaviour to the pre-parameterization defaults.
+        // WHY: values come from koina::defaults (taxis cannot depend on
+        // hermeneus under the layering rules; both depend on koina) so that
+        // omitting [retry] from aletheia.toml produces identical behaviour
+        // to the pre-parameterization defaults.
         Self {
-            max_attempts: 3,
-            backoff_base_ms: 1_000,
-            backoff_max_ms: 30_000,
+            max_attempts: koina::defaults::DEFAULT_MAX_RETRIES,
+            backoff_base_ms: koina::defaults::BACKOFF_BASE_MS,
+            backoff_max_ms: koina::defaults::BACKOFF_MAX_MS,
         }
     }
 }

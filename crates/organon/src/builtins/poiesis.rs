@@ -18,7 +18,7 @@ use poiesis_charts::{
     Chart, ColorMode as ChartColorMode, ResolvedTheme as ChartResolvedTheme, render_chart,
 };
 use poiesis_core::{
-    Block, Document, Factbase, Metadata, QaIssue, QaIssueKind, QaReport, Renderer, RichText, Span,
+    Block, Document, Factbase, Metadata, QaIssue, QaIssueKind, QaReport, Renderer, RichText,
 };
 use poiesis_lint::{LintConfig, Linter};
 use poiesis_theme::{
@@ -31,15 +31,15 @@ use poiesis_verify::Verifier;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
+use crate::builtins::report_capability::{ReportOutputEffect, ReportToolEffect};
 use crate::builtins::workspace::{
     extract_opt_str, extract_str_or_tool_error, validate_prepared_path,
 };
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
+    ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
 
 const DEFAULT_TYPST_TEMPLATE: &str = include_str!("../../../poiesis/typst/templates/default.typ");
@@ -387,7 +387,7 @@ fn parse_block(v: &serde_json::Value, index: usize) -> std::result::Result<Block
                 .and_then(serde_json::Value::as_u64)
                 .and_then(|n| u8::try_from(n.min(6)).ok())
                 .unwrap_or(1);
-            let text = plain(
+            let text = RichText::from(
                 v.get("text")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or(""),
@@ -395,7 +395,7 @@ fn parse_block(v: &serde_json::Value, index: usize) -> std::result::Result<Block
             Ok(Block::Heading { level, text })
         }
         "paragraph" => {
-            let text = plain(
+            let text = RichText::from(
                 v.get("text")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or(""),
@@ -404,12 +404,6 @@ fn parse_block(v: &serde_json::Value, index: usize) -> std::result::Result<Block
         }
         "page_break" => Ok(Block::PageBreak),
         other => Err(format!("block {index}: unsupported block type '{other}'")),
-    }
-}
-
-fn plain(s: &str) -> RichText {
-    RichText {
-        spans: vec![Span::Plain(s.to_owned())],
     }
 }
 
@@ -512,20 +506,26 @@ fn generate_document_def() -> ToolDef {
     }
 }
 
-fn generate_document_capability_rule() -> ToolCallCapabilityRule {
-    ToolCallCapabilityRule::argument_presence(
-        "out_path",
-        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
-        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
-    )
+fn generate_document_effect() -> ReportToolEffect {
+    ReportToolEffect {
+        owner: "organon::builtins::poiesis",
+        output: ReportOutputEffect::CallerFile {
+            argument: "out_path",
+            artifact: "the rendered bytes",
+        },
+        subprocess: None,
+    }
 }
 
-fn render_typst_report_capability_rule() -> ToolCallCapabilityRule {
-    ToolCallCapabilityRule::argument_presence(
-        "out_path",
-        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
-        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
-    )
+fn render_typst_report_effect() -> ReportToolEffect {
+    ReportToolEffect {
+        owner: "organon::builtins::poiesis",
+        output: ReportOutputEffect::CallerFile {
+            argument: "out_path",
+            artifact: "the PDF",
+        },
+        subprocess: None,
+    }
 }
 
 // ── lint_report ───────────────────────────────────────────────────────────────
@@ -1172,14 +1172,14 @@ fn qa_gate_def() -> ToolDef {
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
     registry.register_with_call_capability(
         generate_document_def(),
-        generate_document_capability_rule(),
+        generate_document_effect().capability_rule(),
         Box::new(GenerateDocumentExecutor),
     )?;
     registry.register(lint_report_def(), Box::new(LintReportExecutor))?;
     registry.register(verify_report_def(), Box::new(VerifyReportExecutor))?;
     registry.register_with_call_capability(
         render_typst_report_def(),
-        render_typst_report_capability_rule(),
+        render_typst_report_effect().capability_rule(),
         Box::new(RenderTypstReportExecutor),
     )?;
     registry.register(qa_gate_def(), Box::new(QaGateExecutor))?;
@@ -1212,23 +1212,14 @@ fn declare_capabilities(registry: &mut ToolRegistry) -> Result<()> {
     declare(
         registry,
         "generate_document",
-        RollbackSupport::PartialSupport {
-            reason: "rendering runs in memory; a caller-provided out_path writes the rendered \
-                     bytes to disk, overwriting any existing file without retaining its prior \
-                     contents"
-                .to_owned(),
-        },
+        generate_document_effect().capability_metadata().rollback,
     )?;
     declare(registry, "lint_report", RollbackSupport::Supported)?;
     declare(registry, "verify_report", RollbackSupport::Supported)?;
     declare(
         registry,
         "render_typst_report",
-        RollbackSupport::PartialSupport {
-            reason: "rendering runs in memory; a caller-provided out_path writes the PDF to \
-                     disk, overwriting any existing file without retaining its prior contents"
-                .to_owned(),
-        },
+        render_typst_report_effect().capability_metadata().rollback,
     )?;
     declare(registry, "qa_gate", RollbackSupport::Supported)?;
     Ok(())

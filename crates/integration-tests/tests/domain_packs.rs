@@ -9,15 +9,21 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
+#[cfg(unix)]
 use koina::id::ToolName;
 use nous::config::{NousConfig, PipelineConfig};
 use nous::manager::NousManager;
 use organon::registry::ToolRegistry;
+#[cfg(unix)]
 use organon::types::ToolCategory;
 use taxis::oikos::Oikos;
-use thesauros::loader::load_packs;
+use thesauros::health::PackStatus;
+use thesauros::loader::{MAX_CONTEXT_FILE_BYTES, load_packs, load_packs_with_report};
 use thesauros::tools::register_pack_tools;
 
 // --- Test infrastructure ---
@@ -205,6 +211,96 @@ priority = "important"
     manager.shutdown_all().await;
 }
 
+#[tokio::test]
+async fn pack_context_file_ref_cannot_enter_bootstrap_or_bypass_size_cap() {
+    // SECURITY(#5220): pack context crosses into bootstrap before the trusted
+    // workspace file-ref expansion pass. A tiny context marker must not gain
+    // authority to read an oversized instance file through that later pass.
+    const SECRET_SENTINEL: &str = "PACK_CONTEXT_EXPANSION_SECRET";
+
+    let oikos_dir = tempfile::TempDir::new().expect("tmpdir");
+    let pack_dir = tempfile::TempDir::new().expect("tmpdir");
+    let oikos = setup_oikos(oikos_dir.path(), "test-agent");
+
+    std::fs::create_dir_all(oikos_dir.path().join("config")).expect("mkdir config");
+    let oversized_secret = format!(
+        "{SECRET_SENTINEL}\n{}\n{SECRET_SENTINEL}",
+        "s".repeat(MAX_CONTEXT_FILE_BYTES)
+    );
+    assert!(oversized_secret.len() > MAX_CONTEXT_FILE_BYTES);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "integration tests write fixture files to temp directories; synchronous I/O is required in test setup"
+    )]
+    std::fs::write(oikos_dir.path().join("config/env"), &oversized_secret)
+        .expect("write oversized instance secret");
+
+    setup_pack(
+        pack_dir.path(),
+        r#"
+name = "interpolation-pack"
+version = "1.0"
+
+[[context]]
+path = "context/READ_INSTANCE.md"
+priority = "important"
+"#,
+        &[("context/READ_INSTANCE.md", "{{file:config/env}}")],
+    );
+
+    let outcome = load_packs_with_report(&[pack_dir.path().to_path_buf()]);
+    assert_eq!(outcome.packs.len(), 1, "optional bad context skips");
+    assert!(outcome.packs[0].sections().is_empty());
+    assert_eq!(outcome.report.packs[0].status, PackStatus::Degraded);
+    assert!(
+        outcome.report.packs[0].issues.iter().any(|issue| issue
+            .message
+            .contains("forbidden {{file:...}} interpolation")),
+        "the rejected authority must remain operator-visible: {:?}",
+        outcome.report.packs[0].issues
+    );
+
+    let (providers, captured) = capturing_providers();
+    let mut manager = NousManager::new(
+        providers,
+        Arc::new(ToolRegistry::new()),
+        Arc::clone(&oikos),
+        None,
+        None,
+        None,
+        #[cfg(feature = "knowledge-store")]
+        None,
+        Arc::new(outcome.packs),
+        None,
+        None,
+        taxis::config::NousBehaviorConfig::default(),
+        taxis::config::ToolLimitsConfig::default(),
+    );
+    let config = NousConfig {
+        id: Arc::from("test-agent"),
+        generation: nous::config::NousGenerationConfig {
+            model: "mock-model".to_owned(),
+            ..Default::default()
+        },
+        ..NousConfig::default()
+    };
+    let handle = manager
+        .spawn(config, PipelineConfig::default())
+        .await
+        .expect("spawn");
+    handle.send_turn("main", "Hello").await.expect("turn");
+
+    {
+        let requests = captured.lock().expect("lock poisoned");
+        let system = requests[0].system.as_ref().expect("system prompt");
+        assert!(!system.contains(SECRET_SENTINEL));
+        assert!(!system.contains("{{file:config/env}}"));
+    }
+
+    manager.shutdown_all().await;
+}
+
+#[cfg(unix)]
 #[test]
 fn pack_tools_registered_and_available() {
     let pack_dir = tempfile::TempDir::new().expect("tmpdir");
@@ -230,12 +326,8 @@ description = "Message to echo"
         &[("tools/echo.sh", "#!/bin/sh\ncat")],
     );
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = std::fs::Permissions::from_mode(0o755);
-        std::fs::set_permissions(pack_dir.path().join("tools/echo.sh"), perms).expect("chmod");
-    }
+    let perms = std::fs::Permissions::from_mode(0o755);
+    std::fs::set_permissions(pack_dir.path().join("tools/echo.sh"), perms).expect("chmod");
 
     let packs = load_packs(&[pack_dir.path().to_path_buf()]);
     assert_eq!(packs.len(), 1);
@@ -248,6 +340,39 @@ description = "Message to echo"
     let tool = registry.get_def(&tool_name).expect("tool registered");
     assert_eq!(tool.category, ToolCategory::Domain);
     assert_eq!(tool.description, "Echoes JSON input back");
+}
+
+#[cfg(not(unix))]
+#[test]
+fn pack_tools_default_to_unsupported_on_non_unix() {
+    let pack_dir = tempfile::TempDir::new().expect("tmpdir");
+    setup_pack(
+        pack_dir.path(),
+        r#"
+name = "tool-pack"
+version = "1.0"
+
+[[tools]]
+name = "echo_input"
+description = "Echoes JSON input back"
+command = "tools/echo.sh"
+"#,
+        &[],
+    );
+
+    let packs = load_packs(&[pack_dir.path().to_path_buf()]);
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&packs, &mut registry);
+
+    assert_eq!(failures.len(), 1, "default Unix support must be refused");
+    assert!(
+        failures[0]
+            .error
+            .to_string()
+            .contains("supports platforms [unix]"),
+        "platform mismatch should be the reported failure: {:?}",
+        failures[0]
+    );
 }
 
 #[tokio::test]
@@ -442,7 +567,7 @@ fn missing_pack_warns_not_crashes() {
     ]);
 
     assert_eq!(packs.len(), 1);
-    assert_eq!(packs[0].manifest.name, "good-pack");
+    assert_eq!(packs[0].name(), "good-pack");
 }
 
 #[test]

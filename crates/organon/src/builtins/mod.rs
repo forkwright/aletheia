@@ -67,6 +67,10 @@ pub mod render_pptx_report;
 /// JSON-first XLSX report tool (`render_xlsx_report`).
 #[cfg(feature = "poiesis")]
 pub mod render_xlsx_report;
+/// Shared call-capability-rule and governance-metadata derivation for
+/// Poiesis/report built-in tools (ARCHITECTURE(#7030)).
+#[cfg(feature = "poiesis")]
+pub(crate) mod report_capability;
 /// Report runtime dependency doctor (Pandoc, LaTeX, Chromium, Typst).
 #[cfg(feature = "poiesis")]
 pub mod report_runtime_health;
@@ -520,5 +524,226 @@ mod capability_governance_tests {
             "declared redaction fields must exist in the tool's input schema; invalid: {invalid:?}"
         );
         Ok(())
+    }
+}
+
+/// ARCHITECTURE(#7030): the table-driven test the issue's acceptance
+/// criteria ask for -- one case per Poiesis/report built-in enumerating its
+/// declared effect axes (memory-only, caller-path file-write/overwrite,
+/// directory scaffold, and the `render_deck_report` PDF/Chromium subprocess
+/// axis), asserted against the SAME registry every other test exercises
+/// rather than against `report_capability::ReportToolEffect` directly --
+/// this is the guarantee that what a tool module declared and what the
+/// registry actually enforces at dispatch time agree.
+#[cfg(all(test, feature = "poiesis"))]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod report_effect_axis_tests {
+    use super::*;
+    use crate::types::{ApprovalRequirement, ToolCallCapability, ToolGroupId, ToolInput};
+
+    struct Case {
+        label: &'static str,
+        tool: &'static str,
+        args: serde_json::Value,
+        groups: &'static [ToolGroupId],
+        reversibility: crate::types::Reversibility,
+        approval: ApprovalRequirement,
+    }
+
+    fn deck_data() -> serde_json::Value {
+        serde_json::json!({"aspect": {"width": 16, "height": 9}, "slides": []})
+    }
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one table row per Poiesis/report built-in's effect axes; splitting the \
+                  table across functions would separate a case from the assertion loop that \
+                  checks it"
+    )]
+    fn report_tool_effect_axes_match_declared_classification() {
+        use crate::types::Reversibility::{FullyReversible, PartiallyReversible, Reversible};
+
+        let mut registry = ToolRegistry::new();
+        register_all(&mut registry).expect("register_all");
+
+        let cases = [
+            Case {
+                label: "generate_document: memory-only",
+                tool: "generate_document",
+                args: serde_json::json!({"content": []}),
+                groups: &[ToolGroupId::Read],
+                reversibility: FullyReversible,
+                approval: ApprovalRequirement::None,
+            },
+            Case {
+                label: "generate_document: caller-path write overwrites in place",
+                tool: "generate_document",
+                args: serde_json::json!({"content": [], "out_path": "/tmp/doc"}),
+                groups: &[ToolGroupId::Edit],
+                reversibility: PartiallyReversible,
+                approval: ApprovalRequirement::Required,
+            },
+            Case {
+                label: "render_typst_report: memory-only",
+                tool: "render_typst_report",
+                args: serde_json::json!({}),
+                groups: &[ToolGroupId::Read],
+                reversibility: FullyReversible,
+                approval: ApprovalRequirement::None,
+            },
+            Case {
+                label: "render_typst_report: caller-path write",
+                tool: "render_typst_report",
+                args: serde_json::json!({"out_path": "/tmp/report.pdf"}),
+                groups: &[ToolGroupId::Edit],
+                reversibility: PartiallyReversible,
+                approval: ApprovalRequirement::Required,
+            },
+            Case {
+                label: "render_pptx_report: memory-only",
+                tool: "render_pptx_report",
+                args: serde_json::json!({"data": {"slides": []}}),
+                groups: &[ToolGroupId::Read],
+                reversibility: FullyReversible,
+                approval: ApprovalRequirement::None,
+            },
+            Case {
+                label: "render_pptx_report: caller-path write",
+                tool: "render_pptx_report",
+                args: serde_json::json!({"data": {"slides": []}, "out_path": "/tmp/x.pptx"}),
+                groups: &[ToolGroupId::Edit],
+                reversibility: PartiallyReversible,
+                approval: ApprovalRequirement::Required,
+            },
+            Case {
+                label: "render_xlsx_report: memory-only",
+                tool: "render_xlsx_report",
+                args: serde_json::json!({"data": {}}),
+                groups: &[ToolGroupId::Read],
+                reversibility: FullyReversible,
+                approval: ApprovalRequirement::None,
+            },
+            Case {
+                label: "render_xlsx_report: caller-path write",
+                tool: "render_xlsx_report",
+                args: serde_json::json!({"data": {}, "out_path": "/tmp/x.xlsx"}),
+                groups: &[ToolGroupId::Edit],
+                reversibility: PartiallyReversible,
+                approval: ApprovalRequirement::Required,
+            },
+            Case {
+                label: "render_docx_report: memory-only",
+                tool: "render_docx_report",
+                args: serde_json::json!({"data": {}}),
+                groups: &[ToolGroupId::Read],
+                reversibility: FullyReversible,
+                approval: ApprovalRequirement::None,
+            },
+            Case {
+                label: "render_docx_report: caller-path write",
+                tool: "render_docx_report",
+                args: serde_json::json!({"data": {}, "out_path": "/tmp/x.docx"}),
+                groups: &[ToolGroupId::Edit],
+                reversibility: PartiallyReversible,
+                approval: ApprovalRequirement::Required,
+            },
+            Case {
+                label: "render_eval_report: memory-only",
+                tool: "render_eval_report",
+                args: serde_json::json!({"data": {}}),
+                groups: &[ToolGroupId::Read],
+                reversibility: FullyReversible,
+                approval: ApprovalRequirement::None,
+            },
+            Case {
+                label: "render_eval_report: caller-path write",
+                tool: "render_eval_report",
+                args: serde_json::json!({"data": {}, "out_path": "/tmp/x.pdf"}),
+                groups: &[ToolGroupId::Edit],
+                reversibility: PartiallyReversible,
+                approval: ApprovalRequirement::Required,
+            },
+            Case {
+                label: "render_graph_audit: memory-only",
+                tool: "render_graph_audit",
+                args: serde_json::json!({}),
+                groups: &[ToolGroupId::Read],
+                reversibility: FullyReversible,
+                approval: ApprovalRequirement::None,
+            },
+            Case {
+                label: "render_graph_audit: caller-path write",
+                tool: "render_graph_audit",
+                args: serde_json::json!({"out_path": "/tmp/x.pdf"}),
+                groups: &[ToolGroupId::Edit],
+                reversibility: PartiallyReversible,
+                approval: ApprovalRequirement::Required,
+            },
+            Case {
+                label: "scaffold_report: memory-only manifest (no directory)",
+                tool: "scaffold_report",
+                args: serde_json::json!({"slug": "s", "format": "typst"}),
+                groups: &[ToolGroupId::Read],
+                reversibility: FullyReversible,
+                approval: ApprovalRequirement::None,
+            },
+            Case {
+                label: "scaffold_report: directory scaffold",
+                tool: "scaffold_report",
+                args: serde_json::json!({"slug": "s", "format": "typst", "directory": "/tmp/d"}),
+                groups: &[ToolGroupId::Edit],
+                reversibility: PartiallyReversible,
+                approval: ApprovalRequirement::Required,
+            },
+            Case {
+                label: "render_deck_report: memory-only (html, no out_path)",
+                tool: "render_deck_report",
+                args: serde_json::json!({"data": deck_data(), "format": "html"}),
+                groups: &[ToolGroupId::Read],
+                reversibility: FullyReversible,
+                approval: ApprovalRequirement::None,
+            },
+            Case {
+                label: "render_deck_report: PDF/Chromium subprocess, no out_path -- the \
+                        documented simplification #7030 fixes",
+                tool: "render_deck_report",
+                args: serde_json::json!({"data": deck_data(), "format": "pdf"}),
+                groups: &[ToolGroupId::Read, ToolGroupId::Command],
+                reversibility: Reversible,
+                approval: ApprovalRequirement::Advisory,
+            },
+            Case {
+                label: "render_deck_report: PDF with out_path -- write axis dominates subprocess",
+                tool: "render_deck_report",
+                args: serde_json::json!({
+                    "data": deck_data(), "format": "pdf", "out_path": "/tmp/x.pdf",
+                }),
+                groups: &[ToolGroupId::Edit],
+                reversibility: PartiallyReversible,
+                approval: ApprovalRequirement::Required,
+            },
+        ];
+
+        for case in cases {
+            let input = ToolInput {
+                name: koina::id::ToolName::new(case.tool).expect("valid tool name"),
+                tool_use_id: "toolu_test".to_owned(),
+                arguments: case.args,
+            };
+            let capability = registry
+                .call_capability(&input)
+                .unwrap_or_else(|e| panic!("{}: {e}", case.label));
+            assert_eq!(
+                capability,
+                ToolCallCapability::new(case.groups.to_vec(), case.reversibility),
+                "{}",
+                case.label
+            );
+            let approval = registry
+                .approval_requirement_for_input(&input)
+                .unwrap_or_else(|e| panic!("{}: {e}", case.label));
+            assert_eq!(approval, case.approval, "{}", case.label);
+        }
     }
 }

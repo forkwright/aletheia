@@ -50,6 +50,121 @@ fn replace_sensitive(regex: &LazyLock<Regex>, value: &str, replacement: &str) ->
     regex.replace_all(value, replacement).into_owned()
 }
 
+/// Canonical credential-bearing CLI flag names, checked after stripping
+/// leading dashes and internal `-`/`_` separators (so `--api-key`,
+/// `--api_key`, and `--apikey` all normalize to `apikey`).
+///
+/// WHY(#7020): union of the two argv-redaction policies this replaces
+/// (`eval::provenance::is_secret_flag`, `agora::command::is_sensitive_arg_name`)
+/// — `passphrase` was Agora-only and `ak-`/`pk-`-prefixed bare values were
+/// Eval-only, so identical commands redacted differently depending on which
+/// recorder observed them.
+const SECRET_FLAG_NAMES: &[&str] = &[
+    "apikey",
+    "bearer",
+    "passphrase",
+    "password",
+    "secret",
+    "token",
+    "key",
+];
+
+/// Subset of [`SECRET_FLAG_NAMES`] matched by suffix as well as by exact
+/// name, so `--judge-api-key` and `--sig-token` are covered without a
+/// generic `key`/`bearer`/`passphrase` suffix match turning `--monkey` or
+/// `--turkey` into a false positive.
+const SECRET_FLAG_SUFFIXES: &[&str] = &["apikey", "password", "secret", "token"];
+
+/// Bare-value prefixes (case-insensitive) that mark an argv token as a
+/// credential regardless of the preceding flag name.
+///
+/// WHY(#7020): union of `sk-`/`ak-`/`pk-`/`bearer ` (Eval) and `sk-`/`xox`/
+/// `ghp_` (Agora).
+const SECRET_VALUE_PREFIXES: &[&str] = &["sk-", "ak-", "pk-", "bearer ", "xox", "ghp_"];
+
+/// Minimum length for an unprefixed token to be treated as an opaque secret
+/// (long alphanumeric/`_`/`-`/`.` string, e.g. a bare API key or JWT-shaped
+/// value with no recognizable flag or prefix).
+const OPAQUE_SECRET_MIN_LEN: usize = 32;
+
+/// True when `name` (a flag with leading dashes already stripped) names a
+/// credential-bearing CLI option under the canonical policy.
+#[must_use]
+fn is_secret_flag_name(name: &str) -> bool {
+    let normalized = name.to_ascii_lowercase().replace(['-', '_'], "");
+    SECRET_FLAG_NAMES.contains(&normalized.as_str())
+        || SECRET_FLAG_SUFFIXES
+            .iter()
+            .any(|suffix| normalized.ends_with(suffix))
+}
+
+/// True when `value` looks like a bare credential (no flag context): a
+/// recognized key-prefix shape, or a long opaque alphanumeric/`_`/`-`/`.`
+/// token.
+#[must_use]
+fn looks_like_secret_value(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    if SECRET_VALUE_PREFIXES
+        .iter()
+        .any(|prefix| lower.starts_with(prefix))
+    {
+        return true;
+    }
+    value.len() >= OPAQUE_SECRET_MIN_LEN
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+}
+
+/// Redact secret-bearing CLI argument tokens under the canonical
+/// flag/value-shape policy.
+///
+/// A token matching [`is_secret_flag_name`] (after stripping leading dashes,
+/// and either as `--flag=value` or `--flag value`) has its value replaced
+/// with `[REDACTED]`; the flag name itself is preserved. A bare token
+/// matching [`looks_like_secret_value`] is replaced outright.
+///
+/// WHY(#7020): the single argv-redaction algorithm shared by Eval
+/// (`EvalProvenance::redacted_args`) and Agora (`Command::redact_args`),
+/// which previously reimplemented this with divergent policy tables —
+/// identical commands persisted with different credential coverage
+/// depending on which crate recorded them.
+#[must_use]
+pub fn redact_argv<'a>(tokens: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut redact_next = false;
+
+    for token in tokens {
+        if redact_next {
+            out.push("[REDACTED]".to_owned());
+            redact_next = false;
+            continue;
+        }
+
+        if let Some((flag, _value)) = token.split_once('=')
+            && is_secret_flag_name(flag.trim_start_matches('-'))
+        {
+            out.push(format!("{flag}=[REDACTED]"));
+            continue;
+        }
+
+        if is_secret_flag_name(token.trim_start_matches('-')) {
+            out.push(token.to_owned());
+            redact_next = true;
+            continue;
+        }
+
+        if looks_like_secret_value(token) {
+            out.push("[REDACTED]".to_owned());
+            continue;
+        }
+
+        out.push(token.to_owned());
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +245,59 @@ mod tests {
         assert!(output.contains("sk-ant-***"));
         assert!(!output.contains("abc123"));
         assert!(!output.contains("secret123"));
+    }
+
+    #[test]
+    fn redact_argv_token_next_value() {
+        let args = ["--url", "http://localhost", "--token", "super-secret"];
+        let redacted = redact_argv(args);
+        assert!(redacted.contains(&"[REDACTED]".to_owned()));
+        assert!(!redacted.contains(&"super-secret".to_owned()));
+    }
+
+    #[test]
+    fn redact_argv_token_equals() {
+        let redacted = redact_argv(["--token=super-secret"]);
+        assert_eq!(redacted, vec!["--token=[REDACTED]"]);
+    }
+
+    #[test]
+    fn redact_argv_judge_api_key_suffix() {
+        let redacted = redact_argv(["--judge-api-key", "sk-abc123"]);
+        assert_eq!(redacted, vec!["--judge-api-key", "[REDACTED]"]);
+    }
+
+    #[test]
+    fn redact_argv_passphrase() {
+        let redacted = redact_argv(["--passphrase", "hunter2"]);
+        assert_eq!(redacted, vec!["--passphrase", "[REDACTED]"]);
+    }
+
+    #[test]
+    fn redact_argv_keeps_safe_values() {
+        let args = ["--url", "http://localhost", "--timeout", "30"];
+        let expected: Vec<String> = args.iter().map(|s| (*s).to_owned()).collect();
+        assert_eq!(redact_argv(args), expected);
+    }
+
+    #[test]
+    fn redact_argv_detects_ak_and_pk_prefixed_bare_values() {
+        assert_eq!(redact_argv(["ak-abc123def456"]), vec!["[REDACTED]"]);
+        assert_eq!(redact_argv(["pk-abc123def456"]), vec!["[REDACTED]"]);
+    }
+
+    #[test]
+    fn redact_argv_detects_xox_and_ghp_prefixed_bare_values() {
+        assert_eq!(redact_argv(["xoxb-abc123def456"]), vec!["[REDACTED]"]);
+        assert_eq!(redact_argv(["ghp_abc123def456"]), vec!["[REDACTED]"]);
+    }
+
+    #[test]
+    fn redact_argv_does_not_false_positive_on_key_suffixed_flag() {
+        // WHY(#7020): "key" is exact-matched, not suffix-matched, so an
+        // unrelated flag ending in "key" is left alone.
+        let redacted = redact_argv(["--monkey", "banana"]);
+        assert_eq!(redacted, vec!["--monkey", "banana"]);
     }
 }
 

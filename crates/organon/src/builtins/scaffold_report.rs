@@ -5,15 +5,15 @@ use std::pin::Pin;
 
 use indexmap::IndexMap;
 
+use crate::builtins::report_capability::{ReportOutputEffect, ReportToolEffect};
 use crate::builtins::workspace::{
     extract_opt_str, extract_str_or_tool_error, validate_prepared_path,
 };
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 fn extract_bool(args: &serde_json::Value, key: &str, default: bool) -> bool {
@@ -198,37 +198,27 @@ fn scaffold_report_def() -> ToolDef {
     }
 }
 
-fn scaffold_report_capability_rule() -> ToolCallCapabilityRule {
-    ToolCallCapabilityRule::argument_presence(
-        "directory",
-        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
-        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
-    )
+fn scaffold_report_effect() -> ReportToolEffect {
+    ReportToolEffect {
+        owner: "organon::builtins::scaffold_report",
+        output: ReportOutputEffect::DirectoryScaffold {
+            argument: "directory",
+        },
+        subprocess: None,
+    }
 }
 
 /// Register the scaffold report tool.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
+    let effect = scaffold_report_effect();
     registry.register_with_call_capability(
         scaffold_report_def(),
-        scaffold_report_capability_rule(),
+        effect.capability_rule(),
         Box::new(ScaffoldReportExecutor),
     )?;
     registry.declare_capability(
         koina::id::ToolName::from_static("scaffold_report"),
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::scaffold_report".to_owned(),
-            // WHY Experimental: this module is behind `#[cfg(feature =
-            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
-            // compiled by default.
-            stability: ToolStability::Experimental,
-            rollback: RollbackSupport::PartialSupport {
-                reason: "without a directory argument the tool returns a base64 manifest only; \
-                         with directory it creates directories and writes template files, \
-                         overwriting same-named paths without retaining their prior contents"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
-        },
+        effect.capability_metadata(),
     )?;
     Ok(())
 }

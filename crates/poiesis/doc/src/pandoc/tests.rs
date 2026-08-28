@@ -369,7 +369,7 @@ fn chart_doc() -> Document {
                     label: Some(poiesis_charts::CiteOrText::Text("JAN".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("rev-1".to_owned()),
+                        id: FactId::new("rev-1").expect("valid fact id"),
                         value: 1.0,
                         unit: Unit::Number,
                     },
@@ -378,7 +378,7 @@ fn chart_doc() -> Document {
                     label: Some(poiesis_charts::CiteOrText::Text("FEB".to_owned())),
                     x: None,
                     y: FactCite {
-                        id: FactId("rev-2".to_owned()),
+                        id: FactId::new("rev-2").expect("valid fact id"),
                         value: 2.0,
                         unit: Unit::Number,
                     },

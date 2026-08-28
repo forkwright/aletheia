@@ -16,7 +16,7 @@ test-core = []
 test-full = []
 
 [dependencies]
-koina = { path = "../../koina" }
+koina = { path = "../../koina", features = ["rustls-provider"] }
 skene = { path = "../skene" }
 gramma = { workspace = true }
 parodos = { workspace = true }

@@ -63,12 +63,9 @@ impl OpenAiApiFamily {
 /// Build an HTTP client with sensible timeouts shared by Anthropic and
 /// OpenAI-compatible providers.
 fn build_http_client() -> Result<Client> {
-    if rustls::crypto::ring::default_provider()
-        .install_default()
-        .is_err()
-    {
-        tracing::debug!("rustls crypto provider was already installed");
-    }
+    // WHY: koina::crypto::install_default_provider() treats an
+    // already-installed provider as steady state, not an error.
+    let _ = koina::crypto::install_default_provider();
     Client::builder()
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_mins(2))

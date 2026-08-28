@@ -291,19 +291,24 @@ pub(crate) fn apply_jitter(
     Some(ts.checked_add(offset).unwrap_or_default())
 }
 
-/// Compute exponential backoff delay based on consecutive failure count.
+/// Compute backoff delay based on consecutive failure count.
 ///
-/// Returns the delay to add before the next retry:
+/// Delegates to [`koina::retry::BackoffStrategy::Fixed`] with the same
+/// ladder as before:
 /// - 1st failure: 1 minute
 /// - 2nd failure: 5 minutes
 /// - 3rd+ failure: 15 minutes (but task will be auto-disabled at 3)
 pub(crate) fn backoff_delay(consecutive_failures: u32) -> Duration {
-    match consecutive_failures {
-        0 => Duration::ZERO,
-        1 => Duration::from_mins(1),
-        2 => Duration::from_mins(5),
-        _ => Duration::from_mins(15),
-    }
+    use koina::retry::BackoffStrategy;
+    let strategy = BackoffStrategy::Fixed {
+        delays: vec![
+            Duration::ZERO,
+            Duration::from_mins(1),
+            Duration::from_mins(5),
+            Duration::from_mins(15),
+        ],
+    };
+    strategy.delay_for_attempt(consecutive_failures)
 }
 
 /// Status snapshot of a registered task.

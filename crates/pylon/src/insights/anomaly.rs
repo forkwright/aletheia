@@ -1,5 +1,6 @@
 //! Anomaly detection over rolling windows.
 
+use crate::insights::usize_to_f64;
 use crate::types::insights::{AnomalyAlert, TimeSeriesPoint};
 
 /// Rolling window size for baseline computation (days).
@@ -7,11 +8,6 @@ const ROLLING_WINDOW_DAYS: usize = 14;
 
 /// Z-score threshold for flagging an anomaly.
 const Z_SCORE_THRESHOLD: f64 = 2.0;
-
-/// Convert `usize` to `f64` losslessly for values that fit in `u32`.
-fn usize_to_f64(n: usize) -> f64 {
-    f64::from(u32::try_from(n).unwrap_or(u32::MAX))
-}
 
 /// Detect anomalies in a single metric's time series.
 ///
