@@ -1948,7 +1948,7 @@ pub(crate) async fn run_pipeline(
             run_post_turn_self_audit(config, &result, emitter);
         }
 
-        run_session_tuning_proposer(config, emitter);
+        run_session_tuning_proposer(config, pipeline_config, emitter);
 
         let current_span = tracing::Span::current();
         #[expect(
@@ -2024,14 +2024,19 @@ fn run_post_turn_self_audit(config: &NousConfig, result: &TurnResult, emitter: &
     });
 }
 
-fn run_session_tuning_proposer(config: &NousConfig, emitter: &EventEmitter) {
+fn run_session_tuning_proposer(
+    config: &NousConfig,
+    pipeline_config: &PipelineConfig,
+    emitter: &EventEmitter,
+) {
     if !config.behavior.tuning_eligible {
         return;
     }
-    let proposer = crate::tuning::TuningProposer::new(taxis::config::TuningConfig {
-        enabled: true,
-        ..taxis::config::TuningConfig::default()
-    });
+    // WHY: the operator's `[tuning]` section (global `enabled` kill switch,
+    // evidence thresholds) is resolved once into `pipeline_config.tuning` at
+    // startup — read it here rather than constructing a fresh forced-on
+    // `TuningConfig`, or the operator's kill switch is silently discarded.
+    let proposer = crate::tuning::TuningProposer::new(pipeline_config.tuning.clone());
     let outcomes = proposer.evaluate(&[], &config.id);
     emitter.emit(&events::TuningProposalsEvaluated {
         nous_id: config.id.to_string(),
