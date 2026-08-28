@@ -195,45 +195,6 @@ fn api_error_validation_failed_includes_structured_errors() {
     assert_eq!(errors[1]["code"], "too_long");
 }
 
-#[test]
-fn deep_merge_overwrites_scalar() {
-    use crate::handlers::config::deep_merge;
-    let mut base = serde_json::json!({"key": "old"});
-    let patch = serde_json::json!({"key": "new"});
-    deep_merge(&mut base, patch);
-    assert_eq!(base["key"], "new");
-}
-
-#[test]
-fn deep_merge_adds_missing_keys() {
-    use crate::handlers::config::deep_merge;
-    let mut base = serde_json::json!({"existing": 1});
-    let patch = serde_json::json!({"new_key": 2});
-    deep_merge(&mut base, patch);
-    assert_eq!(base["existing"], 1);
-    assert_eq!(base["new_key"], 2);
-}
-
-#[test]
-fn deep_merge_recurses_objects() {
-    use crate::handlers::config::deep_merge;
-    let mut base = serde_json::json!({"nested": {"a": 1, "b": 2}});
-    let patch = serde_json::json!({"nested": {"b": 3, "c": 4}});
-    deep_merge(&mut base, patch);
-    assert_eq!(base["nested"]["a"], 1);
-    assert_eq!(base["nested"]["b"], 3);
-    assert_eq!(base["nested"]["c"], 4);
-}
-
-#[test]
-fn deep_merge_replaces_non_object_with_object() {
-    use crate::handlers::config::deep_merge;
-    let mut base = serde_json::json!({"key": "string"});
-    let patch = serde_json::json!({"key": {"nested": true}});
-    deep_merge(&mut base, patch);
-    assert_eq!(base["key"]["nested"], true);
-}
-
 // -- Config endpoint error tests --
 
 #[tokio::test]

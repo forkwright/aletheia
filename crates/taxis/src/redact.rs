@@ -781,7 +781,7 @@ mod tests {
         )
         .unwrap_or_else(|error| panic!("apply non-sensitive marker literal: {error}"));
 
-        assert_eq!(rebuilt.embedding.model, REDACTED);
+        assert_eq!(rebuilt.embedding.model.as_deref(), Some(REDACTED));
     }
 
     #[test]

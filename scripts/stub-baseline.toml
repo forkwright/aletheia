@@ -7,16 +7,6 @@
 
 [[site]]
 file = "crates/agora/src/semeion/client.rs"
-item = "id"
-count = 1
-
-[[site]]
-file = "crates/agora/src/semeion/client.rs"
-item = "jsonrpc"
-count = 1
-
-[[site]]
-file = "crates/agora/src/semeion/client.rs"
 item = "rpc_url"
 count = 1
 

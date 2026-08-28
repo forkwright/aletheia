@@ -2052,8 +2052,6 @@ impl SessionStore {
     /// Returns an error if any partition operation fails.
     #[instrument(skip(self))]
     pub fn delete_session(&self, id: &str) -> Result<bool> {
-        use fjall::Readable;
-
         let _guard = self
             .write_lock
             .lock()
