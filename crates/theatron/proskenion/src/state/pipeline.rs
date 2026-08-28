@@ -5,7 +5,7 @@
 //! "is it thinking? recalling? stuck?" Transparent routing reduces anxiety
 //! and supports trust calibration.
 
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 /// Observable pipeline stage for the active agent.
 ///
@@ -80,7 +80,7 @@ pub(crate) struct RoutingState {
     /// Agent handling the current conversation.
     pub agent_name: String,
     /// Agent identifier.
-    pub agent_id: NousId,
+    pub agent_id: ApiNousId,
     /// Current pipeline stage.
     pub stage: PipelineStage,
 }
@@ -153,7 +153,7 @@ mod tests {
     fn routing_state_display_format() {
         let state = RoutingState {
             agent_name: "Syn".to_string(),
-            agent_id: NousId::from("syn"),
+            agent_id: ApiNousId::from("syn"),
             stage: PipelineStage::Thinking,
         };
         assert_eq!(state.display(), "Syn \u{00b7} thinking\u{2026}");
@@ -163,7 +163,7 @@ mod tests {
     fn routing_state_display_tool_execution() {
         let state = RoutingState {
             agent_name: "Syn".to_string(),
-            agent_id: NousId::from("syn"),
+            agent_id: ApiNousId::from("syn"),
             stage: PipelineStage::Executing {
                 tool_name: "read_file".to_string(),
             },
@@ -175,7 +175,7 @@ mod tests {
     fn routing_state_display_idle() {
         let state = RoutingState {
             agent_name: "Arc".to_string(),
-            agent_id: NousId::from("arc"),
+            agent_id: ApiNousId::from("arc"),
             stage: PipelineStage::Idle,
         };
         assert_eq!(state.display(), "Arc \u{00b7} ready");

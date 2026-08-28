@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use skene::api::types::Agent;
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 /// Runtime status of an agent, derived from SSE events.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -50,12 +50,12 @@ impl AgentRecord {
 /// Manages all known agents and which one is currently active.
 #[derive(Debug, Clone, Default)]
 pub struct AgentStore {
-    /// All known agents, keyed by NousId.
-    agents: HashMap<NousId, AgentRecord>,
+    /// All known agents, keyed by ApiNousId.
+    agents: HashMap<ApiNousId, AgentRecord>,
     /// Ordered list of agent IDs (preserves server order).
-    order: Vec<NousId>,
+    order: Vec<ApiNousId>,
     /// Currently active agent ID.
-    pub active_id: Option<NousId>,
+    pub active_id: Option<ApiNousId>,
 }
 
 impl AgentStore {
@@ -66,7 +66,7 @@ impl AgentStore {
     }
 
     /// Set the active agent. Returns `false` if the ID is unknown.
-    pub(crate) fn set_active(&mut self, id: &NousId) -> bool {
+    pub(crate) fn set_active(&mut self, id: &ApiNousId) -> bool {
         if self.agents.contains_key(id) {
             self.active_id = Some(id.clone());
             true
@@ -86,7 +86,7 @@ impl AgentStore {
 
     /// Get a specific agent by ID.
     #[must_use]
-    pub(crate) fn get(&self, id: &NousId) -> Option<&AgentRecord> {
+    pub(crate) fn get(&self, id: &ApiNousId) -> Option<&AgentRecord> {
         self.agents.get(id)
     }
 
@@ -104,7 +104,7 @@ impl AgentStore {
 
     /// Set the status of an agent by ID. No-op if the ID is unknown.
     #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
-    pub(crate) fn update_status(&mut self, id: &NousId, status: AgentStatus) {
+    pub(crate) fn update_status(&mut self, id: &ApiNousId, status: AgentStatus) {
         if let Some(record) = self.agents.get_mut(id) {
             record.status = status;
         }
@@ -174,7 +174,7 @@ mod tests {
     fn agent_store_set_active_valid() {
         let mut store = AgentStore::new();
         store.load_agents(vec![make_agent("syn"), make_agent("arc")]);
-        assert!(store.set_active(&NousId::from("arc")));
+        assert!(store.set_active(&ApiNousId::from("arc")));
         assert_eq!(store.active_id.as_deref(), Some("arc"));
     }
 
@@ -182,7 +182,7 @@ mod tests {
     fn agent_store_set_active_unknown_returns_false() {
         let mut store = AgentStore::new();
         store.load_agents(vec![make_agent("syn")]);
-        assert!(!store.set_active(&NousId::from("unknown")));
+        assert!(!store.set_active(&ApiNousId::from("unknown")));
         assert_eq!(store.active_id.as_deref(), Some("syn"));
     }
 
@@ -190,8 +190,8 @@ mod tests {
     fn agent_store_update_status() {
         let mut store = AgentStore::new();
         store.load_agents(vec![make_agent("syn")]);
-        store.update_status(&NousId::from("syn"), AgentStatus::Active);
-        let rec = store.get(&NousId::from("syn")).unwrap();
+        store.update_status(&ApiNousId::from("syn"), AgentStatus::Active);
+        let rec = store.get(&ApiNousId::from("syn")).unwrap();
         assert_eq!(rec.status, AgentStatus::Active);
     }
 
@@ -200,7 +200,7 @@ mod tests {
         let mut store = AgentStore::new();
         store.load_agents(vec![make_agent("syn")]);
         // Should not panic or error.
-        store.update_status(&NousId::from("ghost"), AgentStatus::Error);
+        store.update_status(&ApiNousId::from("ghost"), AgentStatus::Error);
         assert_eq!(store.all().len(), 1);
     }
 

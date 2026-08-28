@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 use dioxus::prelude::*;
 use skene::api::types::Session;
-use skene::id::SessionId;
+use skene::id::ApiSessionId;
 
 use crate::state::sessions::{
     SessionListStore, SessionLoadState, SessionSelectionStore, SessionSort, format_relative_time,
@@ -315,14 +315,14 @@ pub(crate) fn SessionSortBar(
 /// A single session row in the list.
 #[component]
 pub(crate) fn SessionRow(
-    session_id: SessionId,
+    session_id: ApiSessionId,
     title: String,
     message_count: u32,
     updated_at: String,
     status: String,
     is_selected: bool,
-    on_click: EventHandler<SessionId>,
-    on_toggle_select: EventHandler<SessionId>,
+    on_click: EventHandler<ApiSessionId>,
+    on_toggle_select: EventHandler<ApiSessionId>,
 ) -> Element {
     let status_dot_color = status_color(&status);
     let relative_time = format_relative_time(&updated_at);
@@ -372,7 +372,7 @@ pub(crate) fn SessionRow(
 pub(crate) fn SessionList(
     list_store: Signal<SessionListStore>,
     mut selection_store: Signal<SessionSelectionStore>,
-    on_select_session: EventHandler<SessionId>,
+    on_select_session: EventHandler<ApiSessionId>,
     on_sort_change: EventHandler<SessionSort>,
     on_load_more: EventHandler<()>,
     on_retry: EventHandler<()>,
@@ -432,7 +432,7 @@ pub(crate) fn SessionList(
                         checked: selection_store.read().select_all,
                         onchange: move |_| {
                             let shown = *show_system.read();
-                            let visible_ids: Vec<SessionId> = list_store.read().sessions
+                            let visible_ids: Vec<ApiSessionId> = list_store.read().sessions
                                 .iter()
                                 .filter(|s| shown || !is_system_session(s))
                                 .map(|s| s.id.clone())
@@ -510,8 +510,8 @@ pub(crate) fn SessionList(
                                         updated_at: session.updated_at.clone().unwrap_or_default(),
                                         status: session_display_status(&session),
                                         is_selected: selection_store.read().is_selected(&session.id),
-                                        on_click: move |id: SessionId| on_select_session.call(id),
-                                        on_toggle_select: move |id: SessionId| {
+                                        on_click: move |id: ApiSessionId| on_select_session.call(id),
+                                        on_toggle_select: move |id: ApiSessionId| {
                                             selection_store.write().toggle(&id);
                                         },
                                     }
@@ -542,8 +542,8 @@ mod tests {
 
     fn session(nous: &str, key: &str) -> Session {
         Session {
-            id: SessionId::from(key),
-            nous_id: skene::id::NousId::from(nous),
+            id: ApiSessionId::from(key),
+            nous_id: skene::id::ApiNousId::from(nous),
             key: key.to_string(),
             status: Some("active".to_string()),
             model: None,

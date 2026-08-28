@@ -4,7 +4,7 @@
 //! actually interacted with (those with open tabs), not all agents.
 
 use dioxus::prelude::*;
-use skene::id::{NousId, SessionId};
+use skene::id::{ApiNousId, ApiSessionId};
 
 use crate::state::agents::AgentStore;
 use crate::state::app::TabBar;
@@ -78,9 +78,9 @@ const UNREAD_BADGE_STYLE: &str = "\
 
 type TabSnapshot = (
     u64,
-    NousId,
+    ApiNousId,
     Option<String>,
-    Option<SessionId>,
+    Option<ApiSessionId>,
     Option<u32>,
     String,
     bool,

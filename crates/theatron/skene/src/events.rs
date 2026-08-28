@@ -1,7 +1,7 @@
 //! Parsed streaming events from the per-session SSE endpoint.
 
 use crate::api::types::{Plan, TurnOutcome};
-use crate::id::{NousId, PlanId, RequestId, SessionId, ToolId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, PlanId, RequestId, ToolId, TurnId};
 
 /// Parsed events from a `POST /api/v1/sessions/stream` response.
 #[derive(Debug)]
@@ -10,9 +10,9 @@ pub enum StreamEvent {
     /// Turn started: carries session, agent, and turn identifiers.
     TurnStart {
         /// Session this turn belongs to.
-        session_id: SessionId,
+        session_id: ApiSessionId,
         /// Agent processing this turn.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Unique identifier for this turn.
         turn_id: TurnId,
         /// Server-assigned request identifier, if pylon stamped one.

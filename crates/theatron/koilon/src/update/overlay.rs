@@ -385,11 +385,15 @@ pub(crate) fn pick_session_id_pub(
     app: &App,
     cursor: usize,
     show_archived: bool,
-) -> Option<crate::id::SessionId> {
+) -> Option<crate::id::ApiSessionId> {
     pick_session_id(app, cursor, show_archived)
 }
 
-fn pick_session_id(app: &App, cursor: usize, show_archived: bool) -> Option<crate::id::SessionId> {
+fn pick_session_id(
+    app: &App,
+    cursor: usize,
+    show_archived: bool,
+) -> Option<crate::id::ApiSessionId> {
     let agent_id = app.dashboard.focused_agent.as_ref()?;
     let agent = app.dashboard.agents.iter().find(|a| &a.id == agent_id)?;
     let sessions: Vec<_> = if show_archived {

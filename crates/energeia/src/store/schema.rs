@@ -13,7 +13,7 @@
 //! qa_verdict:{dispatch_id}:{timestamp_ms}:{ulid} -> QaVerdictRecord
 //! ```
 
-use crate::store::records::{DispatchId, SessionId};
+use crate::store::records::{DispatchId, PromptSessionId};
 
 /// Key prefix for dispatch records.
 const PREFIX_DISPATCH: &str = "dispatch:";
@@ -46,7 +46,7 @@ pub(crate) fn dispatch_prefix() -> &'static str {
 pub(crate) fn decode_dispatch_key(key: &[u8]) -> Option<DispatchId> {
     let s = std::str::from_utf8(key).ok()?;
     let id_str = s.strip_prefix(PREFIX_DISPATCH)?;
-    Some(DispatchId::new(id_str))
+    DispatchId::new(id_str).ok()
 }
 
 /// Encode a session key: `session:{dispatch_ulid}:{prompt_no:08}`.
@@ -80,7 +80,8 @@ pub(crate) fn decode_session_key(key: &[u8]) -> Option<(DispatchId, u32)> {
     let rest = s.strip_prefix(PREFIX_SESSION)?;
     let (dispatch_str, prompt_str) = rest.rsplit_once(':')?;
     let prompt_number = prompt_str.parse().ok()?;
-    Some((DispatchId::new(dispatch_str), prompt_number))
+    let dispatch_id = DispatchId::new(dispatch_str).ok()?;
+    Some((dispatch_id, prompt_number))
 }
 
 /// Encode a lesson key: `lesson:{source}:{timestamp_ms}:{ulid}`.
@@ -118,7 +119,7 @@ pub(crate) fn observation_prefix() -> &'static str {
 
 /// Encode a CI validation key: `ci_validation:{session_id}:{check_name}`.
 #[must_use]
-pub(crate) fn ci_validation_key(session_id: &SessionId, check_name: &str) -> String {
+pub(crate) fn ci_validation_key(session_id: &PromptSessionId, check_name: &str) -> String {
     format!("{PREFIX_CI_VALIDATION}{}:{check_name}", session_id.as_str())
 }
 
@@ -130,7 +131,7 @@ pub(crate) fn ci_validation_prefix() -> &'static str {
 
 /// Prefix for scanning CI validations for a session.
 #[must_use]
-pub(crate) fn ci_validation_prefix_for_session(session_id: &SessionId) -> String {
+pub(crate) fn ci_validation_prefix_for_session(session_id: &PromptSessionId) -> String {
     format!("{PREFIX_CI_VALIDATION}{}:", session_id.as_str())
 }
 
@@ -156,18 +157,22 @@ pub(crate) fn qa_verdict_prefix_for_dispatch(dispatch_id: &DispatchId) -> String
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test fixtures: ids are literal strings, always valid"
+)]
 mod tests {
     use super::*;
 
     #[test]
     fn dispatch_key_format() {
-        let id = DispatchId::new("01JQXYZ123");
+        let id = DispatchId::new("01JQXYZ123").expect("valid dispatch id");
         assert_eq!(dispatch_key(&id), "dispatch:01JQXYZ123");
     }
 
     #[test]
     fn dispatch_key_roundtrip() {
-        let id = DispatchId::new("01JQXYZ123");
+        let id = DispatchId::new("01JQXYZ123").expect("valid dispatch id");
         let key = dispatch_key(&id);
         let decoded = decode_dispatch_key(key.as_bytes());
         assert_eq!(decoded, Some(id));
@@ -175,14 +180,14 @@ mod tests {
 
     #[test]
     fn session_key_format() {
-        let dispatch_id = DispatchId::new("01JQXYZ123");
+        let dispatch_id = DispatchId::new("01JQXYZ123").expect("valid dispatch id");
         assert_eq!(session_key(&dispatch_id, 1), "session:01JQXYZ123:00000001");
         assert_eq!(session_key(&dispatch_id, 42), "session:01JQXYZ123:00000042");
     }
 
     #[test]
     fn session_key_roundtrip() {
-        let dispatch_id = DispatchId::new("01JQXYZ123");
+        let dispatch_id = DispatchId::new("01JQXYZ123").expect("valid dispatch id");
         let prompt = 7;
         let key = session_key(&dispatch_id, prompt);
         let decoded = decode_session_key(key.as_bytes());
@@ -191,14 +196,14 @@ mod tests {
 
     #[test]
     fn session_prefix_scopes_to_dispatch() {
-        let dispatch_id = DispatchId::new("01JQXYZ123");
+        let dispatch_id = DispatchId::new("01JQXYZ123").expect("valid dispatch id");
         let prefix = session_prefix_for_dispatch(&dispatch_id);
         let key_a = session_key(&dispatch_id, 1);
         let key_b = session_key(&dispatch_id, 99);
         assert!(key_a.starts_with(&prefix));
         assert!(key_b.starts_with(&prefix));
 
-        let other_dispatch = DispatchId::new("01JQOTHER");
+        let other_dispatch = DispatchId::new("01JQOTHER").expect("valid dispatch id");
         let key_c = session_key(&other_dispatch, 1);
         assert!(!key_c.starts_with(&prefix));
     }
@@ -227,26 +232,26 @@ mod tests {
 
     #[test]
     fn ci_validation_key_format() {
-        let session_id = SessionId::new("01JQSESS01");
+        let session_id = PromptSessionId::new("01JQSESS01").expect("valid session id");
         let key = ci_validation_key(&session_id, "clippy");
         assert_eq!(key, "ci_validation:01JQSESS01:clippy");
     }
 
     #[test]
     fn ci_validation_prefix_scopes_to_session() {
-        let session_id = SessionId::new("01JQSESS01");
+        let session_id = PromptSessionId::new("01JQSESS01").expect("valid session id");
         let prefix = ci_validation_prefix_for_session(&session_id);
         let key = ci_validation_key(&session_id, "clippy");
         assert!(key.starts_with(&prefix));
 
-        let other_session = SessionId::new("01JQOTHER");
+        let other_session = PromptSessionId::new("01JQOTHER").expect("valid session id");
         let other_key = ci_validation_key(&other_session, "clippy");
         assert!(!other_key.starts_with(&prefix));
     }
 
     #[test]
     fn session_keys_sort_by_prompt_number() {
-        let dispatch_id = DispatchId::new("01JQXYZ123");
+        let dispatch_id = DispatchId::new("01JQXYZ123").expect("valid dispatch id");
         let k1 = session_key(&dispatch_id, 1);
         let k2 = session_key(&dispatch_id, 2);
         let k10 = session_key(&dispatch_id, 10);

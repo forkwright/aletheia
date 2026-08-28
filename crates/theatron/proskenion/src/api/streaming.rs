@@ -46,7 +46,7 @@ use tracing::Instrument;
 
 use skene::api::error::{format_error_fields_for_display, format_http_error_body};
 use skene::events::StreamEvent;
-use skene::id::{NousId, PlanId, RequestId, SessionId, ToolId, TurnId};
+use skene::id::{ApiNousId, ApiSessionId, PlanId, RequestId, ToolId, TurnId};
 
 struct StreamTurnRequest<'a> {
     base_url: &'a str,
@@ -299,10 +299,10 @@ fn parse_stream_event(event_type: &str, data: &str) -> Option<StreamEvent> {
 
     match event_type {
         "message_start" | "turn_start" => Some(StreamEvent::TurnStart {
-            session_id: SessionId::from(
+            session_id: ApiSessionId::from(
                 str_any_field(&json, &["session_id", "sessionId"], event_type)?.to_string(),
             ),
-            nous_id: NousId::from(
+            nous_id: ApiNousId::from(
                 str_any_field(&json, &["nous_id", "nousId"], event_type)?.to_string(),
             ),
             turn_id: TurnId::from(

@@ -144,7 +144,7 @@ pub(crate) fn test_agent(id: &str, name: &str) -> AgentState {
     let name = name.to_string();
     let name_lower = name.to_lowercase();
     AgentState {
-        id: crate::id::NousId::from(id),
+        id: crate::id::ApiNousId::from(id),
         name,
         name_lower,
         emoji: None,

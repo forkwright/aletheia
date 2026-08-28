@@ -17,7 +17,7 @@ use reqwest::Client;
 use tokio::sync::mpsc;
 use tracing::Instrument;
 
-use crate::id::{NousId, SessionId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, TurnId};
 use crate::sse::SseStream;
 
 use super::error::{format_error_fields_for_display, format_http_error_body};
@@ -250,23 +250,23 @@ pub fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
             Some(SseEvent::Init { active_turns })
         }
         "turn:before" => Some(SseEvent::TurnBefore {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            session_id: ApiSessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
             turn_id: TurnId::from(str_field(&json, "turnId", event_type)?.to_string()),
         }),
         "turn:after" => Some(SseEvent::TurnAfter {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            session_id: ApiSessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
         }),
         "turn.complete" => turn_complete_event(&json, event_type),
         "fact.created" => fact_created_event(&json, event_type),
         "nous.lifecycle" => nous_lifecycle_event(&json, event_type),
         "tool:called" => Some(SseEvent::ToolCalled {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             tool_name: str_field(&json, "toolName", event_type)?.to_string(),
         }),
         "tool:failed" => Some(SseEvent::ToolFailed {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             tool_name: str_field(&json, "toolName", event_type)?.to_string(),
             error: json
                 .get("error")
@@ -275,26 +275,26 @@ pub fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
                 .to_string(),
         }),
         "status:update" => Some(SseEvent::StatusUpdate {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             status: str_field(&json, "status", event_type)?.to_string(),
         }),
         "session:created" => Some(SseEvent::SessionCreated {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            session_id: ApiSessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
         }),
         "session:archived" => Some(SseEvent::SessionArchived {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
-            session_id: SessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            session_id: ApiSessionId::from(str_field(&json, "sessionId", event_type)?.to_string()),
         }),
         "distill:before" => Some(SseEvent::DistillBefore {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
         }),
         "distill:stage" => Some(SseEvent::DistillStage {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             stage: str_field(&json, "stage", event_type)?.to_string(),
         }),
         "distill:after" => Some(SseEvent::DistillAfter {
-            nous_id: NousId::from(str_field(&json, "nousId", event_type)?.to_string()),
+            nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
         }),
         "checkpoint:created" => Some(SseEvent::CheckpointCreated {
             project_id: str_field(&json, "projectId", event_type)?.to_string(),
@@ -349,8 +349,8 @@ fn stream_lagged_event(json: &serde_json::Value) -> Option<SseEvent> {
 
 fn turn_complete_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
     Some(SseEvent::TurnComplete {
-        session_id: SessionId::from(str_field(json, "session_id", event_type)?.to_string()),
-        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        session_id: ApiSessionId::from(str_field(json, "session_id", event_type)?.to_string()),
+        nous_id: ApiNousId::from(str_field(json, "nous_id", event_type)?.to_string()),
         turn_id: TurnId::from(str_field(json, "turn_id", event_type)?.to_string()),
         input_tokens: u32_field(json, "input_tokens", event_type)?,
         output_tokens: u32_field(json, "output_tokens", event_type)?,
@@ -360,14 +360,14 @@ fn turn_complete_event(json: &serde_json::Value, event_type: &str) -> Option<Sse
 fn fact_created_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
     Some(SseEvent::FactCreated {
         fact_id: str_field(json, "fact_id", event_type)?.to_string(),
-        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        nous_id: ApiNousId::from(str_field(json, "nous_id", event_type)?.to_string()),
         content_preview: str_field(json, "content_preview", event_type)?.to_string(),
     })
 }
 
 fn nous_lifecycle_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
     Some(SseEvent::NousLifecycle {
-        nous_id: NousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        nous_id: ApiNousId::from(str_field(json, "nous_id", event_type)?.to_string()),
         event: str_field(json, "event", event_type)?.to_string(),
         restart_required: bool_field(json, "restart_required", event_type)?,
     })

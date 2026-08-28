@@ -14,7 +14,7 @@ Shared API client, types, SSE parser, and streaming infrastructure for Aletheia 
 2. `src/api/types/mod.rs`: Agent, Session, HistoryMessage, SseEvent, TurnOutcome, CostSummary
 3. `src/events.rs`: StreamEvent enum (per-turn streaming: text deltas, tool calls, plan steps)
 4. `src/sse.rs`: SseEvent, SseStream (wire protocol parser for reqwest byte streams)
-5. `src/id.rs`: NousId, SessionId, TurnId, ToolId, PlanId (domain identifier newtypes)
+5. `src/id.rs`: ApiNousId, ApiSessionId, TurnId, ToolId, PlanId (domain identifier newtypes)
 
 ## Key types
 
@@ -24,8 +24,8 @@ Shared API client, types, SSE parser, and streaming infrastructure for Aletheia 
 | `StreamEvent` | `events.rs` | Per-turn events: TurnStart, TextDelta, ThinkingDelta, ToolStart, ToolResult, ToolApprovalRequired, PlanProposed, TurnComplete |
 | `SseEvent` | `sse.rs` | Parsed SSE wire event (event, data, id, retry fields) |
 | `SseStream` | `sse.rs` | Transforms byte stream into parsed SSE events (full spec: multi-line data, comments, retry) |
-| `NousId` | `id.rs` | Agent identifier newtype |
-| `SessionId` | `id.rs` | Session identifier newtype |
+| `ApiNousId` | `id.rs` | Agent identifier newtype |
+| `ApiSessionId` | `id.rs` | Session identifier newtype |
 | `TurnId` | `id.rs` | Turn identifier newtype |
 | `Agent` | `api/types/mod.rs` | Agent info: id, name, model, status |
 | `Session` | `api/types/mod.rs` | Session info: id, name, agent, message count, timestamps |
@@ -36,7 +36,7 @@ Shared API client, types, SSE parser, and streaming infrastructure for Aletheia 
 
 - **Shared client**: Single reqwest Client with connection pool shared across REST, streaming, and SSE paths.
 - **SSE parser**: Hand-rolled state machine handling the full SSE spec (data, event, id, retry, comments, multi-line data).
-- **Domain newtypes**: NousId, SessionId, etc. prevent mixing identifiers across API boundaries.
+- **Domain newtypes**: ApiNousId, ApiSessionId, etc. prevent mixing identifiers across API boundaries.
 - **Dual SSE types**: Wire-level SseEvent (sse.rs) vs domain-level SseEvent (api/types.rs) separate parsing from semantics.
 
 ## Common tasks

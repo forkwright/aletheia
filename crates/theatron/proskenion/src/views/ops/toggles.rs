@@ -148,7 +148,7 @@ pub(crate) fn ToggleControlsPanel(
     store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
 ) -> Element {
-    let confirm_disable: Signal<Option<skene::id::NousId>> = use_signal(|| None);
+    let confirm_disable: Signal<Option<skene::id::ApiNousId>> = use_signal(|| None);
 
     // WHY: Collect into owned data to avoid holding signal read across rsx boundaries.
     let agent_ids: Vec<_> = {
@@ -278,7 +278,7 @@ pub(crate) fn ToggleControlsPanel(
 
 #[component]
 fn AgentToggleRow(
-    id: skene::id::NousId,
+    id: skene::id::ApiNousId,
     name: String,
     enabled: bool,
     pending: bool,
@@ -287,7 +287,7 @@ fn AgentToggleRow(
     error: Option<String>,
     store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
-    mut confirm_disable: Signal<Option<skene::id::NousId>>,
+    mut confirm_disable: Signal<Option<skene::id::ApiNousId>>,
 ) -> Element {
     let is_expanded = store
         .read()
@@ -611,10 +611,10 @@ fn ConfigReloadRow(store: Signal<ToggleStore>, config: Signal<ConnectionConfig>)
 
 #[component]
 fn ConfirmDisableDialog(
-    agent_id: skene::id::NousId,
+    agent_id: skene::id::ApiNousId,
     store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
-    mut confirm_disable: Signal<Option<skene::id::NousId>>,
+    mut confirm_disable: Signal<Option<skene::id::ApiNousId>>,
 ) -> Element {
     let name = store
         .read()
@@ -696,7 +696,7 @@ fn toggle_switch(
 
 // WHY: Signal::set requires &mut self, which is unavailable inside Fn closures.
 // Passing Signal by value to a function with `mut` parameter sidesteps this.
-fn request_confirm(mut sig: Signal<Option<skene::id::NousId>>, id: skene::id::NousId) {
+fn request_confirm(mut sig: Signal<Option<skene::id::ApiNousId>>, id: skene::id::ApiNousId) {
     sig.set(Some(id));
 }
 
@@ -784,7 +784,7 @@ impl ToolToggleUpdateResponse {
 fn fire_agent_toggle(
     mut store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
-    id: skene::id::NousId,
+    id: skene::id::ApiNousId,
 ) {
     let prev = store.write().flip_agent(&id);
     let Some(prev_val) = prev else { return };
@@ -868,7 +868,7 @@ fn fire_agent_toggle(
 fn fire_tool_toggle(
     mut store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
-    agent_id: skene::id::NousId,
+    agent_id: skene::id::ApiNousId,
     tool_name: String,
 ) {
     let prev = store.write().flip_tool(&agent_id, &tool_name);
@@ -1160,7 +1160,7 @@ fn recover_summary(outcome: Option<&RecoverOutcome>) -> Option<(String, bool)> {
 fn fire_agent_recover(
     mut store: Signal<ToggleStore>,
     config: Signal<ConnectionConfig>,
-    id: skene::id::NousId,
+    id: skene::id::ApiNousId,
 ) {
     store.write().begin_recover(&id);
 
@@ -1214,7 +1214,7 @@ fn fire_agent_recover(
 mod tests {
     use skene::api::routes::config::{feature_flags_url, reload_url};
     use skene::api::routes::nous::agent_recover_url;
-    use skene::id::NousId;
+    use skene::id::ApiNousId;
 
     use super::{recover_summary, reload_summary};
     use crate::state::ops::{FeatureFlag, RecoverOutcome, ReloadOutcome, ToggleStore};
@@ -1299,8 +1299,8 @@ mod tests {
     #[test]
     fn recover_state_is_scoped_to_the_agent_it_targets() {
         let mut store = ToggleStore::new();
-        let alpha: NousId = "alpha".into();
-        let beta: NousId = "beta".into();
+        let alpha: ApiNousId = "alpha".into();
+        let beta: ApiNousId = "beta".into();
 
         store.begin_recover(&alpha);
         assert!(store.is_recovering(&alpha));
@@ -1321,7 +1321,7 @@ mod tests {
     #[test]
     fn beginning_a_recovery_clears_the_previous_outcome() {
         let mut store = ToggleStore::new();
-        let alpha: NousId = "alpha".into();
+        let alpha: ApiNousId = "alpha".into();
 
         store.resolve_recover_failure(&alpha, "connection error".into());
         assert!(store.recover_outcome_for(&alpha).is_some());

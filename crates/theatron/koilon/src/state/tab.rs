@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use crate::id::{NousId, SessionId, ToolId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, ToolId, TurnId};
 use crate::state::chat::{ArcVec, ChatMessage, MarkdownCache, SavedScrollState, ToolCallInfo};
 use crate::state::filter::FilterState;
 use crate::state::input::InputState;
@@ -27,7 +27,7 @@ pub(crate) struct TabStreamingState {
 pub(crate) struct TabState {
     /// PERF: ArcVec clone is O(1): tab switch shares the Arc pointer, not the Vec content.
     pub(crate) messages: ArcVec<ChatMessage>,
-    pub(crate) focused_session_id: Option<SessionId>,
+    pub(crate) focused_session_id: Option<ApiSessionId>,
     pub(crate) input: InputState,
     pub(crate) scroll: SavedScrollState,
     pub(crate) selected_message: Option<usize>,
@@ -47,8 +47,8 @@ pub(crate) struct Tab {
         expect(dead_code, reason = "read in tests for ID uniqueness verification")
     )]
     pub(crate) id: TabId,
-    pub(crate) agent_id: NousId,
-    pub(crate) session_id: Option<SessionId>,
+    pub(crate) agent_id: ApiNousId,
+    pub(crate) session_id: Option<ApiSessionId>,
     pub(crate) title: String,
     pub(crate) unread_count: u32,
     pub(crate) state: TabState,
@@ -81,7 +81,7 @@ impl TabState {
 }
 
 impl Tab {
-    fn new(id: TabId, agent_id: NousId, title: impl Into<String>) -> Self {
+    fn new(id: TabId, agent_id: ApiNousId, title: impl Into<String>) -> Self {
         Self {
             id,
             agent_id,
@@ -103,7 +103,7 @@ impl TabBar {
     }
 
     /// Create a new tab and return its index.
-    pub(crate) fn create_tab(&mut self, agent_id: NousId, title: impl Into<String>) -> usize {
+    pub(crate) fn create_tab(&mut self, agent_id: ApiNousId, title: impl Into<String>) -> usize {
         let id = self.next_id;
         self.next_id += 1;
         let tab = Tab::new(id, agent_id, title);
@@ -210,7 +210,7 @@ impl TabBar {
     }
 
     /// Mark a background tab as having unread messages.
-    pub(crate) fn mark_unread(&mut self, agent_id: &NousId, session_id: &SessionId) {
+    pub(crate) fn mark_unread(&mut self, agent_id: &ApiNousId, session_id: &ApiSessionId) {
         for (idx, tab) in self.tabs.iter_mut().enumerate() {
             if idx != self.active
                 && tab.agent_id == *agent_id
@@ -238,12 +238,12 @@ impl TabBar {
 mod tests {
     use super::*;
 
-    fn agent_id_syn() -> NousId {
-        NousId::from("syn")
+    fn agent_id_syn() -> ApiNousId {
+        ApiNousId::from("syn")
     }
 
-    fn agent_id_demiurge() -> NousId {
-        NousId::from("demiurge")
+    fn agent_id_demiurge() -> ApiNousId {
+        ApiNousId::from("demiurge")
     }
 
     #[test]
@@ -413,9 +413,9 @@ mod tests {
         let mut bar = TabBar::new();
         bar.create_tab(agent_id_syn(), "main");
         bar.create_tab(agent_id_syn(), "research");
-        bar.tabs[1].session_id = Some(SessionId::from("sess2"));
+        bar.tabs[1].session_id = Some(ApiSessionId::from("sess2"));
         bar.active = 0;
-        bar.mark_unread(&agent_id_syn(), &SessionId::from("sess2"));
+        bar.mark_unread(&agent_id_syn(), &ApiSessionId::from("sess2"));
         assert_eq!(bar.tabs[0].unread_count, 0);
         assert_eq!(bar.tabs[1].unread_count, 1);
     }
@@ -424,9 +424,9 @@ mod tests {
     fn mark_unread_does_not_affect_active() {
         let mut bar = TabBar::new();
         bar.create_tab(agent_id_syn(), "main");
-        bar.tabs[0].session_id = Some(SessionId::from("sess1"));
+        bar.tabs[0].session_id = Some(ApiSessionId::from("sess1"));
         bar.active = 0;
-        bar.mark_unread(&agent_id_syn(), &SessionId::from("sess1"));
+        bar.mark_unread(&agent_id_syn(), &ApiSessionId::from("sess1"));
         assert_eq!(bar.tabs[0].unread_count, 0);
     }
 

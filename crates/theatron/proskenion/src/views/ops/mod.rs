@@ -537,7 +537,7 @@ pub(crate) fn Ops() -> Element {
             let tool_toggles: Vec<ToolToggle> = agents_data
                 .iter()
                 .flat_map(|a| {
-                    let aid: skene::id::NousId = a.id.as_str().into();
+                    let aid: skene::id::ApiNousId = a.id.as_str().into();
                     a.tools.iter().map(move |t| ToolToggle {
                         agent_id: aid.clone(),
                         tool_name: t.name.clone(),
@@ -730,11 +730,11 @@ pub(crate) fn Ops() -> Element {
     use_effect(move || {
         let events = event_state.read();
         let mut store = agent_store.write();
-        let mut turn_counts: HashMap<skene::id::NousId, u32> = HashMap::new();
+        let mut turn_counts: HashMap<skene::id::ApiNousId, u32> = HashMap::new();
         for turn in &events.active_turns {
             *turn_counts.entry(turn.nous_id.clone()).or_default() += 1;
         }
-        let ids: Vec<skene::id::NousId> = store.order.clone();
+        let ids: Vec<skene::id::ApiNousId> = store.order.clone();
         for id in &ids {
             store.set_active_turns(id, turn_counts.get(id).copied().unwrap_or(0));
         }

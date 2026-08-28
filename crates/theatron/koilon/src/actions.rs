@@ -300,7 +300,7 @@ mod tests {
         // Pre-fill with MAX_SCROLL_STATES + 1 stale entries for agents not in roster.
         for i in 0..=super::MAX_SCROLL_STATES {
             app.viewport.render.scroll_states.insert(
-                crate::id::NousId::from(format!("stale-{i}")),
+                crate::id::ApiNousId::from(format!("stale-{i}")),
                 crate::state::SavedScrollState {
                     scroll_offset: i,
                     auto_scroll: false,
@@ -320,7 +320,7 @@ mod tests {
             app.viewport
                 .render
                 .scroll_states
-                .contains_key(&crate::id::NousId::from("active")),
+                .contains_key(&crate::id::ApiNousId::from("active")),
             "active agent entry must be retained after pruning"
         );
     }

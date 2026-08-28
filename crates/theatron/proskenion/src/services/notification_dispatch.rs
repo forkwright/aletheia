@@ -20,7 +20,7 @@ use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use skene::api::types::SseEvent;
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 use crate::platform::native_notify::send_native;
 use crate::platform::notifications::{NotificationPayload, NotificationUrgency};
@@ -155,7 +155,7 @@ impl NotificationDispatch {
 
     fn on_turn_after(
         &mut self,
-        nous_id: &NousId,
+        nous_id: &ApiNousId,
         prefs: &NotificationPreferences,
         dnd: &DndState,
         focused: bool,
@@ -190,7 +190,7 @@ impl NotificationDispatch {
     )]
     fn on_tool_failed(
         &mut self,
-        nous_id: &NousId,
+        nous_id: &ApiNousId,
         tool_name: &str,
         error: &str,
         prefs: &NotificationPreferences,
@@ -446,7 +446,7 @@ fn truncate_chars(s: &str, max_chars: usize) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use skene::id::{NousId, SessionId};
+    use skene::id::{ApiNousId, ApiSessionId};
 
     use super::*;
     use crate::state::notifications::{DndDuration, NotificationHistory};
@@ -459,12 +459,12 @@ mod tests {
         DndState::default()
     }
 
-    fn nous(id: &str) -> NousId {
-        NousId::from(id)
+    fn nous(id: &str) -> ApiNousId {
+        ApiNousId::from(id)
     }
 
-    fn session(id: &str) -> SessionId {
-        SessionId::from(id)
+    fn session(id: &str) -> ApiSessionId {
+        ApiSessionId::from(id)
     }
 
     fn no_fallback(_sev: ToastSeverity, _title: &str) {}

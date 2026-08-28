@@ -251,7 +251,7 @@ impl CommandDiscoveryResponse {
             .into_iter()
             .filter(|agent| !agent.id.trim().is_empty())
             .flat_map(|agent| {
-                let agent_id: skene::id::NousId = agent.id.as_str().into();
+                let agent_id: skene::id::ApiNousId = agent.id.as_str().into();
                 let agent_name = agent
                     .name
                     .filter(|name| !name.trim().is_empty())

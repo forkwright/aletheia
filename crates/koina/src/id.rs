@@ -8,18 +8,72 @@ use serde::{Deserialize, Serialize};
 
 use crate::uuid::Uuid;
 
+/// Default maximum length, in bytes, accepted by a `newtype_id!`-generated
+/// `new()`.
+///
+/// WHY a single generic ceiling rather than a per-type bound: the macro
+/// wraps opaque identifiers from many sources (dispatch ULIDs, tool-call
+/// ids, stream request ids) with no shared charset. 256 bytes comfortably
+/// covers every real identifier in this codebase while still bounding
+/// worst-case allocation from untrusted input. A type that needs a tighter,
+/// domain-specific bound (charset, length) is a candidate for a hand-rolled
+/// type like [`NousId`] rather than a macro parameter.
+pub const NEWTYPE_ID_MAX_LEN: usize = 256;
+
+/// Validation shared by every `newtype_id!`-generated `new()`.
+///
+/// Not part of the public API — called only from the macro expansion, which
+/// is why it takes the type name as a bare `&'static str` rather than
+/// something more structured.
+///
+/// # Errors
+/// Returns an error if `value` is empty, exceeds [`NEWTYPE_ID_MAX_LEN`]
+/// bytes, or contains an ASCII control character.
+#[doc(hidden)]
+pub fn newtype_id_validate(value: &str, kind: &'static str) -> Result<(), IdError> {
+    if value.is_empty() {
+        return Err(IdError::Empty { kind });
+    }
+    if value.len() > NEWTYPE_ID_MAX_LEN {
+        return Err(IdError::TooLong {
+            kind,
+            max: NEWTYPE_ID_MAX_LEN,
+            actual: value.len(),
+        });
+    }
+    if value.chars().any(char::is_control) {
+        return Err(IdError::InvalidFormat {
+            kind,
+            value: value.to_owned(),
+            reason: "must not contain control characters".to_owned(),
+        });
+    }
+    Ok(())
+}
+
 /// Generate a newtype ID wrapper around a string-like inner type.
 ///
 /// Produces a transparent serde newtype with standard string-like trait
 /// implementations. The inner type must implement `AsRef<str>`,
 /// `From<String>`, `From<&str>`, and `Into<String>`.
 ///
+/// `new()` validates by construction: empty, oversized (> [`NEWTYPE_ID_MAX_LEN`]
+/// bytes), and control-character input are all rejected. This is a generic,
+/// permissive floor shared by every generated type, not a domain-specific
+/// charset — a type needing lowercase-alnum-plus-hyphen enforcement (like
+/// [`NousId`]) still needs its own hand-rolled validator.
+///
+/// `From<String>`/`From<&str>`/`FromStr` remain unchecked conversions for
+/// call sites that already hold a trusted value (a literal, a value already
+/// validated upstream). Prefer `new()` at any boundary that accepts
+/// caller-controlled input.
+///
 /// # Generated API
 ///
 /// - **Derives:** `Debug`, `Clone`, `PartialEq`, `Eq`, `Hash`, `Serialize`, `Deserialize`
 /// - **Traits:** `Display`, `FromStr`, `AsRef<str>`, `Borrow<str>`, `Deref<Target=str>`,
 ///   `From<String>`, `From<&str>`, `From<T> for String`, `PartialEq<str>`
-/// - **Methods:** `new()`, `into_inner()`, `as_str()`
+/// - **Methods:** `new()` (validating, fallible), `into_inner()`, `as_str()`
 ///
 /// # Examples
 ///
@@ -31,11 +85,13 @@ use crate::uuid::Uuid;
 ///     pub struct WidgetId(String)
 /// );
 ///
-/// let id = WidgetId::new("w-1");
+/// let id = WidgetId::new("w-1").expect("valid widget id");
 /// assert_eq!(id.as_str(), "w-1");
 /// assert_eq!(id.to_string(), "w-1");
 /// let back: String = id.into_inner();
 /// assert_eq!(back, "w-1");
+///
+/// assert!(WidgetId::new("").is_err());
 /// ```
 #[macro_export]
 macro_rules! newtype_id {
@@ -49,10 +105,17 @@ macro_rules! newtype_id {
         $vis struct $name($inner);
 
         impl $name {
-            /// Create a new identifier.
-            #[must_use]
-            $vis fn new(id: impl Into<$inner>) -> Self {
-                Self(id.into())
+            /// Create a new identifier, validating it by construction.
+            ///
+            /// # Errors
+            /// Returns an error if the value is empty, exceeds
+            /// `koina::id::NEWTYPE_ID_MAX_LEN` bytes, or contains a
+            /// control character.
+            #[must_use = "returns a validated identifier that should not be discarded"]
+            $vis fn new(id: impl Into<$inner>) -> ::std::result::Result<Self, $crate::id::IdError> {
+                let inner: $inner = id.into();
+                $crate::id::newtype_id_validate(inner.as_ref(), stringify!($name))?;
+                Ok(Self(inner))
             }
 
             /// Consume the wrapper and return the inner value.

@@ -12,8 +12,8 @@ use crate::error::{self, Result, store_err};
 use crate::store::queries;
 use crate::store::records::{
     CiValidationRecord, CiValidationStatus, DispatchExport, DispatchId, DispatchRecord,
-    DispatchStatus, LessonRecord, NewLesson, NewObservation, ObservationRecord, QaVerdictRecord,
-    SessionId, SessionOutcomeData, SessionRecord, SessionUpdate,
+    DispatchStatus, LessonRecord, NewLesson, NewObservation, ObservationRecord, PromptSessionId,
+    QaVerdictRecord, SessionOutcomeData, SessionRecord, SessionUpdate,
 };
 
 /// Maximum records returned by bulk-scan methods to prevent unbounded memory use.
@@ -116,7 +116,8 @@ impl EnergeiaStore {
             ));
         }
 
-        let id = DispatchId::new(koina::ulid::Ulid::new().to_string());
+        let id = DispatchId::new(koina::ulid::Ulid::new().to_string())
+            .map_err(|e| store_err("generate dispatch id", e))?;
         let spec_json =
             serde_json::to_string(spec).map_err(|e| ser_err("serialize dispatch spec", e))?;
 
@@ -206,8 +207,9 @@ impl EnergeiaStore {
         &self,
         dispatch_id: &DispatchId,
         prompt_number: u32,
-    ) -> Result<SessionId> {
-        let id = SessionId::new(koina::ulid::Ulid::new().to_string());
+    ) -> Result<PromptSessionId> {
+        let id = PromptSessionId::new(koina::ulid::Ulid::new().to_string())
+            .map_err(|e| store_err("generate session id", e))?;
         let now = jiff::Timestamp::now();
 
         let record = SessionRecord {
@@ -248,7 +250,7 @@ impl EnergeiaStore {
     /// Addressed by the record's own primary key, so the cost is one point
     /// read regardless of how many sessions the keyspace holds.
     ///
-    /// WHY(#5687): the previous signature took a `SessionId` and resolved it
+    /// WHY(#5687): the previous signature took a `PromptSessionId` and resolved it
     /// with a prefix scan over every session of every dispatch, deserializing
     /// each record to compare its `id`. `(dispatch_id, prompt_number)` is the
     /// key the record is already stored under and is available at every call
@@ -443,7 +445,7 @@ impl EnergeiaStore {
     /// Returns `Error::Store` on write failure.
     pub fn add_ci_validation(
         &self,
-        session_id: &SessionId,
+        session_id: &PromptSessionId,
         check_name: &str,
         pr_number: u64,
         status: CiValidationStatus,
@@ -737,7 +739,7 @@ impl EnergeiaStore {
     /// Returns `Error::Store` on read failure.
     pub fn list_ci_validations_for_session(
         &self,
-        session_id: &SessionId,
+        session_id: &PromptSessionId,
     ) -> Result<Vec<CiValidationRecord>> {
         queries::list_ci_validations_for_session(&self.keyspace, session_id)
     }

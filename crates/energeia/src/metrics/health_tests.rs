@@ -10,16 +10,20 @@ fn health_status_display() {
 
 #[cfg(feature = "storage-fjall")]
 #[expect(clippy::float_cmp, reason = "test assertions on exact float values")]
+#[expect(
+    clippy::expect_used,
+    reason = "test fixture helpers: ids are literal strings, always valid"
+)]
 mod storage_tests {
     use super::*;
     use crate::store::records::{
-        DispatchId, DispatchRecord, DispatchStatus, QaVerdictRecord, SessionId, SessionRecord,
+        DispatchId, DispatchRecord, DispatchStatus, PromptSessionId, QaVerdictRecord, SessionRecord,
     };
     use crate::types::{QaVerdict, SessionStatus};
 
     fn make_dispatch(id: &str) -> DispatchRecord {
         DispatchRecord {
-            id: DispatchId::new(id),
+            id: DispatchId::new(id).expect("valid dispatch id"),
             project: "acme".to_owned(),
             spec: r#"{"prompt_numbers":[1],"project":"acme"}"#.to_owned(),
             status: DispatchStatus::Completed,
@@ -32,8 +36,9 @@ mod storage_tests {
 
     fn make_session(dispatch_id: &str, status: SessionStatus) -> SessionRecord {
         SessionRecord {
-            id: SessionId::new(koina::ulid::Ulid::new().to_string()),
-            dispatch_id: DispatchId::new(dispatch_id),
+            id: PromptSessionId::new(koina::ulid::Ulid::new().to_string())
+                .expect("valid session id"),
+            dispatch_id: DispatchId::new(dispatch_id).expect("valid dispatch id"),
             prompt_number: 1,
             status,
             session_id: None,
@@ -56,7 +61,7 @@ mod storage_tests {
 
     fn make_qa_verdict(dispatch_id: &str, verdict: QaVerdict) -> QaVerdictRecord {
         QaVerdictRecord {
-            dispatch_id: DispatchId::new(dispatch_id),
+            dispatch_id: DispatchId::new(dispatch_id).expect("valid dispatch id"),
             project: "acme".to_owned(),
             verdict,
             recorded_at: jiff::Timestamp::now(),
@@ -229,7 +234,7 @@ mod storage_tests {
         #[expect(clippy::expect_used, reason = "test setup")]
         let start = now.checked_sub(span).expect("test timestamp");
         let d = DispatchRecord {
-            id: DispatchId::new("D1"),
+            id: DispatchId::new("D1").expect("valid dispatch id"),
             project: "acme".to_owned(),
             spec: "{}".to_owned(),
             status: DispatchStatus::Completed,
@@ -251,7 +256,7 @@ mod storage_tests {
         #[expect(clippy::expect_used, reason = "test setup")]
         let start = now.checked_sub(span).expect("test timestamp");
         let d = DispatchRecord {
-            id: DispatchId::new("D1"),
+            id: DispatchId::new("D1").expect("valid dispatch id"),
             project: "acme".to_owned(),
             spec: "{}".to_owned(),
             status: DispatchStatus::Completed,
@@ -268,7 +273,7 @@ mod storage_tests {
     #[test]
     fn cycle_time_no_completed_unavailable() {
         let d = DispatchRecord {
-            id: DispatchId::new("D1"),
+            id: DispatchId::new("D1").expect("valid dispatch id"),
             project: "acme".to_owned(),
             spec: "{}".to_owned(),
             status: DispatchStatus::Running,
