@@ -3,7 +3,7 @@
 //! Every module here is sovereign except `pagerank`, which is still landed
 //! **dual**: the derived implementation stays the default, and a fresh
 //! sovereign rewrite sits behind the `krites_sovereign_pagerank` feature
-//! (RETIREMENT-PLAN.md wave 5, "the live 3" — PageRank has a live episteme
+//! (RETIREMENT-PLAN.md wave 5, "the live 3" — `PageRank` has a live episteme
 //! consumer via embedded Datalog, unlike the 19 zero-call-site algorithms
 //! that already went through this same land-dark/soak/delete cycle). The
 //! `_native.rs` filenames the other 19 were authored under, and the

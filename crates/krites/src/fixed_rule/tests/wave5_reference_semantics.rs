@@ -319,13 +319,27 @@ proptest! {
 /// an equivalence test between them.
 fn connected_directed_edges(n: usize, extra: &[(usize, usize)]) -> Vec<(usize, usize)> {
     let mut edges = vec![];
+    let mut seen: BTreeSet<(usize, usize)> = BTreeSet::new();
+    let mut push_new_edge = |edges: &mut Vec<(usize, usize)>, src: usize, dst: usize| {
+        // WHY: `edges[src, dst] <- [...]` is a Datalog relation, which has SET
+        // semantics — a repeated (src, dst) tuple collapses to one row in the
+        // engine's input, so `PageRank` sees a lower out-degree for that node
+        // than a reference computed from this generator's raw (possibly
+        // duplicate) edge list would assume. Dedup here on the DIRECTED pair
+        // (unlike `weighted_edges`'s unordered dedup above, which sidesteps a
+        // different bug) so the reference always sees the same edge set the
+        // engine actually queries.
+        if seen.insert((src, dst)) {
+            edges.push((src, dst));
+        }
+    };
     for i in 0..n.saturating_sub(1) {
-        edges.push((i, i + 1));
-        edges.push((i + 1, i));
+        push_new_edge(&mut edges, i, i + 1);
+        push_new_edge(&mut edges, i + 1, i);
     }
     for &(src, dst) in extra {
         if src < n && dst < n && src != dst {
-            edges.push((src, dst));
+            push_new_edge(&mut edges, src, dst);
         }
     }
     edges
