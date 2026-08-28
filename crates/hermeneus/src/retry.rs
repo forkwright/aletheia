@@ -5,7 +5,7 @@ use std::time::Duration;
 use koina::retry::{BackoffStrategy, retry_after_or_strategy_delay};
 
 use crate::error;
-use crate::models::{BACKOFF_BASE_MS, BACKOFF_MAX_MS, DEFAULT_MAX_RETRIES};
+use crate::models::{BACKOFF_BASE_MS, BACKOFF_FACTOR, BACKOFF_MAX_MS, DEFAULT_MAX_RETRIES};
 
 const MIN_BACKOFF_MS: u64 = 100;
 
@@ -51,7 +51,7 @@ impl RetryPolicy {
         });
         let strategy = BackoffStrategy::ExponentialJitter {
             base: Duration::from_millis(self.backoff_base_ms),
-            factor: 2,
+            factor: BACKOFF_FACTOR,
             max_delay: Duration::from_millis(self.backoff_max_ms.max(self.backoff_base_ms)),
         };
         retry_after_or_strategy_delay(

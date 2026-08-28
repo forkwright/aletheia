@@ -98,9 +98,8 @@ workspace = "nous/main"
 # dimension = 384
 
 # --- Timeouts (Wave 1 — deployment-tunable) ---
-# Wall-clock timeout for a single LLM API call. Hot-reloadable.
+# Operator approval gate wall-clock budget. Hot-reloadable.
 # [timeouts]
-# llmCallSecs = 300           # range: 30–3600
 # approvalTimeoutSecs = 120   # operator approval wait before default-deny; range: 5–3600
 
 # --- Capacity (Wave 1 — deployment-tunable) ---

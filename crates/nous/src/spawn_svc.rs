@@ -430,8 +430,9 @@ impl SpawnService for SpawnServiceImpl {
         let template = role.map(Role::template);
         let contract = role.and_then(|r| self.resolve_contract(&parent_nous_id, r));
 
-        // WHY: ephemeral sub-agents do not capture training data — their turns
-        // are internal delegation, not user-facing conversation.
+        // WHY: ephemeral sub-agents do not capture training data or propose
+        // tuning changes — their turns are internal delegation, not
+        // user-facing conversation, and should not shift global parameters.
         let pipeline_config = PipelineConfig {
             history_budget_ratio: 0.6,
             project_id: None,
@@ -440,6 +441,7 @@ impl SpawnService for SpawnServiceImpl {
             training: crate::training::TrainingConfig::default(),
             reflection_enabled: false,
             history: crate::config::TurnHistoryPolicy::default(),
+            tuning: taxis::config::TuningConfig::default(),
         };
 
         let providers = Arc::clone(&self.providers);
