@@ -60,6 +60,7 @@
     "crates/nous/src/recall/mod.rs": 1,
     "crates/nous/src/self_audit/mod.rs": 3,
     "crates/nous/src/session.rs": 2,
+    "crates/nous/src/stream.rs": 1,
     "crates/nous/src/training/dpo.rs": 1,
     "crates/nous/src/turn_record.rs": 3,
     "crates/poiesis/verify/src/lib.rs": 1,

@@ -1,6 +1,26 @@
 //! Real-time streaming events for the turn pipeline.
 
 use hermeneus::anthropic::StreamEvent as LlmStreamEvent;
+use koina::ulid::Ulid;
+
+/// Authoritative identity of the turn emitting a tool-lifecycle event (#5016).
+///
+/// WHY: the approval event previously carried the session-local turn *number*
+/// in a field named `turn_id`, and the Pylon bridge silently substituted its
+/// own stream ULID — the same event had two different identities depending on
+/// where it was observed. Every tool-lifecycle event now carries the canonical
+/// turn ULID (`SessionState::turn_id`), the owning session id, and the gateway
+/// request id when the turn originated from an HTTP request (#4853).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnEventIdentity {
+    /// Canonical turn identifier (ULID), stable across actor restarts.
+    pub turn_id: Ulid,
+    /// Session that owns the turn.
+    // kanon:ignore RUST/primitive-for-domain-id WHY: stream events cross a process boundary into pylon DTOs; both sides carry the session id as a plain string
+    pub session_id: String,
+    /// Canonical HTTP request ID from the gateway, when one exists (#4853).
+    pub request_id: Option<String>,
+}
 
 /// Policy-minimized tool input carried only to the currently connected
 /// approver.
@@ -52,13 +72,14 @@ pub enum TurnStreamEvent {
     LlmDelta(LlmStreamEvent),
     /// Tool execution started.
     ToolStart {
+        identity: TurnEventIdentity,
         tool_id: String,
         tool_name: String,
         input: serde_json::Value,
     },
     /// Tool approval is required before execution.
     ToolApprovalRequired {
-        turn_id: String,
+        identity: TurnEventIdentity,
         tool_id: String,
         tool_name: String,
         /// Minimum policy-redacted evidence sent only to the currently
@@ -71,9 +92,14 @@ pub enum TurnStreamEvent {
         reason: String,
     },
     /// Tool approval was resolved.
-    ToolApprovalResolved { tool_id: String, decision: String },
+    ToolApprovalResolved {
+        identity: TurnEventIdentity,
+        tool_id: String,
+        decision: String,
+    },
     /// Tool execution completed.
     ToolResult {
+        identity: TurnEventIdentity,
         tool_id: String,
         tool_name: String,
         result: String,

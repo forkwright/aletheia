@@ -8,6 +8,7 @@
 use std::time::Duration;
 
 use koina::id::ToolName;
+use koina::ulid::Ulid;
 use organon::registry::ToolRegistry;
 use organon::types::{RedactionPolicy, Reversibility, ToolCapabilityMetadata};
 use tokio::sync::mpsc;
@@ -16,7 +17,7 @@ use super::*;
 use crate::approval::{ApprovalChoice, ApprovalDecision, ApprovalGate};
 use crate::execute::dispatch::{ToolDispatchPolicy, dispatch_tools};
 use crate::pipeline::LoopDetector;
-use crate::stream::TurnStreamEvent;
+use crate::stream::{TurnEventIdentity, TurnStreamEvent};
 
 fn registry_with_redaction(
     name: &str,
@@ -727,6 +728,11 @@ async fn saturated_live_stream_defaults_to_deny_without_pre_timeout_blocking() {
     let (event_tx, _event_rx) = mpsc::channel::<TurnStreamEvent>(1);
     event_tx
         .try_send(TurnStreamEvent::ToolApprovalResolved {
+            identity: TurnEventIdentity {
+                turn_id: Ulid::new(),
+                session_id: "test-session".to_owned(),
+                request_id: None,
+            },
             tool_id: "filler".to_owned(),
             decision: "filler".to_owned(),
         })
