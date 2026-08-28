@@ -46,3 +46,43 @@ pub fn install_default_provider() -> CryptoProviderInstall {
         Err(_already_installed) => CryptoProviderInstall::AlreadyInstalled,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{CryptoProviderInstall, install_default_provider};
+
+    /// The property #7012 names: a prior installation is steady state, not a
+    /// startup failure. Koilon used to `.expect(...)` here and would abort a
+    /// process that had merely initialised TLS twice.
+    ///
+    /// WHY the first call's variant is not asserted: the provider is
+    /// process-wide, so whether *this* call is the installing one depends on
+    /// what else in the test binary ran first. The guarantee under test is not
+    /// which call installs; it is that a call after one has installed reports
+    /// steady state rather than failing.
+    #[test]
+    fn a_second_installation_is_steady_state_not_a_failure() {
+        // Whichever this is, it returns rather than panicking.
+        let first = install_default_provider();
+        assert!(
+            matches!(
+                first,
+                CryptoProviderInstall::Installed | CryptoProviderInstall::AlreadyInstalled
+            ),
+            "installation must always report an outcome"
+        );
+
+        // A provider is installed by now, so every subsequent call must report
+        // AlreadyInstalled. This is the exact call shape Koilon aborted on.
+        assert_eq!(
+            install_default_provider(),
+            CryptoProviderInstall::AlreadyInstalled,
+            "a second installation must be steady state, never a failure"
+        );
+        assert_eq!(
+            install_default_provider(),
+            CryptoProviderInstall::AlreadyInstalled,
+            "the outcome must not oscillate across further calls"
+        );
+    }
+}
