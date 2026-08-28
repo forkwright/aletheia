@@ -853,14 +853,29 @@ async fn run_extraction(
                     Some(mneme::knowledge::MemoryScope::Project),
                 ) {
                     Ok(result) => {
+                        // WHY (aletheia#5306): `skipped` carries every entity/
+                        // relationship/fact extraction dropped on the way to the
+                        // store (over-limit, structurally invalid, or admission-
+                        // rejected) with a reason; log the count so a truncated
+                        // or lossy extraction is visible here rather than only
+                        // in a per-item debug line nobody is watching.
                         info!(
                             nous_id = %nous_id,
                             entities_persisted = result.entities_inserted,
                             relationships_persisted = result.relationships_inserted,
                             relationships_skipped = result.relationships_skipped,
                             facts_persisted = result.facts_inserted,
+                            items_skipped = result.skipped.len(),
+                            fact_entity_link_failures = result.fact_entity_link_failures,
                             "extraction persisted to knowledge store"
                         );
+                        if result.has_loss() {
+                            warn!(
+                                nous_id = %nous_id,
+                                skipped = ?result.skipped,
+                                "extraction persist dropped knowledge on the way to the store"
+                            );
+                        }
                         mneme::metrics::record_extraction(nous_id, true);
                     }
                     Err(e) => {

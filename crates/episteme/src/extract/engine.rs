@@ -10,12 +10,12 @@ use super::error::PersistSnafu;
 use super::error::{ExtractionError, ParseResponseSnafu};
 use super::provider::ExtractionProvider;
 use super::refinement;
-#[cfg(feature = "mneme-engine")]
-use super::types::PersistResult;
 use super::types::{
     BookkeepingProviderKind, ConversationMessage, Extraction, ExtractionConfig, ExtractionPrompt,
     RefinedExtraction,
 };
+#[cfg(feature = "mneme-engine")]
+use super::types::{PersistItemKind, PersistResult, SkippedItem};
 #[cfg(feature = "mneme-engine")]
 use super::utils::slugify;
 use super::utils::strip_code_fences;
@@ -564,6 +564,7 @@ Rules:
             Entity, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, MemoryScope,
             Relationship, far_future,
         };
+        use crate::knowledge_store::FactInsert;
 
         let now = jiff::Timestamp::now();
         let mut result = PersistResult::default();
@@ -582,6 +583,16 @@ Rules:
             (other_scope, _) => (other_scope, None),
         };
 
+        // WHY (aletheia#5306): build the full acceptance plan — every entity,
+        // relationship, and fact this call will write — before touching the
+        // store at all. The previous shape wrote entities, then
+        // relationships, then facts as it went, so a later rejection (a
+        // malformed relation, an out-of-range confidence, an admission
+        // rejection) could abort the call via `?` after earlier items had
+        // already landed, leaving orphaned graph state. Building the plan
+        // first means every skip below is a *reported* skip, not a
+        // half-finished write.
+
         if extraction.entities.len() > self.config.max_entities {
             tracing::warn!(
                 count = extraction.entities.len(),
@@ -589,52 +600,43 @@ Rules:
                 "extraction entity limit exceeded, truncating"
             );
         }
-        let entities = extraction.entities.iter().take(self.config.max_entities);
-
-        if extraction.relationships.len() > self.config.max_relationships {
-            tracing::warn!(
-                count = extraction.relationships.len(),
-                limit = self.config.max_relationships,
-                "extraction relationship limit exceeded, truncating"
-            );
-        }
-        let relationships = extraction
-            .relationships
-            .iter()
-            .take(self.config.max_relationships);
-
-        if extraction.facts.len() > self.config.max_facts {
-            tracing::warn!(
-                count = extraction.facts.len(),
-                limit = self.config.max_facts,
-                "extraction fact limit exceeded, truncating"
-            );
-        }
-        let facts = extraction.facts.iter().take(self.config.max_facts);
-
-        // #4675: track the entities written in this extraction so each fact can
-        // be linked to the subject/object entities it references. Linking is
-        // scoped to entities known from this batch; a subject/object name that
-        // did not resolve to an inserted entity is skipped rather than linked to
-        // a dangling id. Existing facts are reconnected by the v17->v18 backfill.
-        let mut known_entity_ids: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-
-        for entity in entities {
+        let mut planned_entities: Vec<Entity> = Vec::new();
+        for (idx, entity) in extraction.entities.iter().enumerate() {
+            if idx >= self.config.max_entities {
+                result.skipped.push(SkippedItem::new(
+                    PersistItemKind::Entity,
+                    entity.name.clone(),
+                    format!(
+                        "extraction returned more than the {} entity limit",
+                        self.config.max_entities
+                    ),
+                ));
+                continue;
+            }
             // WHY: reject entities with empty names — they cannot be referenced or queried.
             if entity.name.trim().is_empty() {
                 tracing::debug!(
                     entity_type = %entity.entity_type,
                     "entity rejected: empty name"
                 );
+                result.skipped.push(SkippedItem::new(
+                    PersistItemKind::Entity,
+                    format!("<empty name, type {}>", entity.entity_type),
+                    "empty name",
+                ));
                 continue;
             }
-            let id = crate::id::EntityId::new(slugify(&entity.name)).map_err(|e| {
-                PersistSnafu {
-                    message: e.to_string(),
+            let id = match crate::id::EntityId::new(slugify(&entity.name)) {
+                Ok(id) => id,
+                Err(e) => {
+                    result.skipped.push(SkippedItem::new(
+                        PersistItemKind::Entity,
+                        entity.name.clone(),
+                        format!("invalid entity id: {e}"),
+                    ));
+                    continue;
                 }
-                .build()
-            })?;
+            };
             // WHY: an entity description is prose, not a name the entity answers to. Using it
             // as the sole alias pollutes the alias set that dedup blocking and the prefix query
             // read from. Empty is correct until a real alias source exists.
@@ -645,25 +647,37 @@ Rules:
             } else {
                 entity.entity_type.clone()
             };
-            let e = Entity {
+            planned_entities.push(Entity {
                 id,
                 name: entity.name.clone(),
                 entity_type,
                 aliases,
                 created_at: now,
                 updated_at: now,
-            };
-            known_entity_ids.insert(e.id.as_str().to_owned());
-            store.insert_entity(&e).map_err(|e| {
-                PersistSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
-            result.entities_inserted += 1;
+            });
         }
 
-        for rel in relationships {
+        if extraction.relationships.len() > self.config.max_relationships {
+            tracing::warn!(
+                count = extraction.relationships.len(),
+                limit = self.config.max_relationships,
+                "extraction relationship limit exceeded, truncating"
+            );
+        }
+        let mut planned_relationships: Vec<Relationship> = Vec::new();
+        for (idx, rel) in extraction.relationships.iter().enumerate() {
+            let triple = || format!("{} {} {}", rel.source, rel.relation, rel.target);
+            if idx >= self.config.max_relationships {
+                result.skipped.push(SkippedItem::new(
+                    PersistItemKind::Relationship,
+                    triple(),
+                    format!(
+                        "extraction returned more than the {} relationship limit",
+                        self.config.max_relationships
+                    ),
+                ));
+                continue;
+            }
             let relation_type = match crate::vocab::normalize_relation(&rel.relation) {
                 crate::vocab::RelationType::Known(canonical) => canonical.to_owned(),
                 crate::vocab::RelationType::Novel(normalized) => {
@@ -684,6 +698,11 @@ Rules:
                         "rejected relationship with banned type"
                     );
                     result.relationships_skipped += 1;
+                    result.skipped.push(SkippedItem::new(
+                        PersistItemKind::Relationship,
+                        triple(),
+                        "banned relation type",
+                    ));
                     continue;
                 }
                 crate::vocab::RelationType::Malformed => {
@@ -694,38 +713,79 @@ Rules:
                         "rejected relationship with malformed type"
                     );
                     result.relationships_skipped += 1;
+                    result.skipped.push(SkippedItem::new(
+                        PersistItemKind::Relationship,
+                        triple(),
+                        "malformed relation type",
+                    ));
                     continue;
                 }
             };
-            let src = crate::id::EntityId::new(slugify(&rel.source)).map_err(|e| {
-                PersistSnafu {
-                    message: e.to_string(),
+            if !(0.0..=1.0).contains(&rel.confidence) {
+                tracing::warn!(
+                    relation = %rel.relation,
+                    confidence = rel.confidence,
+                    "relationship confidence out of range, skipping"
+                );
+                result.skipped.push(SkippedItem::new(
+                    PersistItemKind::Relationship,
+                    triple(),
+                    format!("confidence {} outside [0, 1]", rel.confidence),
+                ));
+                continue;
+            }
+            let src = match crate::id::EntityId::new(slugify(&rel.source)) {
+                Ok(id) => id,
+                Err(e) => {
+                    result.skipped.push(SkippedItem::new(
+                        PersistItemKind::Relationship,
+                        triple(),
+                        format!("invalid source entity id: {e}"),
+                    ));
+                    continue;
                 }
-                .build()
-            })?;
-            let dst = crate::id::EntityId::new(slugify(&rel.target)).map_err(|e| {
-                PersistSnafu {
-                    message: e.to_string(),
+            };
+            let dst = match crate::id::EntityId::new(slugify(&rel.target)) {
+                Ok(id) => id,
+                Err(e) => {
+                    result.skipped.push(SkippedItem::new(
+                        PersistItemKind::Relationship,
+                        triple(),
+                        format!("invalid target entity id: {e}"),
+                    ));
+                    continue;
                 }
-                .build()
-            })?;
-            let r = Relationship {
+            };
+            planned_relationships.push(Relationship {
                 src,
                 dst,
                 relation: relation_type,
                 weight: rel.confidence,
                 created_at: now,
-            };
-            store.insert_relationship(&r).map_err(|e| {
-                PersistSnafu {
-                    message: e.to_string(),
-                }
-                .build()
-            })?;
-            result.relationships_inserted += 1;
+            });
         }
 
-        for fact in facts {
+        if extraction.facts.len() > self.config.max_facts {
+            tracing::warn!(
+                count = extraction.facts.len(),
+                limit = self.config.max_facts,
+                "extraction fact limit exceeded, truncating"
+            );
+        }
+        let mut planned_facts: Vec<FactInsert> = Vec::new();
+        for (idx, fact) in extraction.facts.iter().enumerate() {
+            let triple = || format!("{} {} {}", fact.subject, fact.predicate, fact.object);
+            if idx >= self.config.max_facts {
+                result.skipped.push(SkippedItem::new(
+                    PersistItemKind::Fact,
+                    triple(),
+                    format!(
+                        "extraction returned more than the {} fact limit",
+                        self.config.max_facts
+                    ),
+                ));
+                continue;
+            }
             // WHY: guard against empty triple fields reaching the knowledge store —
             // the extraction pipeline should have caught these, but persist is the
             // last line of defense.
@@ -739,22 +799,43 @@ Rules:
                     object = %fact.object,
                     "fact skipped during persist: empty subject, predicate, or object"
                 );
+                result.skipped.push(SkippedItem::new(
+                    PersistItemKind::Fact,
+                    triple(),
+                    "empty subject, predicate, or object",
+                ));
                 continue;
             }
             let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
-            let id = observation_fact_id(
+            if content.len() > crate::knowledge::MAX_CONTENT_LENGTH {
+                result.skipped.push(SkippedItem::new(
+                    PersistItemKind::Fact,
+                    content.clone(),
+                    format!(
+                        "content length {} exceeds max {}",
+                        content.len(),
+                        crate::knowledge::MAX_CONTENT_LENGTH
+                    ),
+                ));
+                continue;
+            }
+            let id = match observation_fact_id(
                 nous_id,
                 source,
                 &fact.subject,
                 &fact.predicate,
                 &fact.object,
-            )
-            .map_err(|e| {
-                PersistSnafu {
-                    message: e.to_string(),
+            ) {
+                Ok(id) => id,
+                Err(e) => {
+                    result.skipped.push(SkippedItem::new(
+                        PersistItemKind::Fact,
+                        content.clone(),
+                        format!("invalid fact id: {e}"),
+                    ));
+                    continue;
                 }
-                .build()
-            })?;
+            };
             let classified_type = fact.fact_type.as_deref().map_or_else(
                 || crate::knowledge::FactType::classify(&content),
                 crate::knowledge::FactType::from_str_lossy,
@@ -766,6 +847,11 @@ Rules:
             // any Identity-typed fact that slipped through (e.g. third-person extraction).
             if classified_type == crate::knowledge::FactType::Identity {
                 tracing::debug!(content = %content, "fact skipped at persist: identity-type self-description");
+                result.skipped.push(SkippedItem::new(
+                    PersistItemKind::Fact,
+                    content.clone(),
+                    "identity-type self-description",
+                ));
                 continue;
             }
             let is_correction =
@@ -775,6 +861,14 @@ Rules:
             } else {
                 fact.confidence
             };
+            if !(0.0..=1.0).contains(&confidence) {
+                result.skipped.push(SkippedItem::new(
+                    PersistItemKind::Fact,
+                    content.clone(),
+                    format!("confidence {confidence} outside [0, 1]"),
+                ));
+                continue;
+            }
             let f = Fact {
                 id,
                 nous_id: nous_id.to_owned(),
@@ -806,43 +900,42 @@ Rules:
                 sensitivity: crate::knowledge::FactSensitivity::Public,
                 visibility: crate::knowledge::Visibility::Private,
             };
-            store.insert_fact(&f).map_err(|e| {
+            planned_facts.push(FactInsert {
+                fact: f,
+                subject_slug: slugify(&fact.subject),
+                object_slug: slugify(&fact.object),
+            });
+        }
+
+        // WHY (aletheia#5306): every accepted entity, relationship, and fact
+        // above writes as one all-or-nothing transaction — either the whole
+        // plan lands or none of it does, so a write failure can no longer
+        // leave a prefix of this call's entities/relationships standing
+        // without their facts (or vice versa).
+        if planned_entities.is_empty()
+            && planned_relationships.is_empty()
+            && planned_facts.is_empty()
+        {
+            return Ok(result);
+        }
+        let outcome = store
+            .persist_extraction_batch(&planned_entities, &planned_relationships, &planned_facts)
+            .map_err(|e| {
                 PersistSnafu {
                     message: e.to_string(),
                 }
                 .build()
             })?;
-            result.facts_inserted += 1;
 
-            // #4675: link the fact to the subject/object entities it references
-            // so graph-aware recall, scoped dedup, and consolidation see real
-            // fact-entity edges. The edge is idempotent (keyed put); subject and
-            // object are de-duplicated per fact so a reflexive triple links once.
-            let mut linked_this_fact: std::collections::HashSet<String> =
-                std::collections::HashSet::new();
-            for reference in [fact.subject.as_str(), fact.object.as_str()] {
-                let entity_slug = slugify(reference);
-                if !known_entity_ids.contains(&entity_slug)
-                    || !linked_this_fact.insert(entity_slug.clone())
-                {
-                    continue;
-                }
-                let Ok(entity_id) = crate::id::EntityId::new(entity_slug) else {
-                    continue;
-                };
-                match store.insert_fact_entity(&f.id, &entity_id) {
-                    Ok(()) => result.fact_entities_inserted += 1,
-                    Err(error) => {
-                        result.fact_entity_link_failures += 1;
-                        tracing::warn!(
-                            %error,
-                            fact_id = %f.id,
-                            entity_id = %entity_id,
-                            "failed to link fact to referenced entity"
-                        );
-                    }
-                }
-            }
+        result.entities_inserted = outcome.entities_inserted;
+        result.relationships_inserted = outcome.relationships_inserted;
+        result.facts_inserted = outcome.facts_inserted;
+        result.fact_entities_inserted = outcome.fact_entities_inserted;
+        result.fact_entity_link_failures = outcome.fact_entity_link_failures;
+        for (content, reason) in outcome.admission_rejected {
+            result
+                .skipped
+                .push(SkippedItem::new(PersistItemKind::Fact, content, reason));
         }
 
         Ok(result)
