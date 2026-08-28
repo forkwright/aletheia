@@ -35,7 +35,7 @@ impl LlmProvider for PendingProvider {
         &["test-model"]
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "pending"
     }
 }
@@ -76,7 +76,7 @@ impl LlmProvider for AnswerOnceThenPendingProvider {
         &["test-model"]
     }
 
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "answer-once-then-pending"
     }
 }
@@ -96,7 +96,7 @@ impl ToolExecutor for SlowExecutor {
     ) -> Pin<Box<dyn Future<Output = organon::error::Result<ToolResult>> + Send + 'a>> {
         self.started.fetch_add(1, Ordering::SeqCst);
         Box::pin(async {
-            tokio::time::sleep(Duration::from_secs(3600)).await;
+            tokio::time::sleep(Duration::from_hours(1)).await;
             Ok(ToolResult::text("should never observe this"))
         })
     }

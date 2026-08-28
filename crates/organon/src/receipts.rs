@@ -1047,6 +1047,10 @@ mod tests {
         );
     }
 
+    #[expect(
+        clippy::indexing_slicing,
+        reason = "test assertion on a Vec whose length was just asserted"
+    )]
     #[test]
     fn reconcile_interrupted_catches_a_call_left_started() {
         let mut ledger = make_ledger();
