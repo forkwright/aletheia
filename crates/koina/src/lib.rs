@@ -12,7 +12,7 @@ pub mod base64;
 pub mod cleanup;
 /// Credential provider trait for dynamic API key resolution.
 pub mod credential;
-/// Shared configuration defaults (token budgets, timeouts, iteration limits).
+/// Shared configuration defaults (token budgets, iteration limits).
 pub mod defaults;
 /// Disk space monitoring: threshold checks, cached monitor, write guards.
 pub mod disk_space;

@@ -929,19 +929,6 @@ fn build_registry() -> Vec<ParameterSpec> {
         },
         // ── Timeouts and retry ──
         ParameterSpec {
-            key: "timeouts.llmCallSecs",
-            section: "timeouts",
-            tier: ParameterTier::Deployment,
-            default: ParameterValue::Duration(300),
-            bounds: Some((30.0, 3600.0)),
-            hot_reloadable: true,
-            description: "Maximum wall-clock seconds for a single LLM API call",
-            affects: "llm_latency",
-            outcome_signal: "llm_timeout_rate",
-            evidence_required: "LLM call duration distribution",
-            direction_hint: TuningDirection::Contextual,
-        },
-        ParameterSpec {
             key: "timeouts.approvalTimeoutSecs",
             section: "timeouts",
             tier: ParameterTier::Deployment,

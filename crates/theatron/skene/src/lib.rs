@@ -17,6 +17,10 @@ pub mod events;
 /// Newtype wrappers for domain identifiers shared across all frontends.
 pub mod id;
 
+/// Shared bearer-token secret storage core: OS keyring, AES-256-GCM
+/// encrypted fallback, atomic secure writes.
+pub mod secret_store;
+
 /// SSE wire protocol parser for reqwest response streams.
 pub mod sse;
 
@@ -41,6 +45,7 @@ mod tests {
         let _ = std::any::type_name::<super::api::ApiClient>();
         let _ = std::any::type_name_of_val(&super::discovery::discover_server);
         let _ = std::any::type_name::<super::id::NousId>();
+        let _ = std::any::type_name::<super::secret_store::TokenStore>();
         let _ = std::any::type_name_of_val(&super::text::append_terminal_notice);
     }
 }

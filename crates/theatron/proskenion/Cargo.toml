@@ -134,12 +134,6 @@ pulldown-cmark = { version = "0.13", features = ["simd"] }
 # Config persistence
 dirs = "6"
 toml = "1.1"
-aes-gcm = "0.11"
-keyring = "4"
-# WHY: version/features must be kept in sync with the aletheia root
-# workspace's [workspace.dependencies] entry — this standalone workspace
-# cannot inherit across the boundary (see the file header above).
-zeroize = { version = "1", default-features = false, features = ["std"] }
 
 # Desktop notifications (freedesktop.org D-Bus on Linux)
 notify-rust = "4"

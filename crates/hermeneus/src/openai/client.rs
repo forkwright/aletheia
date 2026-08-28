@@ -21,7 +21,7 @@ use koina::secret::SecretString;
 use crate::RetryPolicy;
 use crate::anthropic::StreamEvent;
 use crate::anthropic::pricing::estimate_cost;
-use crate::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, RequestOutcome};
+use crate::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, concurrency_outcome};
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ModelPricing};
@@ -166,14 +166,6 @@ impl Default for OpenAiProviderConfig {
     }
 }
 
-/// Returns true when the URL uses TLS or is safe to use without TLS.
-///
-/// WHY(#5055): delegate to the parsed shared policy so compatible providers
-/// cannot whitelist suffix-spoofed loopback-looking hosts.
-fn has_allowed_transport(url: &str) -> bool {
-    koina::http::is_secure_or_plaintext_loopback_url(url)
-}
-
 /// Returns true when the URL is safe to use without TLS.
 ///
 /// WHY: first-party Responses API auth is optional only for plaintext loopback
@@ -201,7 +193,9 @@ impl OpenAiProvider {
     /// built or the base URL is non-loopback HTTP (credentials would be
     /// sent in cleartext).
     pub fn new(config: OpenAiProviderConfig) -> Result<Self> {
-        if !has_allowed_transport(&config.base_url) {
+        // WHY(#5055): delegate to the parsed shared policy so compatible providers
+        // cannot whitelist suffix-spoofed loopback-looking hosts.
+        if !koina::http::is_secure_or_plaintext_loopback_url(&config.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "OpenAI-compatible base URL must use HTTPS or loopback (got {:?})",
@@ -817,14 +811,6 @@ impl LlmProvider for OpenAiProvider {
         on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(self.execute_streaming(request, on_event))
-    }
-}
-
-fn concurrency_outcome(result: &Result<CompletionResponse>) -> RequestOutcome {
-    match result {
-        Ok(_) => RequestOutcome::Success,
-        Err(err) if err.is_retryable() => RequestOutcome::Overload,
-        Err(_) => RequestOutcome::Neutral,
     }
 }
 
