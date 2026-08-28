@@ -330,17 +330,19 @@ fn llm_error_api_500_redacts_secrets_in_message() {
     use snafu::IntoError;
     let err = hermeneus::error::ApiSnafu {
         status: 500_u16,
-        message: "invalid key sk-ant-abc123def456".to_owned(),
+        message: "invalid key sk-ant-api03-abc123def456ghi789".to_owned(), // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic Anthropic key shape, redactor self-test
         context: make_api_context(),
     }
     .into_error(snafu::NoneError);
     let (_, msg) = classify_llm_error(&err);
     // WHY(#844): secrets must be redacted from client-visible messages
+    // WHY(#7020): delegates to koina::redact::redact_sensitive, whose
+    // canonical replacement marker for an Anthropic key is `sk-ant-***`.
     assert!(
-        !msg.contains("sk-ant-abc123def456"),
-        "API key must be redacted"
+        !msg.contains("abc123def456ghi789"),
+        "API key body must be redacted"
     );
-    assert!(msg.contains("[REDACTED]"));
+    assert!(msg.contains("sk-ant-***"));
 }
 
 // ── turn_error_info: nous error dispatch ──
