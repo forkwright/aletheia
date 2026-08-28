@@ -1109,8 +1109,3 @@ count = 1
 file = "crates/theatron/skene/src/api/client.rs"
 item = "base_url"
 count = 1
-
-[[site]]
-file = "crates/theatron/skene/src/api/client.rs"
-item = "set_token"
-count = 1

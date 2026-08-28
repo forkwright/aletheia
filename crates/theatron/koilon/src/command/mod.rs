@@ -216,7 +216,11 @@ pub static COMMANDS: &[Command] = &[
 ];
 
 const MAX_SUGGESTIONS: usize = 8;
-const MAX_SUGGESTIONS_INITIAL: usize = 25;
+// INVARIANT: derived from COMMANDS.len() so empty-input (initial open) always
+// shows every static command -- a hand-picked constant silently falls behind
+// the registry the moment a command is added (aletheia PR#7089: 25 hardcoded
+// against 26 commands broke `empty_input_returns_all_commands`).
+const MAX_SUGGESTIONS_INITIAL: usize = COMMANDS.len();
 
 /// Build suggestions from static commands + dynamic agent entries.
 pub fn build_suggestions(input: &str, agents: &[AgentState]) -> Vec<Suggestion> {
