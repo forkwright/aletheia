@@ -34,6 +34,45 @@ fn is_self_reference(subject: &str) -> bool {
     )
 }
 
+/// Compute the observation identity for an extracted fact (#5305).
+///
+/// WHY: the previous positional id (`{subject_slug}-{predicate_slug}-{index}`)
+/// collapsed distinct observations — two sessions extracting the same
+/// subject/predicate produced identical ids, so the `(id, valid_from)` fact
+/// key and the `fact_entities` side table could not tell observations apart.
+/// The id is now content-addressed over (nous, source session, subject,
+/// predicate, object): re-persisting the same session's extraction converges
+/// on the same id (retry-safe upsert), while a different session or triple
+/// yields a distinct observation id. The slug prefix is retained only for
+/// debugging readability; the hash suffix carries the identity.
+#[cfg(feature = "mneme-engine")]
+pub(crate) fn observation_fact_id(
+    nous_id: &str,
+    source: &str,
+    subject: &str,
+    predicate: &str,
+    object: &str,
+) -> Result<crate::id::FactId, eidos::id::IdValidationError> {
+    use sha2::{Digest, Sha256};
+    use std::fmt::Write as _;
+
+    let mut hasher = Sha256::new();
+    for field in [nous_id, source, subject, predicate, object] {
+        hasher.update(u64::try_from(field.len()).unwrap_or(u64::MAX).to_le_bytes());
+        hasher.update(field.as_bytes());
+    }
+    let digest = hasher.finalize();
+    let mut hash_suffix = String::with_capacity(16);
+    for byte in digest.iter().take(8) {
+        // WHY discard the Result: writing hex digits into a String never
+        // fails, and `expect_used` is denied crate-wide.
+        let _ = write!(hash_suffix, "{byte:02x}");
+    }
+    let subject_slug: String = slugify(subject).chars().take(60).collect();
+    let predicate_slug: String = slugify(predicate).chars().take(60).collect();
+    crate::id::FactId::new(format!("obs-{subject_slug}-{predicate_slug}-{hash_suffix}"))
+}
+
 fn render_conversation_messages(messages: &[ConversationMessage]) -> String {
     let mut conversation = String::new();
     for msg in messages {
@@ -686,7 +725,7 @@ Rules:
             result.relationships_inserted += 1;
         }
 
-        for (i, fact) in facts.enumerate() {
+        for fact in facts {
             // WHY: guard against empty triple fields reaching the knowledge store —
             // the extraction pipeline should have caught these, but persist is the
             // last line of defense.
@@ -703,11 +742,13 @@ Rules:
                 continue;
             }
             let content = format!("{} {} {}", fact.subject, fact.predicate, fact.object);
-            let id = crate::id::FactId::new(format!(
-                "{}-{}-{i}",
-                slugify(&fact.subject),
-                slugify(&fact.predicate)
-            ))
+            let id = observation_fact_id(
+                nous_id,
+                source,
+                &fact.subject,
+                &fact.predicate,
+                &fact.object,
+            )
             .map_err(|e| {
                 PersistSnafu {
                     message: e.to_string(),
