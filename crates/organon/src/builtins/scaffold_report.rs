@@ -5,7 +5,9 @@ use std::pin::Pin;
 
 use indexmap::IndexMap;
 
-use crate::builtins::workspace::validate_prepared_path;
+use crate::builtins::workspace::{
+    extract_opt_str, extract_str_or_tool_error, validate_prepared_path,
+};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -13,23 +15,6 @@ use crate::types::{
     ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
-
-fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
-    args.get(key).and_then(serde_json::Value::as_str)
-}
-
-#[expect(
-    clippy::result_large_err,
-    reason = "ToolResult grew by receipt field; boxing would change public API"
-)]
-fn extract_str<'a>(
-    args: &'a serde_json::Value,
-    key: &str,
-) -> std::result::Result<&'a str, ToolResult> {
-    args.get(key)
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| ToolResult::error(format!("missing required argument: {key}")))
-}
 
 fn extract_bool(args: &serde_json::Value, key: &str, default: bool) -> bool {
     args.get(key)
@@ -52,12 +37,12 @@ impl ToolExecutor for ScaffoldReportExecutor {
         Box::pin(async move {
             let args = &input.arguments;
 
-            let slug = match extract_str(args, "slug") {
+            let slug = match extract_str_or_tool_error(args, "slug") {
                 Ok(s) => s,
                 Err(e) => return Ok(e),
             };
             let description = extract_opt_str(args, "description").unwrap_or("");
-            let format_str = match extract_str(args, "format") {
+            let format_str = match extract_str_or_tool_error(args, "format") {
                 Ok(s) => s,
                 Err(e) => return Ok(e),
             };
