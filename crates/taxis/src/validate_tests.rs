@@ -119,6 +119,36 @@ fn rejects_zero_backup_interval_hours() {
 }
 
 #[test]
+fn rejects_zero_retention_ttl_on_the_canonical_path() {
+    // WHY(#5327): retention moved from `data.retention` to the canonical
+    // `maintenance.retention`. `validate_data` guarded the legacy path only, and
+    // an API body reaches `validate_section` without the loader's alias
+    // resolution -- so before this check a zero TTL posted against the canonical
+    // path validated clean, silently losing the guard the legacy path had.
+    for key in ["closedSessionTtlDays", "sessionMaxAgeDays"] {
+        let section = json!({ "retention": { key: 0 } });
+        let result = validate_section("maintenance", &section);
+        assert!(result.is_err(), "zero {key} should be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            err.errors.iter().any(|e| e.contains(key)),
+            "error should name {key}, got {:?}",
+            err.errors
+        );
+    }
+}
+
+#[test]
+fn rejects_zero_orphan_message_age_on_the_canonical_path() {
+    let section = json!({ "retention": { "orphanMessageMaxAgeDays": 0 } });
+    let result = validate_section("maintenance", &section);
+    assert!(
+        result.is_err(),
+        "zero orphanMessageMaxAgeDays should be rejected"
+    );
+}
+
+#[test]
 fn rejects_zero_backup_retention_count() {
     // WHY(#5141): retention 0 makes pruning (`skip(retention_count)`) drop
     // every backup set, including one just created.

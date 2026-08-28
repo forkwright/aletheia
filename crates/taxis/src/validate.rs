@@ -753,6 +753,29 @@ fn validate_maintenance(value: &Value, errors: &mut Vec<String>) {
             }
         }
     }
+
+    // WHY(#5327): retention's canonical home moved from `data.retention` to
+    // `maintenance.retention`. `validate_data` below still guards the legacy
+    // path, but an API body reaches `validate_section` WITHOUT the loader's
+    // alias resolution, so without this a zero TTL posted against the canonical
+    // path validates clean -- the positivity check the legacy path had would be
+    // silently lost for every caller that moved to the new shape.
+    //
+    // Every accepted spelling is checked because `RetentionSettings` declares
+    // serde aliases for each, and `check_positive_u32` no-ops on an absent key.
+    if let Some(retention) = value.get("retention") {
+        for key in [
+            "closedSessionTtlDays",
+            "sessionMaxAgeDays",
+            "session_max_age_days",
+            "closed_session_ttl_days",
+        ] {
+            check_positive_u32(retention, key, errors);
+        }
+        for key in ["orphanMessageMaxAgeDays", "orphan_message_max_age_days"] {
+            check_positive_u32(retention, key, errors);
+        }
+    }
 }
 
 fn validate_data(value: &Value, errors: &mut Vec<String>) {
