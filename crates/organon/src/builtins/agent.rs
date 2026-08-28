@@ -511,7 +511,6 @@ mod tests {
     use koina::id::ToolName;
 
     use crate::registry::{ToolExecutor, ToolRegistry};
-    use crate::testing::install_crypto_provider;
     use crate::types::{
         SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolContext, ToolInput, ToolServices,
     };
