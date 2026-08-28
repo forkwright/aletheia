@@ -1,0 +1,48 @@
+name: Install apt packages
+description: >-
+  Installs pinned apt packages, tolerating an unrelated runner-image repository outage. Every job
+  that needs an apt package calls this instead of carrying its own `apt-get update && apt-get
+  install` copy.
+
+inputs:
+  packages:
+    description: Space-separated apt package names to install.
+    required: true
+  no_install_recommends:
+    description: Pass `--no-install-recommends` to `apt-get install`.
+    required: false
+    default: "false"
+  verify:
+    description: >-
+      Optional post-install command (e.g. `command -v rg`) asserting the tool landed. Empty skips
+      verification - use only when no such assertion is meaningful. WHY(#6523): a half-failed
+      install must stop the job loudly, not be silently absorbed downstream.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        APT_PACKAGES: ${{ inputs.packages }}
+        APT_NO_RECOMMENDS: ${{ inputs.no_install_recommends }}
+        APT_VERIFY: ${{ inputs.verify }}
+      run: |
+        set -euo pipefail
+        # WHY(#7072): `apt-get update` fails the whole step when ANY repository configured
+        # on the runner image is unreachable, including one this job never uses (observed:
+        # an unrelated azure-cli mirror returning 403). The lists for repos that DID
+        # succeed are written to disk before the nonzero exit, so tolerating that exit and
+        # installing anyway uses those lists rather than failing the job on them.
+        sudo apt-get update || true
+        if [ "${APT_NO_RECOMMENDS}" = "true" ]; then
+          # shellcheck disable=SC2086
+          sudo apt-get install -y --no-install-recommends ${APT_PACKAGES}
+        else
+          # shellcheck disable=SC2086
+          sudo apt-get install -y ${APT_PACKAGES}
+        fi
+        if [ -n "${APT_VERIFY}" ]; then
+          eval "${APT_VERIFY}" || { echo "::error::apt-install verify failed: ${APT_VERIFY}"; exit 1; }
+        fi
