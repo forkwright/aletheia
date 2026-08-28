@@ -1192,6 +1192,10 @@ fn with_receipt_ledger<F>(
     clippy::too_many_arguments,
     reason = "carries the same receipt-issuance inputs dispatch_single_tool already threads through"
 )]
+#[expect(
+    clippy::expect_used,
+    reason = "ToolResultContent contains only JSON-native strings and arrays; serialization cannot fail"
+)]
 fn issue_receipt(
     tool_id: &str,
     tool_name: &str,
@@ -1251,10 +1255,6 @@ fn issue_receipt(
 #[expect(
     clippy::too_many_arguments,
     reason = "dispatch needs tool id, name, input, registry, context, limits, receipt infra, and approval outcome"
-)]
-#[expect(
-    clippy::expect_used,
-    reason = "ToolResultContent contains only JSON-native strings and arrays; serialization cannot fail"
 )]
 async fn dispatch_single_tool(
     tool_id: &str,
