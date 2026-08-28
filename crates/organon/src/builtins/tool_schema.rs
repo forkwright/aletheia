@@ -258,7 +258,7 @@ mod tests {
     use std::collections::HashSet;
     use std::future::Future;
     use std::pin::Pin;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
 
     use indexmap::IndexMap;
     use koina::id::ToolName;
