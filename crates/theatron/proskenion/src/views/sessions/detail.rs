@@ -1,7 +1,7 @@
 //! Session detail panel: stats, distillation history, message preview.
 
 use dioxus::prelude::*;
-use skene::id::SessionId;
+use skene::id::ApiSessionId;
 
 use crate::state::sessions::{
     SessionDetailStore, SessionLoadState, format_relative_time, session_can_archive,
@@ -192,9 +192,9 @@ pub(crate) fn SessionDetailEmpty() -> Element {
 #[component]
 pub(crate) fn SessionDetail(
     detail_state: Signal<SessionLoadState<SessionDetailStore>>,
-    on_open_chat: EventHandler<SessionId>,
-    on_archive: EventHandler<SessionId>,
-    on_restore: EventHandler<SessionId>,
+    on_open_chat: EventHandler<ApiSessionId>,
+    on_archive: EventHandler<ApiSessionId>,
+    on_restore: EventHandler<ApiSessionId>,
     on_retry: EventHandler<()>,
 ) -> Element {
     let state = detail_state.read();

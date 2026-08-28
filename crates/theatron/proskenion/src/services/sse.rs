@@ -22,7 +22,7 @@
 //! whether the state changed, leaving signal writes to the caller.
 
 use skene::api::types::{ActiveTurn, SseEvent};
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 use crate::state::events::{DistillationProgress, EventState, SseConnectionState};
 
@@ -131,8 +131,8 @@ impl SseEventRouter {
 
     fn on_turn_before(
         &mut self,
-        nous_id: &NousId,
-        session_id: &skene::id::SessionId,
+        nous_id: &ApiNousId,
+        session_id: &skene::id::ApiSessionId,
         turn_id: &skene::id::TurnId,
     ) -> bool {
         // NOTE: Only add if not already tracked (idempotent).
@@ -151,7 +151,7 @@ impl SseEventRouter {
         true
     }
 
-    fn on_turn_after(&mut self, nous_id: &NousId, session_id: &skene::id::SessionId) -> bool {
+    fn on_turn_after(&mut self, nous_id: &ApiNousId, session_id: &skene::id::ApiSessionId) -> bool {
         let before = self.state.active_turns.len();
         self.state.active_turns.retain(|t| {
             !(t.nous_id.as_str() == nous_id.as_str()
@@ -162,7 +162,7 @@ impl SseEventRouter {
 
     // ── Tool events ──
 
-    fn on_tool_called(&mut self, nous_id: &NousId, tool_name: &str) -> bool {
+    fn on_tool_called(&mut self, nous_id: &ApiNousId, tool_name: &str) -> bool {
         // NOTE: Update agent status to reflect tool activity.
         self.state
             .agent_statuses
@@ -170,7 +170,7 @@ impl SseEventRouter {
         true
     }
 
-    fn on_tool_failed(&mut self, nous_id: &NousId, tool_name: &str, error: &str) -> bool {
+    fn on_tool_failed(&mut self, nous_id: &ApiNousId, tool_name: &str, error: &str) -> bool {
         tracing::warn!(
             nous_id = nous_id.as_str(),
             tool_name,
@@ -185,7 +185,7 @@ impl SseEventRouter {
 
     // ── Status update ──
 
-    fn on_status_update(&mut self, nous_id: &NousId, status: &str) -> bool {
+    fn on_status_update(&mut self, nous_id: &ApiNousId, status: &str) -> bool {
         let prev = self.state.agent_statuses.get(nous_id);
         if prev.map(String::as_str) == Some(status) {
             return false;
@@ -198,14 +198,14 @@ impl SseEventRouter {
 
     // ── Distillation ──
 
-    fn on_distill_before(&mut self, nous_id: &NousId) -> bool {
+    fn on_distill_before(&mut self, nous_id: &ApiNousId) -> bool {
         self.state
             .distillation
             .insert(nous_id.clone(), DistillationProgress::Started);
         true
     }
 
-    fn on_distill_stage(&mut self, nous_id: &NousId, stage: &str) -> bool {
+    fn on_distill_stage(&mut self, nous_id: &ApiNousId, stage: &str) -> bool {
         self.state.distillation.insert(
             nous_id.clone(),
             DistillationProgress::Stage {
@@ -215,7 +215,7 @@ impl SseEventRouter {
         true
     }
 
-    fn on_distill_after(&mut self, nous_id: &NousId) -> bool {
+    fn on_distill_after(&mut self, nous_id: &ApiNousId) -> bool {
         self.state
             .distillation
             .insert(nous_id.clone(), DistillationProgress::Complete);
@@ -243,16 +243,16 @@ impl Default for SseEventRouter {
 
 #[cfg(test)]
 mod tests {
-    use skene::id::{NousId, SessionId, TurnId};
+    use skene::id::{ApiNousId, ApiSessionId, TurnId};
 
     use super::*;
 
-    fn nous(id: &str) -> NousId {
-        NousId::from(id)
+    fn nous(id: &str) -> ApiNousId {
+        ApiNousId::from(id)
     }
 
-    fn session(id: &str) -> SessionId {
-        SessionId::from(id)
+    fn session(id: &str) -> ApiSessionId {
+        ApiSessionId::from(id)
     }
 
     fn turn(id: &str) -> TurnId {

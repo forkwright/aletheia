@@ -1,6 +1,6 @@
 use crate::api::types::{Agent, HistoryMessage, Session};
 use crate::app::App;
-use crate::id::{NousId, SessionId};
+use crate::id::{ApiNousId, ApiSessionId};
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
 use crate::state::{
@@ -37,7 +37,7 @@ pub(crate) fn handle_agents_loaded(app: &mut App, agents: Vec<Agent>) {
 
 #[tracing::instrument(skip_all, fields(%nous_id, count = sessions.len()))]
 // SAFETY: sanitized at ingestion: session keys and fields from API are sanitized here.
-pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: Vec<Session>) {
+pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: ApiNousId, sessions: Vec<Session>) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.sessions = sanitize_sessions(sessions);
     }
@@ -47,7 +47,7 @@ pub(crate) fn handle_sessions_loaded(app: &mut App, nous_id: NousId, sessions: V
 // SAFETY: sanitized at ingestion: all message content from API is sanitized here.
 pub(crate) fn handle_history_loaded(
     app: &mut App,
-    session_id: SessionId,
+    session_id: ApiSessionId,
     messages: Vec<HistoryMessage>,
 ) {
     let session_model = session_model_for(app, &session_id);
@@ -108,7 +108,7 @@ pub(crate) fn handle_session_picker_new(app: &mut App) {
 pub(crate) fn handle_new_session_completed(
     app: &mut App,
     action_id: String,
-    nous_id: NousId,
+    nous_id: ApiNousId,
     _session_key: String,
     result: Result<Session, String>,
 ) {
@@ -169,7 +169,7 @@ fn set_new_session_status(app: &mut App, status: ControlMutationStatus) {
     }
 }
 
-fn new_session_action_id(agent_id: &NousId, session_key: &str) -> String {
+fn new_session_action_id(agent_id: &ApiNousId, session_key: &str) -> String {
     format!("session:create:{agent_id}:{session_key}")
 }
 
@@ -355,7 +355,7 @@ pub(crate) fn history_to_chat_messages(
 }
 
 /// Look up the model of a session already loaded into the agent roster.
-pub(crate) fn session_model_for(app: &App, session_id: &SessionId) -> Option<String> {
+pub(crate) fn session_model_for(app: &App, session_id: &ApiSessionId) -> Option<String> {
     app.dashboard
         .agents
         .iter()
@@ -735,7 +735,7 @@ mod tests {
         app.viewport.render.markdown_cache.text = "stale from previous session".to_string();
         app.viewport.render.markdown_cache.lines = vec![ratatui::text::Line::raw("stale")];
 
-        handle_history_loaded(&mut app, SessionId::from("s1"), vec![]);
+        handle_history_loaded(&mut app, ApiSessionId::from("s1"), vec![]);
 
         assert!(
             app.viewport.render.markdown_cache.text.is_empty(),
@@ -786,7 +786,7 @@ mod tests {
                 is_distilled: false,
             },
         ];
-        handle_history_loaded(&mut app, SessionId::from("s1"), messages);
+        handle_history_loaded(&mut app, ApiSessionId::from("s1"), messages);
         assert_eq!(app.dashboard.messages.len(), 2);
         assert_eq!(app.dashboard.messages[0].role, "user");
         assert_eq!(app.dashboard.messages[1].role, "assistant");
@@ -799,7 +799,7 @@ mod tests {
     fn handle_history_loaded_sources_model_from_session_not_message() {
         use crate::app::test_helpers::*;
         let mut app = test_app();
-        let session_id = SessionId::from("sess-with-model");
+        let session_id = ApiSessionId::from("sess-with-model");
         let mut agent = test_agent("syn", "Syn");
         agent.sessions.push(Session {
             id: session_id.clone(),

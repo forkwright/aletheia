@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 /// Persisted window geometry and UI state.
 ///
@@ -86,7 +86,7 @@ pub struct QuickInputState {
     /// Whether the overlay is currently visible.
     pub visible: bool,
     /// Currently selected agent for the input.
-    pub selected_agent: Option<NousId>,
+    pub selected_agent: Option<ApiNousId>,
     /// Current text in the input field.
     pub input_text: String,
 }
@@ -94,7 +94,7 @@ pub struct QuickInputState {
 impl QuickInputState {
     /// Open the overlay, optionally pre-selecting an agent.
     #[cfg_attr(not(test), expect(dead_code, reason = "used in tests"))]
-    pub(crate) fn open(&mut self, agent: Option<NousId>) {
+    pub(crate) fn open(&mut self, agent: Option<ApiNousId>) {
         self.visible = true;
         self.selected_agent = agent;
     }

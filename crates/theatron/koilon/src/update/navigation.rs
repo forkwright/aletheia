@@ -1,5 +1,5 @@
 use crate::app::App;
-use crate::id::NousId;
+use crate::id::ApiNousId;
 
 pub(crate) fn handle_scroll_up(app: &mut App) {
     app.viewport.render.scroll_offset = app.viewport.render.scroll_offset.saturating_add(3);
@@ -63,7 +63,7 @@ pub(crate) fn handle_scroll_to_bottom(app: &mut App) {
     app.viewport.render.auto_scroll = true;
 }
 
-pub(crate) async fn handle_focus_agent(app: &mut App, id: NousId) {
+pub(crate) async fn handle_focus_agent(app: &mut App, id: ApiNousId) {
     app.save_scroll_state();
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == id) {
         agent.unread_count = 0;

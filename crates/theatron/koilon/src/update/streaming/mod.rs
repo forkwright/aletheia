@@ -2,7 +2,7 @@ use skene::text::append_terminal_notice;
 
 use crate::api::types::{Plan, TurnOutcome};
 use crate::app::App;
-use crate::id::{NousId, ToolId, TurnId};
+use crate::id::{ApiNousId, ToolId, TurnId};
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
 use crate::state::ops::OpsToolStatus;
@@ -112,7 +112,7 @@ fn commit_assistant_message(
 }
 
 #[tracing::instrument(skip_all, fields(%turn_id, %nous_id))]
-pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: NousId) {
+pub(crate) fn handle_stream_turn_start(app: &mut App, turn_id: TurnId, nous_id: ApiNousId) {
     app.connection.state_epoch = app.connection.state_epoch.wrapping_add(1);
     app.connection.active_turn_id = Some(turn_id);
     app.connection.stream_phase = crate::state::StreamPhase::Requesting;

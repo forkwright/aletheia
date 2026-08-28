@@ -1,7 +1,7 @@
 use koina::secret::SecretString;
 
 use crate::api::types::*;
-use crate::id::{NousId, PlanId, SessionId, ToolId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, PlanId, ToolId, TurnId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -112,7 +112,7 @@ pub enum Msg {
     ScrollPageUp,
     ScrollPageDown,
     ScrollToBottom,
-    FocusAgent(NousId),
+    FocusAgent(ApiNousId),
     NextAgent,
     PrevAgent,
 
@@ -151,7 +151,7 @@ pub enum Msg {
     },
     NewSessionCompleted {
         action_id: String,
-        nous_id: NousId,
+        nous_id: ApiNousId,
         session_key: String,
         result: Result<Session, String>,
     },
@@ -162,49 +162,49 @@ pub enum Msg {
         active_turns: Vec<ActiveTurn>,
     },
     SseTurnBefore {
-        nous_id: NousId,
+        nous_id: ApiNousId,
         #[expect(dead_code, reason = "planned TUI feature")]
-        session_id: SessionId,
+        session_id: ApiSessionId,
         #[expect(dead_code, reason = "planned TUI feature")]
         turn_id: TurnId,
     },
     SseTurnAfter {
-        nous_id: NousId,
-        session_id: SessionId,
+        nous_id: ApiNousId,
+        session_id: ApiSessionId,
     },
     SseToolCalled {
-        nous_id: NousId,
+        nous_id: ApiNousId,
         tool_name: String,
     },
     SseToolFailed {
-        nous_id: NousId,
+        nous_id: ApiNousId,
         #[expect(dead_code, reason = "planned TUI feature")]
         tool_name: String,
         #[expect(dead_code, reason = "planned TUI feature")]
         error: String,
     },
     SseStatusUpdate {
-        nous_id: NousId,
+        nous_id: ApiNousId,
         status: String,
     },
     SseSessionCreated {
-        nous_id: NousId,
+        nous_id: ApiNousId,
         #[expect(dead_code, reason = "planned TUI feature")]
-        session_id: SessionId,
+        session_id: ApiSessionId,
     },
     SseSessionArchived {
-        nous_id: NousId,
-        session_id: SessionId,
+        nous_id: ApiNousId,
+        session_id: ApiSessionId,
     },
     SseDistillBefore {
-        nous_id: NousId,
+        nous_id: ApiNousId,
     },
     SseDistillStage {
-        nous_id: NousId,
+        nous_id: ApiNousId,
         stage: String,
     },
     SseDistillAfter {
-        nous_id: NousId,
+        nous_id: ApiNousId,
     },
     SseStreamLagged {
         dropped: u64,
@@ -212,8 +212,8 @@ pub enum Msg {
 
     StreamTurnStart {
         #[expect(dead_code, reason = "planned TUI feature")]
-        session_id: SessionId,
-        nous_id: NousId,
+        session_id: ApiSessionId,
+        nous_id: ApiNousId,
         turn_id: TurnId,
     },
     StreamTextDelta(String),
@@ -275,12 +275,12 @@ pub enum Msg {
     AgentsLoaded(Vec<Agent>),
     #[expect(dead_code, reason = "planned TUI feature")]
     SessionsLoaded {
-        nous_id: NousId,
+        nous_id: ApiNousId,
         sessions: Vec<Session>,
     },
     #[expect(dead_code, reason = "planned TUI feature")]
     HistoryLoaded {
-        session_id: SessionId,
+        session_id: ApiSessionId,
         messages: Vec<HistoryMessage>,
     },
     /// Canonical backend-wide token/cost telemetry (#4987), fetched

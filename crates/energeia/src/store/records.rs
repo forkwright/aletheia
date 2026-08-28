@@ -16,7 +16,7 @@ newtype_id!(
 
 newtype_id!(
     /// Unique identifier for a session within a dispatch (ULID, time-sortable).
-    pub struct SessionId(String)
+    pub struct PromptSessionId(String)
 );
 
 /// Persistent state of a dispatch lifecycle.
@@ -70,7 +70,7 @@ impl std::fmt::Display for DispatchStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionRecord {
     /// Unique identifier for this session.
-    pub id: SessionId,
+    pub id: PromptSessionId,
     /// Parent dispatch this session belongs to.
     pub dispatch_id: DispatchId,
     /// Prompt number this session is executing.
@@ -251,7 +251,7 @@ pub struct NewObservation {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CiValidationRecord {
     /// Session this validation relates to.
-    pub session_id: SessionId,
+    pub session_id: PromptSessionId,
     /// Name of the CI check (e.g., "build", "test").
     pub check_name: String,
     /// PR number that was validated.
@@ -324,15 +324,25 @@ mod tests {
 
     #[test]
     fn dispatch_id_roundtrip() {
-        let id = DispatchId::new("01JQXYZ123");
+        let id = DispatchId::new("01JQXYZ123").unwrap();
         let json = serde_json::to_string(&id).unwrap();
         let back: DispatchId = serde_json::from_str(&json).unwrap();
         assert_eq!(id, back);
     }
 
     #[test]
+    fn dispatch_id_new_rejects_empty() {
+        assert!(DispatchId::new("").is_err());
+    }
+
+    #[test]
+    fn session_id_new_rejects_empty() {
+        assert!(PromptSessionId::new("").is_err());
+    }
+
+    #[test]
     fn session_id_roundtrip() {
-        let id = SessionId::new("01JQXYZ456");
+        let id = PromptSessionId::new("01JQXYZ456").unwrap();
         assert_eq!(id.as_str(), "01JQXYZ456");
     }
 
@@ -352,7 +362,7 @@ mod tests {
     #[test]
     fn dispatch_record_msgpack_roundtrip() {
         let record = DispatchRecord {
-            id: DispatchId::new("01JQXYZ123"),
+            id: DispatchId::new("01JQXYZ123").unwrap(),
             project: "acme".to_owned(),
             spec: r#"{"prompts":[1,2]}"#.to_owned(),
             status: DispatchStatus::Running,
@@ -370,8 +380,8 @@ mod tests {
     #[test]
     fn session_record_msgpack_roundtrip() {
         let record = SessionRecord {
-            id: SessionId::new("01JQSESS01"),
-            dispatch_id: DispatchId::new("01JQXYZ123"),
+            id: PromptSessionId::new("01JQSESS01").unwrap(),
+            dispatch_id: DispatchId::new("01JQXYZ123").unwrap(),
             prompt_number: 1,
             status: SessionStatus::Success,
             session_id: Some("cc-sess-abc".to_owned()),
@@ -412,7 +422,7 @@ mod tests {
         // an old record by hand-encoding only the original field set.
         #[derive(serde::Serialize)]
         struct LegacySessionRecord {
-            id: SessionId,
+            id: PromptSessionId,
             dispatch_id: DispatchId,
             prompt_number: u32,
             status: SessionStatus,
@@ -427,8 +437,8 @@ mod tests {
         }
 
         let legacy = LegacySessionRecord {
-            id: SessionId::new("01JQSESS02"),
-            dispatch_id: DispatchId::new("01JQXYZ456"),
+            id: PromptSessionId::new("01JQSESS02").unwrap(),
+            dispatch_id: DispatchId::new("01JQXYZ456").unwrap(),
             prompt_number: 2,
             status: SessionStatus::Success,
             session_id: None,

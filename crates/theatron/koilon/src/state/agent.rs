@@ -1,5 +1,5 @@
 use crate::api::types::Session;
-use crate::id::NousId;
+use crate::id::ApiNousId;
 use crate::state::ops::ToolMetadata;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,7 +63,7 @@ pub struct ToolSummary {
 
 #[derive(Debug, Clone)]
 pub struct AgentState {
-    pub id: NousId,
+    pub id: ApiNousId,
     pub name: String,
     /// Pre-lowercased `name`, cached at ingestion to avoid per-frame allocation in view code.
     pub name_lower: String,

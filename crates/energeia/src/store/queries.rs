@@ -265,7 +265,7 @@ pub(crate) fn list_ci_validations_where(
 #[cfg(feature = "storage-fjall")]
 pub(crate) fn list_ci_validations_for_session(
     keyspace: &fjall::Keyspace,
-    session_id: &crate::store::records::SessionId,
+    session_id: &crate::store::records::PromptSessionId,
 ) -> Result<Vec<CiValidationRecord>> {
     let prefix = schema::ci_validation_prefix_for_session(session_id);
     prefix_scan(

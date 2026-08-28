@@ -791,7 +791,7 @@ mod tests {
         use tokio::task::JoinHandle;
 
         use super::*;
-        use crate::id::SessionId;
+        use crate::id::ApiSessionId;
 
         const REPLAY_BODY: &str = r#"{
             "version": 1,
@@ -888,7 +888,7 @@ mod tests {
             let dir = tempfile::tempdir().expect("create temp export dir");
             let mut app = test_app();
             app.config.workspace_root = Some(dir.path().to_path_buf());
-            app.dashboard.focused_session_id = Some(SessionId::from("s1"));
+            app.dashboard.focused_session_id = Some(ApiSessionId::from("s1"));
             let (base_url, _server) = success_json_server(REPLAY_BODY).await;
             point_app_at(&mut app, &base_url);
 

@@ -336,6 +336,8 @@ fn id_error_display_formats() {
 }
 
 mod newtype_id_macro {
+    use super::*;
+
     newtype_id!(
         /// Test ID using String inner type.
         pub struct TestStringId(String)
@@ -343,25 +345,74 @@ mod newtype_id_macro {
 
     #[test]
     fn new_and_as_str() {
-        let id = TestStringId::new("abc");
+        let id = TestStringId::new("abc").unwrap();
         assert_eq!(id.as_str(), "abc");
     }
 
     #[test]
     fn into_inner_returns_owned() {
-        let id = TestStringId::new("abc");
+        let id = TestStringId::new("abc").unwrap();
         let inner: String = id.into_inner();
         assert_eq!(inner, "abc");
     }
 
     #[test]
     fn display_writes_inner() {
-        let id = TestStringId::new("x-1");
+        let id = TestStringId::new("x-1").unwrap();
         assert_eq!(id.to_string(), "x-1");
     }
 
     #[test]
+    fn new_rejects_empty() {
+        assert!(matches!(
+            TestStringId::new(""),
+            Err(IdError::Empty {
+                kind: "TestStringId"
+            })
+        ));
+    }
+
+    #[test]
+    fn new_rejects_oversized() {
+        let oversized = "a".repeat(NEWTYPE_ID_MAX_LEN + 1);
+        assert!(matches!(
+            TestStringId::new(oversized),
+            Err(IdError::TooLong {
+                kind: "TestStringId",
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn new_accepts_max_length() {
+        let max = "a".repeat(NEWTYPE_ID_MAX_LEN);
+        assert!(TestStringId::new(max).is_ok());
+    }
+
+    #[test]
+    fn new_rejects_control_character() {
+        assert!(matches!(
+            TestStringId::new("bad\u{0}id"),
+            Err(IdError::InvalidFormat {
+                kind: "TestStringId",
+                ..
+            })
+        ));
+        assert!(matches!(
+            TestStringId::new("bad\nid"),
+            Err(IdError::InvalidFormat {
+                kind: "TestStringId",
+                ..
+            })
+        ));
+    }
+
+    #[test]
     fn from_str_infallible() {
+        // WHY still infallible: FromStr is left unchecked (matching From/Into)
+        // for call sites parsing an already-trusted value. `new()` is the
+        // validating constructor.
         let id: TestStringId = "hello".parse().unwrap();
         assert_eq!(id.as_str(), "hello");
     }
@@ -375,27 +426,27 @@ mod newtype_id_macro {
 
     #[test]
     fn into_string() {
-        let id = TestStringId::new("val");
+        let id = TestStringId::new("val").unwrap();
         let s: String = id.into();
         assert_eq!(s, "val");
     }
 
     #[test]
     fn deref_to_str() {
-        let id = TestStringId::new("deref");
+        let id = TestStringId::new("deref").unwrap();
         assert_eq!(&*id, "deref");
         assert!(id.starts_with("de"));
     }
 
     #[test]
     fn partial_eq_str() {
-        let id = TestStringId::new("cmp");
+        let id = TestStringId::new("cmp").unwrap();
         assert_eq!(id, *"cmp");
     }
 
     #[test]
     fn borrow_hashmap_lookup() {
-        let id = TestStringId::new("key");
+        let id = TestStringId::new("key").unwrap();
         let mut map = std::collections::HashMap::new();
         map.insert(id, 1);
         assert_eq!(map.get("key"), Some(&1));
@@ -403,7 +454,7 @@ mod newtype_id_macro {
 
     #[test]
     fn serde_roundtrip() {
-        let id = TestStringId::new("serde-test");
+        let id = TestStringId::new("serde-test").unwrap();
         let json = serde_json::to_string(&id).unwrap();
         assert_eq!(json, r#""serde-test""#);
         let back: TestStringId = serde_json::from_str(&json).unwrap();

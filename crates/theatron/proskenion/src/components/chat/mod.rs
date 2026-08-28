@@ -45,7 +45,7 @@ use std::time::{Duration, Instant};
 
 use skene::api::types::TurnOutcome;
 use skene::events::StreamEvent;
-use skene::id::{NousId, RequestId, SessionId, TurnId};
+use skene::id::{ApiNousId, RequestId, ApiSessionId, TurnId};
 use skene::text::append_terminal_notice;
 
 use crate::state::events::{ConnectionState, StreamingState, ToolCallInfo};
@@ -89,7 +89,7 @@ pub struct ChatMessage {
     /// Turn ID this message was generated under, captured from `TurnStart`.
     pub turn_id: Option<TurnId>,
     /// Session ID the message's turn belongs to, captured from `TurnStart`.
-    pub session_id: Option<SessionId>,
+    pub session_id: Option<ApiSessionId>,
     /// Server-assigned request ID for the turn, captured from `TurnStart`.
     pub request_id: Option<RequestId>,
 }
@@ -125,7 +125,7 @@ pub struct ChatState {
     /// Global SSE connection state.
     pub connection: ConnectionState,
     /// Agent currently being chatted with.
-    pub agent_id: Option<NousId>,
+    pub agent_id: Option<ApiNousId>,
     /// Active session key.
     pub session_key: Option<String>,
 }

@@ -1,14 +1,14 @@
 //! Chat session and message state for the desktop chat view.
 
-use skene::id::{NousId, RequestId, SessionId, TurnId};
+use skene::id::{ApiNousId, RequestId, ApiSessionId, TurnId};
 
 /// Session selected by another view for the chat route to activate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ChatSelection {
     /// Agent that owns the session.
-    pub agent_id: NousId,
+    pub agent_id: ApiNousId,
     /// Durable server session ID used for history fetches.
-    pub session_id: Option<SessionId>,
+    pub session_id: Option<ApiSessionId>,
     /// Server session key used when streaming turns.
     pub session_key: String, // kanon:ignore RUST/plain-string-secret
     /// Human-readable title shown in the chat tab bar.
@@ -21,7 +21,7 @@ impl ChatSelection {
     /// Create an activation request for the chat route.
     #[must_use]
     pub(crate) fn new(
-        agent_id: NousId,
+        agent_id: ApiNousId,
         session_key: String, // kanon:ignore RUST/plain-string-secret
         title: String,
     ) -> Self {
@@ -37,8 +37,8 @@ impl ChatSelection {
     /// Create an activation request for a known durable server session.
     #[must_use]
     pub(crate) fn for_existing_session(
-        agent_id: NousId,
-        session_id: SessionId,
+        agent_id: ApiNousId,
+        session_id: ApiSessionId,
         session_key: String, // kanon:ignore RUST/plain-string-secret
         title: String,
         message_count: u32,
@@ -77,7 +77,7 @@ pub struct ChatMessage {
     /// Unix timestamp in seconds.
     pub timestamp: i64,
     /// Agent that produced this message (assistant messages only).
-    pub agent_id: Option<NousId>,
+    pub agent_id: Option<ApiNousId>,
     /// Number of tool calls made during this turn.
     pub tool_calls: u32,
     /// Extended thinking content, if any.
@@ -93,7 +93,7 @@ pub struct ChatMessage {
     /// Turn ID the message was generated under, from `TurnStart`.
     pub turn_id: Option<TurnId>,
     /// Session ID the message's turn belongs to, from `TurnStart`.
-    pub session_id: Option<SessionId>,
+    pub session_id: Option<ApiSessionId>,
     /// Server-assigned request ID for the message's turn, from `TurnStart`.
     pub request_id: Option<RequestId>,
 }
@@ -245,7 +245,7 @@ mod tests {
             input_tokens: 100,
             output_tokens: 200,
             turn_id: Some(TurnId::from("t1")),
-            session_id: Some(SessionId::from("s1")),
+            session_id: Some(ApiSessionId::from("s1")),
             request_id: Some(RequestId::from("r1")),
         };
         let cloned = msg.clone();
