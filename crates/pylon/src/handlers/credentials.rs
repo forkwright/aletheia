@@ -18,7 +18,7 @@ use utoipa::{IntoParams, ToSchema};
 use crate::credential_runtime::{
     CredentialMutationEffect, CredentialRuntimeError, CredentialRuntimeManager,
 };
-use crate::error::ApiError;
+use crate::error::{ApiError, UnauthorizedReason};
 use crate::event_bus::{DomainEvent, EventBus};
 use crate::middleware::RequestId;
 use crate::state::AppState;
