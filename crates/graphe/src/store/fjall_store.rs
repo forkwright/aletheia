@@ -1327,6 +1327,26 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Collect the keys of a partition's `[prefix, upper)` range, tagging any
+    /// scan error with `scan_label` for diagnosis.
+    fn prefixed_child_keys_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        part: &fjall::SingleWriterTxKeyspace,
+        prefix: &str,
+        upper: &str,
+        scan_label: &str,
+    ) -> Result<Vec<Vec<u8>>> {
+        use fjall::Readable;
+
+        tx.range(part, prefix..upper)
+            .map(|g| {
+                g.into_inner().map(|(k, _v)| k.to_vec()).map_err(|e| {
+                    storage_error(format!("fjall delete_session {scan_label} scan: {e}"))
+                })
+            })
+            .collect()
+    }
+
     fn tool_audit_keys_for_session_in_tx(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         tool_audit_part: &fjall::SingleWriterTxKeyspace,
@@ -1346,6 +1366,61 @@ impl SessionStore {
             }
         }
         Ok(keys)
+    }
+
+    /// Collect and cross-check `command_lifecycle` row/global-id key pairs
+    /// for `session_id`, so the caller can remove both sides of the index
+    /// in one all-or-nothing transaction.
+    fn command_lifecycle_delete_keys_for_session_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        command_lifecycle_part: &fjall::SingleWriterTxKeyspace,
+        session_id: &str,
+    ) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
+        use fjall::Readable;
+
+        let command_lifecycle_prefix = format!("row:{session_id}:");
+        let command_lifecycle_upper = format!("row:{session_id};\x00");
+        let command_lifecycle_keys: Vec<(Vec<u8>, Vec<u8>)> = tx
+            .range(
+                command_lifecycle_part,
+                command_lifecycle_prefix.as_str()..command_lifecycle_upper.as_str(),
+            )
+            .map(|guard| {
+                let (key, value) = guard.into_inner().map_err(|e| {
+                    storage_error(format!("fjall delete_session command_lifecycle scan: {e}"))
+                })?;
+                let record = serde_json::from_slice::<CommandLifecycleRecord>(&value)
+                    .context(error::StoredJsonSnafu)?;
+                if record.session_id.as_str() != session_id {
+                    return Err(storage_error(format!(
+                        "command lifecycle row for '{}' found under session '{session_id}' prefix",
+                        record.session_id
+                    )));
+                }
+                Ok((
+                    key.to_vec(),
+                    Self::command_lifecycle_global_id_key(record.id).into_bytes(),
+                ))
+            })
+            .collect::<Result<_>>()?;
+
+        for (record_key, global_id_key) in &command_lifecycle_keys {
+            let indexed_owner = tx
+                .get(command_lifecycle_part, global_id_key.as_slice())
+                .map_err(|e| {
+                    storage_error(format!("fjall delete_session command lifecycle index: {e}"))
+                })?
+                .ok_or_else(|| {
+                    storage_error("command lifecycle record is missing its global id index")
+                })?;
+            if indexed_owner.as_ref() != record_key.as_slice() {
+                return Err(storage_error(
+                    "command lifecycle global id index points at a different record",
+                ));
+            }
+        }
+
+        Ok(command_lifecycle_keys)
     }
 
     fn note_gid_delete_keys_for_session_in_tx(
@@ -2006,89 +2081,46 @@ impl SessionStore {
         let child_prefix = format!("{id}:");
         let child_upper = format!("{id};\x00");
 
-        let msg_keys: Vec<Vec<u8>> = tx
-            .range(&messages_part, child_prefix.as_str()..child_upper.as_str())
-            .map(|g| {
-                g.into_inner()
-                    .map(|(k, _v)| k.to_vec())
-                    .map_err(|e| storage_error(format!("fjall delete_session messages scan: {e}")))
-            })
-            .collect::<Result<_>>()?;
+        let msg_keys = Self::prefixed_child_keys_in_tx(
+            &mut tx,
+            &messages_part,
+            child_prefix.as_str(),
+            child_upper.as_str(),
+            "messages",
+        )?;
 
-        let usage_keys: Vec<Vec<u8>> = tx
-            .range(&usage_part, child_prefix.as_str()..child_upper.as_str())
-            .map(|g| {
-                g.into_inner()
-                    .map(|(k, _v)| k.to_vec())
-                    .map_err(|e| storage_error(format!("fjall delete_session usage scan: {e}")))
-            })
-            .collect::<Result<_>>()?;
+        let usage_keys = Self::prefixed_child_keys_in_tx(
+            &mut tx,
+            &usage_part,
+            child_prefix.as_str(),
+            child_upper.as_str(),
+            "usage",
+        )?;
 
         let tool_audit_keys =
             Self::tool_audit_keys_for_session_in_tx(&mut tx, &tool_audit_part, id)?;
 
-        let command_lifecycle_prefix = format!("row:{id}:");
-        let command_lifecycle_upper = format!("row:{id};\x00");
-        let command_lifecycle_keys: Vec<(Vec<u8>, Vec<u8>)> = tx
-            .range(
-                &command_lifecycle_part,
-                command_lifecycle_prefix.as_str()..command_lifecycle_upper.as_str(),
-            )
-            .map(|guard| {
-                let (key, value) = guard.into_inner().map_err(|e| {
-                    storage_error(format!("fjall delete_session command_lifecycle scan: {e}"))
-                })?;
-                let record = serde_json::from_slice::<CommandLifecycleRecord>(&value)
-                    .context(error::StoredJsonSnafu)?;
-                if record.session_id.as_str() != id {
-                    return Err(storage_error(format!(
-                        "command lifecycle row for '{}' found under session '{id}' prefix",
-                        record.session_id
-                    )));
-                }
-                Ok((
-                    key.to_vec(),
-                    Self::command_lifecycle_global_id_key(record.id).into_bytes(),
-                ))
-            })
-            .collect::<Result<_>>()?;
+        let command_lifecycle_keys = Self::command_lifecycle_delete_keys_for_session_in_tx(
+            &mut tx,
+            &command_lifecycle_part,
+            id,
+        )?;
 
-        for (record_key, global_id_key) in &command_lifecycle_keys {
-            let indexed_owner = tx
-                .get(&command_lifecycle_part, global_id_key.as_slice())
-                .map_err(|e| {
-                    storage_error(format!("fjall delete_session command lifecycle index: {e}"))
-                })?
-                .ok_or_else(|| {
-                    storage_error("command lifecycle record is missing its global id index")
-                })?;
-            if indexed_owner.as_ref() != record_key.as_slice() {
-                return Err(storage_error(
-                    "command lifecycle global id index points at a different record",
-                ));
-            }
-        }
+        let dist_keys = Self::prefixed_child_keys_in_tx(
+            &mut tx,
+            &distillations_part,
+            child_prefix.as_str(),
+            child_upper.as_str(),
+            "distillations",
+        )?;
 
-        let dist_keys: Vec<Vec<u8>> = tx
-            .range(
-                &distillations_part,
-                child_prefix.as_str()..child_upper.as_str(),
-            )
-            .map(|g| {
-                g.into_inner().map(|(k, _v)| k.to_vec()).map_err(|e| {
-                    storage_error(format!("fjall delete_session distillations scan: {e}"))
-                })
-            })
-            .collect::<Result<_>>()?;
-
-        let note_keys: Vec<Vec<u8>> = tx
-            .range(&notes_part, child_prefix.as_str()..child_upper.as_str())
-            .map(|g| {
-                g.into_inner()
-                    .map(|(k, _v)| k.to_vec())
-                    .map_err(|e| storage_error(format!("fjall delete_session notes scan: {e}")))
-            })
-            .collect::<Result<_>>()?;
+        let note_keys = Self::prefixed_child_keys_in_tx(
+            &mut tx,
+            &notes_part,
+            child_prefix.as_str(),
+            child_upper.as_str(),
+            "notes",
+        )?;
 
         let note_delete_keys =
             Self::note_gid_delete_keys_for_session_in_tx(&mut tx, &notes_part, id)?;
@@ -3006,7 +3038,7 @@ impl SessionStore {
                 "command lifecycle command.name must be a bounded ASCII name",
             ));
         }
-        if !is_digest(&spec.delivery_key, "sha256:") {
+        if !is_digest(spec.delivery_key, "sha256:") {
             return Err(storage_error(
                 "command lifecycle delivery_key must be a sha256 digest",
             ));
@@ -3097,14 +3129,19 @@ impl SessionStore {
         Ok(())
     }
 
-    fn put_command_lifecycle_record_in_tx(
+    /// Resolve the session, the next id, and the fully-built record for a
+    /// `command_lifecycle` write, without touching the store's write side.
+    ///
+    /// WHY: split out of [`Self::put_command_lifecycle_record_in_tx`] so the
+    /// collision/insert logic there stays readable on its own
+    /// (`clippy::too_many_lines`).
+    fn build_command_lifecycle_record_in_tx(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
         parts: CommandLifecycleTxParts<'_>,
         spec: PutCommandLifecycleRecord<'_>,
-    ) -> Result<CommandLifecycleRecord> {
+    ) -> Result<(String, String, CommandLifecycleRecord, u64)> {
         use fjall::Readable;
 
-        Self::validate_command_lifecycle_record(&spec)?;
         let session_bytes = tx
             .get(parts.sessions, spec.session_id)
             .map_err(|e| storage_error(format!("fjall command lifecycle session check: {e}")))?
@@ -3157,6 +3194,21 @@ impl SessionStore {
             event: spec.event.clone(),
             created_at: spec.created_at.map_or_else(now_iso, str::to_owned),
         };
+        Ok((key, global_id_key, record, current_id))
+    }
+
+    fn put_command_lifecycle_record_in_tx(
+        tx: &mut fjall::SingleWriterWriteTx<'_>,
+        parts: CommandLifecycleTxParts<'_>,
+        spec: PutCommandLifecycleRecord<'_>,
+    ) -> Result<CommandLifecycleRecord> {
+        use fjall::Readable;
+
+        Self::validate_command_lifecycle_record(&spec)?;
+        let (key, global_id_key, record, current_id) =
+            Self::build_command_lifecycle_record_in_tx(tx, parts, spec)?;
+        let id = record.id;
+
         if let Some(indexed_owner) = tx
             .get(parts.command_lifecycle, global_id_key.as_str())
             .map_err(|e| storage_error(format!("fjall command lifecycle id index: {e}")))?
