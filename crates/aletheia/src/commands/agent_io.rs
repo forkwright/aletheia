@@ -283,16 +283,9 @@ fn knowledge_path_for_nous(oikos: &Oikos, nous_id: &str) -> PathBuf {
 
 #[cfg(feature = "recall")]
 fn knowledge_config_for_oikos(oikos: &Oikos) -> mneme::knowledge_store::KnowledgeConfig {
-    taxis::loader::load_config(oikos).ok().map_or_else(
-        mneme::knowledge_store::KnowledgeConfig::default,
-        |config| {
-            let embedding = config.embedding.to_embedding_config();
-            mneme::knowledge_store::KnowledgeConfig {
-                dim: config.embedding.dimension,
-                embedding_model: embedding.effective_model_name(),
-                ..Default::default()
-            }
-        },
+    crate::knowledge_config::knowledge_config_from_loaded(
+        taxis::loader::load_config(oikos).ok().as_ref(),
+        false,
     )
 }
 
@@ -425,7 +418,7 @@ fn import_knowledge(
     knowledge: &mneme::portability::KnowledgeExport,
 ) -> Result<KnowledgeImportCounts> {
     use mneme::embedding::create_provider;
-    use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
+    use mneme::knowledge_store::KnowledgeStore;
 
     // WHY(#4741): load_config returns Ok(defaults) even when no config file
     // exists; the candle default provider then downloads BAAI/bge-small-en-v1.5
@@ -450,16 +443,8 @@ fn import_knowledge(
         None
     };
 
-    let knowledge_config = loaded_config
-        .as_ref()
-        .map_or_else(KnowledgeConfig::default, |config| KnowledgeConfig {
-            dim: config.embedding.dimension,
-            embedding_model: config
-                .embedding
-                .to_embedding_config()
-                .effective_model_name(),
-            ..Default::default()
-        });
+    let knowledge_config =
+        crate::knowledge_config::knowledge_config_from_loaded(loaded_config.as_ref(), false);
 
     let embedding_provider = loaded_config.as_ref().and_then(|config| {
         let embedding_config =
@@ -2393,6 +2378,13 @@ fn generate_simple_embedding(text: &str) -> Vec<f32> {
     embedding
 }
 
+/// The REST route this module's direct-store commands can be routed through
+/// instead — passed to [`crate::commands::guard_knowledge_lock`] so its
+/// "server holds the lock" message names a real recovery path (#7023: this
+/// used to name only facts while `memory`'s copy named facts and entities;
+/// `agent-io` genuinely only exposes facts through the API today).
+const KNOWLEDGE_LOCK_KNOWN_ENDPOINTS: &[&str] = &["/api/v1/knowledge/facts"];
+
 /// Check if the server is running and holding the knowledge store lock.
 ///
 /// Returns an error with a helpful message if the server is reachable,
@@ -2400,20 +2392,7 @@ fn generate_simple_embedding(text: &str) -> Vec<f32> {
 /// is rejected up-front so a parse failure does not silently coerce to
 /// "server not running" and let the caller proceed past the guard.
 pub(crate) async fn guard_knowledge_lock(url: &str) -> Result<()> {
-    if let Err(e) = reqwest::Url::parse(url) {
-        whatever!("--url is not a valid URL: {e} (got {:?})", url);
-    }
-    let endpoint = format!("{url}/api/health");
-    if let Ok(resp) = reqwest::get(&endpoint).await
-        && (resp.status().is_success() || resp.status().as_u16() == 503)
-    {
-        whatever!(
-            "The server at {url} is running and holds an exclusive lock on the knowledge store.\n  \
-             Stop the server first to use this subcommand, or use the REST API:\n  \
-             GET {url}/api/v1/knowledge/facts"
-        );
-    }
-    Ok(())
+    crate::commands::guard_knowledge_lock(url, KNOWLEDGE_LOCK_KNOWN_ENDPOINTS).await
 }
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
@@ -2552,37 +2531,15 @@ mod tests {
         assert!(err.to_string().contains("empty"), "got: {err}");
     }
 
-    #[tokio::test]
-    async fn guard_knowledge_lock_rejects_empty_url() {
-        let err = guard_knowledge_lock("").await.unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("--url is not a valid URL"), "got: {msg}");
-    }
-
-    #[tokio::test]
-    async fn guard_knowledge_lock_rejects_malformed_url() {
-        let err = guard_knowledge_lock("not-a-url").await.unwrap_err();
-        let msg = err.to_string();
-        assert!(msg.contains("--url is not a valid URL"), "got: {msg}");
-    }
-
+    // `guard_knowledge_lock` here is a thin `KNOWLEDGE_LOCK_KNOWN_ENDPOINTS`
+    // wrapper over the canonical `crate::commands::guard_knowledge_lock`
+    // (#7023); URL-validation and no-server-reachable behavior are covered
+    // once at that canonical site rather than restated per wrapper.
     #[tokio::test]
     async fn guard_knowledge_lock_rejects_whitespace_url() {
         let err = guard_knowledge_lock("   ").await.unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("--url is not a valid URL"), "got: {msg}");
-    }
-
-    #[tokio::test]
-    async fn guard_knowledge_lock_accepts_well_formed_url_when_no_server() {
-        organon::testing::install_crypto_provider();
-        // 127.0.0.1:1 is not bound — the reqwest call fails, but a well-formed
-        // URL should pass the parse check and return Ok(()) (no server detected).
-        let res = guard_knowledge_lock("http://127.0.0.1:1").await;
-        assert!(
-            res.is_ok(),
-            "expected Ok for well-formed URL with no listener; got: {res:?}"
-        );
     }
 
     fn sample_agent_file() -> AgentFile {

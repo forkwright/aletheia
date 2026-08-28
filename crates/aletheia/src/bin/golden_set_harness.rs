@@ -50,6 +50,14 @@
 
 #![deny(clippy::unwrap_used)]
 
+// WHY `#[path]` rather than `use aletheia::...`: this crate ships no
+// `lib.rs` (three independent `[[bin]]` targets), so the canonical
+// `KnowledgeConfig` derivation is shared as one source file included by
+// each binary target that needs it, rather than copied (#7023).
+#[cfg(feature = "recall")]
+#[path = "../knowledge_config.rs"]
+mod knowledge_config;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -183,7 +191,7 @@ fn run(args: &Args) -> anyhow::Result<()> {
     };
     eprintln!("VERIFIED snapshot ready at {}", verified_snapshot.display());
 
-    let (knowledge_config, embedding_config) = knowledge_config_for_oikos(&oikos)?;
+    let (knowledge_config, embedding_config) = strict_knowledge_and_embedding_config(&oikos)?;
     eprintln!(
         "embedding provider={} model={}",
         embedding_config.provider,
@@ -288,18 +296,26 @@ fn assert_is_shared_cohort(path: &Path) -> anyhow::Result<()> {
     }
 }
 
+/// Load the instance config and derive both the `KnowledgeConfig` and the
+/// raw embedding config used to run this tool's own queries — composed
+/// locally from the shared [`knowledge_config`] building blocks rather than
+/// living there itself, since no other binary target needs this exact
+/// combination (an unused `pub fn` in the shared file is dead code in each
+/// binary that doesn't call it — see that module's header).
+///
+/// WHY hard error (unlike `seed_psyche_facts`'s silent default fallback via
+/// `knowledge_config::knowledge_config_from_loaded`): this tool's entire
+/// purpose is measuring embedding-based retrieval quality. A silent
+/// dim/model mismatch between the config used to open the store and the
+/// config the store was actually built with would corrupt the measurement
+/// rather than merely degrade an insert.
 #[cfg(feature = "recall")]
-fn knowledge_config_for_oikos(
+fn strict_knowledge_and_embedding_config(
     oikos: &taxis::oikos::Oikos,
 ) -> anyhow::Result<(
     mneme::knowledge_store::KnowledgeConfig,
     episteme::embedding::EmbeddingConfig,
 )> {
-    // WHY hard error (unlike seed_psyche_facts's silent default fallback):
-    // this tool's entire purpose is measuring embedding-based retrieval
-    // quality. A silent dim/model mismatch between the config used to open
-    // the store and the config the store was actually built with would
-    // corrupt the measurement rather than merely degrade an insert.
     let config = taxis::loader::load_config(oikos).map_err(|e| {
         anyhow::anyhow!(
             "failed to load instance config at {}: {e} — the golden-set harness needs the real \
@@ -308,11 +324,7 @@ fn knowledge_config_for_oikos(
         )
     })?;
     let embedding_config = config.embedding.to_embedding_config();
-    let knowledge_config = mneme::knowledge_store::KnowledgeConfig {
-        dim: config.embedding.dimension,
-        embedding_model: embedding_config.effective_model_name(),
-        ..Default::default()
-    };
+    let knowledge_config = knowledge_config::knowledge_config_from_loaded(Some(&config), false);
     Ok((knowledge_config, embedding_config))
 }
 
