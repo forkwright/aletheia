@@ -4,20 +4,19 @@
 //! configured via `NousConfig.server_tools`. This module only provides
 //! `web_fetch` for direct URL retrieval.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
 
 use indexmap::IndexMap;
 
-use koina::http::{
-    HostResolver, TokioHostResolver, validate_url_not_internal,
-    validate_url_not_internal_with_resolver,
-};
+use koina::http::{TokioHostResolver, validate_url_not_internal};
 use koina::id::ToolName;
 
+use crate::builtins::http_client::{SafeRequest, send_with_safe_redirects};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
-use crate::sandbox::{EgressGate, SandboxConfig, check_egress, check_egress_remote_addr};
+use crate::sandbox::{EgressGate, SandboxConfig};
 use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
     ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
@@ -37,101 +36,12 @@ fn require_services(
         .ok_or_else(|| ToolResult::error("tool services not configured"))
 }
 
-const MAX_REDIRECTS: usize = 5;
-
-async fn validated_redirect_target<R>(
-    current_url: &reqwest::Url,
-    location: &str,
-    redirects_followed: usize,
-    resolver: &R,
-) -> std::result::Result<reqwest::Url, String>
-where
-    R: HostResolver + ?Sized,
-{
-    if redirects_followed >= MAX_REDIRECTS {
-        return Err(format!("redirect limit exceeded: max {MAX_REDIRECTS}"));
-    }
-
-    let next_url = current_url
-        .join(location)
-        .map_err(|e| format!("invalid redirect Location: {e}"))?;
-
-    // WARNING: DNS may change after validation and before reqwest connects.
-    // The guard revalidates every URL before following it, but it cannot pin
-    // the resolved address for the subsequent connection.
-    validate_url_not_internal_with_resolver(next_url.as_str(), resolver).await?;
-
-    Ok(next_url)
-}
-
-async fn get_with_safe_redirects<R>(
-    client: &reqwest::Client,
-    url: &str,
-    resolver: &R,
-    gate: &EgressGate,
-) -> std::result::Result<reqwest::Response, String>
-where
-    R: HostResolver + ?Sized,
-{
-    let mut current_url: reqwest::Url = url.parse().map_err(|e| format!("invalid URL: {e}"))?;
-    let mut redirects_followed = 0;
-
-    loop {
-        // SECURITY(#5071): every hop -- including redirect targets, not just
-        // the original URL -- goes through the same egress checkpoint the
-        // subprocess sandbox uses so `egress = "deny"` cannot be bypassed by
-        // a redirect chain.
-        let host = current_url
-            .host_str()
-            .ok_or_else(|| "URL has no host".to_owned())?;
-        let port = current_url.port_or_known_default().unwrap_or(443);
-        check_egress(gate, host, port, resolver).await?;
-
-        let response = client
-            .get(current_url.clone())
-            .header(
-                "User-Agent",
-                concat!(
-                    "aletheia/",
-                    env!("CARGO_PKG_VERSION"),
-                    " (github.com/forkwright/aletheia)"
-                ),
-            )
-            .send()
-            .await
-            .map_err(|e| format!("fetch failed: {e}"))?;
-
-        // SECURITY(#5229): inspect the address the connection actually used
-        // before accepting the response. This can reject a private or
-        // policy-disallowed rebound peer before response handling, but the
-        // request has already been sent; preventing request-side exposure
-        // requires pinning the validated address.
-        check_egress_remote_addr(gate, response.remote_addr())?;
-
-        if !response.status().is_redirection() {
-            return Ok(response);
-        }
-
-        let Some(location) = response
-            .headers()
-            .get(reqwest::header::LOCATION)
-            .and_then(|value| value.to_str().ok())
-        else {
-            return Ok(response);
-        };
-
-        current_url =
-            validated_redirect_target(&current_url, location, redirects_followed, resolver).await?;
-        redirects_followed += 1;
-    }
-}
-
 struct WebFetchExecutor {
     egress: EgressGate,
 }
 
 impl ToolExecutor for WebFetchExecutor {
-    // NOTE(#940): 109 lines: single SSRF-safe HTTP fetch operation: validate URL,
+    // NOTE(#940): 105 lines: single SSRF-safe HTTP fetch operation: validate URL,
     // build client, send response, process response. One cohesive I/O operation.
     fn execute<'a>(
         &'a self,
@@ -166,9 +76,30 @@ impl ToolExecutor for WebFetchExecutor {
                 return Ok(ToolResult::error(msg));
             }
 
-            let response = match get_with_safe_redirects(
+            let mut headers = HashMap::new();
+            headers.insert(
+                "User-Agent".to_owned(),
+                concat!(
+                    "aletheia/",
+                    env!("CARGO_PKG_VERSION"),
+                    " (github.com/forkwright/aletheia)"
+                )
+                .to_owned(),
+            );
+
+            // SECURITY(#5071, #5229): drives the same redirect/egress chain
+            // `http_request` uses (every hop revalidated against `gate` and
+            // `resolver`, remote address checked post-connect) rather than a
+            // second, independently-maintained GET-only copy of it.
+            let response = match send_with_safe_redirects(
                 &services.http_clients.ssrf_safe,
-                url,
+                SafeRequest {
+                    method: reqwest::Method::GET,
+                    url,
+                    headers: &headers,
+                    body: None,
+                    timeout: std::time::Duration::from_secs(30),
+                },
                 &TokioHostResolver,
                 &self.egress,
             )
@@ -401,12 +332,9 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use std::collections::HashMap;
     use std::collections::HashSet;
-    use std::net::SocketAddr;
     use std::sync::{Arc, RwLock};
 
-    use koina::http::ResolveHostFuture;
     use koina::id::{NousId, SessionId, ToolName};
 
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -415,28 +343,6 @@ mod tests {
     use crate::types::{ServerToolConfig, ToolContext, ToolHttpClients, ToolInput, ToolServices};
 
     use super::*;
-
-    #[derive(Default)]
-    struct MockResolver {
-        addrs_by_host: HashMap<String, Vec<SocketAddr>>,
-    }
-
-    impl HostResolver for MockResolver {
-        fn resolve_host<'a>(&'a self, host: &'a str, _port: u16) -> ResolveHostFuture<'a> {
-            Box::pin(async move {
-                self.addrs_by_host
-                    .get(host)
-                    .cloned()
-                    .ok_or_else(|| format!("missing mock host: {host}"))
-            })
-        }
-    }
-
-    fn public_base_url() -> reqwest::Url {
-        "https://public.example/start"
-            .parse()
-            .expect("test URL should parse")
-    }
 
     fn mock_ctx() -> ToolContext {
         install_crypto_provider();
@@ -668,73 +574,5 @@ mod tests {
             active_tools: Arc::new(RwLock::new(HashSet::new())),
             tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
         }
-    }
-
-    #[tokio::test]
-    async fn redirect_to_private_ip_literal_is_blocked() {
-        let mut resolver = MockResolver::default();
-        resolver.addrs_by_host.insert(
-            "169.254.169.254".to_owned(),
-            vec![SocketAddr::from(([169, 254, 169, 254], 443))],
-        );
-
-        let err = validated_redirect_target(
-            &public_base_url(),
-            "https://169.254.169.254/latest",
-            0,
-            &resolver,
-        )
-        .await
-        .expect_err("private redirect target must be rejected");
-
-        assert!(err.contains("private/internal"), "unexpected error: {err}");
-    }
-
-    #[tokio::test]
-    async fn redirect_to_blocked_hostname_is_blocked() {
-        let err = validated_redirect_target(
-            &public_base_url(),
-            "https://localhost/admin",
-            0,
-            &MockResolver::default(),
-        )
-        .await
-        .expect_err("blocked hostname must be rejected");
-
-        assert!(err.contains("blocked hostname"), "unexpected error: {err}");
-    }
-
-    #[tokio::test]
-    async fn redirect_to_hostname_resolving_private_is_blocked() {
-        let mut resolver = MockResolver::default();
-        resolver.addrs_by_host.insert(
-            "rebind.example".to_owned(),
-            vec![SocketAddr::from(([10, 0, 0, 7], 443))],
-        );
-
-        let err = validated_redirect_target(
-            &public_base_url(),
-            "https://rebind.example/metadata",
-            0,
-            &resolver,
-        )
-        .await
-        .expect_err("private DNS redirect target must be rejected");
-
-        assert!(err.contains("private/internal"), "unexpected error: {err}");
-    }
-
-    #[tokio::test]
-    async fn sixth_redirect_is_refused() {
-        let err = validated_redirect_target(
-            &public_base_url(),
-            "https://public.example/six",
-            5,
-            &MockResolver::default(),
-        )
-        .await
-        .expect_err("sixth redirect must be rejected");
-
-        assert!(err.contains("redirect limit"), "unexpected error: {err}");
     }
 }

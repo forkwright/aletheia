@@ -3,7 +3,9 @@
 //!
 //! WHY: `web_fetch` handles only GET and strips HTML, leaving agents that need
 //! to call REST APIs (POST JSON, PUT YAML, DELETE) without a path. This is the
-//! generic method-aware HTTP tool, reusing the SSRF guards from `research.rs`.
+//! generic method-aware HTTP tool; `send_with_safe_redirects` here is the sole
+//! SSRF/redirect/egress implementation, and `research.rs`'s `web_fetch` reuses
+//! it for its GET-only case rather than carrying its own copy.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
