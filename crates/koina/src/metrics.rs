@@ -115,6 +115,35 @@ impl std::fmt::Debug for MetricsRegistry {
     }
 }
 
+/// Build a fresh [`MetricsRegistry`] and register `register`'s metric family
+/// into it in one call.
+///
+/// Every metrics-emitting crate follows the `MetricsRegistry::new()` +
+/// `with_registry(register)` pattern at startup (see the module docs above);
+/// this restates it once for the identical pair every such crate's own test
+/// module otherwise repeats verbatim.
+#[cfg(any(test, feature = "test-support"))]
+pub fn fresh_registry_with(register: impl FnOnce(&mut Registry)) -> MetricsRegistry {
+    let r = MetricsRegistry::new();
+    r.with_registry(register);
+    r
+}
+
+/// Encode `registry` to a `String`.
+///
+/// # Panics
+///
+/// Never in practice: encoding into a `String` writer is infallible per
+/// [`MetricsRegistry::encode`]'s own documentation; this only unwraps that
+/// guarantee so callers don't have to.
+#[cfg(any(test, feature = "test-support"))]
+pub fn encode_to_string(registry: &MetricsRegistry) -> String {
+    let mut buf = String::new();
+    #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
+    registry.encode(&mut buf).unwrap();
+    buf
+}
+
 #[cfg(test)]
 mod tests {
     use prometheus_client::encoding::EncodeLabelSet;

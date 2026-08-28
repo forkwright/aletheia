@@ -45,6 +45,11 @@ pub(crate) mod persona_classifier;
 /// narrow.
 pub(crate) mod affinity;
 
+/// Shared `#[cfg(test)]` after-action JSONL fixture builders for the
+/// empirical/persona/affinity router test modules.
+#[cfg(test)]
+pub(crate) mod test_support;
+
 pub(crate) use aletheia_routing::types::{ProviderId, TaskCategory};
 
 pub(crate) const DEFAULT_PROVIDER_ID: &str = "claude";

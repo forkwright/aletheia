@@ -42,6 +42,7 @@ test-core = []
 test-full = []
 
 [dev-dependencies]
+koina = { path = "../koina", features = ["test-support"] }
 criterion = { workspace = true }
 proptest = { workspace = true }
 tokio = { workspace = true }

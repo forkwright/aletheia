@@ -3,7 +3,6 @@
 use std::collections::HashSet;
 
 use serde::Serialize;
-use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::EvalClient;
@@ -11,6 +10,7 @@ use crate::scenario::{
     Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, ScenarioRunOutcome,
     ScenarioSubResult, assert_eval,
 };
+use crate::scenarios::first_nous_id;
 
 type DocId = String;
 
@@ -208,13 +208,10 @@ impl Scenario for RecallBenchmarkScenario {
             async move {
                 let mut sub_results = Vec::new();
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = first_nous_id(client).await?;
 
                     let results = client
-                        .search_knowledge("recall benchmark", &nous.id, 20)
+                        .search_knowledge("recall benchmark", &nous_id, 20)
                         .await?;
 
                     let retrieved: Vec<String> =

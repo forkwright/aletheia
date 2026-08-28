@@ -256,28 +256,12 @@ impl Router for EmpiricalRouter {
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
 mod tests {
-    use std::io::Write as _;
-
     use aletheia_routing::{DEFAULT_ROUTING_WINDOW, RoutingBoundary};
 
     use super::*;
     use crate::routing::store::AfterActionStore;
+    use crate::routing::test_support::{session_line, write_jsonl};
     use crate::routing::{ProviderId, StaticRouter, TaskCategory};
-
-    fn session_line(model: &str, status: &str, category: &str) -> serde_json::Value {
-        serde_json::json!({
-            "dispatch_id": "test",
-            "ts_start": "2026-04-17T00:00:00Z",
-            "ts_end": "2026-04-17T00:01:00Z",
-            "duration_ms": 60000,
-            "session_outcomes": [{"model": model, "status": status, "category": category}],
-            "cost_total_cents": 5,
-            "turns_total": 10,
-            "stage_latencies_ms": {},
-            "qa_verdict": "pass",
-            "prompt_hash": "sha256:abc"
-        })
-    }
 
     async fn make_router(
         dir: &std::path::Path,
@@ -294,14 +278,6 @@ mod tests {
             DEFAULT_ROUTING_WINDOW,
             threshold,
         )
-    }
-
-    fn write_jsonl(dir: &std::path::Path, filename: &str, lines: &[serde_json::Value]) {
-        let path = dir.join(filename);
-        let mut file = std::fs::File::create(path).unwrap();
-        for line in lines {
-            writeln!(file, "{line}").unwrap();
-        }
     }
 
     /// Provider A: 9/10 success, Provider B: 1/10 success → router picks A.

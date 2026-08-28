@@ -38,6 +38,7 @@ jiff = { workspace = true }
 libc = { workspace = true }
 
 [dev-dependencies]
+koina = { path = "../koina", features = ["test-support"] }
 # WHY: self-reference with `test-support` exposes `melete::test_support::text_msg`
 # to the integration-test binaries under tests/.
 melete = { path = ".", features = ["test-support"] }

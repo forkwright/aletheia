@@ -224,6 +224,7 @@ mod tests {
     };
     use crate::error::{self, Result};
     use crate::http::mock::{MockEngine, MockOutcome};
+    use crate::pipeline::test_support::success_mock_outcome as success_outcome;
     use crate::prompt::PromptSpec;
     use crate::resume::ResumePolicy;
     use crate::session::options::EngineConfig;
@@ -243,23 +244,6 @@ mod tests {
             blast_radius: vec![],
             body: format!("implement task {number}"),
             prompt_components: None,
-        }
-    }
-
-    fn success_outcome(session_id: &str, cost: f64, turns: u32) -> MockOutcome {
-        MockOutcome::Success {
-            events: vec![SessionEvent::TurnComplete { turn: turns }],
-            result: SessionResult {
-                session_id: session_id.to_owned(),
-                cost_usd: cost,
-                num_turns: turns,
-                duration_ms: 100,
-                success: true,
-                result_text: Some("done".to_owned()),
-                model: Some("claude-3-5-sonnet".to_owned()),
-                cache_hit_tokens: 0,
-                cache_miss_tokens: 0,
-            },
         }
     }
 

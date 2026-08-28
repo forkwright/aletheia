@@ -25,6 +25,8 @@ pub(crate) mod prosoche_audit_rotation;
 pub mod registry;
 /// Data retention policy execution trait and summary types.
 pub(crate) mod retention;
+#[cfg(test)]
+pub(crate) mod test_support;
 /// Trace file rotation, gzip compression, and archive pruning.
 pub(crate) mod trace_rotation;
 
