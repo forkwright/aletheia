@@ -91,7 +91,7 @@ const _: () = assert!(
 
 /// Begin a `*facts{...}` scan projecting the canonical full-fact column set.
 /// Callers add filters/order/limit and finish with `.done().build_script()`.
-fn full_fact_scan() -> ScanBuilder {
+pub(crate) fn full_fact_scan() -> ScanBuilder {
     let mut scan = QueryBuilder::new()
         .scan(Relation::Facts)
         .select(&FULL_FACT_SELECT);
@@ -552,6 +552,68 @@ pub(crate) fn audit_all_facts() -> String {
         .filter("nous_id = $nous_id")
         .order("-recorded_at")
         .limit("$limit")
+        .done()
+        .build_script()
+}
+
+/// A single fact by ID (all temporal records matching), full hydration.
+/// Params: `$id`.
+#[must_use]
+pub(crate) fn fact_by_id() -> String {
+    full_fact_scan().filter("id = $id").done().build_script()
+}
+
+/// All facts across every agent, ordered by `recorded_at` descending.
+/// Params: `$limit`.
+#[must_use]
+pub(crate) fn all_facts() -> String {
+    full_fact_scan()
+        .order("-recorded_at")
+        .limit("$limit")
+        .done()
+        .build_script()
+}
+
+/// Facts of a given type for one agent, excluding forgotten ones.
+/// Params: `$nous_id`, `$fact_type`, `$limit`.
+#[must_use]
+pub(crate) fn facts_by_type() -> String {
+    full_fact_scan()
+        .filter("nous_id == $nous_id")
+        .filter("fact_type == $fact_type")
+        .filter("is_forgotten == false")
+        .order("-recorded_at")
+        .limit("$limit")
+        .done()
+        .build_script()
+}
+
+/// Currently-valid facts visible to a requester (own facts plus `Shared` and
+/// `Published` facts from other agents). Caller must prepend
+/// `scoped_visibility_rules()`, which defines the `visible_fact` rule this
+/// filters on. Params: `$requester_nous_id`, `$now`, `$limit`.
+#[must_use]
+pub(crate) fn visible_facts() -> String {
+    full_fact_scan()
+        .filter("visible_fact[id]")
+        .filter("valid_from <= $now")
+        .filter("valid_to > $now")
+        .filter("is_null(superseded_by)")
+        .filter("is_forgotten == false")
+        .order("-recorded_at")
+        .limit("$limit")
+        .done()
+        .build_script()
+}
+
+/// A single fact by ID, visible to a requester. Caller must prepend
+/// `scoped_visibility_rules()`, which defines the `visible_fact` rule this
+/// filters on. Params: `$fact_id`, `$requester_nous_id`.
+#[must_use]
+pub(crate) fn visible_fact_by_id() -> String {
+    full_fact_scan()
+        .filter("visible_fact[id]")
+        .filter("id == $fact_id")
         .done()
         .build_script()
 }

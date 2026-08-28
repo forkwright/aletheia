@@ -189,6 +189,118 @@ fn test_builder_matches_full_current_facts() {
 }
 
 #[test]
+fn test_builder_matches_fact_by_id() {
+    let original = r"
+?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id,
+  access_count, last_accessed_at, stability_hours, fact_type,
+  is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity] :=
+    *facts{id, valid_from, content, nous_id, confidence, tier,
+           valid_to, superseded_by, source_session_id, recorded_at,
+           access_count, last_accessed_at, stability_hours, fact_type,
+           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity},
+    id = $id
+";
+    let built = queries::fact_by_id();
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match fact_by_id constant"
+    );
+}
+
+#[test]
+fn test_builder_matches_all_facts() {
+    let original = r"
+?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id,
+  access_count, last_accessed_at, stability_hours, fact_type,
+  is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity] :=
+    *facts{id, valid_from, content, nous_id, confidence, tier,
+           valid_to, superseded_by, source_session_id, recorded_at,
+           access_count, last_accessed_at, stability_hours, fact_type,
+           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity}
+:order -recorded_at
+:limit $limit
+";
+    let built = queries::all_facts();
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match all_facts constant"
+    );
+}
+
+#[test]
+fn test_builder_matches_facts_by_type() {
+    let original = r"
+?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id,
+  access_count, last_accessed_at, stability_hours, fact_type,
+  is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity] :=
+    *facts{id, valid_from, content, nous_id, confidence, tier,
+           valid_to, superseded_by, source_session_id, recorded_at,
+           access_count, last_accessed_at, stability_hours, fact_type,
+           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity},
+    nous_id == $nous_id,
+    fact_type == $fact_type,
+    is_forgotten == false
+:order -recorded_at
+:limit $limit
+";
+    let built = queries::facts_by_type();
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match facts_by_type constant"
+    );
+}
+
+#[test]
+fn test_builder_matches_visible_facts() {
+    let original = r"
+?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id,
+  access_count, last_accessed_at, stability_hours, fact_type,
+  is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity] :=
+    *facts{id, valid_from, content, nous_id, confidence, tier,
+           valid_to, superseded_by, source_session_id, recorded_at,
+           access_count, last_accessed_at, stability_hours, fact_type,
+           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity},
+    visible_fact[id],
+    valid_from <= $now,
+    valid_to > $now,
+    is_null(superseded_by),
+    is_forgotten == false
+:order -recorded_at
+:limit $limit
+";
+    let built = queries::visible_facts();
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match visible_facts constant"
+    );
+}
+
+#[test]
+fn test_builder_matches_visible_fact_by_id() {
+    let original = r"
+?[id, content, confidence, tier, recorded_at, nous_id, valid_from, valid_to, superseded_by, source_session_id,
+  access_count, last_accessed_at, stability_hours, fact_type,
+  is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity] :=
+    *facts{id, valid_from, content, nous_id, confidence, tier,
+           valid_to, superseded_by, source_session_id, recorded_at,
+           access_count, last_accessed_at, stability_hours, fact_type,
+           is_forgotten, forgotten_at, forget_reason, scope, project_id, visibility, sensitivity},
+    visible_fact[id],
+    id == $fact_id
+";
+    let built = queries::visible_fact_by_id();
+    assert_eq!(
+        normalize(&built),
+        normalize(original),
+        "builder output should match visible_fact_by_id constant"
+    );
+}
+
+#[test]
 fn query_builder_prevents_injection() {
     let malicious_input = r#"test" :- *drop_all[], panic"#;
     let (script, params) = QueryBuilder::new()

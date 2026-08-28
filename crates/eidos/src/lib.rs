@@ -15,6 +15,8 @@ pub mod id;
 pub mod knowledge;
 /// Uniform provenance metadata for fleet artefacts.
 pub mod meta;
+/// Operator-tunable recall scoring weights.
+pub mod recall;
 
 /// Re-export bookkeeping provider contracts and DTOs at crate root.
 pub use bookkeeping::{
@@ -30,6 +32,8 @@ pub use knowledge::architecture_fact::{ArchitectureFact, FactError, FactScope, F
 pub use knowledge::finding::{EvidenceLevel, Finding};
 /// Re-export provenance types at crate root.
 pub use meta::{ArtefactMeta, Provenance, ProvenanceProject, Stamped};
+/// Re-export the operator-tunable recall weights at crate root.
+pub use recall::RecallWeights;
 /// Shared test data builders for `Fact`, `Entity`, and `Relationship`.
 #[cfg(any(test, feature = "test-support"))]
 #[expect(
