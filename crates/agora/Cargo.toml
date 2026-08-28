@@ -27,6 +27,7 @@ tracing = { workspace = true }
 futures = { workspace = true }
 
 [dev-dependencies]
+koina = { path = "../koina", features = ["test-support"] }
 organon = { path = "../organon", features = ["test-support"] }
 tokio = { workspace = true }
 wiremock = { workspace = true }

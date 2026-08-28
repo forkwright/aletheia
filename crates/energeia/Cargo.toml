@@ -42,6 +42,7 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+koina = { path = "../koina", features = ["test-support"] }
 rustls = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["process", "io-util", "test-util"] }
