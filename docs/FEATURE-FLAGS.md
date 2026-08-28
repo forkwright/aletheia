@@ -107,6 +107,7 @@ Cargo metadata cannot infer.
 | **krites** | `test-full` | no | - | `test-core` |
 | **melete** | `test-core` | no | - | - |
 | **melete** | `test-full` | no | - | - |
+| **melete** | `test-support` | no | Test helpers | - |
 | **mneme** | `default` | **yes** | `graph-algo`, `mneme-engine`, `portability` | - |
 | **mneme** | `graph-algo` | no | Graph algorithm types | `episteme/graph-algo` |
 | **mneme** | `krites_sovereign_hnsw` | no | Forwards krites' sovereign-HNSW selector so consumers can be tested against the replacement tree | `episteme/krites_sovereign_hnsw` |
