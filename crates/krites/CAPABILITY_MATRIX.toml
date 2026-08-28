@@ -349,7 +349,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Sorts before every other variant; byte-identity of encoding (Sec 6.1)."
 gate_test = "krites::data::tests::proptest_memcmp::memcmp_null_sorts_before_everything"
-call_sites = 53
+call_sites = 47
 call_sites_method = "grep -rn 'DataValue::Null\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]
@@ -361,7 +361,7 @@ dest_wave = "wave-6"
 dest_module = "data/value.rs"
 gate = "Byte-identity of encoding (Sec 6.1)."
 gate_test = "krites::data::tests::proptest_memcmp::memcmp_roundtrip_leaf"
-call_sites = 22
+call_sites = 21
 call_sites_method = "grep -rn 'DataValue::Bool\\b' crates/ --include='*.rs' | grep -v ^crates/krites/"
 
 [[capability]]

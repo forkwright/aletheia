@@ -26,6 +26,7 @@ use std::sync::{Arc, RwLock};
 use indexmap::IndexMap;
 
 use koina::id::ToolName;
+use koina::json::pretty_or_compact;
 
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
@@ -77,7 +78,7 @@ impl ToolExecutor for ToolSchemaExecutor {
                     )),
                     SurfaceLookup::Callable(entry) if entry.kind == SurfaceEntryKind::Registry => {
                         match entry.input_schema.as_ref() {
-                            Some(schema) => Ok(ToolResult::text(format_json(schema))),
+                            Some(schema) => Ok(ToolResult::text(pretty_or_compact(schema))),
                             None => Ok(ToolResult::text(unavailable_schema_response(
                                 tool_name_str,
                                 "schema_unavailable",
@@ -220,12 +221,8 @@ pub(crate) fn register_with_pairs(
     Ok(())
 }
 
-fn format_json(value: &serde_json::Value) -> String {
-    serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string())
-}
-
 fn unavailable_schema_response(tool_name: &str, reason: &str) -> String {
-    format_json(&serde_json::json!({
+    pretty_or_compact(&serde_json::json!({
         "tool_name": tool_name,
         "available": false,
         "reason": reason,
@@ -245,7 +242,7 @@ fn unavailable_schema_response_with_availability(
 }
 
 fn available_server_tool_response(tool_name: &str) -> String {
-    format_json(&serde_json::json!({
+    pretty_or_compact(&serde_json::json!({
         "tool_name": tool_name,
         "available": true,
         "kind": "server",

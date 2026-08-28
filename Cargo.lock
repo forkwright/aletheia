@@ -6599,6 +6599,8 @@ name = "poiesis-ooxml-parse"
 version = "0.43.0"
 dependencies = [
  "quick-xml 0.41.0",
+ "snafu",
+ "zip 8.6.0",
 ]
 
 [[package]]
@@ -6645,6 +6647,7 @@ name = "poiesis-slides"
 version = "0.43.0"
 dependencies = [
  "poiesis-core",
+ "poiesis-ooxml-parse",
  "quick-xml 0.41.0",
  "serde",
  "serde_json",
