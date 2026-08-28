@@ -289,52 +289,13 @@ fn web_search_def() -> ToolDef {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use std::collections::HashSet;
-    use std::sync::{Arc, RwLock};
-
-    use koina::id::{NousId, SessionId};
-
-    use crate::types::{ServerToolConfig, ToolContext, ToolHttpClients, ToolServices};
-
     use super::*;
 
-    // WHY(#3693): reqwest 0.13 requires a rustls crypto provider to be
-    // installed before any `Client` is constructed. `mock_ctx` builds a
-    // `reqwest::Client`; without this, the test panics with
-    // "No provider set". `install_default` fails if the process already
-    // installed one, so we swallow the result.
-    fn ensure_crypto_provider() {
-        static INIT: std::sync::Once = std::sync::Once::new();
-        INIT.call_once(|| {
-            let _ = rustls::crypto::ring::default_provider().install_default();
-        });
-    }
-
     fn mock_ctx() -> ToolContext {
-        ensure_crypto_provider();
-        ToolContext {
-            nous_id: NousId::new("alice").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: std::path::PathBuf::from("/tmp"),
-            allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-            services: Some(Arc::new(ToolServices {
-                working_checkpoint_store: None,
-                cross_nous: None,
-                messenger: None,
-                note_store: None,
-                blackboard_store: None,
-                spawn: None,
-                planning: None,
-                knowledge: None,
-                http_clients: ToolHttpClients::new(),
-                secret_vault: hermeneus::secret::SecretVault::new(),
-                lazy_tool_catalog: vec![],
-                server_tool_config: ServerToolConfig::default(),
-            })),
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-        }
+        // WHY(#3693): reqwest 0.13 requires a rustls crypto provider to be
+        // installed before any `Client` is constructed; `mock_ctx` builds
+        // one. `make_test_context_with_services` installs it (idempotent).
+        crate::testing::make_test_context_with_services()
     }
 
     #[test]

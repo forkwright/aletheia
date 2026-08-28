@@ -225,6 +225,33 @@ pub struct ToolServices {
     pub server_tool_config: ServerToolConfig,
 }
 
+impl Default for ToolServices {
+    /// All services absent, paired HTTP clients at their default policy, and
+    /// an empty secret vault/lazy-tool catalog/server-tool config.
+    ///
+    /// WHY: test call sites across organon previously restated this same
+    /// all-`None` shape by hand -- one field set under test, every other
+    /// field spelled out to its default -- which is exactly the divergence
+    /// risk a struct-update base exists to remove. Production call sites
+    /// build a fully-populated `ToolServices` directly and do not need this.
+    fn default() -> Self {
+        Self {
+            cross_nous: None,
+            messenger: None,
+            note_store: None,
+            blackboard_store: None,
+            spawn: None,
+            planning: None,
+            knowledge: None,
+            working_checkpoint_store: None,
+            http_clients: ToolHttpClients::default(),
+            secret_vault: SecretVault::default(),
+            lazy_tool_catalog: Vec::new(),
+            server_tool_config: ServerToolConfig::default(),
+        }
+    }
+}
+
 impl std::fmt::Debug for ToolServices {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ToolServices")

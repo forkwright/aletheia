@@ -488,11 +488,7 @@ fn declare_capabilities(registry: &mut ToolRegistry) -> Result<()> {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use std::collections::HashSet;
-    use std::path::PathBuf;
-    use std::sync::{Arc, RwLock};
-
-    use koina::id::{NousId, SessionId, ToolName};
+    use koina::id::ToolName;
 
     use crate::registry::ToolExecutor;
     use crate::types::{ToolContext, ToolInput};
@@ -500,16 +496,7 @@ mod tests {
     use super::{MemoryAuditExecutor, MemorySearchExecutor};
 
     fn mock_ctx_no_services() -> ToolContext {
-        ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: PathBuf::from("/tmp/test"),
-            allowed_roots: vec![PathBuf::from("/tmp")],
-            services: None,
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-        }
+        crate::testing::make_test_context_without_services()
     }
 
     fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {

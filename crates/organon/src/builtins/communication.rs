@@ -354,49 +354,24 @@ fn sessions_send_def() -> ToolDef {
 )]
 mod tests {
     use std::future::Future;
-    use std::path::PathBuf;
     use std::pin::Pin;
     use std::sync::{Arc, Mutex};
 
-    use std::collections::HashSet;
-    use std::sync::RwLock;
-
-    use koina::id::{NousId, SessionId, ToolName};
-
-    use taxis::config::ToolLimitsConfig;
+    use koina::id::ToolName;
 
     use crate::registry::ToolRegistry;
     use crate::testing::install_crypto_provider;
     use crate::types::{
-        ApprovalRequirement, CrossNousService, MessageService, Reversibility, ServerToolConfig,
-        ToolContext, ToolHttpClients, ToolInput, ToolServices,
+        ApprovalRequirement, CrossNousService, MessageService, Reversibility, ToolContext,
+        ToolInput, ToolServices,
     };
 
     fn mock_ctx() -> ToolContext {
-        ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: PathBuf::from("/tmp/test"),
-            allowed_roots: vec![PathBuf::from("/tmp")],
-            services: None,
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(ToolLimitsConfig::default()),
-        }
+        crate::testing::make_test_context_without_services()
     }
 
     fn mock_ctx_with_services(services: ToolServices) -> ToolContext {
-        install_crypto_provider();
-        ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: PathBuf::from("/tmp/test"),
-            allowed_roots: vec![PathBuf::from("/tmp")],
-            services: Some(Arc::new(services)),
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(ToolLimitsConfig::default()),
-        }
+        crate::testing::make_test_context_with(services)
     }
 
     #[derive(Default)]
@@ -622,18 +597,8 @@ mod tests {
         install_crypto_provider();
         let messenger = Arc::new(MockMessenger::default());
         let ctx = mock_ctx_with_services(ToolServices {
-            working_checkpoint_store: None,
-            cross_nous: None,
-            note_store: None,
-            blackboard_store: None,
-            spawn: None,
-            planning: None,
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
             messenger: Some(messenger),
+            ..Default::default()
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -656,18 +621,8 @@ mod tests {
         let messenger = Arc::new(MockMessenger::default());
         let messenger_ref = Arc::clone(&messenger);
         let ctx = mock_ctx_with_services(ToolServices {
-            working_checkpoint_store: None,
-            cross_nous: None,
-            note_store: None,
-            blackboard_store: None,
-            spawn: None,
-            planning: None,
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
             messenger: Some(messenger),
+            ..Default::default()
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -714,18 +669,8 @@ mod tests {
         let messenger = Arc::new(DenyingMessenger::default());
         let messenger_ref = Arc::clone(&messenger);
         let ctx = mock_ctx_with_services(ToolServices {
-            working_checkpoint_store: None,
-            cross_nous: None,
-            note_store: None,
-            blackboard_store: None,
-            spawn: None,
-            planning: None,
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
             messenger: Some(messenger),
+            ..Default::default()
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -763,18 +708,8 @@ mod tests {
         let cross = Arc::new(MockCrossNous::default());
         let cross_ref = Arc::clone(&cross);
         let ctx = mock_ctx_with_services(ToolServices {
-            working_checkpoint_store: None,
             cross_nous: Some(cross),
-            messenger: None,
-            note_store: None,
-            blackboard_store: None,
-            spawn: None,
-            planning: None,
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
+            ..Default::default()
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -810,18 +745,8 @@ mod tests {
         let cross = Arc::new(MockCrossNous::default());
         let cross_ref = Arc::clone(&cross);
         let ctx = mock_ctx_with_services(ToolServices {
-            working_checkpoint_store: None,
             cross_nous: Some(cross),
-            messenger: None,
-            note_store: None,
-            blackboard_store: None,
-            spawn: None,
-            planning: None,
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
+            ..Default::default()
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -846,18 +771,8 @@ mod tests {
         let cross = Arc::new(MockCrossNous::default());
         *cross.ask_reply.lock().unwrap() = Some(Ok("the answer is 42".to_owned()));
         let ctx = mock_ctx_with_services(ToolServices {
-            working_checkpoint_store: None,
             cross_nous: Some(cross),
-            messenger: None,
-            note_store: None,
-            blackboard_store: None,
-            spawn: None,
-            planning: None,
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
+            ..Default::default()
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");
@@ -881,18 +796,8 @@ mod tests {
         let cross = Arc::new(MockCrossNous::default());
         *cross.ask_reply.lock().unwrap() = Some(Err("timed out after 120s".to_owned()));
         let ctx = mock_ctx_with_services(ToolServices {
-            working_checkpoint_store: None,
             cross_nous: Some(cross),
-            messenger: None,
-            note_store: None,
-            blackboard_store: None,
-            spawn: None,
-            planning: None,
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
+            ..Default::default()
         });
         let mut reg = ToolRegistry::new();
         super::register(&mut reg).expect("register");

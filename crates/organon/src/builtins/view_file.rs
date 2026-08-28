@@ -309,27 +309,13 @@ fn view_file_def() -> crate::types::ToolDef {
     reason = "test: index 0 is valid after asserting len >= 1"
 )]
 mod tests {
-    use std::collections::HashSet;
-    use std::sync::{Arc, RwLock};
-
-    use koina::id::{NousId, SessionId, ToolName};
-
-    use taxis::config::ToolLimitsConfig;
+    use koina::id::ToolName;
 
     use super::*;
     use crate::types::ToolResultContent;
 
     fn mock_ctx(dir: &Path) -> ToolContext {
-        ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: dir.to_path_buf(),
-            allowed_roots: vec![dir.to_path_buf()],
-            services: None,
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(ToolLimitsConfig::default()),
-        }
+        crate::testing::make_test_context_at(dir)
     }
 
     fn tool_input(args: serde_json::Value) -> ToolInput {
