@@ -2750,6 +2750,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[expect(clippy::indexing_slicing, reason = "test assertions")]
     async fn stdio_bound_principal_authorizes_calls_for_the_whole_session() {
         // WHY(#5184): the fix — a principal resolved once at startup and
         // bound to the server — must authorize every call for the session's
