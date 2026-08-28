@@ -171,6 +171,7 @@ mod tests {
         let err = resolver
             .resolve(name("rebind.example"))
             .await
+            .map(|_| ())
             .expect_err("private address must be rejected regardless of egress=allow");
         assert!(err.to_string().contains("private/internal"));
     }
@@ -188,6 +189,7 @@ mod tests {
         let err = resolver
             .resolve(name("example.com"))
             .await
+            .map(|_| ())
             .expect_err("an empty DNS answer must not vacuously pass");
         assert!(err.to_string().contains("no addresses"));
     }
@@ -207,6 +209,7 @@ mod tests {
         let err = resolver
             .resolve(name("example.com"))
             .await
+            .map(|_| ())
             .expect_err("address outside the allowlist must be rejected");
         assert!(err.to_string().contains("allowlist"));
     }
@@ -228,6 +231,7 @@ mod tests {
         let err = resolver
             .resolve(name("example.com"))
             .await
+            .map(|_| ())
             .expect_err("deny must reject");
         assert!(err.to_string().contains("deny"));
     }
