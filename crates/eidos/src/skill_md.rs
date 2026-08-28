@@ -138,6 +138,7 @@ pub fn format_skill_md(skill: &SkillMd) -> String {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
