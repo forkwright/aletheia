@@ -25,15 +25,14 @@ struct Cli {
 }
 
 #[tokio::main]
-#[expect(
-    clippy::expect_used,
-    reason = "ring crypto provider installation fails only if called twice, which is a programming error"
-)]
 // kanon:ignore RUST/box-dyn-error — binary entry point uses Box<dyn Error> for ergonomic top-level error propagation
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("failed to install ring crypto provider");
+    // WHY(#7012): previously `.expect()`-ed, treating any prior installation
+    // as a programming error. That disagreed with every other first-party
+    // binary (aletheia, proskenion), which treat an already-installed
+    // provider as steady state. koina::crypto::install_default_provider()
+    // is the shared policy: it never panics on a prior installation.
+    let _ = koina::crypto::install_default_provider();
 
     let cli = Cli::parse();
     koilon::run_tui(cli.url, cli.token, cli.agent, cli.session, cli.logout).await?;

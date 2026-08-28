@@ -12,6 +12,9 @@ pub mod base64;
 pub mod cleanup;
 /// Credential provider trait for dynamic API key resolution.
 pub mod credential;
+/// Process-wide rustls crypto provider installation.
+#[cfg(feature = "rustls-provider")]
+pub mod crypto;
 /// Shared configuration defaults (token budgets, iteration limits).
 pub mod defaults;
 /// Disk space monitoring: threshold checks, cached monitor, write guards.

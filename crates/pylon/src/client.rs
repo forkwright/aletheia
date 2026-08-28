@@ -12,7 +12,12 @@ use std::time::Duration;
 use reqwest::{Client, Response, StatusCode, header};
 use snafu::prelude::*;
 
-use koina::http::BEARER_PREFIX;
+// WHY: first-party clients identify themselves with the same header name and
+// compiled default value the gateway CSRF layer expects (koina::http), so
+// mutating routes work even when CSRF is on.
+use koina::http::{
+    BEARER_PREFIX, CSRF_HEADER_NAME, DEFAULT_CSRF_HEADER_VALUE as CSRF_HEADER_VALUE,
+};
 use koina::secret::SecretString;
 
 use crate::handlers::health::{HealthResponse, LivenessResponse};
@@ -29,11 +34,6 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 // WHY: 120 seconds covers large ingest batches and replay exports without
 // letting a hung request run forever.
 const REQUEST_TIMEOUT: Duration = Duration::from_mins(2);
-
-// WHY: first-party clients identify themselves with the same header value the
-// gateway CSRF layer expects, so mutating routes work even when CSRF is on.
-const CSRF_HEADER_NAME: &str = "x-requested-with";
-const CSRF_HEADER_VALUE: &str = "aletheia";
 
 /// Error returned by [`GatewayClient`] operations.
 #[derive(Debug, Snafu)]

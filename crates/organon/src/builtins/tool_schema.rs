@@ -291,7 +291,7 @@ mod tests {
                 spawn: None,
                 planning: None,
                 knowledge: None,
-                http_clients: ToolHttpClients::for_tests(),
+                http_clients: ToolHttpClients::new(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),

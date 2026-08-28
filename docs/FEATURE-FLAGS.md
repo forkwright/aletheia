@@ -93,6 +93,7 @@ Cargo metadata cannot infer.
 | **integration-tests** | `test-full` | no | - | `test-core` |
 | **koina** | `default` | **yes** | *(empty)* | - |
 | **koina** | `fjall-helpers` | no | fjall types / utilities | `dep:fjall`, `dep:tempfile` |
+| **koina** | `rustls-provider` | no | Process-wide rustls crypto provider installation (`koina::crypto`) | `dep:rustls` |
 | **koina** | `test-core` | no | - | - |
 | **koina** | `test-full` | no | - | - |
 | **koina** | `test-support` | no | Test helpers | - |

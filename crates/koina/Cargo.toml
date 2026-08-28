@@ -20,6 +20,9 @@ default = []
 # error. The distinct name keeps the helper module reachable without
 # colliding with the dependency's namespace (aletheia#6958).
 fjall-helpers = ["dep:fjall", "dep:tempfile"]
+# Process-wide rustls crypto provider installation (koina::crypto). Optional
+# so crates with no TLS surface never pull rustls in transitively.
+rustls-provider = ["dep:rustls"]
 test-core = []
 test-full = []
 test-support = []
@@ -27,6 +30,7 @@ test-support = []
 [dependencies]
 fjall = { version = "3", default-features = false, features = ["lz4"], optional = true }
 tempfile = { workspace = true, optional = true }
+rustls = { workspace = true, optional = true }
 jiff = { workspace = true }
 rustix = { workspace = true, features = ["fs", "process"] }
 regex = { workspace = true }

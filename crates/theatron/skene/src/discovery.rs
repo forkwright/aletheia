@@ -799,12 +799,7 @@ tailscale_ips = ["100.64.0.20"]
         // WHY: reqwest requires a TLS crypto provider to be installed before
         // building any Client. In production this is done at startup; in tests
         // we install it explicitly.
-        if rustls::crypto::ring::default_provider()
-            .install_default()
-            .is_err()
-        {
-            // Already installed by another test in this process.
-        }
+        crate::install_test_crypto_provider();
 
         // WHY: In CI / test environments no server is running, so discovery
         // should return None relatively quickly (each probe times out at 2s,
