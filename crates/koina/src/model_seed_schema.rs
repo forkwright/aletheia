@@ -48,11 +48,14 @@ pub enum ModelProvider {
     Kimi,
 }
 
-// WHY dead_code: fields are read only by serde during deserialization in the
-// build-time splice site (`build.rs` never accesses them by name); the
-// runtime splice site (`models.rs`) does read them, so the allow is a no-op
-// there.
-#[allow(dead_code)]
+// WHY dead_code (#7025): fields are read only by serde during
+// deserialization in the build-time splice site (`build.rs` never accesses
+// them by name); the runtime splice site (`models.rs`) does read them, so
+// the allow is a no-op there. An `expect` attribute cannot replace this
+// `allow`: the same struct is compiled twice (once per splice site), and an
+// expectation that goes unfulfilled in the `models.rs` compilation (where
+// the fields ARE used) is itself a hard error.
+#[allow(dead_code, reason = "read only via serde in build.rs's splice site (#7025)")]
 #[derive(Debug, serde::Deserialize)]
 struct ModelSeed {
     as_of: String,
@@ -62,14 +65,14 @@ struct ModelSeed {
     models: Vec<ModelEntry>,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "read only via serde in build.rs's splice site (#7025)")]
 #[derive(Debug, serde::Deserialize)]
 struct CacheSeed {
     read_ratio: f64,
     write_ratio: f64,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "read only via serde in build.rs's splice site (#7025)")]
 #[derive(Debug, serde::Deserialize)]
 struct TierSeed {
     opus: String,
@@ -77,7 +80,7 @@ struct TierSeed {
     haiku: String,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "read only via serde in build.rs's splice site (#7025)")]
 #[derive(Debug, serde::Deserialize)]
 struct TaskRoleSeed {
     coder: ModelTier,
@@ -90,7 +93,7 @@ struct TaskRoleSeed {
     triage_prompt: ModelTier,
 }
 
-#[allow(dead_code)]
+#[allow(dead_code, reason = "read only via serde in build.rs's splice site (#7025)")]
 #[derive(Debug, serde::Deserialize)]
 struct ModelEntry {
     id: String,
