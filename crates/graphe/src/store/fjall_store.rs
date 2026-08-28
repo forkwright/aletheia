@@ -751,6 +751,23 @@ struct NoteDeleteKeys {
     gid_idx_keys: Vec<Vec<u8>>,
 }
 
+/// The keyspace partitions an imported bundle's child rows are written to.
+///
+/// WHY grouped: they always travel together, and threading them as loose
+/// parameters put `import_bundle_children_in_tx` at 8 arguments against
+/// clippy's ceiling of 7. Same shape as `NoteTxParts` and
+/// `CommandLifecycleTxParts` below, which this function already builds from
+/// these very fields.
+#[derive(Clone, Copy)]
+struct ImportBundleTxParts<'a> {
+    messages: &'a fjall::SingleWriterTxKeyspace,
+    usage: &'a fjall::SingleWriterTxKeyspace,
+    command_lifecycle: &'a fjall::SingleWriterTxKeyspace,
+    notes: &'a fjall::SingleWriterTxKeyspace,
+    counters: &'a fjall::SingleWriterTxKeyspace,
+    sessions: &'a fjall::SingleWriterTxKeyspace,
+}
+
 #[derive(Clone, Copy)]
 struct CommandLifecycleTxParts<'a> {
     command_lifecycle: &'a fjall::SingleWriterTxKeyspace,
@@ -4747,29 +4764,30 @@ impl SessionStore {
     /// note there, #5032).
     fn import_bundle_children_in_tx(
         tx: &mut fjall::SingleWriterWriteTx<'_>,
-        messages_part: &fjall::SingleWriterTxKeyspace,
-        usage_part: &fjall::SingleWriterTxKeyspace,
-        command_lifecycle_part: &fjall::SingleWriterTxKeyspace,
-        notes_part: &fjall::SingleWriterTxKeyspace,
-        counters_part: &fjall::SingleWriterTxKeyspace,
-        sessions_part: &fjall::SingleWriterTxKeyspace,
+        parts: ImportBundleTxParts<'_>,
         bundle: &ImportSessionBundle<'_>,
     ) -> Result<()> {
         for msg in bundle.messages {
-            Self::insert_message_raw_in_tx(tx, messages_part, sessions_part, counters_part, msg)?;
+            Self::insert_message_raw_in_tx(
+                tx,
+                parts.messages,
+                parts.sessions,
+                parts.counters,
+                msg,
+            )?;
         }
 
         for usage in bundle.usage_records {
-            Self::record_usage_in_tx(tx, usage_part, sessions_part, usage)?;
+            Self::record_usage_in_tx(tx, parts.usage, parts.sessions, usage)?;
         }
 
         for record in bundle.command_lifecycle_records {
             Self::put_command_lifecycle_record_in_tx(
                 tx,
                 CommandLifecycleTxParts {
-                    command_lifecycle: command_lifecycle_part,
-                    counters: counters_part,
-                    sessions: sessions_part,
+                    command_lifecycle: parts.command_lifecycle,
+                    counters: parts.counters,
+                    sessions: parts.sessions,
                 },
                 PutCommandLifecycleRecord {
                     session_id: bundle.session.id.as_str(),
@@ -4789,9 +4807,9 @@ impl SessionStore {
             Self::put_note_in_tx(
                 tx,
                 NoteTxParts {
-                    notes: notes_part,
-                    counters: counters_part,
-                    sessions: sessions_part,
+                    notes: parts.notes,
+                    counters: parts.counters,
+                    sessions: parts.sessions,
                 },
                 PutNoteSpec {
                     session_id: bundle.session.id.as_str(),
@@ -4871,12 +4889,14 @@ impl SessionStore {
 
         Self::import_bundle_children_in_tx(
             &mut tx,
-            &messages_part,
-            &usage_part,
-            &command_lifecycle_part,
-            &notes_part,
-            &counters_part,
-            &sessions_part,
+            ImportBundleTxParts {
+                messages: &messages_part,
+                usage: &usage_part,
+                command_lifecycle: &command_lifecycle_part,
+                notes: &notes_part,
+                counters: &counters_part,
+                sessions: &sessions_part,
+            },
             bundle,
         )?;
 
