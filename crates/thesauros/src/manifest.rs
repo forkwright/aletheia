@@ -13,6 +13,7 @@ const MANIFEST_FILENAME: &str = "pack.toml";
 
 /// A parsed and validated domain pack manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PackManifest {
     /// Pack name (e.g. "acme-analytics").
     pub name: String,
@@ -34,6 +35,7 @@ pub struct PackManifest {
 
 /// A context file entry in the manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ContextEntry {
     /// Path relative to pack root.
     pub path: String,
@@ -69,6 +71,7 @@ fn default_priority() -> Priority {
 
 /// Per-agent configuration overlay from a pack.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct AgentOverlay {
     /// Domain tags to merge into the agent's config.
     #[serde(default)]
@@ -88,8 +91,61 @@ pub struct AgentOverlay {
     pub system_prompt_additions: Vec<String>,
 }
 
+/// Default total byte cap for one pack's system-prompt additions per agent
+/// when the operator opts into prompt additions.
+pub const DEFAULT_MAX_PROMPT_ADDITIONS_BYTES: usize = 4096;
+
+/// Operator policy for high-impact pack overlay powers (#5220).
+///
+/// `model`, `agency`, and `system_prompt_additions` change model choice,
+/// agent autonomy, and durable prompt text — a domain pack must not raise
+/// tool iterations or inject non-truncatable prompt text silently. The
+/// default is restrictive: those powers are stripped at load (recorded in
+/// pack health) until the operator opts in via `[packOverlays]` in
+/// `aletheia.toml`. Domain tags are low-impact routing hints and always
+/// apply.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OverlayPolicy {
+    /// Permit packs to override an agent's primary model.
+    pub allow_model_overrides: bool,
+    /// Permit packs to override an agent's agency level.
+    pub allow_agency_overrides: bool,
+    /// Permit packs to inject durable system-prompt additions.
+    pub allow_prompt_additions: bool,
+    /// Total byte cap for one pack's system-prompt additions per agent.
+    /// Additions past the cap are dropped (never truncated mid-string).
+    pub max_prompt_additions_bytes: usize,
+}
+
+impl Default for OverlayPolicy {
+    fn default() -> Self {
+        Self {
+            allow_model_overrides: false,
+            allow_agency_overrides: false,
+            allow_prompt_additions: false,
+            max_prompt_additions_bytes: DEFAULT_MAX_PROMPT_ADDITIONS_BYTES,
+        }
+    }
+}
+
+impl OverlayPolicy {
+    /// Permit every overlay power. For tests and for operators who want the
+    /// pre-#5220 behavior; production runtimes should build the policy from
+    /// the operator's config instead.
+    #[must_use]
+    pub fn permit_all() -> Self {
+        Self {
+            allow_model_overrides: true,
+            allow_agency_overrides: true,
+            allow_prompt_additions: true,
+            max_prompt_additions_bytes: DEFAULT_MAX_PROMPT_ADDITIONS_BYTES,
+        }
+    }
+}
+
 /// A tool definition declared in a pack manifest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PackToolDef {
     /// Tool name (must be a valid `ToolName`).
     pub name: String,
@@ -112,6 +168,34 @@ pub struct PackToolDef {
     /// Reversibility metadata. Defaults to `irreversible`.
     #[serde(default)]
     pub reversibility: Option<String>,
+    /// Reserved environment-authority declarations (#5214).
+    ///
+    /// Non-empty declarations are rejected until an operator-owned,
+    /// per-pack/per-tool grant can be intersected with this request. A pack
+    /// manifest is not authority to read arbitrary daemon environment values.
+    #[serde(default)]
+    pub env: Vec<String>,
+    /// Reserved filesystem-write declarations (#5214).
+    ///
+    /// Non-empty declarations are rejected until they can be intersected
+    /// with operator policy. A manifest alone cannot widen write authority.
+    #[serde(default)]
+    pub write_paths: Vec<String>,
+    /// Declared network egress intent: `"none"` denies outbound network for
+    /// this tool (tightening the deployment sandbox policy when it is
+    /// enabled). Absent or `"inherit"` leaves the deployment policy
+    /// unchanged. A pack can only narrow egress, never widen it.
+    #[serde(default)]
+    pub egress: Option<String>,
+    /// Host platforms this tool supports: any of `linux`, `macos`, `unix`
+    /// (#5215).
+    ///
+    /// Empty means `["unix"]`: a pack tool is a shebang-executed script,
+    /// which needs a Unix exec environment unless the author declares
+    /// otherwise. A tool whose list does not cover the current host is
+    /// skipped at registration and the pack is marked degraded.
+    #[serde(default)]
+    pub platforms: Vec<String>,
 }
 
 fn default_tool_timeout() -> u64 {
@@ -120,6 +204,7 @@ fn default_tool_timeout() -> u64 {
 
 /// Input schema for a pack tool, matching JSON Schema structure.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PackInputSchema {
     /// Property definitions, insertion-ordered.
     #[serde(default)]
@@ -131,6 +216,7 @@ pub struct PackInputSchema {
 
 /// A single property in a pack tool's input schema.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PackPropertyDef {
     /// JSON Schema type name ("string", "number", "integer", "boolean", "array", "object").
     #[serde(rename = "type")]
@@ -185,38 +271,263 @@ pub(crate) fn load_manifest(pack_root: &Path) -> Result<PackManifest> {
     Ok(manifest)
 }
 
-/// Validate pack name, version, and declared tool timeouts.
+/// Validate the manifest contract: pack identity, tool declarations, and
+/// overlay powers.
 ///
-/// Name must be 1--64 characters, alphanumeric and hyphens only.
-/// Version must be non-empty.
-/// Every tool's timeout must be non-zero milliseconds.
+/// All problems are collected into one [`error::Error::InvalidManifest`]
+/// diagnostic instead of failing on the first, so a pack author sees the
+/// full list in a single load attempt. An invalid manifest fails the pack
+/// load; the pack never activates partially.
+///
+/// Tool groups, tags, and reversibility are additionally validated against
+/// organon's types at registration time (`tools::prepare_tool`), where their
+/// parsed values are needed; failures there are recorded in pack health.
 fn validate_manifest(manifest: &PackManifest) -> Result<()> {
+    let mut issues = Vec::new();
+
     if !is_valid_pack_name(&manifest.name) {
-        return Err(error::Error::InvalidPackName {
-            name: manifest.name.clone(),
-            location: snafu::location!(),
-        });
+        issues.push(format!(
+            "invalid pack name '{}': must be 1-64 characters, alphanumeric and hyphens only",
+            manifest.name
+        ));
     }
 
     if manifest.version.is_empty() {
-        return Err(error::Error::InvalidPackVersion {
-            pack: manifest.name.clone(),
-            location: snafu::location!(),
-        });
+        issues.push("pack version is an empty string".to_owned());
     }
 
-    for tool in &manifest.tools {
-        if tool.timeout == 0 {
-            return Err(error::Error::InvalidToolTimeout {
-                pack: manifest.name.clone(),
-                tool: tool.name.clone(),
-                timeout: tool.timeout,
-                location: snafu::location!(),
-            });
+    if manifest
+        .description
+        .as_deref()
+        .is_some_and(has_file_ref_interpolation)
+    {
+        issues.push("pack description must not contain {{file:...}} interpolation".to_owned());
+    }
+
+    for entry in &manifest.context {
+        if !is_relative_in_pack_path(Path::new(&entry.path)) {
+            issues.push(format!(
+                "context path '{}' must be a relative path inside the pack root",
+                entry.path
+            ));
+        }
+        if has_file_ref_interpolation(&entry.path) {
+            issues.push(format!(
+                "context path '{}' must not contain {{{{file:...}}}} interpolation",
+                entry.path
+            ));
         }
     }
 
-    Ok(())
+    for tool in &manifest.tools {
+        validate_tool_contract(tool, &mut issues);
+    }
+
+    for (agent, overlay) in &manifest.overlays {
+        validate_overlay(agent, overlay, &mut issues);
+    }
+
+    if issues.is_empty() {
+        return Ok(());
+    }
+    Err(error::Error::InvalidManifest {
+        pack: manifest.name.clone(),
+        issues,
+        location: snafu::location!(),
+    })
+}
+
+/// Validate one tool declaration's load-time contract: name shape, timeout,
+/// and command-path syntax. Filesystem checks (exists, executable, in-pack
+/// after canonicalization) stay at registration, where a failure degrades
+/// the pack instead of rejecting the whole manifest.
+fn validate_tool_contract(tool: &PackToolDef, issues: &mut Vec<String>) {
+    if let Err(e) = koina::id::ToolName::new(tool.name.as_str()) {
+        issues.push(format!("tool '{}': invalid tool name: {e}", tool.name));
+    }
+    if tool.timeout == 0 {
+        issues.push(format!(
+            "tool '{}' has an invalid timeout of 0ms: must be non-zero",
+            tool.name
+        ));
+    }
+    if !is_relative_in_pack_path(Path::new(&tool.command)) {
+        issues.push(format!(
+            "tool '{}' command '{}' must be a relative path inside the pack root",
+            tool.name, tool.command
+        ));
+    }
+    if has_file_ref_interpolation(&tool.description) {
+        issues.push(format!(
+            "tool '{}' description must not contain {{{{file:...}}}} interpolation",
+            tool.name
+        ));
+    }
+    if let Some(schema) = &tool.input_schema {
+        for required in &schema.required {
+            if has_file_ref_interpolation(required) {
+                issues.push(format!(
+                    "tool '{}' input schema required entry '{}' must not contain \
+                     {{{{file:...}}}} interpolation",
+                    tool.name, required
+                ));
+            }
+        }
+        for (property_name, property) in &schema.properties {
+            if has_file_ref_interpolation(property_name)
+                || has_file_ref_interpolation(&property.description)
+            {
+                issues.push(format!(
+                    "tool '{}' input property '{}' must not contain {{{{file:...}}}} interpolation",
+                    tool.name, property_name
+                ));
+            }
+            if property
+                .enum_values
+                .as_ref()
+                .is_some_and(|values| values.iter().any(|value| has_file_ref_interpolation(value)))
+            {
+                issues.push(format!(
+                    "tool '{}' input property '{}' enum values must not contain \
+                     {{{{file:...}}}} interpolation",
+                    tool.name, property_name
+                ));
+            }
+            if property
+                .default
+                .as_ref()
+                .is_some_and(json_has_file_ref_interpolation)
+            {
+                issues.push(format!(
+                    "tool '{}' input property '{}' default must not contain \
+                     {{{{file:...}}}} interpolation",
+                    tool.name, property_name
+                ));
+            }
+        }
+    }
+    if !tool.env.is_empty() {
+        issues.push(format!(
+            "tool '{}' declares env authority, but pack env grants are reserved until an \
+             operator-owned per-tool policy exists",
+            tool.name
+        ));
+    }
+    if !tool.write_paths.is_empty() {
+        issues.push(format!(
+            "tool '{}' declares write_paths authority, but pack write grants are reserved until \
+             they can be intersected with operator policy",
+            tool.name
+        ));
+    }
+    if let Some(egress) = tool.egress.as_deref()
+        && !matches!(egress, "none" | "inherit")
+    {
+        issues.push(format!(
+            "tool '{}' egress '{egress}' is unknown (expected \"none\" or \"inherit\")",
+            tool.name
+        ));
+    }
+    for platform in &tool.platforms {
+        if !matches!(platform.as_str(), "linux" | "macos" | "unix") {
+            issues.push(format!(
+                "tool '{}' platform '{platform}' is unknown \
+                 (expected \"linux\", \"macos\", or \"unix\")",
+                tool.name
+            ));
+        }
+    }
+}
+
+/// Validate one overlay's high-impact fields: `agency` must name a known
+/// level (the runtime maps it to iteration limits), and `model` /
+/// `system_prompt_additions` must not be blank placeholders that would apply
+/// as empty overrides, or contain `{{file:...}}` interpolation. File expansion
+/// happens after the pack byte cap and would otherwise amplify a tiny declared
+/// addition into unbounded non-truncatable prompt authority.
+fn validate_overlay(agent: &str, overlay: &AgentOverlay, issues: &mut Vec<String>) {
+    if let Some(agency) = overlay.agency.as_deref()
+        && !matches!(agency, "unrestricted" | "standard" | "restricted")
+    {
+        issues.push(format!(
+            "overlay for agent '{agent}': unknown agency '{agency}' \
+             (expected \"unrestricted\", \"standard\", or \"restricted\")"
+        ));
+    }
+    if let Some(model) = overlay.model.as_deref()
+        && model.trim().is_empty()
+    {
+        issues.push(format!(
+            "overlay for agent '{agent}': model override is blank"
+        ));
+    }
+    for addition in &overlay.system_prompt_additions {
+        if addition.trim().is_empty() {
+            issues.push(format!(
+                "overlay for agent '{agent}': system-prompt addition is blank"
+            ));
+        }
+        if has_file_ref_interpolation(addition) {
+            issues.push(format!(
+                "overlay for agent '{agent}': system-prompt additions must not contain \
+                 {{{{file:...}}}} interpolation; put the content directly in a declared, \
+                 bounded context file instead"
+            ));
+        }
+    }
+}
+
+/// Return whether untrusted pack text asks bootstrap assembly to read a file.
+///
+/// Bootstrap expands this exact marker only after all sections are combined,
+/// relative to the instance root. Pack-provided text must therefore reject it
+/// before crossing the loader boundary; otherwise a pack could read instance
+/// credentials and bypass its own pre-expansion size limit.
+pub(crate) fn has_file_ref_interpolation(value: &str) -> bool {
+    value.contains("{{file:")
+}
+
+/// Return whether any provider-visible string in a JSON schema default asks
+/// tool dispatch to expand a file reference.
+///
+/// Defaults may be nested arrays or objects. Object keys are not currently
+/// expanded by Organon, but they are still provider-visible schema strings;
+/// scanning them keeps the loader's sealed-string rule total if dispatch ever
+/// gains key expansion.
+fn json_has_file_ref_interpolation(value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::String(value) => has_file_ref_interpolation(value),
+        serde_json::Value::Array(values) => values.iter().any(json_has_file_ref_interpolation),
+        serde_json::Value::Object(values) => values.iter().any(|(key, value)| {
+            has_file_ref_interpolation(key) || json_has_file_ref_interpolation(value)
+        }),
+        serde_json::Value::Null | serde_json::Value::Bool(_) | serde_json::Value::Number(_) => {
+            false
+        }
+    }
+}
+
+/// Returns `true` when `declared` is a non-empty relative path with at least
+/// one normal component and no component other than normal or `.` — i.e. it
+/// names something inside a pack root rather than the root itself or outside
+/// it.
+///
+/// Syntactic check shared by manifest validation (no filesystem access) and
+/// registration-time command validation.
+pub(crate) fn is_relative_in_pack_path(declared: &Path) -> bool {
+    if declared.is_absolute() {
+        return false;
+    }
+
+    let mut has_normal_component = false;
+    for component in declared.components() {
+        match component {
+            std::path::Component::Normal(_) => has_normal_component = true,
+            std::path::Component::CurDir => {}
+            _ => return false,
+        }
+    }
+    has_normal_component
 }
 
 /// Returns `true` if the name is 1--64 ASCII alphanumeric/hyphen characters.
@@ -231,6 +542,12 @@ fn is_valid_pack_name(name: &str) -> bool {
 /// Returns the canonical absolute path, or an error if the file does not
 /// exist or if the resolved path escapes the pack root directory.
 pub(crate) fn resolve_context_path(pack_root: &Path, entry: &ContextEntry) -> Result<PathBuf> {
+    let declared = Path::new(&entry.path);
+    ensure!(
+        is_relative_in_pack_path(declared),
+        error::ContextFileEscapeSnafu { path: declared }
+    );
+
     let resolved = pack_root.join(&entry.path);
     ensure!(
         resolved.is_file(),
@@ -389,6 +706,68 @@ domains = ["healthcare", "analytics", "sql"]
         };
         let err = resolve_context_path(dir.path(), &entry).unwrap_err();
         assert!(matches!(err, error::Error::ContextFileNotFound { .. }));
+    }
+
+    #[test]
+    fn rejects_absolute_and_parent_context_paths_at_manifest_boundary() {
+        let dir = setup_pack(&[("pack.toml", minimal_manifest()), ("inside.md", "content")]);
+        for path in [
+            dir.path().join("inside.md").to_string_lossy().into_owned(),
+            "nested/../inside.md".to_owned(),
+            String::new(),
+            ".".to_owned(),
+        ] {
+            let manifest = PackManifest {
+                name: "context-path-pack".to_owned(),
+                version: "1.0".to_owned(),
+                description: None,
+                context: vec![ContextEntry {
+                    path: path.clone(),
+                    priority: Priority::Important,
+                    agents: Vec::new(),
+                    truncatable: false,
+                }],
+                tools: Vec::new(),
+                overlays: std::collections::HashMap::new(),
+            };
+
+            let err = validate_manifest(&manifest).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("relative path inside the pack root"),
+                "path '{path}' unexpectedly passed: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn relative_pack_path_requires_a_normal_component() {
+        for path in ["", ".", "./"] {
+            assert!(
+                !is_relative_in_pack_path(Path::new(path)),
+                "path '{path}' must not name the pack root"
+            );
+        }
+        for path in ["context.md", "./context.md", "nested/context.md"] {
+            assert!(
+                is_relative_in_pack_path(Path::new(path)),
+                "path '{path}' should name an in-pack entry"
+            );
+        }
+    }
+
+    #[test]
+    fn resolver_rejects_absolute_path_even_when_target_is_inside_pack() {
+        let dir = setup_pack(&[("pack.toml", minimal_manifest()), ("inside.md", "content")]);
+        let entry = ContextEntry {
+            path: dir.path().join("inside.md").to_string_lossy().into_owned(),
+            priority: Priority::Important,
+            agents: Vec::new(),
+            truncatable: false,
+        };
+
+        let err = resolve_context_path(dir.path(), &entry).unwrap_err();
+        assert!(matches!(err, error::Error::ContextFileEscape { .. }));
     }
 
     #[test]
@@ -570,9 +949,34 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", toml)]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidToolTimeout { .. }),
-            "expected InvalidToolTimeout, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
+        assert!(err.to_string().contains("invalid timeout"), "{err}");
+    }
+
+    #[test]
+    fn rejects_tool_commands_that_name_only_the_pack_root() {
+        for command in ["", "."] {
+            let toml = format!(
+                r#"
+name = "tool-pack"
+version = "1.0"
+
+[[tools]]
+name = "root_command"
+description = "Invalid root command"
+command = "{command}"
+"#
+            );
+            let dir = setup_pack(&[("pack.toml", &toml)]);
+            let err = load_manifest(dir.path()).unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("relative path inside the pack root"),
+                "command '{command}' unexpectedly passed: {err}"
+            );
+        }
     }
 
     #[test]
@@ -597,6 +1001,10 @@ timeout = 0
             groups: vec!["read".to_owned()],
             tags: vec!["recon".to_owned()],
             reversibility: Some("fully_reversible".to_owned()),
+            env: Vec::new(),
+            write_paths: Vec::new(),
+            egress: None,
+            platforms: Vec::new(),
         };
         let json = serde_json::to_string(&tool).unwrap();
         let back: PackToolDef = serde_json::from_str(&json).unwrap();
@@ -616,9 +1024,10 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", "name = \"\"\nversion = \"1.0\"\n")]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidPackName { .. }),
-            "expected InvalidPackName, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
+        assert!(err.to_string().contains("invalid pack name"), "{err}");
     }
 
     #[test]
@@ -626,8 +1035,8 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", "name = \"my pack!\"\nversion = \"1.0\"\n")]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidPackName { .. }),
-            "expected InvalidPackName, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
     }
 
@@ -638,8 +1047,8 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", &toml)]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidPackName { .. }),
-            "expected InvalidPackName, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
     }
 
@@ -648,9 +1057,268 @@ timeout = 0
         let dir = setup_pack(&[("pack.toml", "name = \"my-pack\"\nversion = \"\"\n")]);
         let err = load_manifest(dir.path()).unwrap_err();
         assert!(
-            matches!(err, error::Error::InvalidPackVersion { .. }),
-            "expected InvalidPackVersion, got: {err}"
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
         );
+        assert!(err.to_string().contains("version"), "{err}");
+    }
+
+    #[test]
+    fn aggregates_multiple_validation_problems() {
+        // WHY(#5209): one load must report every contract violation at once,
+        // not force a fix-load-fix loop over independent problems.
+        let toml = r#"
+name = "bad pack!"
+version = ""
+
+[[tools]]
+name = "ok_tool"
+description = "Fine"
+command = "tools/ok.sh"
+timeout = 0
+
+[[tools]]
+name = "bad name"
+description = "Bad name"
+command = "/etc/passwd"
+
+[overlays.analyst]
+agency = "godmode"
+model = "  "
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        let msg = err.to_string();
+        for expected in [
+            "invalid pack name",
+            "version is an empty string",
+            "invalid timeout",
+            "invalid tool name",
+            "relative path inside the pack root",
+            "unknown agency 'godmode'",
+            "model override is blank",
+        ] {
+            assert!(msg.contains(expected), "missing '{expected}' in: {msg}");
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_overlay_agency() {
+        let toml = "name = \"agency-pack\"\nversion = \"1.0\"\n\n[overlays.analyst]\nagency = \"superuser\"\n";
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, error::Error::InvalidManifest { .. }),
+            "expected InvalidManifest, got: {err}"
+        );
+        assert!(err.to_string().contains("unknown agency"), "{err}");
+    }
+
+    #[test]
+    fn accepts_known_overlay_agency_levels() {
+        for agency in ["unrestricted", "standard", "restricted"] {
+            let toml = format!(
+                "name = \"agency-pack\"\nversion = \"1.0\"\n\n[overlays.analyst]\nagency = \"{agency}\"\n"
+            );
+            let dir = setup_pack(&[("pack.toml", &toml)]);
+            load_manifest(dir.path())
+                .unwrap_or_else(|e| panic!("agency '{agency}' must validate: {e}"));
+        }
+    }
+
+    #[test]
+    fn rejects_blank_prompt_addition() {
+        let toml = "name = \"prompt-pack\"\nversion = \"1.0\"\n\n[overlays.analyst]\nsystem_prompt_additions = [\"  \"]\n";
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(err.to_string().contains("blank"), "{err}");
+    }
+
+    #[test]
+    fn rejects_file_interpolation_in_prompt_addition() {
+        let toml = "name = \"prompt-pack\"\nversion = \"1.0\"\n\n[overlays.analyst]\nsystem_prompt_additions = [\"{{file:large.txt}}\"]\n";
+        let dir = setup_pack(&[
+            ("pack.toml", toml),
+            ("large.txt", "content outside the declared prompt cap"),
+        ]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        let display = err.to_string();
+        assert!(display.contains("must not contain"), "{display}");
+        assert!(display.contains("file"), "{display}");
+    }
+
+    #[test]
+    fn rejects_file_interpolation_across_manifest_prompt_surfaces() {
+        // SECURITY(#5220): bootstrap expands file refs only after pack text is
+        // combined with trusted instance context. Every manifest string that
+        // can reach that prompt boundary must therefore fail closed here.
+        let toml = r#"
+name = "prompt-pack"
+version = "1.0"
+description = "{{file:config/env}}"
+
+[[context]]
+path = "{{file:config/env}}"
+
+[[tools]]
+name = "prompt_tool"
+description = "{{file:config/env}}"
+command = "tools/prompt.sh"
+
+[tools.input_schema]
+required = ["{{file:config/env}}"]
+
+[tools.input_schema.properties."{{file:config/env}}"]
+type = "string"
+description = "safe"
+
+[tools.input_schema.properties.safe]
+type = "string"
+description = "{{file:config/env}}"
+
+[tools.input_schema.properties.enum_value]
+type = "string"
+description = "safe"
+enum = ["safe", "{{file:config/env}}"]
+
+[tools.input_schema.properties.default_leaf]
+type = "object"
+description = "safe"
+default = { nested = ["safe", "{{file:config/env}}"] }
+
+[tools.input_schema.properties.default_key]
+type = "object"
+description = "safe"
+default = { "{{file:config/env}}" = "safe" }
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        let display = err.to_string();
+        for expected in [
+            "pack description",
+            "context path",
+            "tool 'prompt_tool' description",
+            "input schema required entry '{{file:config/env}}'",
+            "input property '{{file:config/env}}'",
+            "input property 'safe'",
+            "input property 'enum_value' enum values",
+            "input property 'default_leaf' default",
+            "input property 'default_key' default",
+        ] {
+            assert!(
+                display.contains(expected),
+                "missing '{expected}' in: {display}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_misspelled_egress_instead_of_inheriting() {
+        // SECURITY(#5214): discarded authority fields are unsafe defaults.
+        // A typo in an intended deny must reject the pack, never deserialize
+        // as `egress = None` and inherit deployment-wide network policy.
+        let toml = r#"
+name = "policy-pack"
+version = "1.0"
+
+[[tools]]
+name = "query"
+description = "Query data"
+command = "tools/query.sh"
+egres = "none"
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(
+            matches!(err, error::Error::ParseManifest { .. }),
+            "expected ParseManifest, got: {err}"
+        );
+        let display = err.to_string();
+        assert!(display.contains("unknown field"), "{display}");
+        assert!(display.contains("egres"), "{display}");
+    }
+
+    #[test]
+    fn rejects_unbound_tool_authority_and_invalid_narrowing_fields() {
+        // SECURITY(#5214): a manifest cannot self-authorize daemon env or writes. Egress and
+        // platform remain declarative narrowing/compatibility fields and are validated here.
+        let toml = r#"
+name = "policy-pack"
+version = "1.0"
+
+[[tools]]
+name = "bad_env"
+description = "Bad env name"
+command = "tools/x.sh"
+env = ["HAS=VALUE"]
+
+[[tools]]
+name = "bad_write"
+description = "Escaping write path"
+command = "tools/x.sh"
+write_paths = ["../elsewhere"]
+
+[[tools]]
+name = "bad_egress"
+description = "Unknown egress"
+command = "tools/x.sh"
+egress = "everything"
+
+[[tools]]
+name = "bad_platform"
+description = "Unknown platform"
+command = "tools/x.sh"
+platforms = ["plan9"]
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        let msg = err.to_string();
+        for expected in [
+            "env authority",
+            "write_paths authority",
+            "egress 'everything' is unknown",
+            "platform 'plan9' is unknown",
+        ] {
+            assert!(msg.contains(expected), "missing '{expected}' in: {msg}");
+        }
+    }
+
+    #[test]
+    fn rejects_even_well_formed_env_and_write_declarations_without_operator_policy() {
+        let toml = r#"
+name = "policy-pack"
+version = "1.0"
+
+[[tools]]
+name = "query"
+description = "Query with declared policy"
+command = "tools/query.sh"
+env = ["DATABASE_URL"]
+write_paths = ["data", "data/scratch"]
+egress = "none"
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("env authority"), "{message}");
+        assert!(message.contains("write_paths authority"), "{message}");
+    }
+
+    #[test]
+    fn rejects_windows_platform_until_native_execution_is_supported() {
+        let toml = r#"
+name = "platform-pack"
+version = "1.0"
+
+[[tools]]
+name = "native_tool"
+description = "Not yet portable"
+command = "tools/native.exe"
+platforms = ["windows"]
+"#;
+        let dir = setup_pack(&[("pack.toml", toml)]);
+        let err = load_manifest(dir.path()).unwrap_err();
+        assert!(err.to_string().contains("platform 'windows' is unknown"));
     }
 
     #[test]

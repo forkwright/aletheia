@@ -8,7 +8,7 @@
 //!
 //! # Requirements
 //!
-//! - Linux kernel 5.13+ for Landlock sandbox support
+//! - Landlock ABI v5 (Linux 6.10+ unless backported) for enforcing sandbox support
 //! - `scrot` or `grim` for screen capture
 //! - `xdotool` for input simulation (X11)
 //!

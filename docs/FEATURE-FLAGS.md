@@ -131,7 +131,7 @@ Cargo metadata cannot infer.
 | **nous** | `test-support` | no | Mock search / test helpers | `hermeneus/test-utils`, `organon/test-support` |
 | **nous** | `test-core` | no | - | `knowledge-store` |
 | **nous** | `test-full` | no | - | `test-core` |
-| **organon** | `computer-use` | no | Screen capture, Landlock sandbox (Linux 5.13+) | - |
+| **organon** | `computer-use` | no | Screen capture, Landlock ABI v5 sandbox (Linux 6.10+ unless backported) | - |
 | **organon** | `energeia` | no | Energeia capability tools | `dep:energeia` (pre-enabled with `storage-fjall`) |
 | **organon** | `bookkeeper` | no | Bookkeeper maintenance tools | - |
 | **organon** | `poiesis` | no | Document, sheet, slide, chart and deck authoring tools | `dep:poiesis-core` plus the other 12 `poiesis-*` crates |

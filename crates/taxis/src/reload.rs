@@ -450,6 +450,7 @@ mod tests {
             "gateway.cors",
             "gateway.rateLimit",
             "channels",
+            "packOverlays",
             "providerBehavior.nonStreamingTimeoutSecs",
             "messaging.pollIntervalMs",
             "messaging.bufferCapacity",
@@ -471,6 +472,18 @@ mod tests {
             requires_restart("channels.signal.enabled"),
             "channel enabled should require restart"
         );
+    }
+
+    #[test]
+    fn pack_overlay_authority_requires_restart() {
+        for path in [
+            "packOverlays.allowModelOverrides",
+            "packOverlays.allowAgencyOverrides",
+            "packOverlays.allowPromptAdditions",
+            "packOverlays.maxPromptAdditionBytes",
+        ] {
+            assert!(requires_restart(path), "{path} should require restart");
+        }
     }
 
     #[test]
