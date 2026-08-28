@@ -7,7 +7,7 @@ use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
 use crate::builtins::poiesis::json_data_property;
-use crate::builtins::workspace::validate_prepared_path;
+use crate::builtins::workspace::{extract_opt_str, validate_prepared_path};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -15,10 +15,6 @@ use crate::types::{
     ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
-
-fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
-    args.get(key).and_then(serde_json::Value::as_str)
-}
 
 // ── render_xlsx_report ────────────────────────────────────────────────────────
 

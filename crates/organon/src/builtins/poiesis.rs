@@ -31,7 +31,9 @@ use poiesis_verify::Verifier;
 use zip::write::SimpleFileOptions;
 use zip::{ZipArchive, ZipWriter};
 
-use crate::builtins::workspace::validate_prepared_path;
+use crate::builtins::workspace::{
+    extract_opt_str, extract_str_or_tool_error, validate_prepared_path,
+};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -39,25 +41,6 @@ use crate::types::{
     ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
     ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-fn extract_opt_str<'a>(args: &'a serde_json::Value, key: &str) -> Option<&'a str> {
-    args.get(key).and_then(serde_json::Value::as_str)
-}
-
-#[expect(
-    clippy::result_large_err,
-    reason = "ToolResult grew by receipt field; boxing would change public API"
-)]
-fn extract_str<'a>(
-    args: &'a serde_json::Value,
-    key: &str,
-) -> std::result::Result<&'a str, ToolResult> {
-    args.get(key)
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| ToolResult::error(format!("missing required argument: {key}")))
-}
 
 const DEFAULT_TYPST_TEMPLATE: &str = include_str!("../../../poiesis/typst/templates/default.typ");
 const TYPST_CHART_APPENDIX: &str = r#"
@@ -309,7 +292,7 @@ impl ToolExecutor for GenerateDocumentExecutor {
             let author = extract_opt_str(args, "author");
             let format = extract_opt_str(args, "format").unwrap_or("odt");
             let out_path = extract_opt_str(args, "out_path");
-            let content_str = match extract_str(args, "content") {
+            let content_str = match extract_str_or_tool_error(args, "content") {
                 Ok(s) => s,
                 Err(e) => return Ok(e),
             };
@@ -1070,7 +1053,7 @@ impl ToolExecutor for QaGateExecutor {
         Box::pin(async move {
             let args = &input.arguments;
 
-            let prose = match extract_str(args, "prose") {
+            let prose = match extract_str_or_tool_error(args, "prose") {
                 Ok(s) => s,
                 Err(e) => return Ok(e),
             };
