@@ -35,11 +35,14 @@ Channel registry and provider implementations for external messaging (Signal). 3
 - **Routing priority**: exact group binding > exact source binding > channel wildcard > global default.
 - **Connection resilience**: `AccountState` buffers outbound messages during disconnects, exponential reconnect backoff.
 - **Listener cleanup**: abort callbacks registered at spawn time via `CleanupRegistry`, disarmed by `into_receiver()`.
+- **Channel identity redaction**: any phone number, Matrix ID, or account ID reaching a log, span, or `ProbeResult.details` key goes through `koina::redact::redact_channel_id` -- never a per-provider helper. `InboundMessage`'s manual `Debug` impl (`types.rs`) is the canonical example.
+- **Raw payload capture is opt-in**: `InboundMessage::raw` is populated only via `types::capture_raw_payload`, gated by `taxis::config::RawPayloadPolicy` (default off, bounded, redacted). A provider's `extract_message` never calls `serde_json::to_value` on the raw envelope/event directly.
 
 ## Recent substrate notes
 
 - Channel capabilities must report only behavior actually implemented by the provider; Signal claims were intentionally narrowed.
 - Listener cleanup uses registered abort callbacks and disarms them when ownership moves to the receiver.
+- Raw provider-payload retention on `InboundMessage` was unconditional and un-redacted; it is now opt-in, bounded, and PII-redacted (`RawPayloadPolicy`), and channel identity redaction was centralized in `koina::redact` rather than duplicated per provider.
 
 ## Common tasks
 

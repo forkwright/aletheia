@@ -19,8 +19,8 @@ pub use behavior::{
     DaemonBehaviorConfig, DaemonRunnerOutputMode, DeploymentTarget, DispatchConfig,
     DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig, LlmProviderConfig,
     MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, OutboundMessagePolicy, PromptCacheMode,
-    ProviderBehaviorConfig, ProviderKind, RecallSourcesConfig, RetrySettings, ServerToolVersions,
-    ServerToolsConfig, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    ProviderBehaviorConfig, ProviderKind, RawPayloadPolicy, RecallSourcesConfig, RetrySettings,
+    ServerToolVersions, ServerToolsConfig, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{

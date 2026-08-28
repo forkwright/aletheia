@@ -1212,6 +1212,15 @@ Per-agent outbound-recipient allowlist and default-deny posture, enforced by `ag
 | `allowlist` | map<string, string[]> | {} | Allowed recipients per sending agent: `nous_id` -> recipient patterns. A pattern of exactly `"*"` allows any recipient for that agent; any other pattern must match the recipient exactly. |
 | `defaultDeny` | bool | true | Deny a send when the sending agent has no `allowlist` entry at all. Default: `true` (fail closed) -- an operator who never configured `[messaging.outbound]` blocks every send rather than allowing every send, matching `RecallSourcesConfig`'s network-source default-off posture. |
 
+### messaging.rawPayload
+
+Opt-in, bounded raw provider-payload retention on `InboundMessage::raw` (Signal envelopes, Matrix events).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `capture` | bool | false | Whether providers attach a raw payload to `InboundMessage::raw` at all. Default: `false`. |
+| `maxBytes` | integer | 4096 | Maximum encoded size in bytes of a retained (already-redacted) raw payload. Default: 4096. |
+
 ## tuning
 
 Self-tuning feedback loop configuration. WHY configurable: tuning is disabled by default (experimental). The global kill switch and evidence thresholds let operators enable and tune the feedback loop incrementally.
