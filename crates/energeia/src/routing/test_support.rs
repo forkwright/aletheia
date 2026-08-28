@@ -4,6 +4,10 @@
 // schema has one home; `aletheia-routing::store` carries its own copy
 // deliberately, since that lives in a separate crate this one depends on.
 #![cfg(test)]
+// WHY: the three router test modules this consolidates each carried this same
+// expectation on their `mod tests` block; moving the bodies here moved them out
+// from under it, and the workspace denies `unwrap_used`.
+#![expect(clippy::unwrap_used, reason = "test assertions")]
 
 use std::io::Write as _;
 use std::path::Path;
