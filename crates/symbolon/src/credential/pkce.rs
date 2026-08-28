@@ -596,11 +596,17 @@ fn handle_callback_connection(
     }
 }
 
-/// Build form-urlencoded body from params.
-fn build_form_body(params: &HashMap<&str, &str>) -> String {
+/// Build a form-urlencoded body from key/value pairs, of any string-like type
+/// (borrowed `&str` pairs, or owned `String` pairs from a device-flow param map).
+pub(crate) fn build_form_body<I, K, V>(params: I) -> String
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<str>,
+    V: AsRef<str>,
+{
     params
-        .iter()
-        .map(|(k, v)| format!("{}={}", url_encode(k), url_encode(v)))
+        .into_iter()
+        .map(|(k, v)| format!("{}={}", url_encode(k.as_ref()), url_encode(v.as_ref())))
         .collect::<Vec<_>>()
         .join("&")
 }

@@ -31,6 +31,9 @@ mod totals;
 mod sources;
 
 #[cfg(feature = "workbook")]
+mod sources_row;
+
+#[cfg(feature = "workbook")]
 pub mod workbook;
 
 #[cfg(feature = "workbook")]

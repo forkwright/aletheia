@@ -100,8 +100,8 @@ fn pack_entry(
 }
 
 fn build_styles_xml(theme: &ResolvedTheme) -> String {
-    let serif = primary_typeface(theme.lookup_family("serif"));
-    let sans = primary_typeface(theme.lookup_family("sans"));
+    let serif = theme.primary_typeface(&["serif"]);
+    let sans = theme.primary_typeface(&["sans"]);
     let ink = theme
         .lookup_color("ink")
         .or_else(|| theme.lookup_color("surface:ink"))
@@ -160,12 +160,6 @@ fn word_document_xml() -> String {
   </w:body>
 </w:document>"#,
     )
-}
-
-fn primary_typeface(family: Option<&[String]>) -> String {
-    family
-        .and_then(|stack| stack.first().cloned())
-        .unwrap_or_else(|| "Calibri".to_owned())
 }
 
 static CONTENT_TYPES: LazyLock<String> = LazyLock::new(|| {

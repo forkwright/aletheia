@@ -9,7 +9,7 @@
 
 use std::io::Write as _;
 
-use poiesis_core::{Block, Document, Renderer, RichText, Span};
+use poiesis_core::{Block, Document, Renderer, RichText, Span, escape_xml as xml_escape};
 use snafu::Snafu;
 use zip::ZipWriter;
 use zip::write::SimpleFileOptions;
@@ -376,21 +376,6 @@ fn push_line(out: &mut String, line: &str) {
     out.push('\n');
 }
 
-fn xml_escape(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            '\'' => out.push_str("&apos;"),
-            other => out.push(other),
-        }
-    }
-    out
-}
-
 #[cfg(test)]
 mod tests {
     use std::io::Read;
@@ -452,14 +437,6 @@ mod tests {
         let renderer = OdtRenderer::new();
         let bytes = renderer.render(&sample_doc()).expect("ODT render failed");
         assert_eq!(&bytes[..2], b"PK", "output should be a valid ZIP/ODT");
-    }
-
-    #[test]
-    fn xml_escape_handles_all_chars() {
-        assert_eq!(
-            xml_escape("a&b<c>d\"e'f"),
-            "a&amp;b&lt;c&gt;d&quot;e&apos;f"
-        );
     }
 
     #[test]

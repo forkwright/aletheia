@@ -217,7 +217,7 @@ mod tests {
 
     fn cite(id: &str, v: f64) -> FactCite {
         FactCite {
-            id: FactId(id.to_owned()),
+            id: FactId::new(id.to_owned()).expect("valid fact id"),
             value: v,
             unit: Unit::Number,
         }

@@ -25,6 +25,7 @@ use fjall::{KeyspaceCreateOptions, SingleWriterTxDatabase};
 use serde::{Deserialize, Serialize};
 
 use crate::error;
+use crate::fjall_keys::{decode_u64, encode_u64, pad_u64};
 
 /// Number of bins for the calibration curve (10 bins of width 0.1).
 const NUM_BINS: usize = 10;
@@ -37,26 +38,6 @@ const SEQ_WIDTH: usize = 20;
 
 /// Partitions used by the uncertainty tracker.
 const PARTITIONS: &[&str] = &["points", "counters"];
-
-/// Format a u64 as a zero-padded key component so lexicographic ordering
-/// matches numeric ordering.
-fn pad_u64(v: u64) -> String {
-    format!("{v:0>SEQ_WIDTH$}")
-}
-
-/// Decode a big-endian u64 from 8 bytes.
-fn decode_u64(bytes: &[u8]) -> u64 {
-    let arr: [u8; 8] = bytes
-        .get(..8)
-        .and_then(|s| s.try_into().ok())
-        .unwrap_or([0u8; 8]);
-    u64::from_be_bytes(arr)
-}
-
-/// Encode a u64 as big-endian bytes.
-fn encode_u64(v: u64) -> [u8; 8] {
-    v.to_be_bytes()
-}
 
 /// A single calibration bin showing predicted vs actual accuracy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -214,7 +195,7 @@ impl UncertaintyTracker {
     }
 
     fn point_key(nous_id: &str, recorded_at: &str, seq: u64) -> String {
-        format!("{nous_id}:{recorded_at}:{}", pad_u64(seq))
+        format!("{nous_id}:{recorded_at}:{}", pad_u64(seq, SEQ_WIDTH))
     }
 
     /// Record a confidence prediction and its actual outcome.

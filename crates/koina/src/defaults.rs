@@ -57,3 +57,19 @@ pub const MAX_OUTPUT_BYTES: usize = 50 * 1024;
 
 /// Default limit for consecutive no-progress turns before the mistake brake fires.
 pub const DEFAULT_CONSECUTIVE_MISTAKE_LIMIT: u32 = 5;
+
+/// Default maximum retry attempts for transient LLM-provider failures.
+///
+/// Single source of truth for hermeneus's HTTP retry policy and taxis's
+/// `RetrySettings` config default — omitting `[retry]` from `aletheia.toml`
+/// must produce identical behaviour to hermeneus's built-in default.
+pub const DEFAULT_MAX_RETRIES: u32 = 3;
+
+/// Retry backoff base delay in milliseconds.
+pub const BACKOFF_BASE_MS: u64 = 1000;
+
+/// Retry backoff multiplier per attempt.
+pub const BACKOFF_FACTOR: u32 = 2;
+
+/// Maximum retry backoff delay in milliseconds.
+pub const BACKOFF_MAX_MS: u64 = 30_000;

@@ -2,7 +2,7 @@
 
 use axum::Json;
 use axum::extract::State;
-use organon::types::{ApprovalRequirement, Reversibility, ToolDef};
+use organon::types::{ApprovalRequirement, ToolDef};
 use symbolon::types::Role;
 use tracing::warn;
 
@@ -42,20 +42,6 @@ fn history_entry(record: mneme::types::ToolAuditRecord) -> ToolHistoryEntry {
     }
 }
 
-fn approval_requires_prompt(approval: ApprovalRequirement) -> bool {
-    matches!(
-        approval,
-        ApprovalRequirement::Required | ApprovalRequirement::Mandatory
-    )
-}
-
-fn reversibility_is_destructive(reversibility: Reversibility) -> bool {
-    matches!(
-        reversibility,
-        Reversibility::PartiallyReversible | Reversibility::Irreversible
-    )
-}
-
 fn catalog_entry(def: &ToolDef, has_origin: bool) -> ToolCatalogEntry {
     let approval = ApprovalRequirement::from(def.reversibility);
     ToolCatalogEntry {
@@ -65,8 +51,8 @@ fn catalog_entry(def: &ToolDef, has_origin: bool) -> ToolCatalogEntry {
         category: def.category.to_string(),
         reversibility: def.reversibility.to_string(),
         approval: approval.to_string(),
-        requires_approval: approval_requires_prompt(approval),
-        destructive: reversibility_is_destructive(def.reversibility),
+        requires_approval: approval.requires_prompt(),
+        destructive: def.reversibility.is_destructive(),
         groups: def
             .groups
             .iter()

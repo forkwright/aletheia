@@ -15,7 +15,9 @@
 
 use std::fmt::Write as _;
 
-use super::shared::{emit_caption, emit_legend, emit_svg_open, escape_xml, legend_needed};
+use super::shared::{
+    emit_caption, emit_legend, emit_svg_open, escape_xml, legend_needed, polar_to_xy,
+};
 use crate::Result;
 use crate::format::{coord, format_number};
 use crate::model::{Chart, NumFormat, Unit};
@@ -156,11 +158,6 @@ pub fn emit(
     Ok(out)
 }
 
-fn polar_to_xy(cx: f64, cy: f64, r: f64, angle_rad: f64) -> (f64, f64) {
-    let svg_angle = angle_rad - std::f64::consts::FRAC_PI_2;
-    (cx + r * svg_angle.cos(), cy + r * svg_angle.sin())
-}
-
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
@@ -173,7 +170,7 @@ mod tests {
 
     fn cite(id: &str, v: f64) -> FactCite {
         FactCite {
-            id: FactId(id.to_owned()),
+            id: FactId::new(id.to_owned()).expect("valid fact id"),
             value: v,
             unit: Unit::Number,
         }
