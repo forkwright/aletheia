@@ -798,9 +798,17 @@ fn normalize_batch(
                 messages.push_back(*message);
             }
             envelope::EnvelopeOutcome::ExpectedControl(_kind) => {}
-            envelope::EnvelopeOutcome::UnsupportedContentLost { lost_parts, .. }
-            | envelope::EnvelopeOutcome::MalformedLost { lost_parts, .. } => {
+            envelope::EnvelopeOutcome::UnsupportedContentLost { kind, lost_parts } => {
                 losses = losses.saturating_add(lost_parts);
+                tracing::debug!(
+                    ?kind,
+                    lost_parts,
+                    "Signal envelope carried unsupported content"
+                );
+            }
+            envelope::EnvelopeOutcome::MalformedLost { reason, lost_parts } => {
+                losses = losses.saturating_add(lost_parts);
+                tracing::debug!(?reason, lost_parts, "Signal envelope failed to normalize");
             }
         }
     }

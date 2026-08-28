@@ -90,9 +90,14 @@ struct MatrixEvent {
     content: MatrixEventContent,
     /// Raw unsigned metadata.
     #[serde(default)]
+    // WHY(#5198): held for a future governed raw-payload capture path, not
+    // read by extraction today.
+    #[expect(dead_code, reason = "deferred raw-payload capture, see #5198")]
     unsigned: Option<serde_json::Value>,
     /// Additional top-level event fields retained only for explicit raw-payload opt-in.
     #[serde(flatten)]
+    // WHY(#5198): same deferred raw-payload capture as `unsigned` above.
+    #[expect(dead_code, reason = "deferred raw-payload capture, see #5198")]
     extra: HashMap<String, serde_json::Value>,
 }
 
@@ -100,6 +105,10 @@ struct MatrixEvent {
 #[derive(Default, Deserialize)]
 struct MatrixEventContent {
     /// Matrix message type, e.g. `m.text`.
+    #[expect(
+        dead_code,
+        reason = "deserialized for shape parity; not yet used to filter message kinds"
+    )]
     msgtype: Option<String>,
     /// Plain-text body.
     body: Option<String>,
