@@ -6,11 +6,8 @@
 //! The other poiesis executors (lint, verify) are exercised by the underlying
 //! crates' tests.
 
-use std::collections::HashSet;
 use std::io::{Cursor, Read, Write};
-use std::sync::{Arc, RwLock};
 
-use koina::id::{NousId, SessionId, ToolName};
 use poiesis_core::{Block, Document, Metadata, RichText};
 use poiesis_theme::protos;
 use zip::ZipArchive;
@@ -22,24 +19,11 @@ use crate::builtins::render_xlsx_report::RenderXlsxReportExecutor;
 use crate::types::ApprovalRequirement;
 
 fn test_ctx(dir: &std::path::Path) -> ToolContext {
-    ToolContext {
-        nous_id: NousId::new("test-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: dir.to_path_buf(),
-        allowed_roots: vec![dir.to_path_buf()],
-        services: None,
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-    }
+    crate::testing::make_test_context_at(dir)
 }
 
 fn tool_input(name: &str, args: serde_json::Value) -> ToolInput {
-    ToolInput {
-        name: ToolName::new(name).expect("valid"),
-        tool_use_id: "toolu_test".to_owned(),
-        arguments: args,
-    }
+    crate::testing::make_tool_input_with_args(name, args)
 }
 
 fn document_bytes(result: &ToolResult, media_type: &str) -> Vec<u8> {

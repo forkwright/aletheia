@@ -11,14 +11,6 @@ use crate::scenario::assert_eval;
 #[cfg(test)]
 pub(super) const BACKEND_INVARIANT_PREFIX: &str = "Backend invariant:";
 
-pub(super) async fn first_nous_id(client: &EvalClient) -> Result<String> {
-    let nous_list = client.list_nous().await?;
-    let nous = nous_list
-        .first()
-        .context(crate::error::NoAgentsAvailableSnafu)?;
-    Ok(nous.id.clone())
-}
-
 pub(super) fn unique_fact_id(suffix: &str) -> String {
     format!("fact-{}", crate::scenarios::unique_key("canary", suffix))
 }
