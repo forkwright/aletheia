@@ -2,10 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use mneme::id::{EntityId, FactId};
-use mneme::knowledge::{
-    Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
-    FactTemporal, Visibility, far_future,
-};
+use mneme::knowledge::{Entity, Fact, FactSensitivity, FactTemporal, far_future};
 use mneme::knowledge_store::KnowledgeStore;
 
 fn test_store() -> Arc<KnowledgeStore> {
@@ -59,37 +56,17 @@ fn make_fact_with_sensitivity(
     sensitivity: FactSensitivity,
 ) -> Fact {
     let now = jiff::Timestamp::now();
-    Fact {
-        id: FactId::new(id).expect("valid id"),
-        nous_id: nous_id.to_owned(),
-        fact_type: "observation".to_owned(),
-        content: content.to_owned(),
-        temporal: FactTemporal {
-            valid_from: now,
-            valid_to: far_future(),
-            recorded_at: now,
-        },
-        provenance: FactProvenance {
-            confidence: 0.8,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 168.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity,
-        visibility: Visibility::Private,
-        scope: None,
-        project_id: None,
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+    "observation".clone_into(&mut fact.fact_type);
+    fact.temporal = FactTemporal {
+        valid_from: now,
+        valid_to: far_future(),
+        recorded_at: now,
+    };
+    fact.provenance.confidence = 0.8;
+    fact.provenance.stability_hours = 168.0;
+    fact.sensitivity = sensitivity;
+    fact
 }
 
 fn make_entity(id: &str, name: &str, entity_type: &str) -> Entity {

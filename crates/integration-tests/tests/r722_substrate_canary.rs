@@ -24,8 +24,7 @@ use hermeneus::test_utils::MockProvider;
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 use mneme::knowledge::MemoryScope;
 use mneme::knowledge::{
-    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
-    Visibility, far_future,
+    EpistemicTier, Fact, FactSensitivity, FactTemporal, Visibility, far_future,
 };
 use mneme::knowledge_store::KnowledgeStore;
 use mneme::recall::ScoredResult;
@@ -63,37 +62,16 @@ mod fixtures {
     /// Build a synthetic fact for canary fixtures.
     pub fn make_test_fact(id: &str, nous_id: &str, content: &str) -> Fact {
         let now = jiff::Timestamp::now();
-        Fact {
-            id: mneme::id::FactId::new(id).expect("valid test id"),
-            nous_id: nous_id.to_owned(),
-            fact_type: "test".to_owned(),
-            content: content.to_owned(),
-            scope: None,
-            project_id: None,
-            sensitivity: FactSensitivity::Public,
-            visibility: Visibility::Private,
-            temporal: FactTemporal {
-                valid_from: now,
-                valid_to: far_future(),
-                recorded_at: now,
-            },
-            provenance: FactProvenance {
-                confidence: 1.0,
-                tier: EpistemicTier::Inferred,
-                source_session_id: Some("sess-test".to_owned()),
-                stability_hours: 720.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
-        }
+        let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+        "test".clone_into(&mut fact.fact_type);
+        fact.temporal = FactTemporal {
+            valid_from: now,
+            valid_to: far_future(),
+            recorded_at: now,
+        };
+        fact.provenance.confidence = 1.0;
+        fact.provenance.source_session_id = Some("sess-test".to_owned());
+        fact
     }
 
     /// Build a [`ScoredResult`] for recall-stage tests.
@@ -1403,7 +1381,7 @@ async fn skill_always_vs_lazy_partitioning_in_system_prompt() {
     for (i, (skill_json, _is_always)) in sample_skills_fixture().iter().enumerate() {
         let mut fact = make_test_fact(&format!("skill-{i}"), "skill-agent", "");
         fact.content = skill_json.clone();
-        fact.fact_type = "skill".to_owned();
+        "skill".clone_into(&mut fact.fact_type);
         store.insert_fact(&fact).expect("insert skill");
     }
 

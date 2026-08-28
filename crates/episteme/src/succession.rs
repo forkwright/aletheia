@@ -401,9 +401,7 @@ mod tests {
     #[expect(clippy::indexing_slicing, reason = "test assertions")]
     mod engine_tests {
         use super::*;
-        use crate::knowledge::{
-            Entity, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal, far_future,
-        };
+        use crate::knowledge::{Entity, Fact, FactTemporal, far_future};
         use crate::knowledge_store::KnowledgeStore;
 
         fn mem_store() -> std::sync::Arc<KnowledgeStore> {
@@ -422,37 +420,15 @@ mod tests {
         }
 
         fn make_fact(id: &str, nous_id: &str) -> Fact {
-            Fact {
-                id: crate::id::FactId::new(id).expect("valid test id"),
-                nous_id: nous_id.to_owned(),
-                content: format!("fact content for {id}"),
-                fact_type: "observation".to_owned(),
-                temporal: FactTemporal {
-                    valid_from: jiff::Timestamp::now(),
-                    valid_to: far_future(),
-                    recorded_at: jiff::Timestamp::now(),
-                },
-                provenance: FactProvenance {
-                    confidence: 0.9,
-                    tier: EpistemicTier::Inferred,
-                    source_session_id: None,
-                    stability_hours: 720.0,
-                },
-                lifecycle: FactLifecycle {
-                    superseded_by: None,
-                    is_forgotten: false,
-                    forgotten_at: None,
-                    forget_reason: None,
-                },
-                access: FactAccess {
-                    access_count: 0,
-                    last_accessed_at: None,
-                },
-                sensitivity: crate::knowledge::FactSensitivity::Public,
-                visibility: crate::knowledge::Visibility::Private,
-                scope: None,
-                project_id: None,
-            }
+            let mut fact =
+                eidos::test_fixtures::make_fact(id, nous_id, &format!("fact content for {id}"));
+            "observation".clone_into(&mut fact.fact_type);
+            fact.temporal = FactTemporal {
+                valid_from: jiff::Timestamp::now(),
+                valid_to: far_future(),
+                recorded_at: jiff::Timestamp::now(),
+            };
+            fact
         }
 
         fn link_fact_entity(store: &KnowledgeStore, fact_id: &str, entity_id: &str) {

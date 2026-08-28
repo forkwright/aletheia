@@ -293,37 +293,16 @@ async fn assert_scope_forbidden(response: axum::response::Response) {
 }
 
 fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64) -> mneme::knowledge::Fact {
-    mneme::knowledge::Fact {
-        id: mneme::id::FactId::new(id).expect("valid fact id"),
-        nous_id: nous_id.to_owned(),
-        fact_type: "knowledge".to_owned(),
-        content: content.to_owned(),
-        scope: None,
-        project_id: None,
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
-        visibility: mneme::knowledge::Visibility::Private,
-        temporal: mneme::knowledge::FactTemporal {
-            valid_from: jiff::Timestamp::UNIX_EPOCH,
-            valid_to: jiff::Timestamp::UNIX_EPOCH,
-            recorded_at: jiff::Timestamp::UNIX_EPOCH,
-        },
-        provenance: mneme::knowledge::FactProvenance {
-            confidence,
-            tier: mneme::knowledge::EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 24.0,
-        },
-        lifecycle: mneme::knowledge::FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: mneme::knowledge::FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+    "knowledge".clone_into(&mut fact.fact_type);
+    fact.temporal = mneme::knowledge::FactTemporal {
+        valid_from: jiff::Timestamp::UNIX_EPOCH,
+        valid_to: jiff::Timestamp::UNIX_EPOCH,
+        recorded_at: jiff::Timestamp::UNIX_EPOCH,
+    };
+    fact.provenance.confidence = confidence;
+    fact.provenance.stability_hours = 24.0;
+    fact
 }
 
 #[cfg(feature = "knowledge-store")]

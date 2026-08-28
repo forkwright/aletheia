@@ -4,9 +4,7 @@
     reason = "knowledge engine: ported codebase with numeric casts and direct indexing throughout"
 )]
 
-use crate::knowledge::{
-    EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-};
+use crate::knowledge::{EmbeddedChunk, Fact, FactTemporal};
 use crate::knowledge_store::HybridQuery;
 use crate::test_fixtures::{make_fact, make_store, test_ts};
 fn make_temporal_fact(
@@ -16,40 +14,16 @@ fn make_temporal_fact(
     valid_from: &str,
     valid_to: &str,
 ) -> Fact {
-    Fact {
-        id: crate::id::FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content: content.to_owned(),
-        fact_type: String::new(),
-        temporal: FactTemporal {
-            valid_from: crate::knowledge::parse_timestamp(valid_from)
-                .expect("valid_from timestamp in make_temporal_fact"),
-            valid_to: crate::knowledge::parse_timestamp(valid_to)
-                .expect("valid_to timestamp in make_temporal_fact"),
-            recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
-                .expect("recorded_at timestamp in make_temporal_fact"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: crate::knowledge::FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    }
+    let mut fact = make_fact(id, nous_id, content);
+    fact.temporal = FactTemporal {
+        valid_from: crate::knowledge::parse_timestamp(valid_from)
+            .expect("valid_from timestamp in make_temporal_fact"),
+        valid_to: crate::knowledge::parse_timestamp(valid_to)
+            .expect("valid_to timestamp in make_temporal_fact"),
+        recorded_at: crate::knowledge::parse_timestamp("2026-03-01T00:00:00Z")
+            .expect("recorded_at timestamp in make_temporal_fact"),
+    };
+    fact
 }
 
 fn make_embedding(id: &str, content: &str, source_id: &str, nous_id: &str) -> EmbeddedChunk {

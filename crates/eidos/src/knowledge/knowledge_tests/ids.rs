@@ -2,7 +2,7 @@
 
 use super::super::*;
 use super::test_timestamp;
-use crate::id::{EmbeddingId, EntityId, FactId};
+use crate::id::{EmbeddingId, EntityId};
 
 // Split: EntityId / EmbeddingId / FactId / scalar enum types + forget reason serde.
 
@@ -89,37 +89,19 @@ fn epistemic_tier_serde_roundtrip() {
 
 #[test]
 fn fact_serde_roundtrip() {
-    let fact = Fact {
-        id: FactId::new("fact-1").expect("valid test id"),
-        nous_id: "syn".to_owned(),
-        content: "The researcher published findings on memory consolidation".to_owned(),
-        fact_type: String::new(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: test_timestamp("2026-02-01"),
-            valid_to: far_future(),
-            recorded_at: test_timestamp("2026-02-28T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.95,
-            tier: EpistemicTier::Verified,
-            source_session_id: Some("ses-123".to_owned()),
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
+    let mut fact = crate::test_fixtures::make_fact(
+        "fact-1",
+        "syn",
+        "The researcher published findings on memory consolidation",
+    );
+    fact.temporal = FactTemporal {
+        valid_from: test_timestamp("2026-02-01"),
+        valid_to: far_future(),
+        recorded_at: test_timestamp("2026-02-28T00:00:00Z"),
     };
+    fact.provenance.confidence = 0.95;
+    fact.provenance.tier = EpistemicTier::Verified;
+    fact.provenance.source_session_id = Some("ses-123".to_owned());
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     let back: Fact =
         serde_json::from_str(&json).expect("Fact should deserialize from its own JSON");
@@ -284,37 +266,14 @@ fn recall_result_serde_roundtrip() {
 
 #[test]
 fn fact_with_empty_content() {
-    let fact = Fact {
-        id: FactId::new("f-empty").expect("valid test id"),
-        nous_id: "syn".to_owned(),
-        content: String::new(),
-        fact_type: String::new(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: test_timestamp("2026-01-01"),
-            valid_to: far_future(),
-            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.5,
-            tier: EpistemicTier::Assumed,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
+    let mut fact = crate::test_fixtures::make_fact("f-empty", "syn", "");
+    fact.temporal = FactTemporal {
+        valid_from: test_timestamp("2026-01-01"),
+        valid_to: far_future(),
+        recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
     };
+    fact.provenance.confidence = 0.5;
+    fact.provenance.tier = EpistemicTier::Assumed;
     let json =
         serde_json::to_string(&fact).expect("Fact with empty content serializes successfully");
     let back: Fact = serde_json::from_str(&json)
@@ -327,37 +286,18 @@ fn fact_with_empty_content() {
 
 #[test]
 fn fact_with_unicode_content() {
-    let fact = Fact {
-        id: FactId::new("f-uni").expect("valid test id"),
-        nous_id: "syn".to_owned(),
-        content: "The user writes \u{65E5}\u{672C}\u{8A9E} and emoji \u{1F980}".to_owned(),
-        fact_type: String::new(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: test_timestamp("2026-01-01"),
-            valid_to: far_future(),
-            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Verified,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
+    let mut fact = crate::test_fixtures::make_fact(
+        "f-uni",
+        "syn",
+        "The user writes \u{65E5}\u{672C}\u{8A9E} and emoji \u{1F980}",
+    );
+    fact.temporal = FactTemporal {
+        valid_from: test_timestamp("2026-01-01"),
+        valid_to: far_future(),
+        recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
     };
+    fact.provenance.confidence = 0.9;
+    fact.provenance.tier = EpistemicTier::Verified;
     let json =
         serde_json::to_string(&fact).expect("Fact with unicode content serializes successfully");
     let back: Fact = serde_json::from_str(&json)

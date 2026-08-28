@@ -7,8 +7,7 @@
 )]
 
 use mneme::knowledge::{
-    EmbeddedChunk, Entity, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance,
-    FactTemporal, RecallResult, Relationship,
+    EmbeddedChunk, Entity, EpistemicTier, Fact, FactTemporal, RecallResult, Relationship,
 };
 use mneme::recall::{FactorScores, RecallEngine, ScoredResult};
 
@@ -42,37 +41,14 @@ fn fact_to_scored(fact: &Fact, engine: &RecallEngine, query_nous: &str) -> Score
 fn sample_fact(id: &str, nous_id: &str, tier: EpistemicTier) -> Fact {
     let ts = jiff::Timestamp::from_second(1_735_689_600).expect("valid epoch");
     let far = mneme::knowledge::far_future();
-    Fact {
-        id: mneme::id::FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content: format!("fact from {id}"),
-        fact_type: String::new(),
-        temporal: FactTemporal {
-            valid_from: ts,
-            valid_to: far,
-            recorded_at: ts,
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
-        visibility: mneme::knowledge::Visibility::Private,
-        scope: None,
-        project_id: None,
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, nous_id, &format!("fact from {id}"));
+    fact.temporal = FactTemporal {
+        valid_from: ts,
+        valid_to: far,
+        recorded_at: ts,
+    };
+    fact.provenance.tier = tier;
+    fact
 }
 
 #[test]

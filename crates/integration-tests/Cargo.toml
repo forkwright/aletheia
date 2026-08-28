@@ -30,6 +30,7 @@ test-full = ["test-core"]
 
 [dependencies]
 dokimion = { path = "../eval" }
+eidos = { path = "../eidos", features = ["test-support"] }
 koina = { path = "../koina", features = ["test-support"] }
 taxis = { path = "../taxis" }
 mneme = { path = "../mneme", default-features = false, features = [

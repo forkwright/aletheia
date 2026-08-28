@@ -292,10 +292,7 @@ fn build_factors(
 #[expect(clippy::expect_used, reason = "test setup and assertions")]
 mod tests {
     use super::*;
-    use crate::id::FactId;
-    use crate::knowledge::{
-        EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
-    };
+    use crate::knowledge::{EpistemicTier, FactTemporal};
 
     fn make_fact(
         id: &str,
@@ -304,37 +301,19 @@ mod tests {
         recorded_at: jiff::Timestamp,
         access_count: u32,
     ) -> Fact {
-        Fact {
-            id: FactId::new(id).expect("valid test id"),
-            nous_id: "alice".to_owned(),
-            fact_type: "knowledge".to_owned(),
-            content: content.to_owned(),
-            temporal: FactTemporal {
-                valid_from: recorded_at,
-                valid_to: recorded_at,
-                recorded_at,
-            },
-            provenance: FactProvenance {
-                confidence: 0.8,
-                tier,
-                source_session_id: None,
-                stability_hours: 24.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count,
-                last_accessed_at: None,
-            },
-            sensitivity: FactSensitivity::Public,
-            scope: None,
-            project_id: None,
-            visibility: Visibility::Shared,
-        }
+        let mut fact = eidos::test_fixtures::make_fact(id, "alice", content);
+        "knowledge".clone_into(&mut fact.fact_type);
+        fact.temporal = FactTemporal {
+            valid_from: recorded_at,
+            valid_to: recorded_at,
+            recorded_at,
+        };
+        fact.provenance.confidence = 0.8;
+        fact.provenance.tier = tier;
+        fact.provenance.stability_hours = 24.0;
+        fact.access.access_count = access_count;
+        fact.visibility = Visibility::Shared;
+        fact
     }
 
     fn multi_factor_weights() -> RecallWeights {

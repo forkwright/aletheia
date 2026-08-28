@@ -856,40 +856,24 @@ mod tests {
         );
     }
 
-    use crate::knowledge::{FactAccess, FactSensitivity, Visibility, far_future};
-
     fn verified_superseded_fact() -> Fact {
-        Fact {
-            id: FactId::new("fact-1").expect("valid id"),
-            nous_id: "nous-alpha".to_owned(),
-            fact_type: "identity".to_owned(),
-            content: "operator prefers dense PRs".to_owned(),
-            scope: None,
-            project_id: None,
-            sensitivity: FactSensitivity::default(),
-            visibility: Visibility::default(),
-            temporal: FactTemporal {
-                valid_from: "2026-01-01T00:00:00Z".parse().expect("valid timestamp"),
-                valid_to: far_future(),
-                recorded_at: "2026-01-02T00:00:00Z".parse().expect("valid timestamp"),
-            },
-            provenance: FactProvenance {
-                confidence: 0.92,
-                tier: EpistemicTier::Verified,
-                source_session_id: Some("session-77".to_owned()),
-                stability_hours: 17_520.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: Some(FactId::new("fact-2").expect("valid id")),
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 3,
-                last_accessed_at: None,
-            },
-        }
+        use crate::knowledge::far_future;
+
+        let mut fact =
+            crate::test_fixtures::make_fact("fact-1", "nous-alpha", "operator prefers dense PRs");
+        "identity".clone_into(&mut fact.fact_type);
+        fact.temporal = FactTemporal {
+            valid_from: "2026-01-01T00:00:00Z".parse().expect("valid timestamp"),
+            valid_to: far_future(),
+            recorded_at: "2026-01-02T00:00:00Z".parse().expect("valid timestamp"),
+        };
+        fact.provenance.confidence = 0.92;
+        fact.provenance.tier = EpistemicTier::Verified;
+        fact.provenance.source_session_id = Some("session-77".to_owned());
+        fact.provenance.stability_hours = 17_520.0;
+        fact.lifecycle.superseded_by = Some(FactId::new("fact-2").expect("valid id"));
+        fact.access.access_count = 3;
+        fact
     }
 
     #[test]

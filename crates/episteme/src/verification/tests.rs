@@ -4,8 +4,7 @@
 
 use eidos::id::FactId;
 use eidos::knowledge::{
-    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
-    VerificationProposal, VerificationVerdict, VerificationVote,
+    EpistemicTier, Fact, FactTemporal, VerificationProposal, VerificationVerdict, VerificationVote,
 };
 use jiff::Timestamp;
 use koina::id::NousId;
@@ -16,37 +15,16 @@ use super::proposal::{
 };
 
 fn make_fact(id: &str, confidence: f64, tier: EpistemicTier, recorded_at: Timestamp) -> Fact {
-    Fact {
-        id: FactId::new(id).expect("valid test id"),
-        nous_id: "test-nous".to_owned(),
-        fact_type: "preference".to_owned(),
-        content: format!("test fact {id}"),
-        scope: None,
-        project_id: None,
-        sensitivity: FactSensitivity::Public,
-        visibility: crate::knowledge::Visibility::Private,
-        temporal: FactTemporal {
-            valid_from: recorded_at,
-            valid_to: recorded_at,
-            recorded_at,
-        },
-        provenance: FactProvenance {
-            confidence,
-            tier,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", &format!("test fact {id}"));
+    "preference".clone_into(&mut fact.fact_type);
+    fact.temporal = FactTemporal {
+        valid_from: recorded_at,
+        valid_to: recorded_at,
+        recorded_at,
+    };
+    fact.provenance.confidence = confidence;
+    fact.provenance.tier = tier;
+    fact
 }
 
 #[test]

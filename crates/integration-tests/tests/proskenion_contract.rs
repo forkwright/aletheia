@@ -720,43 +720,18 @@ fn assert_error_code(json: &Value, expected: &str, context: &str) {
 
 #[cfg(feature = "knowledge-store")]
 fn make_contract_fact(id: &str, content: &str, confidence: f64) -> mneme::knowledge::Fact {
-    use mneme::id::FactId;
-    use mneme::knowledge::{
-        EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
-        Visibility,
-    };
+    use mneme::knowledge::FactTemporal;
 
-    mneme::knowledge::Fact {
-        id: FactId::new(id).expect("contract fact id"),
-        nous_id: TEST_NOUS_ID.to_owned(),
-        fact_type: "knowledge".to_owned(),
-        content: content.to_owned(),
-        scope: None,
-        project_id: None,
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
-        temporal: FactTemporal {
-            valid_from: jiff::Timestamp::UNIX_EPOCH,
-            valid_to: jiff::Timestamp::UNIX_EPOCH,
-            recorded_at: jiff::Timestamp::UNIX_EPOCH,
-        },
-        provenance: FactProvenance {
-            confidence,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 24.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, TEST_NOUS_ID, content);
+    "knowledge".clone_into(&mut fact.fact_type);
+    fact.temporal = FactTemporal {
+        valid_from: jiff::Timestamp::UNIX_EPOCH,
+        valid_to: jiff::Timestamp::UNIX_EPOCH,
+        recorded_at: jiff::Timestamp::UNIX_EPOCH,
+    };
+    fact.provenance.confidence = confidence;
+    fact.provenance.stability_hours = 24.0;
+    fact
 }
 
 struct RawResponse {

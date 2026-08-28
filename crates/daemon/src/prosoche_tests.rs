@@ -359,37 +359,15 @@ mod knowledge_store_tests {
 
     /// Helper: create a test fact with the given id string.
     fn make_fact(id: &str, content: &str) -> episteme::knowledge::Fact {
-        episteme::knowledge::Fact {
-            id: episteme::id::FactId::new(id).expect("valid id"),
-            nous_id: "test-nous".to_owned(),
-            fact_type: "observation".to_owned(),
-            content: content.to_owned(),
-            scope: None,
-            project_id: None,
-            temporal: episteme::knowledge::FactTemporal {
-                valid_from: jiff::Timestamp::now(),
-                valid_to: jiff::Timestamp::from_second(253_402_207_200).expect("far future"),
-                recorded_at: jiff::Timestamp::now(),
-            },
-            provenance: episteme::knowledge::FactProvenance {
-                confidence: 0.9,
-                tier: episteme::knowledge::EpistemicTier::Verified,
-                source_session_id: None,
-                stability_hours: 720.0,
-            },
-            lifecycle: episteme::knowledge::FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: episteme::knowledge::FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
-            sensitivity: episteme::knowledge::FactSensitivity::Public,
-            visibility: episteme::knowledge::Visibility::Private,
-        }
+        let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
+        "observation".clone_into(&mut fact.fact_type);
+        fact.temporal = episteme::knowledge::FactTemporal {
+            valid_from: jiff::Timestamp::now(),
+            valid_to: jiff::Timestamp::from_second(253_402_207_200).expect("far future"),
+            recorded_at: jiff::Timestamp::now(),
+        };
+        fact.provenance.tier = episteme::knowledge::EpistemicTier::Verified;
+        fact
     }
 
     /// Helper: insert a `fact_entities` row via raw Datalog.

@@ -12,10 +12,7 @@ use std::sync::Arc;
 use serde_json::Value as JsonValue;
 
 use mneme::engine::DataValue;
-use mneme::id::FactId;
-use mneme::knowledge::{
-    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-};
+use mneme::knowledge::{EpistemicTier, Fact, FactTemporal};
 use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
 const TS_2026: &str = "2026-01-01T00:00:00Z";
@@ -29,37 +26,16 @@ fn ts(s: &str) -> jiff::Timestamp {
 }
 
 fn make_fact(id: &str, nous_id: &str, content: &str, confidence: f64, tier: EpistemicTier) -> Fact {
-    Fact {
-        id: FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content: content.to_owned(),
-        fact_type: String::new(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: ts(TS_2026),
-            valid_to: far_future(),
-            recorded_at: ts(TS_RECORDED),
-        },
-        provenance: FactProvenance {
-            confidence,
-            tier,
-            source_session_id: Some("ses-test".to_owned()),
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
-        visibility: mneme::knowledge::Visibility::Private,
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+    fact.temporal = FactTemporal {
+        valid_from: ts(TS_2026),
+        valid_to: far_future(),
+        recorded_at: ts(TS_RECORDED),
+    };
+    fact.provenance.confidence = confidence;
+    fact.provenance.tier = tier;
+    fact.provenance.source_session_id = Some("ses-test".to_owned());
+    fact
 }
 
 /// Replicates the adapter's `correct_fact` logic at the store level.
@@ -95,37 +71,14 @@ fn correct_fact(
         .run_mut_query(script, params)
         .expect("correct: supersede old fact");
 
-    let new_fact = Fact {
-        id: FactId::new(new_id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content: new_content.to_owned(),
-        fact_type: String::new(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: ts(correction_time),
-            valid_to: far_future(),
-            recorded_at: ts(correction_time),
-        },
-        provenance: FactProvenance {
-            confidence: 1.0,
-            tier: EpistemicTier::Verified,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
-        visibility: mneme::knowledge::Visibility::Private,
+    let mut new_fact = eidos::test_fixtures::make_fact(new_id, nous_id, new_content);
+    new_fact.temporal = FactTemporal {
+        valid_from: ts(correction_time),
+        valid_to: far_future(),
+        recorded_at: ts(correction_time),
     };
+    new_fact.provenance.confidence = 1.0;
+    new_fact.provenance.tier = EpistemicTier::Verified;
     store
         .insert_fact(&new_fact)
         .expect("correct: insert new fact");

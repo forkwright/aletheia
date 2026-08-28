@@ -9,37 +9,16 @@ fn test_nous_id(name: &str) -> koina::id::NousId {
 }
 
 fn make_test_fact(tier: EpistemicTier, recorded_at: jiff::Timestamp) -> Fact {
-    Fact {
-        id: FactId::new("f-test").expect("valid test id"),
-        nous_id: "syn".to_owned(),
-        content: "test fact".to_owned(),
-        fact_type: "observation".to_owned(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: recorded_at,
-            valid_to: far_future(),
-            recorded_at,
-        },
-        provenance: FactProvenance {
-            confidence: 0.8,
-            tier,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
-    }
+    let mut fact = crate::test_fixtures::make_fact("f-test", "syn", "test fact");
+    "observation".clone_into(&mut fact.fact_type);
+    fact.temporal = FactTemporal {
+        valid_from: recorded_at,
+        valid_to: far_future(),
+        recorded_at,
+    };
+    fact.provenance.confidence = 0.8;
+    fact.provenance.tier = tier;
+    fact
 }
 
 #[test]

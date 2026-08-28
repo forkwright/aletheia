@@ -8,11 +8,8 @@
 use std::sync::Arc;
 
 use mneme::embedding::{EmbeddingProvider, MockEmbeddingProvider};
-use mneme::id::{EmbeddingId, FactId};
-use mneme::knowledge::{
-    EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactTemporal,
-    default_stability_hours,
-};
+use mneme::id::EmbeddingId;
+use mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact, FactTemporal, default_stability_hours};
 use mneme::knowledge_store::{KnowledgeConfig, KnowledgeStore};
 
 const TS_2026: &str = "2026-01-01T00:00:00Z";
@@ -34,37 +31,15 @@ fn open_store(dim: usize) -> Arc<KnowledgeStore> {
 }
 
 fn make_fact(id: &str, nous_id: &str, content: &str) -> Fact {
-    Fact {
-        id: FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        content: content.to_owned(),
-        fact_type: "inference".to_owned(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: ts(TS_2026),
-            valid_to: far_future(),
-            recorded_at: ts(TS_RECORDED),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Inferred,
-            source_session_id: Some("ses-test".to_owned()),
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: mneme::knowledge::FactSensitivity::Public,
-        visibility: mneme::knowledge::Visibility::Private,
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+    "inference".clone_into(&mut fact.fact_type);
+    fact.temporal = FactTemporal {
+        valid_from: ts(TS_2026),
+        valid_to: far_future(),
+        recorded_at: ts(TS_RECORDED),
+    };
+    fact.provenance.source_session_id = Some("ses-test".to_owned());
+    fact
 }
 
 #[test]

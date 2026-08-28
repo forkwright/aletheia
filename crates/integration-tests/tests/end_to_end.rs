@@ -17,11 +17,8 @@ use hermeneus::test_utils::MockProvider;
 use hermeneus::types::*;
 use integration_tests::harness::{TestHarness, body_json, body_string};
 use mneme::embedding::EmbeddingProvider;
-use mneme::id::{EmbeddingId, FactId};
-use mneme::knowledge::{
-    EmbeddedChunk, EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
-    FactTemporal, Visibility,
-};
+use mneme::id::EmbeddingId;
+use mneme::knowledge::{EmbeddedChunk, EpistemicTier, Fact, FactTemporal};
 
 // --- Mock Providers ---
 
@@ -125,37 +122,18 @@ async fn build_capturing_with_knowledge_store() -> (TestHarness, Arc<Mutex<Vec<C
 #[cfg(feature = "knowledge-store")]
 fn recall_fact(id: &str, content: &str) -> Fact {
     let now = "2026-03-01T00:00:00Z".parse().expect("valid timestamp");
-    Fact {
-        id: FactId::new(id).expect("valid fact id"),
-        nous_id: "test-nous".to_owned(),
-        content: content.to_owned(),
-        fact_type: "observation".to_owned(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: now,
-            valid_to: mneme::knowledge::far_future(),
-            recorded_at: now,
-        },
-        provenance: FactProvenance {
-            confidence: 0.95,
-            tier: EpistemicTier::Verified,
-            source_session_id: Some("session-http-recall".to_owned()),
-            stability_hours: mneme::knowledge::default_stability_hours("observation"),
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, "test-nous", content);
+    "observation".clone_into(&mut fact.fact_type);
+    fact.temporal = FactTemporal {
+        valid_from: now,
+        valid_to: mneme::knowledge::far_future(),
+        recorded_at: now,
+    };
+    fact.provenance.confidence = 0.95;
+    fact.provenance.tier = EpistemicTier::Verified;
+    fact.provenance.source_session_id = Some("session-http-recall".to_owned());
+    fact.provenance.stability_hours = mneme::knowledge::default_stability_hours("observation");
+    fact
 }
 
 #[cfg(feature = "knowledge-store")]

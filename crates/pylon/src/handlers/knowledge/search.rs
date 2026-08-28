@@ -636,50 +636,19 @@ mod relevance_fetch_tests {
         }
     }
 
-    fn fact_id(id: &str) -> mneme::id::FactId {
-        match mneme::id::FactId::new(id) {
-            Ok(id) => id,
-            Err(error) => panic!("valid test fact id failed: {error}"),
-        }
-    }
-
     fn make_fact(id: &str, content: &str, recorded_at: jiff::Timestamp) -> mneme::knowledge::Fact {
-        use mneme::knowledge::{
-            EpistemicTier, FactAccess, FactLifecycle, FactProvenance, FactSensitivity,
-            FactTemporal, Visibility,
-        };
+        use mneme::knowledge::{EpistemicTier, FactTemporal};
 
-        mneme::knowledge::Fact {
-            id: fact_id(id),
-            nous_id: "alice".to_owned(),
-            fact_type: "knowledge".to_owned(),
-            content: content.to_owned(),
-            scope: None,
-            project_id: None,
-            sensitivity: FactSensitivity::Public,
-            visibility: Visibility::Private,
-            temporal: FactTemporal {
-                valid_from: jiff::Timestamp::UNIX_EPOCH,
-                valid_to: timestamp(4_102_444_800),
-                recorded_at,
-            },
-            provenance: FactProvenance {
-                confidence: 0.9,
-                tier: EpistemicTier::Verified,
-                source_session_id: None,
-                stability_hours: 24.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
-        }
+        let mut fact = eidos::test_fixtures::make_fact(id, "alice", content);
+        "knowledge".clone_into(&mut fact.fact_type);
+        fact.temporal = FactTemporal {
+            valid_from: jiff::Timestamp::UNIX_EPOCH,
+            valid_to: timestamp(4_102_444_800),
+            recorded_at,
+        };
+        fact.provenance.tier = EpistemicTier::Verified;
+        fact.provenance.stability_hours = 24.0;
+        fact
     }
 
     fn knowledge_state(store: Arc<mneme::knowledge_store::KnowledgeStore>) -> KnowledgeState {

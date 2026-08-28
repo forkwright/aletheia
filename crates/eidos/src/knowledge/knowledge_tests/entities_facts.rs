@@ -236,37 +236,15 @@ fn epistemic_tier_ordering() {
 
 #[test]
 fn fact_with_supersession() {
-    let fact = Fact {
-        id: FactId::new("f-old").expect("valid test id"),
-        nous_id: "syn".to_owned(),
-        content: "outdated claim".to_owned(),
-        fact_type: String::new(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: test_timestamp("2026-01-01"),
-            valid_to: test_timestamp("2026-02-01"),
-            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.7,
-            tier: EpistemicTier::Inferred,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: Some(FactId::new("f-new").expect("valid test id")),
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
+    let mut fact = crate::test_fixtures::make_fact("f-old", "syn", "outdated claim");
+    fact.temporal = FactTemporal {
+        valid_from: test_timestamp("2026-01-01"),
+        valid_to: test_timestamp("2026-02-01"),
+        recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
     };
+    fact.provenance.confidence = 0.7;
+    fact.provenance.tier = EpistemicTier::Inferred;
+    fact.lifecycle.superseded_by = Some(FactId::new("f-new").expect("valid test id"));
     assert_eq!(
         fact.lifecycle.superseded_by.as_ref().map(FactId::as_str),
         Some("f-new"),
@@ -285,37 +263,20 @@ fn fact_with_supersession() {
 
 #[test]
 fn fact_with_session_source() {
-    let fact = Fact {
-        id: FactId::new("f-src").expect("valid test id"),
-        nous_id: "syn".to_owned(),
-        content: "extracted from conversation".to_owned(),
-        fact_type: "relationship".to_owned(),
-        scope: Some(MemoryScope::Project),
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: test_timestamp("2026-03-01"),
-            valid_to: far_future(),
-            recorded_at: test_timestamp("2026-03-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.85,
-            tier: EpistemicTier::Verified,
-            source_session_id: Some("ses-abc-123".to_owned()),
-            stability_hours: 4380.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 3,
-            last_accessed_at: Some(test_timestamp("2026-03-05T12:00:00Z")),
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
+    let mut fact = crate::test_fixtures::make_fact("f-src", "syn", "extracted from conversation");
+    "relationship".clone_into(&mut fact.fact_type);
+    fact.scope = Some(MemoryScope::Project);
+    fact.temporal = FactTemporal {
+        valid_from: test_timestamp("2026-03-01"),
+        valid_to: far_future(),
+        recorded_at: test_timestamp("2026-03-01T00:00:00Z"),
     };
+    fact.provenance.confidence = 0.85;
+    fact.provenance.tier = EpistemicTier::Verified;
+    fact.provenance.source_session_id = Some("ses-abc-123".to_owned());
+    fact.provenance.stability_hours = 4380.0;
+    fact.access.access_count = 3;
+    fact.access.last_accessed_at = Some(test_timestamp("2026-03-05T12:00:00Z"));
     assert_eq!(
         fact.provenance.source_session_id.as_deref(),
         Some("ses-abc-123"),

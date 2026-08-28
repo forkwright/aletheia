@@ -144,6 +144,7 @@ dependencies = [
  "dianoia",
  "diaporeia",
  "dokimion",
+ "eidos",
  "energeia",
  "episteme",
  "fjall",
@@ -4487,6 +4488,7 @@ version = "0.43.0"
 dependencies = [
  "axum",
  "dokimion",
+ "eidos",
  "hermeneus",
  "http-body-util",
  "indexmap",
@@ -5817,6 +5819,7 @@ version = "0.43.0"
 dependencies = [
  "aletheia-routing",
  "axum",
+ "eidos",
  "episteme",
  "fjall",
  "flate2",

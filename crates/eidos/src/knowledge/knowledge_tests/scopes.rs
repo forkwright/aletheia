@@ -2,7 +2,6 @@
 
 use super::super::*;
 use super::test_timestamp;
-use crate::id::FactId;
 
 // Split: MemoryScope / ScopeAccessPolicy / Fact with scope tests.
 
@@ -204,37 +203,16 @@ fn reference_scope_is_hybrid() {
 
 #[test]
 fn fact_scope_none_omitted_in_json() {
-    let fact = Fact {
-        id: FactId::new("f-no-scope").expect("valid test id"),
-        nous_id: "syn".to_owned(),
-        content: "legacy fact without scope".to_owned(),
-        fact_type: String::new(),
-        scope: None,
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: test_timestamp("2026-01-01"),
-            valid_to: far_future(),
-            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.5,
-            tier: EpistemicTier::Assumed,
-            source_session_id: None,
-            stability_hours: 72.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
+    let mut fact =
+        crate::test_fixtures::make_fact("f-no-scope", "syn", "legacy fact without scope");
+    fact.temporal = FactTemporal {
+        valid_from: test_timestamp("2026-01-01"),
+        valid_to: far_future(),
+        recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
     };
+    fact.provenance.confidence = 0.5;
+    fact.provenance.tier = EpistemicTier::Assumed;
+    fact.provenance.stability_hours = 72.0;
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     assert!(
         !json.contains("\"scope\""),
@@ -250,37 +228,16 @@ fn fact_scope_none_omitted_in_json() {
 
 #[test]
 fn fact_scope_some_included_in_json() {
-    let fact = Fact {
-        id: FactId::new("f-scoped").expect("valid test id"),
-        nous_id: "syn".to_owned(),
-        content: "team project fact".to_owned(),
-        fact_type: "project".to_owned(),
-        scope: Some(MemoryScope::Project),
-        project_id: None,
-        temporal: FactTemporal {
-            valid_from: test_timestamp("2026-03-01"),
-            valid_to: far_future(),
-            recorded_at: test_timestamp("2026-03-01T00:00:00Z"),
-        },
-        provenance: FactProvenance {
-            confidence: 0.9,
-            tier: EpistemicTier::Verified,
-            source_session_id: None,
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-        sensitivity: FactSensitivity::Public,
-        visibility: Visibility::Private,
+    let mut fact = crate::test_fixtures::make_fact("f-scoped", "syn", "team project fact");
+    "project".clone_into(&mut fact.fact_type);
+    fact.scope = Some(MemoryScope::Project);
+    fact.temporal = FactTemporal {
+        valid_from: test_timestamp("2026-03-01"),
+        valid_to: far_future(),
+        recorded_at: test_timestamp("2026-03-01T00:00:00Z"),
     };
+    fact.provenance.confidence = 0.9;
+    fact.provenance.tier = EpistemicTier::Verified;
     let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
     assert!(
         json.contains("\"scope\":\"project\""),
@@ -328,37 +285,20 @@ fn fact_backward_compat_no_scope_field() {
 #[test]
 fn fact_scope_all_variants_roundtrip() {
     for scope in MemoryScope::ALL {
-        let fact = Fact {
-            id: FactId::new("f-scope-test").expect("valid test id"),
-            nous_id: "syn".to_owned(),
-            content: format!("fact in {scope} scope"),
-            fact_type: String::new(),
-            scope: Some(scope),
-            project_id: None,
-            temporal: FactTemporal {
-                valid_from: test_timestamp("2026-01-01"),
-                valid_to: far_future(),
-                recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
-            },
-            provenance: FactProvenance {
-                confidence: 0.5,
-                tier: EpistemicTier::Assumed,
-                source_session_id: None,
-                stability_hours: 72.0,
-            },
-            lifecycle: FactLifecycle {
-                superseded_by: None,
-                is_forgotten: false,
-                forgotten_at: None,
-                forget_reason: None,
-            },
-            access: FactAccess {
-                access_count: 0,
-                last_accessed_at: None,
-            },
-            sensitivity: FactSensitivity::Public,
-            visibility: Visibility::Private,
+        let mut fact = crate::test_fixtures::make_fact(
+            "f-scope-test",
+            "syn",
+            &format!("fact in {scope} scope"),
+        );
+        fact.scope = Some(scope);
+        fact.temporal = FactTemporal {
+            valid_from: test_timestamp("2026-01-01"),
+            valid_to: far_future(),
+            recorded_at: test_timestamp("2026-01-01T00:00:00Z"),
         };
+        fact.provenance.confidence = 0.5;
+        fact.provenance.tier = EpistemicTier::Assumed;
+        fact.provenance.stability_hours = 72.0;
         let json = serde_json::to_string(&fact).expect("Fact serialization is infallible");
         let back: Fact =
             serde_json::from_str(&json).expect("Fact should deserialize from its own JSON");

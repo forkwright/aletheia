@@ -19,10 +19,7 @@ use std::sync::{Arc, Mutex};
 use hermeneus::provider::{LlmProvider, ProviderRegistry};
 use hermeneus::types::{CompletionRequest, CompletionResponse, ContentBlock, StopReason, Usage};
 use mneme::bookkeeping::BookkeepingProvider as _;
-use mneme::knowledge::{
-    EpistemicTier, Fact, FactAccess, FactLifecycle, FactProvenance, FactSensitivity, FactTemporal,
-    far_future,
-};
+use mneme::knowledge::{EpistemicTier, Fact, FactTemporal, far_future};
 use mneme::knowledge_store::KnowledgeStore;
 use nous::config::{NousConfig, PipelineConfig, RecallProfile};
 use nous::cross::{AddressMask, CrossNousEnvelope, CrossNousMessage, CrossNousRouter};
@@ -115,37 +112,17 @@ fn temp_oikos(agent_id: &str) -> (tempfile::TempDir, Arc<Oikos>) {
 
 fn make_test_fact(id: &str, nous_id: &str, content: &str) -> Fact {
     let now = jiff::Timestamp::now();
-    Fact {
-        id: mneme::id::FactId::new(id).expect("valid test id"),
-        nous_id: nous_id.to_owned(),
-        fact_type: "test".to_owned(),
-        content: content.to_owned(),
-        scope: None,
-        project_id: None,
-        sensitivity: FactSensitivity::Public,
-        visibility: mneme::knowledge::Visibility::Private,
-        temporal: FactTemporal {
-            valid_from: now,
-            valid_to: far_future(),
-            recorded_at: now,
-        },
-        provenance: FactProvenance {
-            confidence: 1.0,
-            tier: EpistemicTier::Verified,
-            source_session_id: Some("sess-test".to_owned()),
-            stability_hours: 720.0,
-        },
-        lifecycle: FactLifecycle {
-            superseded_by: None,
-            is_forgotten: false,
-            forgotten_at: None,
-            forget_reason: None,
-        },
-        access: FactAccess {
-            access_count: 0,
-            last_accessed_at: None,
-        },
-    }
+    let mut fact = eidos::test_fixtures::make_fact(id, nous_id, content);
+    "test".clone_into(&mut fact.fact_type);
+    fact.temporal = FactTemporal {
+        valid_from: now,
+        valid_to: far_future(),
+        recorded_at: now,
+    };
+    fact.provenance.confidence = 1.0;
+    fact.provenance.tier = EpistemicTier::Verified;
+    fact.provenance.source_session_id = Some("sess-test".to_owned());
+    fact
 }
 
 // ── Scenario 1: IdentityContinuity profile ──────────────────────────────────
