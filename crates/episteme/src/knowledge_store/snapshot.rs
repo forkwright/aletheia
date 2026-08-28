@@ -129,7 +129,12 @@ pub enum MissingSource {
     /// The caller requires an existing source (e.g. a golden-set harness
     /// snapshotting a cohort that must already have data); its absence is a
     /// hard error naming `what`.
-    Error { what: &'static str },
+    Error {
+        /// Human-readable name of the missing source, interpolated into the
+        /// resulting [`SnapshotError`] message (e.g. `"shared cohort (has
+        /// the instance ever run recall?)"`).
+        what: &'static str,
+    },
 }
 
 /// Optional per-copy progress reporting, invoked once with the row count
@@ -138,6 +143,8 @@ pub enum MissingSource {
 /// line); it never affects correctness or control flow.
 #[cfg(feature = "storage-fjall")]
 pub trait SnapshotProgress {
+    /// Called once with the row count taken from `source` immediately
+    /// before the copy runs. The default implementation reports nothing.
     fn source_counted(&self, _source: &Path, _rows: u64) {}
 }
 
