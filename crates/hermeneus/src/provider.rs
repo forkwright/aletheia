@@ -218,6 +218,101 @@ impl ProviderCapabilities {
     }
 }
 
+/// Fidelity of a provider's streaming event contract.
+///
+/// WHY(#5264): `supports_streaming()` collapsed "genuine incremental SSE
+/// deltas", "synthesized lifecycle events over an HTTP wire format",
+/// "raw incremental subprocess text with no lifecycle contract", and
+/// "one synthesized delta after the full response is already buffered"
+/// into a single bit. Downstream UI, telemetry (TTFT), approval overlays,
+/// and finalization logic need to distinguish these — they behave
+/// correctly on the boolean but silently mis-measure or mis-render on the
+/// difference it hides. Each field names one axis a caller might branch
+/// on; a provider declares only what its adapter actually does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct StreamingCapability {
+    /// Events reflect genuine incremental progress from the underlying
+    /// transport (SSE, or a subprocess's own incremental stdout) as it
+    /// arrives, rather than being synthesized only after the complete
+    /// response is already in hand.
+    pub realtime_deltas: bool,
+    /// The adapter buffers the entire response before emitting anything,
+    /// then synthesizes exactly one `StreamEvent::TextDelta` so streaming
+    /// callers don't have to special-case this provider — see
+    /// `CodexProvider::execute_streaming`. Mutually exclusive with
+    /// `realtime_deltas` in every provider today, but a future adapter
+    /// could plausibly emit real deltas AND a final synthesized summary,
+    /// so this is not enforced as an invariant.
+    pub buffered_single_delta: bool,
+    /// The provider emits block/message lifecycle events
+    /// (`ContentBlockStart`/`ContentBlockStop`, `MessageStart`/
+    /// `MessageStop`), not just content deltas — callers can track block
+    /// boundaries and detect stream completion from events alone.
+    pub lifecycle_events: bool,
+    /// Tool-call input JSON streams incrementally via
+    /// `StreamEvent::InputJsonDelta` rather than arriving as one block
+    /// when the tool call completes.
+    pub tool_input_deltas: bool,
+    /// Token usage is surfaced through stream events (`MessageStart`'s
+    /// initial usage, `MessageStop`'s final usage) rather than being
+    /// visible only in the `CompletionResponse` `complete_streaming`
+    /// eventually resolves to.
+    pub usage_deltas: bool,
+    /// Dropping the streaming future mid-flight (caller cancellation)
+    /// leaves no partial side effect the caller must reconcile — the
+    /// underlying transport is torn down (HTTP connection dropped, or
+    /// subprocess killed via `kill_on_drop`) rather than continuing to
+    /// run detached.
+    pub cancel_safety: bool,
+}
+
+impl StreamingCapability {
+    /// No streaming fidelity at all: `complete_streaming` silently falls
+    /// back to `complete()` and emits nothing incremental.
+    pub const NONE: Self = Self {
+        realtime_deltas: false,
+        buffered_single_delta: false,
+        lifecycle_events: false,
+        tool_input_deltas: false,
+        usage_deltas: false,
+        cancel_safety: false,
+    };
+
+    /// The full real-time lifecycle contract: genuine incremental deltas,
+    /// block/message lifecycle events, incremental tool-input JSON, and
+    /// usage surfaced through the stream itself. What the native Anthropic
+    /// Messages API and OpenAI-compatible adapters both implement.
+    pub const REALTIME_LIFECYCLE: Self = Self {
+        realtime_deltas: true,
+        buffered_single_delta: false,
+        lifecycle_events: true,
+        tool_input_deltas: true,
+        usage_deltas: true,
+        cancel_safety: true,
+    };
+
+    /// Whether this capability set supports streaming in the loose,
+    /// availability-only sense the retired boolean captured: true
+    /// whenever `complete_streaming` emits any event contract at all
+    /// (real-time or a synthesized single delta) instead of silently
+    /// falling back to `complete()`.
+    #[must_use]
+    pub fn any(&self) -> bool {
+        self.realtime_deltas || self.buffered_single_delta
+    }
+}
+
+impl Default for StreamingCapability {
+    /// No streaming fidelity — the safe assumption for a provider that
+    /// hasn't declared one. A provider that streams overrides
+    /// [`LlmProvider::streaming_capability`] to declare its actual
+    /// fidelity.
+    fn default() -> Self {
+        Self::NONE
+    }
+}
+
 /// Trait for LLM providers.
 ///
 /// Implementations handle authentication, request formatting, response parsing,
@@ -312,16 +407,36 @@ pub trait LlmProvider: Send + Sync {
         DeploymentTarget::Cloud
     }
 
-    /// Whether this provider supports streaming completions.
+    /// Whether this provider supports streaming completions at all, in the
+    /// loose sense that predates #5264: true whenever `complete_streaming`
+    /// emits any event contract instead of silently falling back to
+    /// `complete()`.
+    ///
+    /// Derived from [`Self::streaming_capability`] so the two cannot drift
+    /// apart — override `streaming_capability` to declare a provider's
+    /// actual fidelity; this method is not an independent thing to set.
     fn supports_streaming(&self) -> bool {
-        false
+        self.streaming_capability().any()
+    }
+
+    /// The fidelity of this provider's streaming event contract.
+    ///
+    /// WHY(#5264): the boolean `supports_streaming` cannot distinguish a
+    /// genuine real-time SSE lifecycle from a synthesized single delta
+    /// emitted after the full response is already buffered — callers that
+    /// need to know (UI, TTFT telemetry, approval overlays, tool-input
+    /// streaming, finalization logic) branch on this instead. Defaults to
+    /// [`StreamingCapability::NONE`]; a provider that streams overrides
+    /// this to declare what its adapter actually does.
+    fn streaming_capability(&self) -> StreamingCapability {
+        StreamingCapability::NONE
     }
 
     /// Send a streaming completion request, emitting [`StreamEvent`]s incrementally.
     ///
     /// The default implementation ignores `on_event` and delegates to `complete()`.
-    /// Providers that support streaming should override both this method and
-    /// `supports_streaming()`.
+    /// Providers that support streaming should override this method and
+    /// `streaming_capability()`.
     ///
     /// # Errors
     /// Same as `complete`, plus mid-stream transport errors when overridden.

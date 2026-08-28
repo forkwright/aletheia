@@ -984,3 +984,105 @@ fn unknown_claude_model_routes_to_first_catch_all_provider() {
         "unknown claude-* IDs must fall through to the first-registered catch-all provider"
     );
 }
+
+#[test]
+fn streaming_capability_any_is_true_only_for_realtime_or_buffered() {
+    assert!(!StreamingCapability::NONE.any());
+    assert!(StreamingCapability::REALTIME_LIFECYCLE.any());
+    assert!(
+        StreamingCapability {
+            buffered_single_delta: true,
+            ..StreamingCapability::NONE
+        }
+        .any()
+    );
+}
+
+#[test]
+fn supports_streaming_default_derives_from_streaming_capability() {
+    // WHY(#5264): `supports_streaming` must not be an independent knob —
+    // a provider declaring only `streaming_capability` gets the correct
+    // boolean for free, and the two cannot drift apart.
+    struct RealtimeOnly;
+    impl LlmProvider for RealtimeOnly {
+        fn complete<'a>(
+            &'a self,
+            _request: &'a CompletionRequest,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<CompletionResponse>> + Send + 'a>,
+        > {
+            Box::pin(async { unimplemented!() })
+        }
+        fn supported_models(&self) -> &[&str] {
+            &[]
+        }
+        fn name(&self) -> &str {
+            "realtime-only"
+        }
+        fn streaming_capability(&self) -> StreamingCapability {
+            StreamingCapability {
+                realtime_deltas: true,
+                ..StreamingCapability::NONE
+            }
+        }
+    }
+
+    assert!(RealtimeOnly.supports_streaming());
+
+    struct NoStreaming;
+    impl LlmProvider for NoStreaming {
+        fn complete<'a>(
+            &'a self,
+            _request: &'a CompletionRequest,
+        ) -> std::pin::Pin<
+            Box<dyn std::future::Future<Output = Result<CompletionResponse>> + Send + 'a>,
+        > {
+            Box::pin(async { unimplemented!() })
+        }
+        fn supported_models(&self) -> &[&str] {
+            &[]
+        }
+        fn name(&self) -> &str {
+            "no-streaming"
+        }
+    }
+
+    assert!(!NoStreaming.supports_streaming());
+    assert_eq!(
+        NoStreaming.streaming_capability(),
+        StreamingCapability::NONE
+    );
+}
+
+#[cfg(feature = "cc-provider")]
+#[test]
+fn anthropic_declares_full_realtime_lifecycle_fidelity() {
+    let provider = anthropic_provider_with_builtin_catalog();
+    assert_eq!(
+        provider.streaming_capability(),
+        StreamingCapability::REALTIME_LIFECYCLE
+    );
+    assert!(provider.supports_streaming());
+}
+
+#[cfg(feature = "cc-provider")]
+#[test]
+fn cc_declares_realtime_text_with_no_lifecycle_or_tool_input_fidelity() {
+    let provider = cc_provider_with_dummy_binary();
+    let capability = provider.streaming_capability();
+
+    assert!(
+        capability.realtime_deltas,
+        "CC streams raw incremental subprocess text"
+    );
+    assert!(
+        !capability.lifecycle_events,
+        "CC never emits ContentBlockStart/Stop or MessageStart/Stop"
+    );
+    assert!(
+        !capability.tool_input_deltas,
+        "CC never emits InputJsonDelta"
+    );
+    assert!(!capability.buffered_single_delta);
+    assert!(provider.supports_streaming());
+}
