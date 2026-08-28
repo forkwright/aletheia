@@ -8,6 +8,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::App;
 use crate::theme::Theme;
+use crate::view::presentation::render_status_bar;
 
 const HEADER_HEIGHT: u16 = 3;
 const STATUS_BAR_HEIGHT: u16 = 1;
@@ -239,15 +240,5 @@ fn render_completed_phases(app: &App, frame: &mut Frame, area: Rect, theme: &The
         .block(block)
         .wrap(Wrap { trim: false })
         .scroll((scroll, 0));
-    frame.render_widget(paragraph, area);
-}
-
-fn render_status_bar(frame: &mut Frame, area: Rect, theme: &Theme) {
-    let line = Line::from(vec![
-        Span::raw("  "),
-        Span::styled("Esc", theme.style_accent()),
-        Span::styled(" back", theme.style_dim()),
-    ]);
-    let paragraph = Paragraph::new(line);
     frame.render_widget(paragraph, area);
 }

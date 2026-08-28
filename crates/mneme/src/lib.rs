@@ -272,13 +272,17 @@ pub mod knowledge_store {
     /// automatically as the first statement of `KnowledgeStore::open_fjall`
     /// itself (aletheia#5779 F4) — gated on whether a schema migration
     /// might actually run, so every production caller is protected without
-    /// an explicit call. These primitives remain available for direct use
-    /// (e.g. an operator-triggered manual backup); calling them again is
-    /// safe but redundant with `open_fjall`'s automatic protection.
+    /// an explicit call. `verified_copy_snapshot` is the underlying
+    /// algorithm with its policy (refused components, missing-source
+    /// behavior, progress reporting) exposed as arguments, for callers with
+    /// their own snapshot policy (e.g. `aletheia`'s golden-set harness —
+    /// aletheia#7036) rather than a second copy of the algorithm.
     #[cfg(feature = "storage-fjall")]
     pub mod snapshot {
         pub use episteme::knowledge_store::snapshot::{
-            copy_excluding_psyche, pre_migration_snapshot,
+            MissingSource, SilentProgress, SnapshotError, SnapshotProgress, copy_excluding_psyche,
+            count_data_keyspace_rows, pre_migration_snapshot, staging_sibling,
+            verified_copy_snapshot, verify_restorable,
         };
     }
 }

@@ -46,6 +46,7 @@ use std::time::{Duration, Instant};
 use skene::api::types::TurnOutcome;
 use skene::events::StreamEvent;
 use skene::id::{NousId, RequestId, SessionId, TurnId};
+use skene::text::append_terminal_notice;
 
 use crate::state::events::{ConnectionState, StreamingState, ToolCallInfo};
 use crate::state::tools::{
@@ -644,23 +645,6 @@ fn terminal_failure_notice(stop_reason: Option<&str>, error: Option<&str>) -> Op
         (None, Some(message)) => format!("turn failed: {message}"),
         (None, None) => "turn failed".to_string(),
     })
-}
-
-fn append_terminal_notice(mut text: String, notice: &str) -> String {
-    if text.is_empty() {
-        format!("[{notice}]")
-    } else {
-        if text.ends_with("\n\n") {
-            text.push('[');
-        } else if text.ends_with('\n') {
-            text.push_str("\n[");
-        } else {
-            text.push_str("\n\n[");
-        }
-        text.push_str(notice);
-        text.push(']');
-        text
-    }
 }
 
 /// Map a server step-status string to a [`StepStatus`] enum value.
