@@ -697,7 +697,6 @@ Rules:
                         target = %rel.target,
                         "rejected relationship with banned type"
                     );
-                    result.relationships_skipped += 1;
                     result.skipped.push(SkippedItem::new(
                         PersistItemKind::Relationship,
                         triple(),
@@ -712,7 +711,6 @@ Rules:
                         target = %rel.target,
                         "rejected relationship with malformed type"
                     );
-                    result.relationships_skipped += 1;
                     result.skipped.push(SkippedItem::new(
                         PersistItemKind::Relationship,
                         triple(),
@@ -764,6 +762,12 @@ Rules:
                 created_at: now,
             });
         }
+        // WHY (aletheia#5306): derive from `skipped` rather than incrementing
+        // a parallel counter at each of the six relationship-skip sites above
+        // — two independently-maintained tallies of the same event is how a
+        // future seventh skip site lands in one and not the other. `skipped`
+        // is the one place every relationship rejection is already recorded.
+        result.relationships_skipped = result.skipped_count(PersistItemKind::Relationship);
 
         if extraction.facts.len() > self.config.max_facts {
             tracing::warn!(
