@@ -6,6 +6,7 @@
 //! before exec.
 
 mod config;
+mod dns_resolver;
 mod policy;
 #[cfg(test)]
 mod tests;
@@ -14,6 +15,7 @@ pub use config::{
     EgressPolicy, SandboxConfig, SandboxConfigExt, SandboxConfigIssue, SandboxEnforcement,
     SandboxPolicy,
 };
+pub use dns_resolver::PolicyDnsResolver;
 pub use policy::{
     EgressDenied, EgressGate, GuaranteeStatus, SandboxGuarantees, apply_sandbox, check_egress,
     check_egress_remote_addr, diagnostic_guarantees, probe_landlock_abi,

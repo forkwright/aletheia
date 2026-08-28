@@ -140,12 +140,31 @@ where
         .join(location)
         .map_err(|e| format!("invalid redirect Location: {e}"))?;
 
-    // WARNING: DNS may change after validation and before reqwest connects.
-    // The guard revalidates every URL before following it, but it cannot pin
-    // the resolved address for the subsequent connection.
+    // This is one of two independent lookups on the redirect-following path
+    // (the other is `client`'s own `PolicyDnsResolver` at connect time);
+    // pinning the target this hop actually connects to is that resolver's
+    // job, not this pre-connect revalidation's (SECURITY #5229).
     validate_url_not_internal_with_resolver(next_url.as_str(), resolver).await?;
 
     Ok(next_url)
+}
+
+/// Render a `reqwest::Error` including its full source chain.
+///
+/// WHY(#5229): `reqwest::Error`'s own `Display` prints only a generic
+/// "error sending request for url (...)" and never walks `source()`, so a
+/// `PolicyDnsResolver` rejection (DNS rebinding, an empty answer, an
+/// allowlist miss) would otherwise vanish behind that generic text -- the
+/// caller would see a connection failure with no way to tell it apart from
+/// an ordinary network error.
+fn format_send_error(err: &reqwest::Error) -> String {
+    let mut rendered = format!("request failed: {err}");
+    let mut source: Option<&(dyn std::error::Error + 'static)> = std::error::Error::source(err);
+    while let Some(cause) = source {
+        rendered.push_str(&format!(": {cause}"));
+        source = cause.source();
+    }
+    rendered
 }
 
 fn redirect_method(method: &Method, status: StatusCode) -> Method {
@@ -237,16 +256,21 @@ where
             req = req.body(b.to_owned());
         }
 
-        let response = req
-            .send()
-            .await
-            .map_err(|e| format!("request failed: {e}"))?;
+        // SECURITY(#5229): `client`'s DNS resolver is expected to be a
+        // `sandbox::PolicyDnsResolver` pinning this connection to a
+        // validated address; when it rejects a rebinding target, `.send()`
+        // fails here rather than reaching a peer at all. `format_send_error`
+        // walks the source chain because `reqwest::Error`'s own `Display`
+        // does not, and the resolver's rejection reason is the whole reason
+        // this error is worth returning to the caller instead of the
+        // generic "error sending request" reqwest prints on its own.
+        let response = req.send().await.map_err(|e| format_send_error(&e))?;
 
-        // SECURITY(#5229): inspect the address the connection actually used
-        // before accepting the response. This can reject a private or
-        // policy-disallowed rebound peer before response handling, but the
-        // request has already been sent; preventing request-side exposure
-        // requires pinning the validated address.
+        // SECURITY(#5229): defense-in-depth alongside the resolver above --
+        // catches a reused pooled connection or a client this checkpoint did
+        // not build. The request has already been sent by the time this
+        // runs; the resolver pinning above is what stops a rebinding target
+        // from being connected to in the first place.
         check_egress_remote_addr(gate, response.remote_addr())?;
 
         if !response.status().is_redirection() {
@@ -303,11 +327,17 @@ impl ToolExecutor for HttpRequestExecutor {
             let body = extract_opt_str(&input.arguments, "body");
             let timeout_secs = extract_opt_u64(&input.arguments, "timeoutSecs").unwrap_or(30);
 
-            // WHY: validating user-supplied URL scheme, not constructing an
-            // endpoint. Delegates to the shared helper so the plaintext HTTP
-            // literal stays in one audited place.
-            if !koina::http::has_http_or_https_scheme(url) {
-                return Ok(ToolResult::error("URL must start with http:// or https://"));
+            // SECURITY(#5229): HTTPS-only by default, with a plaintext
+            // exception for loopback only -- the same rule hermeneus's
+            // Anthropic and OpenAI clients already enforce
+            // (`koina::http::is_secure_or_plaintext_loopback_url`).
+            // `has_http_or_https_scheme` would accept plaintext HTTP to any
+            // host, which sends this tool's headers (and any body) in the
+            // clear to whatever DNS answers for that host at connect time.
+            if !koina::http::is_secure_or_plaintext_loopback_url(url) {
+                return Ok(ToolResult::error(
+                    "URL must be https://, or http:// to a loopback host",
+                ));
             }
 
             let method = match parse_method(method_str) {
