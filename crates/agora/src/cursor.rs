@@ -60,6 +60,20 @@ impl FileCursorStore {
             .join(format!("{}.json", crate::types::hex_lower(&digest)))
     }
 
+    // WHY the suppression: agora's clippy policy asks for either `tokio::fs` or
+    // "abstract behind a trait for testability". The second is what this file does --
+    // `CursorStore` is the abstraction and `FileCursorStore` is one implementation of
+    // it, consumed everywhere as `Arc<dyn CursorStore>`. The trait is synchronous, so
+    // moving to `tokio::fs` would make every caller async for no behavioural gain.
+    //
+    // The larger question this does NOT settle: the crate header says all persistence
+    // belongs in mneme, which argues this store should not live in agora at all. That
+    // is a placement decision, not a lint decision, and is raised on the PR rather
+    // than resolved by this attribute.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "CursorStore is the trait abstraction the policy asks for; the trait is sync"
+    )]
     fn try_load(&self, channel: &str, account: &str) -> io::Result<Option<String>> {
         let path = self.path_for(channel, account);
         let contents = match std::fs::read(&path) {
@@ -161,6 +175,10 @@ fn usable_parent(path: &Path) -> io::Result<&Path> {
 }
 
 #[cfg(unix)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "fsync of the containing directory has no tokio::fs equivalent; durability step behind CursorStore"
+)]
 fn sync_directory(path: &Path) -> io::Result<()> {
     File::open(path).and_then(|directory| directory.sync_all())
 }
