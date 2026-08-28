@@ -1188,6 +1188,10 @@ fn delete_session_aborts_on_corrupt_session_row() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single linear scenario asserting delete_session clears every child partition; splitting it obscures the one guarantee it checks"
+)]
 fn delete_session_removes_usage_distillation_and_note_rows() {
     // WHY(#4984): positive-path analog — confirm delete_session leaves NO child
     // rows behind across every partition (messages, usage, distillations, notes).

@@ -405,6 +405,119 @@ mod tests {
         format!("{prefix}{}", byte.to_string().repeat(64))
     }
 
+    fn sample_workspace() -> WorkspaceData {
+        WorkspaceData {
+            files: HashMap::from([
+                ("memory/notes.md".to_owned(), "# Notes\n".to_owned()),
+                ("config.yaml".to_owned(), "key: value\n".to_owned()),
+            ]),
+            binary_files: vec!["avatar.png".to_owned()],
+            binary_file_contents: vec![BinaryFileData {
+                path: "avatar.png".to_owned(),
+                size_bytes: 4,
+                sha256: "0f4636c78f65d3639ece5a064b5ae753e3408614a14fb18ab4d7540d2c248543"
+                    .to_owned(),
+                contents_base64: "iVBORw==".to_owned(),
+            }],
+        }
+    }
+
+    fn sample_command_lifecycle_record() -> ExportedCommandLifecycleRecord {
+        ExportedCommandLifecycleRecord {
+            id: 9,
+            schema: COMMAND_LIFECYCLE_SCHEMA.to_owned(),
+            schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
+            delivery_key: audit_digest("sha256:", 'a'),
+            origin: RedactedCommandOrigin {
+                channel: "signal".to_owned(),
+                account_id: Some(audit_digest("h:", 'b')),
+                sender: audit_digest("h:", 'c'),
+                group_id: None,
+                thread_id: None,
+                conversation_id: audit_digest("sha256:", 'd'),
+                timestamp_ms: 1_709_312_345_678,
+            },
+            command: RedactedCommand {
+                name: "status".to_owned(),
+                args_redacted: None,
+            },
+            event: CommandLifecycleEvent::Result {
+                status: crate::types::CommandResultStatus::Succeeded,
+                failure_class: None,
+                duration_ms: 42,
+                delivery: crate::types::CommandDelivery {
+                    status: crate::types::CommandDeliveryStatus::Sent,
+                    failure_class: None,
+                },
+            },
+            created_at: "2026-03-05T10:00:02Z".to_owned(),
+        }
+    }
+
+    fn sample_session() -> ExportedSession {
+        ExportedSession {
+            id: "ses-001".to_owned(),
+            session_key: "main".to_owned(),
+            status: "active".to_owned(),
+            session_type: "primary".to_owned(),
+            message_count: 2,
+            token_count_estimate: 150,
+            distillation_count: 0,
+            created_at: "2026-03-05T10:00:00Z".to_owned(),
+            updated_at: "2026-03-05T11:00:00Z".to_owned(),
+            working_state: None,
+            distillation_priming: None,
+            notes: vec![ExportedNote {
+                category: "task".to_owned(),
+                content: "working on portability".to_owned(),
+                created_at: "2026-03-05T10:30:00Z".to_owned(),
+            }],
+            messages: vec![
+                ExportedMessage {
+                    role: "user".to_owned(),
+                    content: "hello".to_owned(),
+                    seq: 1,
+                    token_estimate: 50,
+                    is_distilled: false,
+                    created_at: "2026-03-05T10:00:00Z".to_owned(),
+                    tool_call_id: None,
+                    tool_name: None,
+                },
+                ExportedMessage {
+                    role: "tool_result".to_owned(),
+                    content: "tool output".to_owned(),
+                    seq: 2,
+                    token_estimate: 15,
+                    is_distilled: false,
+                    created_at: "2026-03-05T10:00:01Z".to_owned(),
+                    tool_call_id: Some("call-1".to_owned()),
+                    tool_name: Some("read_file".to_owned()),
+                },
+            ],
+            usage_records: Some(vec![ExportedUsageRecord {
+                turn_seq: 1,
+                input_tokens: 65,
+                output_tokens: 100,
+                cache_read_tokens: 0,
+                cache_write_tokens: 0,
+                model: Some("claude-sonnet-4-6".to_owned()),
+                created_at: "2026-03-05T10:00:00Z".to_owned(),
+            }]),
+            command_lifecycle_records: vec![sample_command_lifecycle_record()],
+            parent_session_id: Some("ses-parent".to_owned()),
+            thread_id: Some("thread-9".to_owned()),
+            transport: Some("stdio".to_owned()),
+            display_name: Some("Main Session".to_owned()),
+            owner: Some("user-alice".to_owned()),
+            task_id: Some("task-42".to_owned()),
+            client_turn_id: Some("turn-7".to_owned()),
+            last_input_tokens: Some(64),
+            bootstrap_hash: Some("abc123".to_owned()),
+            last_distilled_at: Some("2026-03-05T10:45:00Z".to_owned()),
+            computed_context_tokens: Some(210),
+        }
+    }
+
     fn sample_agent_file() -> AgentFile {
         AgentFile {
             version: AGENT_FILE_VERSION,
@@ -416,109 +529,8 @@ mod tests {
                 model: Some("claude-sonnet-4-6".to_owned()),
                 config: serde_json::json!({"domains": ["general"]}),
             },
-            workspace: WorkspaceData {
-                files: HashMap::from([
-                    ("memory/notes.md".to_owned(), "# Notes\n".to_owned()),
-                    ("config.yaml".to_owned(), "key: value\n".to_owned()),
-                ]),
-                binary_files: vec!["avatar.png".to_owned()],
-                binary_file_contents: vec![BinaryFileData {
-                    path: "avatar.png".to_owned(),
-                    size_bytes: 4,
-                    sha256: "0f4636c78f65d3639ece5a064b5ae753e3408614a14fb18ab4d7540d2c248543"
-                        .to_owned(),
-                    contents_base64: "iVBORw==".to_owned(),
-                }],
-            },
-            sessions: vec![ExportedSession {
-                id: "ses-001".to_owned(),
-                session_key: "main".to_owned(),
-                status: "active".to_owned(),
-                session_type: "primary".to_owned(),
-                message_count: 2,
-                token_count_estimate: 150,
-                distillation_count: 0,
-                created_at: "2026-03-05T10:00:00Z".to_owned(),
-                updated_at: "2026-03-05T11:00:00Z".to_owned(),
-                working_state: None,
-                distillation_priming: None,
-                notes: vec![ExportedNote {
-                    category: "task".to_owned(),
-                    content: "working on portability".to_owned(),
-                    created_at: "2026-03-05T10:30:00Z".to_owned(),
-                }],
-                messages: vec![
-                    ExportedMessage {
-                        role: "user".to_owned(),
-                        content: "hello".to_owned(),
-                        seq: 1,
-                        token_estimate: 50,
-                        is_distilled: false,
-                        created_at: "2026-03-05T10:00:00Z".to_owned(),
-                        tool_call_id: None,
-                        tool_name: None,
-                    },
-                    ExportedMessage {
-                        role: "tool_result".to_owned(),
-                        content: "tool output".to_owned(),
-                        seq: 2,
-                        token_estimate: 15,
-                        is_distilled: false,
-                        created_at: "2026-03-05T10:00:01Z".to_owned(),
-                        tool_call_id: Some("call-1".to_owned()),
-                        tool_name: Some("read_file".to_owned()),
-                    },
-                ],
-                usage_records: Some(vec![ExportedUsageRecord {
-                    turn_seq: 1,
-                    input_tokens: 65,
-                    output_tokens: 100,
-                    cache_read_tokens: 0,
-                    cache_write_tokens: 0,
-                    model: Some("claude-sonnet-4-6".to_owned()),
-                    created_at: "2026-03-05T10:00:00Z".to_owned(),
-                }]),
-                command_lifecycle_records: vec![ExportedCommandLifecycleRecord {
-                    id: 9,
-                    schema: COMMAND_LIFECYCLE_SCHEMA.to_owned(),
-                    schema_version: COMMAND_LIFECYCLE_SCHEMA_VERSION,
-                    delivery_key: audit_digest("sha256:", 'a'),
-                    origin: RedactedCommandOrigin {
-                        channel: "signal".to_owned(),
-                        account_id: Some(audit_digest("h:", 'b')),
-                        sender: audit_digest("h:", 'c'),
-                        group_id: None,
-                        thread_id: None,
-                        conversation_id: audit_digest("sha256:", 'd'),
-                        timestamp_ms: 1_709_312_345_678,
-                    },
-                    command: RedactedCommand {
-                        name: "status".to_owned(),
-                        args_redacted: None,
-                    },
-                    event: CommandLifecycleEvent::Result {
-                        status: crate::types::CommandResultStatus::Succeeded,
-                        failure_class: None,
-                        duration_ms: 42,
-                        delivery: crate::types::CommandDelivery {
-                            status: crate::types::CommandDeliveryStatus::Sent,
-                            failure_class: None,
-                        },
-                    },
-                    created_at: "2026-03-05T10:00:02Z".to_owned(),
-                }],
-                parent_session_id: Some("ses-parent".to_owned()),
-                thread_id: Some("thread-9".to_owned()),
-                transport: Some("stdio".to_owned()),
-                display_name: Some("Main Session".to_owned()),
-                owner: Some("user-alice".to_owned()),
-                task_id: Some("task-42".to_owned()),
-                client_turn_id: Some("turn-7".to_owned()),
-                last_input_tokens: Some(64),
-                bootstrap_hash: Some("abc123".to_owned()),
-                last_distilled_at: Some("2026-03-05T10:45:00Z".to_owned()),
-                computed_context_tokens: Some(210),
-            }],
+            workspace: sample_workspace(),
+            sessions: vec![sample_session()],
             memory: None,
             knowledge: None,
             export_metadata: None,

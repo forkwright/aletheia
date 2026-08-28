@@ -621,6 +621,10 @@ fn force_import_displaces_different_owner_and_cleans_nous_index() {
 // ── Atomic per-session import (issue #5033) ────────────────────────────────
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "single linear scenario asserting one atomic bundle import lands every partition (messages, usage, command lifecycle, notes, working state); splitting it obscures the one guarantee it checks"
+)]
 fn import_session_bundle_writes_everything_atomically() {
     let store = test_store();
     let session = import_session_record(

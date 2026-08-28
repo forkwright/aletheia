@@ -915,9 +915,7 @@ fn validate_binding_source_kind<'a>(
     binding: &'a Value,
     errors: &mut Vec<String>,
 ) -> Option<&'a str> {
-    let Some(kind) = binding.get("sourceKind") else {
-        return None;
-    };
+    let kind = binding.get("sourceKind")?;
     let Some(kind) = kind.as_str() else {
         errors.push(format!("bindings[{index}].sourceKind must be a string"));
         return None;
