@@ -12,7 +12,7 @@ use tracing::{debug, info, warn};
 
 use super::file_ops::CredentialFile;
 use super::oauth_types::{OAuthErrorResponse, OAuthTokenResponse};
-use super::pkce::url_encode;
+use super::pkce::build_form_body;
 use super::{OAuthProvider, OAuthRequiredAction};
 
 /// Errors from Device Code authentication flow.
@@ -174,15 +174,6 @@ impl DeviceOAuthProvider {
     }
 }
 
-/// Build form-urlencoded body from params with string keys.
-fn build_form_body_str(params: &HashMap<String, String>) -> String {
-    params
-        .iter()
-        .map(|(k, v)| format!("{}={}", url_encode(k), url_encode(v)))
-        .collect::<Vec<_>>()
-        .join("&")
-}
-
 /// Request device authorization from the OAuth provider.
 async fn request_device_authorization(
     client: &reqwest::Client,
@@ -195,7 +186,7 @@ async fn request_device_authorization(
         params.insert("scope".to_string(), provider.base.scopes.join(" "));
     }
 
-    let body = build_form_body_str(&params);
+    let body = build_form_body(&params);
 
     let response = client
         .post(&provider.device_authorization_url)
@@ -259,7 +250,7 @@ async fn poll_token_endpoint(
         params.insert("device_code".to_string(), device_code.to_string());
         params.insert("client_id".to_string(), provider.base.client_id.clone());
 
-        let body = build_form_body_str(&params);
+        let body = build_form_body(&params);
 
         let response = client
             .post(&provider.base.token_url)

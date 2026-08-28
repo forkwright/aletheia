@@ -634,6 +634,13 @@ impl Reversibility {
     pub fn supports_dry_run(self) -> bool {
         matches!(self, Self::FullyReversible | Self::Reversible)
     }
+
+    /// Whether this reversibility level should be surfaced as destructive
+    /// (partial or no undo path).
+    #[must_use]
+    pub fn is_destructive(self) -> bool {
+        matches!(self, Self::PartiallyReversible | Self::Irreversible)
+    }
 }
 
 /// What level of approval a tool call requires before execution.
@@ -661,6 +668,15 @@ impl std::fmt::Display for ApprovalRequirement {
             Self::Required => f.write_str("required"),
             Self::Mandatory => f.write_str("mandatory"),
         }
+    }
+}
+
+impl ApprovalRequirement {
+    /// Whether this approval level should surface an explicit confirmation
+    /// prompt before execution, rather than being merely advisory or unneeded.
+    #[must_use]
+    pub fn requires_prompt(self) -> bool {
+        matches!(self, Self::Required | Self::Mandatory)
     }
 }
 

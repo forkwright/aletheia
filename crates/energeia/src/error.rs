@@ -182,6 +182,14 @@ pub enum Error {
 /// Convenience alias for results with [`Error`].
 pub type Result<T> = std::result::Result<T, Error>;
 
+/// Build a [`Error::Store`] from a formatting context and the underlying cause.
+pub(crate) fn store_err(context: &str, e: impl std::fmt::Display) -> Error {
+    StoreSnafu {
+        message: format!("{context}: {e}"),
+    }
+    .build()
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
