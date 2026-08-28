@@ -91,6 +91,7 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
     })?;
 
     // Tier 2: TOML file (if present), interpolated + decrypted, then deep-merged.
+    let mut file_toml_json: Option<JsonValue> = None;
     if fs.exists(&toml_path) {
         let bytes = fs
             .read_file(&toml_path)
@@ -105,7 +106,8 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
             toml::from_str(&decrypted_content).context(crate::error::ParseTomlSnafu {
                 path: toml_path.clone(),
             })?;
-        deep_merge(&mut root, toml_json);
+        deep_merge(&mut root, toml_json.clone());
+        file_toml_json = Some(toml_json);
     } else if fs.exists(&yaml_path) {
         warn!(
             "Found aletheia.yaml but not aletheia.toml -- run migration or rename. \
@@ -118,9 +120,14 @@ pub fn load_config_with(oikos: &Oikos, fs: &impl FileSystem) -> Result<AletheiaC
         );
     }
 
+    // Resolve the legacy `[data.retention]` alias against the canonical
+    // `[maintenance.retention]` owner before the env overlay, so an
+    // `ALETHEIA_MAINTENANCE__RETENTION__*` override always wins over a
+    // file-level alias (#5327).
+    resolve_legacy_retention_alias(&mut root, file_toml_json.as_ref())?;
+
     // Tier 3: environment variables, ALETHEIA_ prefix, `__` splitting nested keys.
     let applied_env_vars = apply_env_overlay(&mut root, "ALETHEIA_", "__");
-    mirror_data_retention(&mut root);
 
     let config = serde_json::from_value::<AletheiaConfig>(root).context(ConfigLoadSnafu {
         reason: deserialize_reason(&applied_env_vars),
@@ -179,25 +186,83 @@ fn validate_relative_contained(field: &'static str, raw: &str) -> Result<()> {
     })
 }
 
-fn mirror_data_retention(root: &mut JsonValue) {
-    let Some(retention) = root
+/// Resolve the legacy `[data.retention]` alias against the canonical
+/// `[maintenance.retention]` owner (#5327).
+///
+/// `maintenance.retention` is the sole runtime retention-enforcement owner
+/// (`daemon::maintenance::registry` reads only `config.retention` off
+/// `MaintenanceSettings`); `data.retention` predates that and survives only
+/// as a compatibility alias. `file_toml` is the raw deserialized TOML file
+/// (pre-merge, pre-defaults) so presence can be told apart from a default
+/// value that is always present once merged onto the compiled defaults.
+///
+/// - Neither table set in the file: nothing to do.
+/// - Only the legacy table set: mirrored into `maintenance.retention`, with
+///   a deprecation warning. Runs before the env overlay so
+///   `ALETHEIA_MAINTENANCE__RETENTION__*` still wins (env has highest
+///   precedence) -- mirroring after the env overlay, as this used to, let a
+///   stale file-level alias silently overwrite an operator's environment
+///   override.
+/// - Only the canonical table set: used as-is, nothing to mirror.
+/// - Both set and equal: canonical value already present in `root`; a no-op.
+/// - Both set and conflicting: [`Error::RetentionAliasConflict`] rather than
+///   silently picking a side.
+///
+/// # Errors
+///
+/// Returns [`Error::RetentionAliasConflict`] when both tables are present
+/// with different values.
+fn resolve_legacy_retention_alias(
+    root: &mut JsonValue,
+    file_toml: Option<&JsonValue>,
+) -> Result<()> {
+    let legacy_in_file = file_toml
+        .and_then(|toml| toml.get("data"))
+        .and_then(|data| data.get("retention"))
+        .is_some();
+    if !legacy_in_file {
+        return Ok(());
+    }
+
+    let canonical_in_file = file_toml
+        .and_then(|toml| toml.get("maintenance"))
+        .and_then(|maintenance| maintenance.get("retention"))
+        .is_some();
+
+    let legacy_value = root
         .get("data")
         .and_then(|data| data.get("retention"))
         .cloned()
-    else {
-        return;
-    };
+        .unwrap_or(JsonValue::Null);
 
+    if canonical_in_file {
+        let canonical_value = root
+            .get("maintenance")
+            .and_then(|maintenance| maintenance.get("retention"))
+            .cloned()
+            .unwrap_or(JsonValue::Null);
+        if canonical_value != legacy_value {
+            return crate::error::RetentionAliasConflictSnafu.fail();
+        }
+        return Ok(());
+    }
+
+    warn!(
+        "`[data.retention]` is a deprecated legacy alias for `[maintenance.retention]` \
+         (the canonical retention-enforcement owner) -- update aletheia.toml to use \
+         `[maintenance.retention]` directly."
+    );
     let Some(root_map) = root.as_object_mut() else {
-        return;
+        return Ok(());
     };
     let maintenance = root_map
         .entry("maintenance".to_owned())
         .or_insert_with(|| JsonValue::Object(serde_json::Map::new()));
     let Some(maintenance_map) = maintenance.as_object_mut() else {
-        return;
+        return Ok(());
     };
-    maintenance_map.insert("retention".to_owned(), retention);
+    maintenance_map.insert("retention".to_owned(), legacy_value);
+    Ok(())
 }
 
 /// Deep-merge `src` into `dst`. Objects merge by key; everything else replaces.
@@ -886,7 +951,7 @@ mod tests {
     }
 
     #[test]
-    fn load_config_with_mirrors_data_retention_to_maintenance() {
+    fn load_config_with_legacy_retention_only_mirrors_to_maintenance() {
         let jail = EnvJail::new();
         let oikos = Oikos::from_root(jail.directory());
         let toml_path = oikos.config().join("aletheia.toml");
@@ -921,6 +986,118 @@ archiveBeforeDelete = true
         );
         assert_eq!(config.maintenance.retention.max_sessions_per_nous, 200);
         assert!(config.maintenance.retention.archive_before_delete);
+    }
+
+    #[test]
+    fn load_config_with_canonical_retention_only_is_used_as_is() {
+        let jail = EnvJail::new();
+        let oikos = Oikos::from_root(jail.directory());
+        let toml_path = oikos.config().join("aletheia.toml");
+
+        let mut fs = TestSystem::new();
+        fs.add_file(
+            toml_path,
+            br"
+[maintenance.retention]
+enabled = true
+closedSessionTtlDays = 45
+",
+        );
+
+        let config = load_config_with(&oikos, &fs).unwrap_or_else(|e| panic!("load: {e}"));
+        assert!(config.maintenance.retention.enabled);
+        assert_eq!(
+            config.maintenance.retention.closed_session_ttl_days,
+            Some(45)
+        );
+        // WHY(#5327): the legacy alias is untouched by a canonical-only file
+        // -- it keeps its own (default) value rather than inheriting the
+        // canonical one.
+        assert!(!config.data.retention.enabled);
+    }
+
+    #[test]
+    fn load_config_with_both_retention_paths_equal_uses_canonical() {
+        let jail = EnvJail::new();
+        let oikos = Oikos::from_root(jail.directory());
+        let toml_path = oikos.config().join("aletheia.toml");
+
+        let mut fs = TestSystem::new();
+        fs.add_file(
+            toml_path,
+            br"
+[data.retention]
+enabled = true
+closedSessionTtlDays = 30
+
+[maintenance.retention]
+enabled = true
+closedSessionTtlDays = 30
+",
+        );
+
+        let config = load_config_with(&oikos, &fs).unwrap_or_else(|e| panic!("load: {e}"));
+        assert!(config.maintenance.retention.enabled);
+        assert_eq!(
+            config.maintenance.retention.closed_session_ttl_days,
+            Some(30)
+        );
+    }
+
+    #[test]
+    fn load_config_with_both_retention_paths_conflicting_fails_to_load() {
+        let jail = EnvJail::new();
+        let oikos = Oikos::from_root(jail.directory());
+        let toml_path = oikos.config().join("aletheia.toml");
+
+        let mut fs = TestSystem::new();
+        fs.add_file(
+            toml_path,
+            br"
+[data.retention]
+enabled = true
+closedSessionTtlDays = 30
+
+[maintenance.retention]
+enabled = true
+closedSessionTtlDays = 90
+",
+        );
+
+        let err = load_config_with(&oikos, &fs)
+            .expect_err("conflicting legacy and canonical retention values must not load");
+        assert!(
+            err.to_string().contains("conflicting retention settings"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    fn load_config_with_env_override_wins_over_legacy_retention_alias() {
+        let mut jail = EnvJail::new();
+        // WHY(#5327): a file-level legacy alias must never outrank an
+        // operator's environment override of the canonical path -- this was
+        // the exact bug, since mirroring used to run AFTER the env overlay
+        // and would silently stomp it.
+        jail.set_env("ALETHEIA_MAINTENANCE__RETENTION__ENABLED", "false");
+
+        let oikos = Oikos::from_root(jail.directory());
+        let toml_path = oikos.config().join("aletheia.toml");
+
+        let mut fs = TestSystem::new();
+        fs.add_file(
+            toml_path,
+            br"
+[data.retention]
+enabled = true
+",
+        );
+
+        let config = load_config_with(&oikos, &fs).unwrap_or_else(|e| panic!("load: {e}"));
+        assert!(
+            !config.maintenance.retention.enabled,
+            "env override of the canonical path must win over the legacy file alias"
+        );
     }
 
     #[test]

@@ -286,38 +286,6 @@ fn build_sections(config: &serde_json::Value) -> Vec<SettingsSection> {
         });
     }
 
-    if let Some(data) = config.get("data").and_then(|d| d.get("retention")) {
-        sections.push(SettingsSection {
-            name: "Data Retention".to_owned(),
-            fields: vec![
-                field(
-                    "data.retention.sessionMaxAgeDays",
-                    "Session Max Age (days)",
-                    data.get("sessionMaxAgeDays"),
-                    FieldType::Integer,
-                    true,
-                    false,
-                ),
-                field(
-                    "data.retention.orphanMessageMaxAgeDays",
-                    "Orphan Msg Max Age (days)",
-                    data.get("orphanMessageMaxAgeDays"),
-                    FieldType::Integer,
-                    true,
-                    false,
-                ),
-                field(
-                    "data.retention.archiveBeforeDelete",
-                    "Archive Before Delete",
-                    data.get("archiveBeforeDelete"),
-                    FieldType::Bool,
-                    true,
-                    false,
-                ),
-            ],
-        });
-    }
-
     if let Some(maint) = config.get("maintenance") {
         let mut fields = Vec::new();
         if let Some(tr) = maint.get("traceRotation") {
@@ -334,6 +302,45 @@ fn build_sections(config: &serde_json::Value) -> Vec<SettingsSection> {
                 "Max Age (days)",
                 tr.get("maxAgeDays"),
                 FieldType::Integer,
+                true,
+                false,
+            ));
+        }
+        // WHY maintenance.retention, not data.retention: `maintenance.retention`
+        // is the canonical, sole runtime retention-enforcement owner (#5327).
+        // `data.retention` is a deprecated legacy alias -- editing it here used
+        // to write to a field the daemon never reads, so the "save" silently
+        // did nothing.
+        if let Some(ret) = maint.get("retention") {
+            fields.push(field(
+                "maintenance.retention.enabled",
+                "Retention Enabled",
+                ret.get("enabled"),
+                FieldType::Bool,
+                true,
+                false,
+            ));
+            fields.push(field(
+                "maintenance.retention.closedSessionTtlDays",
+                "Session Max Age (days)",
+                ret.get("closedSessionTtlDays"),
+                FieldType::Integer,
+                true,
+                false,
+            ));
+            fields.push(field(
+                "maintenance.retention.orphanMessageMaxAgeDays",
+                "Orphan Msg Max Age (days)",
+                ret.get("orphanMessageMaxAgeDays"),
+                FieldType::Integer,
+                true,
+                false,
+            ));
+            fields.push(field(
+                "maintenance.retention.archiveBeforeDelete",
+                "Archive Before Delete",
+                ret.get("archiveBeforeDelete"),
+                FieldType::Bool,
                 true,
                 false,
             ));
@@ -765,18 +772,33 @@ mod tests {
     }
 
     #[test]
-    fn from_config_with_data_retention() {
+    fn from_config_with_maintenance_retention() {
+        // WHY maintenance.retention, not data.retention: the canonical
+        // owner is `maintenance.retention` (#5327) -- the legacy
+        // `data.retention` alias is no longer surfaced in the UI.
         let config = serde_json::json!({
-            "data": {
+            "maintenance": {
                 "retention": {
-                    "sessionMaxAgeDays": 90,
+                    "enabled": true,
+                    "closedSessionTtlDays": 90,
                     "orphanMessageMaxAgeDays": 30,
                     "archiveBeforeDelete": true
                 }
             }
         });
         let overlay = SettingsOverlay::from_config(&config);
-        assert!(overlay.sections.iter().any(|s| s.name == "Data Retention"));
+        let maintenance = overlay
+            .sections
+            .iter()
+            .find(|s| s.name == "Maintenance")
+            .expect("maintenance section should exist");
+        assert!(
+            maintenance
+                .fields
+                .iter()
+                .any(|f| f.key == "maintenance.retention.closedSessionTtlDays"
+                    && f.value.as_u64() == Some(90))
+        );
     }
 
     #[test]

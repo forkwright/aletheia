@@ -138,7 +138,7 @@ neither hot nor cold.
 
 | Config path | Hot/Cold | Reason |
 |-------------|----------|--------|
-| `data.retention` | Hot | Retention policies applied during scheduled tasks |
+| `data.retention` | Hot | **Deprecated legacy alias** for `maintenance.retention` (the canonical, sole runtime retention owner -- see `maintenance.retention` below). Resolved into `maintenance.retention` at config load, before environment overrides, when the canonical path is absent from the file; conflicting file-level values reject startup. Set `maintenance.retention` directly. |
 
 ### Maintenance (`maintenance`)
 
