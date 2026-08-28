@@ -667,13 +667,26 @@ async fn canonical_pack_root_prevents_retargeted_sandbox_read_grant() {
     // existing "spawn failure also counts as a block" idiom in
     // organon/src/sandbox/policy_tests/namespace_and_failure.rs::execution_outside_allowed_paths_blocked.
     assert!(
-        matches!(diagnostics.exit_code, Some(1) | None),
-        "sandbox must deny the sibling read, got exit_code={:?}",
-        diagnostics.exit_code
-    );
-    assert!(
         diagnostics.sandbox_violations.is_empty(),
         "the sandbox must install successfully and deny the read at runtime"
+    );
+    if diagnostics.exit_code.is_none() {
+        // INCONCLUSIVE, not a pass. `SubprocessRunner::run` chains
+        // `apply_resource_limits` ahead of `apply_sandbox`, so on a loaded host a
+        // `setrlimit(RLIMIT_NPROC)` failure under enforcement=Enforcing aborts the
+        // spawn before exec. Nothing then read the decoy, so this run says nothing
+        // about whether the sandbox WOULD have denied it -- the leak assertions above
+        // hold vacuously when no child ran at all. Treating that as success is how a
+        // security regression hides behind a busy CI host.
+        //
+        // Skipped the same way this test already skips when the Landlock/seccomp
+        // guarantees are not Active: an absent verdict is not a verdict.
+        return;
+    }
+    assert_eq!(
+        diagnostics.exit_code,
+        Some(1),
+        "a spawned child must be denied the sibling read by Landlock"
     );
 }
 
