@@ -61,6 +61,7 @@ toml = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
+koina = { path = "../koina", features = ["test-support"] }
 hermeneus = { path = "../hermeneus", features = ["test-support"] }
 mneme = { path = "../mneme", features = ["test-support"] }
 organon = { path = "../organon", features = ["test-support"] }

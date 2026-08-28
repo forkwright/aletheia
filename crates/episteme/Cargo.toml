@@ -109,6 +109,7 @@ reqwest = { workspace = true, optional = true }
 rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
+koina = { path = "../koina", features = ["test-support"] }
 criterion = { workspace = true }
 eidos = { path = "../eidos", features = ["test-support"] }
 proptest = { workspace = true }

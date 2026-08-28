@@ -621,16 +621,11 @@ mod tests {
     }
 
     fn fresh_registry() -> koina::metrics::MetricsRegistry {
-        let r = koina::metrics::MetricsRegistry::new();
-        r.with_registry(crate::metrics::register);
-        r
+        koina::metrics::fresh_registry_with(crate::metrics::register)
     }
 
     fn encode_metrics(r: &koina::metrics::MetricsRegistry) -> String {
-        let mut buf = String::new();
-        #[expect(clippy::unwrap_used, reason = "encoding into String is infallible")]
-        r.encode(&mut buf).unwrap();
-        buf
+        koina::metrics::encode_to_string(r)
     }
 
     fn counter_value_for(encoded: &str, metric: &str, labels: &str) -> Option<u64> {

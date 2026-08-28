@@ -145,6 +145,7 @@ workspace = true
 optional = true
 
 [dev-dependencies]
+koina = { path = "../koina", features = ["test-support"] }
 energeia = { path = "../energeia", features = ["storage-fjall"] }
 fjall = { version = "3", default-features = false, features = ["lz4"] }
 indexmap = { workspace = true }
