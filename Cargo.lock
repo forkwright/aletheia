@@ -4778,7 +4778,6 @@ dependencies = [
 name = "koilon"
 version = "0.43.0"
 dependencies = [
- "aes-gcm",
  "arboard",
  "bathron",
  "clap",
@@ -4789,7 +4788,6 @@ dependencies = [
  "gramma",
  "image",
  "jiff",
- "keyring",
  "koina",
  "open",
  "parodos",
@@ -4809,7 +4807,6 @@ dependencies = [
  "toml 1.1.4+spec-1.1.0",
  "tracing",
  "unicode-width",
- "zeroize",
 ]
 
 [[package]]
@@ -8656,11 +8653,14 @@ checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
 name = "skene"
 version = "0.43.0"
 dependencies = [
+ "aes-gcm",
+ "bathron",
  "bytes",
  "form_urlencoded",
  "futures-core",
  "futures-util",
  "keryx",
+ "keyring",
  "koina",
  "pulldown-cmark",
  "reqwest 0.13.4",
@@ -8672,6 +8672,7 @@ dependencies = [
  "tokio",
  "toml 1.1.4+spec-1.1.0",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]

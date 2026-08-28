@@ -16,7 +16,7 @@ use koina::credential::{CredentialProvider, CredentialSource};
 use koina::secret::SecretString;
 
 use crate::RetryPolicy;
-use crate::concurrency::{AdaptiveConcurrencyLimiter, RequestOutcome};
+use crate::concurrency::{AdaptiveConcurrencyLimiter, concurrency_outcome};
 use crate::error::{self, Result};
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{
@@ -163,14 +163,6 @@ const ANTHROPIC_TRAINING_OPTOUT_HEADERS: &[&str] =
 /// that overrides the shorter client-level default.
 const STREAMING_TIMEOUT: Duration = Duration::from_mins(10);
 
-/// Returns true when the URL uses TLS or is safe to use without TLS.
-///
-/// WHY(#5055): delegate to the parsed shared policy so Anthropic-compatible
-/// providers cannot whitelist suffix-spoofed loopback-looking hosts.
-fn has_allowed_transport(url: &str) -> bool {
-    koina::http::is_secure_or_plaintext_loopback_url(url)
-}
-
 fn build_http_client() -> Result<Client> {
     // WHY: reqwest 0.13 with rustls-no-provider requires an explicit crypto provider.
     // install_default() is idempotent: subsequent calls return Err and are ignored.
@@ -259,7 +251,9 @@ impl AnthropicProvider {
                 deployment_target: config.deployment_target,
             },
         };
-        if !has_allowed_transport(&provider.endpoint.base_url) {
+        // WHY(#5055): delegate to the parsed shared policy so Anthropic-compatible
+        // providers cannot whitelist suffix-spoofed loopback-looking hosts.
+        if !koina::http::is_secure_or_plaintext_loopback_url(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
@@ -330,7 +324,9 @@ impl AnthropicProvider {
                 deployment_target: config.deployment_target,
             },
         };
-        if !has_allowed_transport(&provider.endpoint.base_url) {
+        // WHY(#5055): delegate to the parsed shared policy so Anthropic-compatible
+        // providers cannot whitelist suffix-spoofed loopback-looking hosts.
+        if !koina::http::is_secure_or_plaintext_loopback_url(&provider.endpoint.base_url) {
             return Err(error::ProviderInitSnafu {
                 message: format!(
                     "API base URL must use HTTPS (got {:?}). Credentials are sent in HTTP headers and would be exposed in cleartext.",
@@ -1184,14 +1180,6 @@ impl LlmProvider for AnthropicProvider {
         on_event: &'a mut (dyn FnMut(StreamEvent) + Send),
     ) -> Pin<Box<dyn Future<Output = Result<CompletionResponse>> + Send + 'a>> {
         Box::pin(self.complete_streaming_with_concurrency(request, on_event))
-    }
-}
-
-fn concurrency_outcome(result: &Result<CompletionResponse>) -> RequestOutcome {
-    match result {
-        Ok(_) => RequestOutcome::Success,
-        Err(err) if err.is_retryable() => RequestOutcome::Overload,
-        Err(_) => RequestOutcome::Neutral,
     }
 }
 
