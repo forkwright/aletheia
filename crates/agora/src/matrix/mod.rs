@@ -344,6 +344,7 @@ impl std::fmt::Debug for MatrixProvider {
                 "halted_health_check_interval",
                 &self.halted_health_check_interval,
             )
+            .field("raw_payload", &self.raw_payload)
             .finish()
     }
 }

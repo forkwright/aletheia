@@ -428,6 +428,7 @@ impl std::fmt::Debug for SignalProvider {
                 "halted_health_check_interval",
                 &self.halted_health_check_interval,
             )
+            .field("raw_payload", &self.raw_payload)
             .finish()
     }
 }
@@ -435,6 +436,10 @@ impl std::fmt::Debug for SignalProvider {
 #[expect(
     clippy::too_many_lines,
     reason = "single cohesive state machine: halted-state health check + receive success/error branches share lock acquisition order; splitting would risk the lock dance and obscure the connection-state transitions"
+)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "poll_loop is a single cohesive state machine; the shared halted-state recovery loop requires these parameters together — splitting would obscure the state transitions (mirrors matrix::sync_loop)"
 )]
 async fn poll_loop(
     signal_client: client::SignalClient,
