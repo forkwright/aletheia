@@ -119,7 +119,8 @@ pub fn message_ref_short(message: &Message) -> String {
 )]
 mod tests {
     use super::*;
-    use hermeneus::types::{Content, Role};
+    use crate::test_support::text_msg;
+    use hermeneus::types::Role;
 
     #[test]
     fn hash_str_is_deterministic() {
@@ -136,32 +137,24 @@ mod tests {
         assert!(hash_str("anything").starts_with("sha256:"));
     }
 
-    fn msg(role: Role, text: &str) -> Message {
-        Message {
-            role,
-            content: Content::Text(text.to_owned()),
-            cache_breakpoint: false,
-        }
-    }
-
     #[test]
     fn message_ref_is_deterministic() {
-        let a = msg(Role::User, "hello");
-        let b = msg(Role::User, "hello");
+        let a = text_msg(Role::User, "hello");
+        let b = text_msg(Role::User, "hello");
         assert_eq!(message_ref(&a), message_ref(&b));
     }
 
     #[test]
     fn message_ref_differs_on_different_content() {
-        let a = msg(Role::User, "hello");
-        let b = msg(Role::User, "goodbye");
+        let a = text_msg(Role::User, "hello");
+        let b = text_msg(Role::User, "goodbye");
         assert_ne!(message_ref(&a), message_ref(&b));
     }
 
     #[test]
     fn message_ref_differs_on_different_role() {
-        let a = msg(Role::User, "hello");
-        let b = msg(Role::Assistant, "hello");
+        let a = text_msg(Role::User, "hello");
+        let b = text_msg(Role::Assistant, "hello");
         assert_ne!(
             message_ref(&a),
             message_ref(&b),
@@ -171,7 +164,7 @@ mod tests {
 
     #[test]
     fn message_ref_never_contains_raw_content() {
-        let m = msg(Role::User, "a very specific secret string");
+        let m = text_msg(Role::User, "a very specific secret string");
         let reference = message_ref(&m);
         assert!(
             !reference.contains("secret"),
@@ -181,7 +174,7 @@ mod tests {
 
     #[test]
     fn message_ref_short_is_a_prefix_of_the_full_digest() {
-        let m = msg(Role::User, "hello");
+        let m = text_msg(Role::User, "hello");
         let full = message_ref(&m);
         let short = message_ref_short(&m);
         assert_eq!(short.len(), SHORT_REF_LEN);
@@ -193,14 +186,17 @@ mod tests {
 
     #[test]
     fn message_ref_short_differs_on_different_content() {
-        let a = msg(Role::User, "hello");
-        let b = msg(Role::User, "goodbye");
+        let a = text_msg(Role::User, "hello");
+        let b = text_msg(Role::User, "goodbye");
         assert_ne!(message_ref_short(&a), message_ref_short(&b));
     }
 
     #[test]
     fn message_refs_preserves_order() {
-        let messages = vec![msg(Role::User, "first"), msg(Role::Assistant, "second")];
+        let messages = vec![
+            text_msg(Role::User, "first"),
+            text_msg(Role::Assistant, "second"),
+        ];
         let refs = message_refs(&messages);
         assert_eq!(refs.len(), 2);
         assert_eq!(refs[0], message_ref(&messages[0]));

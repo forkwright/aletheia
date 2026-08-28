@@ -151,17 +151,10 @@ mod distill_section {
 
 mod distill_engine {
     use hermeneus::test_utils::MockProvider;
-    use hermeneus::types::{Content, Message, Role};
+    use hermeneus::types::{Message, Role};
     use melete::distill::{DistillConfig, DistillEngine, DistillSection};
     use melete::error::Error;
-
-    fn text_msg(role: Role, text: &str) -> Message {
-        Message {
-            role,
-            content: Content::Text(text.to_owned()),
-            cache_breakpoint: false,
-        }
-    }
+    use melete::test_support::text_msg;
 
     fn long_conversation() -> Vec<Message> {
         // WHY: ten messages comfortably exceed the default verbatim_tail=3
