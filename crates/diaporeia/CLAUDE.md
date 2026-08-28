@@ -82,6 +82,14 @@ Resources are read-only.
 - **Path sanitization**: `sanitize::strip_paths()` removes server file paths before errors reach MCP clients.
 - **Two transports**: streamable HTTP (mounted into pylon's Axum router at `/mcp`) and stdio (for CLI use).
 - **Feature gated**: `mcp` feature in the binary crate; disabled by default.
+- **Stdio identity is bound once, not per-request** (kanon#5184): stdio has no per-request HTTP
+  context to carry a bearer token, so `resolve_caller`'s HTTP-header path can never succeed there.
+  `transport::serve_stdio` resolves ONE principal at startup from `ALETHEIA_MCP_STDIO_TOKEN`
+  (`auth::resolve_stdio_principal`) and binds it via `DiaporeiaServer::with_stdio_principal`, which
+  overrides per-request resolution for the session's lifetime. Under `auth_mode != "none"`, a
+  missing or invalid token fails the stdio transport closed at startup rather than serving with no
+  identity. `DiaporeiaServer::resolve_caller` is the single place both transports funnel through:
+  the bound stdio principal when set, otherwise per-request `auth::resolve_caller`.
 
 ## Recent substrate notes
 

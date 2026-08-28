@@ -116,11 +116,47 @@ pub fn streamable_http_router_with_config(
 ///
 /// Reads JSON-RPC from stdin, writes to stdout. Blocks until the connection
 /// closes or the shutdown token fires.
+///
+/// # Identity (kanon#5184)
+///
+/// Stdio carries no per-request HTTP context, so the per-request bearer
+/// resolution the streamable HTTP transport uses can never succeed here —
+/// every authenticated-mode stdio call would otherwise resolve to no caller
+/// and be denied, unconditionally and silently. Under any `auth_mode` other
+/// than `"none"`, this resolves ONE principal for the whole session from
+/// [`auth::STDIO_TOKEN_ENV`] before serving a single request, and fails
+/// closed (refuses to start) when that token is missing or invalid rather
+/// than falling back to anonymous access.
 #[tracing::instrument(skip_all)]
 pub async fn serve_stdio(state: Arc<DiaporeiaState>) -> Result<()> {
     let rate_cfg = state.config.read().await.mcp.rate_limit.clone();
     let rate_limiter = Arc::new(RateLimiter::from_config(&rate_cfg));
-    let server = DiaporeiaServer::with_state(state, rate_limiter);
+    let mut server = DiaporeiaServer::with_state(Arc::clone(&state), rate_limiter);
+
+    if state.auth_mode == "none" {
+        tracing::warn!(
+            "stdio MCP authentication disabled — the session has {} access",
+            state.none_role,
+        );
+    } else {
+        let principal = auth::resolve_stdio_principal(&state).ok_or_else(|| {
+            error::TransportSnafu {
+                message: format!(
+                    "stdio MCP requires a valid `{}` bearer token when auth.mode != \"none\"; \
+                     refusing to start rather than serve with no authenticated identity",
+                    auth::STDIO_TOKEN_ENV,
+                ),
+            }
+            .build()
+        })?;
+        tracing::info!(
+            sub = %principal.sub,
+            role = %principal.role,
+            "stdio MCP session bound to authenticated principal",
+        );
+        server = server.with_stdio_principal(principal);
+    }
+
     let service = server
         .serve(rmcp::transport::io::stdio())
         .await

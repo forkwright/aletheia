@@ -99,6 +99,37 @@ fn caller_from_claims(claims: Claims) -> McpCaller {
     }
 }
 
+/// Environment variable carrying the bearer token that identifies a stdio
+/// MCP session's fixed principal (kanon#5184).
+///
+/// Stdio has no per-request HTTP context to carry a bearer token the way the
+/// streamable HTTP transport does — [`bearer_token_from_context`] reads a
+/// header off `http::request::Parts`, which a raw JSON-RPC-over-stdio
+/// connection never populates. Under an authenticated `auth_mode`, that made
+/// every stdio tool call resolve to no caller and be denied — unconditionally
+/// and silently. This variable lets an operator bind ONE verified principal
+/// for the whole stdio session instead, read once at startup.
+pub const STDIO_TOKEN_ENV: &str = "ALETHEIA_MCP_STDIO_TOKEN";
+
+/// Resolve the fixed principal for a stdio MCP session under an
+/// authenticated `auth_mode`.
+///
+/// Returns `None` when the token is missing, empty, or fails validation —
+/// callers must fail closed on `None` (refuse to start the stdio transport)
+/// rather than falling back to anonymous access. This function is not
+/// meaningful under `auth_mode == "none"`: that mode resolves the anonymous
+/// caller unconditionally and per-request via [`resolve_caller`], with no
+/// need for a bound principal.
+#[must_use]
+pub(crate) fn resolve_stdio_principal(state: &DiaporeiaState) -> Option<McpCaller> {
+    let token = std::env::var(STDIO_TOKEN_ENV).ok()?;
+    let token = token.trim();
+    if token.is_empty() {
+        return None;
+    }
+    validate_bearer_token(state, token)
+}
+
 /// Axum middleware that validates Bearer JWT tokens on MCP requests.
 ///
 /// # Auth modes

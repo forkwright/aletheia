@@ -21,7 +21,7 @@ use organon::surface::{SurfaceAvailability, SurfaceInputs};
 use organon::types::BlackboardViewer;
 use symbolon::types::Role;
 
-use crate::auth::{McpCaller, resolve_caller};
+use crate::auth::McpCaller;
 use crate::error::{
     BlackboardStoreSnafu, BlackboardStoreUnavailableSnafu, DuplicateSessionSnafu,
     FactNotFoundSnafu, InvalidInputSnafu, KnowledgeStoreSnafu, KnowledgeStoreUnavailableSnafu,
@@ -67,7 +67,7 @@ fn require_role(
     minimum: Role,
     operation: &str,
 ) -> Result<McpCaller, rmcp::ErrorData> {
-    let caller = resolve_caller(&server.state, context);
+    let caller = server.resolve_caller(context);
     server
         .rate_limiter
         .check(tier, caller.as_ref().map(|c| c.sub.as_str()))?;
@@ -112,7 +112,7 @@ fn require_authenticated(
     tier: Tier,
     operation: &str,
 ) -> Result<McpCaller, rmcp::ErrorData> {
-    let caller = resolve_caller(&server.state, context);
+    let caller = server.resolve_caller(context);
     server
         .rate_limiter
         .check(tier, caller.as_ref().map(|c| c.sub.as_str()))?;
@@ -1729,11 +1729,23 @@ impl DiaporeiaServer {
             .collect::<serde_json::Map<String, serde_json::Value>>()
             .into();
 
+        // WHY(#5184): surface WHICH principal a stdio session is bound to
+        // (or which per-request principal an HTTP session resolved), so an
+        // operator can confirm the identity binding took effect without
+        // reading server logs. `sub` and `role` are not secrets; the bearer
+        // token itself is never included.
+        let principal = serde_json::json!({
+            "sub": caller.sub,
+            "role": caller.role.to_string(),
+            "stdio_bound": self.stdio_principal.is_some(),
+        });
+
         let result = serde_json::json!({
             "version": env!("CARGO_PKG_VERSION"),
             "uptime_secs": uptime.as_secs(),
             "actor_count": health.len(),
             "actors": actors,
+            "principal": principal,
         });
 
         let json = serde_json::to_string_pretty(&result)
@@ -2614,6 +2626,239 @@ mod tests {
             note_store: None,
             blackboard_store: None,
         })
+    }
+
+    /// Like [`make_server_state`], but `auth_mode = "token"` with a real
+    /// in-memory `AuthFacade` — for stdio-identity tests (kanon#5184) that
+    /// need a validator to check a bearer token against.
+    fn make_token_auth_state(
+        store: Arc<tokio::sync::Mutex<mneme::store::SessionStore>>,
+        oikos: Arc<taxis::oikos::Oikos>,
+        auth_facade: Arc<symbolon::auth::AuthFacade>,
+    ) -> Arc<crate::state::DiaporeiaState> {
+        let mut config = taxis::config::AletheiaConfig::default();
+        config.gateway.auth.mode = "token".to_owned();
+
+        Arc::new(crate::state::DiaporeiaState {
+            session_store: store.clone(),
+            nous_manager: Arc::new(nous::manager::NousManager::new(
+                Arc::new(ProviderRegistry::new()),
+                Arc::new(organon::registry::ToolRegistry::new()),
+                oikos.clone(),
+                None,
+                None,
+                Some(store),
+                #[cfg(feature = "knowledge-store")]
+                None,
+                Arc::new(Vec::new()),
+                None,
+                None,
+                taxis::config::NousBehaviorConfig::default(),
+                taxis::config::ToolLimitsConfig::default(),
+            )),
+            tool_registry: Arc::new(organon::registry::ToolRegistry::new()),
+            oikos,
+            auth_facade: Some(auth_facade),
+            start_time: Instant::now(),
+            config: Arc::new(tokio::sync::RwLock::new(config)),
+            auth_mode: "token".to_owned(),
+            none_role: "readonly".to_owned(),
+            shutdown: CancellationToken::new(),
+            #[cfg(feature = "knowledge-store")]
+            knowledge_store: None,
+            note_store: None,
+            blackboard_store: None,
+        })
+    }
+
+    fn make_test_auth_facade() -> (Arc<symbolon::auth::AuthFacade>, symbolon::jwt::JwtManager) {
+        let jwt_config = symbolon::jwt::JwtConfig {
+            signing_key: koina::secret::SecretString::from(
+                "diaporeia-stdio-identity-test-signing-key-32b".to_owned(),
+            ),
+            access_ttl: std::time::Duration::from_hours(1),
+            refresh_ttl: std::time::Duration::from_hours(24),
+            issuer: "diaporeia-stdio-identity-tests".to_owned(),
+            ..symbolon::jwt::JwtConfig::default()
+        };
+        let jwt_manager = symbolon::jwt::JwtManager::new(jwt_config.clone());
+        let auth_facade = Arc::new(
+            symbolon::auth::AuthFacade::in_memory(symbolon::auth::AuthConfig { jwt: jwt_config })
+                .expect("in-memory auth facade"),
+        );
+        (auth_facade, jwt_manager)
+    }
+
+    /// Serve `server` over an in-memory duplex pipe and call `system_health`.
+    ///
+    /// A duplex pipe carries no `http::request::Parts` extension, matching
+    /// real stdio's `RequestContext` exactly (`bearer_token_from_context`
+    /// finds nothing on either transport) — this is the same pattern the
+    /// `#4778` approval tests below use to drive tools through the real RMCP
+    /// transport rather than calling handler functions directly.
+    async fn call_system_health_over_duplex(
+        server: DiaporeiaServer,
+    ) -> Result<CallToolResult, rmcp::ServiceError> {
+        let (client_io, server_io) = tokio::io::duplex(16 * 1024);
+        let server_task = tokio::spawn(async move { rmcp::serve_server(server, server_io).await });
+        let mut client = rmcp::serve_client((), client_io)
+            .await
+            .expect("client initializes");
+        let mut server_service = server_task
+            .await
+            .expect("server task joins")
+            .expect("server initializes");
+
+        let result = client
+            .call_tool(CallToolRequestParams::new("system_health"))
+            .await;
+
+        client.close().await.expect("client close");
+        server_service.close().await.expect("server close");
+        result
+    }
+
+    #[tokio::test]
+    async fn stdio_token_mode_denies_every_call_without_a_bound_principal() {
+        // WHY(#5184): this is the exact defect the issue reports. Stdio has
+        // no per-request HTTP context, so under an authenticated auth_mode
+        // and no bound stdio principal, `resolve_caller` can never resolve
+        // anyone — every tool call is denied, unconditionally (surfaced as
+        // an MCP-level error, not a successful `CallToolResult` carrying
+        // `isError`, per `rmcp`'s `IntoCallToolResult` for `ErrorData`).
+        // This test guards against that regressing silently once the fix
+        // (a bound principal) is in place.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let oikos = Arc::new(taxis::oikos::Oikos::from_root(dir.path()));
+        let store = Arc::new(tokio::sync::Mutex::new(
+            mneme::store::SessionStore::open(&oikos.sessions_db()).expect("open sessions store"),
+        ));
+        let (auth_facade, _jwt) = make_test_auth_facade();
+        let state = make_token_auth_state(store, oikos, auth_facade);
+        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::from_config(
+            &taxis::config::McpRateLimitConfig::default(),
+        ));
+        let server = DiaporeiaServer::with_state(state, rate_limiter);
+
+        let result = call_system_health_over_duplex(server).await;
+
+        assert!(
+            result.is_err(),
+            "an unbound stdio session under auth_mode=token must be denied, not served \
+             anonymously: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn stdio_bound_principal_authorizes_calls_for_the_whole_session() {
+        // WHY(#5184): the fix — a principal resolved once at startup and
+        // bound to the server — must authorize every call for the session's
+        // lifetime, and the bound identity must be visible on the
+        // `system_health` debug surface without leaking the token itself.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let oikos = Arc::new(taxis::oikos::Oikos::from_root(dir.path()));
+        let store = Arc::new(tokio::sync::Mutex::new(
+            mneme::store::SessionStore::open(&oikos.sessions_db()).expect("open sessions store"),
+        ));
+        let (auth_facade, _jwt) = make_test_auth_facade();
+        let state = make_token_auth_state(store, oikos, auth_facade);
+        let rate_limiter = Arc::new(crate::rate_limit::RateLimiter::from_config(
+            &taxis::config::McpRateLimitConfig::default(),
+        ));
+        let principal = crate::auth::McpCaller {
+            sub: "stdio-operator".to_owned(),
+            role: Role::Operator,
+            nous_id: None,
+        };
+        let server =
+            DiaporeiaServer::with_state(state, rate_limiter).with_stdio_principal(principal);
+
+        let result = call_system_health_over_duplex(server)
+            .await
+            .expect("a bound stdio principal must authorize system_health");
+
+        assert_ne!(
+            result.is_error,
+            Some(true),
+            "a bound stdio principal must authorize system_health: {result:?}"
+        );
+        let text = result
+            .content
+            .first()
+            .and_then(|c| c.as_text())
+            .map(|t| t.text.as_str())
+            .expect("system_health returns a text block");
+        let json: serde_json::Value = serde_json::from_str(text).expect("valid JSON result");
+        assert_eq!(json["principal"]["sub"], "stdio-operator");
+        assert_eq!(json["principal"]["role"], "operator");
+        assert_eq!(json["principal"]["stdio_bound"], true);
+    }
+
+    #[test]
+    fn resolve_stdio_principal_fails_closed_without_a_valid_token() {
+        // WHY(#5184): stdio identity must fail closed. `crate::auth::
+        // STDIO_TOKEN_ENV` unset -> None. This is the sole test in the
+        // suite that touches this environment variable, so there is no
+        // cross-test race on it.
+        #[expect(
+            unsafe_code,
+            reason = "std::env mutation is unsafe in multi-threaded contexts; \
+                      safe here as the sole reader/writer of this var in the suite"
+        )]
+        unsafe {
+            std::env::remove_var(crate::auth::STDIO_TOKEN_ENV);
+        }
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let oikos = Arc::new(taxis::oikos::Oikos::from_root(dir.path()));
+        let store = Arc::new(tokio::sync::Mutex::new(
+            mneme::store::SessionStore::open(&oikos.sessions_db()).expect("open sessions store"),
+        ));
+        let (auth_facade, jwt) = make_test_auth_facade();
+        let state = make_token_auth_state(store, oikos, auth_facade);
+
+        assert!(
+            crate::auth::resolve_stdio_principal(&state).is_none(),
+            "a missing ALETHEIA_MCP_STDIO_TOKEN must resolve to no principal"
+        );
+
+        #[expect(
+            unsafe_code,
+            reason = "std::env mutation is unsafe in multi-threaded contexts; \
+                      safe here as the sole reader/writer of this var in the suite"
+        )]
+        unsafe {
+            std::env::set_var(crate::auth::STDIO_TOKEN_ENV, "not-a-real-token");
+        }
+        assert!(
+            crate::auth::resolve_stdio_principal(&state).is_none(),
+            "an unparseable ALETHEIA_MCP_STDIO_TOKEN must resolve to no principal"
+        );
+
+        let token = jwt
+            .issue_access("stdio-admin", Role::Admin, None)
+            .expect("issue test access token");
+        #[expect(
+            unsafe_code,
+            reason = "std::env mutation is unsafe in multi-threaded contexts; \
+                      safe here as the sole reader/writer of this var in the suite"
+        )]
+        unsafe {
+            std::env::set_var(crate::auth::STDIO_TOKEN_ENV, &token);
+        }
+        let principal = crate::auth::resolve_stdio_principal(&state)
+            .expect("a valid, signed token must resolve to a principal");
+        assert_eq!(principal.sub, "stdio-admin");
+        assert_eq!(principal.role, Role::Admin);
+
+        #[expect(
+            unsafe_code,
+            reason = "std::env mutation is unsafe in multi-threaded contexts; \
+                      safe here as the sole reader/writer of this var in the suite"
+        )]
+        unsafe {
+            std::env::remove_var(crate::auth::STDIO_TOKEN_ENV);
+        }
     }
 
     // ── #4778: session_message approval-path coverage ──────────────────────

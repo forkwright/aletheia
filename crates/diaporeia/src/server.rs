@@ -29,6 +29,16 @@ use crate::state::DiaporeiaState;
 pub struct DiaporeiaServer {
     pub(crate) state: Arc<DiaporeiaState>,
     pub(crate) rate_limiter: Arc<RateLimiter>,
+    /// Fixed identity for a stdio MCP session, resolved once at startup
+    /// (kanon#5184).
+    ///
+    /// `None` for the streamable HTTP transport, and for stdio under
+    /// `auth_mode == "none"`, where every request resolves its own principal
+    /// via [`resolve_caller`]. `Some` overrides per-request resolution
+    /// entirely for the lifetime of this server instance: stdio serves
+    /// exactly one local process end to end, and carries no per-request
+    /// HTTP context to re-resolve identity from anyway.
+    pub(crate) stdio_principal: Option<McpCaller>,
     #[expect(
         dead_code,
         reason = "read by #[tool_handler] macro-generated code in ServerHandler impl"
@@ -52,8 +62,37 @@ impl DiaporeiaServer {
         Self {
             state,
             rate_limiter,
+            stdio_principal: None,
             tool_router: Self::tool_router(),
         }
+    }
+
+    /// Bind a fixed identity for the lifetime of a stdio MCP session
+    /// (kanon#5184).
+    ///
+    /// Overrides [`resolve_caller`] for every request this instance serves.
+    /// Used only by [`crate::transport::serve_stdio`] under an authenticated
+    /// `auth_mode`, after the principal has already been validated against a
+    /// bearer token — never call this with an unverified identity.
+    #[must_use]
+    pub(crate) fn with_stdio_principal(mut self, principal: McpCaller) -> Self {
+        self.stdio_principal = Some(principal);
+        self
+    }
+
+    /// Resolve the caller for a request.
+    ///
+    /// Returns the bound stdio principal when one is set (see
+    /// [`Self::with_stdio_principal`]); otherwise resolves per-request via
+    /// [`resolve_caller`], as the streamable HTTP transport (and stdio under
+    /// `auth_mode == "none"`) always does.
+    pub(crate) fn resolve_caller(
+        &self,
+        context: &rmcp::service::RequestContext<rmcp::RoleServer>,
+    ) -> Option<McpCaller> {
+        self.stdio_principal
+            .clone()
+            .or_else(|| resolve_caller(&self.state, context))
     }
 
     /// Check that the caller has at least `minimum` role for a resource operation.
@@ -70,7 +109,7 @@ impl DiaporeiaServer {
         minimum: Role,
         operation: &str,
     ) -> Result<McpCaller, rmcp::ErrorData> {
-        let caller = resolve_caller(&self.state, context);
+        let caller = self.resolve_caller(context);
         self.rate_limiter
             .check(tier, caller.as_ref().map(|c| c.sub.as_str()))?;
         match caller {
