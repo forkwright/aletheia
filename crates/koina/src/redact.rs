@@ -188,9 +188,10 @@ const CHANNEL_ID_VISIBLE_SUFFIX: usize = 4;
 pub fn redact_channel_id(id: &str) -> String {
     let chars: Vec<char> = id.chars().collect();
     if chars.len() > CHANNEL_ID_VISIBLE_SUFFIX {
-        let tail: String = chars[chars.len() - CHANNEL_ID_VISIBLE_SUFFIX..]
-            .iter()
-            .collect();
+        let tail: String = chars
+            .get(chars.len() - CHANNEL_ID_VISIBLE_SUFFIX..)
+            .map(|s| s.iter().collect())
+            .unwrap_or_default();
         format!("...{tail}")
     } else {
         "****".to_owned()

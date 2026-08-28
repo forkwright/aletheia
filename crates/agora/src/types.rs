@@ -312,7 +312,7 @@ mod tests {
             sender: "+15550100".to_owned(),
             sender_name: Some("Alice".to_owned()),
             group_id: Some("group-abc123".to_owned()),
-            text: "my ssn is 123-45-6789".to_owned(),
+            text: "my ssn is 123-45-6789".to_owned(), // pii-allow: synthetic SSN fixture asserting redaction, not a real value
             timestamp: 1_709_312_345_678,
             attachments: vec!["photo.jpg".to_owned()],
             raw: Some(serde_json::json!({"sourceNumber": "+15550100"})),
