@@ -196,6 +196,79 @@ mod tests {
         cursor.into_inner()
     }
 
+    /// Build a PPTX whose slide parts carry exactly the given numbers,
+    /// written to the archive in the order supplied.
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn pptx_with_numbered_slides(slides: &[(u32, &str)]) -> Vec<u8> {
+        use std::io::Write;
+        use zip::ZipWriter;
+        use zip::write::SimpleFileOptions;
+
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        let mut zip = ZipWriter::new(&mut cursor);
+        let options = SimpleFileOptions::default()
+            .last_modified_time(zip::DateTime::DEFAULT)
+            .compression_method(zip::CompressionMethod::Deflated);
+
+        for (number, text) in slides {
+            let slide = format!(
+                r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+  <p:cSld>
+    <p:spTree>
+      <p:sp><p:txBody><a:p><a:r><a:t>{text}</a:t></a:r></a:p></p:txBody></p:sp>
+    </p:spTree>
+  </p:cSld>
+</p:sld>"#
+            );
+            let name = format!("ppt/slides/slide{number}.xml");
+            zip.start_file(&name, options).expect("start slide part");
+            zip.write_all(slide.as_bytes()).expect("write slide part");
+        }
+
+        zip.finish().expect("finish zip");
+        cursor.into_inner()
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_presentations_ignores_identical_slides_past_a_numbering_gap() {
+        // WHY: deleting a slide in PowerPoint leaves the surviving part names
+        // unrenumbered, so slide3 can be absent while slide4 exists. Probing
+        // upward from slide1 and stopping at the first missing index returned
+        // only the slides before the gap, which happened to still diff clean
+        // here -- the loss only shows once content past the gap changes.
+        let bytes = pptx_with_numbered_slides(&[(1, "first"), (2, "second"), (4, "fourth")]);
+
+        let diffs = diff_presentations(&bytes, &bytes).expect("diff must succeed");
+        assert!(
+            diffs.is_empty(),
+            "identical non-contiguous decks must produce zero diffs, got: {diffs:?}"
+        );
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn diff_presentations_detects_changes_past_a_numbering_gap() {
+        // WHY: probing slide{n} upward and stopping at the first missing
+        // index silently dropped every slide past the gap, so a deck with
+        // slide1, slide2, slide4 (slide3 deleted in PowerPoint) diffed only
+        // through slide2 and never saw a change made on slide4.
+        let before = pptx_with_numbered_slides(&[(1, "first"), (2, "second"), (4, "fourth")]);
+        let after = pptx_with_numbered_slides(&[(1, "first"), (2, "second"), (4, "changed")]);
+
+        let diffs = diff_presentations(&before, &after).expect("diff must succeed");
+
+        assert_eq!(diffs.len(), 1, "expected exactly one diff, got: {diffs:?}");
+        let diff = diffs.first().expect("one diff");
+        assert_eq!(
+            diff.slide_index, 2,
+            "the changed slide is the third part read, at position 2"
+        );
+        assert_eq!(diff.before.as_deref(), Some("fourth"));
+        assert_eq!(diff.after.as_deref(), Some("changed"));
+    }
+
     #[test]
     #[expect(clippy::expect_used, reason = "test assertions")]
     fn diff_workbooks_ignores_equivalent_xml_entity_encodings() {
