@@ -651,17 +651,7 @@ mod tests {
     use snafu::IntoError as _;
 
     use super::*;
-    use crate::security::{CorsConfig, CsrfConfig, RateLimitConfig, TlsConfig};
-
-    fn make_security() -> SecurityConfig {
-        SecurityConfig {
-            body_limit_bytes: 10 * 1024 * 1024,
-            cors: CorsConfig::default(),
-            csrf: CsrfConfig::default(),
-            tls: TlsConfig::default(),
-            rate_limit: RateLimitConfig::default(),
-        }
-    }
+    use crate::security::test_security_config as make_security;
 
     #[test]
     fn server_config_fields_are_accessible() {

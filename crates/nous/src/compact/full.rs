@@ -291,11 +291,8 @@ fn extract_file_content(content: &str) -> String {
 mod tests {
     use super::*;
     use crate::compact::micro::format_tool_result;
+    use crate::compact::test_support::make_text_msg;
     use crate::memory::step::{Observation, Step};
-
-    fn make_text_msg(role: &str, content: &str, tokens: i64) -> PipelineMessage {
-        PipelineMessage::text(role, content, tokens)
-    }
 
     fn make_step(index: usize, self_note: &str, observation_body: &str) -> Step {
         Step {

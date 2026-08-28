@@ -7,28 +7,7 @@
 use eidos::workspace::ProjectId;
 
 use super::super::*;
-use crate::knowledge::parse_timestamp;
-
-fn ts(s: &str) -> jiff::Timestamp {
-    parse_timestamp(s).expect("valid test timestamp")
-}
-
-fn make_observation(
-    tool_name: &str,
-    context: &str,
-    outcome: ToolOutcome,
-    timestamp: &str,
-) -> ToolObservation {
-    ToolObservation {
-        tool_name: tool_name.to_owned(),
-        parameters: serde_json::json!({}),
-        outcome,
-        context_summary: context.to_owned(),
-        nous_id: "test-nous".to_owned(),
-        project_id: None,
-        observed_at: ts(timestamp),
-    }
-}
+use super::support::{make_observation, ts};
 
 #[test]
 fn observation_stores_correct_fields() {

@@ -150,6 +150,18 @@ impl Default for SecurityConfig {
     }
 }
 
+/// Shared 10 MiB-body-limit `SecurityConfig` fixture for router/server unit tests.
+#[cfg(test)]
+pub(crate) fn test_security_config() -> SecurityConfig {
+    SecurityConfig {
+        body_limit_bytes: 10 * 1024 * 1024,
+        cors: CorsConfig::default(),
+        csrf: CsrfConfig::default(),
+        tls: TlsConfig::default(),
+        rate_limit: RateLimitConfig::default(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
