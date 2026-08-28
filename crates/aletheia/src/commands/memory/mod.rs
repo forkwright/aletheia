@@ -168,15 +168,13 @@ pub(crate) async fn run(
     // WHY: the knowledge store uses an exclusive fjall lock; opening it while the
     // server holds the lock causes a confusing error. Detect a running server and
     // route 'check' through the HTTP API instead of direct store access.
-    if is_server_running(url).await? {
+    if crate::commands::is_knowledge_server_running(url).await? {
         match action {
             Action::Check { json } => return run_check_via_api(url, json, token).await,
             _ => {
-                whatever!(
-                    "The server at {url} is running and holds an exclusive lock on the knowledge store.\n  \
-                     Stop the server first to use this subcommand, or use the REST API:\n  \
-                     GET {url}/api/v1/knowledge/facts\n  \
-                     GET {url}/api/v1/knowledge/entities"
+                return crate::commands::server_holds_knowledge_lock(
+                    url,
+                    &["/api/v1/knowledge/facts", "/api/v1/knowledge/entities"],
                 );
             }
         }
@@ -186,15 +184,7 @@ pub(crate) async fn run(
     {
         let oikos = super::resolve_oikos(instance_root)?;
         let knowledge_path = oikos.knowledge_cohort_db("shared");
-        if !knowledge_path.exists() && !oikos.knowledge_db().exists() {
-            whatever!(
-                "knowledge store not initialized at {}\n  \
-                 The store is created lazily by the running server. Either:\n    \
-                   1. Start the server once to bootstrap it:  aletheia\n    \
-                   2. Or route this command through a running server with --url",
-                knowledge_path.display()
-            );
-        }
+        crate::commands::require_knowledge_store_exists(&oikos, &knowledge_path)?;
 
         let loaded_config = taxis::loader::load_config(&oikos);
         let dedup_tuning = loaded_config
@@ -203,13 +193,14 @@ pub(crate) async fn run(
             .map_or(mneme::dedup::DedupTuning::DEFAULT, |cfg| {
                 crate::knowledge_maintenance::tuning_from_behavior(&cfg.agents.defaults.behavior)
             });
-        let recovery_config = knowledge_config_from_loaded(&loaded_config, false);
+        let derived_config =
+            crate::knowledge_config::derive_knowledge_config(loaded_config.as_ref().ok());
 
         match action {
             // WHY: reembed/gc iterate every cohort store themselves, so they
             // must not pre-open the shared store like the other actions.
             Action::Reembed => run_reembed(&oikos, &loaded_config),
-            Action::Gc => run_gc(&oikos, &recovery_config),
+            Action::Gc => run_gc(&oikos, &derived_config),
             // WHY: run-context provenance lives in the session store, not
             // the knowledge store every other action opens -- it must not
             // pre-open the shared knowledge store either.
@@ -219,7 +210,7 @@ pub(crate) async fn run(
                 json,
             } => run_inspect_context(&oikos, &session_id, &turn_id, json),
             store_action => {
-                let store = open_recovery_store(&knowledge_path, &recovery_config)?;
+                let store = open_recovery_store(&knowledge_path, &derived_config, false)?;
                 run_store_action(&store, store_action, &dedup_tuning)
             }
         }
@@ -475,50 +466,10 @@ mod validation_tests {
         })
         .unwrap();
     }
-
-    #[tokio::test]
-    async fn is_server_running_rejects_empty_url() {
-        let err = super::is_server_running("").await.unwrap_err();
-        assert!(
-            err.to_string().contains("--url is not a valid URL"),
-            "got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn is_server_running_rejects_malformed_url() {
-        let err = super::is_server_running("not-a-url").await.unwrap_err();
-        assert!(
-            err.to_string().contains("--url is not a valid URL"),
-            "got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn is_server_running_returns_false_for_unreachable_well_formed_url() {
-        organon::testing::install_crypto_provider();
-        let res = super::is_server_running("http://127.0.0.1:1")
-            .await
-            .unwrap();
-        assert!(!res, "expected false when no listener; got {res}");
-    }
 }
 
-/// Check if a server is running at `url` by hitting the health endpoint.
-///
-/// Rejects malformed URLs up-front so a parse failure does not silently coerce
-/// to "server not running" and let the caller fall through to direct knowledge
-/// store access with garbage in `--url`.
-async fn is_server_running(url: &str) -> Result<bool> {
-    if let Err(e) = reqwest::Url::parse(url) {
-        whatever!("--url is not a valid URL: {e} (got {:?})", url);
-    }
-    let endpoint = format!("{url}/api/health");
-    match reqwest::get(&endpoint).await {
-        Ok(resp) => Ok(resp.status().is_success() || resp.status().as_u16() == 503),
-        Err(_) => Ok(false),
-    }
-}
+// `is_knowledge_server_running` is canonical at `crate::commands` (#7023) —
+// its own tests live there rather than being restated per call site.
 
 /// Run the graph health check via the server's HTTP API.
 async fn run_check_via_api(url: &str, json: bool, token: Option<&str>) -> Result<()> {
@@ -655,24 +606,12 @@ fn run_store_action(
 }
 
 #[cfg(feature = "recall")]
-#[derive(Debug, Clone)]
-struct RecoveryKnowledgeConfig {
-    dim: usize,
-    embedding_model: String,
-    allow_assumed_embedding_meta: bool,
-}
-
-#[cfg(feature = "recall")]
 fn open_recovery_store(
     path: &Path,
-    config: &RecoveryKnowledgeConfig,
+    derived: &crate::knowledge_config::DerivedKnowledgeConfig,
+    allow_assumed_embedding_meta: bool,
 ) -> Result<std::sync::Arc<mneme::knowledge_store::KnowledgeStore>> {
-    let config = mneme::knowledge_store::KnowledgeConfig {
-        dim: config.dim,
-        embedding_model: config.embedding_model.clone(),
-        allow_assumed_embedding_meta: config.allow_assumed_embedding_meta,
-        ..Default::default()
-    };
+    let config = derived.to_knowledge_config(allow_assumed_embedding_meta);
     // NOTE: lock contention surfaces from the typed
     // `krites::storage::StorageError::Locked` with operator guidance baked
     // into its display; no string inspection is needed here.
@@ -682,27 +621,6 @@ fn open_recovery_store(
             path.display()
         ))
     })
-}
-
-#[cfg(feature = "recall")]
-fn knowledge_config_from_loaded(
-    loaded: &std::result::Result<taxis::config::AletheiaConfig, taxis::error::Error>,
-    allow_assumed_embedding_meta: bool,
-) -> RecoveryKnowledgeConfig {
-    let Some(config) = loaded.as_ref().ok() else {
-        let default = mneme::knowledge_store::KnowledgeConfig::default();
-        return RecoveryKnowledgeConfig {
-            dim: default.dim,
-            embedding_model: default.embedding_model,
-            allow_assumed_embedding_meta,
-        };
-    };
-    let embedding_config = config.embedding.to_embedding_config();
-    RecoveryKnowledgeConfig {
-        dim: config.embedding.dimension,
-        embedding_model: embedding_config.effective_model_name(),
-        allow_assumed_embedding_meta,
-    }
 }
 
 #[cfg(feature = "recall")]
@@ -774,9 +692,10 @@ fn run_reembed(
 
     let store_count = stores.len();
     let mut total = 0usize;
-    let recovery_config = knowledge_config_from_loaded(loaded_config, true);
+    let derived_config =
+        crate::knowledge_config::derive_knowledge_config(loaded_config.as_ref().ok());
     for store_path in stores {
-        let store = open_recovery_store(&store_path, &recovery_config)?;
+        let store = open_recovery_store(&store_path, &derived_config, true)?;
         let written = store
             .reembed_all(provider.as_ref())
             .with_whatever_context(|err| {
@@ -794,7 +713,10 @@ fn run_reembed(
 }
 
 #[cfg(feature = "recall")]
-fn run_gc(oikos: &taxis::oikos::Oikos, config: &RecoveryKnowledgeConfig) -> Result<()> {
+fn run_gc(
+    oikos: &taxis::oikos::Oikos,
+    derived: &crate::knowledge_config::DerivedKnowledgeConfig,
+) -> Result<()> {
     let stores = recovery_store_paths(oikos)?;
     if stores.is_empty() {
         whatever!(
@@ -806,7 +728,7 @@ fn run_gc(oikos: &taxis::oikos::Oikos, config: &RecoveryKnowledgeConfig) -> Resu
 
     let mut total = 0usize;
     for store_path in &stores {
-        let store = open_recovery_store(store_path, config)?;
+        let store = open_recovery_store(store_path, derived, false)?;
         let removed = store
             .remove_orphaned_entities()
             .with_whatever_context(|err| {

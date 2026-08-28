@@ -35,6 +35,7 @@ use serde::Deserialize;
 
 use super::validation::{
     BenchmarkValidationOptions, BenchmarkValidationReport, clean_refs, deserialize_string_list,
+    optional_nonempty_string,
 };
 use super::{BenchmarkQuestion, MemoryBenchmark};
 
@@ -103,14 +104,10 @@ impl LongMemEvalDataset {
     /// Returns an error if the file cannot be read, parsed, or validated.
     pub async fn from_path_with_options(
         path: impl AsRef<Path> + Send,
-        mut options: BenchmarkValidationOptions,
+        options: BenchmarkValidationOptions,
     ) -> io::Result<(Self, BenchmarkValidationReport)> {
-        let path_ref = path.as_ref();
-        if options.dataset_path.is_none() {
-            options.dataset_path = Some(path_ref.display().to_string());
-        }
-        let bytes = tokio::fs::read(path_ref).await?;
-        Self::from_bytes_with_options(&bytes, &options)
+        super::validation::load_validated_dataset(path, options, Self::from_bytes_with_options)
+            .await
     }
 
     /// Parse a `LongMemEval` dataset from a JSON byte slice.
@@ -202,7 +199,7 @@ fn validate_items(
 
     let mut seen_ids = BTreeSet::new();
     for item in items {
-        let question_id = optional_string(&item.question_id);
+        let question_id = optional_nonempty_string(&item.question_id);
         validate_duplicate_id(&mut report, &mut seen_ids, question_id.clone());
         validate_item_shape(&mut report, item, options, question_id);
     }
@@ -335,11 +332,6 @@ fn validate_sessions(
             }
         }
     }
-}
-
-fn optional_string(value: &str) -> Option<String> {
-    let trimmed = value.trim();
-    (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
 #[cfg(test)]

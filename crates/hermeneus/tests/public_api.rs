@@ -39,6 +39,14 @@ mod model_constants {
         assert_eq!(DEFAULT_API_VERSION, "2023-06-01");
     }
 
+    // WHY the cast rather than `u64::from`: this is a `const` block, and
+    // `<u64 as From<u32>>::from` is not const-callable on stable (E0658).
+    // `BACKOFF_FACTOR` is `u32` because that is what
+    // `BackoffStrategy::ExponentialJitter`'s `factor` field takes.
+    #[expect(
+        clippy::as_conversions,
+        reason = "u32→u64 widening; u64::from is not const-callable in a const block"
+    )]
     #[test]
     fn retry_constants_are_sensible() {
         const {
@@ -52,7 +60,7 @@ mod model_constants {
                 "exponential backoff requires factor >= 2"
             );
             assert!(
-                BACKOFF_MAX_MS >= BACKOFF_BASE_MS * BACKOFF_FACTOR,
+                BACKOFF_MAX_MS >= BACKOFF_BASE_MS * BACKOFF_FACTOR as u64,
                 "max must allow at least one full backoff step"
             );
         }

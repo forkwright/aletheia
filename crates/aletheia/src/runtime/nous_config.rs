@@ -293,6 +293,7 @@ pub(super) fn build_nous_runtime_config(
             project_id,
             extraction: Some(extraction_cfg),
             training: config.training.clone(),
+            tuning: config.tuning.clone(),
             ..PipelineConfig::default()
         },
     )
@@ -443,6 +444,32 @@ mod tests {
         assert_eq!(
             nous_config.behavior.safety_loop_detection_threshold,
             behavior.safety_loop_detection_threshold
+        );
+    }
+
+    #[test]
+    fn tuning_config_cascades_into_pipeline_config() {
+        let mut config = AletheiaConfig::default();
+        config.tuning.enabled = true;
+        config.tuning.max_changes_per_cycle = 7;
+        config.tuning.evidence_min_samples = 99;
+        config.tuning.significance_threshold = 2.5;
+
+        let instance = TempDir::new().expect("create instance temp directory");
+        let oikos = Oikos::from_root(instance.path());
+
+        let (_nous_config, pipeline_config) =
+            build_nous_runtime_config(&config, &oikos, &[], "custom");
+
+        assert!(
+            pipeline_config.tuning.enabled,
+            "operator's [tuning] enabled flag must reach PipelineConfig, not a hardcoded default"
+        );
+        assert_eq!(pipeline_config.tuning.max_changes_per_cycle, 7);
+        assert_eq!(pipeline_config.tuning.evidence_min_samples, 99);
+        assert!(
+            (pipeline_config.tuning.significance_threshold - 2.5).abs() < f64::EPSILON,
+            "significance_threshold must cascade unchanged"
         );
     }
 

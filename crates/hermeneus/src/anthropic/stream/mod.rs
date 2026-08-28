@@ -8,6 +8,7 @@ use reqwest::Response;
 
 use super::wire::WireStreamEvent;
 use crate::error::{self, Result};
+use crate::retry::error_chain_message;
 use crate::types::{StopReason, Usage};
 
 /// Event emitted during streaming completion.
@@ -61,21 +62,6 @@ pub enum StreamEvent {
 mod accumulator;
 
 pub(crate) use accumulator::StreamAccumulator;
-
-/// Format an error and its full source chain into a single message string.
-///
-/// WHY(#5875): reqwest's Display can hide the underlying transport cause
-/// ("connection reset by peer"). `is_retryable()` scans for those cause words
-/// when deciding whether a pre-content streaming failure can be retried.
-fn error_chain_message(prefix: &str, err: &dyn std::error::Error) -> String {
-    let mut parts = vec![format!("{prefix}: {err}")];
-    let mut source = err.source();
-    while let Some(s) = source {
-        parts.push(s.to_string());
-        source = s.source();
-    }
-    parts.join(": ")
-}
 
 #[cfg(test)]
 pub(crate) fn parse_sse_stream(

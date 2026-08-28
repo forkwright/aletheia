@@ -38,6 +38,8 @@ pub mod sse;
 pub mod stats;
 /// Typed-tag namespace over RunReport for SFT/distillation pipeline.
 pub mod tags;
+/// Small cross-cutting helpers shared by persistence and the benchmark runner.
+pub(crate) mod util;
 
 #[cfg(test)]
 mod tag_tests;
