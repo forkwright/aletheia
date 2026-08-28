@@ -149,6 +149,8 @@ pub(crate) fn AgentCards(store: Signal<AgentStatusStore>) -> Element {
     rsx! {
         div {
             style: "{GRID_STYLE}",
+            role: "region",
+            "aria-label": "Agent status",
             for card in ordered {
                 {render_card(card)}
             }

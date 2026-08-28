@@ -550,6 +550,8 @@ pub(crate) fn Memory() -> Element {
     rsx! {
         div {
             style: "{MEMORY_LAYOUT_STYLE}",
+            role: "region",
+            "aria-label": "Memory",
             div {
                 style: "{HEADER_STYLE}",
                 div {
@@ -560,13 +562,19 @@ pub(crate) fn Memory() -> Element {
                     }
                     div {
                         style: "{TABS_STYLE}",
+                        role: "tablist",
+                        "aria-label": "Memory sections",
                         button {
                             style: if active_tab == MemoryTab::Facts { "{TAB_BTN_ACTIVE_STYLE}" } else { "{TAB_BTN_STYLE}" },
+                            role: "tab",
+                            "aria-selected": if active_tab == MemoryTab::Facts { "true" } else { "false" },
                             onclick: move |_| tab.set(MemoryTab::Facts),
                             "Facts"
                         }
                         button {
                             style: if active_tab == MemoryTab::Graph { "{TAB_BTN_ACTIVE_STYLE}" } else { "{TAB_BTN_STYLE}" },
+                            role: "tab",
+                            "aria-selected": if active_tab == MemoryTab::Graph { "true" } else { "false" },
                             onclick: move |_| tab.set(MemoryTab::Graph),
                             "Graph / advanced"
                         }
@@ -578,6 +586,7 @@ pub(crate) fn Memory() -> Element {
                         button {
                             style: if can_back { "{NAV_BTN_STYLE}" } else { "{NAV_BTN_DISABLED_STYLE}" },
                             disabled: !can_back,
+                            "aria-label": "Back",
                             onclick: {
                                 let mut fetch_detail = fetch_detail;
                                 move |_| {
@@ -593,6 +602,7 @@ pub(crate) fn Memory() -> Element {
                         button {
                             style: if can_forward { "{NAV_BTN_STYLE}" } else { "{NAV_BTN_DISABLED_STYLE}" },
                             disabled: !can_forward,
+                            "aria-label": "Forward",
                             onclick: {
                                 let mut fetch_detail = fetch_detail;
                                 move |_| {
@@ -608,6 +618,7 @@ pub(crate) fn Memory() -> Element {
                     }
                     button {
                         style: "{REFRESH_BTN}",
+                        "aria-label": "Refresh memory",
                         onclick: move |_| {
                             if active_tab == MemoryTab::Facts {
                                 fetch_facts();
@@ -654,12 +665,17 @@ pub(crate) fn Memory() -> Element {
                 if breadcrumbs.len() > 1 {
                     div {
                         style: "{BREADCRUMB_STYLE}",
+                        role: "navigation",
+                        "aria-label": "Entity breadcrumb",
                         span { "Memory" }
                         for (i, crumb) in breadcrumbs.iter().enumerate() {
                             span { " › " }
                             if i < breadcrumbs.len() - 1 {
                                 span {
                                     style: "{BREADCRUMB_LINK_STYLE}",
+                                    role: "button",
+                                    tabindex: "0",
+                                    "aria-label": "Go to {crumb}",
                                     onclick: {
                                         let entity_id = crumb.clone();
                                         let mut fetch_detail = fetch_detail;

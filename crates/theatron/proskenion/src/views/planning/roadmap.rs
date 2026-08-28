@@ -67,6 +67,8 @@ pub(crate) fn RoadmapView(project_id: String) -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Roadmap",
 
             div {
                 style: "{HEADER_ROW}",

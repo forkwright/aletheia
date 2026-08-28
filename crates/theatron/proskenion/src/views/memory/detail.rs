@@ -253,6 +253,8 @@ pub(crate) fn EntityDetail(
             rsx! {
                 div {
                     style: "{DETAIL_CONTAINER_STYLE}",
+                    role: "region",
+                    "aria-label": "Entity detail: {entity_name}",
                     div {
                         style: "{HEADER_STYLE}",
                         span { style: "{ENTITY_NAME_STYLE}",
@@ -281,16 +283,19 @@ pub(crate) fn EntityDetail(
                             style: "{ACTION_BAR_STYLE}",
                             button {
                                 style: "{ACTION_BTN_STYLE}",
+                                "aria-label": "Merge {entity_name}",
                                 onclick: move |_| show_merge.set(true),
                                 "Merge"
                             }
                             button {
                                 style: "{ACTION_BTN_STYLE}",
+                                "aria-label": "Flag {entity_name}",
                                 onclick: move |_| show_flag.set(true),
                                 "Flag"
                             }
                             button {
                                 style: "{ACTION_BTN_DANGER_STYLE}",
+                                "aria-label": "Delete {entity_name}",
                                 onclick: move |_| show_delete.set(true),
                                 "Delete"
                             }
@@ -343,6 +348,9 @@ pub(crate) fn EntityDetail(
                                             div {
                                                 key: "rel-{rel_id}",
                                                 style: "{REL_ROW_STYLE}",
+                                                role: "button",
+                                                tabindex: "0",
+                                                "aria-label": "Go to {entity_name}",
                                                 onclick: {
                                                     let id = entity_id.clone();
                                                     move |_| on_navigate_entity.call(id.clone())
@@ -402,6 +410,7 @@ pub(crate) fn EntityDetail(
                                             if needs_expand {
                                                 button {
                                                     style: "{EXPAND_BTN_STYLE}",
+                                                    "aria-expanded": if is_expanded { "true" } else { "false" },
                                                     onclick: {
                                                         let id = mem_id.clone();
                                                         let mut expanded = expanded_memories;

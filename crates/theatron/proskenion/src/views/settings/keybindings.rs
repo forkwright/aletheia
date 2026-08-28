@@ -25,6 +25,8 @@ pub(crate) fn KeybindingsPanel() -> Element {
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-6); max-width: 700px;",
+            role: "region",
+            "aria-label": "Keybindings",
 
             div {
                 style: "display: flex; justify-content: flex-end;",
@@ -46,6 +48,9 @@ pub(crate) fn KeybindingsPanel() -> Element {
                 div {
                     style: "position: fixed; inset: 0; background: var(--bg-overlay); \
                             display: flex; align-items: center; justify-content: center; z-index: 100;",
+                    role: "dialog",
+                    "aria-modal": "true",
+                    "aria-label": "Press a key combination",
                     tabindex: "0",
                     autofocus: true,
                     onkeydown: move |evt| {
@@ -115,6 +120,9 @@ pub(crate) fn KeybindingsPanel() -> Element {
                             div {
                                 style: "background: var(--bg-surface); border: 1px solid var(--status-warning); border-radius: var(--radius-lg); \
                                         padding: var(--space-6) var(--space-8); max-width: 380px; width: 90%;",
+                                role: "dialog",
+                                "aria-modal": "true",
+                                "aria-label": "Keybinding conflict",
                                 div {
                                     style: "font-size: var(--text-base); color: var(--text-primary); margin-bottom: var(--space-3);",
                                     "{combo_display} is already used by \"{conflict_label}\"."
@@ -177,6 +185,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                 button {
                                     style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--border); \
                                             border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                    "aria-label": "Reset {cat.label()} to defaults",
                                     onclick: move |_| {
                                         let all_actions = default_actions();
                                         keybindings.write().reset_category(cat, &all_actions);
@@ -218,6 +227,8 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                                 style: "display: flex; gap: var(--space-2); align-items: center;",
                                                 button {
                                                     style: "{combo_style}",
+                                                    "aria-label": "Change keybinding for {action.label}",
+                                                    "aria-pressed": if is_recording { "true" } else { "false" },
                                                     onclick: move |_| {
                                                         if is_recording {
                                                             recording_id.set(None);
@@ -231,6 +242,7 @@ pub(crate) fn KeybindingsPanel() -> Element {
                                                     style: "padding: var(--space-1) var(--space-2); background: none; border: 1px solid var(--border); \
                                                             border-radius: var(--radius-sm); color: var(--text-muted); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                                                     title: "Reset to default",
+                                                    "aria-label": "Reset {action.label} to default",
                                                     onclick: move |_| {
                                                         keybindings.write().reset(action_id);
                                                         let store = server_store.read();
