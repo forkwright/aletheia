@@ -90,8 +90,11 @@ pub use marshal::scoped_visibility_rules;
 /// Atomic multi-item extraction persistence (aletheia#5306): callers outside
 /// `knowledge_store` build a validated plan and hand it to
 /// [`KnowledgeStore::persist_extraction_batch`] as one all-or-nothing write.
+/// The plan's outcome type (`BatchPersistOutcome`) stays crate-private to
+/// `persist_batch` — callers destructure it by field, so it never needs to
+/// be named outside this module.
 #[cfg(feature = "mneme-engine")]
-pub(crate) use persist_batch::{BatchPersistOutcome, FactInsert};
+pub(crate) use persist_batch::FactInsert;
 
 #[cfg(test)]
 mod tests;
