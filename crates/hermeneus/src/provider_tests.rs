@@ -1004,6 +1004,14 @@ fn supports_streaming_default_derives_from_streaming_capability() {
     // a provider declaring only `streaming_capability` gets the correct
     // boolean for free, and the two cannot drift apart.
     struct RealtimeOnly;
+    // WHY the suppression: `complete` is never called by this test — only
+    // `supports_streaming`/`streaming_capability` are exercised — so the
+    // panic is inert, and `name` must return `&str` to match the trait
+    // (LlmProvider::name), which rules out a `'static` signature here.
+    #[expect(
+        clippy::unimplemented,
+        reason = "unreachable trait method on a test fake; supports_streaming never calls complete"
+    )]
     impl LlmProvider for RealtimeOnly {
         fn complete<'a>(
             &'a self,
@@ -1016,6 +1024,10 @@ fn supports_streaming_default_derives_from_streaming_capability() {
         fn supported_models(&self) -> &[&str] {
             &[]
         }
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
         fn name(&self) -> &str {
             "realtime-only"
         }
@@ -1027,9 +1039,11 @@ fn supports_streaming_default_derives_from_streaming_capability() {
         }
     }
 
-    assert!(RealtimeOnly.supports_streaming());
-
     struct NoStreaming;
+    #[expect(
+        clippy::unimplemented,
+        reason = "unreachable trait method on a test fake; supports_streaming never calls complete"
+    )]
     impl LlmProvider for NoStreaming {
         fn complete<'a>(
             &'a self,
@@ -1042,11 +1056,16 @@ fn supports_streaming_default_derives_from_streaming_capability() {
         fn supported_models(&self) -> &[&str] {
             &[]
         }
+        #[expect(
+            clippy::unnecessary_literal_bound,
+            reason = "trait requires &str return"
+        )]
         fn name(&self) -> &str {
             "no-streaming"
         }
     }
 
+    assert!(RealtimeOnly.supports_streaming());
     assert!(!NoStreaming.supports_streaming());
     assert_eq!(
         NoStreaming.streaming_capability(),
