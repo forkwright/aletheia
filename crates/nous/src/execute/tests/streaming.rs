@@ -1019,3 +1019,53 @@ async fn streaming_client_disconnect_after_tool_use_reports_stop_reason() {
         "the tool call dispatched before disconnect should be recorded"
     );
 }
+
+#[tokio::test]
+async fn tool_lifecycle_events_carry_canonical_turn_identity() {
+    // WHY(#5016): every tool-lifecycle event must carry the session's
+    // canonical turn ULID, session id, and request id — never a substituted
+    // or stream-local identifier.
+    let mut providers = ProviderRegistry::new();
+    providers.register(Box::new(StreamingMockProvider::with_responses(vec![
+        make_tool_response("exec", "toolu_1", serde_json::json!({"input": "test"})),
+        make_text_response("Done!"),
+    ])));
+    let tools = make_registry_with("exec", Box::new(EchoExecutor));
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<TurnStreamEvent>(64);
+
+    let mut session = test_session();
+    session.request_id = Some("req-5016".to_owned());
+    let expected_turn_id = session.turn_id.to_string();
+
+    execute_streaming(
+        &test_pipeline_ctx(),
+        &session,
+        &test_config(),
+        &providers,
+        &tools,
+        &test_tool_ctx(),
+        &tx,
+        None,
+        None,
+    )
+    .await
+    .expect("execute_streaming");
+
+    drop(tx);
+    let mut tool_events = 0;
+    while let Ok(event) = rx.try_recv() {
+        let identity = match event {
+            TurnStreamEvent::ToolStart { identity, .. }
+            | TurnStreamEvent::ToolResult { identity, .. } => identity,
+            _ => continue,
+        };
+        tool_events += 1;
+        assert_eq!(
+            identity.turn_id, expected_turn_id,
+            "tool event must carry the session's canonical turn ULID"
+        );
+        assert_eq!(identity.session_id, "test-session");
+        assert_eq!(identity.request_id.as_deref(), Some("req-5016"));
+    }
+    assert_eq!(tool_events, 2, "expected ToolStart + ToolResult");
+}

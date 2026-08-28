@@ -1307,6 +1307,7 @@ pub async fn stream_turn(
                                 (event.clone(), event)
                             }
                             TurnStreamEvent::ToolStart {
+                                identity,
                                 tool_id,
                                 tool_name,
                                 input,
@@ -1315,11 +1316,16 @@ pub async fn stream_turn(
                                     tool_name,
                                     tool_id,
                                     input,
+                                    // WHY(#5016): forward nous's canonical turn
+                                    // identity; pylon never substitutes its own.
+                                    turn_id: Some(identity.turn_id),
+                                    session_id: Some(identity.session_id),
+                                    request_id: identity.request_id,
                                 };
                                 (event.clone(), event)
                             }
                             TurnStreamEvent::ToolApprovalRequired {
-                                turn_id: _nous_turn_id,
+                                identity,
                                 tool_id,
                                 tool_name,
                                 input,
@@ -1327,6 +1333,11 @@ pub async fn stream_turn(
                                 risk,
                                 reason,
                             } => {
+                                // WHY: the approval registry stays keyed on the
+                                // ULID pylon supplied to nous for this turn —
+                                // identical to `identity.turn_id` on this path,
+                                // but the registry key is pylon's own contract
+                                // with the approval endpoints.
                                 approval_registry
                                     .register_tool(
                                         &approval_session_id,
@@ -1336,31 +1347,43 @@ pub async fn stream_turn(
                                     )
                                     .await;
                                 let live = PylonTurnStreamEvent::ToolApprovalRequired {
-                                    turn_id: approval_turn_id.clone(),
+                                    turn_id: identity.turn_id.clone(),
                                     tool_name: tool_name.clone(),
                                     tool_id: tool_id.clone(),
                                     input: input.into_inner(),
                                     risk: risk.clone(),
                                     reason: reason.clone(),
+                                    session_id: Some(identity.session_id.clone()),
+                                    request_id: identity.request_id.clone(),
                                 };
                                 let replay = PylonTurnStreamEvent::ToolApprovalRequired {
-                                    turn_id: approval_turn_id.clone(),
+                                    turn_id: identity.turn_id,
                                     tool_name,
                                     tool_id,
                                     input: replay_input,
                                     risk,
                                     reason,
+                                    session_id: Some(identity.session_id),
+                                    request_id: identity.request_id,
                                 };
                                 (live, replay)
                             }
-                            TurnStreamEvent::ToolApprovalResolved { tool_id, decision } => {
+                            TurnStreamEvent::ToolApprovalResolved {
+                                identity,
+                                tool_id,
+                                decision,
+                            } => {
                                 let event = PylonTurnStreamEvent::ToolApprovalResolved {
                                     tool_id,
                                     decision,
+                                    turn_id: Some(identity.turn_id),
+                                    session_id: Some(identity.session_id),
+                                    request_id: identity.request_id,
                                 };
                                 (event.clone(), event)
                             }
                             TurnStreamEvent::ToolResult {
+                                identity,
                                 tool_id,
                                 tool_name,
                                 result,
@@ -1375,6 +1398,9 @@ pub async fn stream_turn(
                                     is_error,
                                     duration_ms,
                                     outcome: Some(outcome),
+                                    turn_id: Some(identity.turn_id),
+                                    session_id: Some(identity.session_id),
+                                    request_id: identity.request_id,
                                 };
                                 (event.clone(), event)
                             }

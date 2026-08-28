@@ -167,6 +167,8 @@ async fn live_approval_evidence_is_never_reconstructed_on_reconnect() {
         input: serde_json::json!({"url": live_secret}),
         risk: "critical".to_owned(),
         reason: "approval required".to_owned(),
+        session_id: Some("ses-a".to_owned()),
+        request_id: None,
     };
     let replay = PylonTurnStreamEvent::ToolApprovalRequired {
         turn_id: "turn-approval-redaction".to_owned(),
@@ -175,6 +177,8 @@ async fn live_approval_evidence_is_never_reconstructed_on_reconnect() {
         input: serde_json::json!({"url": "[REDACTED]"}),
         risk: "critical".to_owned(),
         reason: "approval required".to_owned(),
+        session_id: Some("ses-a".to_owned()),
+        request_id: None,
     };
 
     let (_, returned_live) = record_turn_event_with_live(&handle, &replay, &live)

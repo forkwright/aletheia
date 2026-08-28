@@ -26,7 +26,7 @@ use organon::types::{
 use crate::approval::{ApprovalChoice, ApprovalGate};
 use crate::error;
 use crate::pipeline::{InteractionSignal, LoopDetector, LoopVerdict, ToolCall};
-use crate::stream::{LiveApprovalEvidence, TurnStreamEvent};
+use crate::stream::{LiveApprovalEvidence, TurnEventIdentity, TurnStreamEvent};
 
 /// Result of dispatching tool calls, including optional loop warning.
 // kanon:ignore TOPOLOGY/shallow-struct — internal dispatch result carrier used only within the execute module
@@ -562,6 +562,7 @@ fn record_undispatched_calls(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
     tools: &ToolRegistry,
+    identity: &TurnEventIdentity,
     remaining: &[ToolDispatchItem],
 ) {
     for item in remaining {
@@ -578,6 +579,7 @@ fn record_undispatched_calls(
             stream_tx,
             tool_ctx,
             tools,
+            identity,
             &DeniedToolCall {
                 id,
                 name,
@@ -645,6 +647,7 @@ fn record_stream_send_error<T>(
 fn emit_approval_required(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
+    identity: &TurnEventIdentity,
     tool_id: &str,
     tool_name: &str,
     live_input: LiveApprovalEvidence,
@@ -654,8 +657,11 @@ fn emit_approval_required(
     let Some(stream_tx) = stream_tx else {
         return true;
     };
+    // WHY(#5016): the event carries the turn's canonical identity — the
+    // ULID minted on SessionState (which the gateway supplies for HTTP
+    // turns) — never the session-local turn number.
     if let Err(error) = stream_tx.try_send(TurnStreamEvent::ToolApprovalRequired {
-        turn_id: tool_ctx.turn_number.to_string(),
+        identity: identity.clone(),
         tool_id: tool_id.to_owned(),
         tool_name: tool_name.to_owned(),
         input: live_input,
@@ -676,6 +682,7 @@ fn emit_approval_required(
 fn emit_approval_resolved(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
+    identity: &TurnEventIdentity,
     tool_id: &str,
     tool_name: &str,
     decision: &str,
@@ -684,6 +691,7 @@ fn emit_approval_resolved(
         return;
     };
     if let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolApprovalResolved {
+        identity: identity.clone(),
         tool_id: tool_id.to_owned(),
         decision: decision.to_owned(),
     }) {
@@ -709,6 +717,7 @@ fn record_denied_call(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
     tools: &ToolRegistry,
+    identity: &TurnEventIdentity,
     denied: &DeniedToolCall<'_>,
 ) {
     unexecuted.push(denied.id.to_owned());
@@ -748,6 +757,7 @@ fn record_denied_call(
     });
     if let Some(stream_tx) = stream_tx
         && let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
+            identity: identity.clone(),
             tool_id: denied.id.to_owned(),
             tool_name: denied.name.to_owned(),
             result: recorded_message,
@@ -763,12 +773,14 @@ fn record_denied_call(
 fn emit_tool_start(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
+    identity: &TurnEventIdentity,
     tool_id: &str,
     tool_name: &str,
     tool_input: &serde_json::Value,
 ) {
     if let Some(stream_tx) = stream_tx
         && let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolStart {
+            identity: identity.clone(),
             tool_id: tool_id.to_owned(),
             tool_name: tool_name.to_owned(),
             input: tool_input.clone(),
@@ -785,6 +797,7 @@ fn emit_tool_start(
 fn emit_tool_result(
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
+    identity: &TurnEventIdentity,
     tool_id: &str,
     tool_name: &str,
     result: String,
@@ -794,6 +807,7 @@ fn emit_tool_result(
 ) {
     if let Some(stream_tx) = stream_tx
         && let Err(e) = stream_tx.try_send(TurnStreamEvent::ToolResult {
+            identity: identity.clone(),
             tool_id: tool_id.to_owned(),
             tool_name: tool_name.to_owned(),
             result,
@@ -811,6 +825,7 @@ fn record_tool_outcome(
     tool_results: &mut Vec<ContentBlock>,
     stream_tx: Option<&mpsc::Sender<TurnStreamEvent>>,
     tool_ctx: &ToolContext,
+    identity: &TurnEventIdentity,
     outcome: SingleToolOutcome,
 ) -> bool {
     let is_error = outcome.is_error;
@@ -821,6 +836,7 @@ fn record_tool_outcome(
         emit_tool_result(
             stream_tx,
             tool_ctx,
+            identity,
             &call.id,
             &call.name,
             result,
@@ -1315,6 +1331,14 @@ pub(super) async fn dispatch_tools(
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
 ) -> error::Result<DispatchResult> {
     let items: Vec<ToolDispatchItem> = tool_uses.iter().cloned().map(Into::into).collect();
+    // WHY: test-only adapter — its ~20 call sites exercise dispatch behavior,
+    // not identity propagation (that is covered by execute-level streaming
+    // tests), so a placeholder identity keeps them unchanged.
+    let identity = TurnEventIdentity {
+        turn_id: "test-turn".to_owned(),
+        session_id: "test-session".to_owned(),
+        request_id: None,
+    };
     // WHY resolve a throwaway signer on `None` (#4835): this test-only
     // adapter keeps its `Option` parameter so its ~20 existing call sites
     // (most passing `None` -- receipt behavior isn't what they're
@@ -1341,6 +1365,7 @@ pub(super) async fn dispatch_tools(
         max_tool_result_bytes,
         signer,
         receipt_ledger,
+        &identity,
     )
     .await
 }
@@ -1367,6 +1392,7 @@ pub(super) async fn dispatch_tool_items(
     // WHY non-optional: see `dispatch_single_tool`'s parameter docs (#4835).
     receipt_signer: &organon::receipts::ReceiptSigner,
     receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
+    identity: &TurnEventIdentity,
 ) -> error::Result<DispatchResult> {
     let mut tool_results: Vec<ContentBlock> = Vec::new();
     let mut unexecuted: Vec<String> = Vec::new();
@@ -1388,6 +1414,7 @@ pub(super) async fn dispatch_tool_items(
                     stream_tx,
                     tool_ctx,
                     tools,
+                    identity,
                     &DeniedToolCall {
                         id,
                         name,
@@ -1417,6 +1444,7 @@ pub(super) async fn dispatch_tool_items(
                 stream_tx,
                 tool_ctx,
                 tools,
+                identity,
                 &DeniedToolCall {
                     id: tool_id,
                     name: tool_name,
@@ -1487,6 +1515,7 @@ pub(super) async fn dispatch_tool_items(
                     &mut tool_results,
                     stream_tx,
                     tool_ctx,
+                    identity,
                     outcome,
                 );
                 let input_hash = simple_hash(tool_input);
@@ -1500,6 +1529,7 @@ pub(super) async fn dispatch_tool_items(
                             stream_tx,
                             tool_ctx,
                             tools,
+                            identity,
                             tool_items.get(index + 1..).unwrap_or(&[]),
                         );
                         return Ok(DispatchResult {
@@ -1529,6 +1559,7 @@ pub(super) async fn dispatch_tool_items(
                     stream_tx,
                     tool_ctx,
                     tools,
+                    identity,
                     &DeniedToolCall {
                         id: tool_id,
                         name: tool_name,
@@ -1564,6 +1595,7 @@ pub(super) async fn dispatch_tool_items(
                 emit_approval_resolved(
                     stream_tx,
                     tool_ctx,
+                    identity,
                     tool_id,
                     tool_name,
                     APPROVAL_OUTCOME_AUTO_APPROVED,
@@ -1581,6 +1613,7 @@ pub(super) async fn dispatch_tool_items(
                 emit_approval_resolved(
                     stream_tx,
                     tool_ctx,
+                    identity,
                     tool_id,
                     tool_name,
                     APPROVAL_OUTCOME_ADVISORY_AUTO,
@@ -1609,6 +1642,7 @@ pub(super) async fn dispatch_tool_items(
                 let approval_event_available = emit_approval_required(
                     stream_tx,
                     tool_ctx,
+                    identity,
                     tool_id,
                     tool_name,
                     LiveApprovalEvidence::new(live_approval_input),
@@ -1644,7 +1678,7 @@ pub(super) async fn dispatch_tool_items(
                     approval_gate.is_some(),
                     outcome,
                 );
-                emit_approval_resolved(stream_tx, tool_ctx, tool_id, tool_name, outcome);
+                emit_approval_resolved(stream_tx, tool_ctx, identity, tool_id, tool_name, outcome);
                 if matches!(choice, ApprovalChoice::Denied) {
                     let message = if outcome == APPROVAL_OUTCOME_NO_GATE_DENIED {
                         format!(
@@ -1666,6 +1700,7 @@ pub(super) async fn dispatch_tool_items(
                         stream_tx,
                         tool_ctx,
                         tools,
+                        identity,
                         &DeniedToolCall {
                             id: tool_id,
                             name: tool_name,
@@ -1680,7 +1715,14 @@ pub(super) async fn dispatch_tool_items(
             }
         };
 
-        emit_tool_start(stream_tx, tool_ctx, tool_id, tool_name, &trace_input);
+        emit_tool_start(
+            stream_tx,
+            tool_ctx,
+            identity,
+            tool_id,
+            tool_name,
+            &trace_input,
+        );
 
         let mut outcome = dispatch_single_tool(
             tool_id,
@@ -1703,6 +1745,7 @@ pub(super) async fn dispatch_tool_items(
             &mut tool_results,
             stream_tx,
             tool_ctx,
+            identity,
             outcome,
         );
 
@@ -1717,6 +1760,7 @@ pub(super) async fn dispatch_tool_items(
                     stream_tx,
                     tool_ctx,
                     tools,
+                    identity,
                     tool_items.get(index + 1..).unwrap_or(&[]),
                 );
                 return Ok(DispatchResult {

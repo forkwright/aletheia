@@ -632,6 +632,15 @@ async fn run_execute_loop(
     let mut messages = build_messages(&ctx.messages);
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
+
+    // WHY(#5016): one canonical identity for every tool-lifecycle event this
+    // turn emits — the ULID minted on SessionState (gateway-supplied for HTTP
+    // turns), the owning session, and the gateway request id (#4853).
+    let event_identity = crate::stream::TurnEventIdentity {
+        turn_id: session.turn_id.to_string(),
+        session_id: session.id.clone(),
+        request_id: session.request_id.clone(),
+    };
     let mut loop_detector = LoopDetector::with_window(
         config.limits.loop_detection_threshold,
         config.limits.consecutive_error_threshold,
@@ -1022,6 +1031,7 @@ async fn run_execute_loop(
             config.limits.max_tool_result_bytes,
             &session.receipt_signer,
             Some(&*session.receipt_ledger),
+            &event_identity,
         )
         .await?;
 
