@@ -10,24 +10,10 @@ use serde::Deserialize;
 
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
+use crate::retry::error_chain_message;
 use crate::types::{CompletionResponse, ContentBlock, StopReason, Usage};
 
 use super::response::{ResponsesResponse, TokenDetails, parse_arguments};
-
-/// Format an error and its full source chain into a single message string.
-///
-/// WHY(#4887): reqwest's Display hides the underlying cause ("connection reset
-/// by peer"). `is_retryable()` scans for "reset"/"connection", so including
-/// the chain makes network-drop errors retryable before content starts.
-fn error_chain_message(prefix: &str, err: &dyn std::error::Error) -> String {
-    let mut parts = vec![format!("{prefix}: {err}")];
-    let mut source = err.source();
-    while let Some(s) = source {
-        parts.push(s.to_string());
-        source = s.source();
-    }
-    parts.join(": ")
-}
 
 #[derive(Debug, Deserialize)]
 struct ChatStreamChunk {

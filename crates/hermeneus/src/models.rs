@@ -13,7 +13,7 @@ pub const DEFAULT_MAX_RETRIES: u32 = 3; // kanon:ignore RUST/pub-visibility
 pub const BACKOFF_BASE_MS: u64 = 1000; // kanon:ignore RUST/pub-visibility
 
 /// Retry backoff multiplier per attempt.
-pub const BACKOFF_FACTOR: u64 = 2; // kanon:ignore RUST/pub-visibility
+pub const BACKOFF_FACTOR: u32 = 2; // kanon:ignore RUST/pub-visibility
 
 /// Maximum retry backoff delay in milliseconds.
 pub const BACKOFF_MAX_MS: u64 = 30_000; // kanon:ignore RUST/pub-visibility

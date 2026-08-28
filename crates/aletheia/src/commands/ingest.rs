@@ -33,7 +33,7 @@ pub(crate) struct IngestArgs {
 pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> Result<()> {
     validate_inputs(args)?;
 
-    if is_server_running(&args.url).await? {
+    if crate::commands::is_knowledge_server_running(&args.url).await? {
         return run_via_api(args).await;
     }
 
@@ -41,26 +41,11 @@ pub(crate) async fn run(args: &IngestArgs, instance_root: Option<&PathBuf>) -> R
     {
         let oikos = super::resolve_oikos(instance_root)?;
         let knowledge_path = oikos.knowledge_cohort_db("shared");
-        if !knowledge_path.exists() && !oikos.knowledge_db().exists() {
-            whatever!(
-                "knowledge store not initialized at {}\n  \
-                 The store is created lazily by the running server. Either:\n    \
-                   1. Start the server once to bootstrap it:  aletheia\n    \
-                   2. Or route this command through a running server with --url",
-                knowledge_path.display()
-            );
-        }
+        crate::commands::require_knowledge_store_exists(&oikos, &knowledge_path)?;
 
-        let config = taxis::loader::load_config(&oikos).ok().map_or_else(
-            mneme::knowledge_store::KnowledgeConfig::default,
-            |config| {
-                let embedding = config.embedding.to_embedding_config();
-                mneme::knowledge_store::KnowledgeConfig {
-                    dim: config.embedding.dimension,
-                    embedding_model: embedding.effective_model_name(),
-                    ..Default::default()
-                }
-            },
+        let config = crate::knowledge_config::knowledge_config_from_loaded(
+            taxis::loader::load_config(&oikos).ok().as_ref(),
+            false,
         );
         let store = mneme::knowledge_store::KnowledgeStore::open_fjall(&knowledge_path, config)
             .whatever_context("failed to open knowledge store")?;
@@ -107,16 +92,8 @@ fn is_valid_format(s: &str) -> bool {
     )
 }
 
-async fn is_server_running(url: &str) -> Result<bool> {
-    if let Err(e) = reqwest::Url::parse(url) {
-        whatever!("--url is not a valid URL: {e} (got {:?})", url);
-    }
-    let endpoint = format!("{url}/api/health");
-    match reqwest::get(&endpoint).await {
-        Ok(resp) => Ok(resp.status().is_success() || resp.status().as_u16() == 503),
-        Err(_) => Ok(false),
-    }
-}
+// `is_knowledge_server_running` is canonical at `crate::commands` (#7023) —
+// its own tests live there rather than being restated per call site.
 
 /// Per-fact error returned by the ingest API.
 #[derive(Debug, serde::Deserialize)]
@@ -629,31 +606,6 @@ mod tests {
             validate_inputs(&args_with(input.clone(), fmt, "alice"))
                 .unwrap_or_else(|e| panic!("format {fmt} should be valid: {e}"));
         }
-    }
-
-    #[tokio::test]
-    async fn is_server_running_rejects_empty_url() {
-        let err = is_server_running("").await.unwrap_err();
-        assert!(
-            err.to_string().contains("--url is not a valid URL"),
-            "got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn is_server_running_rejects_malformed_url() {
-        let err = is_server_running("not-a-url").await.unwrap_err();
-        assert!(
-            err.to_string().contains("--url is not a valid URL"),
-            "got: {err}"
-        );
-    }
-
-    #[tokio::test]
-    async fn is_server_running_returns_false_for_unreachable_well_formed_url() {
-        organon::testing::install_crypto_provider();
-        let res = is_server_running("http://127.0.0.1:1").await.unwrap();
-        assert!(!res, "expected false when no listener; got {res}");
     }
 
     /// Regression for #4164/B: a directory containing one unparseable file

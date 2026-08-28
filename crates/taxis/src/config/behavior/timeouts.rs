@@ -4,19 +4,14 @@ use serde::{Deserialize, Serialize};
 
 /// Deployment-tunable timeout thresholds.
 ///
-/// Controls wall-clock timeout budgets for LLM and provider calls.
-/// Defaults match the hardcoded constants in `koina::defaults` so that
+/// Controls the wall-clock budget for the operator approval gate. Defaults
+/// match the hardcoded constant previously owned by `nous::approval`, so
 /// omitting this section from `aletheia.toml` produces identical behaviour.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 #[serde(deny_unknown_fields)]
 pub struct TimeoutsConfig {
-    /// Maximum wall-clock seconds for a single LLM API call (Anthropic or CC provider).
-    ///
-    /// Requests exceeding this limit are cancelled and may trigger a retry.
-    /// Valid range: 30–3600. Default: 300.
-    pub llm_call_secs: u32,
     /// Maximum wall-clock seconds a Required/Mandatory tool call waits for an
     /// operator approval decision before defaulting to deny.
     ///
@@ -33,7 +28,6 @@ pub struct TimeoutsConfig {
 impl Default for TimeoutsConfig {
     fn default() -> Self {
         Self {
-            llm_call_secs: koina::defaults::TIMEOUT_SECONDS,
             approval_timeout_secs: 120,
         }
     }

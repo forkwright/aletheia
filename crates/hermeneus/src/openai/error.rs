@@ -9,6 +9,7 @@ use reqwest::Response;
 use serde::Deserialize;
 
 use crate::error::{self, ApiErrorContext};
+use crate::retry::extract_retry_after;
 
 /// Maximum bytes of a provider error body preserved in logs and error
 /// messages.
@@ -145,16 +146,6 @@ pub(crate) fn map_request_error(err: &reqwest::Error) -> error::Error {
         message: format!("{prefix}: {err}"),
     }
     .build()
-}
-
-/// Extract `retry-after` header value as milliseconds.
-fn extract_retry_after(response: &Response) -> Option<u64> {
-    response
-        .headers()
-        .get("retry-after")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.parse::<u64>().ok())
-        .map(|secs| secs * 1000)
 }
 
 #[cfg(test)]

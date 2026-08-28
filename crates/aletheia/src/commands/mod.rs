@@ -184,3 +184,117 @@ pub(crate) async fn dispatch(cmd: Command, instance_root: Option<&PathBuf>) -> R
         Command::Serve => unreachable!("Serve handled in main"),
     }
 }
+
+/// Check whether a server is running at `url` by hitting the shared health
+/// route.
+///
+/// Rejects malformed URLs up-front so a parse failure does not silently
+/// coerce to "server not running" and let a caller fall through to direct
+/// knowledge-store access with garbage in `--url`. Canonical for every
+/// direct-store command that must not open the store out from under a
+/// running server (#7023) — uses [`koina::http::API_HEALTH`] rather than a
+/// hand-built route string, so a health-route change is one edit.
+pub(crate) async fn is_knowledge_server_running(url: &str) -> crate::error::Result<bool> {
+    if let Err(e) = reqwest::Url::parse(url) {
+        snafu::whatever!("--url is not a valid URL: {e} (got {:?})", url);
+    }
+    let endpoint = format!("{url}{}", koina::http::API_HEALTH);
+    match reqwest::get(&endpoint).await {
+        Ok(resp) => Ok(resp.status().is_success() || resp.status().as_u16() == 503),
+        Err(_) => Ok(false),
+    }
+}
+
+/// Fail with the canonical "the running server holds the knowledge-store
+/// lock" message, naming every recovery path this CLI actually supports.
+///
+/// `known_endpoints` lists the REST routes the caller can point `--url` at
+/// instead of opening the store directly — kept a parameter (rather than
+/// hardcoded) because callers differ in which typed views they expose
+/// (e.g. `memory` names both facts and entities; `agent-io` names only
+/// facts), and drift between those lists is exactly what #7023 found.
+pub(crate) fn server_holds_knowledge_lock(
+    url: &str,
+    known_endpoints: &[&str],
+) -> crate::error::Result<()> {
+    let routes = known_endpoints
+        .iter()
+        .map(|route| format!("  GET {url}{route}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    snafu::whatever!(
+        "The server at {url} is running and holds an exclusive lock on the knowledge store.\n  \
+         Stop the server first to use this subcommand, or use the REST API:\n{routes}"
+    );
+}
+
+/// Guard a direct-store command against opening the knowledge store while a
+/// running server holds its exclusive lock.
+pub(crate) async fn guard_knowledge_lock(
+    url: &str,
+    known_endpoints: &[&str],
+) -> crate::error::Result<()> {
+    if is_knowledge_server_running(url).await? {
+        return server_holds_knowledge_lock(url, known_endpoints);
+    }
+    Ok(())
+}
+
+/// Verify the shared knowledge store exists on disk before a direct-store
+/// command opens it, failing with the canonical "not initialized" message
+/// and both recovery paths this CLI supports (#7023: this check plus its
+/// remediation text was restated verbatim at three call sites).
+///
+/// `knowledge_path` is the specific cohort DB the caller is about to open
+/// (checked so the reported path matches); `oikos.knowledge_db()` is also
+/// consulted because a legacy single-cohort layout may not yet have a
+/// `shared` subdirectory at all.
+#[cfg(feature = "recall")]
+pub(crate) fn require_knowledge_store_exists(
+    oikos: &Oikos,
+    knowledge_path: &std::path::Path,
+) -> crate::error::Result<()> {
+    if !knowledge_path.exists() && !oikos.knowledge_db().exists() {
+        snafu::whatever!(
+            "knowledge store not initialized at {}\n  \
+             The store is created lazily by the running server. Either:\n    \
+               1. Start the server once to bootstrap it:  aletheia\n    \
+               2. Or route this command through a running server with --url",
+            knowledge_path.display()
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test assertions")]
+mod knowledge_guard_tests {
+    use super::is_knowledge_server_running;
+
+    #[tokio::test]
+    async fn rejects_empty_url() {
+        let err = is_knowledge_server_running("").await.unwrap_err();
+        assert!(
+            err.to_string().contains("--url is not a valid URL"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_malformed_url() {
+        let err = is_knowledge_server_running("not-a-url").await.unwrap_err();
+        assert!(
+            err.to_string().contains("--url is not a valid URL"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn returns_false_for_unreachable_well_formed_url() {
+        organon::testing::install_crypto_provider();
+        let res = is_knowledge_server_running("http://127.0.0.1:1")
+            .await
+            .unwrap();
+        assert!(!res, "expected false when no listener; got {res}");
+    }
+}
