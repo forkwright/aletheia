@@ -3,7 +3,8 @@
 #![expect(
     clippy::string_slice,
     clippy::default_trait_access,
-    reason = "integration test: assertions parse ASCII citation markers and use explicit defaults"
+    clippy::expect_used,
+    reason = "integration test: assertions parse ASCII citation markers, use explicit defaults, and expect() on fixture constructors"
 )]
 
 use std::env;
