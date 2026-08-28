@@ -46,9 +46,6 @@ pub const MAX_TOOL_ITERATIONS: u32 = 200;
 /// Default maximum bytes per tool result before truncation.
 pub const MAX_TOOL_RESULT_BYTES: u32 = 32_768;
 
-/// Default LLM call timeout in seconds.
-pub const TIMEOUT_SECONDS: u32 = 300;
-
 /// Default history budget ratio (fraction of remaining context for conversation history).
 pub const HISTORY_BUDGET_RATIO: f64 = 0.6;
 

@@ -25,6 +25,8 @@ use parking_lot::Mutex;
 use tokio::sync::Notify;
 use tower::{Layer, Service};
 
+use crate::types::CompletionResponse;
+
 // Encoded request outcomes stored in `ConcurrencyPermit::outcome` as `u8`.
 const OUTCOME_NEUTRAL: u8 = 0;
 const OUTCOME_SUCCESS: u8 = 1;
@@ -46,6 +48,22 @@ pub enum RequestOutcome {
     Overload,
     /// Request was cancelled or outcome is unknown; no limit adjustment.
     Neutral,
+}
+
+/// Classify a provider call result into a [`RequestOutcome`] for concurrency feedback.
+///
+/// Success increases the limit. A retryable error (per
+/// [`Error::is_retryable`](crate::error::Error::is_retryable)) signals overload
+/// and decreases it. Any other error is neutral and leaves the limit unchanged,
+/// since it is not evidence the endpoint itself is overloaded.
+#[must_use]
+pub fn concurrency_outcome(result: &crate::error::Result<CompletionResponse>) -> RequestOutcome {
+    // kanon:ignore RUST/pub-visibility
+    match result {
+        Ok(_) => RequestOutcome::Success,
+        Err(err) if err.is_retryable() => RequestOutcome::Overload,
+        Err(_) => RequestOutcome::Neutral,
+    }
 }
 
 /// Configuration for the [`AdaptiveConcurrencyLimiter`].
@@ -453,6 +471,53 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+    use crate::error;
+    use crate::types::{ContentBlock, StopReason, Usage};
+
+    fn ok_response() -> CompletionResponse {
+        CompletionResponse {
+            id: "resp-1".to_owned(),
+            model: "test-model".to_owned(),
+            stop_reason: StopReason::EndTurn,
+            content: vec![ContentBlock::Text {
+                text: "response".to_owned(),
+                citations: None,
+            }],
+            usage: Usage::default(),
+            cost_usd: None,
+            duration_ms: None,
+        }
+    }
+
+    fn retryable_error() -> error::Result<CompletionResponse> {
+        Err(error::RateLimitedSnafu {
+            retry_after_ms: 100_u64,
+        }
+        .build())
+    }
+
+    fn non_retryable_error() -> error::Result<CompletionResponse> {
+        Err(error::AuthFailedSnafu {
+            message: "invalid key".to_owned(),
+        }
+        .build())
+    }
+
+    #[test]
+    fn concurrency_outcome_table() {
+        assert_eq!(
+            concurrency_outcome(&Ok(ok_response())),
+            RequestOutcome::Success
+        );
+        assert_eq!(
+            concurrency_outcome(&retryable_error()),
+            RequestOutcome::Overload
+        );
+        assert_eq!(
+            concurrency_outcome(&non_retryable_error()),
+            RequestOutcome::Neutral
+        );
+    }
 
     fn limiter(initial: u32, min: u32, max: u32) -> Arc<AdaptiveConcurrencyLimiter> {
         Arc::new(AdaptiveConcurrencyLimiter::new(

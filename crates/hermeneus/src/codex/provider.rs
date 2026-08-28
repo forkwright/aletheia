@@ -5,19 +5,18 @@
 //! subprocess, and wraps plain-text output in Hermeneus response types.
 
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 
-use koina::system::{Environment, RealSystem};
-use tracing::{debug, info, warn};
+use tracing::info;
 
-use crate::RetryPolicy;
 use crate::anthropic::StreamEvent;
 use crate::error::{self, Result};
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind};
 use crate::seat_bridged::SeatBridgedProvider;
-use crate::types::{CompletionRequest, CompletionResponse, Content, ContentBlock, Role};
+use crate::subprocess_provider;
+use crate::types::{CompletionRequest, CompletionResponse};
 
 use super::{parse, process};
 
@@ -90,10 +89,17 @@ impl CodexProvider {
                 .build());
             }
         } else {
-            find_codex_binary()?
+            subprocess_provider::find_binary(
+                "codex",
+                &[".local/bin/codex", ".codex/bin/codex"],
+                "codex CLI binary not found in PATH or ~/.local/bin. Install Codex CLI before enabling codex-provider",
+            )?
         };
 
-        let working_directory = validate_working_directory(config.working_directory.as_deref())?;
+        let working_directory = subprocess_provider::validate_working_directory(
+            config.working_directory.as_deref(),
+            "codex",
+        )?;
 
         info!(
             provider = %config.name,
@@ -133,31 +139,6 @@ impl CodexProvider {
         }
     }
 
-    /// Format message history into a single prompt string for Codex.
-    fn format_prompt(request: &CompletionRequest) -> String {
-        if request.messages.len() == 1
-            && let Some(msg) = request.messages.first()
-        {
-            return msg.content.text();
-        }
-
-        let mut parts = Vec::new();
-
-        for msg in &request.messages {
-            let label = match msg.role {
-                Role::User => "User",
-                Role::Assistant => "Assistant",
-                Role::System => "System",
-            };
-            let text = extract_text_content(&msg.content);
-            if !text.is_empty() {
-                parts.push(format!("{label}: {text}"));
-            }
-        }
-
-        parts.join("\n\n")
-    }
-
     /// Run the Codex subprocess for a completion, retrying the subprocess
     /// call itself (not just the surrounding call) on a transient spawn or
     /// timeout failure.
@@ -175,49 +156,28 @@ impl CodexProvider {
         system_prompt: Option<&str>,
         prompt: &str,
     ) -> Result<process::CodexOutput> {
-        let retry_policy = RetryPolicy::default();
-        let mut last_error = None;
-        for attempt in 0..=retry_policy.max_retries {
-            if attempt > 0 {
-                tokio::time::sleep(retry_policy.delay(attempt, last_error.as_ref())).await;
-            }
-            match Box::pin(process::run_completion(
-                &self.codex_binary,
-                self.working_directory.as_deref(),
-                system_prompt,
-                prompt,
-                self.timeout,
-            ))
-            .await
-            {
-                Ok(output) => return Ok(output),
-                Err(err) => {
-                    if attempt == retry_policy.max_retries || !err.is_retryable() {
-                        return Err(err);
-                    }
-                    warn!(
-                        provider = %self.name,
-                        attempt,
-                        error = %err,
-                        "Codex subprocess call failed; retrying"
-                    );
-                    last_error = Some(err);
-                }
-            }
-        }
-        Err(last_error.unwrap_or_else(|| {
-            error::ApiRequestSnafu {
-                message: "Codex subprocess retry loop exhausted with no recorded error".to_owned(),
-            }
-            .build()
-        }))
+        subprocess_provider::run_with_retry(
+            self.name(),
+            "Codex subprocess",
+            || {
+                Box::pin(process::run_completion(
+                    &self.codex_binary,
+                    self.working_directory.as_deref(),
+                    system_prompt,
+                    prompt,
+                    self.timeout,
+                ))
+            },
+            |_| false,
+        )
+        .await
     }
 
     async fn execute(&self, request: &CompletionRequest) -> Result<CompletionResponse> {
         crate::seat_bridged::reject_tool_bearing_request(&self.name, "codex", request.tools.len())?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        let prompt = Self::format_prompt(request);
+        let prompt = subprocess_provider::format_prompt(request);
 
         let outcome: Result<CompletionResponse> = async {
             let output = self
@@ -225,38 +185,11 @@ impl CodexProvider {
                 .await?;
             let parse::CodexParsedOutput { text, usage } = parse::parse_output(&output.stdout)?;
             let response = parse::text_to_response(&text, usage, model);
-            // WHY(#4658): Codex reports cached_input_tokens as cache reads; emit
-            // them so prompt-cache activity shows in provider metrics.
-            crate::metrics::record_cache_tokens(
-                self.name(),
-                response.usage.cache_read_tokens,
-                response.usage.cache_write_tokens,
-            );
             Ok(response)
         }
         .await;
 
-        match &outcome {
-            Ok(response) => {
-                crate::metrics::record_completion(
-                    self.name(),
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
-                    response.cost_usd.unwrap_or(0.0),
-                    true,
-                );
-                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
-            }
-            Err(e) => {
-                let status = if e.is_retryable() {
-                    "rate_limited"
-                } else {
-                    "error"
-                };
-                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
-                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
-            }
-        }
+        subprocess_provider::record_completion_metrics(self.name(), model, start, &outcome);
         outcome
     }
 
@@ -275,7 +208,7 @@ impl CodexProvider {
         crate::seat_bridged::reject_tool_bearing_request(&self.name, "codex", request.tools.len())?;
         let start = Instant::now();
         let model = self.resolve_model(&request.model);
-        let prompt = Self::format_prompt(request);
+        let prompt = subprocess_provider::format_prompt(request);
 
         let outcome: Result<CompletionResponse> = async {
             let output = self
@@ -290,79 +223,12 @@ impl CodexProvider {
             on_event(StreamEvent::TextDelta { text: text.clone() });
 
             let response = parse::text_to_response(&text, usage, model);
-            // WHY(#4658): The streaming path uses the same CLI output as the
-            // non-streaming path; record cache reads for observability parity.
-            crate::metrics::record_cache_tokens(
-                self.name(),
-                response.usage.cache_read_tokens,
-                response.usage.cache_write_tokens,
-            );
             Ok(response)
         }
         .await;
 
-        match &outcome {
-            Ok(response) => {
-                crate::metrics::record_completion(
-                    self.name(),
-                    response.usage.input_tokens,
-                    response.usage.output_tokens,
-                    response.cost_usd.unwrap_or(0.0),
-                    true,
-                );
-                crate::metrics::record_latency(model, "ok", start.elapsed().as_secs_f64());
-            }
-            Err(e) => {
-                let status = if e.is_retryable() {
-                    "rate_limited"
-                } else {
-                    "error"
-                };
-                crate::metrics::record_completion(self.name(), 0, 0, 0.0, false);
-                crate::metrics::record_latency(model, status, start.elapsed().as_secs_f64());
-            }
-        }
+        subprocess_provider::record_completion_metrics(self.name(), model, start, &outcome);
         outcome
-    }
-}
-
-/// Render `content` as a flat text string suitable for Codex's plain-text stdin.
-///
-/// Tool-use blocks are serialized as `[Tool call: name(json_input)]` markers so
-/// multi-turn conversations that include tool-call turns are not silently
-/// truncated. Without this, `ContentBlock::ToolUse` falls through to the
-/// wildcard arm and is dropped, causing the codex subprocess to receive a
-/// conversation with entire assistant turns missing — the live correctness bug
-/// fixed by #3980.
-fn extract_text_content(content: &Content) -> String {
-    match content {
-        Content::Text(s) => s.clone(),
-        Content::Blocks(blocks) => {
-            let parts: Vec<String> = blocks
-                .iter()
-                .filter_map(|block| match block {
-                    ContentBlock::Text { text, .. } if !text.is_empty() => Some(text.to_owned()),
-                    ContentBlock::ToolUse { name, input, .. } => {
-                        // WHY(#3980): render tool-use calls textually so Codex sees
-                        // the full conversation. Compact JSON keeps it readable while
-                        // fitting in the flat prompt format.
-                        Some(format!("[Tool call: {name}({input})]"))
-                    }
-                    ContentBlock::ToolResult { content, .. } => {
-                        let summary = content.text_summary();
-                        if summary.is_empty() {
-                            None
-                        } else {
-                            Some(summary)
-                        }
-                    }
-                    // Thinking, server tool use, web search have no meaningful
-                    // text representation for Codex's flat prompt format.
-                    _ => None,
-                })
-                .collect();
-            parts.join("\n")
-        }
     }
 }
 
@@ -466,188 +332,11 @@ impl SeatBridgedProvider for CodexProvider {
     }
 }
 
-fn validate_working_directory(path: Option<&Path>) -> Result<Option<PathBuf>> {
-    match path {
-        Some(path) if path.is_dir() => Ok(Some(path.to_path_buf())),
-        Some(path) => Err(error::ProviderInitSnafu {
-            message: format!(
-                "configured codex working directory does not exist: {}",
-                path.display()
-            ),
-        }
-        .build()),
-        None => Ok(None),
-    }
-}
-
-fn find_codex_binary() -> Result<PathBuf> {
-    let paths = RealSystem.var_os("PATH").unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option<OsString>, not Result — empty PATH is a valid fallback
-    for dir in std::env::split_paths(&paths) {
-        let candidate = dir.join("codex");
-        if candidate.is_file() {
-            debug!(path = %candidate.display(), "found codex binary in PATH");
-            return Ok(candidate);
-        }
-    }
-
-    if let Some(home) = RealSystem.var_os("HOME") {
-        let home = PathBuf::from(home);
-        for subdir in &[".local/bin/codex", ".codex/bin/codex"] {
-            let candidate = home.join(subdir);
-            if candidate.is_file() {
-                info!(
-                    path = %candidate.display(),
-                    "found codex binary outside PATH (consider adding its directory to PATH)"
-                );
-                return Ok(candidate);
-            }
-        }
-    }
-
-    Err(error::ProviderInitSnafu {
-        message: "codex CLI binary not found in PATH or ~/.local/bin. Install Codex CLI before enabling codex-provider"
-            .to_owned(),
-    }
-    .build())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::Error;
-    use crate::types::{
-        CompletionRequest, Content, ContentBlock, Message, Role, ToolDefinition, ToolResultContent,
-    };
-
-    #[test]
-    fn format_prompt_single_message() {
-        let request = CompletionRequest {
-            messages: vec![Message {
-                role: Role::User,
-                content: Content::Text("hello world".to_owned()),
-                cache_breakpoint: false,
-            }],
-            ..Default::default()
-        };
-        let prompt = CodexProvider::format_prompt(&request);
-        assert_eq!(prompt, "hello world");
-    }
-
-    #[test]
-    fn format_prompt_multi_turn() {
-        let request = CompletionRequest {
-            messages: vec![
-                Message {
-                    role: Role::User,
-                    content: Content::Text("What is 2+2?".to_owned()),
-                    cache_breakpoint: false,
-                },
-                Message {
-                    role: Role::Assistant,
-                    content: Content::Text("4".to_owned()),
-                    cache_breakpoint: false,
-                },
-                Message {
-                    role: Role::User,
-                    content: Content::Text("And 3+3?".to_owned()),
-                    cache_breakpoint: false,
-                },
-            ],
-            ..Default::default()
-        };
-        let prompt = CodexProvider::format_prompt(&request);
-        assert!(prompt.contains("User: What is 2+2?"));
-        assert!(prompt.contains("Assistant: 4"));
-        assert!(prompt.contains("User: And 3+3?"));
-    }
-
-    // WHY(#3980): ToolUse blocks must be rendered so assistant turns with tool
-    // calls do not disappear from the Codex prompt.
-    #[test]
-    fn extract_text_content_renders_tool_use_blocks() {
-        let content = Content::Blocks(vec![
-            ContentBlock::Text {
-                text: "Let me check that.".to_owned(),
-                citations: None,
-            },
-            ContentBlock::ToolUse {
-                id: "toolu_01".to_owned(),
-                name: "read_file".to_owned(),
-                input: serde_json::json!({"path": "/etc/hosts"}),
-            },
-        ]);
-        let text = extract_text_content(&content);
-        assert!(
-            text.contains("Let me check that."),
-            "text block must be present: {text}"
-        );
-        assert!(
-            text.contains("[Tool call: read_file("),
-            "tool-use block must be rendered, not dropped: {text}"
-        );
-        assert!(
-            text.contains("/etc/hosts"),
-            "tool input must appear in rendered marker: {text}"
-        );
-    }
-
-    // WHY(#3980): tool-use assistant turns must round-trip through format_prompt
-    // so a later tool-result still has matching call context.
-    #[test]
-    fn format_prompt_preserves_tool_use_turns() {
-        let request = CompletionRequest {
-            messages: vec![
-                Message {
-                    role: Role::User,
-                    content: Content::Text("What is in /etc/hosts?".to_owned()),
-                    cache_breakpoint: false,
-                },
-                Message {
-                    role: Role::Assistant,
-                    content: Content::Blocks(vec![
-                        ContentBlock::Text {
-                            text: "I will read the file.".to_owned(),
-                            citations: None,
-                        },
-                        ContentBlock::ToolUse {
-                            id: "toolu_01".to_owned(),
-                            name: "read_file".to_owned(),
-                            input: serde_json::json!({"path": "/etc/hosts"}),
-                        },
-                    ]),
-                    cache_breakpoint: false,
-                },
-                Message {
-                    role: Role::User,
-                    content: Content::Blocks(vec![ContentBlock::ToolResult {
-                        tool_use_id: "toolu_01".to_owned(),
-                        content: ToolResultContent::text("127.0.0.1 localhost"),
-                        is_error: None,
-                    }]),
-                    cache_breakpoint: false,
-                },
-            ],
-            ..Default::default()
-        };
-        let prompt = CodexProvider::format_prompt(&request);
-        // All three turns must appear.
-        assert!(
-            prompt.contains("User: What is in /etc/hosts?"),
-            "first user turn missing: {prompt}"
-        );
-        assert!(
-            prompt.contains("I will read the file."),
-            "assistant text missing: {prompt}"
-        );
-        assert!(
-            prompt.contains("[Tool call: read_file("),
-            "tool-use marker missing: {prompt}"
-        );
-        assert!(
-            prompt.contains("127.0.0.1 localhost"),
-            "tool result missing: {prompt}"
-        );
-    }
+    use crate::types::{CompletionRequest, Content, ContentBlock, Message, Role, ToolDefinition};
 
     #[test]
     fn resolve_model_strips_prefix() {
@@ -904,8 +593,6 @@ mod tests {
     }
 
     fn single_message_request() -> CompletionRequest {
-        use crate::types::Message;
-
         CompletionRequest {
             model: koina::models::names::codex().to_owned(),
             messages: vec![Message {

@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use eidos::bookkeeping::{
     BookkeepingError, BookkeepingProvider, BookkeepingResult, ConversationMessage, ExtractedEntity,
-    ExtractedFact, ExtractedRelationship, Extraction, ExtractionSchema, ProviderFailedSnafu,
+    ExtractedFact, ExtractedRelationship, Extraction, ExtractionSchema,
 };
 use ort::session::Session;
 use ort::value::{Shape, Tensor};
@@ -19,6 +19,8 @@ use tokenizers::Tokenizer;
 use tokenizers::utils::padding::{PaddingParams, PaddingStrategy};
 use tokenizers::utils::truncation::{TruncationParams, TruncationStrategy};
 use tracing::warn;
+
+use super::support;
 
 const DEFAULT_MODEL_DIR: &str = "/models/onnx/nuextract-2b";
 const MODEL_FILE: &str = "onnx/model.onnx";
@@ -197,7 +199,7 @@ impl NuExtractProvider {
         messages: &[ConversationMessage],
         schema: &ExtractionSchema,
     ) -> BookkeepingResult<Extraction> {
-        let text = join_messages(messages);
+        let text = support::join_messages(messages);
         let template = build_schema_template(schema);
         match self.extract_json(&text, &template).await {
             Ok(json) => Ok(parse_extraction_json(&json)),
@@ -436,28 +438,15 @@ fn parse_extraction_json(value: &serde_json::Value) -> Extraction {
 }
 
 fn usize_to_i64(value: usize) -> BookkeepingResult<i64> {
-    i64::try_from(value).map_err(|err| provider_failed("integer_conversion", err))
+    support::usize_to_i64("nuextract", value)
 }
 
 fn load_tokenizer(path: &Path) -> BookkeepingResult<Tokenizer> {
-    Tokenizer::from_file(path).map_err(|err| provider_failed("load_tokenizer", err))
-}
-
-fn join_messages(messages: &[ConversationMessage]) -> String {
-    messages
-        .iter()
-        .map(|message| message.content.as_str())
-        .collect::<Vec<_>>()
-        .join("\n")
+    support::load_tokenizer("nuextract", path)
 }
 
 fn provider_failed(operation: &'static str, message: impl std::fmt::Display) -> BookkeepingError {
-    ProviderFailedSnafu {
-        provider: "nuextract",
-        operation,
-        message: message.to_string(),
-    }
-    .build()
+    support::provider_failed("nuextract", operation, message)
 }
 
 #[cfg(test)]

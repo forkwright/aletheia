@@ -264,7 +264,7 @@ pub async fn create(
         // concurrent requests.
         match store.create_session(&id_clone, &nid, &skey, None, Some(&model)) {
             Ok(session) => Ok(session),
-            Err(e) if is_unique_constraint_violation(&e) => Err(ConflictSnafu {
+            Err(e) if e.is_unique_constraint_violation() => Err(ConflictSnafu {
                 message: format!("a session with key '{skey}' already exists for agent '{nid}'"),
             }
             .build()),
@@ -818,7 +818,7 @@ pub(crate) async fn resolve_session(
         let store = state_clone.session_store.blocking_lock();
         match store.find_or_create_session(&id_clone, &aid, &skey, model_owned.as_deref(), None) {
             Ok(session) => Ok(session),
-            Err(e) if is_unique_constraint_violation(&e) => {
+            Err(e) if e.is_unique_constraint_violation() => {
                 // WHY: Concurrent stream requests may race to create the same session.
                 // Fall back to returning whichever session won the INSERT race.
                 store
@@ -835,14 +835,6 @@ pub(crate) async fn resolve_session(
     .await??;
 
     Ok(session.id)
-}
-
-/// Returns `true` when a mneme error indicates a duplicate session-key
-/// (the fjall backend's equivalent of a UNIQUE constraint violation).
-///
-/// Delegates to [`mneme::error::Error::is_unique_constraint_violation`].
-fn is_unique_constraint_violation(err: &mneme::error::Error) -> bool {
-    err.is_unique_constraint_violation()
 }
 
 pub(crate) async fn find_session(

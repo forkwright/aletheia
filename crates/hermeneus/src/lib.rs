@@ -59,6 +59,21 @@ pub use retry::RetryPolicy;
 /// [`substitute_in_json`](secret::substitute_in_json) for replacing
 /// `{{secret:<name>}}` / `$SECRET(<name>)` placeholders in tool arguments.
 pub mod secret;
+/// Shared subprocess-provider scaffolding (retry loop, prompt formatting,
+/// content extraction, binary discovery, completion metrics) consumed by
+/// the `cc`/`kimi`/`codex` CLI-subprocess providers.
+// WHY(#7016): gated the same way `seat_bridged` is guarded against the
+// gate's `cargo check --features test-core` — that check never enables any
+// of the three provider features on its own (only `cc-provider` rides in
+// via `aletheia`'s DEFAULT features), so an ungated `pub(crate)` module here
+// would compile with zero callers under a features combination this crate
+// still needs to support, and fail `-D warnings` dead-code.
+#[cfg(any(
+    feature = "cc-provider",
+    feature = "kimi-provider",
+    feature = "codex-provider"
+))]
+pub(crate) mod subprocess_provider;
 /// Shared mock provider for tests across the workspace.
 #[cfg(any(test, feature = "test-utils"))]
 #[expect(

@@ -1164,19 +1164,9 @@ fn validate_jwt(value: &Value, errors: &mut Vec<String>) {
 }
 
 fn validate_timeouts(value: &Value, errors: &mut Vec<String>) {
-    // WHY: 30s minimum prevents misconfiguration that would time out before
-    // any model response arrives. 3600s cap prevents runaway session budgets.
-    if let Some(val) = value.get("llmCallSecs").and_then(Value::as_u64) {
-        if val < 30 {
-            errors.push("timeouts.llmCallSecs must be at least 30 seconds".to_owned());
-        }
-        if val > 3600 {
-            errors.push("timeouts.llmCallSecs must not exceed 3600 seconds".to_owned());
-        }
-    }
     // WHY(#5011): a sub-5s timeout would deny most approvals before an
-    // operator can read the overlay; 3600s cap matches llmCallSecs' runaway
-    // guard.
+    // operator can read the overlay; 3600s cap prevents runaway session
+    // budgets.
     if let Some(val) = value.get("approvalTimeoutSecs").and_then(Value::as_u64) {
         if val < 5 {
             errors.push("timeouts.approvalTimeoutSecs must be at least 5 seconds".to_owned());
