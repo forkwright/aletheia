@@ -215,16 +215,10 @@ fn capitalize(s: &str) -> String {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
 
     fn protos() -> ResolvedTheme {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let registry = crate::registry::Registry::load_dir(&dir).expect("load");
-        registry
-            .resolve(&crate::registry::parse_theme_id("protos").expect("id"))
-            .expect("resolve")
+        crate::protos()
     }
 
     #[test]

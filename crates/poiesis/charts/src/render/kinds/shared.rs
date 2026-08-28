@@ -308,6 +308,25 @@ pub(crate) fn emit_caption(out: &mut String, chart: &Chart, theme: &ResolvedThem
     );
 }
 
+/// Test-only [`FactCite`] builders shared by the per-kind arm test modules.
+///
+/// WHY: every Rust-path arm needs a `FactCite` with a plain [`Unit::Number`]
+/// to build its fixture points; kept here so a change to `FactCite`'s shape
+/// is one edit rather than one per arm.
+#[cfg(test)]
+pub(crate) mod test_support {
+    use crate::model::{FactCite, FactId, Unit};
+
+    #[expect(clippy::expect_used, reason = "test fixture; id is a fixed literal")]
+    pub(crate) fn cite(id: &str, v: f64) -> FactCite {
+        FactCite {
+            id: FactId::new(id.to_owned()).expect("valid fact id"),
+            value: v,
+            unit: Unit::Number,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

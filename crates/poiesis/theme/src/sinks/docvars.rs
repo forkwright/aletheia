@@ -213,16 +213,10 @@ fn yaml_str(s: &str) -> String {
     reason = "test assertions; serde_json::Value index op is the canonical accessor"
 )]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
-    use crate::registry::Registry;
 
     fn protos() -> ResolvedTheme {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let registry = Registry::load_dir(&dir).expect("load protos");
-        let id = crate::registry::parse_theme_id("protos").expect("parse protos");
-        registry.resolve(&id).expect("resolve protos")
+        crate::protos()
     }
 
     #[test]
