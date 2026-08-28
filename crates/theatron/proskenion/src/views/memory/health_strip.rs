@@ -163,6 +163,8 @@ pub(crate) fn HealthStrip(
     rsx! {
         div {
             style: "{STRIP_STYLE}",
+            role: "region",
+            "aria-label": "Memory health",
             HealthStat { label: "Active / Total", value: total_label, color: "var(--text-primary)" }
             HealthStat { label: "Stale >30d", value: "{health.stale}", color: stale_color }
             HealthStat { label: "Low conf", value: "{health.low_confidence}", color: low_conf_color }

@@ -124,6 +124,8 @@ pub(crate) fn NotificationSettings() -> Element {
     rsx! {
         div {
             style: "{SECTION_STYLE}",
+            role: "region",
+            "aria-label": "Notifications",
             div { style: "{SECTION_TITLE}", "Notifications" }
 
             div {
@@ -131,6 +133,9 @@ pub(crate) fn NotificationSettings() -> Element {
                 span { style: "{LABEL_STYLE}", "Desktop notifications" }
                 button {
                     style: if enabled { TOGGLE_ON } else { TOGGLE_OFF },
+                    role: "switch",
+                    "aria-checked": if enabled { "true" } else { "false" },
+                    "aria-label": "Desktop notifications",
                     onclick: move |_| {
                         prefs.write().enabled = !enabled;
                         if let Err(e) = config::save_notification_prefs(&prefs.read()) {
@@ -146,6 +151,9 @@ pub(crate) fn NotificationSettings() -> Element {
                 span { style: "{LABEL_STYLE}", "Agent completion" }
                 button {
                     style: if agent_completion { TOGGLE_ON } else { TOGGLE_OFF },
+                    role: "switch",
+                    "aria-checked": if agent_completion { "true" } else { "false" },
+                    "aria-label": "Agent completion notifications",
                     onclick: move |_| {
                         prefs.write().agent_completion = !agent_completion;
                         if let Err(e) = config::save_notification_prefs(&prefs.read()) {
@@ -176,6 +184,9 @@ pub(crate) fn NotificationSettings() -> Element {
                 if tool_approval_wired {
                     button {
                         style: if tool_approval { TOGGLE_ON } else { TOGGLE_OFF },
+                        role: "switch",
+                        "aria-checked": if tool_approval { "true" } else { "false" },
+                        "aria-label": "Tool approval requests",
                         onclick: move |_| {
                             prefs.write().tool_approval = !tool_approval;
                             if let Err(e) = config::save_notification_prefs(&prefs.read()) {
@@ -194,6 +205,9 @@ pub(crate) fn NotificationSettings() -> Element {
                 span { style: "{LABEL_STYLE}", "Errors" }
                 button {
                     style: if errors { TOGGLE_ON } else { TOGGLE_OFF },
+                    role: "switch",
+                    "aria-checked": if errors { "true" } else { "false" },
+                    "aria-label": "Error notifications",
                     onclick: move |_| {
                         prefs.write().errors = !errors;
                         if let Err(e) = config::save_notification_prefs(&prefs.read()) {
@@ -209,6 +223,9 @@ pub(crate) fn NotificationSettings() -> Element {
                 span { style: "{LABEL_STYLE}", "Connection status" }
                 button {
                     style: if connection_status { TOGGLE_ON } else { TOGGLE_OFF },
+                    role: "switch",
+                    "aria-checked": if connection_status { "true" } else { "false" },
+                    "aria-label": "Connection status notifications",
                     onclick: move |_| {
                         prefs.write().connection_status = !connection_status;
                         if let Err(e) = config::save_notification_prefs(&prefs.read()) {
@@ -224,6 +241,9 @@ pub(crate) fn NotificationSettings() -> Element {
                 span { style: "{LABEL_STYLE}", "Sound" }
                 button {
                     style: if sound_enabled { TOGGLE_ON } else { TOGGLE_OFF },
+                    role: "switch",
+                    "aria-checked": if sound_enabled { "true" } else { "false" },
+                    "aria-label": "Sound",
                     onclick: move |_| {
                         prefs.write().sound_enabled = !sound_enabled;
                         if let Err(e) = config::save_notification_prefs(&prefs.read()) {
@@ -239,6 +259,9 @@ pub(crate) fn NotificationSettings() -> Element {
                 span { style: "{LABEL_STYLE}", "Only when app is backgrounded" }
                 button {
                     style: if only_when_backgrounded { TOGGLE_ON } else { TOGGLE_OFF },
+                    role: "switch",
+                    "aria-checked": if only_when_backgrounded { "true" } else { "false" },
+                    "aria-label": "Only when app is backgrounded",
                     onclick: move |_| {
                         prefs.write().only_when_backgrounded = !only_when_backgrounded;
                         if let Err(e) = config::save_notification_prefs(&prefs.read()) {
@@ -259,9 +282,12 @@ pub(crate) fn NotificationSettings() -> Element {
                     }
                 }
                 div {
+                    role: "group",
+                    "aria-label": "Do Not Disturb",
                     if dnd_active {
                         button {
                             style: "{DND_BTN}",
+                            "aria-label": "Turn off Do Not Disturb",
                             onclick: move |_| {
                                 dnd.write().deactivate();
                             },
@@ -270,6 +296,7 @@ pub(crate) fn NotificationSettings() -> Element {
                     } else {
                         button {
                             style: "{DND_BTN}",
+                            "aria-label": "Do Not Disturb for 15 minutes",
                             onclick: move |_| {
                                 dnd.write().activate(DndDuration::FifteenMinutes);
                             },
@@ -277,6 +304,7 @@ pub(crate) fn NotificationSettings() -> Element {
                         }
                         button {
                             style: "{DND_BTN}",
+                            "aria-label": "Do Not Disturb for 1 hour",
                             onclick: move |_| {
                                 dnd.write().activate(DndDuration::OneHour);
                             },
@@ -284,6 +312,7 @@ pub(crate) fn NotificationSettings() -> Element {
                         }
                         button {
                             style: "{DND_BTN}",
+                            "aria-label": "Do Not Disturb until tomorrow",
                             onclick: move |_| {
                                 dnd.write().activate(DndDuration::UntilTomorrow);
                             },

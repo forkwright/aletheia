@@ -84,8 +84,11 @@ pub(crate) fn Timeline(
         div {
             div {
                 style: "{CONTROLS_BAR}",
+                role: "group",
+                "aria-label": "Timeline zoom",
                 button {
                     style: "{ZOOM_BTN}",
+                    "aria-label": "Zoom out",
                     onclick: move |_| on_zoom_change.call((zoom * 0.8).max(0.2)),
                     "-"
                 }
@@ -95,11 +98,13 @@ pub(crate) fn Timeline(
                 }
                 button {
                     style: "{ZOOM_BTN}",
+                    "aria-label": "Zoom in",
                     onclick: move |_| on_zoom_change.call((zoom * 1.25).min(5.0)),
                     "+"
                 }
                 button {
                     style: "{ZOOM_BTN}",
+                    "aria-label": "Reset zoom to fit",
                     onclick: move |_| on_zoom_change.call(1.0),
                     "Fit"
                 }
@@ -107,6 +112,8 @@ pub(crate) fn Timeline(
 
             div {
                 style: "overflow-x: auto; overflow-y: hidden; border: 1px solid var(--border); border-radius: 0 0 var(--radius-lg) var(--radius-lg); background: var(--bg-surface-dim); cursor: grab;",
+                role: "region",
+                "aria-label": "Roadmap timeline",
 
                 div {
                     style: "position: relative; min-width: {total_width}px; height: {ROW_HEIGHT}px; padding: 0 var(--space-5);",
@@ -133,6 +140,9 @@ pub(crate) fn Timeline(
                                 div {
                                     key: "block-{i}",
                                     style: "position: absolute; left: {bx}px; top: {BLOCK_Y}px; width: {w}px; height: {BLOCK_HEIGHT}px; background: {block.color}; border: {border}; border-radius: var(--radius-md); padding: var(--space-2) var(--space-2); box-sizing: border-box; cursor: pointer; overflow: hidden; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                    role: "button",
+                                    tabindex: "0",
+                                    "aria-label": "{block.label}: {block.detail}",
                                     onclick: move |_| on_block_click.call(idx),
 
                                     div {

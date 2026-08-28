@@ -299,11 +299,16 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
     rsx! {
         div {
             style: "{CARD_STYLE}",
+            role: "region",
+            "aria-label": "System Journal",
             div {
                 style: "display: flex; gap: var(--space-2); margin-bottom: var(--space-3);",
+                role: "radiogroup",
+                "aria-label": "Journal event filter",
                 for (label , value) in JOURNAL_FILTERS {
                     {
-                        let active_style = if *filter.read() == value {
+                        let is_active = *filter.read() == value;
+                        let active_style = if is_active {
                             FILTER_BTN_ACTIVE
                         } else {
                             ""
@@ -311,6 +316,8 @@ fn SystemJournal(events: Vec<JournalEvent>) -> Element {
                         rsx! {
                             button {
                                 style: "{FILTER_BTN_STYLE}{active_style}",
+                                role: "radio",
+                                "aria-checked": if is_active { "true" } else { "false" },
                                 onclick: move |_| filter.set(value),
                                 "{label}"
                             }

@@ -130,16 +130,22 @@ pub(crate) fn GapAnalysisPanel(requirements: Vec<RequirementVerification>) -> El
     rsx! {
         div {
             style: "{PANEL_STYLE}",
+            role: "region",
+            "aria-label": "Gap analysis",
             div {
                 style: "{FILTER_ROW}",
+                role: "group",
+                "aria-label": "Gap filter",
                 span { style: "font-size: var(--text-xs); color: var(--text-muted);", "Filter:" }
                 button {
                     style: if !*show_blocking_only.read() { "{FILTER_BTN_ACTIVE}" } else { "{FILTER_BTN_INACTIVE}" },
+                    "aria-pressed": if !*show_blocking_only.read() { "true" } else { "false" },
                     onclick: move |_| show_blocking_only.set(false),
                     "All ({gaps.len()})"
                 }
                 button {
                     style: if *show_blocking_only.read() { "{FILTER_BTN_ACTIVE}" } else { "{FILTER_BTN_INACTIVE}" },
+                    "aria-pressed": if *show_blocking_only.read() { "true" } else { "false" },
                     onclick: move |_| show_blocking_only.set(true),
                     "Blocking P0 ({blocking_count})"
                 }

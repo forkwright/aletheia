@@ -344,6 +344,7 @@ fn AgentToggleRow(
                     } else {
                         button {
                             style: "{RELOAD_BTN}",
+                            "aria-label": "Recover {name}",
                             onclick: {
                                 let id = id.clone();
                                 move |_| fire_agent_recover(store, config, id.clone())
@@ -354,6 +355,8 @@ fn AgentToggleRow(
                 }
                 button {
                     style: "{EXPAND_BTN}",
+                    "aria-expanded": if is_expanded { "true" } else { "false" },
+                    "aria-label": "{name} tools",
                     onclick: {
                         let id = id.clone();
                         move |_| {
@@ -369,6 +372,7 @@ fn AgentToggleRow(
                 }
             }
             {toggle_switch(
+                &format!("{name} enabled"),
                 enabled,
                 pending,
                 {
@@ -447,6 +451,7 @@ fn ToolToggleRow(
                 }
                 if is_actionable {
                     {toggle_switch(
+                        &format!("{} enabled", tool.tool_name),
                         tool.enabled,
                         tool.pending,
                         {
@@ -527,6 +532,7 @@ fn FeatureFlagRow(
                 style: "{ROW_STYLE}",
                 span { style: "{TOGGLE_LABEL}", "{flag_key}" }
                 {toggle_switch(
+                    &format!("{flag_key} enabled"),
                     enabled,
                     pending,
                     {
@@ -594,6 +600,7 @@ fn ConfigReloadRow(store: Signal<ToggleStore>, config: Signal<ConnectionConfig>)
                 } else {
                     button {
                         style: "{RELOAD_BTN}",
+                        "aria-label": "Reload config from disk",
                         onclick: move |_| fire_config_reload(store, config),
                         "Reload Config"
                     }
@@ -627,9 +634,13 @@ fn ConfirmDisableDialog(
     rsx! {
         div {
             style: "{CONFIRM_OVERLAY}",
+            "aria-label": "Disable agent confirmation backdrop",
             onclick: move |_| confirm_disable.set(None),
             div {
                 style: "{CONFIRM_BOX}",
+                role: "dialog",
+                "aria-modal": "true",
+                "aria-label": "Disable agent \"{name}\"?",
                 onclick: move |e| e.stop_propagation(),
                 p {
                     style: "color: var(--text-primary); margin: 0 0 var(--space-4) 0;",
@@ -663,6 +674,7 @@ fn ConfirmDisableDialog(
 }
 
 fn toggle_switch(
+    label: &str,
     enabled: bool,
     pending: bool,
     on_click: impl Fn(Event<MouseData>) + 'static,
@@ -684,6 +696,10 @@ fn toggle_switch(
     rsx! {
         div {
             style: "{track_style}",
+            role: "switch",
+            "aria-label": "{label}",
+            "aria-checked": if enabled { "true" } else { "false" },
+            "aria-busy": if pending { "true" } else { "false" },
             onclick: move |e| {
                 if !pending {
                     on_click(e);

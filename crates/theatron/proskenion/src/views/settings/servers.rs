@@ -118,6 +118,8 @@ pub(crate) fn ServersPanel() -> Element {
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4); max-width: 680px;",
+            role: "region",
+            "aria-label": "Server Connections",
 
             div {
                 style: "display: flex; justify-content: space-between; align-items: center;",
@@ -125,6 +127,7 @@ pub(crate) fn ServersPanel() -> Element {
                 button {
                     style: "padding: var(--space-2) var(--space-4); background: var(--border); border: 1px solid var(--border); \
                             border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                    "aria-expanded": if show_add() { "true" } else { "false" },
                     onclick: move |_| show_add.toggle(),
                     if show_add() { "Cancel" } else { "+ Add server" }
                 }
@@ -320,6 +323,7 @@ fn ServerCard(
                             style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
                                     padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                             value: "{edit_name}",
+                            "aria-label": "Name",
                             oninput: move |e| edit_name.set(e.value()),
                         }
                     }
@@ -330,6 +334,7 @@ fn ServerCard(
                             style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
                                     padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                             value: "{edit_url}",
+                            "aria-label": "URL",
                             oninput: move |e| edit_url.set(e.value()),
                         }
                     }
@@ -341,6 +346,7 @@ fn ServerCard(
                             style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
                                     padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                             value: "{edit_token}",
+                            "aria-label": "Auth token",
                             oninput: move |e| edit_token.set(e.value()),
                         }
                     }
@@ -425,6 +431,7 @@ fn ServerCard(
                                     style: "padding: var(--space-1) var(--space-3); background: var(--border); border: 1px solid var(--accent); \
                                             border-radius: var(--radius-sm); color: var(--accent-hover); font-size: var(--text-xs); cursor: pointer; \
                                             transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                    "aria-label": "Update {name} to current URL",
                                     onclick: move |_| on_update_url.call(()),
                                     "Update to current"
                                 }
@@ -434,16 +441,20 @@ fn ServerCard(
 
                     div {
                         style: "display: flex; gap: var(--space-2); flex-shrink: 0; margin-left: var(--space-3);",
+                        role: "group",
+                        "aria-label": "{name} actions",
                         button {
                             style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--border); \
                                     border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
                             disabled: is_testing,
+                            "aria-label": "Test {name}",
                             onclick: move |_| on_test.call(()),
                             "Test"
                         }
                         button {
                             style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--border); \
                                     border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                            "aria-label": "Edit {name}",
                             onclick: move |_| editing.set(true),
                             "Edit"
                         }
@@ -451,12 +462,14 @@ fn ServerCard(
                             button {
                                 style: "padding: var(--space-1) var(--space-3); background: var(--border); border: 1px solid var(--accent); \
                                         border-radius: var(--radius-sm); color: var(--accent-hover); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                "aria-label": "Switch to {name}",
                                 onclick: move |_| on_switch.call(()),
                                 "Switch"
                             }
                             button {
                                 style: "padding: var(--space-1) var(--space-3); background: none; border: 1px solid var(--status-error-bg); \
                                         border-radius: var(--radius-sm); color: var(--status-error); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                                "aria-label": "Remove {name}",
                                 onclick: move |_| on_remove.call(()),
                                 "Remove"
                             }
@@ -497,6 +510,7 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
                         style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
                                 padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                         value: "{name}",
+                        "aria-label": "Name",
                         oninput: move |e| name.set(e.value()),
                     }
                 }
@@ -507,6 +521,7 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
                         style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
                                 padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                         value: "{url}",
+                        "aria-label": "Server URL",
                         oninput: move |e| url.set(e.value()),
                     }
                 }
@@ -518,6 +533,7 @@ fn AddServerForm(server_store: Signal<ServerConfigStore>, on_saved: EventHandler
                         style: "background: var(--input-bg); border: 1px solid var(--border); border-radius: var(--radius-sm); \
                                 padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                         value: "{token}",
+                        "aria-label": "Auth token",
                         oninput: move |e| token.set(e.value()),
                     }
                 }

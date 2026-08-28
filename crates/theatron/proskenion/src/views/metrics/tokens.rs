@@ -137,18 +137,24 @@ pub(crate) fn Tokens() -> Element {
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4);",
+            role: "region",
+            "aria-label": "Tokens",
 
             div {
                 style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
 
                 div {
                     style: "display: flex; gap: var(--space-1);",
+                    role: "radiogroup",
+                    "aria-label": "Granularity",
                     for g in [Granularity::Daily, Granularity::Weekly, Granularity::Monthly] {
                         {
                             let active = *granularity.read() == g;
                             rsx! {
                                 button {
                                     style: if active { CONTROL_BTN_ACTIVE } else { CONTROL_BTN_INACTIVE },
+                                    role: "radio",
+                                    "aria-checked": if active { "true" } else { "false" },
                                     onclick: move |_| granularity.set(g),
                                     "{g.label()}"
                                 }
@@ -161,6 +167,8 @@ pub(crate) fn Tokens() -> Element {
 
                 div {
                     style: "display: flex; gap: var(--space-1);",
+                    role: "radiogroup",
+                    "aria-label": "Date range",
                     for r in [DateRange::Last7Days, DateRange::Last30Days, DateRange::Last90Days] {
                         {
                             let is_active = matches!(
@@ -171,6 +179,8 @@ pub(crate) fn Tokens() -> Element {
                             rsx! {
                                 button {
                                     style: if is_active { CONTROL_BTN_ACTIVE } else { CONTROL_BTN_INACTIVE },
+                                    role: "radio",
+                                    "aria-checked": if is_active { "true" } else { "false" },
                                     onclick: move |_| date_range.set(r2.clone()),
                                     "{r.label()}"
                                 }
@@ -179,6 +189,8 @@ pub(crate) fn Tokens() -> Element {
                     }
                     button {
                         style: if matches!(*date_range.read(), DateRange::Custom { .. }) { CONTROL_BTN_ACTIVE } else { CONTROL_BTN_INACTIVE },
+                        role: "radio",
+                        "aria-checked": if matches!(*date_range.read(), DateRange::Custom { .. }) { "true" } else { "false" },
                         onclick: move |_| {
                             let f = custom_from.read().clone();
                             let t = custom_to.read().clone();
@@ -193,6 +205,7 @@ pub(crate) fn Tokens() -> Element {
                         style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg-surface); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
                         placeholder: "YYYY-MM-DD",
                         value: "{custom_from}",
+                        "aria-label": "Custom range start date",
                         oninput: move |e| {
                             custom_from.set(e.value());
                             let f = e.value();
@@ -205,6 +218,7 @@ pub(crate) fn Tokens() -> Element {
                         style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg-surface); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
                         placeholder: "YYYY-MM-DD",
                         value: "{custom_to}",
+                        "aria-label": "Custom range end date",
                         oninput: move |e| {
                             custom_to.set(e.value());
                             let f = custom_from.read().clone();

@@ -750,6 +750,8 @@ pub(crate) fn Ops() -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Operations",
 
             // ── Header with tabs ──
             div {
@@ -757,23 +759,33 @@ pub(crate) fn Ops() -> Element {
                 h2 { style: "font-size: var(--text-xl); margin: 0;", "Operations" }
                 div {
                     style: "display: flex; align-items: center; gap: var(--space-2);",
+                    role: "tablist",
+                    "aria-label": "Operations sections",
                     button {
                         style: if tab == OpsTab::Dashboard { TAB_ACTIVE } else { TAB_INACTIVE },
+                        role: "tab",
+                        "aria-selected": if tab == OpsTab::Dashboard { "true" } else { "false" },
                         onclick: move |_| active_tab.set(OpsTab::Dashboard),
                         "Dashboard"
                     }
                     button {
                         style: if tab == OpsTab::Tools { TAB_ACTIVE } else { TAB_INACTIVE },
+                        role: "tab",
+                        "aria-selected": if tab == OpsTab::Tools { "true" } else { "false" },
                         onclick: move |_| active_tab.set(OpsTab::Tools),
                         "Tools"
                     }
                     button {
                         style: if tab == OpsTab::Credentials { TAB_ACTIVE } else { TAB_INACTIVE },
+                        role: "tab",
+                        "aria-selected": if tab == OpsTab::Credentials { "true" } else { "false" },
                         onclick: move |_| active_tab.set(OpsTab::Credentials),
                         "Credentials"
                     }
                     button {
                         style: if tab == OpsTab::Providers { TAB_ACTIVE } else { TAB_INACTIVE },
+                        role: "tab",
+                        "aria-selected": if tab == OpsTab::Providers { "true" } else { "false" },
                         onclick: move |_| {
                             active_tab.set(OpsTab::Providers);
                             refresh_providers();
@@ -782,6 +794,7 @@ pub(crate) fn Ops() -> Element {
                     }
                     button {
                         style: "{REFRESH_BTN}",
+                        "aria-label": "Refresh operations data",
                         onclick: move |_| {
                             match tab {
                                 OpsTab::Dashboard => refresh_dashboard(),

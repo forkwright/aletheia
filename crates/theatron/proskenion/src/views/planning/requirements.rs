@@ -184,12 +184,15 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Requirements",
 
             div {
                 style: "{HEADER_ROW}",
                 h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Requirements" }
                 button {
                     style: "{REFRESH_BTN}",
+                    "aria-label": "Refresh requirements",
                     onclick: move |_| {
                         fetch_state.set(FetchState::NotAvailable);
                     },
@@ -264,18 +267,26 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
 
                         div {
                             style: "{TAB_BAR}",
+                            role: "tablist",
+                            "aria-label": "Requirement categories",
                             button {
                                 style: if cat == RequirementCategory::V1 { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
+                                role: "tab",
+                                "aria-selected": if cat == RequirementCategory::V1 { "true" } else { "false" },
                                 onclick: move |_| active_category.set(RequirementCategory::V1),
                                 "v1 ({v1_count})"
                             }
                             button {
                                 style: if cat == RequirementCategory::V2 { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
+                                role: "tab",
+                                "aria-selected": if cat == RequirementCategory::V2 { "true" } else { "false" },
                                 onclick: move |_| active_category.set(RequirementCategory::V2),
                                 "v2 ({v2_count})"
                             }
                             button {
                                 style: if cat == RequirementCategory::OutOfScope { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
+                                role: "tab",
+                                "aria-selected": if cat == RequirementCategory::OutOfScope { "true" } else { "false" },
                                 onclick: move |_| active_category.set(RequirementCategory::OutOfScope),
                                 "Out of Scope ({oos_count})"
                             }
@@ -288,10 +299,12 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                 r#type: "text",
                                 placeholder: "Search requirements...",
                                 value: "{search_query}",
+                                "aria-label": "Search requirements",
                                 oninput: move |evt| search_query.set(evt.value()),
                             }
                             select {
                                 style: "{FILTER_SELECT}",
+                                "aria-label": "Filter by status",
                                 onchange: move |evt| {
                                     let val = evt.value();
                                     status_filter.set(match val.as_str() {
@@ -310,6 +323,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                             }
                             select {
                                 style: "{FILTER_SELECT}",
+                                "aria-label": "Filter by priority",
                                 onchange: move |evt| {
                                     let val = evt.value();
                                     priority_filter.set(match val.as_str() {
@@ -394,6 +408,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                                     style: "{EDIT_INPUT}",
                                                                     r#type: "text",
                                                                     value: "{edit_value}",
+                                                                    "aria-label": "Edit title",
                                                                     oninput: move |evt| edit_value.set(evt.value()),
                                                                     onkeydown: move |evt| {
                                                                         if evt.key() == Key::Enter {
@@ -409,6 +424,9 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                             } else {
                                                                 span {
                                                                     style: "cursor: text;",
+                                                                    role: "button",
+                                                                    tabindex: "0",
+                                                                    "aria-label": "Edit title: {req.title}",
                                                                     onclick: move |_| {
                                                                         edit_value.set(req_title.clone());
                                                                         editing.set(Some((req_id3.clone(), "title")));
@@ -425,6 +443,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                                     style: "{EDIT_INPUT}",
                                                                     r#type: "text",
                                                                     value: "{edit_value}",
+                                                                    "aria-label": "Edit description",
                                                                     oninput: move |evt| edit_value.set(evt.value()),
                                                                     onkeydown: {
                                                                         let rid = req_id4.clone();
@@ -446,6 +465,9 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                             } else {
                                                                 span {
                                                                     style: "cursor: text;",
+                                                                    role: "button",
+                                                                    tabindex: "0",
+                                                                    "aria-label": "Edit description: {desc_display}",
                                                                     onclick: {
                                                                         let rid = req_id4.clone();
                                                                         move |_| {
@@ -476,6 +498,7 @@ pub(crate) fn RequirementsView(project_id: String) -> Element {
                                                             select {
                                                                 style: "{CATEGORY_SELECT}",
                                                                 value: "{cat_value}",
+                                                                "aria-label": "Category for {req.title}",
                                                                 onchange: {
                                                                     let rid = req.id.clone();
                                                                     move |evt| {

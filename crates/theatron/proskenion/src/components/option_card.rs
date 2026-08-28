@@ -120,6 +120,10 @@ pub(crate) fn OptionCard(
     rsx! {
         div {
             style: "{card_style}",
+            role: "radio",
+            tabindex: "0",
+            "aria-checked": if selected { "true" } else { "false" },
+            "aria-label": "{option.title}",
             onclick: move |_| on_select.call(option_id.clone()),
 
             div {

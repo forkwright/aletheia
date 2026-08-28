@@ -159,6 +159,8 @@ pub(crate) fn DiscussionView(project_id: String) -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Discussions",
             div {
                 style: "{HEADER_ROW}",
                 h3 { style: "font-size: var(--text-md); margin: 0; color: var(--text-primary);", "Discussions" }
@@ -333,6 +335,8 @@ fn DiscussionCard(
     rsx! {
         div {
             style: "{card_style}",
+            role: "group",
+            "aria-label": "{discussion.question}",
 
             div {
                 style: "display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: var(--space-2);",
@@ -363,6 +367,8 @@ fn DiscussionCard(
             if is_open {
                 div {
                     style: "{OPTIONS_GRID}",
+                    role: "radiogroup",
+                    "aria-label": "Answer options",
                     for opt in &discussion.options {
                         OptionCard {
                             key: "{opt.id}",
@@ -381,6 +387,7 @@ fn DiscussionCard(
                     style: "margin-top: var(--space-3);",
                     button {
                         style: "background: transparent; border: none; color: var(--accent); font-size: var(--text-xs); cursor: pointer; padding: 0; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                        "aria-expanded": if *show_free_text.read() { "true" } else { "false" },
                         onclick: move |_| {
                             let current = *show_free_text.read();
                             show_free_text.set(!current);
@@ -399,6 +406,7 @@ fn DiscussionCard(
                             placeholder: "Type your custom answer...",
                             rows: "3",
                             value: "{free_text.read()}",
+                            "aria-label": "Custom answer",
                             oninput: move |evt: Event<FormData>| free_text.set(evt.value().clone()),
                         }
                     }
