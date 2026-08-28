@@ -18,7 +18,7 @@ use poiesis_charts::{
     Chart, ColorMode as ChartColorMode, ResolvedTheme as ChartResolvedTheme, render_chart,
 };
 use poiesis_core::{
-    Block, Document, Factbase, Metadata, QaIssue, QaIssueKind, QaReport, Renderer, RichText, Span,
+    Block, Document, Factbase, Metadata, QaIssue, QaIssueKind, QaReport, Renderer, RichText,
 };
 use poiesis_lint::{LintConfig, Linter};
 use poiesis_theme::{
@@ -387,7 +387,7 @@ fn parse_block(v: &serde_json::Value, index: usize) -> std::result::Result<Block
                 .and_then(serde_json::Value::as_u64)
                 .and_then(|n| u8::try_from(n.min(6)).ok())
                 .unwrap_or(1);
-            let text = plain(
+            let text = RichText::from(
                 v.get("text")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or(""),
@@ -395,7 +395,7 @@ fn parse_block(v: &serde_json::Value, index: usize) -> std::result::Result<Block
             Ok(Block::Heading { level, text })
         }
         "paragraph" => {
-            let text = plain(
+            let text = RichText::from(
                 v.get("text")
                     .and_then(serde_json::Value::as_str)
                     .unwrap_or(""),
@@ -404,12 +404,6 @@ fn parse_block(v: &serde_json::Value, index: usize) -> std::result::Result<Block
         }
         "page_break" => Ok(Block::PageBreak),
         other => Err(format!("block {index}: unsupported block type '{other}'")),
-    }
-}
-
-fn plain(s: &str) -> RichText {
-    RichText {
-        spans: vec![Span::Plain(s.to_owned())],
     }
 }
 

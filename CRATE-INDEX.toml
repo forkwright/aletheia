@@ -365,7 +365,7 @@ path = "crates/poiesis/core"
 layer = "types"
 purpose = "Format-agnostic document model and Renderer trait for poiesis"
 depends_on = []
-used_by = ["organon", "poiesis", "poiesis-charts", "poiesis-deck", "poiesis-doc", "poiesis-lint", "poiesis-printer-chromium", "poiesis-scaffold", "poiesis-sheet", "poiesis-slides", "poiesis-text"]
+used_by = ["organon", "poiesis", "poiesis-charts", "poiesis-deck", "poiesis-doc", "poiesis-lint", "poiesis-printer-chromium", "poiesis-scaffold", "poiesis-sheet", "poiesis-slides", "poiesis-text", "poiesis-theme"]
 features = {}
 dev_depends_on = []
 
@@ -495,7 +495,7 @@ chromium = "Enable headless Chromium PDF printing via CDP (requires system Chrom
 path = "crates/poiesis/theme"
 layer = "types"
 purpose = "Theme registry, token model, and brand-asset sinks (CSS, OOXML clrScheme, Pandoc doc-vars) for poiesis"
-depends_on = []
+depends_on = ["poiesis-core"]
 used_by = ["organon", "poiesis", "poiesis-charts", "poiesis-sheet"]
 features = {}
 dev_depends_on = []

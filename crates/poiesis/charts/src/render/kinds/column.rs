@@ -155,7 +155,7 @@ fn emit_axes(
             let cx = plot.x0 + band_w * idx_to_f64(j) + band_w * 0.5;
             let label = match &point.label {
                 Some(CiteOrText::Text(t)) => t.clone(),
-                Some(CiteOrText::Cite(id)) => id.0.clone(),
+                Some(CiteOrText::Cite(id)) => id.as_str().to_owned(),
                 None => String::new(),
             };
             let _ = write!(
@@ -244,7 +244,7 @@ mod tests {
 
     fn cite(id: &str, v: f64) -> FactCite {
         FactCite {
-            id: FactId(id.to_owned()),
+            id: FactId::new(id.to_owned()).expect("valid fact id"),
             value: v,
             unit: Unit::Number,
         }

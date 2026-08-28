@@ -5,9 +5,13 @@
 
 use std::fmt::Write as _;
 
+pub(crate) use poiesis_core::escape_xml;
+
 use crate::Result;
-use crate::model::{AxisSpec, Chart, CiteOrText, Domain, LegendSpec, Ticks};
+use crate::format::{coord, format_number};
+use crate::model::{AxisSpec, Chart, CiteOrText, Domain, LegendSpec, Ticks, Unit};
 use crate::render::canvas::{Canvas, PlotBox};
+use crate::scale::Scale;
 use crate::theme::{ColorMode, ResolvedTheme};
 
 // WHY: the value below is the W3C SVG 1.1 namespace identifier — a fixed URI
@@ -36,18 +40,9 @@ pub(crate) fn emit_svg_open(out: &mut String, chart: &Chart, canvas: &Canvas) {
 pub(crate) fn aria_label(chart: &Chart) -> String {
     match &chart.title {
         Some(CiteOrText::Text(t)) => escape_xml(t),
-        Some(CiteOrText::Cite(id)) => escape_xml(&id.0),
+        Some(CiteOrText::Cite(id)) => escape_xml(id.as_str()),
         None => format!("{} chart", chart.kind.name()),
     }
-}
-
-/// Escape `&`, `<`, `>`, and `"` so text is safe inside SVG attributes and
-/// text nodes.
-pub(crate) fn escape_xml(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 /// Compute a nice-rounded domain from data values.
@@ -97,6 +92,121 @@ pub(crate) fn ticks_for_axis(spec: &AxisSpec, lo: f64, hi: f64) -> Vec<f64> {
     }
 }
 
+/// Emit `<g class="gridlines">`: horizontal gridlines at y-tick positions.
+///
+/// Shared by every kind laid out on a linear y-axis with a banded category
+/// x-axis (line, area) — the central series geometry is the only thing that
+/// differs between them. Bar/column/scatter axis layouts differ enough to
+/// keep their own arms.
+pub(crate) fn emit_gridlines(
+    out: &mut String,
+    y_scale: &Scale,
+    plot: &PlotBox,
+    lo: f64,
+    hi: f64,
+    axis: &AxisSpec,
+) {
+    out.push_str("<g class=\"gridlines\">");
+    for tick in ticks_for_axis(axis, lo, hi) {
+        let y = y_scale.map(tick);
+        let _ = write!(
+            out,
+            "<line x1=\"{x1}\" y1=\"{y}\" x2=\"{x2}\" y2=\"{y}\" stroke=\"#e5e7eb\" stroke-width=\"1\"/>",
+            x1 = coord(plot.x0),
+            y = coord(y),
+            x2 = coord(plot.x1),
+        );
+    }
+    out.push_str("</g>");
+}
+
+/// Emit `<g class="axes">`: y-tick labels plus x-category labels taken from
+/// the chart's first series.
+///
+/// Shared by line and area — see [`emit_gridlines`].
+pub(crate) fn emit_axes(
+    out: &mut String,
+    chart: &Chart,
+    y_scale: &Scale,
+    plot: &PlotBox,
+    band_w: f64,
+    theme: &ResolvedTheme,
+    lo: f64,
+    hi: f64,
+    axis: &AxisSpec,
+) {
+    out.push_str("<g class=\"axes\">");
+
+    for tick in ticks_for_axis(axis, lo, hi) {
+        let y = y_scale.map(tick);
+        let label = escape_xml(&format_number(tick, axis.format, Unit::Number));
+        let _ = write!(
+            out,
+            "<text x=\"{x}\" y=\"{y}\" text-anchor=\"end\" dominant-baseline=\"middle\" font-family=\"{font}\">{label}</text>",
+            x = coord(plot.x0 - 8.0),
+            y = coord(y),
+            font = theme.font_sans,
+        );
+    }
+
+    if let Some(series) = chart.series.first() {
+        for (j, point) in series.points.iter().enumerate() {
+            let cx = plot.x0 + band_w * idx_to_f64(j) + band_w * 0.5;
+            let label = match &point.label {
+                Some(CiteOrText::Text(t)) => escape_xml(t),
+                Some(CiteOrText::Cite(id)) => escape_xml(id.as_str()),
+                None => String::new(),
+            };
+            let _ = write!(
+                out,
+                "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" font-family=\"{font}\">{label}</text>",
+                x = coord(cx),
+                y = coord(plot.y1 + 24.0),
+                font = theme.font_sans,
+            );
+        }
+    }
+
+    out.push_str("</g>");
+}
+
+/// Emit `<g class="labels">`: on-point value labels for every series.
+///
+/// Shared by line and area — see [`emit_gridlines`].
+pub(crate) fn emit_data_labels(
+    out: &mut String,
+    chart: &Chart,
+    y_scale: &Scale,
+    plot: &PlotBox,
+    band_w: f64,
+    theme: &ResolvedTheme,
+    mode: ColorMode,
+) -> Result<()> {
+    out.push_str("<g class=\"labels\">");
+    for (i, series) in chart.series.iter().enumerate() {
+        let fill = theme.fill_for(&series.tone, mode, i)?;
+        for (j, point) in series.points.iter().enumerate() {
+            let cx = plot.x0 + band_w * idx_to_f64(j) + band_w * 0.5;
+            let cy = y_scale.map(point.y.value);
+            let label = escape_xml(&format_number(
+                point.y.value,
+                chart.axes.y_left.format,
+                point.y.unit,
+            ));
+            let _ = write!(
+                out,
+                "<text x=\"{x}\" y=\"{y}\" text-anchor=\"middle\" dominant-baseline=\"auto\" font-family=\"{font}\" fill=\"{fill}\">{label}</text>",
+                x = coord(cx),
+                y = coord(cy - 14.0),
+                font = theme.font_sans,
+                fill = fill,
+            );
+        }
+    }
+    out.push_str("</g>");
+    Ok(())
+}
+
 /// Convert a category index to `f64` for geometric calculations.
 #[expect(
     clippy::cast_precision_loss,
@@ -105,6 +215,16 @@ pub(crate) fn ticks_for_axis(spec: &AxisSpec, lo: f64, hi: f64) -> Vec<f64> {
 )]
 pub(crate) const fn idx_to_f64(i: usize) -> f64 {
     i as f64
+}
+
+/// Map a polar coordinate (center, radius, angle from 12 o'clock, clockwise)
+/// to an SVG-space `(x, y)` pair.
+///
+/// Shared by pie and doughnut — both sweep sectors the same way; only the
+/// inner-radius cut distinguishes doughnut's geometry.
+pub(crate) fn polar_to_xy(cx: f64, cy: f64, r: f64, angle_rad: f64) -> (f64, f64) {
+    let svg_angle = angle_rad - std::f64::consts::FRAC_PI_2;
+    (cx + r * svg_angle.cos(), cy + r * svg_angle.sin())
 }
 
 /// Decide whether a legend should be emitted for this chart.
@@ -144,7 +264,7 @@ pub(crate) fn emit_legend(
         let x = start_x + item_w * idx_to_f64(i);
         let name = match &series.name {
             CiteOrText::Text(t) => escape_xml(t),
-            CiteOrText::Cite(id) => escape_xml(&id.0),
+            CiteOrText::Cite(id) => escape_xml(id.as_str()),
         };
         let _ = write!(
             out,
@@ -193,14 +313,6 @@ mod tests {
     use super::*;
     use crate::model::{Axes, Chart, ChartKind, LegendSpec, Series, SeriesStyle, ToneRef};
     use crate::render::canvas::DeckCanvas;
-
-    #[test]
-    fn escape_xml_escapes_reserved_characters() {
-        assert_eq!(escape_xml("R&D"), "R&amp;D");
-        assert_eq!(escape_xml("<2024"), "&lt;2024");
-        assert_eq!(escape_xml(">2024"), "&gt;2024");
-        assert_eq!(escape_xml("\"quote\""), "&quot;quote&quot;");
-    }
 
     #[test]
     fn nice_domain_clamps_to_zero_baseline() {
