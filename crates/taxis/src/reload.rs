@@ -341,6 +341,10 @@ fn diff_values(old: &Value, new: &Value, prefix: String, changes: &mut Vec<Confi
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test: vec[0] is valid after asserting len() above"
+)]
 mod tests {
     use super::*;
     use crate::test_support::EnvJail;

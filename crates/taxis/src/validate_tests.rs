@@ -1,5 +1,6 @@
 // kanon:ignore RUST/file-too-long — comprehensive validation tests for all config sections
 #![expect(clippy::unwrap_used, reason = "test assertions")]
+#![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
     clippy::indexing_slicing,
     reason = "test: vec[0] is valid after asserting errors are non-empty"

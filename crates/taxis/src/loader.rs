@@ -966,6 +966,10 @@ mod tests {
         let before = std::fs::read_to_string(&config_path).expect("read encrypted config");
         assert!(!before.contains("old-signing-secret"));
 
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "test corrupts an existing key file synchronously before the next write_config call"
+        )]
         std::fs::write(&key_path, "not-a-valid-primary-key").expect("corrupt test key");
         config.gateway.auth.signing_key = Some(SecretString::from("new-signing-secret"));
         let error = write_config(&oikos, &config)

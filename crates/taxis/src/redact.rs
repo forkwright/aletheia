@@ -507,6 +507,7 @@ fn redact_sensitive_keys(value: &mut Value) {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: JSON string-key indexing; key presence is the assertion under test"
