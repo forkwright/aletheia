@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use koina::system::{Environment, RealSystem};
 
 use super::config::expand_tilde;
+#[cfg(target_os = "linux")]
+use super::policy::REQUIRED_LANDLOCK_ABI;
 use super::*;
 mod egress;
 
@@ -354,12 +356,12 @@ fn probe_returns_consistent_result() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn permissive_skips_sandbox_when_landlock_unavailable() {
+fn permissive_skips_sandbox_without_full_landlock_baseline() {
     use std::process::Command;
 
     // WHY: Simulate the permissive fallback by building a policy with permissive
     // enforcement and verifying the tool still executes even when we cannot
-    // rely on Landlock being present.
+    // rely on the full Landlock baseline being present.
     let config = SandboxConfig {
         enforcement: SandboxEnforcement::Permissive,
         ..SandboxConfig::default()
@@ -371,7 +373,7 @@ fn permissive_skips_sandbox_when_landlock_unavailable() {
     cmd.arg("permissive fallback");
 
     // WHY: apply_sandbox must not return an error in permissive mode regardless
-    // of whether Landlock is available on this kernel.
+    // of whether every required Landlock right is available on this kernel.
     let result = apply_sandbox(&mut cmd, policy);
     assert!(
         result.is_ok(),
@@ -391,12 +393,11 @@ fn permissive_skips_sandbox_when_landlock_unavailable() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn enforcing_surfaces_clear_error_when_landlock_unavailable() {
+fn enforcing_surfaces_clear_error_without_full_landlock_baseline() {
     use std::process::Command;
 
-    // WHY: We cannot force a kernel to lack Landlock in a unit test.
-    // Instead we verify the error message content when probe returns None,
-    // testing the code path directly via the internal helper.
+    // WHY: We cannot force a kernel to lack the required Landlock rights in a
+    // unit test. Branch on the real ABI probe and verify both admission paths.
     let config = SandboxConfig {
         enforcement: SandboxEnforcement::Enforcing,
         ..SandboxConfig::default()
@@ -407,11 +408,11 @@ fn enforcing_surfaces_clear_error_when_landlock_unavailable() {
     let mut cmd = Command::new("echo");
     cmd.arg("should not run");
 
-    if probe_landlock_abi().is_none() {
+    if probe_landlock_abi().is_none_or(|abi| abi < REQUIRED_LANDLOCK_ABI) {
         let err = apply_sandbox(&mut cmd, policy).expect_err("enforcing must fail");
         let msg = err.to_string();
         assert!(
-            msg.contains("Landlock not available"),
+            msg.contains("Landlock V5"),
             "error must name Landlock: {msg}"
         );
         assert!(
@@ -426,7 +427,7 @@ fn enforcing_surfaces_clear_error_when_landlock_unavailable() {
         let result = apply_sandbox(&mut cmd, policy);
         assert!(
             result.is_ok(),
-            "enforcing mode must succeed when Landlock is available: {result:?}"
+            "enforcing mode must succeed when the full Landlock baseline is available: {result:?}"
         );
     }
 }
@@ -455,6 +456,10 @@ fn landlock_applies_in_child() {
 #[test]
 fn landlock_blocks_outside_workspace() {
     use std::process::Command;
+
+    if probe_landlock_abi().is_none_or(|abi| abi < REQUIRED_LANDLOCK_ABI) {
+        return;
+    }
 
     let dir = tempfile::tempdir().expect("create temp dir");
     let secret = dir.path().join("secret.txt");
@@ -637,6 +642,10 @@ fn sandbox_write_in_workspace() {
 fn sandbox_write_outside_workspace_blocked() {
     use std::process::Command;
 
+    if probe_landlock_abi().is_none_or(|abi| abi < REQUIRED_LANDLOCK_ABI) {
+        return;
+    }
+
     let workspace = tempfile::tempdir().expect("create workspace");
     let outside = tempfile::tempdir().expect("create outside dir");
     let policy = SandboxPolicy {
@@ -685,7 +694,7 @@ fn sandbox_write_outside_workspace_blocked() {
 fn exec_succeeds_under_sandbox_with_absolute_and_bare_paths() {
     use std::process::Command;
 
-    if probe_landlock_abi().is_none() {
+    if probe_landlock_abi().is_none_or(|abi| abi < REQUIRED_LANDLOCK_ABI) {
         return;
     }
 

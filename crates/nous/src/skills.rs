@@ -45,27 +45,17 @@ pub(crate) fn extract_task_context(content: &str) -> String {
         .to_owned()
 }
 
-/// Strip characters that Krites FTS (tantivy) cannot parse.
+/// Strip characters that Krites FTS cannot parse.
 ///
-/// Keeps alphanumeric chars, whitespace, hyphens, and underscores.
-/// Collapses runs of whitespace into a single space.
+/// WHY(#7020): delegates to the canonical `koina::fts::sanitize_fts_query`,
+/// the single owner for this policy shared with
+/// `episteme::knowledge_store::marshal` — this crate's copy had drifted to
+/// preserve hyphens and underscores as word content, so the #4156 FTS-escaping
+/// fix (those characters are grammar operators/separators, not text) applied
+/// to only one of the two query paths that reach the same engine.
 #[cfg(any(feature = "knowledge-store", test))]
 fn sanitize_fts_query(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
-    let mut prev_space = false;
-    for ch in input.chars() {
-        if ch.is_alphanumeric() || ch == '-' || ch == '_' {
-            result.push(ch);
-            prev_space = false;
-        } else if ch.is_whitespace() && !prev_space && !result.is_empty() {
-            result.push(' ');
-            prev_space = true;
-        }
-    }
-    if result.ends_with(' ') {
-        result.pop();
-    }
-    result
+    koina::fts::sanitize_fts_query(input)
 }
 
 /// Format a [`SkillContent`] as a compact markdown section for the system prompt.
@@ -442,10 +432,13 @@ mod tests {
     }
 
     #[test]
-    fn sanitize_fts_preserves_hyphens_and_underscores() {
+    fn sanitize_fts_splits_on_hyphens_and_underscores() {
+        // WHY(#7020): hyphens/underscores are Krites FTS-grammar operators,
+        // not word content — the #4156 correction, now applied uniformly
+        // via the canonical `koina::fts::sanitize_fts_query`.
         assert_eq!(
             sanitize_fts_query("rust-error_handling"),
-            "rust-error_handling"
+            "rust error handling"
         );
     }
 

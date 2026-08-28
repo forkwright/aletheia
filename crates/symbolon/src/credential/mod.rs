@@ -95,6 +95,30 @@ const OAUTH_TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
 /// Fallback default; runtime reads `CredentialConfig::refresh_threshold_secs`.
 pub const REFRESH_THRESHOLD_SECS: u64 = 3600;
 
+/// Per-request timeout for the device-code, PKCE, and refresh-token OAuth
+/// flows (`device_code`, `pkce`, `refresh`).
+///
+/// WHY(#7012): previously restated as a bare `.timeout(Duration::from_secs(30))`
+/// at every OAuth HTTP call site in this module. One constant, applied once
+/// at client construction via [`oauth_http_client`], rather than at each
+/// `.send()` call.
+const OAUTH_HTTP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Build the shared, unauthenticated HTTP client used by the device-code,
+/// PKCE, and refresh-token OAuth flows.
+///
+/// WHY(#7012): each flow previously called `reqwest::Client::new()`
+/// independently and applied [`OAUTH_HTTP_TIMEOUT`] per request instead of
+/// once at the client. These flows call absolute, provider-supplied URLs
+/// and carry no shared connection state, so one client-level timeout
+/// covers all of them.
+pub(crate) fn oauth_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(OAUTH_HTTP_TIMEOUT)
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
+}
+
 // INVARIANT: the credential module does not redeclare the leeway value.
 // The alias imported above forces the OAuth expiry path to use the same
 // definition as the JWT validation path.

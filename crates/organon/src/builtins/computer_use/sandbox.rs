@@ -16,11 +16,11 @@ use crate::types::{ToolContext, ToolDiagnostics};
 ///
 /// # NOTE
 ///
-/// Landlock LSM requires Linux kernel 5.13+. The sandbox is applied via
+/// The enforcing policy requires Landlock ABI v5 (Linux 6.10+ unless
+/// backported) because it handles device ioctls. The sandbox is applied via
 /// the `landlock_create_ruleset`, `landlock_add_rule`, and
 /// `landlock_restrict_self` syscalls directly through the `landlock` crate
-/// (which wraps the syscalls via `rustix`). No external sandbox binary is
-/// used.
+/// (which wraps the syscalls via `rustix`). No external sandbox binary is used.
 #[derive(Debug, Clone)]
 pub(crate) struct ComputerUseSessionConfig {
     /// Filesystem paths the session is allowed to read.
@@ -114,8 +114,8 @@ pub(super) struct SandboxedActionResult {
 /// # NOTE
 ///
 /// The Landlock sandbox is applied via syscall through the `landlock` crate
-/// (not an external sandbox binary). Requires Linux kernel 5.13+ with
-/// Landlock enabled (`CONFIG_SECURITY_LANDLOCK=y`).
+/// (not an external sandbox binary). Enforcing mode requires Landlock ABI v5
+/// (Linux 6.10+ unless backported) with `CONFIG_SECURITY_LANDLOCK=y`.
 ///
 /// # Errors
 ///

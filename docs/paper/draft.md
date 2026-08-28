@@ -145,7 +145,7 @@ comm[labels, entity_id] <~ CommunityDetectionLouvain(edges_w[])
 
 Aletheia executes external-process tools in child processes with three layers of kernel enforcement, applied via `pre_exec` between `fork` and `exec` on Linux:
 
-1. **Landlock LSM** (Linux 5.13+) restricts filesystem access. The policy grants read, write, and execute permissions to specific paths. Landlock ABI v5 is probed at startup. If the kernel lacks Landlock, behavior depends on the configured enforcement level.
+1. **Landlock LSM** restricts filesystem access. The policy grants read, write, and execute permissions to specific paths and requires ABI v5 (Linux 6.10+ unless backported) to cover device ioctls. The ABI is probed at startup. If Landlock is absent or older than v5, enforcing mode refuses execution while permissive mode reports degraded enforcement.
 
 2. **seccomp BPF** blocks dangerous syscalls. A BPF filter denies `ptrace`, `mount`, `umount2`, `reboot`, `kexec_load`, `init_module`, `delete_module`, `finit_module`, `pivot_root`, and `chroot`. In enforcing mode violations return `EPERM`; in permissive mode they are logged and allowed.
 

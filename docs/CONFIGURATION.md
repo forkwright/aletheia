@@ -40,6 +40,7 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [feature_flags](#feature_flags)
 - [embedding](#embedding)
 - [packs](#packs)
+- [packOverlays](#packoverlays)
 - [maintenance](#maintenance)
 - [pricing](#pricing)
 - [sandbox](#sandbox)
@@ -631,6 +632,17 @@ External domain pack paths (directories containing pack.toml).
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `packs` | path[] | [] | External domain pack paths (directories containing pack.toml). |
+
+## packOverlays
+
+Operator opt-in for high-impact pack overlay powers (model, agency, durable system-prompt additions). WHY off by default (#5220): a domain pack must not silently switch models, raise tool-iteration limits, or inject non-truncatable prompt text. Powers not enabled here are stripped at pack load and recorded in the pack health report.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `allowModelOverrides` | bool | false | Allow packs to override an agent's primary model. |
+| `allowAgencyOverrides` | bool | false | Allow packs to override an agent's agency level. |
+| `allowPromptAdditions` | bool | false | Allow packs to inject durable system-prompt additions. |
+| `maxPromptAdditionBytes` | integer | 4096 | Total byte cap for one pack's system-prompt additions per agent; additions past the cap are dropped whole, never truncated mid-string. |
 
 ## maintenance
 
@@ -1853,6 +1865,29 @@ packs = [
     "/srv/aletheia/packs/engineering",
     "/srv/aletheia/packs/research",
 ]
+```
+
+### packOverlays
+
+Operator opt-in for high-impact pack overlay powers. All off by default:
+a pack that declares `model`, `agency`, or `system_prompt_additions` in
+its overlays has them stripped at load (recorded in the pack health
+report) until the matching switch is enabled. See
+[PACKS.md](PACKS.md#overlays).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `packOverlays.allowModelOverrides` | bool | false | Allow packs to override an agent's primary model. |
+| `packOverlays.allowAgencyOverrides` | bool | false | Allow packs to override an agent's agency level. |
+| `packOverlays.allowPromptAdditions` | bool | false | Allow packs to inject durable system-prompt additions. |
+| `packOverlays.maxPromptAdditionBytes` | int | 4096 | Total byte cap per pack per agent for system-prompt additions. |
+
+```toml
+[packOverlays]
+allowModelOverrides = false
+allowAgencyOverrides = false
+allowPromptAdditions = false
+maxPromptAdditionBytes = 4096
 ```
 
 ### sandbox

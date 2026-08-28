@@ -416,7 +416,7 @@ async fn refresh_loop(
     path: PathBuf,
     circuit_breaker: Arc<CircuitBreaker>,
 ) {
-    let client = reqwest::Client::new();
+    let client = super::oauth_http_client();
     let check_interval = Duration::from_secs(REFRESH_CHECK_INTERVAL_SECS);
     let mut mtime_tracker = FileMtimeTracker::new(&path);
 
@@ -522,13 +522,7 @@ pub(super) async fn do_refresh(
         ("client_id", OAUTH_CLIENT_ID),
     ];
 
-    let resp = match client
-        .post(token_url)
-        .form(&form)
-        .timeout(Duration::from_secs(30))
-        .send()
-        .await
-    {
+    let resp = match client.post(token_url).form(&form).send().await {
         Ok(r) => r,
         Err(e) => {
             warn!(error = %e, "OAuth refresh request failed");
@@ -645,7 +639,7 @@ pub async fn force_refresh(path: &Path) -> Result<CredentialFile, String> {
         .filter(|t| !t.expose_secret().is_empty())
         .ok_or("no refresh token in credential file")?;
 
-    let client = reqwest::Client::new();
+    let client = super::oauth_http_client();
     let (access_token, refresh_token, expires_in, scope) =
         match do_refresh(&client, refresh_token.expose_secret(), OAUTH_TOKEN_URL).await {
             RefreshOutcome::Success {

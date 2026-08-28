@@ -10,9 +10,98 @@ fn guarantee_status_display_is_lowercase_ascii() {
     assert_eq!(GuaranteeStatus::Unrestricted.to_string(), "unrestricted");
 }
 
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+#[test]
+fn default_permissive_mode_does_not_claim_seccomp_enforcement() {
+    // WHY(#5215): this is a seccomp-capable CI architecture, but the default
+    // permissive policy selects SeccompAction::Log rather than a blocking
+    // action. Capability alone must never promote that log-only filter to an
+    // enforced (`Active`) guarantee.
+    let config = SandboxConfig::default();
+    assert_eq!(config.enforcement, SandboxEnforcement::Permissive);
+    assert_eq!(
+        diagnostic_guarantees(&config).seccomp,
+        GuaranteeStatus::Degraded
+    );
+}
+
+#[test]
+fn landlock_active_requires_every_v5_filesystem_right() {
+    use landlock::{ABI, Access, AccessFs, RulesetStatus};
+
+    // IoctlDev is a right this policy actually requests for /dev. ABI v4
+    // cannot represent it; ABI v5 can. This pins the mechanism behind the
+    // admission threshold rather than merely fabricating a status enum.
+    assert!(!AccessFs::from_all(ABI::V4).contains(AccessFs::IoctlDev));
+    assert!(AccessFs::from_all(ABI::V5).contains(AccessFs::IoctlDev));
+
+    assert_eq!(
+        landlock_guarantee_status(
+            Some(REQUIRED_LANDLOCK_ABI - 1),
+            SandboxEnforcement::Enforcing
+        ),
+        GuaranteeStatus::Unavailable
+    );
+    assert_eq!(
+        landlock_guarantee_status(
+            Some(REQUIRED_LANDLOCK_ABI - 1),
+            SandboxEnforcement::Permissive
+        ),
+        GuaranteeStatus::Degraded
+    );
+    assert_eq!(
+        landlock_guarantee_status(Some(REQUIRED_LANDLOCK_ABI), SandboxEnforcement::Enforcing),
+        GuaranteeStatus::Active
+    );
+    assert_eq!(
+        landlock_guarantee_status(None, SandboxEnforcement::Enforcing),
+        GuaranteeStatus::Unavailable
+    );
+    assert_eq!(
+        landlock_guarantee_status(
+            Some(REQUIRED_LANDLOCK_ABI + 1),
+            SandboxEnforcement::Permissive
+        ),
+        GuaranteeStatus::Active
+    );
+
+    assert!(
+        require_full_landlock_status(
+            &RulesetStatus::PartiallyEnforced,
+            SandboxEnforcement::Enforcing
+        )
+        .is_err(),
+        "child-side partial enforcement must fail closed even after preflight"
+    );
+    assert!(
+        require_full_landlock_status(
+            &RulesetStatus::PartiallyEnforced,
+            SandboxEnforcement::Permissive
+        )
+        .is_ok(),
+        "permissive mode may continue but is classified degraded by preflight"
+    );
+    assert!(
+        require_full_landlock_status(&RulesetStatus::FullyEnforced, SandboxEnforcement::Enforcing)
+            .is_ok(),
+        "a fully enforced ruleset satisfies the child-side gate"
+    );
+    assert!(
+        require_full_landlock_status(&RulesetStatus::NotEnforced, SandboxEnforcement::Enforcing)
+            .is_err(),
+        "enforcing mode must reject a ruleset that was not installed"
+    );
+    assert!(
+        require_full_landlock_status(&RulesetStatus::NotEnforced, SandboxEnforcement::Permissive)
+            .is_ok(),
+        "permissive mode may continue without a child ruleset"
+    );
+}
+
 #[test]
 fn probe_guarantees_reflects_landlock_probe() {
-    let landlock_available = probe_landlock_abi().is_some();
+    let full_landlock_baseline =
+        probe_landlock_abi().is_some_and(|abi| abi >= REQUIRED_LANDLOCK_ABI);
 
     let enforcing_policy = SandboxPolicy {
         enabled: true,
@@ -24,7 +113,7 @@ fn probe_guarantees_reflects_landlock_probe() {
         egress_allowlist: Vec::new(),
     };
     let guarantees = probe_guarantees(&enforcing_policy);
-    if landlock_available {
+    if full_landlock_baseline {
         assert_eq!(guarantees.landlock, GuaranteeStatus::Active);
     } else {
         assert_eq!(guarantees.landlock, GuaranteeStatus::Unavailable);
@@ -37,11 +126,16 @@ fn probe_guarantees_reflects_landlock_probe() {
         ..enforcing_policy.clone()
     };
     let guarantees = probe_guarantees(&permissive_policy);
-    if landlock_available {
+    if full_landlock_baseline {
         assert_eq!(guarantees.landlock, GuaranteeStatus::Active);
     } else {
         assert_eq!(guarantees.landlock, GuaranteeStatus::Degraded);
     }
+    assert_eq!(
+        guarantees.seccomp,
+        GuaranteeStatus::Degraded,
+        "permissive seccomp is log-only even on a supported architecture"
+    );
 }
 
 #[test]
@@ -57,6 +151,16 @@ fn probe_guarantees_reflects_egress_policy() {
     };
 
     assert_eq!(probe_guarantees(&base).egress, GuaranteeStatus::Active);
+
+    let permissive_deny = SandboxPolicy {
+        enforcement: SandboxEnforcement::Permissive,
+        ..base.clone()
+    };
+    assert_eq!(
+        probe_guarantees(&permissive_deny).egress,
+        GuaranteeStatus::Active,
+        "the egress fallback remains blocking when general seccomp is log-only"
+    );
 
     let mut allowlist = base.clone();
     allowlist.egress = EgressPolicy::Allowlist;

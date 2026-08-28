@@ -138,11 +138,11 @@ fn sandbox_enforcement_propagates() {
     let mut cmd = std::process::Command::new("echo");
     cmd.arg("sandbox-test");
 
-    if probe_landlock_abi().is_some() {
+    if probe_landlock_abi().is_some_and(|abi| abi >= 5) {
         let result = apply_sandbox(&mut cmd, policy);
         assert!(
             result.is_ok(),
-            "sandbox application should succeed when Landlock is available"
+            "sandbox application should succeed with the full Landlock baseline"
         );
 
         let output = cmd.output().expect("command should execute");
@@ -157,8 +157,8 @@ fn sandbox_enforcement_propagates() {
 fn sandbox_denies_writes_outside_allowlist() {
     use organon::sandbox::{apply_sandbox, probe_landlock_abi};
 
-    if probe_landlock_abi().is_none() {
-        // Skip on kernels without Landlock.
+    if probe_landlock_abi().is_none_or(|abi| abi < 5) {
+        // Skip on kernels without every filesystem right the policy requires.
         return;
     }
 

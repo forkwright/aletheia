@@ -409,6 +409,12 @@ impl RuntimeBuilder {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
 
+        // WHY: canonical general/SSRF-safe client pair (organon::types::ToolHttpClients),
+        // built once and shared: the recall source registry needs the same
+        // redirect-disabled, 30s-timeout policy as the SSRF-safe tool client
+        // rather than restating it.
+        let tool_http_clients = ToolHttpClients::new();
+
         info!(root = %self.oikos.root().display(), "instance discovered");
 
         // WHY: Fail fast before any actors or stores initialise.
@@ -476,15 +482,19 @@ impl RuntimeBuilder {
 
         // WHY: load_packs performs synchronous file I/O; wrap in spawn_blocking
         // so the async runtime thread is not stalled during pack discovery.
-        let loaded_packs = if self.domain_packs {
+        let pack_outcome = if self.domain_packs {
             let packs = resolve_pack_paths(&self.oikos, &self.config.packs);
-            tokio::task::spawn_blocking(move || thesauros::loader::load_packs(&packs))
-                .await
-                .whatever_context("pack loading task panicked")?
+            let overlay_policy = overlay_policy_from_config(&self.config.pack_overlays);
+            tokio::task::spawn_blocking(move || {
+                thesauros::loader::load_packs_with_policy(&packs, &overlay_policy)
+            })
+            .await
+            .whatever_context("pack loading task panicked")?
         } else {
-            Vec::new()
+            thesauros::loader::LoadOutcome::default()
         };
-        let packs = Arc::new(loaded_packs);
+        let mut pack_report = pack_outcome.report;
+        let packs = Arc::new(pack_outcome.packs);
 
         let db_path = self.oikos.sessions_db();
         if let Some(parent) = db_path.parent() {
@@ -555,14 +565,83 @@ impl RuntimeBuilder {
         };
 
         if self.domain_packs {
-            let tool_errors = thesauros::tools::register_pack_tools_with_sandbox_and_limits(
+            let pack_sandbox = sandbox_config(&self.config);
+            pack_report.notes = thesauros::health::platform_notes(&pack_sandbox);
+            let tool_failures = thesauros::tools::register_pack_tools_with_sandbox_and_limits(
                 &packs,
                 &mut tool_registry,
-                sandbox_config(&self.config),
+                pack_sandbox,
                 self.config.tool_limits.subprocess_timeout_secs,
             );
-            for err in &tool_errors {
-                warn!(error = %err, "failed to register pack tool");
+            for failure in &tool_failures {
+                warn!(
+                    pack = %failure.pack_name,
+                    tool = %failure.tool_name,
+                    error = %failure.error,
+                    "failed to register pack tool"
+                );
+            }
+            pack_report.record_tool_failures(&tool_failures);
+
+            for note in &pack_report.notes {
+                warn!("{note}");
+            }
+
+            // WHY(#5208): a pack can be active, degraded, or failed; the
+            // summary line is the daemon-visible record operators and log
+            // scrapers key on, and pack_report carries the structured detail.
+            let counts = pack_report.status_counts();
+            if counts.failed > 0 || counts.degraded > 0 {
+                warn!(
+                    active = counts.active,
+                    degraded = counts.degraded,
+                    failed = counts.failed,
+                    "domain pack health: some packs are degraded or failed"
+                );
+            } else if counts.active > 0 {
+                info!(
+                    loaded_cleanly = counts.active,
+                    "domain packs loaded and registered without reported degradation"
+                );
+            }
+            // WHY: informational overlay-admission records do not degrade a
+            // pack, but they are still operator-facing health evidence. Emit
+            // every recorded issue independently of the aggregate status, with
+            // the configured occurrence identity needed to disambiguate
+            // duplicate names and paths.
+            for pack in &pack_report.packs {
+                for issue in &pack.issues {
+                    match issue.severity {
+                        thesauros::health::Severity::Info => info!(
+                            pack = %pack.name,
+                            pack_ordinal = pack.instance_id.ordinal(),
+                            pack_path = %pack.path.display(),
+                            component = ?issue.component,
+                            severity = ?issue.severity,
+                            "{}",
+                            issue.message,
+                        ),
+                        thesauros::health::Severity::Warning
+                        | thesauros::health::Severity::Error => warn!(
+                            pack = %pack.name,
+                            pack_ordinal = pack.instance_id.ordinal(),
+                            pack_path = %pack.path.display(),
+                            component = ?issue.component,
+                            severity = ?issue.severity,
+                            "{}",
+                            issue.message,
+                        ),
+                        _ => warn!(
+                            pack = %pack.name,
+                            pack_ordinal = pack.instance_id.ordinal(),
+                            pack_path = %pack.path.display(),
+                            component = ?issue.component,
+                            severity = ?issue.severity,
+                            "{}",
+                            issue.message,
+                        ),
+                    }
+                }
             }
         }
 
@@ -718,13 +797,7 @@ impl RuntimeBuilder {
         // already-redirected response and skip the checkpoint.
         let recall_source_registry = Arc::new(build_recall_source_registry(
             &self.config,
-            &Arc::new(
-                reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .unwrap_or_else(|_| reqwest::Client::new()),
-            ),
+            &Arc::new(tool_http_clients.ssrf_safe.clone()),
             &organon::sandbox::EgressGate::from_config(&sandbox_config(&self.config)),
         ));
 
@@ -833,14 +906,7 @@ impl RuntimeBuilder {
             spawn,
             planning,
             knowledge: knowledge_search,
-            http_clients: ToolHttpClients {
-                general: reqwest::Client::new(),
-                ssrf_safe: reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .unwrap_or_else(|_| reqwest::Client::new()),
-            },
+            http_clients: tool_http_clients,
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
             server_tool_config: self.config.server_tools.clone().into(),
@@ -869,7 +935,8 @@ impl RuntimeBuilder {
             self.config.tool_limits.clone(),
         )
         .with_audit_log(Arc::clone(&audit_log))
-        .with_empirical_router(Arc::clone(&empirical_router));
+        .with_empirical_router(Arc::clone(&empirical_router))
+        .with_pack_report(pack_report);
 
         {
             for agent_def in &self.config.agents.list {
@@ -1289,7 +1356,7 @@ mod metrics;
 mod nous_config;
 
 use metrics::{RuntimeBackupMetricsRecorder, register_all_metrics, task_state_component};
-use nous_config::build_nous_runtime_config;
+use nous_config::{build_nous_runtime_config, overlay_policy_from_config};
 
 mod setup;
 mod tool_adapters;
@@ -1378,9 +1445,10 @@ mod tests {
             "relative pack path should resolve from instance root regardless of process cwd"
         );
         let pack = packs.first().expect("one pack loaded");
-        assert_eq!(pack.manifest.name, "cwd-test");
+        assert_eq!(pack.name(), "cwd-test");
         assert_eq!(
-            pack.root, pack_dir,
+            pack.root(),
+            pack_dir,
             "loaded pack root should be the resolved absolute path"
         );
     }
@@ -1405,8 +1473,8 @@ mod tests {
             "absolute pack path should be used without root resolution"
         );
         let pack = packs.first().expect("one pack loaded");
-        assert_eq!(pack.manifest.name, "absolute-test");
-        assert_eq!(pack.root, pack_dir);
+        assert_eq!(pack.name(), "absolute-test");
+        assert_eq!(pack.root(), pack_dir);
     }
 
     #[test]

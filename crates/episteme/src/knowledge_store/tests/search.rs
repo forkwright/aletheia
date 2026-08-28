@@ -544,9 +544,29 @@ fn cluster_expansion_uses_fact_entities_created_by_extraction_persist() {
         .expect("bm25 with extraction-created cluster expansion");
     let ids = result_ids(&results);
 
-    assert!(ids.contains(&"recall-anchor-links-0"));
+    // WHY: fact ids are content-addressed (#5305), not the old
+    // `{subject}-{predicate}-{index}` positional scheme — compute the
+    // expected ids the same way persist did rather than hardcoding them.
+    let anchor_fact_id = crate::extract::engine::observation_fact_id(
+        "alice",
+        "session:test",
+        "Recall Anchor",
+        "links",
+        "Shared Topic",
+    )
+    .expect("valid fact id");
+    let mate_fact_id = crate::extract::engine::observation_fact_id(
+        "alice",
+        "session:test",
+        "Cluster Mate",
+        "uses",
+        "Shared Topic",
+    )
+    .expect("valid fact id");
+
+    assert!(ids.contains(&anchor_fact_id.as_str()));
     assert!(
-        ids.contains(&"cluster-mate-uses-1"),
+        ids.contains(&mate_fact_id.as_str()),
         "cluster mate must be discovered through extraction-created fact_entities"
     );
 }

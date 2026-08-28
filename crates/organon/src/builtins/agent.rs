@@ -552,7 +552,7 @@ mod tests {
                 knowledge: None,
                 lazy_tool_catalog: vec![],
                 server_tool_config: ServerToolConfig::default(),
-                http_clients: ToolHttpClients::for_tests(),
+                http_clients: ToolHttpClients::new(),
                 secret_vault: hermeneus::secret::SecretVault::new(),
             })),
             active_tools: Arc::new(RwLock::new(HashSet::new())),

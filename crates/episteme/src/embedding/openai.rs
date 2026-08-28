@@ -108,9 +108,9 @@ impl OpenAiEmbeddingProvider {
     #[instrument]
     pub fn with_provider(provider: &str, config: &OpenAiCompatConfig) -> EmbeddingResult<Self> {
         // WHY: reqwest with rustls-no-provider needs an explicit crypto provider.
-        // This is idempotent — subsequent calls silently fail and are ignored.
-        // kanon:ignore RUST/no-silent-result-swallow — install_default() returns Err once the provider is already installed; that's the intended steady state, not an error.
-        let _ = rustls::crypto::ring::default_provider().install_default();
+        // koina::crypto::install_default_provider() treats an already-installed
+        // provider as steady state, not an error.
+        let _ = koina::crypto::install_default_provider();
 
         let client = Client::builder()
             .connect_timeout(Duration::from_secs(10))
