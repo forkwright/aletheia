@@ -1387,11 +1387,16 @@ async fn supervise_health_poller(
 }
 
 /// Calculate exponential backoff: 5s, 15s, 45s, 2min, up to `max_secs` cap.
+///
+/// Delegates to [`koina::retry::BackoffStrategy::Exponential`].
 fn calculate_backoff(restart_count: u32, max_secs: u64) -> Duration {
-    let base_secs: u64 = 5;
-    let multiplier = 3u64.saturating_pow(restart_count);
-    let secs = base_secs.saturating_mul(multiplier);
-    Duration::from_secs(secs).min(Duration::from_secs(max_secs))
+    use koina::retry::BackoffStrategy;
+    let strategy = BackoffStrategy::Exponential {
+        base: Duration::from_secs(5),
+        factor: 3,
+        max_delay: Duration::from_secs(max_secs),
+    };
+    strategy.delay_for_attempt(restart_count)
 }
 
 #[cfg(test)]
