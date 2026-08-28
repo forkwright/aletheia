@@ -7,6 +7,14 @@
 
 #![deny(clippy::unwrap_used)]
 
+// WHY `#[path]` rather than `use aletheia::...`: this crate ships no
+// `lib.rs` (three independent `[[bin]]` targets), so the canonical
+// `KnowledgeConfig` derivation is shared as one source file included by
+// each binary target that needs it, rather than copied (#7023).
+#[cfg(feature = "recall")]
+#[path = "../knowledge_config.rs"]
+mod knowledge_config;
+
 use std::path::PathBuf;
 use std::str::FromStr;
 
@@ -128,7 +136,10 @@ fn run(args: Args) -> anyhow::Result<()> {
     std::fs::create_dir_all(&cohort_path)
         .map_err(|e| anyhow::anyhow!("failed to create cohort directory: {e}"))?;
 
-    let knowledge_config = knowledge_config_for_oikos(&oikos);
+    let knowledge_config = knowledge_config::knowledge_config_from_loaded(
+        taxis::loader::load_config(&oikos).ok().as_ref(),
+        false,
+    );
     let store = KnowledgeStore::open_fjall(&cohort_path, knowledge_config)
         .map_err(|e| anyhow::anyhow!("failed to open knowledge store: {e}"))?;
 
@@ -210,23 +221,6 @@ fn run(args: Args) -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(feature = "recall")]
-fn knowledge_config_for_oikos(
-    oikos: &taxis::oikos::Oikos,
-) -> mneme::knowledge_store::KnowledgeConfig {
-    taxis::loader::load_config(oikos).ok().map_or_else(
-        mneme::knowledge_store::KnowledgeConfig::default,
-        |config| {
-            let embedding = config.embedding.to_embedding_config();
-            mneme::knowledge_store::KnowledgeConfig {
-                dim: config.embedding.dimension,
-                embedding_model: embedding.effective_model_name(),
-                ..Default::default()
-            }
-        },
-    )
 }
 
 #[cfg(feature = "recall")]
