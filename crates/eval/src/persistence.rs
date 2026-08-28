@@ -13,6 +13,7 @@ use crate::provenance::EvalProvenance;
 use crate::runner::RunReport;
 use crate::scenario::ScenarioOutcome;
 use crate::tags::tag_eval_result;
+use crate::util::saturating_millis;
 
 /// A single evaluation record for JSONL training data output.
 #[derive(Debug, Clone, Serialize)]
@@ -159,7 +160,7 @@ fn records_from_report_with_coverage(
                 match &result.outcome {
                     ScenarioOutcome::Passed { duration } => (
                         true,
-                        millis_from_duration(duration),
+                        saturating_millis(duration),
                         "passed".to_owned(),
                         None,
                         None,
@@ -167,7 +168,7 @@ fn records_from_report_with_coverage(
                     ),
                     ScenarioOutcome::Failed { duration, error } => (
                         false,
-                        millis_from_duration(duration),
+                        saturating_millis(duration),
                         "failed".to_owned(),
                         Some(error.to_string()),
                         None,
@@ -439,10 +440,6 @@ fn temp_sibling_path(path: &Path) -> PathBuf {
     };
     tmp_path.set_extension(tmp_extension);
     tmp_path
-}
-
-fn millis_from_duration(duration: &std::time::Duration) -> u64 {
-    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 #[cfg(test)]

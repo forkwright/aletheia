@@ -4258,14 +4258,12 @@ dependencies = [
 name = "proskenion"
 version = "0.13.1"
 dependencies = [
- "aes-gcm",
  "bathron",
  "dioxus",
  "dirs",
  "futures-util",
  "gramma",
  "keryx",
- "keyring",
  "koina",
  "notify-rust",
  "pulldown-cmark",
@@ -4283,7 +4281,6 @@ dependencies = [
  "toml 1.1.0+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
- "zeroize",
 ]
 
 [[package]]
@@ -5145,11 +5142,14 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 name = "skene"
 version = "0.43.0"
 dependencies = [
+ "aes-gcm",
+ "bathron",
  "bytes",
  "form_urlencoded",
  "futures-core",
  "futures-util",
  "keryx",
+ "keyring",
  "koina",
  "reqwest",
  "rustls",
@@ -5159,6 +5159,7 @@ dependencies = [
  "tokio",
  "toml 1.1.0+spec-1.1.0",
  "tracing",
+ "zeroize",
 ]
 
 [[package]]
