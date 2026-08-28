@@ -170,7 +170,7 @@ pub struct ToolHttpClients {
 
 impl ToolHttpClients {
     /// Build a `ToolHttpClients` suitable for unit tests.
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn for_tests() -> Self {
         Self {
             general: reqwest::Client::new(),
