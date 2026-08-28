@@ -7,13 +7,13 @@ use hermeneus::types::{DocumentSource, ToolResultBlock};
 use indexmap::IndexMap;
 
 use crate::builtins::poiesis::json_data_property;
+use crate::builtins::report_capability::{ReportOutputEffect, ReportToolEffect};
 use crate::builtins::workspace::{extract_opt_str, validate_prepared_path};
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
-    InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCallCapability,
-    ToolCallCapabilityRule, ToolCapabilityMetadata, ToolCategory, ToolContext, ToolDef,
-    ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
+    InputSchema, PropertyDef, PropertyType, Reversibility, ToolCategory, ToolContext, ToolDef,
+    ToolGroupId, ToolInput, ToolResult, ToolTag,
 };
 
 // ── render_xlsx_report ────────────────────────────────────────────────────────
@@ -142,37 +142,28 @@ fn render_xlsx_report_def() -> ToolDef {
     }
 }
 
-fn render_xlsx_report_capability_rule() -> ToolCallCapabilityRule {
-    ToolCallCapabilityRule::argument_presence(
-        "out_path",
-        ToolCallCapability::new(vec![ToolGroupId::Edit], Reversibility::PartiallyReversible),
-        ToolCallCapability::new(vec![ToolGroupId::Read], Reversibility::FullyReversible),
-    )
+fn render_xlsx_report_effect() -> ReportToolEffect {
+    ReportToolEffect {
+        owner: "organon::builtins::render_xlsx_report",
+        output: ReportOutputEffect::CallerFile {
+            argument: "out_path",
+            artifact: "the XLSX",
+        },
+        subprocess: None,
+    }
 }
 
 /// Register the `render_xlsx_report` tool.
 pub(crate) fn register(registry: &mut ToolRegistry) -> Result<()> {
+    let effect = render_xlsx_report_effect();
     registry.register_with_call_capability(
         render_xlsx_report_def(),
-        render_xlsx_report_capability_rule(),
+        effect.capability_rule(),
         Box::new(RenderXlsxReportExecutor),
     )?;
     registry.declare_capability(
         koina::id::ToolName::from_static("render_xlsx_report"), // kanon:ignore RUST/expect
-        ToolCapabilityMetadata {
-            owner: "organon::builtins::render_xlsx_report".to_owned(),
-            // WHY Experimental: this module is behind `#[cfg(feature =
-            // "poiesis")]` (see crates/organon/src/builtins/mod.rs) -- not
-            // compiled by default.
-            stability: ToolStability::Experimental,
-            rollback: RollbackSupport::PartialSupport {
-                reason: "rendering runs in memory; a caller-provided out_path writes the XLSX \
-                         to disk, overwriting any existing file without retaining its prior \
-                         contents"
-                    .to_owned(),
-            },
-            ..ToolCapabilityMetadata::default()
-        },
+        effect.capability_metadata(),
     )?;
     Ok(())
 }

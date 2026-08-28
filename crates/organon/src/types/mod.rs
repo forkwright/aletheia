@@ -6,8 +6,8 @@ mod services;
 
 pub use context::{ServerToolConfig, ToolContext, ToolHttpClients, ToolServices};
 pub use policy::{
-    ToolArgumentValueCapability, ToolCallCapability, ToolCallCapabilityRule, ToolGroupId,
-    ToolGroupPolicy,
+    ToolArgumentValueCapability, ToolCallCapability, ToolCallCapabilityRule, ToolCallCondition,
+    ToolCallDecisionCase, ToolGroupId, ToolGroupPolicy,
 };
 pub use services::{
     BlackboardEntry, BlackboardStore, BlackboardViewer, CrossNousService, DatalogResult,

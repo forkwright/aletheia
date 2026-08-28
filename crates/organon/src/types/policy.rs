@@ -177,6 +177,64 @@ pub enum ToolCallCapabilityRule {
         /// Capability when the argument is absent or null.
         absent: ToolCallCapability,
     },
+    /// Classify by evaluating an ordered list of compound (AND-of-conditions)
+    /// cases, taking the first whose conditions all hold, else a default.
+    ///
+    /// Generalizes [`Self::ArgumentPresence`] to rules spanning more than
+    /// one argument. A call can carry two independent effects that neither
+    /// single-argument variant can express together -- e.g. a filesystem
+    /// write gated on one argument's presence, and a subprocess spawned by
+    /// a *different* argument's value regardless of the first.
+    Decision {
+        /// Cases evaluated in order; the first fully-satisfied case wins.
+        cases: Vec<ToolCallDecisionCase>,
+        /// Capability when no case's conditions hold.
+        default: ToolCallCapability,
+    },
+}
+
+/// One condition tested against a tool call's arguments, for use in a
+/// [`ToolCallCapabilityRule::Decision`] case.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ToolCallCondition {
+    /// The named argument is present and not null.
+    ArgumentPresent {
+        /// Argument name to test in the tool input.
+        argument: String,
+    },
+    /// The named argument's string value is one of the given values.
+    ArgumentValueIn {
+        /// Argument name to read from the tool input.
+        argument: String,
+        /// Values that satisfy this condition.
+        values: Vec<String>,
+    },
+}
+
+impl ToolCallCondition {
+    fn holds(&self, arguments: &serde_json::Value) -> bool {
+        match self {
+            Self::ArgumentPresent { argument } => arguments
+                .get(argument)
+                .is_some_and(|value| !value.is_null()),
+            Self::ArgumentValueIn { argument, values } => arguments
+                .get(argument)
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|value| values.iter().any(|candidate| candidate == value)),
+        }
+    }
+}
+
+/// One case of a [`ToolCallCapabilityRule::Decision`]: a compound (AND)
+/// condition set paired with the capability it selects when all hold.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCallDecisionCase {
+    /// Conditions that must ALL hold for this case to match.
+    pub conditions: Vec<ToolCallCondition>,
+    /// Capability selected when this case matches.
+    pub capability: ToolCallCapability,
 }
 
 impl ToolCallCapabilityRule {
@@ -210,6 +268,25 @@ impl ToolCallCapabilityRule {
             argument: argument.into(),
             present,
             absent,
+        }
+    }
+
+    /// Build a compound decision rule: an ordered list of (conditions,
+    /// capability) cases, plus the capability for when none match.
+    #[must_use]
+    pub fn decision<I>(cases: I, default: ToolCallCapability) -> Self
+    where
+        I: IntoIterator<Item = (Vec<ToolCallCondition>, ToolCallCapability)>,
+    {
+        Self::Decision {
+            cases: cases
+                .into_iter()
+                .map(|(conditions, capability)| ToolCallDecisionCase {
+                    conditions,
+                    capability,
+                })
+                .collect(),
+            default,
         }
     }
 
@@ -251,6 +328,11 @@ impl ToolCallCapabilityRule {
                     Ok(absent.clone())
                 }
             }
+            Self::Decision { cases, default } => Ok(cases
+                .iter()
+                .find(|case| case.conditions.iter().all(|c| c.holds(arguments)))
+                .map(|case| case.capability.clone())
+                .unwrap_or_else(|| default.clone())),
         }
     }
 }
