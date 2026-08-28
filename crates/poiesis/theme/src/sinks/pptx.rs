@@ -303,17 +303,10 @@ static SLIDE1_RELS: LazyLock<String> = LazyLock::new(|| {
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use std::path::PathBuf;
-
     use super::*;
-    use crate::registry::Registry;
 
     fn protos() -> ResolvedTheme {
-        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("themes");
-        let registry = Registry::load_dir(&dir).expect("load protos");
-        registry
-            .resolve(&crate::registry::parse_theme_id("protos").expect("id"))
-            .expect("resolve")
+        crate::protos()
     }
 
     #[test]
