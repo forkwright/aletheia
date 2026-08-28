@@ -496,6 +496,7 @@ fn scale_routing_name(c: &Chart) -> &'static str {
 }
 
 #[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
     use super::*;
 
