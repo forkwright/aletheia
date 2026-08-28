@@ -8,7 +8,7 @@ use hermeneus::complexity::ComplexityConfig;
 use mneme::knowledge::{EpistemicTier, MemoryScope};
 use mneme::workspace::ProjectId;
 use serde::{Deserialize, Serialize};
-use taxis::config::AgentBehaviorDefaults;
+use taxis::config::{AgentBehaviorDefaults, TuningConfig};
 use tracing::warn;
 
 use crate::recall::RecallConfig;
@@ -569,6 +569,15 @@ pub struct PipelineConfig {
     /// Turn-history loading policy.
     #[serde(default)]
     pub history: TurnHistoryPolicy,
+    /// Self-tuning feedback loop configuration, resolved from the operator's
+    /// top-level `[tuning]` section.
+    ///
+    /// WHY threaded here rather than read fresh per-call: `TuningProposer`
+    /// is constructed once per turn from this value, so the operator's
+    /// `enabled` kill switch and evidence thresholds take effect instead of
+    /// being silently discarded in favor of a hardcoded default.
+    #[serde(default)]
+    pub tuning: TuningConfig,
 }
 
 impl Default for PipelineConfig {
@@ -581,6 +590,7 @@ impl Default for PipelineConfig {
             training: crate::training::TrainingConfig::default(),
             reflection_enabled: false,
             history: TurnHistoryPolicy::default(),
+            tuning: TuningConfig::default(),
         }
     }
 }

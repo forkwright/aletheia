@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use eidos::bookkeeping::{
     BookkeepingError, BookkeepingProvider, BookkeepingResult, ConversationMessage, ExtractedEntity,
-    ExtractedFact, Extraction, ExtractionSchema, ProviderFailedSnafu,
+    ExtractedFact, Extraction, ExtractionSchema,
 };
 use ort::session::Session;
 use ort::value::{Shape, Tensor};
@@ -21,6 +21,7 @@ use tokenizers::utils::truncation::{TruncationParams, TruncationStrategy};
 use tracing::warn;
 
 use super::LlmBookkeepingProvider;
+use super::support;
 use crate::extract::ExtractionProvider;
 use crate::extract::engine::ExtractionEngine;
 
@@ -243,7 +244,7 @@ impl<'a> GlinerExtractionProvider<'a> {
         messages: &[ConversationMessage],
         schema: &ExtractionSchema,
     ) -> BookkeepingResult<Extraction> {
-        let text = join_messages(messages);
+        let text = support::join_messages(messages);
         let gliner_entities = match self.extract_entities(&text).await {
             Ok(entities) => entities,
             Err(err) => {
@@ -263,7 +264,7 @@ impl<'a> GlinerExtractionProvider<'a> {
         turn_type: crate::extract::refinement::TurnType,
         _schema: &ExtractionSchema,
     ) -> BookkeepingResult<Extraction> {
-        let text = join_messages(messages);
+        let text = support::join_messages(messages);
         let gliner_entities = match self.extract_entities(&text).await {
             Ok(entities) => entities,
             Err(err) => {
@@ -328,7 +329,7 @@ struct ModelInput {
 }
 
 fn load_tokenizer(path: &Path) -> BookkeepingResult<Tokenizer> {
-    Tokenizer::from_file(path).map_err(|err| provider_failed("load_tokenizer", err))
+    support::load_tokenizer("gliner", path)
 }
 
 fn build_input(tokenizer: &Tokenizer, words: &[String]) -> BookkeepingResult<ModelInput> {
@@ -641,20 +642,12 @@ fn merge_entities(existing: &mut Vec<ExtractedEntity>, incoming: Vec<ExtractedEn
     }
 }
 
-fn join_messages(messages: &[ConversationMessage]) -> String {
-    messages
-        .iter()
-        .map(|message| message.content.as_str())
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn sigmoid(value: f32) -> f32 {
     1.0 / (1.0 + (-value).exp())
 }
 
 fn usize_to_i64(value: usize) -> BookkeepingResult<i64> {
-    i64::try_from(value).map_err(|err| provider_failed("integer_conversion", err))
+    support::usize_to_i64("gliner", value)
 }
 
 fn shape_usize(value: i64) -> BookkeepingResult<usize> {
@@ -662,12 +655,7 @@ fn shape_usize(value: i64) -> BookkeepingResult<usize> {
 }
 
 fn provider_failed(operation: &'static str, message: impl std::fmt::Display) -> BookkeepingError {
-    ProviderFailedSnafu {
-        provider: "gliner",
-        operation,
-        message: message.to_string(),
-    }
-    .build()
+    support::provider_failed("gliner", operation, message)
 }
 
 #[cfg(test)]
