@@ -233,6 +233,33 @@ mode = "none"
 
 **Security warning:** This mode is suitable only for local development. Never use in production or on exposed networks.
 
+### MCP over stdio
+
+`aletheia mcp` serves the MCP tool surface over stdio for local agent clients (Claude Code, Cursor,
+etc.), reading JSON-RPC from stdin and writing to stdout. Stdio carries no per-request HTTP
+context, so it cannot present a bearer token the way an HTTP client does with an `Authorization`
+header — there is no header to send.
+
+Under `gateway.auth.mode = "none"`, a stdio session gets the configured `noneRole` like any other
+anonymous caller, with no further setup.
+
+Under any other `auth.mode`, set `ALETHEIA_MCP_STDIO_TOKEN` to a valid bearer token before starting
+the process. The server validates it once at startup and binds the resulting identity to every
+tool call for the lifetime of that stdio session — identity does not vary call to call, because
+stdio serves exactly one local process end to end.
+
+```bash
+# Obtain a token per "Token authentication" above (aletheia credential status),
+# then bind it to the stdio session:
+export ALETHEIA_MCP_STDIO_TOKEN="your-jwt-token"
+aletheia --instance-root ./instance mcp
+```
+
+A missing or invalid token is a startup failure: the process refuses to serve stdio at all rather
+than falling back to anonymous access. The bound identity's subject and role (never the token
+itself) are visible in the `system_health` tool's `principal` field, so an operator can confirm the
+binding took effect.
+
 ---
 
 ## Credentials

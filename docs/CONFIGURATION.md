@@ -1951,6 +1951,7 @@ file, and `instance.example/services/aletheia.service` loads it from
 | `ALETHEIA_HEARTBEAT_INTERVAL_SECS` | `scripts/aletheia-heartbeat.sh`, `aletheia-health.timer` | External heartbeat cadence in seconds. Defaults to `300` and must stay in sync with the systemd timer. |
 | `ALETHEIA_PRIMARY_KEY` | `taxis::encrypt` | Master encryption key. Overrides the instance keyfile when set. Security-sensitive. |
 | `ALETHEIA_JWT_SECRET` | `taxis` gateway | JWT signing key used when `gateway.jwt_secret` is unset. Security-sensitive. |
+| `ALETHEIA_MCP_STDIO_TOKEN` | `diaporeia::transport::serve_stdio` | Bearer token identifying the fixed principal for an `aletheia mcp` stdio session. Required when `gateway.auth.mode != "none"` — stdio has no per-request HTTP context to carry a token, so identity is resolved once at startup from this variable instead; a missing or invalid token fails stdio startup closed. Security-sensitive. |
 | `ALETHEIA_ALLOW_AUTH_NONE` | `taxis::validate` | Operator gate: set to `1` to permit `auth = "none"`. Off by default. Security-sensitive. |
 | `ALETHEIA_ALLOW_AUTH_NONE_LAN` | `taxis::validate` | Operator gate: set to `1` to permit `auth = "none"` on LAN binds. Off by default. Security-sensitive. |
 | `SEMANTIC_SCHOLAR_API_KEY` | `shared/bin/scholar` | Optional Semantic Scholar API key for higher rate limits. |
