@@ -2107,29 +2107,20 @@ fn classify_llm_error(err: &hermeneus::error::Error) -> (String, String) {
     }
 }
 
-/// Regex matching common secret patterns in error messages.
-///
-/// WHY: match common key prefixes (sk-ant-, sk-, key-, bearer tokens)
-/// and hex/base64 sequences that look like credentials (32+ chars).
-#[expect(
-    clippy::expect_used,
-    reason = "compile-time-constant regex literals cannot fail"
-)]
-static SECRET_PATTERN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-    regex::Regex::new(
-        r"(?i)(sk-ant-[a-zA-Z0-9_-]+|sk-[a-zA-Z0-9_-]{20,}|key-[a-zA-Z0-9_-]{20,}|bearer\s+[a-zA-Z0-9._-]{20,}|[a-f0-9]{40,})"
-    )
-    .expect("compile-time-constant regex literals cannot fail") // INVARIANT: regex literal is validated at compile time
-});
-
-/// Strip potential secrets (API keys, bearer tokens) from an error message
-/// before including it in a client-visible SSE event.
+/// Strip potential secrets (API keys, bearer tokens, JWTs, password-like
+/// key=value pairs) from an error message before including it in a
+/// client-visible SSE event.
 ///
 /// WHY(#844): error messages from providers may contain credential fragments
-/// in rejection messages (e.g. "invalid key sk-ant-..."). This strips
-/// anything that looks like a secret token.
+/// in rejection messages (e.g. "invalid key sk-ant-...").
+///
+/// WHY(#7020): delegates to the canonical `koina::redact::redact_sensitive`
+/// policy rather than maintaining a second, divergent pattern table — the
+/// prior local regex lacked koina's JWT and `password|secret|api_key=value`
+/// coverage, so those shapes reached SSE clients unredacted while the log
+/// path (which already goes through koina) masked them.
 fn redact_secrets(msg: &str) -> String {
-    SECRET_PATTERN.replace_all(msg, "[REDACTED]").into_owned()
+    koina::redact::redact_sensitive(msg)
 }
 
 /// Emit turn result as individual SSE events with buffer recording.

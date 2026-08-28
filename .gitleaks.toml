@@ -67,6 +67,17 @@ paths = [
   # WHY: credential API tests use synthetic token-like values and assert redaction.
   '''crates/pylon/src/tests/credentials\.rs''',
   '''crates/pylon/src/handlers/health\.rs''',
+  # WHY: streaming_tests.rs's redact_secrets fixtures carry synthetic Anthropic
+  # keys, bearer tokens, and JWTs (matching the `jwt` custom rule above) that
+  # assert the redactor strips them -- same shape as redact.rs and
+  # credentials.rs above. A same-line `gitleaks:allow` marker only suppresses
+  # the commit that carries it; the #7020 consolidation moved one such literal
+  # into this file across two commits (the second only adding the marker), and
+  # gitleaks scans every commit's diff in the PR range against the config
+  # checked out at scan time, so the marker-less first commit still flagged.
+  # A whole-file path entry is read once per scan and applies uniformly across
+  # every historical commit in range, which a per-line marker cannot.
+  '''crates/pylon/src/handlers/sessions/streaming_tests\.rs''',
   # WHY: local dispatch transcripts are gitignored and may contain scanner output.
   '''^\.dispatch.*''',
   # WHY: runbook and checklist contain example CLI commands with synthetic values.

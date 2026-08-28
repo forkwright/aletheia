@@ -173,79 +173,15 @@ pub fn sha256_hex_str(s: &str) -> String {
 
 /// Redact secret-bearing CLI argument values.
 ///
-/// Flags matching `--token`, `--*-token`, `--api-key`, `--*-api-key`, `--key`,
-/// `--password`, `--secret`, and env-token patterns have their values replaced
-/// with `[REDACTED]`. Bare positional values that look like keys (long base64
-/// strings or strings starting with `sk-`) are also redacted.
+/// WHY(#7020): delegates to the canonical `koina::redact::redact_argv` policy
+/// shared with Agora's `Command::redact_args`, rather than a second
+/// independently-tuned flag/prefix table — the two had diverged (e.g.
+/// `--passphrase` was Agora-only, `ak-`/`pk-`-prefixed bare values were
+/// Eval-only), so identical commands persisted with different credential
+/// coverage depending on which crate recorded them.
 #[must_use]
 pub fn redact_args(args: &[String]) -> Vec<String> {
-    let mut out = Vec::with_capacity(args.len());
-    let mut skip_next = false;
-
-    for arg in args {
-        if skip_next {
-            out.push("[REDACTED]".to_owned());
-            skip_next = false;
-            continue;
-        }
-
-        if let Some((flag, _value)) = arg.split_once('=')
-            && is_secret_flag(flag)
-        {
-            out.push(format!("{flag}=[REDACTED]"));
-            continue;
-        }
-
-        if is_secret_flag(arg) {
-            out.push(arg.clone());
-            skip_next = true;
-            continue;
-        }
-
-        if looks_like_secret(arg) {
-            out.push("[REDACTED]".to_owned());
-            continue;
-        }
-
-        out.push(arg.clone());
-    }
-
-    out
-}
-
-fn is_secret_flag(flag: &str) -> bool {
-    let lower = flag.to_lowercase();
-    let secret_flags: &[&str] = &[
-        "--token",
-        "--api-key",
-        "--key",
-        "--password",
-        "--secret",
-        "--judge-api-key",
-    ];
-    secret_flags.iter().any(|s| lower == *s)
-        || lower.ends_with("-token")
-        || lower.ends_with("-api-key")
-        || lower.ends_with("-password")
-        || lower.ends_with("-secret")
-}
-
-fn looks_like_secret(value: &str) -> bool {
-    let lower = value.to_lowercase();
-    if lower.starts_with("sk-")
-        || lower.starts_with("ak-")
-        || lower.starts_with("pk-")
-        || lower.starts_with("bearer ")
-    {
-        return true;
-    }
-    if value.len() < 16 {
-        return false;
-    }
-    value.len() >= 32
-        && value
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | '.'))
+    koina::redact::redact_argv(args.iter().map(String::as_str))
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
