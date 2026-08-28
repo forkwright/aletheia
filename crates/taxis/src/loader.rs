@@ -241,7 +241,28 @@ fn resolve_legacy_retention_alias(
             .and_then(|maintenance| maintenance.get("retention"))
             .cloned()
             .unwrap_or(JsonValue::Null);
-        if canonical_value != legacy_value {
+        // WHY: comparing the raw JSON is not comparing like with like. `data`
+        // carries `#[serde(skip_serializing_if = "DataConfig::is_default")]`
+        // on `AletheiaConfig`, so a default `data` section is absent from the
+        // Tier-1 defaults tree entirely; `deep_merge` then inserts the file's
+        // `[data.retention]` table verbatim (`None` branch), sparse -- only
+        // the keys the file set. `[maintenance.retention]`, by contrast,
+        // always exists in the defaults tree, so the same file table merges
+        // field-by-field onto a full default and carries every field.
+        // Two tables setting the identical subset of fields therefore
+        // compared unequal by raw JSON keys alone -- deserializing each into
+        // `RetentionSettings` (which fills every absent field from the same
+        // type default) compares the values a config author actually wrote,
+        // not the presence quirk of one path's Tier-1 defaults.
+        let legacy_settings: crate::config::RetentionSettings =
+            serde_json::from_value(legacy_value).context(ConfigLoadSnafu {
+                reason: "parse `[data.retention]` for alias comparison".to_owned(),
+            })?;
+        let canonical_settings: crate::config::RetentionSettings =
+            serde_json::from_value(canonical_value).context(ConfigLoadSnafu {
+                reason: "parse `[maintenance.retention]` for alias comparison".to_owned(),
+            })?;
+        if canonical_settings != legacy_settings {
             return crate::error::RetentionAliasConflictSnafu.fail();
         }
         return Ok(());
