@@ -191,9 +191,7 @@ impl HttpReranker {
     pub fn new(url: impl Into<String>) -> Self {
         // WHY: workspace reqwest uses rustls-no-provider, so callers must install
         // the crypto provider before constructing an HTTP client.
-        if let Err(err) = rustls::crypto::ring::default_provider().install_default() {
-            tracing::trace!(?err, "rustls crypto provider already installed");
-        }
+        let _ = koina::crypto::install_default_provider();
 
         // WHY: without a timeout, a slow or hung cross-encoder backend stalls
         // the recall actor unboundedly; match the pattern in openai.rs.

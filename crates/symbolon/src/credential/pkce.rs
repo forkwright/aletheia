@@ -631,7 +631,6 @@ async fn exchange_code(
         .post(&provider.token_url)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(body)
-        .timeout(Duration::from_secs(30))
         .send()
         .await
         .context(HttpRequestSnafu)?;
@@ -745,7 +744,7 @@ where
 
     info!("received authorization code, exchanging for tokens");
 
-    let client = reqwest::Client::new();
+    let client = super::oauth_http_client();
     let token_response = exchange_code(&client, provider, &code, &pkce.verifier, port).await?;
 
     // SAFETY: logging success status, not the token value

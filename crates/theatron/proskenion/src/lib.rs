@@ -80,13 +80,9 @@ pub fn run(verbose: bool) {
 
     // WHY: reqwest with rustls-no-provider requires an explicit crypto provider
     // install before any Client is constructed, otherwise it panics with
-    // "No provider set" (#2363).
-    if rustls::crypto::ring::default_provider()
-        .install_default()
-        .is_err()
-    {
-        tracing::debug!("rustls crypto provider was already installed");
-    }
+    // "No provider set" (#2363). koina::crypto::install_default_provider()
+    // treats an already-installed provider as steady state, not an error.
+    let _ = koina::crypto::install_default_provider();
 
     // WHY: Dioxus 0.7 does not expose GTK CSD styling. The native title bar
     // inherits the system GTK theme, which is light by default on most distros.

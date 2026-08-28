@@ -201,7 +201,6 @@ async fn request_device_authorization(
         .post(&provider.device_authorization_url)
         .header("Content-Type", "application/x-www-form-urlencoded")
         .body(body)
-        .timeout(Duration::from_secs(30))
         .send()
         .await
         .context(HttpRequestSnafu)?;
@@ -265,7 +264,6 @@ async fn poll_token_endpoint(
             .post(&provider.base.token_url)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .body(body)
-            .timeout(Duration::from_secs(30))
             .send()
             .await
             .context(HttpRequestSnafu)?;
@@ -420,7 +418,7 @@ pub async fn device_code_login_with_action<F>(
 where
     F: FnMut(OAuthRequiredAction),
 {
-    let client = reqwest::Client::new();
+    let client = super::oauth_http_client();
 
     info!("requesting device authorization");
     let device_auth = request_device_authorization(&client, provider).await?;

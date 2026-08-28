@@ -34,7 +34,7 @@ krites_sovereign_hnsw = ["krites?/krites_sovereign_hnsw"]
 # inside migration code. Non-default; enabled only by the
 # `integration-tests` crate's dev-dependency for the crash-injection matrix.
 crash-injection = []
-reranker = ["dep:reqwest", "dep:rustls", "dep:tokio"]
+reranker = ["dep:reqwest", "dep:rustls", "dep:tokio", "koina/rustls-provider"]
 gliner = ["dep:ort", "dep:tokio", "dep:tokenizers"]
 nuextract = ["dep:ort", "dep:tokio", "dep:tokenizers"]
 test-support = []
@@ -43,7 +43,7 @@ test-support = []
 mneme-engine = ["dep:krites", "dep:tokio", "graphe/mneme-engine"]
 storage-fjall = ["mneme-engine", "krites/storage-fjall", "dep:fjall"]
 embed-candle = ["dep:candle-core", "dep:candle-nn", "dep:candle-transformers", "dep:tokenizers", "dep:hf-hub"]
-openai-embed = ["dep:reqwest", "dep:tokio", "dep:rustls"]
+openai-embed = ["dep:reqwest", "dep:tokio", "dep:rustls", "koina/rustls-provider"]
 # WHY: candle embedding tests download config.json from HuggingFace at test
 # time. macOS GitHub runners intermittently fail DNS lookup for huggingface.co
 # (see #3683). Gate those network-dependent tests behind `online-tests` so the

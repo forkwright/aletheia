@@ -261,7 +261,7 @@ mod tests {
                 planning: None,
                 knowledge: None,
                 working_checkpoint_store: Some(working_checkpoint_store),
-                http_clients: ToolHttpClients::for_tests(),
+                http_clients: ToolHttpClients::new(),
                 secret_vault: SecretVault::new(),
                 lazy_tool_catalog: Vec::new(),
                 server_tool_config: ServerToolConfig::default(),

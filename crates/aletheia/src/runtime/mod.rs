@@ -409,6 +409,12 @@ impl RuntimeBuilder {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
 
+        // WHY: canonical general/SSRF-safe client pair (organon::types::ToolHttpClients),
+        // built once and shared: the recall source registry needs the same
+        // redirect-disabled, 30s-timeout policy as the SSRF-safe tool client
+        // rather than restating it.
+        let tool_http_clients = ToolHttpClients::new();
+
         info!(root = %self.oikos.root().display(), "instance discovered");
 
         // WHY: Fail fast before any actors or stores initialise.
@@ -718,13 +724,7 @@ impl RuntimeBuilder {
         // already-redirected response and skip the checkpoint.
         let recall_source_registry = Arc::new(build_recall_source_registry(
             &self.config,
-            &Arc::new(
-                reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .unwrap_or_else(|_| reqwest::Client::new()),
-            ),
+            &Arc::new(tool_http_clients.ssrf_safe.clone()),
             &organon::sandbox::EgressGate::from_config(&sandbox_config(&self.config)),
         ));
 
@@ -833,14 +833,7 @@ impl RuntimeBuilder {
             spawn,
             planning,
             knowledge: knowledge_search,
-            http_clients: ToolHttpClients {
-                general: reqwest::Client::new(),
-                ssrf_safe: reqwest::Client::builder()
-                    .redirect(reqwest::redirect::Policy::none())
-                    .timeout(std::time::Duration::from_secs(30))
-                    .build()
-                    .unwrap_or_else(|_| reqwest::Client::new()),
-            },
+            http_clients: tool_http_clients,
             secret_vault: hermeneus::secret::SecretVault::new(),
             lazy_tool_catalog: tool_registry.lazy_tool_catalog(),
             server_tool_config: self.config.server_tools.clone().into(),
