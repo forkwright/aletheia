@@ -758,6 +758,7 @@ struct NoteDeleteKeys {
 /// clippy's ceiling of 7. Same shape as `NoteTxParts` and
 /// `CommandLifecycleTxParts` below, which this function already builds from
 /// these very fields.
+#[cfg(feature = "portability")]
 #[derive(Clone, Copy)]
 struct ImportBundleTxParts<'a> {
     messages: &'a fjall::SingleWriterTxKeyspace,

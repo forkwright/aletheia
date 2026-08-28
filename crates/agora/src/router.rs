@@ -294,7 +294,7 @@ fn account_matches(binding: &ChannelBinding, msg: &InboundMessage) -> bool {
 /// listed senders. Exact groups additionally cast a deny shadow, so an
 /// unlisted participant cannot activate a broader route accidentally.
 fn participant_allowed(binding: &ChannelBinding, msg: &InboundMessage) -> bool {
-    binding.participants.is_empty() || binding.participants.iter().any(|p| *p == msg.sender)
+    binding.participants.is_empty() || binding.participants.contains(&msg.sender)
 }
 
 /// Both binding-level identity legs (account, participant) must hold for a

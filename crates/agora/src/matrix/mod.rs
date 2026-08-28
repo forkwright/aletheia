@@ -104,12 +104,6 @@ struct MatrixEvent {
 /// Matrix room-message content subset.
 #[derive(Default, Deserialize)]
 struct MatrixEventContent {
-    /// Matrix message type, e.g. `m.text`.
-    #[expect(
-        dead_code,
-        reason = "deserialized for shape parity; not yet used to filter message kinds"
-    )]
-    msgtype: Option<String>,
     /// Plain-text body.
     body: Option<String>,
     /// Additional content fields retained for attachments and raw diagnostics.
@@ -386,7 +380,7 @@ impl ChannelProvider for MatrixProvider {
             let mut details = HashMap::new();
             let mut all_ok = true;
             let mut accounts = self.accounts.iter().collect::<Vec<_>>();
-            accounts.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+            accounts.sort_unstable_by_key(|(left, _)| (*left).clone());
             for (index, (account_id, account)) in accounts.into_iter().enumerate() {
                 let reachable = account.client.health().await;
                 let ingress_state = *account.ingress_state.lock().await;
@@ -428,7 +422,8 @@ impl std::fmt::Debug for MatrixProvider {
                 "halted_health_check_interval",
                 &self.halted_health_check_interval,
             )
-            .finish()
+            .field("cursor_store_set", &self.cursor_store.is_some())
+            .finish_non_exhaustive()
     }
 }
 

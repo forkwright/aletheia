@@ -214,15 +214,12 @@ impl InboundMessage {
         hash_optional_part(&mut hasher, self.account_id.as_deref());
         if let Some(id) = self.message_id.as_deref().filter(|id| !id.is_empty()) {
             hash_part(&mut hasher, "provider-id");
-            match self.group_id.as_deref() {
-                Some(group) => {
-                    hash_part(&mut hasher, "group");
-                    hash_part(&mut hasher, group);
-                }
-                None => {
-                    hash_part(&mut hasher, "dm");
-                    hash_part(&mut hasher, &self.sender);
-                }
+            if let Some(group) = self.group_id.as_deref() {
+                hash_part(&mut hasher, "group");
+                hash_part(&mut hasher, group);
+            } else {
+                hash_part(&mut hasher, "dm");
+                hash_part(&mut hasher, &self.sender);
             }
             hash_part(&mut hasher, id);
         } else {

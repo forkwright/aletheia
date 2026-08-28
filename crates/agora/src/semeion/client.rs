@@ -428,10 +428,10 @@ fn parse_send_disposition(value: &serde_json::Value) -> Result<SendDisposition> 
     let Some(response) = value.as_object() else {
         return error::ProtocolSnafu.fail();
     };
-    if !response
+    if response
         .get("timestamp")
         .and_then(serde_json::Value::as_u64)
-        .is_some_and(|timestamp| timestamp > 0)
+        .is_none_or(|timestamp| timestamp == 0)
     {
         return error::ProtocolSnafu.fail();
     }
