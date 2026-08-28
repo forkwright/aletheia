@@ -303,6 +303,64 @@ pub struct ReceiptLedger {
     /// entry when the capacity cap is reached. (#5677)
     order: VecDeque<String>,
     capacity: usize,
+    /// Durable-within-process tool-call journal (#5225), keyed by
+    /// `tool_call_id` rather than receipt token -- a receipt does not exist
+    /// until a call has already completed, so it cannot key a record
+    /// written *before* the call runs.
+    journal: HashMap<String, ToolJournalEntry>,
+    /// WHY: FIFO order of journal entries, mirroring `order` above, so
+    /// `reconcile_interrupted` visits them in the deterministic order they
+    /// were opened and so the same capacity cap bounds this map too.
+    journal_order: VecDeque<String>,
+}
+
+/// Lifecycle state of one [`ToolJournalEntry`] (#5225).
+///
+/// WHY: [`EmittedReceipt`] only exists once a tool call has *finished* --
+/// the receipt token, the attestation, and the result summary are all
+/// post-execution facts. A future dropped while the executor's
+/// side-effecting future is still being polled (turn cancellation, client
+/// disconnect, actor restart) previously left no record anywhere that the
+/// call was even attempted, even though the real-world side effect may
+/// already have run. A journal entry is written *before* that await
+/// (`Started`) and resolved immediately after it returns (`Completed`),
+/// synchronously and with no further `.await` in between -- the same
+/// cancel-safety shape `dispatch_single_tool` already relies on for
+/// `record`/`record_v2`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolJournalState {
+    /// Journaled before the executor's side-effecting future is polled.
+    Started,
+    /// The executor future resolved (successfully or with an error); a
+    /// terminal outcome (an `EmittedReceipt`, in the common case) now
+    /// exists for this call.
+    Completed,
+    /// Denied before dispatch -- no side effect occurred.
+    Denied,
+    /// Still `Started` when [`ReceiptLedger::reconcile_interrupted`] ran at
+    /// the start of a later turn against this same session: the owning
+    /// future was dropped after the side effect began and before this
+    /// ledger observed it finish. The real-world outcome is unknown.
+    Interrupted,
+}
+
+/// One entry in a session's tool-call journal: which state a call reached
+/// and when.
+#[derive(Debug, Clone)]
+pub struct ToolJournalEntry {
+    /// Provider tool-use id (matches `pipeline::ToolCall::id`).
+    pub tool_call_id: String,
+    /// Registered tool name.
+    pub tool_name: String,
+    /// Prepared, executor-bound input JSON captured at journal time.
+    pub input_json: String,
+    /// Current lifecycle state.
+    pub state: ToolJournalState,
+    /// When this entry was first written (`Started`/`Denied`).
+    pub opened_at: jiff::Timestamp,
+    /// When this entry reached a terminal state (`Completed`, `Denied`, or
+    /// `Interrupted`), if it has.
+    pub resolved_at: Option<jiff::Timestamp>,
 }
 
 /// One emitted receipt and the tuple it attests.
@@ -374,7 +432,107 @@ impl ReceiptLedger {
             entries: HashMap::with_capacity(capacity),
             order: VecDeque::with_capacity(capacity),
             capacity,
+            journal: HashMap::with_capacity(capacity),
+            journal_order: VecDeque::with_capacity(capacity),
         }
+    }
+
+    /// Journal a tool call as started, before its side-effecting future is
+    /// polled. Idempotent per `tool_call_id`: a repeat call (a retried
+    /// dispatch reusing the same provider id, in practice never observed)
+    /// replaces the entry in place rather than duplicating the FIFO slot.
+    pub fn journal_started(
+        &mut self,
+        tool_call_id: String,
+        tool_name: String,
+        input_json: String,
+        opened_at: jiff::Timestamp,
+    ) {
+        let entry = ToolJournalEntry {
+            tool_call_id: tool_call_id.clone(),
+            tool_name,
+            input_json,
+            state: ToolJournalState::Started,
+            opened_at,
+            resolved_at: None,
+        };
+        if self.journal.insert(tool_call_id.clone(), entry).is_none() {
+            self.journal_order.push_back(tool_call_id);
+            while self.journal_order.len() > self.capacity {
+                if let Some(oldest) = self.journal_order.pop_front() {
+                    self.journal.remove(&oldest);
+                }
+            }
+        }
+    }
+
+    /// Resolve a journaled call to `Completed` once its result is known.
+    ///
+    /// No-op if `tool_call_id` was never journaled (a caller that never
+    /// invoked `journal_started`) or was evicted by the capacity cap --
+    /// journaling is best-effort observability layered onto the receipt
+    /// ledger, not a new required precondition for dispatch.
+    pub fn journal_completed(&mut self, tool_call_id: &str, resolved_at: jiff::Timestamp) {
+        if let Some(entry) = self.journal.get_mut(tool_call_id) {
+            entry.state = ToolJournalState::Completed;
+            entry.resolved_at = Some(resolved_at);
+        }
+    }
+
+    /// Journal a call that was denied before dispatch -- no side effect ran.
+    pub fn journal_denied(
+        &mut self,
+        tool_call_id: String,
+        tool_name: String,
+        input_json: String,
+        ts: jiff::Timestamp,
+    ) {
+        let entry = ToolJournalEntry {
+            tool_call_id: tool_call_id.clone(),
+            tool_name,
+            input_json,
+            state: ToolJournalState::Denied,
+            opened_at: ts,
+            resolved_at: Some(ts),
+        };
+        if self.journal.insert(tool_call_id.clone(), entry).is_none() {
+            self.journal_order.push_back(tool_call_id);
+            while self.journal_order.len() > self.capacity {
+                if let Some(oldest) = self.journal_order.pop_front() {
+                    self.journal.remove(&oldest);
+                }
+            }
+        }
+    }
+
+    /// Find every journal entry still in `Started` -- a side effect began
+    /// and this ledger never observed it finish -- transition each to
+    /// `Interrupted`, and return them in the deterministic order they were
+    /// opened.
+    ///
+    /// Call once at the start of a turn, before dispatching any new tool
+    /// calls, so a turn cancelled mid-tool-call is reconciled by the very
+    /// next turn run against this session rather than silently dropped
+    /// (#5225). Idempotent: a second call with nothing newly `Started`
+    /// returns an empty `Vec`.
+    pub fn reconcile_interrupted(&mut self, resolved_at: jiff::Timestamp) -> Vec<ToolJournalEntry> {
+        let mut reconciled = Vec::new();
+        for tool_call_id in &self.journal_order {
+            if let Some(entry) = self.journal.get_mut(tool_call_id)
+                && entry.state == ToolJournalState::Started
+            {
+                entry.state = ToolJournalState::Interrupted;
+                entry.resolved_at = Some(resolved_at);
+                reconciled.push(entry.clone());
+            }
+        }
+        reconciled
+    }
+
+    /// Look up a journal entry's current state, for tests and diagnostics.
+    #[must_use]
+    pub fn journal_state(&self, tool_call_id: &str) -> Option<ToolJournalState> {
+        self.journal.get(tool_call_id).map(|entry| entry.state)
     }
 
     /// Record an emitted receipt in the ledger.
@@ -861,5 +1019,86 @@ mod tests {
                 "recent receipts should still be present"
             );
         }
+    }
+
+    #[test]
+    fn journal_started_then_completed_reaches_terminal_state() {
+        let mut ledger = make_ledger();
+        let ts = jiff::Timestamp::now();
+        ledger.journal_started("toolu_1".to_owned(), "read".to_owned(), "{}".to_owned(), ts);
+        assert_eq!(
+            ledger.journal_state("toolu_1"),
+            Some(ToolJournalState::Started)
+        );
+
+        ledger.journal_completed("toolu_1", ts);
+        assert_eq!(
+            ledger.journal_state("toolu_1"),
+            Some(ToolJournalState::Completed)
+        );
+
+        // WHY: a completed call must never be reported back as interrupted --
+        // reconciliation only ever regresses `Started` entries, so its own
+        // resolution here proves that boundary holds.
+        let reconciled = ledger.reconcile_interrupted(ts);
+        assert!(
+            reconciled.is_empty(),
+            "a completed call must not be reconciled as interrupted"
+        );
+    }
+
+    #[test]
+    fn reconcile_interrupted_catches_a_call_left_started() {
+        let mut ledger = make_ledger();
+        let ts = jiff::Timestamp::now();
+        // WHY: models the exact cancel-unsafe window this journal exists to
+        // close -- `journal_started` ran, but the owning future was dropped
+        // before `journal_completed` (e.g. inside `tools.execute_prepared`)
+        // ever ran.
+        ledger.journal_started(
+            "toolu_2".to_owned(),
+            "exec".to_owned(),
+            "{\"cmd\":\"true\"}".to_owned(),
+            ts,
+        );
+
+        let reconciled = ledger.reconcile_interrupted(ts);
+        assert_eq!(reconciled.len(), 1);
+        assert_eq!(reconciled[0].tool_call_id, "toolu_2");
+        assert_eq!(reconciled[0].state, ToolJournalState::Interrupted);
+        assert_eq!(
+            ledger.journal_state("toolu_2"),
+            Some(ToolJournalState::Interrupted)
+        );
+
+        // WHY: reconciliation must be idempotent -- a second turn starting
+        // against the same session (no new tool calls in between) must not
+        // re-report an already-reconciled entry.
+        assert!(ledger.reconcile_interrupted(ts).is_empty());
+    }
+
+    #[test]
+    fn journal_denied_call_never_reports_as_interrupted() {
+        let mut ledger = make_ledger();
+        let ts = jiff::Timestamp::now();
+        ledger.journal_denied("toolu_3".to_owned(), "rm".to_owned(), "{}".to_owned(), ts);
+        assert_eq!(
+            ledger.journal_state("toolu_3"),
+            Some(ToolJournalState::Denied)
+        );
+        assert!(
+            ledger.reconcile_interrupted(ts).is_empty(),
+            "a denied call never ran, so it must never surface as an interrupted side effect"
+        );
+    }
+
+    #[test]
+    fn journal_completed_on_unknown_call_id_is_a_no_op() {
+        let mut ledger = make_ledger();
+        let ts = jiff::Timestamp::now();
+        // WHY: must not panic or fabricate an entry for an id this ledger
+        // never journaled (e.g. a test-only dispatch path with no signer).
+        ledger.journal_completed("never-journaled", ts);
+        assert_eq!(ledger.journal_state("never-journaled"), None);
     }
 }

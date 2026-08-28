@@ -1198,7 +1198,38 @@ async fn dispatch_single_tool(
     approval_outcome: &str,
 ) -> error::Result<SingleToolOutcome> {
     let start = std::time::Instant::now();
+
+    // WHY(#5225): journal the call as `Started` *before* the side-effecting
+    // future is polled, with no `.await` in between -- the same
+    // cancel-safety shape `record`/`record_v2` below already rely on. If
+    // this future is dropped while `execute_prepared` is in flight (turn
+    // cancellation, actor restart), the next turn's `reconcile_interrupted`
+    // call finds this entry still `Started` and surfaces it rather than
+    // losing the fact that the side effect was ever attempted.
+    if let Some(ledger) = receipt_ledger {
+        let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
+            poisoned.into_inner()
+        });
+        guard.journal_started(
+            tool_id.to_owned(),
+            tool_name.to_owned(),
+            persisted_input.to_string(),
+            jiff::Timestamp::now(),
+        );
+    }
+
     let result = tools.execute_prepared(execution_input, tool_ctx).await;
+
+    // WHY(#5225): resolve the journal entry immediately on return, before
+    // any further `.await` -- see the `Started` write above.
+    if let Some(ledger) = receipt_ledger {
+        let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
+            poisoned.into_inner()
+        });
+        guard.journal_completed(tool_id, jiff::Timestamp::now());
+    }
 
     #[expect(
         clippy::cast_possible_truncation,

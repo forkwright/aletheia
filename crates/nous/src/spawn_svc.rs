@@ -383,6 +383,7 @@ impl SpawnServiceImpl {
                 consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
                 loop_detection_window: 50,
                 cycle_detection_max_len: 10,
+                client_disconnect_policy: crate::config::ClientDisconnectPolicy::default(),
             },
             domains,
             private,

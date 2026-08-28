@@ -89,6 +89,18 @@ static BACKGROUND_TASK_FAILURES_TOTAL: LazyLock<Family<NousTaskTypeLabels, Count
 static TOOL_FAILURES_TOTAL: LazyLock<Family<NousToolLabels, Counter>> =
     LazyLock::new(Family::default);
 
+/// WHY(#5225): a tool call left `Started` in the receipt ledger's journal
+/// by a cancelled prior turn -- the side effect may have run, but this
+/// process never observed its result. Distinct from `TOOL_FAILURES_TOTAL`,
+/// which counts calls that ran to completion and reported an error.
+static TOOL_CALLS_RECONCILED_TOTAL: LazyLock<Family<NousToolLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+/// WHY(#5225): the one operator-visible signal that a turn kept running
+/// under `ContinueInBackground` after its caller disconnected.
+static BACKGROUND_DISCONNECTS_TOTAL: LazyLock<Family<NousLabels, Counter>> =
+    LazyLock::new(Family::default);
+
 static STREAM_EVENTS_DROPPED_TOTAL: LazyLock<Family<StreamEventDroppedLabels, Counter>> =
     LazyLock::new(Family::default);
 
@@ -145,6 +157,16 @@ pub fn register(registry: &mut Registry) {
         "aletheia_tool_failures",
         "Total tool execution failures by tool name",
         TOOL_FAILURES_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_background_disconnects",
+        "Total client disconnects observed while a turn continued under the ContinueInBackground disconnect policy",
+        BACKGROUND_DISCONNECTS_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_tool_calls_reconciled",
+        "Total tool calls found still Started (interrupted by a prior turn cancellation) at the next turn's journal reconciliation",
+        TOOL_CALLS_RECONCILED_TOTAL.clone(),
     );
     registry.register(
         "aletheia_stream_events_dropped",
@@ -260,6 +282,39 @@ fn label<'a>(labels: &'a [(&str, String)], key: &str) -> Option<&'a str> {
 pub(crate) fn record_tool_failure(nous_id: &str, tool_name: &str) {
     tracing::warn!(nous_id, tool_name, "tool execution failed");
     TOOL_FAILURES_TOTAL
+        .get_or_create(&NousToolLabels {
+            nous_id: nous_id.to_owned(),
+            tool_name: tool_name.to_owned(),
+        })
+        .inc();
+}
+
+/// Record a client disconnect observed under the `ContinueInBackground`
+/// disconnect policy (#5225): the turn keeps running rather than stopping,
+/// so this counter is the only surface — besides tracing — that makes the
+/// disconnect visible, since the eventual `TurnResult` reaches nobody.
+pub(crate) fn record_background_disconnect(nous_id: &str) {
+    tracing::warn!(
+        nous_id,
+        "client disconnected; turn continuing in background per ContinueInBackground policy"
+    );
+    BACKGROUND_DISCONNECTS_TOTAL
+        .get_or_create(&NousLabels {
+            nous_id: nous_id.to_owned(),
+        })
+        .inc();
+}
+
+/// Record a tool call reconciled as `Interrupted` at turn start (#5225): its
+/// journal entry was still `Started` from a prior turn this process never
+/// saw finish.
+pub(crate) fn record_tool_call_reconciled(nous_id: &str, tool_name: &str) {
+    tracing::warn!(
+        nous_id,
+        tool_name,
+        "tool call left Started by a cancelled prior turn; reconciled as interrupted"
+    );
+    TOOL_CALLS_RECONCILED_TOTAL
         .get_or_create(&NousToolLabels {
             nous_id: nous_id.to_owned(),
             tool_name: tool_name.to_owned(),
