@@ -701,21 +701,13 @@ pub(super) fn rows_to_recall_results(
 
 /// Reduce a natural-language message to a bag-of-terms full-text-search query.
 ///
-/// WHY: The FTS `query:` argument of `~facts:content_fts{... query: $query_text ...}`
-/// is parsed by Cozo's *own* full-text query grammar, in which characters such as
-/// `?`, `*`, `"`, parentheses and boolean keywords are operators. Binding a raw user
-/// message (e.g. any question, which ends in `?`) therefore triggers an FTS parse
-/// error that is swallowed, silently disabling knowledge recall for that turn
-/// (#4156). Keeping only alphanumeric word tokens yields a universally valid
-/// bare-term query that preserves recall on the meaningful words while dropping all
-/// FTS-syntax characters. Returns an empty string when the message has no word
-/// characters; callers treat that as "no text query".
+/// WHY(#7020): delegates to the canonical `koina::fts::sanitize_fts_query`,
+/// the single owner for this policy shared with `nous::skills` — the two
+/// crates independently reimplemented the same #4156 FTS-escaping fix, and
+/// Nous's copy had drifted to preserve hyphens/underscores as word content.
 #[cfg(feature = "mneme-engine")]
 pub(super) fn sanitize_fts_query(raw: &str) -> String {
-    raw.split(|c: char| !c.is_alphanumeric())
-        .filter(|t| !t.is_empty())
-        .collect::<Vec<_>>()
-        .join(" ")
+    koina::fts::sanitize_fts_query(raw)
 }
 
 /// Datalog rule fragment defining facts visible to a requesting nous:

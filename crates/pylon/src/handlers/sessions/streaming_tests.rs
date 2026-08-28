@@ -438,28 +438,28 @@ fn nous_guard_rejected_includes_reason() {
     assert!(msg.contains("token limit exceeded"));
 }
 
-// ── redact_secrets ──
+// ── redact_secrets (WHY(#7020): delegates to koina::redact::redact_sensitive) ──
 
 #[test]
 fn redact_strips_anthropic_api_key() {
-    let msg = "invalid key sk-ant-abc123def456ghi789"; // pii-allow: synthetic Anthropic key shape, redactor self-test
+    let msg = "invalid key sk-ant-api03-abc123def456ghi789"; // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic Anthropic key shape, redactor self-test
     let redacted = redact_secrets(msg);
     assert!(
-        !redacted.contains("sk-ant-"),
-        "API key prefix should be redacted"
+        !redacted.contains("abc123def456ghi789"),
+        "API key body should be redacted"
     );
-    assert!(redacted.contains("[REDACTED]"));
+    assert!(redacted.contains("sk-ant-***"));
 }
 
 #[test]
 fn redact_strips_generic_sk_key() {
-    let msg = "auth error with sk-abcdefghijklmnopqrstuvwxyz"; // pii-allow: synthetic generic sk- shape, redactor self-test
+    let msg = "auth error with sk-abcdefghijklmnopqrstuvwxyz"; // kanon:ignore SECURITY/hardcoded-openai-api-key + gitleaks:allow + trufflehog:ignore -- synthetic generic sk- shape, redactor self-test
     let redacted = redact_secrets(msg);
     assert!(
         !redacted.contains("sk-abcdef"),
         "sk- key should be redacted"
     );
-    assert!(redacted.contains("[REDACTED]"));
+    assert!(redacted.contains("sk-***"));
 }
 
 #[test]
@@ -471,12 +471,36 @@ fn redact_preserves_normal_messages() {
 
 #[test]
 fn redact_strips_bearer_token() {
-    let msg = "rejected bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.payload"; // pii-allow: synthetic Bearer/JWT shape, redactor self-test
+    let msg = "rejected Bearer abc123def456.ghi789"; // pii-allow: synthetic Bearer shape, redactor self-test
     let redacted = redact_secrets(msg);
     assert!(
-        !redacted.contains("eyJh"),
+        !redacted.contains("abc123def456"),
         "bearer token should be redacted"
     );
+    assert!(redacted.contains("Bearer ***"));
+}
+
+#[test]
+fn redact_strips_jwt() {
+    // pii-allow: synthetic 3-segment JWT shape, redactor self-test
+    let msg = "rejected token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U";
+    let redacted = redact_secrets(msg);
+    assert!(
+        !redacted.contains("dozjgNryP4J3jVmNHl0w5N"),
+        "JWT should be redacted"
+    );
+    assert!(redacted.contains("[JWT REDACTED]"));
+}
+
+#[test]
+fn redact_strips_password_assignment() {
+    let msg = "provider rejected request: password=hunter2"; // pii-allow: synthetic password shape, redactor self-test
+    let redacted = redact_secrets(msg);
+    assert!(
+        !redacted.contains("hunter2"),
+        "password value should be redacted"
+    );
+    assert!(redacted.contains("password=***"));
 }
 
 // ── sse_event_to_axum_with_id: serialization ──

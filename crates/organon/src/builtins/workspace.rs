@@ -26,7 +26,11 @@ use super::filesystem_policy::protected_path_class;
 ///
 /// WHY: Full filesystem paths in error messages sent to the LLM leak instance
 /// directory structure. Show only the filename component instead.
-fn sanitize_path_in_msg(path: &std::path::Path) -> String {
+///
+/// WHY(#7020): `pub(crate)` so `fs_ops` can use this directly instead of
+/// carrying an identical private copy — the crate-local path-display
+/// sanitizer used by every filesystem/workspace tool.
+pub(crate) fn sanitize_path_in_msg(path: &std::path::Path) -> String {
     path.file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("<path>")

@@ -27,6 +27,9 @@ pub mod event;
 pub mod fjall;
 /// Restricted filesystem helpers for writing sensitive files.
 pub mod fs;
+/// Full-text-search query sanitization shared by every Krites-backed FTS
+/// query path ([`fts::sanitize_fts_query`]).
+pub mod fts;
 /// Shared HTTP constants (content types, auth prefix, API paths).
 pub mod http;
 /// Newtype wrappers for domain identifiers ([`id::NousId`], [`id::SessionId`], [`id::TurnId`], [`id::ToolName`]).
