@@ -280,7 +280,7 @@ impl ApiError {
     ///
     /// WHY: split out of `into_response` — folding this match back in pushes
     /// that function past clippy's line ceiling (`clippy::too_many_lines`).
-    fn status_code_details(&self) -> (StatusCode, &'static str, Option<serde_json::Value>) {
+    fn status_code_details(&self) -> (StatusCode, &str, Option<serde_json::Value>) {
         match self {
             Self::SessionNotFound { .. } => (StatusCode::NOT_FOUND, "session_not_found", None),
             Self::NousNotFound { .. } => (StatusCode::NOT_FOUND, "nous_not_found", None),
