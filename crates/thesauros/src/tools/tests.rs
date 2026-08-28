@@ -594,7 +594,7 @@ async fn canonical_pack_root_prevents_retargeted_sandbox_read_grant() {
     let decoy_root = container.path().join("decoy-pack");
     let configured_alias = container.path().join("configured-pack");
     fs::create_dir_all(original_root.join("tools")).expect("create original tool directory");
-    fs::create_dir_all(&decoy_root).expect("create decoy pack directory");
+    fs::create_dir_all(decoy_root.join("tools")).expect("create decoy tool directory");
 
     let manifest =
         std::fs::File::create(original_root.join("pack.toml")).expect("create original manifest");
