@@ -64,9 +64,10 @@ fn api_error_internal_status_code() {
 fn api_error_unauthorized_status_code() {
     use axum::response::IntoResponse;
 
-    use crate::error::ApiError;
+    use crate::error::{ApiError, UnauthorizedReason};
 
     let err = ApiError::Unauthorized {
+        reason: UnauthorizedReason::MissingCredentials,
         location: snafu::location!(),
     };
     let response = err.into_response();
