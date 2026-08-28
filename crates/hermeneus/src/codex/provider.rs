@@ -305,8 +305,16 @@ impl LlmProvider for CodexProvider {
         crate::provider::ProviderCapabilities { tool_loop: false }
     }
 
-    fn supports_streaming(&self) -> bool {
-        true
+    fn streaming_capability(&self) -> crate::provider::StreamingCapability {
+        // WHY(#5264): the `codex` CLI does not support line-by-line
+        // streaming (see `execute_streaming`'s doc comment) — this adapter
+        // buffers the entire response and synthesizes exactly one
+        // `StreamEvent::TextDelta`, never a genuine incremental one.
+        crate::provider::StreamingCapability {
+            buffered_single_delta: true,
+            cancel_safety: true,
+            ..crate::provider::StreamingCapability::NONE
+        }
     }
 
     fn complete_streaming<'a>(

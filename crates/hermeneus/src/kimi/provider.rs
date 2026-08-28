@@ -352,8 +352,17 @@ impl LlmProvider for KimiProvider {
         crate::provider::ProviderCapabilities { tool_loop: false }
     }
 
-    fn supports_streaming(&self) -> bool {
-        true
+    fn streaming_capability(&self) -> crate::provider::StreamingCapability {
+        // WHY(#5264): the `kimi` CLI subprocess streams raw incremental
+        // text as it writes to stdout (see `execute_streaming`'s
+        // `on_delta` callback), but this adapter only ever synthesizes
+        // `StreamEvent::TextDelta` from it — no block/message lifecycle,
+        // no tool-input deltas, no usage in the stream itself.
+        crate::provider::StreamingCapability {
+            realtime_deltas: true,
+            cancel_safety: true,
+            ..crate::provider::StreamingCapability::NONE
+        }
     }
 
     fn complete_streaming<'a>(
