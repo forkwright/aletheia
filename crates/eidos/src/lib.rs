@@ -17,6 +17,8 @@ pub mod knowledge;
 pub mod meta;
 /// Operator-tunable recall scoring weights.
 pub mod recall;
+/// Canonical SKILL.md wire shape and renderer.
+pub mod skill_md;
 
 /// Re-export bookkeeping provider contracts and DTOs at crate root.
 pub use bookkeeping::{

@@ -3,12 +3,21 @@
 //! Returns the full SKILL.md body (formatted from the stored `SkillContent`)
 //! so the agent can load a skill on demand.  If no skill with the given name
 //! exists, returns an error result.
+//!
+//! WHY: deserializes stored skill JSON directly into `eidos::skill_md::SkillMd`
+//! and renders through `eidos::skill_md::format_skill_md` -- the single owner
+//! of the SKILL.md projection, also used by `episteme::skill::format_skill_md`
+//! -- rather than a private duplicate. `eidos` is a dependency-light shared
+//! types crate (no `mneme`/`episteme` pull-in); deserializing into its
+//! narrower `SkillMd` silently ignores extra stored fields (e.g. `origin`)
+//! the renderer does not need.
 
 use std::future::Future;
 use std::pin::Pin;
 
 use indexmap::IndexMap;
 
+use eidos::skill_md::{SkillMd, format_skill_md};
 use koina::id::ToolName;
 
 use crate::error::Result;
@@ -17,82 +26,6 @@ use crate::types::{
     InputSchema, PropertyDef, PropertyType, Reversibility, RollbackSupport, ToolCapabilityMetadata,
     ToolCategory, ToolContext, ToolDef, ToolGroupId, ToolInput, ToolResult, ToolStability, ToolTag,
 };
-
-/// Minimal skill body for deserialising knowledge-store JSON without a
-/// dependency on `mneme` / `episteme`.
-#[derive(Debug, Clone, serde::Deserialize)]
-struct SkillBody {
-    name: String,
-    description: String,
-    #[serde(default)]
-    steps: Vec<String>,
-    #[serde(default)]
-    tools_used: Vec<String>,
-    #[serde(default)]
-    domain_tags: Vec<String>,
-    #[serde(default)]
-    triggers: Vec<String>,
-    #[serde(default)]
-    always: bool,
-}
-
-/// Format a [`SkillBody`] as a SKILL.md with YAML frontmatter.
-fn format_skill_md(skill: &SkillBody) -> String {
-    use std::fmt::Write as _;
-    let mut md = String::with_capacity(512);
-
-    md.push_str("---\n");
-    let _ = writeln!(md, "name: {}", skill.name);
-    let desc_needs_quoting = skill.description.contains(':')
-        || skill.description.contains('#')
-        || skill.description.contains('"');
-    if desc_needs_quoting {
-        let escaped = skill.description.replace('"', r#"\""#);
-        let _ = writeln!(md, "description: \"{escaped}\"");
-    } else {
-        let _ = writeln!(md, "description: {}", skill.description);
-    }
-    if !skill.tools_used.is_empty() {
-        let _ = writeln!(md, "tools: [{}]", skill.tools_used.join(", "));
-    }
-    if !skill.domain_tags.is_empty() {
-        let _ = writeln!(md, "domains: [{}]", skill.domain_tags.join(", "));
-    }
-    if !skill.triggers.is_empty() {
-        let _ = writeln!(md, "triggers: [{}]", skill.triggers.join(", "));
-    }
-    if skill.always {
-        md.push_str("always: true\n");
-    }
-    md.push_str("---\n\n");
-
-    let _ = writeln!(md, "# {}\n", skill.name);
-    md.push_str("## When to Use\n");
-    let _ = writeln!(md, "{}\n", skill.description);
-
-    if !skill.steps.is_empty() {
-        md.push_str("## Steps\n");
-        for (i, step) in skill.steps.iter().enumerate() {
-            let _ = writeln!(md, "{}. {}", i + 1, step);
-        }
-        md.push('\n');
-    }
-
-    if !skill.tools_used.is_empty() {
-        md.push_str("## Tools Used\n");
-        for tool in &skill.tools_used {
-            let _ = writeln!(md, "- {tool}");
-        }
-        md.push('\n');
-    }
-
-    if !skill.domain_tags.is_empty() {
-        md.push_str("## Tags\n");
-        md.push_str(&skill.domain_tags.join(", "));
-    }
-
-    md
-}
 
 // ── Executor ─────────────────────────────────────────────────────────────────
 
@@ -122,7 +55,7 @@ impl ToolExecutor for SkillReadExecutor {
                 .await
             {
                 Ok(Some(content_json)) => {
-                    let skill = match serde_json::from_str::<SkillBody>(&content_json) {
+                    let skill = match serde_json::from_str::<SkillMd>(&content_json) {
                         Ok(s) => s,
                         Err(e) => {
                             return Ok(ToolResult::error(format!(
@@ -199,4 +132,44 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
         },
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+#[expect(clippy::expect_used, reason = "test assertions")]
+mod tests {
+    use super::*;
+
+    /// WHY(#7026): stored skill JSON is shaped like
+    /// `episteme::skill::SkillContent`'s serialization (including the
+    /// `origin` field, which `SkillMd` does not declare), proving the lazy
+    /// `skill_read` path tolerates the real wire shape and renders through
+    /// the same canonical formatter as the eager export path -- so a future
+    /// edit to `eidos::skill_md::format_skill_md` cannot leave this path
+    /// behind without this test catching the drift.
+    #[test]
+    fn renders_canonical_frontmatter_from_stored_skill_content_shape() {
+        let stored_json = serde_json::json!({
+            "name": "refactor-pattern",
+            "description": "Refactor a pattern",
+            "steps": ["do it"],
+            "tools_used": ["Read", "Edit"],
+            "domain_tags": ["rust"],
+            "origin": "manual",
+            "triggers": [],
+            "always": false,
+        })
+        .to_string();
+
+        let skill: SkillMd = serde_json::from_str(&stored_json).expect("known-good shape parses");
+        let md = format_skill_md(&skill);
+
+        assert!(
+            md.contains("allowed-tools: Read, Edit"),
+            "lazy-loaded skill_read output must carry allowed-tools for Claude Code, same as the eager export path: {md}"
+        );
+        assert!(
+            md.contains("tools: [Read, Edit]"),
+            "lazy-loaded skill_read output must still carry tools for Aletheia's own parser: {md}"
+        );
+    }
 }
