@@ -430,7 +430,7 @@ impl TurnRecordStatus {
 pub struct TurnRecord {
     /// Canonical turn identity (ULID rendered as a string), stable across
     /// finalize retries.
-    pub turn_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: turn ids are minted as koina::ulid::Ulid by nous's pipeline and rendered to a string at the pipeline boundary; graphe does not depend on nous's id types, so this stores the caller's canonical string form verbatim
+    pub turn_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: `koina::id::TurnId` exists but is `TurnId(u64)` -- a numeric within-session ordinal. This field is a ULID rendered as a string, minted by nous's pipeline. They are different types for different things, so adopting the newtype would not validate this value, it would change what the column means. Not a migration cost: there is no correct newtype to adopt.
     /// Session this turn belongs to.
     pub session_id: String, // kanon:ignore RUST/primitive-for-domain-id WHY: raw foreign key to Session.id; must preserve the stored byte form exactly (UUID, ULID, or legacy ses_) or joins break, so it cannot be a normalizing newtype
     /// Session-local sequence number, monotonically increasing per session.
