@@ -47,6 +47,7 @@ Agent session pipeline: bootstrap, recall, execute, finalize. 22K lines. The age
 - **Session types**: primary (long-lived), ephemeral (`ask:`, `spawn:` prefix), background (`prosoche`).
 - **Spawn isolation**: Spawn-class tools (`SpawnSubtask` group) must be the last tool in a turn. If followed by other tools, subsequent calls are truncated and synthetic error results are injected (#186).
 - **Mistake brake**: Consecutive no-progress turns (zero tool calls) increment a per-session counter. At the configured limit (default 5, tunable via `KOINA_CONSECUTIVE_MISTAKE_LIMIT`), execution pauses and requests operator intervention (#187).
+- **Client disconnect policy** (`NousLimits::client_disconnect_policy`, #5225): explicit three-way choice for what the execute loop does when `stream_tx` closes mid-turn — `CancelBeforeToolStart` (default, historical behavior), `FinishCurrentToolThenStop` (let the current iteration's dispatched tools finish first), `ContinueInBackground` (run to completion regardless; visible via `metrics::record_background_disconnect` since the `TurnResult` reaches nobody). Distinct from the receipt ledger's tool-call journal (see organon's substrate notes), which handles the case where a tool's own side-effecting future is cut short mid-execution rather than the caller merely going away.
 
 ## Recent substrate notes
 

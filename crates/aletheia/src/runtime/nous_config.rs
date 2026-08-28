@@ -4,7 +4,7 @@ use std::process::Command;
 use tracing::warn;
 
 use mneme::workspace::ProjectId;
-use nous::config::{HookConfig, NousConfig, NousLimits, PipelineConfig};
+use nous::config::{ClientDisconnectPolicy, HookConfig, NousConfig, NousLimits, PipelineConfig};
 use organon::types::{ToolGroupId, ToolGroupPolicy};
 use taxis::config::{
     AgentBehaviorDefaults, AgentToolGroupPolicy, AletheiaConfig, ResolvedNousConfig, resolve_nous,
@@ -97,6 +97,7 @@ fn build_nous_limits(
         consecutive_mistake_limit: koina::defaults::DEFAULT_CONSECUTIVE_MISTAKE_LIMIT,
         loop_detection_window: config.nous_behavior.loop_detection_window,
         cycle_detection_max_len: config.nous_behavior.cycle_detection_max_len,
+        client_disconnect_policy: ClientDisconnectPolicy::default(),
     }
 }
 
