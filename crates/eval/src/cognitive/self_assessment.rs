@@ -1,7 +1,6 @@
 //! Self-assessment template for structured agent self-evaluation.
 
 use serde::{Deserialize, Serialize};
-use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::EvalClient;
@@ -9,6 +8,7 @@ use crate::scenario::{
     Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, ScenarioRunOutcome,
     ScenarioSubResult, assert_eval,
 };
+use crate::scenarios::first_nous_id;
 use crate::sse;
 
 /// Structured self-assessment output from an agent.
@@ -108,13 +108,10 @@ impl Scenario for SelfAssessmentScenario {
                 let mut sub_results = Vec::new();
                 let result: crate::error::Result<()> = async {
 
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let nous_id = first_nous_id(client).await?;
 
                 let key = crate::scenarios::unique_key("self", "assess");
-                let session = client.create_session(&nous.id, &key).await?;
+                let session = client.create_session(&nous_id, &key).await?;
                 let events = client
                     .send_message(&session.id, SELF_ASSESSMENT_PROMPT)
                     .await?;
