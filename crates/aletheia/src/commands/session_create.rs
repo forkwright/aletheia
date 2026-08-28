@@ -85,7 +85,7 @@ pub(crate) fn run(instance_root: Option<&PathBuf>, args: &SessionCreateArgs) -> 
             );
             Ok(())
         }
-        Err(e) if is_unique_constraint_violation(&e) => {
+        Err(e) if e.is_unique_constraint_violation() => {
             snafu::whatever!(
                 "a session with key '{}' already exists for agent '{}'",
                 args.key,
@@ -108,10 +108,6 @@ fn validate_identifier(value: &str, field: &str) -> Result<()> {
     parse_session_or_agent_id(value)
         .with_whatever_context(|_| format!("{field} uses a reserved internal prefix"))?;
     Ok(())
-}
-
-fn is_unique_constraint_violation(err: &mneme::error::Error) -> bool {
-    err.is_unique_constraint_violation()
 }
 
 #[cfg(test)]

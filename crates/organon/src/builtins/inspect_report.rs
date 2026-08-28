@@ -8,6 +8,7 @@ use indexmap::IndexMap;
 use poiesis_doc::inspect_docx;
 use poiesis_inspect::{inspect_pdf, inspect_pptx, inspect_xlsx};
 
+use crate::builtins::workspace::base64_decode;
 use crate::error::Result;
 use crate::registry::{ToolExecutor, ToolRegistry};
 use crate::types::{
@@ -126,10 +127,6 @@ impl ToolExecutor for InspectReportExecutor {
             Ok(ToolResult::text(inspect_result))
         })
     }
-}
-
-fn base64_decode(s: &str) -> std::result::Result<Vec<u8>, String> {
-    koina::base64::decode(s).map_err(|e| e.to_string())
 }
 
 fn inspect_report_def() -> crate::types::ToolDef {

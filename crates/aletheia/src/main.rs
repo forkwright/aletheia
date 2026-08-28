@@ -15,6 +15,8 @@ mod init;
 #[cfg(feature = "recall")]
 mod knowledge_adapter;
 #[cfg(feature = "recall")]
+mod knowledge_config;
+#[cfg(feature = "recall")]
 mod knowledge_maintenance;
 #[cfg(feature = "migrate-qdrant")]
 mod migrate_memory;
