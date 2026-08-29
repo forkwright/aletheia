@@ -240,8 +240,6 @@ async fn disk_usage_percent_times_out_on_hanging_df() {
     perms.set_mode(0o755);
     std::fs::set_permissions(&fake_df, perms).expect("set permissions");
 
-    tokio::time::pause();
-
     let path = dir.path().to_path_buf();
     let df = fake_df.clone();
     let cancel = CancellationToken::new();
@@ -251,6 +249,21 @@ async fn disk_usage_percent_times_out_on_hanging_df() {
     #[cfg(target_os = "linux")]
     let pid = wait_for_pid_file(&pid_file).await;
 
+    // WHY(#7100) the clock is paused HERE and not before the spawn: under
+    // `pause()`, tokio auto-advances whenever the runtime is idle, so the
+    // `tokio::time::sleep(10ms)` inside `wait_for_pid_file` returns immediately
+    // instead of sleeping. That turns the poll loop into a hot spin against a
+    // REAL-time deadline (`SUBPROCESS_WAIT`), burning a core in competition
+    // with the very subprocess it is waiting for. On an idle runner `fake df`
+    // still wins the race; on a loaded one it does not, and the test fails at
+    // "fake df did not write pid file" -- which reads as a hang in the code
+    // under test rather than as the test starving it.
+    //
+    // Pausing after the pid file exists gives the subprocess real time to start
+    // and real sleeps to yield on, while still letting the timeout below be
+    // advanced rather than waited out.
+    tokio::time::pause();
+
     // WHY: advance past the 10 s df timeout so the test does not wait in real time.
     tokio::time::advance(Duration::from_secs(11)).await;
     let result = handle.await.expect("join task");
@@ -258,18 +271,17 @@ async fn disk_usage_percent_times_out_on_hanging_df() {
 
     // WHY(#7100) there is no wall-clock assertion here: the paused clock is what
     // proves the timeout fired without waiting, and `handle.await` returning at
-    // all is the proof. If the timeout had NOT fired, the fake `df` would still
-    // be in `sleep 120` and this await would block for two minutes rather than
-    // return a late `elapsed` -- so a real-time bound adds nothing the join
-    // already establishes.
+    // all is the proof. Had the timeout not fired, the fake `df` would still be
+    // in `sleep 120` and this await would block for two minutes rather than
+    // return late -- so a real-time bound adds nothing the join already
+    // establishes.
     //
     // It previously asserted `elapsed < 1s` against `std::time::Instant`, which
-    // `tokio::time::pause()` does not affect. That bounded a real subprocess
-    // spawn, a pid-file poll and a process kill to one second on a shared
-    // runner, and reddened PRs whose diffs could not reach this crate. It is the
-    // same mistake `SUBPROCESS_WAIT` below was widened to 10 s to fix
-    // (WHY(#6908)); that fix covered one of the two real-time bounds in this
-    // function and left this one.
+    // `tokio::time::pause()` does not affect. That was a latent bound on real
+    // time, though NOT the one that was failing CI -- the observed failures were
+    // `SUBPROCESS_WAIT` expiring in `wait_for_pid_file`, fixed by moving the
+    // pause above. Removed anyway: a real-time assertion inside a paused-clock
+    // test is a trap whether or not it has fired yet.
     assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
 
     #[cfg(target_os = "linux")]
