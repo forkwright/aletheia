@@ -1327,16 +1327,30 @@ pub(super) fn build_matrix_provider(
     Some(Arc::new(provider))
 }
 
+/// The channel providers a runtime may listen on, each present only when its
+/// transport is configured.
+///
+/// WHY grouped: they are one question -- which transports to subscribe to --
+/// and passing them separately took `start_inbound_dispatch` to eight
+/// arguments against this crate's default `too_many_arguments` threshold of
+/// seven. Grouping the pair that actually belongs together is the honest fix;
+/// a catch-all `Deps` struct would only be hiding the count.
+pub(super) struct ChannelProviders<'a> {
+    pub(super) signal: Option<&'a Arc<SignalProvider>>,
+    pub(super) matrix: Option<&'a Arc<MatrixProvider>>,
+}
+
 pub(super) fn start_inbound_dispatch(
     config: &AletheiaConfig,
     nous_manager: &Arc<NousManager>,
     session_store: Arc<Mutex<SessionStore>>,
     ready_rx: tokio::sync::watch::Receiver<bool>,
-    signal_provider: Option<&Arc<SignalProvider>>,
-    matrix_provider: Option<&Arc<MatrixProvider>>,
+    providers: ChannelProviders<'_>,
     shutdown_token: &CancellationToken,
     task_tracker: &TaskTracker,
 ) -> Result<(Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>)> {
+    let signal_provider = providers.signal;
+    let matrix_provider = providers.matrix;
     let mut channel_registry =
         ChannelRegistry::new().with_outbound_policy(config.messaging.outbound.clone());
     let mut listen_providers: Vec<&dyn ChannelProvider> = Vec::new();

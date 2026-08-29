@@ -1206,8 +1206,10 @@ impl RuntimeBuilder {
             &nous_manager,
             Arc::clone(&session_store),
             ready_rx,
-            signal_provider.as_ref(),
-            matrix_provider.as_ref(),
+            crate::runtime::setup::ChannelProviders {
+                signal: signal_provider.as_ref(),
+                matrix: matrix_provider.as_ref(),
+            },
             &shutdown_token,
             &task_tracker,
         )?;
