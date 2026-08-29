@@ -1335,6 +1335,12 @@ pub(super) fn build_matrix_provider(
 /// arguments against this crate's default `too_many_arguments` threshold of
 /// seven. Grouping the pair that actually belongs together is the honest fix;
 /// a catch-all `Deps` struct would only be hiding the count.
+///
+/// WHY `Copy`: both fields are `Option<&Arc<_>>`, which is `Copy` already, and
+/// `needless_pass_by_value` fires on a by-value non-`Copy` parameter the body
+/// only reads. Taking it by reference instead would add an indirection to two
+/// borrows for nothing.
+#[derive(Clone, Copy)]
 pub(super) struct ChannelProviders<'a> {
     pub(super) signal: Option<&'a Arc<SignalProvider>>,
     pub(super) matrix: Option<&'a Arc<MatrixProvider>>,
