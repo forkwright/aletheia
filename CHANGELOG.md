@@ -21,6 +21,7 @@
 ### Bug Fixes
 
 * **agora:** centralize channel-identity redaction, make raw payload capture opt-in ([#7093](https://github.com/forkwright/aletheia/issues/7093)) ([81b62d0](https://github.com/forkwright/aletheia/commit/81b62d0ca081d94f1872d3813cce0275b55cbeb8))
+* **agora:** keep active-subscription gauge honest through into_receiver ([#7105](https://github.com/forkwright/aletheia/issues/7105)) ([f7e4d31](https://github.com/forkwright/aletheia/commit/f7e4d3100fd1e09529f69d3f42aa524c6fdb5c88))
 * **ci:** make release smoke checks shell-safe ([#7009](https://github.com/forkwright/aletheia/issues/7009)) ([149cf90](https://github.com/forkwright/aletheia/commit/149cf9024ffe9c13ed52210b99a11a1608353d97))
 * **config:** wire or remove the dead config surface ([#7048](https://github.com/forkwright/aletheia/issues/7048)) ([65ee1ec](https://github.com/forkwright/aletheia/commit/65ee1ece4bc6e57c1d69f39d0cfb3c41bea76fac))
 * **daemon:** drop the real-time bound from the hanging-df timeout test ([#7106](https://github.com/forkwright/aletheia/issues/7106)) ([3789cf3](https://github.com/forkwright/aletheia/commit/3789cf3302d72faaec9884c934d82831f2e651c5))
