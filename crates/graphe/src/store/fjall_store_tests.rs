@@ -890,6 +890,10 @@ fn delete_session_aborts_on_corrupt_session_row() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "regression test exercises delete_session's full cross-partition cleanup"
+)]
 fn delete_session_removes_usage_distillation_and_note_rows() {
     // WHY(#4984): positive-path analog — confirm delete_session leaves NO child
     // rows behind across every partition (messages, usage, distillations, notes).
@@ -1267,6 +1271,10 @@ fn corrupted_blackboard_json_propagates_from_list() {
 }
 
 #[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "regression test exercises finalize_turn's single-fsync cross-partition write"
+)]
 fn finalize_turn_batches_user_assistant_and_usage_with_one_fsync() {
     test_persist_counter::reset();
     let store = test_store();
