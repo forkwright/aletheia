@@ -179,6 +179,16 @@ impl ToolHttpClients {
     /// constructor is the canonical policy; call sites -- production and
     /// test alike -- adopt it rather than rebuilding the pair by hand.
     ///
+    /// WHY(crypto): installs the process-wide rustls provider first, per
+    /// `koina::crypto`'s documented contract ("lazily before the first
+    /// TLS-backed client is constructed"). A caller building this struct as
+    /// part of a larger argument expression -- e.g.
+    /// `f(ToolServices { field: Some(x), ..Default::default() })` -- has that
+    /// struct-update base evaluated before `f`'s body runs, so an install
+    /// inside `f` arrives too late; the client builder itself is the one
+    /// place early enough to always precede its own
+    /// `reqwest::Client::builder()` call.
+    ///
     /// Installs no [`PolicyDnsResolver`](crate::sandbox::PolicyDnsResolver):
     /// callers that need the connected address pinned to the validated one
     /// (SECURITY #5229) use [`with_gate`](Self::with_gate) instead. This
@@ -187,6 +197,7 @@ impl ToolHttpClients {
     /// accepted production shape.
     #[must_use]
     pub fn new() -> Self {
+        let _ = koina::crypto::install_default_provider();
         Self {
             general: reqwest::Client::new(),
             ssrf_safe: reqwest::Client::builder()
@@ -219,6 +230,13 @@ impl ToolHttpClients {
     pub fn with_gate(
         gate: std::sync::Arc<crate::sandbox::EgressGate>,
     ) -> Result<Self, reqwest::Error> {
+        // WHY(crypto): same contract as `new` -- the rustls provider must be
+        // installed before the first TLS-backed client is constructed, and this
+        // builder is the one place early enough to precede its own
+        // `reqwest::Client::builder()`. This is the PRODUCTION constructor, so
+        // it needs the guarantee at least as much as the test-path one does.
+        // `install_default_provider` is idempotent; a second call is a no-op.
+        let _ = koina::crypto::install_default_provider();
         let resolver = std::sync::Arc::new(crate::sandbox::PolicyDnsResolver::new(gate));
         Ok(Self {
             general: reqwest::Client::builder()
@@ -265,6 +283,33 @@ pub struct ToolServices {
     pub lazy_tool_catalog: Vec<(ToolName, String)>,
     /// Server tool configuration for provider-side tools (web search, code execution).
     pub server_tool_config: ServerToolConfig,
+}
+
+impl Default for ToolServices {
+    /// All services absent, paired HTTP clients at their default policy, and
+    /// an empty secret vault/lazy-tool catalog/server-tool config.
+    ///
+    /// WHY: test call sites across organon previously restated this same
+    /// all-`None` shape by hand -- one field set under test, every other
+    /// field spelled out to its default -- which is exactly the divergence
+    /// risk a struct-update base exists to remove. Production call sites
+    /// build a fully-populated `ToolServices` directly and do not need this.
+    fn default() -> Self {
+        Self {
+            cross_nous: None,
+            messenger: None,
+            note_store: None,
+            blackboard_store: None,
+            spawn: None,
+            planning: None,
+            knowledge: None,
+            working_checkpoint_store: None,
+            http_clients: ToolHttpClients::default(),
+            secret_vault: SecretVault::default(),
+            lazy_tool_catalog: Vec::new(),
+            server_tool_config: ServerToolConfig::default(),
+        }
+    }
 }
 
 impl std::fmt::Debug for ToolServices {

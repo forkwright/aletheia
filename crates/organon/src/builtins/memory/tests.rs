@@ -3,22 +3,19 @@
     clippy::as_conversions,
     reason = "test: coercions to dyn trait objects in test setup"
 )]
-use std::collections::HashSet;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 
 use graphe::store::SessionStore;
 use graphe::types::BlackboardVisibility;
-use koina::id::{NousId, SessionId, ToolName};
+use koina::id::{NousId, ToolName};
 
 use crate::registry::ToolRegistry;
 use crate::types::{
-    BlackboardEntry, BlackboardStore, BlackboardViewer, NoteEntry, NoteStore, ServerToolConfig,
-    ToolContext, ToolHttpClients, ToolInput, ToolServices,
+    BlackboardEntry, BlackboardStore, BlackboardViewer, NoteEntry, NoteStore, ToolContext,
+    ToolInput, ToolServices,
 };
 
 use crate::error::StoreError;
-use crate::testing::install_crypto_provider;
 
 struct MockNoteStore {
     notes: Mutex<Vec<NoteEntry>>,
@@ -164,46 +161,18 @@ impl BlackboardStore for MockBlackboardStore {
 }
 
 fn test_ctx() -> ToolContext {
-    ToolContext {
-        nous_id: NousId::new("test-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: PathBuf::from("/tmp/test"),
-        allowed_roots: vec![PathBuf::from("/tmp")],
-        services: None,
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-    }
+    crate::testing::make_test_context_without_services()
 }
 
 fn ctx_with_services(
     note_store: Arc<dyn NoteStore>,
     bb_store: Arc<dyn BlackboardStore>,
 ) -> ToolContext {
-    install_crypto_provider();
-    ToolContext {
-        nous_id: NousId::new("test-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: PathBuf::from("/tmp/test"),
-        allowed_roots: vec![PathBuf::from("/tmp")],
-        services: Some(Arc::new(ToolServices {
-            working_checkpoint_store: None,
-            cross_nous: None,
-            messenger: None,
-            note_store: Some(note_store),
-            blackboard_store: Some(bb_store),
-            spawn: None,
-            planning: None,
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
-        })),
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-    }
+    crate::testing::make_test_context_with(ToolServices {
+        note_store: Some(note_store),
+        blackboard_store: Some(bb_store),
+        ..Default::default()
+    })
 }
 
 #[tokio::test]
@@ -507,13 +476,8 @@ async fn blackboard_delete_only_author() {
 
     let other_ctx = ToolContext {
         nous_id: NousId::new("other-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: PathBuf::from("/tmp/test"),
-        allowed_roots: vec![PathBuf::from("/tmp")],
         services: ctx.services.clone(),
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+        ..crate::testing::make_test_context_without_services()
     };
     let del = ToolInput {
         name: ToolName::new("blackboard").expect("valid"),

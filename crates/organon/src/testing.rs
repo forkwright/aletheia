@@ -25,9 +25,7 @@ use taxis::config::ToolLimitsConfig;
 
 use crate::error::Result;
 use crate::registry::ToolExecutor;
-use crate::types::{
-    ServerToolConfig, ToolContext, ToolHttpClients, ToolInput, ToolResult, ToolServices,
-};
+use crate::types::{ToolContext, ToolInput, ToolResult, ToolServices};
 
 // ── Crypto provider helper ───────────────────────────────────────────────────
 
@@ -350,44 +348,59 @@ pub fn make_test_context_at(dir: &std::path::Path) -> ToolContext {
     }
 }
 
-/// Build a [`ToolContext`] with a service-populated (but all-`None`)
-/// [`ToolServices`] attached, at the fixed `/tmp/test` workspace.
+/// Build a [`ToolContext`] with no runtime services attached, at the fixed
+/// `/tmp/test` workspace.
 ///
-/// Installs the default crypto provider first, since every caller of this
-/// shape exercises an executor that may reach for TLS (HTTP client, research,
-/// architecture-fact, tool-schema, and triage builtins). Individual services
-/// are `None`; override the returned context's `services` field for a test
-/// that needs one populated.
+/// Companion to [`make_test_context_at`] for tests that don't need a real
+/// temp directory but do need the `test-agent` / `/tmp/test` shape shared
+/// with [`make_test_context_with`] and [`make_test_context_with_services`] --
+/// e.g. an executor's "service not configured" error path, where a populated
+/// [`ToolServices`] (even all-`None`) would take a different code path than
+/// an absent one.
 #[must_use]
 #[expect(
     clippy::expect_used,
     reason = "test-support: 'test-agent' is a known-valid NousId in synthetic test data"
 )]
-pub fn make_test_context_with_services() -> ToolContext {
-    install_crypto_provider();
+pub fn make_test_context_without_services() -> ToolContext {
     ToolContext {
         nous_id: NousId::new("test-agent").expect("valid nous id"), // kanon:ignore RUST/expect
         session_id: SessionId::new(),
         turn_number: 0,
         workspace: std::path::PathBuf::from("/tmp/test"),
         allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-        services: Some(Arc::new(ToolServices {
-            working_checkpoint_store: None,
-            cross_nous: None,
-            messenger: None,
-            note_store: None,
-            blackboard_store: None,
-            spawn: None,
-            planning: None,
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
-        })),
+        services: None,
         active_tools: Arc::new(RwLock::new(std::collections::HashSet::new())),
         tool_config: Arc::new(ToolLimitsConfig::default()),
     }
+}
+
+/// Build a [`ToolContext`] with the given [`ToolServices`] attached, at the
+/// fixed `/tmp/test` workspace.
+///
+/// Installs the default crypto provider first, since every caller of this
+/// shape exercises an executor that may reach for TLS (HTTP client, research,
+/// architecture-fact, tool-schema, and triage builtins). The seam the issue
+/// asked for: build `services` with `ToolServices { field: Some(x),
+/// ..Default::default() }` for the one service under test rather than
+/// restating every other field's `None`/default by hand.
+#[must_use]
+pub fn make_test_context_with(services: ToolServices) -> ToolContext {
+    install_crypto_provider();
+    ToolContext {
+        services: Some(Arc::new(services)),
+        ..make_test_context_without_services()
+    }
+}
+
+/// Build a [`ToolContext`] with a service-populated (but all-`None`)
+/// [`ToolServices`] attached, at the fixed `/tmp/test` workspace.
+///
+/// Individual services are `None`; call [`make_test_context_with`] directly
+/// for a test that needs one populated.
+#[must_use]
+pub fn make_test_context_with_services() -> ToolContext {
+    make_test_context_with(ToolServices::default())
 }
 
 /// Build a [`ToolInput`] for the given raw tool name string and arguments.

@@ -239,18 +239,7 @@ fn test_expand_tilde_str_leaves_non_tilde_unchanged() {
 fn test_validate_path_tilde_expands_to_home_before_resolution() {
     if let Ok(home) = std::env::var("HOME") {
         let home_path = std::path::PathBuf::from(&home);
-        let ctx = ToolContext {
-            nous_id: koina::id::NousId::new("test-agent").expect("valid"),
-            session_id: koina::id::SessionId::new(),
-            turn_number: 0,
-            workspace: home_path.clone(),
-            allowed_roots: vec![home_path.clone()],
-            services: None,
-            active_tools: std::sync::Arc::new(std::sync::RwLock::new(
-                std::collections::HashSet::new(),
-            )),
-            tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
-        };
+        let ctx = crate::testing::make_test_context_at(&home_path);
         let name = koina::id::ToolName::new("read").expect("valid");
 
         let resolved = validate_path("~/file.txt", &ctx, &name).expect("tilde path should resolve");
@@ -270,16 +259,7 @@ fn test_validate_path_relative_resolves_inside_workspace() {
     // WHY: Use canonicalized dir for both workspace and allowed_roots so that
     // the validator's canonical form of the input matches the canonical root on
     // all platforms, including macOS where /var -> /private/var.
-    let ctx = ToolContext {
-        nous_id: koina::id::NousId::new("test-agent").expect("valid"),
-        session_id: koina::id::SessionId::new(),
-        turn_number: 0,
-        workspace: canonical_dir.clone(),
-        allowed_roots: vec![canonical_dir.clone()],
-        services: None,
-        active_tools: std::sync::Arc::new(std::sync::RwLock::new(std::collections::HashSet::new())),
-        tool_config: std::sync::Arc::new(taxis::config::ToolLimitsConfig::default()),
-    };
+    let ctx = crate::testing::make_test_context_at(&canonical_dir);
     let resolved = validate_path("sub/file.txt", &ctx, &name).expect("valid relative path");
     assert!(
         resolved.starts_with(&canonical_dir),
@@ -343,16 +323,7 @@ fn test_validate_path_accepts_canonical_root_with_symlinked_input() {
 
         // Set allowed_roots to the CANONICAL (real) path
         let canonical_root = real_dir.canonicalize().expect("canonicalize real");
-        let ctx = ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: canonical_root.clone(),
-            allowed_roots: vec![canonical_root],
-            services: None,
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-        };
+        let ctx = crate::testing::make_test_context_at(&canonical_root);
         let name = koina::id::ToolName::new("ls").expect("valid");
 
         // Validate a path using the SYMLINK form -- should pass
@@ -402,16 +373,7 @@ fn test_validate_path_root_exact_match() {
     let dir = tempfile::tempdir().expect("create temp dir");
     let name = koina::id::ToolName::new("ls").expect("valid");
     let canonical = dir.path().canonicalize().expect("canonicalize");
-    let ctx = ToolContext {
-        nous_id: NousId::new("test-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: canonical.clone(),
-        allowed_roots: vec![canonical.clone()],
-        services: None,
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-    };
+    let ctx = crate::testing::make_test_context_at(&canonical);
 
     let result = validate_path(canonical.to_str().expect("utf8"), &ctx, &name);
     assert!(
@@ -438,16 +400,7 @@ fn test_validate_path_rejects_in_root_symlink_to_outside() {
     std::os::unix::fs::symlink(outside_dir.path(), &link).expect("create symlink");
 
     let canonical_root = dir.path().canonicalize().expect("canonicalize root");
-    let ctx = ToolContext {
-        nous_id: NousId::new("test-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: canonical_root.clone(),
-        allowed_roots: vec![canonical_root],
-        services: None,
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-    };
+    let ctx = crate::testing::make_test_context_at(&canonical_root);
     let name = koina::id::ToolName::new("read").expect("valid");
 
     let result = validate_path("link/secret.txt", &ctx, &name);
@@ -475,16 +428,7 @@ fn test_validate_path_rejects_write_through_symlink_to_outside() {
     std::os::unix::fs::symlink(outside_dir.path(), &link).expect("create symlink");
 
     let canonical_root = dir.path().canonicalize().expect("canonicalize root");
-    let ctx = ToolContext {
-        nous_id: NousId::new("test-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: canonical_root.clone(),
-        allowed_roots: vec![canonical_root],
-        services: None,
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-    };
+    let ctx = crate::testing::make_test_context_at(&canonical_root);
     let name = koina::id::ToolName::new("write").expect("valid");
 
     let result = validate_path("link/new_file.txt", &ctx, &name);

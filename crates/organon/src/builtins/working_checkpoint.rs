@@ -160,17 +160,14 @@ pub fn register(registry: &mut ToolRegistry) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-    use std::path::PathBuf;
-    use std::sync::{Arc, Mutex, RwLock};
+    use std::sync::{Arc, Mutex};
 
-    use hermeneus::secret::SecretVault;
-    use koina::id::{NousId, SessionId};
+    use koina::id::SessionId;
 
     use super::*;
     use crate::types::{
-        ApprovalRequirement, ServerToolConfig, ToolGroupPolicy, ToolHttpClients, ToolServices,
-        WorkingCheckpoint, WorkingCheckpointStore,
+        ApprovalRequirement, ToolGroupPolicy, ToolServices, WorkingCheckpoint,
+        WorkingCheckpointStore,
     };
 
     type RecordedWrite = (String, u64, String);
@@ -240,34 +237,14 @@ mod tests {
         session_id: SessionId,
         turn_number: u64,
     ) -> ToolContext {
-        crate::testing::install_crypto_provider();
-        let nous_id = match NousId::new("test-agent") {
-            Ok(id) => id,
-            Err(err) => panic!("static test nous id invalid: {err}"),
-        };
         let working_checkpoint_store: Arc<dyn WorkingCheckpointStore> = store;
         ToolContext {
-            nous_id,
             session_id,
             turn_number,
-            workspace: PathBuf::from("/tmp/test"),
-            allowed_roots: vec![PathBuf::from("/tmp")],
-            services: Some(Arc::new(ToolServices {
-                cross_nous: None,
-                messenger: None,
-                note_store: None,
-                blackboard_store: None,
-                spawn: None,
-                planning: None,
-                knowledge: None,
+            ..crate::testing::make_test_context_with(ToolServices {
                 working_checkpoint_store: Some(working_checkpoint_store),
-                http_clients: ToolHttpClients::new(),
-                secret_vault: SecretVault::new(),
-                lazy_tool_catalog: Vec::new(),
-                server_tool_config: ServerToolConfig::default(),
-            })),
-            active_tools: Arc::new(RwLock::new(HashSet::default())),
-            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
+                ..Default::default()
+            })
         }
     }
 

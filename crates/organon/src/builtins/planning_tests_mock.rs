@@ -1,57 +1,20 @@
 #![expect(clippy::expect_used, reason = "test assertions")]
-use std::collections::HashSet;
 use std::future::Future;
-use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, RwLock};
-
-use koina::id::{NousId, SessionId};
+use std::sync::{Arc, Mutex};
 
 use crate::error::PlanningAdapterError;
-use crate::testing::install_crypto_provider;
-use crate::types::{
-    PlanningPlanInput, PlanningService, ServerToolConfig, ToolContext, ToolHttpClients,
-    ToolServices,
-};
+use crate::types::{PlanningPlanInput, PlanningService, ToolContext, ToolServices};
 
 pub(super) fn test_ctx() -> ToolContext {
-    ToolContext {
-        nous_id: NousId::new("test-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: PathBuf::from("/tmp/test"),
-        allowed_roots: vec![PathBuf::from("/tmp")],
-        services: None,
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-    }
+    crate::testing::make_test_context_without_services()
 }
 
 pub(super) fn test_ctx_with_planning(planning: Arc<dyn PlanningService>) -> ToolContext {
-    install_crypto_provider();
-    ToolContext {
-        nous_id: NousId::new("test-agent").expect("valid"),
-        session_id: SessionId::new(),
-        turn_number: 0,
-        workspace: PathBuf::from("/tmp/test"),
-        allowed_roots: vec![PathBuf::from("/tmp")],
-        services: Some(Arc::new(ToolServices {
-            working_checkpoint_store: None,
-            cross_nous: None,
-            messenger: None,
-            note_store: None,
-            blackboard_store: None,
-            spawn: None,
-            planning: Some(planning),
-            knowledge: None,
-            http_clients: ToolHttpClients::new(),
-            secret_vault: hermeneus::secret::SecretVault::new(),
-            lazy_tool_catalog: vec![],
-            server_tool_config: ServerToolConfig::default(),
-        })),
-        active_tools: Arc::new(RwLock::new(HashSet::new())),
-        tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-    }
+    crate::testing::make_test_context_with(ToolServices {
+        planning: Some(planning),
+        ..Default::default()
+    })
 }
 
 #[derive(Default)]
