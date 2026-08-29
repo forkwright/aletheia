@@ -243,7 +243,12 @@ impl ChannelListener {
     /// directly, or via [`ActiveSubscriptionGuard::shutdown`] -- clears the
     /// active-subscriptions gauge, since ownership of the handles (and so of
     /// when the tasks actually stop) has moved to the caller.
-    #[must_use]
+    // WHY a message rather than a bare `#[must_use]`: `ActiveSubscriptionGuard`
+    // already carries one, and clippy's `double_must_use` fires only on the
+    // message-less form. The tuple itself is not `must_use`, so dropping the
+    // pair on the floor would silently abort the polling tasks -- which is the
+    // defect this whole change exists to fix.
+    #[must_use = "both halves matter: dropping the receiver closes the channel, and dropping the guard aborts the polling tasks and clears the gauge"]
     pub fn into_receiver(mut self) -> (mpsc::Receiver<InboundMessage>, ActiveSubscriptionGuard) {
         #[expect(
             clippy::expect_used,
