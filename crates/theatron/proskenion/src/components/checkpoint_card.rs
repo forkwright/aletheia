@@ -297,6 +297,8 @@ pub(crate) fn CheckpointCard(
     rsx! {
         div {
             style: "{card_style}",
+            role: "group",
+            "aria-label": "{checkpoint.title}",
 
             div {
                 style: "{HEADER_ROW}",
@@ -366,18 +368,21 @@ pub(crate) fn CheckpointCard(
                             button {
                                 style: "{APPROVE_BTN}",
                                 disabled: *submitting.read(),
+                                "aria-label": "Approve {checkpoint.title}",
                                 onclick: do_approve,
                                 "Approve"
                             }
                             button {
                                 style: "{SKIP_BTN}",
                                 disabled: *submitting.read(),
+                                "aria-label": "Skip {checkpoint.title}",
                                 onclick: move |_| selected_action.set(Some(CheckpointAction::Skip)),
                                 "Skip"
                             }
                             button {
                                 style: "{OVERRIDE_BTN}",
                                 disabled: *submitting.read(),
+                                "aria-label": "Override {checkpoint.title}",
                                 onclick: move |_| selected_action.set(Some(CheckpointAction::Override)),
                                 "Override"
                             }
@@ -392,6 +397,7 @@ pub(crate) fn CheckpointCard(
                                 placeholder: "Explain your decision...",
                                 rows: "3",
                                 value: "{notes.read()}",
+                                "aria-label": "{notes_action_label(action)} reason",
                                 oninput: move |evt: Event<FormData>| notes.set(evt.value().clone()),
                             }
                             div {

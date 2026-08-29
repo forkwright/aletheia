@@ -69,6 +69,8 @@ pub(crate) fn ExecutionView(project_id: String) -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Execution",
             div {
                 style: "{HEADER_ROW}",
                 h3 { style: "font-size: var(--text-md); margin: 0; color: var(--text-primary);", "Execution" }

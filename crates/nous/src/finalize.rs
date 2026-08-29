@@ -16,9 +16,10 @@ use snafu::ResultExt;
 use tracing::{debug, instrument, warn};
 
 use mneme::store::{
-    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRequest, SessionStore,
+    FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord, FinalizeTurnRecordSpec,
+    FinalizeTurnRequest, SessionStore,
 };
-use mneme::types::{Role, UsageRecord};
+use mneme::types::{Role, TurnRecordStatus, UsageRecord};
 
 use crate::error;
 use crate::pipeline::TurnResult;
@@ -268,6 +269,30 @@ fn terminal_status_for_result(result: &TurnResult) -> TurnAttemptStatus {
     }
 }
 
+/// Map nous's richer turn-attempt lifecycle status onto the durable
+/// store-level `TurnRecordStatus` (aletheia#5267).
+///
+/// WHY a separate mapping rather than one shared enum: `TurnAttemptStatus`
+/// also carries mid-flight states (`Accepted`, `Running`, `FinalizePending`,
+/// `FinalizeFailed`) that only ever exist as transient notes inside nous's
+/// own recovery protocol -- `finalize` always calls this with a *terminal*
+/// status (see `terminal_status_for_result`), so those variants collapse to
+/// `Pending`/`Failed` here rather than needing their own `TurnRecordStatus`
+/// member that a durable row would never actually carry.
+fn turn_record_status_for(status: TurnAttemptStatus) -> TurnRecordStatus {
+    match status {
+        TurnAttemptStatus::Accepted
+        | TurnAttemptStatus::Running
+        | TurnAttemptStatus::FinalizePending => TurnRecordStatus::Pending,
+        TurnAttemptStatus::Completed => TurnRecordStatus::Completed,
+        TurnAttemptStatus::Degraded => TurnRecordStatus::Degraded,
+        TurnAttemptStatus::Failed | TurnAttemptStatus::FinalizeFailed => TurnRecordStatus::Failed,
+        TurnAttemptStatus::Cancelled => TurnRecordStatus::Cancelled,
+        TurnAttemptStatus::Timeout => TurnRecordStatus::Timeout,
+        TurnAttemptStatus::ApprovalDenied => TurnRecordStatus::ApprovalDenied,
+    }
+}
+
 fn turn_attempt_record(
     session: &SessionState,
     result: &TurnResult,
@@ -293,6 +318,100 @@ fn turn_attempt_record(
     record
 }
 
+/// Dedup guard: reports whether this turn was already finalized.
+///
+/// Canonical `turn_id` is the primary idempotency key. The legacy
+/// `usage_exists_for_turn` guard remains for backward compatibility with
+/// turns finalized before the turn-attempt note protocol.
+///
+/// When `usage_exists` but the turn never reached a terminal note (a crash
+/// between usage recording and the completion note), this backfills the
+/// missing terminal note before reporting the duplicate.
+fn turn_already_finalized(
+    store: &SessionStore,
+    session: &SessionState,
+    result: &TurnResult,
+    config: &FinalizeConfig,
+    terminal_status: TurnAttemptStatus,
+    turn_seq: i64,
+) -> error::Result<bool> {
+    let usage_exists = store
+        .usage_exists_for_turn(&session.id, turn_seq)
+        .context(error::StoreSnafu)?;
+    let terminal_exists =
+        crate::turn_record::is_turn_terminal(store, &session.id, &session.turn_id)?;
+    if !usage_exists && !terminal_exists {
+        return Ok(false);
+    }
+    if usage_exists && !terminal_exists {
+        let expected_messages = if config.persist_messages {
+            2 + result.tool_calls.len().saturating_mul(2)
+        } else {
+            0
+        };
+        let completed = turn_attempt_record(
+            session,
+            result,
+            terminal_status,
+            expected_messages,
+            Some(expected_messages),
+        );
+        crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
+    }
+    warn!(
+        turn = session.turn,
+        turn_id = %session.turn_id,
+        "finalize called twice for same turn, skipping duplicate"
+    );
+    Ok(true)
+}
+
+/// Converts pending finalize messages to the store's wire representation.
+fn to_finalize_messages<'a>(
+    pending_messages: &'a [PendingFinalizeMessage<'a>],
+) -> Vec<FinalizeMessage<'a>> {
+    pending_messages
+        .iter()
+        .map(|msg| FinalizeMessage {
+            role: msg.role,
+            content: msg.content.as_str(),
+            tool_call_id: msg.tool_call_id,
+            tool_name: msg.tool_name,
+            token_estimate: msg.token_estimate,
+        })
+        .collect()
+}
+
+/// Builds the turn-record spec passed to the store's batched finalize write.
+///
+/// # WHY(#5267)
+///
+/// `started_at` uses this finalize attempt's own pending marker rather than
+/// the turn's original accept time -- the pipeline's true turn-accept instant
+/// (tracked in-memory as `turn_started_at_ms` on the actor, for health
+/// polling) is not threaded into this module. This is still a real,
+/// non-fabricated timestamp, never a guess; a finalize retry after a crash
+/// naturally reports a later `started_at` than the original attempt, which is
+/// honest about what this module can actually observe.
+fn build_turn_record_spec<'a>(
+    turn_id_string: &'a str,
+    terminal_status: TurnAttemptStatus,
+    pending: &'a TurnAttemptRecord,
+    completed: &'a TurnAttemptRecord,
+    result: &'a TurnResult,
+) -> FinalizeTurnRecordSpec<'a> {
+    FinalizeTurnRecordSpec {
+        turn_id: turn_id_string,
+        status: turn_record_status_for(terminal_status),
+        started_at: &pending.created_at,
+        completed_at: Some(&completed.created_at),
+        provider: result.provider_used.as_deref(),
+        stop_reason: Some(result.stop_reason.as_str()),
+        cost_usd: result.usage.cost_usd,
+        idempotency_key: None,
+    }
+}
+
 /// Persist turn results to the session store.
 ///
 /// Errors from the store are propagated but callers should treat them as
@@ -312,39 +431,9 @@ pub(crate) fn finalize(
     result: &TurnResult,
     config: &FinalizeConfig,
 ) -> error::Result<FinalizeResult> {
-    // INVARIANT: dedup guard: skip if this turn was already finalized.
-    //
-    // WHY: canonical turn_id is the primary idempotency key. The legacy
-    // usage_exists_for_turn guard remains for backward compatibility with
-    // turns finalized before the turn-attempt note protocol.
     let turn_seq = turn_seq_from_ulid(&session.turn_id);
-    let usage_exists = store
-        .usage_exists_for_turn(&session.id, turn_seq)
-        .context(error::StoreSnafu)?;
     let terminal_status = terminal_status_for_result(result);
-    let terminal_exists =
-        crate::turn_record::is_turn_terminal(store, &session.id, &session.turn_id)?;
-    if usage_exists || terminal_exists {
-        if usage_exists && !terminal_exists {
-            let expected_messages = if config.persist_messages {
-                2 + result.tool_calls.len().saturating_mul(2)
-            } else {
-                0
-            };
-            let completed = turn_attempt_record(
-                session,
-                result,
-                terminal_status,
-                expected_messages,
-                Some(expected_messages),
-            );
-            crate::turn_record::persist_turn_attempt(store, &session.nous_id, &completed)?;
-        }
-        warn!(
-            turn = session.turn,
-            turn_id = %session.turn_id,
-            "finalize called twice for same turn, skipping duplicate"
-        );
+    if turn_already_finalized(store, session, result, config, terminal_status, turn_seq)? {
         return Ok(FinalizeResult::new(0, false));
     }
 
@@ -376,16 +465,7 @@ pub(crate) fn finalize(
     #[cfg(test)]
     test_failure_injection::maybe_fail_after_pending()?;
 
-    let finalize_messages: Vec<FinalizeMessage<'_>> = pending_messages
-        .iter()
-        .map(|msg| FinalizeMessage {
-            role: msg.role,
-            content: msg.content.as_str(),
-            tool_call_id: msg.tool_call_id,
-            tool_name: msg.tool_name,
-            token_estimate: msg.token_estimate,
-        })
-        .collect();
+    let finalize_messages = to_finalize_messages(&pending_messages);
     let usage = config
         .record_usage
         .then(|| usage_record(session, result, turn_seq));
@@ -397,6 +477,14 @@ pub(crate) fn finalize(
         Some(expected_messages),
     );
     let completed_content = crate::turn_record::serialize_turn_attempt(&completed)?;
+    let turn_id_string = session.turn_id.to_string();
+    let turn_record_spec = build_turn_record_spec(
+        &turn_id_string,
+        terminal_status,
+        &pending,
+        &completed,
+        result,
+    );
 
     let finalized = store
         .finalize_turn(&FinalizeTurnRequest {
@@ -412,6 +500,7 @@ pub(crate) fn finalize(
                 category: crate::turn_record::TURN_NOTE_CATEGORY,
                 content: &completed_content,
             }),
+            turn_record: Some(turn_record_spec),
         })
         .context(error::StoreSnafu)?;
 

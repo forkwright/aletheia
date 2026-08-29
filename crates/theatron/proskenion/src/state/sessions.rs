@@ -3,7 +3,7 @@
 use std::collections::HashSet;
 
 use skene::api::types::{Session, SessionLifecycle};
-use skene::id::SessionId;
+use skene::id::ApiSessionId;
 
 /// Operator-facing failure metadata for a sessions API request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -358,7 +358,7 @@ pub(crate) struct MessagePreview {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SessionSelectionStore {
     /// Selected session IDs.
-    selected: HashSet<SessionId>,
+    selected: HashSet<ApiSessionId>,
     /// Whether select-all is toggled.
     pub select_all: bool,
 }
@@ -371,7 +371,7 @@ impl SessionSelectionStore {
     }
 
     /// Toggle selection of a single session.
-    pub(crate) fn toggle(&mut self, id: &SessionId) {
+    pub(crate) fn toggle(&mut self, id: &ApiSessionId) {
         if self.selected.contains(id) {
             self.selected.remove(id);
             self.select_all = false;
@@ -382,12 +382,12 @@ impl SessionSelectionStore {
 
     /// Whether a session is selected.
     #[must_use]
-    pub(crate) fn is_selected(&self, id: &SessionId) -> bool {
+    pub(crate) fn is_selected(&self, id: &ApiSessionId) -> bool {
         self.selected.contains(id)
     }
 
     /// Set select-all state from the full session list.
-    pub(crate) fn toggle_all(&mut self, all_ids: &[SessionId]) {
+    pub(crate) fn toggle_all(&mut self, all_ids: &[ApiSessionId]) {
         if self.select_all {
             self.selected.clear();
             self.select_all = false;
@@ -678,7 +678,7 @@ mod tests {
     #[test]
     fn selection_store_toggle() {
         let mut sel = SessionSelectionStore::new();
-        let id: SessionId = "s1".into();
+        let id: ApiSessionId = "s1".into();
         assert!(!sel.is_selected(&id));
         sel.toggle(&id);
         assert!(sel.is_selected(&id));
@@ -691,7 +691,7 @@ mod tests {
     #[test]
     fn selection_store_toggle_all() {
         let mut sel = SessionSelectionStore::new();
-        let ids: Vec<SessionId> = vec!["s1".into(), "s2".into(), "s3".into()];
+        let ids: Vec<ApiSessionId> = vec!["s1".into(), "s2".into(), "s3".into()];
         sel.toggle_all(&ids);
         assert!(sel.select_all);
         assert_eq!(sel.count(), 3);

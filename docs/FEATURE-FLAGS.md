@@ -103,10 +103,12 @@ Cargo metadata cannot infer.
 | **krites** | `hot-reload` | no | Rule hot-reloading | `dep:notify`, `dep:arc-swap` |
 | **krites** | `storage-fjall` | no | fjall storage backend | `dep:fjall` |
 | **krites** | `krites_sovereign_hnsw` | no | Land-dark switch: selects the sovereign HNSW implementation over the CozoDB-derived one while both are present | - |
+| **krites** | `krites_sovereign_pagerank` | no | Land-dark switch: selects the sovereign PageRank fixed-rule shell over the CozoDB-derived one while both are present | - |
 | **krites** | `test-core` | no | - | `storage-fjall` |
 | **krites** | `test-full` | no | - | `test-core` |
 | **melete** | `test-core` | no | - | - |
 | **melete** | `test-full` | no | - | - |
+| **melete** | `test-support` | no | Test helpers | - |
 | **mneme** | `default` | **yes** | `graph-algo`, `mneme-engine`, `portability` | - |
 | **mneme** | `graph-algo` | no | Graph algorithm types | `episteme/graph-algo` |
 | **mneme** | `krites_sovereign_hnsw` | no | Forwards krites' sovereign-HNSW selector so consumers can be tested against the replacement tree | `episteme/krites_sovereign_hnsw` |

@@ -6,6 +6,30 @@ use std::collections::{HashMap, HashSet};
 
 use super::*;
 
+/// Repoints an already-built test [`App`] at a local test server, replacing
+/// its client the same way a real config change would.
+pub(crate) fn point_app_at(app: &mut App, url: &str) {
+    app.config.url = url.to_string();
+    app.client = match ApiClient::new(url, None) {
+        Ok(client) => client,
+        // kanon:ignore RUST/expect — test helper; panics with context on impossible failures
+        Err(e) => panic!("test ApiClient::new failed: {e}"),
+    };
+}
+
+/// Awaits exactly one queued background task and feeds its result back
+/// through [`App::update`], the same path production code takes.
+pub(crate) async fn drain_one_background(app: &mut App) {
+    let Some(result) = app.background_tasks.join_next().await else {
+        panic!("expected one background task");
+    };
+    let msg = match result {
+        Ok(msg) => msg,
+        Err(e) => panic!("background task failed: {e}"),
+    };
+    app.update(msg).await;
+}
+
 pub(crate) fn test_app() -> App {
     // kanon:ignore RUST/no-silent-result-swallow — idempotent crypto-provider install in test helper
     let _ = rustls::crypto::ring::default_provider().install_default();
@@ -144,7 +168,7 @@ pub(crate) fn test_agent(id: &str, name: &str) -> AgentState {
     let name = name.to_string();
     let name_lower = name.to_lowercase();
     AgentState {
-        id: crate::id::NousId::from(id),
+        id: crate::id::ApiNousId::from(id),
         name,
         name_lower,
         emoji: None,

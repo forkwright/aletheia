@@ -326,6 +326,7 @@ mod tests {
         let idx_u64 = u64::try_from(idx).unwrap();
         let value = (u128::from(idx_u64 + 1) << 80) | u128::from(idx_u64);
         crate::store::records::DispatchId::new(koina::ulid::Ulid::from_u128(value).to_string())
+            .unwrap()
     }
 
     fn dispatch_record(idx: usize, project: &str) -> DispatchRecord {

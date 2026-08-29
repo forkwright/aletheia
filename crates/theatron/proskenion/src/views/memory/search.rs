@@ -101,6 +101,8 @@ pub(crate) fn EntitySearchBar(
     rsx! {
         div {
             style: "{SEARCH_BAR_STYLE}",
+            role: "search",
+            "aria-label": "Entity search and filters",
             div {
                 style: "{SEARCH_ROW_STYLE}",
                 input {
@@ -108,6 +110,7 @@ pub(crate) fn EntitySearchBar(
                     r#type: "text",
                     placeholder: "Search entities...",
                     value: "{search_query}",
+                    "aria-label": "Search entities",
                     oninput: move |evt: Event<FormData>| {
                         let query = evt.value().clone();
                         list_store.write().search_query = query.clone();
@@ -125,6 +128,7 @@ pub(crate) fn EntitySearchBar(
                 select {
                     style: "{FILTER_SELECT_STYLE}",
                     value: "",
+                    "aria-label": "Filter by type",
                     onchange: move |evt: Event<FormData>| {
                         let label = evt.value();
                         if label.is_empty() {
@@ -154,6 +158,7 @@ pub(crate) fn EntitySearchBar(
                 select {
                     style: "{FILTER_SELECT_STYLE}",
                     value: "{min_confidence}",
+                    "aria-label": "Filter by minimum confidence",
                     onchange: move |evt: Event<FormData>| {
                         if let Ok(v) = evt.value().parse::<f64>() {
                             list_store.write().min_confidence = v;
@@ -176,6 +181,9 @@ pub(crate) fn EntitySearchBar(
                             span { "Search: {search_query}" }
                             span {
                                 style: "{CHIP_DISMISS_STYLE}",
+                                role: "button",
+                                tabindex: "0",
+                                "aria-label": "Clear search filter",
                                 onclick: move |_| {
                                     list_store.write().search_query.clear();
                                     on_search_change.call(String::new());
@@ -196,6 +204,9 @@ pub(crate) fn EntitySearchBar(
                                     span { style: "color: {color};", "{label}" }
                                     span {
                                         style: "{CHIP_DISMISS_STYLE}",
+                                        role: "button",
+                                        tabindex: "0",
+                                        "aria-label": "Remove {label} filter",
                                         onclick: move |_| {
                                             list_store.write().type_filter.retain(|t| t != &et_clone);
                                             on_filter_change.call(());
@@ -218,6 +229,9 @@ pub(crate) fn EntitySearchBar(
                                     span { "Confidence > {pct}%" }
                                     span {
                                         style: "{CHIP_DISMISS_STYLE}",
+                                        role: "button",
+                                        tabindex: "0",
+                                        "aria-label": "Remove confidence filter",
                                         onclick: move |_| {
                                             list_store.write().min_confidence = 0.0;
                                             on_filter_change.call(());
@@ -239,6 +253,9 @@ pub(crate) fn EntitySearchBar(
                                     span { "Agent: {agent_name}" }
                                     span {
                                         style: "{CHIP_DISMISS_STYLE}",
+                                        role: "button",
+                                        tabindex: "0",
+                                        "aria-label": "Remove {agent_name} filter",
                                         onclick: move |_| {
                                             let dismiss = agent_dismiss.clone();
                                             list_store.write().agent_filter.retain(|a| a != &dismiss);

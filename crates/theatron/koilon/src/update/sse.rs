@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::api::types::ActiveTurn;
 use crate::app::App;
-use crate::id::{NousId, SessionId};
+use crate::id::{ApiNousId, ApiSessionId};
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
 use crate::state::{ActiveTool, AgentState, AgentStatus, BackendHealth, ChatMessage};
@@ -23,7 +23,7 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
     if was_disconnected {
         tracing::info!("SSE reconnected — reloading agent state");
         if let Ok(agents) = app.client.agents().await {
-            let unread: HashMap<NousId, u32> = app
+            let unread: HashMap<ApiNousId, u32> = app
                 .dashboard
                 .agents
                 .iter()
@@ -127,7 +127,7 @@ pub(crate) fn handle_sse_init(app: &mut App, active_turns: Vec<ActiveTurn>) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id))]
-pub(crate) fn handle_sse_turn_before(app: &mut App, nous_id: NousId) {
+pub(crate) fn handle_sse_turn_before(app: &mut App, nous_id: ApiNousId) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Working;
         agent.active_tool = None;
@@ -135,7 +135,11 @@ pub(crate) fn handle_sse_turn_before(app: &mut App, nous_id: NousId) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %session_id))]
-pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, session_id: SessionId) {
+pub(crate) async fn handle_sse_turn_after(
+    app: &mut App,
+    nous_id: ApiNousId,
+    session_id: ApiSessionId,
+) {
     app.connection.sse_last_event_at = Some(std::time::Instant::now());
     let is_focused = app.dashboard.focused_agent.as_ref() == Some(&nous_id);
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
@@ -165,7 +169,7 @@ pub(crate) async fn handle_sse_turn_after(app: &mut App, nous_id: NousId, sessio
 
 #[tracing::instrument(skip_all, fields(%nous_id, %tool_name))]
 // SAFETY: sanitized at ingestion: tool name from SSE event.
-pub(crate) fn handle_sse_tool_called(app: &mut App, nous_id: NousId, tool_name: String) {
+pub(crate) fn handle_sse_tool_called(app: &mut App, nous_id: ApiNousId, tool_name: String) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.active_tool = Some(ActiveTool {
             name: sanitize_for_display(&tool_name).into_owned(),
@@ -175,14 +179,14 @@ pub(crate) fn handle_sse_tool_called(app: &mut App, nous_id: NousId, tool_name: 
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id))]
-pub(crate) fn handle_sse_tool_failed(app: &mut App, nous_id: NousId) {
+pub(crate) fn handle_sse_tool_failed(app: &mut App, nous_id: ApiNousId) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.active_tool = None;
     }
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %status))]
-pub(crate) fn handle_sse_status_update(app: &mut App, nous_id: NousId, status: String) {
+pub(crate) fn handle_sse_status_update(app: &mut App, nous_id: ApiNousId, status: String) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = match status.as_str() {
             "working" => AgentStatus::Working,
@@ -194,7 +198,7 @@ pub(crate) fn handle_sse_status_update(app: &mut App, nous_id: NousId, status: S
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id))]
-pub(crate) async fn handle_sse_session_created(app: &mut App, nous_id: NousId) {
+pub(crate) async fn handle_sse_session_created(app: &mut App, nous_id: ApiNousId) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id)
         && let Ok(sessions) = app.client.sessions(&nous_id).await
     {
@@ -203,14 +207,18 @@ pub(crate) async fn handle_sse_session_created(app: &mut App, nous_id: NousId) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id, %session_id))]
-pub(crate) fn handle_sse_session_archived(app: &mut App, nous_id: NousId, session_id: SessionId) {
+pub(crate) fn handle_sse_session_archived(
+    app: &mut App,
+    nous_id: ApiNousId,
+    session_id: ApiSessionId,
+) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.sessions.retain(|s| s.id != session_id);
     }
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id))]
-pub(crate) fn handle_sse_distill_before(app: &mut App, nous_id: NousId) {
+pub(crate) fn handle_sse_distill_before(app: &mut App, nous_id: ApiNousId) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Compacting;
         agent.compaction_stage = Some("starting".to_string());
@@ -219,7 +227,7 @@ pub(crate) fn handle_sse_distill_before(app: &mut App, nous_id: NousId) {
 
 #[tracing::instrument(skip_all, fields(%nous_id, %stage))]
 // SAFETY: sanitized at ingestion: distill stage from SSE event.
-pub(crate) fn handle_sse_distill_stage(app: &mut App, nous_id: NousId, stage: String) {
+pub(crate) fn handle_sse_distill_stage(app: &mut App, nous_id: ApiNousId, stage: String) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.compaction_stage = Some(sanitize_for_display(&stage).into_owned());
     }
@@ -239,7 +247,7 @@ pub(crate) async fn handle_sse_stream_lagged(app: &mut App, dropped: u64) {
 }
 
 #[tracing::instrument(skip_all, fields(%nous_id))]
-pub(crate) async fn handle_sse_distill_after(app: &mut App, nous_id: NousId) {
+pub(crate) async fn handle_sse_distill_after(app: &mut App, nous_id: ApiNousId) {
     if let Some(agent) = app.dashboard.agents.iter_mut().find(|a| a.id == nous_id) {
         agent.status = AgentStatus::Idle;
         agent.compaction_stage = Some("done".to_string());

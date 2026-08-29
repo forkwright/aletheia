@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::config::Config;
-use crate::id::{NousId, SessionId};
+use crate::id::{ApiNousId, ApiSessionId};
 
 pub(crate) const MAX_COMMAND_HISTORY: usize = 1000;
 
@@ -48,7 +48,7 @@ fn session_state_file_path(config: &Config) -> Option<std::path::PathBuf> {
 ///
 /// Format: one entry per line, `<agent_id>:<session_id>`.
 /// Malformed or empty lines are silently skipped.
-pub(super) fn load_session_state(config: &Config) -> HashMap<NousId, SessionId> {
+pub(super) fn load_session_state(config: &Config) -> HashMap<ApiNousId, ApiSessionId> {
     let path = match session_state_file_path(config) {
         Some(p) => p,
         None => return HashMap::new(),
@@ -64,7 +64,7 @@ pub(super) fn load_session_state(config: &Config) -> HashMap<NousId, SessionId> 
             if agent.is_empty() || session.is_empty() {
                 return None;
             }
-            Some((NousId::from(agent), SessionId::from(session)))
+            Some((ApiNousId::from(agent), ApiSessionId::from(session)))
         })
         .collect()
 }
@@ -74,7 +74,7 @@ pub(super) fn load_session_state(config: &Config) -> HashMap<NousId, SessionId> 
 /// Uses sync I/O because this runs in a synchronous TUI shutdown path
 /// where spawning an async task would require a runtime handle that may
 /// already be shutting down.
-pub(crate) fn save_session_state(config: &Config, sessions: &HashMap<NousId, SessionId>) {
+pub(crate) fn save_session_state(config: &Config, sessions: &HashMap<ApiNousId, ApiSessionId>) {
     let path = match session_state_file_path(config) {
         Some(p) => p,
         None => return,

@@ -123,9 +123,20 @@ fn sort_th(
         ""
     };
     let label = label.to_string();
+    let aria_sort = if is_active {
+        if *sort_dir.read() == SortDir::Desc {
+            "descending"
+        } else {
+            "ascending"
+        }
+    } else {
+        "none"
+    };
     rsx! {
         th {
             style: "padding: var(--space-2) var(--space-2); text-align: right; color: var(--text-muted); cursor: pointer; user-select: none; white-space: nowrap; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+            role: "columnheader",
+            "aria-sort": "{aria_sort}",
             onclick: move |_| {
                 if *sort_col.read() == col {
                     let new_dir = sort_dir.read().flip();

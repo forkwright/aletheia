@@ -44,7 +44,7 @@ mod tests {
         // WHY: smoke test verifying the public modules compile and link
         let _ = std::any::type_name::<super::api::ApiClient>();
         let _ = std::any::type_name_of_val(&super::discovery::discover_server);
-        let _ = std::any::type_name::<super::id::NousId>();
+        let _ = std::any::type_name::<super::id::ApiNousId>();
         let _ = std::any::type_name::<super::secret_store::TokenStore>();
         let _ = std::any::type_name_of_val(&super::text::append_terminal_notice);
     }

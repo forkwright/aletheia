@@ -65,11 +65,14 @@ impl ToolExecutor for WebFetchExecutor {
             let url = extract_str(&input.arguments, "url", &input.name)?;
             let max_length = extract_opt_u64(&input.arguments, "maxLength").unwrap_or(50_000);
 
-            // WHY: protocol validation for user-supplied URLs, not endpoint
-            // construction. The shared helper keeps the plaintext HTTP literal
-            // in one audited place.
-            if !koina::http::has_http_or_https_scheme(url) {
-                return Ok(ToolResult::error("URL must start with http:// or https://"));
+            // SECURITY(#5229): HTTPS-only by default, with a plaintext
+            // exception for loopback only -- matches `http_request`'s scheme
+            // check and hermeneus's Anthropic/OpenAI clients
+            // (`koina::http::is_secure_or_plaintext_loopback_url`).
+            if !koina::http::is_secure_or_plaintext_loopback_url(url) {
+                return Ok(ToolResult::error(
+                    "URL must be https://, or http:// to a loopback host",
+                ));
             }
 
             if let Err(msg) = validate_url_not_internal(url).await {
@@ -332,15 +335,12 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
-    use std::collections::HashSet;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
 
-    use koina::id::{NousId, SessionId, ToolName};
-
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use koina::id::ToolName;
 
     use crate::testing::install_crypto_provider;
-    use crate::types::{ServerToolConfig, ToolContext, ToolHttpClients, ToolInput, ToolServices};
+    use crate::types::{ToolContext, ToolHttpClients, ToolInput, ToolServices};
 
     use super::*;
 
@@ -445,111 +445,100 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn web_fetch_rejects_dns_rebound_response_from_configured_client() {
-        // SECURITY(#5229) regression + plumbing check, combined: start a local
-        // HTTP server and use reqwest's per-client DNS override to point
-        // example.com at it (a stand-in for a DNS answer changing between the
-        // pre-connect SSRF check and the client's own connect-time
-        // resolution). Two things must both be true:
-        //  1. The local server DID receive the request -- proving web_fetch
-        //     routed through the operator-configured `ssrf_http_client`
-        //     rather than building a fresh one (a fresh client would ignore
-        //     the override and either hit the real example.com or fail).
-        //  2. The result is nonetheless an error -- proving the post-connect
-        //     remote_addr() check rejects the rebound private/loopback peer
-        //     instead of silently returning its body to the LLM.
+    async fn web_fetch_never_connects_to_a_dns_rebound_target() {
+        // SECURITY(#5229): the earlier version of this test used reqwest's
+        // static DNS override (`ClientBuilder::resolve`) to simulate
+        // rebinding, then asserted the response was rejected. That override
+        // is consulted BEFORE any custom `dns_resolver` --
+        // `DnsResolverWithOverrides` in reqwest's own `dns/resolve.rs` --
+        // so once `sandbox::PolicyDnsResolver` became the client's resolver,
+        // the override would win and the checkpoint under test would never
+        // run at all: the test would pass without exercising the fix.
+        //
+        // This version installs `PolicyDnsResolver` itself, backed by a
+        // resolver that answers "example.com" with the local listener's
+        // address -- a faithful stand-in for a DNS answer that changed
+        // between an earlier, independent check and this client's own
+        // connect-time resolution. It proves the property the reopened
+        // issue asked for directly: the internal peer is never connected
+        // to, not merely that its response is discarded after the fact.
+        struct RebindResolver(std::net::SocketAddr);
+        impl koina::http::HostResolver for RebindResolver {
+            fn resolve_host<'a>(
+                &'a self,
+                _host: &'a str,
+                _port: u16,
+            ) -> koina::http::ResolveHostFuture<'a> {
+                let addr = self.0;
+                Box::pin(async move { Ok(vec![addr]) })
+            }
+        }
+
         install_crypto_provider();
+
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("test listener should bind");
         let local_addr = listener.local_addr().expect("local addr");
 
-        let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.expect("accept");
-            let mut buf = Vec::new();
-            let mut chunk = [0u8; 1024];
-            loop {
-                let n = stream.read(&mut chunk).await.expect("read");
-                if n == 0 {
-                    break;
-                }
-                buf.extend_from_slice(chunk.get(..n).expect("n is bounded by chunk.len()"));
-                if buf.windows(4).any(|w| w == b"\r\n\r\n") {
-                    break;
-                }
-            }
-            let request = String::from_utf8_lossy(&buf);
-            assert!(
-                request.contains("GET / HTTP/1.1"),
-                "expected GET request, got: {request}"
-            );
-            let body = "hello from configured client";
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{body}",
-                body.len()
-            );
-            stream.write_all(response.as_bytes()).await.expect("write");
+        // Stands in for the internal service a rebinding attacker wants
+        // reached. If pinning works, `accept()` never returns and this
+        // times out; if the target were ever connected to, it would
+        // resolve immediately.
+        let accept_attempt = tokio::spawn(async move {
+            tokio::time::timeout(std::time::Duration::from_millis(500), listener.accept()).await
         });
 
+        let gate = Arc::new(EgressGate::new(crate::sandbox::EgressPolicy::Allow, &[]));
+        let pinned_resolver = Arc::new(crate::sandbox::PolicyDnsResolver::with_resolver(
+            gate,
+            Arc::new(RebindResolver(local_addr)),
+        ));
         let ssrf_http_client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .timeout(std::time::Duration::from_secs(5))
-            .resolve("example.com", local_addr)
+            .dns_resolver(pinned_resolver)
             .build()
             .expect("test client should build");
+
         let ctx = mock_ctx_with_ssrf_client(ssrf_http_client);
         let executor = test_executor();
         let input = ToolInput {
             name: ToolName::from_static("web_fetch"),
-            tool_use_id: "toolu_2".to_owned(),
-            arguments: serde_json::json!({"url": "http://example.com"}),
+            tool_use_id: "toolu_rebind".to_owned(),
+            arguments: serde_json::json!({"url": "https://example.com"}),
         };
 
         let result = executor.execute(&input, &ctx).await.expect("execute");
 
-        // Proof 1: the local server saw the request (plumbing used the
-        // configured client + its DNS override), asserted inside `server`.
-        server.await.expect("server task");
-
-        // Proof 2: the rebound (loopback) peer was rejected, not returned.
         assert!(
             result.is_error,
-            "a response from a DNS-rebound private address must be rejected, got: {result:?}"
+            "a connect-time DNS answer landing on a private address must be rejected, \
+             got: {result:?}"
         );
         let summary = result.content.text_summary();
         assert!(
             summary.contains("private") || summary.contains("rebind"),
-            "error should explain the rejection: {result:?}"
+            "error should explain the rejection: {summary}"
+        );
+
+        // The proof this is prevention rather than post-hoc rejection: the
+        // listener standing in for the rebound target never accepted a
+        // connection at all.
+        let accepted = accept_attempt.await.expect("accept task should not panic");
+        assert!(
+            accepted.is_err(),
+            "the rebound target must never be connected to, but accept() returned: {accepted:?}"
         );
     }
 
     fn mock_ctx_with_ssrf_client(ssrf_http_client: reqwest::Client) -> ToolContext {
-        install_crypto_provider();
-        ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: std::path::PathBuf::from("/tmp/test"),
-            allowed_roots: vec![std::path::PathBuf::from("/tmp")],
-            services: Some(Arc::new(ToolServices {
-                working_checkpoint_store: None,
-                cross_nous: None,
-                messenger: None,
-                note_store: None,
-                blackboard_store: None,
-                spawn: None,
-                planning: None,
-                knowledge: None,
-                http_clients: ToolHttpClients {
-                    general: reqwest::Client::new(),
-                    ssrf_safe: ssrf_http_client,
-                },
-                secret_vault: hermeneus::secret::SecretVault::new(),
-                lazy_tool_catalog: vec![],
-                server_tool_config: ServerToolConfig::default(),
-            })),
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(taxis::config::ToolLimitsConfig::default()),
-        }
+        crate::testing::make_test_context_with(ToolServices {
+            http_clients: ToolHttpClients {
+                general: reqwest::Client::new(),
+                ssrf_safe: ssrf_http_client,
+            },
+            ..Default::default()
+        })
     }
 }

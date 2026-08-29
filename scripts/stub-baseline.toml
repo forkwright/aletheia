@@ -887,7 +887,7 @@ count = 1
 
 [[site]]
 file = "crates/organon/src/builtins/energeia/qa.rs"
-item = "<unresolved:line564>"
+item = "<unresolved:line532>"
 count = 1
 
 [[site]]
@@ -1108,9 +1108,4 @@ count = 1
 [[site]]
 file = "crates/theatron/skene/src/api/client.rs"
 item = "base_url"
-count = 1
-
-[[site]]
-file = "crates/theatron/skene/src/api/client.rs"
-item = "set_token"
 count = 1

@@ -84,6 +84,9 @@ pub(crate) fn ChartCard(
         div {
             style: "{CARD_STYLE} cursor: zoom-in; {card_style}",
             title: "Click to enlarge",
+            role: "button",
+            tabindex: "0",
+            "aria-label": "Enlarge {title} chart",
             onclick: move |_| {
                 expanded.set(Some(ExpandedChart {
                     title,
@@ -133,9 +136,13 @@ pub(super) fn ChartDrilldown() -> Element {
         if let Some(chart) = current {
             div {
                 style: "{BACKDROP_STYLE}",
+                "aria-label": "Chart drilldown backdrop",
                 onclick: move |_| expanded.set(None),
                 div {
                     style: "{DIALOG_STYLE}",
+                    role: "dialog",
+                    "aria-modal": "true",
+                    "aria-label": "{chart.title}",
                     onclick: move |e| e.stop_propagation(),
                     div {
                         style: "{DIALOG_HEADER_STYLE}",

@@ -63,7 +63,7 @@ fn create_and_get_dispatch() {
 #[test]
 fn get_nonexistent_dispatch_returns_none() {
     let (_dir, store) = setup_test_store();
-    let id = DispatchId::new("01NONEXISTENT");
+    let id = DispatchId::new("01NONEXISTENT").unwrap();
     assert!(store.get_dispatch(&id).unwrap().is_none());
 }
 
@@ -115,7 +115,7 @@ fn finish_dispatch_aggregates_sessions() {
 #[test]
 fn finish_nonexistent_dispatch_returns_not_found() {
     let (_dir, store) = setup_test_store();
-    let id = DispatchId::new("01NONEXISTENT");
+    let id = DispatchId::new("01NONEXISTENT").unwrap();
     let result = store.finish_dispatch(&id, DispatchStatus::Failed);
     assert!(result.is_err());
 }
@@ -189,7 +189,7 @@ fn update_session_partial() {
 #[test]
 fn update_nonexistent_session_returns_not_found() {
     let (_dir, store) = setup_test_store();
-    let dispatch_id = DispatchId::new("01NONEXISTENT");
+    let dispatch_id = DispatchId::new("01NONEXISTENT").unwrap();
     let result = store.update_session(&dispatch_id, 1, SessionUpdate::default());
     assert!(result.is_err());
 }
@@ -208,7 +208,8 @@ fn update_session_does_not_read_unrelated_sessions() {
     // first and fails; a keyed point read never touches it. Without a record
     // the old code would choke on, this test would pass either way and assert
     // nothing about how the record is addressed.
-    let poison_key = schema::session_key(&DispatchId::new("00000000000000000000000000"), 1);
+    let poison_key =
+        schema::session_key(&DispatchId::new("00000000000000000000000000").unwrap(), 1);
     store
         .keyspace
         .insert(poison_key.as_bytes(), b"not-a-session-record".as_slice())
@@ -612,7 +613,7 @@ fn session_attribution_survives_store_reopen() {
 #[test]
 fn export_dispatch_returns_not_found_for_unknown_id() {
     let (_dir, store) = setup_test_store();
-    let id = DispatchId::new("01NONEXISTENT");
+    let id = DispatchId::new("01NONEXISTENT").unwrap();
     assert!(store.export_dispatch(&id).is_err());
 }
 

@@ -143,9 +143,13 @@ pub(crate) fn ForgetFactDialog(
     rsx! {
         div {
             style: "{OVERLAY_STYLE}",
+            "aria-label": "Forget fact backdrop",
             onclick: move |_| on_close.call(()),
             div {
                 style: "{DIALOG_STYLE}",
+                role: "dialog",
+                "aria-modal": "true",
+                "aria-label": "Forget this fact?",
                 onclick: |evt: Event<MouseData>| evt.stop_propagation(),
                 div { style: "{TITLE_STYLE}", "Forget this fact?" }
                 div { style: "{QUOTE_STYLE}", "{quote}" }
@@ -246,9 +250,13 @@ pub(crate) fn RestoreFactDialog(
     rsx! {
         div {
             style: "{OVERLAY_STYLE}",
+            "aria-label": "Restore fact backdrop",
             onclick: move |_| on_close.call(()),
             div {
                 style: "{DIALOG_STYLE}",
+                role: "dialog",
+                "aria-modal": "true",
+                "aria-label": "Restore this fact?",
                 onclick: |evt: Event<MouseData>| evt.stop_propagation(),
                 div { style: "{TITLE_STYLE}", "Restore this fact?" }
                 div { style: "{QUOTE_STYLE}", "{quote}" }
@@ -357,9 +365,13 @@ pub(crate) fn AdjustConfidenceDialog(
     rsx! {
         div {
             style: "{OVERLAY_STYLE}",
+            "aria-label": "Adjust confidence backdrop",
             onclick: move |_| on_close.call(()),
             div {
                 style: "{DIALOG_STYLE}",
+                role: "dialog",
+                "aria-modal": "true",
+                "aria-label": "Adjust confidence",
                 onclick: |evt: Event<MouseData>| evt.stop_propagation(),
                 div { style: "{TITLE_STYLE}", "Adjust confidence" }
                 div { style: "{QUOTE_STYLE}", "{quote}" }
@@ -374,6 +386,10 @@ pub(crate) fn AdjustConfidenceDialog(
                     min: "0",
                     max: "100",
                     value: "{pct}",
+                    "aria-label": "Confidence percentage",
+                    "aria-valuenow": "{pct}",
+                    "aria-valuemin": "0",
+                    "aria-valuemax": "100",
                     oninput: move |evt: Event<FormData>| {
                         if let Ok(p) = evt.value().parse::<f64>() {
                             value.set((p / 100.0).clamp(0.0, 1.0));
@@ -477,9 +493,13 @@ pub(crate) fn ChangeSensitivityDialog(
     rsx! {
         div {
             style: "{OVERLAY_STYLE}",
+            "aria-label": "Change sensitivity backdrop",
             onclick: move |_| on_close.call(()),
             div {
                 style: "{DIALOG_STYLE}",
+                role: "dialog",
+                "aria-modal": "true",
+                "aria-label": "Change sensitivity",
                 onclick: |evt: Event<MouseData>| evt.stop_propagation(),
                 div { style: "{TITLE_STYLE}", "Change sensitivity" }
                 div { style: "{QUOTE_STYLE}", "{quote}" }
@@ -490,6 +510,7 @@ pub(crate) fn ChangeSensitivityDialog(
                 select {
                     style: "{SELECT_STYLE}",
                     value: "{current.wire()}",
+                    "aria-label": "Sensitivity",
                     onchange: move |evt: Event<FormData>| {
                         selected.set(FactSensitivity::from_raw(&evt.value()));
                     },

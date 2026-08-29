@@ -708,6 +708,7 @@ async fn replay_export_includes_tool_usage_turn_and_failure_fields() {
                 usage: Some(&usage),
                 tool_audit_records: &audits,
                 completion_note: None,
+                turn_record: None,
             })
             .unwrap();
         store

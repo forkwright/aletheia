@@ -75,6 +75,8 @@ pub(crate) fn ServiceHealthPanel(store: Signal<ServiceHealthStore>) -> Element {
     rsx! {
         div {
             style: "{PANEL_STYLE}",
+            role: "region",
+            "aria-label": "Service health",
 
             div { style: "{SECTION_TITLE}", "Service Health" }
 

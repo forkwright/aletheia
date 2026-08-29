@@ -504,60 +504,26 @@ fn sessions_dispatch_def() -> ToolDef {
     reason = "test: vec/JSON indices valid after asserting len"
 )]
 mod tests {
-    use std::collections::HashSet;
     use std::future::Future;
-    use std::path::PathBuf;
     use std::pin::Pin;
-    use std::sync::{Arc, RwLock};
+    use std::sync::Arc;
 
-    use koina::id::{NousId, SessionId, ToolName};
-    use taxis::config::ToolLimitsConfig;
+    use koina::id::ToolName;
 
     use crate::registry::{ToolExecutor, ToolRegistry};
-    use crate::testing::install_crypto_provider;
     use crate::types::{
-        ServerToolConfig, SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolContext,
-        ToolHttpClients, ToolInput, ToolServices,
+        SpawnContext, SpawnRequest, SpawnResult, SpawnService, ToolContext, ToolInput, ToolServices,
     };
 
     fn mock_ctx() -> ToolContext {
-        ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: PathBuf::from("/tmp/test"),
-            allowed_roots: vec![PathBuf::from("/tmp")],
-            services: None,
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(ToolLimitsConfig::default()),
-        }
+        crate::testing::make_test_context_without_services()
     }
 
     fn mock_ctx_with_spawn(spawn: Arc<dyn SpawnService>) -> ToolContext {
-        install_crypto_provider();
-        ToolContext {
-            nous_id: NousId::new("test-agent").expect("valid"),
-            session_id: SessionId::new(),
-            turn_number: 0,
-            workspace: PathBuf::from("/tmp/test"),
-            allowed_roots: vec![PathBuf::from("/tmp")],
-            services: Some(Arc::new(ToolServices {
-                working_checkpoint_store: None,
-                cross_nous: None,
-                messenger: None,
-                note_store: None,
-                blackboard_store: None,
-                spawn: Some(spawn),
-                planning: None,
-                knowledge: None,
-                lazy_tool_catalog: vec![],
-                server_tool_config: ServerToolConfig::default(),
-                http_clients: ToolHttpClients::new(),
-                secret_vault: hermeneus::secret::SecretVault::new(),
-            })),
-            active_tools: Arc::new(RwLock::new(HashSet::new())),
-            tool_config: Arc::new(ToolLimitsConfig::default()),
-        }
+        crate::testing::make_test_context_with(ToolServices {
+            spawn: Some(spawn),
+            ..Default::default()
+        })
     }
 
     #[derive(Default)]

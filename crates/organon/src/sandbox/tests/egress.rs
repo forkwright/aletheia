@@ -432,6 +432,19 @@ async fn check_egress_allowlist_rejects_unresolved_match() {
     assert!(err.contains("allowlist"));
 }
 
+#[tokio::test]
+async fn check_egress_allowlist_rejects_empty_resolution() {
+    // SECURITY(#5229): a successful-but-empty DNS answer has no candidate
+    // for the loop below to reject, so "every candidate is allowlisted" is
+    // vacuously true over the empty set unless checked explicitly.
+    let resolver = StaticResolver(vec![]);
+    let gate = EgressGate::new(EgressPolicy::Allowlist, &["10.0.0.0/8".to_owned()]);
+    let err = check_egress(&gate, "example.com", 443, &resolver)
+        .await
+        .expect_err("an empty DNS answer must not vacuously pass an allowlist check");
+    assert!(err.contains("no addresses"), "unexpected error: {err}");
+}
+
 #[test]
 fn check_egress_remote_addr_rejects_private_after_public_validation() {
     // SECURITY(#5229): regression for DNS rebinding -- the pre-connect check
@@ -455,10 +468,17 @@ fn check_egress_remote_addr_permits_public_address() {
 }
 
 #[test]
-fn check_egress_remote_addr_none_is_ok() {
+fn check_egress_remote_addr_none_is_rejected() {
+    // SECURITY(#5229): a real TCP connection always reports a peer via
+    // `Response::remote_addr()`; `None` means this defense-in-depth layer
+    // cannot inspect what it connected to, and that must not read as
+    // "nothing to complain about" under any egress mode, including Deny
+    // (which never reaches this call in production, but the function itself
+    // must not carry an exploitable exception).
     let gate = EgressGate::new(EgressPolicy::Deny, &[]);
-    check_egress_remote_addr(&gate, None)
-        .expect("no peer address available is not itself an error");
+    let err = check_egress_remote_addr(&gate, None)
+        .expect_err("an unreported peer address must not silently pass");
+    assert!(err.contains("no remote address"), "unexpected error: {err}");
 }
 
 #[test]

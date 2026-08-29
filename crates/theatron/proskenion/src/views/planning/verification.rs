@@ -259,6 +259,8 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Verification",
             div {
                 style: "{HEADER_ROW}",
                 h3 { style: "margin: 0; font-size: var(--text-md); color: var(--text-primary);", "Verification" }
@@ -267,11 +269,13 @@ pub(crate) fn VerificationView(project_id: String) -> Element {
                     button {
                         style: "{VERIFY_BTN}",
                         disabled: *reverifying.read(),
+                        "aria-label": "Re-verify requirements",
                         onclick: do_reverify,
                         if *reverifying.read() { "Verifying..." } else { "Re-verify" }
                     }
                     button {
                         style: "{REFRESH_BTN}",
+                        "aria-label": "Refresh verification",
                         onclick: move |_| {
                             let next = *fetch_trigger.peek() + 1;
                             fetch_trigger.set(next);

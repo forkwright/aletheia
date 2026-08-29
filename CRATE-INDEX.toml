@@ -269,7 +269,7 @@ layer = "runtime"
 purpose = "Context distillation engine — compresses conversation history"
 depends_on = ["hermeneus", "koina"]
 used_by = ["aletheia", "nous", "taxis"]
-dev_depends_on = []
+dev_depends_on = ["melete"]
 
 [crates.melete.features]
 test-core = "test tier fixtures"
@@ -522,7 +522,7 @@ dev_depends_on = []
 path = "crates/pylon"
 layer = "http"
 purpose = "Axum HTTP gateway for Aletheia"
-depends_on = ["dianoia", "eidos", "hermeneus", "koina", "mneme", "nous", "oikonomos", "organon", "symbolon", "taxis"]
+depends_on = ["dianoia", "eidos", "hermeneus", "koina", "mneme", "nous", "oikonomos", "organon", "symbolon", "taxis", "thesauros"]
 used_by = ["aletheia", "integration-tests"]
 dev_depends_on = ["skene"]
 
@@ -578,7 +578,7 @@ path = "crates/thesauros"
 layer = "storage"
 purpose = "Domain pack loader — external knowledge, tools, and config overlays"
 depends_on = ["koina", "organon"]
-used_by = ["aletheia", "integration-tests", "nous"]
+used_by = ["aletheia", "integration-tests", "nous", "pylon"]
 dev_depends_on = ["taxis"]
 
 [crates.thesauros.features]

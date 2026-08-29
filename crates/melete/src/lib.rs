@@ -21,6 +21,9 @@ pub mod prompt;
 pub mod provenance;
 /// Jaccard similarity pruning to remove near-duplicate content before distillation.
 pub mod similarity;
+/// Shared test fixtures for melete's own unit tests and its integration-test binaries.
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_support;
 /// Re-exported hermeneus types used by distillation consumers.
 pub mod types;
 

@@ -43,7 +43,7 @@ use self::resolve::{
     resolve_provider_checked, resolve_turn_model, resolve_turn_route, route_admits_sensitivity,
 };
 use crate::approval::ApprovalGate;
-use crate::config::{ModelProviderRoute, NousConfig};
+use crate::config::{ClientDisconnectPolicy, ModelProviderRoute, NousConfig};
 use crate::error;
 use crate::hooks::registry::HookRegistry;
 use crate::hooks::{AfterToolContext, ToolHookContext, ToolHookResult, ToolResultRecord};
@@ -303,18 +303,26 @@ pub(crate) struct ExecuteAdapters<'a> {
 ///
 /// Not cancel-safe against an external `.abort()`/`select!` drop (see
 /// `actor::turn`, which races this future against shutdown/interrupt
-/// signals). If the future is dropped while a tool call is in flight inside
-/// `tools.execute()`, that side effect may have already happened in the
-/// outside world with no record of it anywhere. If it is dropped *after* a
-/// tool call returns but before the loop's next safe boundary, the result IS
-/// captured in `session.receipt_ledger` (`dispatch_single_tool` signs and
-/// records a receipt synchronously, with no further `.await`, before control
-/// returns to this loop) even though it is lost from `all_tool_calls` and the
-/// `TurnResult` the caller never receives. Reconciling that receipt trail
-/// after an abort is `actor::turn`'s responsibility, not this module's — the
-/// ledger is the durable half of this story; a pre-execution "started"
-/// journal entry (the other half) would need a new `organon::receipts` API
-/// this path does not own.
+/// signals) in the sense that the `TurnResult` itself can still be lost —
+/// but the *fact that a tool call was attempted* no longer is (#5225). If
+/// the future is dropped while a tool call is in flight inside
+/// `tools.execute_prepared()`, `dispatch_single_tool` has already written a
+/// `Started` journal entry to `session.receipt_ledger` before that await,
+/// synchronously and with no further `.await` in between — so the side
+/// effect that may have already happened in the outside world is not
+/// unrecorded, only unresolved. If it is dropped *after* a tool call
+/// returns but before the loop's next safe boundary, the journal entry and
+/// receipt are both already `Completed`/recorded. Either way, reconciling
+/// what the ledger is left holding does not fall to `actor::turn`: the
+/// *next* turn run against this same session does it automatically, at the
+/// top of [`run_execute_loop`], via `ReceiptLedger::reconcile_interrupted` —
+/// any entry still `Started` is folded into that turn's own `all_tool_calls`
+/// (and so into its persisted `TurnResult`) as an explicit, honest
+/// "interrupted, outcome unknown" record rather than silently disappearing.
+/// This reconciliation is in-process durability against a dropped future
+/// while the owning `SessionState` survives; it does not cover the actor
+/// process itself being killed, which drops the ledger along with
+/// everything else in memory.
 ///
 /// The public entry point does not enforce a wall-clock deadline; see
 /// [`execute_with_deadline`] for cooperative budget handling.
@@ -633,6 +641,46 @@ async fn run_execute_loop(
     let mut all_tool_calls: Vec<ToolCall> = Vec::new();
     let mut total_usage = TurnUsage::default();
 
+    // WHY(#5225): reconcile any tool call a prior turn against this same
+    // session left `Started` in the receipt ledger's journal -- the future
+    // that would have completed it was dropped (client disconnect, turn
+    // cancellation, actor restart) after the side effect began and before
+    // this ledger ever observed it finish. Folding the reconciled entry
+    // into THIS turn's `all_tool_calls` makes it part of this turn's
+    // persisted, durable record (finalize writes `all_tool_calls` in the
+    // same atomic transaction as its messages) rather than the fact being
+    // silently dropped forever. Runs before any new tool is dispatched so a
+    // turn never mixes a stale reconciliation with a call it just made.
+    {
+        let mut ledger = session.receipt_ledger.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
+            poisoned.into_inner()
+        });
+        for entry in ledger.reconcile_interrupted(jiff::Timestamp::now()) {
+            crate::metrics::record_tool_call_reconciled(session.nous_id.as_str(), &entry.tool_name);
+            // WHY: the explanation is duplicated onto both `result` and
+            // `outcome_detail` -- `finalize::build_tool_audit_records`
+            // persists `ToolCall::result` verbatim into the durable
+            // `ToolAuditRecord` but has no field for `outcome_detail`, so
+            // `result` alone is what a later operator or reconciliation
+            // pass can actually read back.
+            let explanation = "interrupted before completion in a prior turn (client \
+                disconnect, cancellation, or restart); real-world side-effect outcome is unknown"
+                .to_owned();
+            all_tool_calls.push(ToolCall {
+                id: entry.tool_call_id,
+                name: entry.tool_name,
+                input: serde_json::from_str(&entry.input_json).unwrap_or(serde_json::Value::Null),
+                result: Some(explanation.clone()),
+                is_error: true,
+                duration_ms: 0,
+                approval: None,
+                receipt: None,
+                outcome_detail: Some(explanation),
+            });
+        }
+    }
+
     // WHY(#5016): one canonical identity for every tool-lifecycle event this
     // turn emits — the ULID minted on SessionState (gateway-supplied for HTTP
     // turns), the owning session, and the gateway request id (#4853).
@@ -702,10 +750,24 @@ async fn run_execute_loop(
         // so a non-streaming turn running under the streaming-unsupported
         // fallback (`stream_tx` still `Some`, wired only for tool events) had
         // no disconnect protection at all.
+        // WHY(#5225): `ContinueInBackground` still observes and logs the
+        // disconnect (visible status — see `record_background_disconnect`)
+        // but never breaks the loop for it; the turn keeps running to
+        // completion against a caller nobody is listening to anymore.
         if stream_tx.is_some_and(mpsc::Sender::is_closed) {
-            info!("client disconnected, stopping LLM turn");
-            STOP_REASON_CLIENT_DISCONNECT.clone_into(&mut final_stop_reason);
-            break;
+            let already_seen = client_disconnected;
+            client_disconnected = true;
+            if config.limits.client_disconnect_policy
+                == ClientDisconnectPolicy::ContinueInBackground
+            {
+                if !already_seen {
+                    crate::metrics::record_background_disconnect(session.nous_id.as_str());
+                }
+            } else {
+                info!("client disconnected, stopping LLM turn");
+                STOP_REASON_CLIENT_DISCONNECT.clone_into(&mut final_stop_reason);
+                break;
+            }
         }
 
         // WHY(#4713): the execute loop is not cancel-safe, so we observe the
@@ -920,8 +982,19 @@ async fn run_execute_loop(
         // (no further `.await`), but the ordering matters: we capture
         // final_content/reasoning from the response we already paid for
         // before overriding the stop reason and breaking.
+        //
+        // WHY(#5225) the policy gate: this is the one boundary between
+        // "the LLM asked for tools" and "those tools are dispatched", so it
+        // is the only point that can distinguish `CancelBeforeToolStart`
+        // from `FinishCurrentToolThenStop` — breaking here cancels before
+        // this iteration's tool calls ever run; falling through lets them
+        // run to completion, and the top-of-loop check (shared by both
+        // policies) then stops the turn before the *next* LLM call instead.
         client_disconnected |= stream_tx.is_some_and(mpsc::Sender::is_closed);
-        if client_disconnected {
+        if client_disconnected
+            && config.limits.client_disconnect_policy
+                == ClientDisconnectPolicy::CancelBeforeToolStart
+        {
             STOP_REASON_CLIENT_DISCONNECT.clone_into(&mut final_stop_reason);
             break;
         }

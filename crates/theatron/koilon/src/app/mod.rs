@@ -16,10 +16,10 @@ use persistence::{load_command_history, load_session_state};
 use crate::api::client::ApiClient;
 use crate::api::sse::SseConnection;
 use crate::config::Config;
-use crate::error::{GatewayUnreachableSnafu, Result};
+use crate::error::{AuthRejectedSnafu, GatewayUnreachableSnafu, Result};
 use crate::events::StreamEvent;
 use crate::hyperlink::OscLink;
-use crate::id::{NousId, SessionId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, TurnId};
 use crate::keybindings::KeyMap;
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
@@ -62,10 +62,10 @@ const MIN_RENDER_INTERVAL_MS: u64 = 33;
 /// Agent roster, sessions, messages, and cost tracking.
 pub struct DashboardState {
     pub agents: Vec<AgentState>,
-    pub focused_agent: Option<NousId>,
+    pub focused_agent: Option<ApiNousId>,
     /// PERF: ArcVec clone is O(1): tab switches share the Arc pointer, not the Vec.
     pub messages: ArcVec<ChatMessage>,
-    pub focused_session_id: Option<SessionId>,
+    pub focused_session_id: Option<ApiSessionId>,
     pub daily_cost_cents: u32,
     pub session_cost_cents: u32,
     pub context_usage_pct: Option<u8>,
@@ -74,7 +74,7 @@ pub struct DashboardState {
     /// Total context window capacity for the current model.
     pub context_tokens_total: Option<u32>,
     /// Last-active session per agent, loaded from disk on startup and saved on exit.
-    pub(crate) saved_sessions: HashMap<NousId, SessionId>,
+    pub(crate) saved_sessions: HashMap<ApiNousId, ApiSessionId>,
     pub submitted_decisions: Vec<crate::state::SubmittedDecision>,
     pub(crate) new_session_status: ControlMutationStatus,
 }
@@ -132,7 +132,7 @@ impl ConnectionState {
 pub struct RenderState {
     pub scroll_offset: usize,
     pub auto_scroll: bool,
-    pub(crate) scroll_states: HashMap<NousId, SavedScrollState>,
+    pub(crate) scroll_states: HashMap<ApiNousId, SavedScrollState>,
     pub(crate) virtual_scroll: VirtualScroll,
     pub markdown_cache: MarkdownCache,
     /// Pre-rendered lines for finalized (committed) messages.
@@ -382,6 +382,29 @@ impl App {
         Ok(app)
     }
 
+    /// Classify a failed health check into the TUI's typed error.
+    ///
+    /// WHY(#6818): shared by [`Self::connect`] (startup) and
+    /// [`Self::reauthenticate`] (in-session) so the auth-vs-unreachable
+    /// distinction is made in exactly one place rather than drifting
+    /// between the two call sites that need it.
+    fn classify_health_check_error(&self, err: crate::api::ApiError) -> crate::error::Error {
+        // WHY: a rejected credential means the server is running and
+        // answered — the generic "server not running" template sends the
+        // user to check the wrong thing first.
+        if matches!(err, crate::api::ApiError::Auth) {
+            AuthRejectedSnafu {
+                url: self.config.url.clone(),
+            }
+            .build()
+        } else {
+            GatewayUnreachableSnafu {
+                url: format!("{} — {err}", self.config.url),
+            }
+            .build()
+        }
+    }
+
     #[tracing::instrument(skip(self), fields(url = %self.config.url))]
     async fn connect(&mut self) -> Result<()> {
         match self.client.health_details().await {
@@ -390,12 +413,7 @@ impl App {
                 self.layout.metrics.health = Some(health);
                 self.layout.metrics.health_error = None;
             }
-            Err(err) => {
-                return GatewayUnreachableSnafu {
-                    url: format!("{} — {err}", self.config.url),
-                }
-                .fail();
-            }
+            Err(err) => return Err(self.classify_health_check_error(err)),
         }
 
         // SAFETY: sanitized at ingestion: all agent fields from API are sanitized here.
@@ -441,7 +459,7 @@ impl App {
             .config
             .default_agent
             .clone()
-            .map(NousId::from)
+            .map(ApiNousId::from)
             .or_else(|| self.dashboard.agents.first().map(|a| a.id.clone()));
 
         if let Some(agent_id) = self.dashboard.focused_agent.clone() {
@@ -466,6 +484,49 @@ impl App {
             self.layout.tab_bar.active = idx;
             self.save_to_active_tab();
         }
+
+        self.connection.sse = Some(SseConnection::connect(
+            self.client.streaming_client().clone(),
+            &self.config.url,
+        ));
+
+        Ok(())
+    }
+
+    /// Replace the running session's bearer token without restarting (#6818).
+    ///
+    /// Verifies the candidate token against the gateway with a throwaway
+    /// client *before* touching anything: a mistyped paste must not
+    /// silently replace whatever credential (however broken) was already
+    /// in place, in the running client or in `secret_store.rs`. Once
+    /// verified, persists it via the same secret-storage path
+    /// `Config::load` resolves at startup, rebuilds the live API client's
+    /// headers so subsequent REST and SSE requests carry it, and
+    /// reconnects SSE (which was opened with the old client and would keep
+    /// failing every reconnect attempt otherwise).
+    ///
+    /// Deliberately does not call [`Self::connect`]: that rebuilds the
+    /// agent list, opens a fresh tab, and re-focuses the default session —
+    /// exactly the local session state (open tabs, scroll position,
+    /// in-progress work) a mid-session token expiry should not cost, per
+    /// the motivation for having this method at all.
+    #[tracing::instrument(skip(self, token))]
+    pub(crate) async fn reauthenticate(&mut self, token: &str) -> Result<()> {
+        let token = token.trim();
+        if token.is_empty() {
+            return crate::error::TokenRequiredSnafu {
+                message: "Usage: :reauth <token>".to_string(),
+            }
+            .fail();
+        }
+
+        let probe = ApiClient::new(&self.config.url, Some(token.to_string()))?;
+        if let Err(err) = probe.health_details().await {
+            return Err(self.classify_health_check_error(err));
+        }
+
+        let secret = self.config.store_new_token(token);
+        self.client.set_token(secret)?;
 
         self.connection.sse = Some(SseConnection::connect(
             self.client.streaming_client().clone(),
@@ -587,7 +648,7 @@ impl App {
     }
 
     #[tracing::instrument(skip(self), fields(%agent_id))]
-    pub(crate) async fn load_tools_for_agent(&mut self, agent_id: &NousId) {
+    pub(crate) async fn load_tools_for_agent(&mut self, agent_id: &ApiNousId) {
         let tools = match self.client.tools(agent_id).await {
             Ok(tools) => tools,
             Err(_) => {

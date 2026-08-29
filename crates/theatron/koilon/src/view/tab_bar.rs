@@ -148,10 +148,10 @@ mod tests {
         let mut app = crate::app::test_helpers::test_app();
         app.layout
             .tab_bar
-            .create_tab(crate::id::NousId::from("syn"), "tab1");
+            .create_tab(crate::id::ApiNousId::from("syn"), "tab1");
         app.layout
             .tab_bar
-            .create_tab(crate::id::NousId::from("syn"), "tab2");
+            .create_tab(crate::id::ApiNousId::from("syn"), "tab2");
         assert!(should_show(&app));
     }
 
@@ -160,7 +160,7 @@ mod tests {
         let mut app = crate::app::test_helpers::test_app();
         app.layout
             .tab_bar
-            .create_tab(crate::id::NousId::from("syn"), "tab1");
+            .create_tab(crate::id::ApiNousId::from("syn"), "tab1");
         assert!(!should_show(&app));
     }
 

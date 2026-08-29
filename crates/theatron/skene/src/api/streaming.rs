@@ -14,7 +14,7 @@ use tracing::Instrument;
 use koina::http::CONTENT_TYPE_EVENT_STREAM;
 
 use crate::events::{StreamEnvelope, StreamEvent};
-use crate::id::{NousId, PlanId, RequestId, SessionId, ToolId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, PlanId, RequestId, ToolId, TurnId};
 use crate::sse::SseStream;
 
 use super::error::{
@@ -271,10 +271,10 @@ fn parse_stream_event_envelope(
 
     match event_type {
         "message_start" | "turn_start" => wrap(StreamEvent::TurnStart {
-            session_id: SessionId::from(
+            session_id: ApiSessionId::from(
                 str_any_field(&json, &["session_id", "sessionId"], event_type)?.to_string(),
             ),
-            nous_id: NousId::from(
+            nous_id: ApiNousId::from(
                 str_any_field(&json, &["nous_id", "nousId"], event_type)?.to_string(),
             ),
             turn_id: TurnId::from(

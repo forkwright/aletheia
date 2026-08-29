@@ -149,12 +149,15 @@ pub(crate) fn ToolDetailView(
 
     rsx! {
         div { style: "display: flex; flex-direction: column; gap: var(--space-4);",
+            role: "region",
+            "aria-label": "Tool detail: {tool_name}",
 
             // Header: back button + tool name
             div {
                 style: "display: flex; align-items: center; gap: var(--space-3);",
                 button {
                     style: "{BACK_BTN}",
+                    "aria-label": "Back to tools overview",
                     onclick: move |_| on_back.call(()),
                     "← Back"
                 }
@@ -295,9 +298,12 @@ fn render_pagination(page: usize, total_items: usize, mut detail_page: Signal<us
     rsx! {
         div {
             style: "display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--text-secondary);",
+            role: "group",
+            "aria-label": "Pagination",
             button {
                 style: if page > 0 { PAGE_BTN } else { PAGE_BTN_DISABLED },
                 disabled: page == 0,
+                "aria-label": "Previous page",
                 onclick: move |_| {
                     let p = *detail_page.read();
                     if p > 0 {
@@ -310,6 +316,7 @@ fn render_pagination(page: usize, total_items: usize, mut detail_page: Signal<us
             button {
                 style: if page + 1 < total_pages { PAGE_BTN } else { PAGE_BTN_DISABLED },
                 disabled: page + 1 >= total_pages,
+                "aria-label": "Next page",
                 onclick: move |_| {
                     let p = *detail_page.read();
                     if p + 1 < total_pages {

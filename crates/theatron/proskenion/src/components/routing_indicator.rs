@@ -101,7 +101,7 @@ pub(crate) fn update_routing_stage(
     routing: &mut Signal<Option<RoutingState>>,
     stage: PipelineStage,
     agent_name: &str,
-    agent_id: &skene::id::NousId,
+    agent_id: &skene::id::ApiNousId,
 ) {
     let current = routing.read();
     let needs_update = match &*current {

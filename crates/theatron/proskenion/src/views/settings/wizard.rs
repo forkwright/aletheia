@@ -205,6 +205,7 @@ fn StepServer(wizard_data: Signal<WizardData>, on_next: EventHandler<()>) -> Ele
                             padding: var(--space-2) var(--space-3); color: var(--text-primary); font-size: var(--text-sm); width: 100%; box-sizing: border-box;",
                     placeholder: default_server_placeholder(), // kanon:ignore SECURITY/hardcoded-loopback-url -- UI placeholder shown in wizard input; not a live URL
                     value: "{wizard_data.read().server_url}",
+                    "aria-label": "Server URL",
                     oninput: move |e| { wizard_data.write().server_url = e.value(); },
                 }
             }
@@ -248,6 +249,8 @@ fn StepAppearance(
                 }
                 div {
                     style: "display: flex; gap: var(--space-2);",
+                    role: "radiogroup",
+                    "aria-label": "Theme",
                     for (mode, slug) in [("Dark", "dark"), ("Light", "light"), ("System", "system")] {
                         {
                             let is_active = wizard_data.read().selected_theme == slug;
@@ -263,6 +266,8 @@ fn StepAppearance(
                                 button {
                                     key: "{slug}",
                                     style: "{style}",
+                                    role: "radio",
+                                    "aria-checked": if is_active { "true" } else { "false" },
                                     onclick: move |_| { wizard_data.write().selected_theme = slug.to_string(); },
                                     "{mode}"
                                 }
@@ -280,6 +285,8 @@ fn StepAppearance(
                 }
                 div {
                     style: "display: flex; gap: var(--space-2);",
+                    role: "radiogroup",
+                    "aria-label": "Density",
                     for density in [UiDensity::Compact, UiDensity::Comfortable, UiDensity::Spacious] {
                         {
                             let is_active = wizard_data.read().selected_density == density;
@@ -295,6 +302,8 @@ fn StepAppearance(
                                 button {
                                     key: "{density:?}",
                                     style: "{style}",
+                                    role: "radio",
+                                    "aria-checked": if is_active { "true" } else { "false" },
                                     onclick: move |_| { wizard_data.write().selected_density = density; },
                                     "{density.label()}"
                                 }
@@ -312,6 +321,8 @@ fn StepAppearance(
                 }
                 div {
                     style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
+                    role: "radiogroup",
+                    "aria-label": "Accent Color",
                     for (label, hex) in ACCENT_PRESETS.iter() {
                         {
                             let hex_owned = hex.to_string();
@@ -327,6 +338,9 @@ fn StepAppearance(
                                     key: "{label}",
                                     title: "{label}",
                                     style: "{style}",
+                                    role: "radio",
+                                    "aria-checked": if is_active { "true" } else { "false" },
+                                    "aria-label": "{label}",
                                     onclick: move |_| {
                                         wizard_data.write().selected_accent = hex_owned.clone();
                                     },

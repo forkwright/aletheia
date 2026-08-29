@@ -69,5 +69,5 @@ All handlers: `async fn(State(Arc<AppState>), Claims, ...) -> Result<impl IntoRe
 
 ## Dependencies
 
-Uses: koina, taxis, nous, hermeneus, mneme, organon, symbolon, axum, tower, tokio, snafu
+Uses: koina, taxis, nous, thesauros, hermeneus, mneme, organon, symbolon, axum, tower, tokio, snafu
 Used by: aletheia (binary)

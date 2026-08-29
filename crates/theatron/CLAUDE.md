@@ -30,7 +30,7 @@ Both UI crates depend on `skene` for API client, domain types, and SSE infrastru
 ## Shared infrastructure (core)
 
 - **ApiClient**: HTTP client for the pylon REST API (agents, sessions, history, auth, costs, streaming)
-- **Domain IDs**: NousId, SessionId, TurnId, ToolId, PlanId newtypes
+- **Domain IDs**: ApiNousId, ApiSessionId, TurnId, ToolId, PlanId newtypes
 - **StreamEvent**: Per-turn streaming events (text deltas, tool calls, plan steps)
 - **SseEvent / SseStream**: Wire-level SSE parser for reqwest byte streams
 - **TokenStore**: Bearer-token secret storage core — OS keyring, AES-256-GCM encrypted fallback, atomic secure writes (koilon and proskenion each keep a thin adapter fixing their own keyring service, fallback directory, and addressing model)

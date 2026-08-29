@@ -1,7 +1,7 @@
 //! Shared chat activation helpers for cross-view navigation.
 
 use skene::api::types::{HistoryMessage, HistoryResponse};
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 use crate::components::chat::ChatState;
 use crate::components::chat::{ChatMessage as LegacyChatMessage, MessageRole};
@@ -21,7 +21,7 @@ pub(crate) struct ChatActivation {
 /// Session-picker selections keep their explicit key. Sidebar-only agent
 /// selections have no session key, so they use a stable key scoped to the
 /// active agent instead of sharing one process-wide fallback.
-pub(crate) fn resolve_chat_session_key(nous_id: &NousId, session_key: Option<&str>) -> String {
+pub(crate) fn resolve_chat_session_key(nous_id: &ApiNousId, session_key: Option<&str>) -> String {
     session_key.map_or_else(|| format!("{nous_id}:default"), str::to_owned)
 }
 
@@ -158,13 +158,13 @@ fn history_content_to_string(content: Option<&serde_json::Value>) -> String {
 #[expect(clippy::unwrap_used, reason = "test assertions may panic on failure")]
 mod tests {
     use skene::api::types::Agent;
-    use skene::id::{NousId, SessionId};
+    use skene::id::{ApiNousId, ApiSessionId};
 
     use super::*;
 
     fn agent(id: &str) -> Agent {
         Agent {
-            id: NousId::from(id),
+            id: ApiNousId::from(id),
             name: Some(id.to_string()),
             model: None,
             emoji: None,
@@ -174,7 +174,7 @@ mod tests {
 
     fn selection() -> ChatSelection {
         ChatSelection::new(
-            NousId::from("syn"),
+            ApiNousId::from("syn"),
             "incident-review".to_string(),
             "Incident Review".to_string(),
         )
@@ -185,11 +185,11 @@ mod tests {
         let mut agent_store = AgentStore::new();
         agent_store.load_from_api(vec![agent("syn"), agent("arc")]);
 
-        assert!(agent_store.set_active(&NousId::from("syn")));
+        assert!(agent_store.set_active(&ApiNousId::from("syn")));
         let first_agent = agent_store.active_id.as_ref().unwrap();
         let first_key = resolve_chat_session_key(first_agent, None);
 
-        assert!(agent_store.set_active(&NousId::from("arc")));
+        assert!(agent_store.set_active(&ApiNousId::from("arc")));
         let second_agent = agent_store.active_id.as_ref().unwrap();
         let second_key = resolve_chat_session_key(second_agent, None);
 
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn resolve_chat_session_key_preserves_explicit_selection() {
-        let key = resolve_chat_session_key(&NousId::from("syn"), Some("incident-review"));
+        let key = resolve_chat_session_key(&ApiNousId::from("syn"), Some("incident-review"));
 
         assert_eq!(key, "incident-review");
     }
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn activate_chat_selection_preserves_messages_when_selection_is_unchanged() {
         let mut chat_state = ChatState {
-            agent_id: Some(NousId::from("syn")),
+            agent_id: Some(ApiNousId::from("syn")),
             session_key: Some("incident-review".to_string()),
             ..ChatState::default()
         };
@@ -274,7 +274,7 @@ mod tests {
         agent_store.load_from_api(vec![agent("syn")]);
         let mut tab_bar = TabBar::new();
         tab_bar.create_for_session(
-            NousId::from("syn"),
+            ApiNousId::from("syn"),
             "incident-review".to_string(),
             "Incident Review",
         );
@@ -301,8 +301,8 @@ mod tests {
         let mut tab_bar = TabBar::new();
         let mut window_state = WindowState::default();
         let selection = ChatSelection::for_existing_session(
-            NousId::from("syn"),
-            SessionId::from("session-id"),
+            ApiNousId::from("syn"),
+            ApiSessionId::from("session-id"),
             "incident-review".to_string(),
             "Incident Review".to_string(),
             4,
@@ -329,8 +329,8 @@ mod tests {
         let mut tab_bar = TabBar::new();
         let mut window_state = WindowState::default();
         let selection = ChatSelection::for_existing_session(
-            NousId::from("syn"),
-            SessionId::from("session-id"),
+            ApiNousId::from("syn"),
+            ApiSessionId::from("session-id"),
             "incident-review".to_string(),
             "Incident Review".to_string(),
             2,
@@ -396,8 +396,8 @@ mod tests {
         let mut tab_bar = TabBar::new();
         let mut window_state = WindowState::default();
         let selection = ChatSelection::for_existing_session(
-            NousId::from("syn"),
-            SessionId::from("session-id"),
+            ApiNousId::from("syn"),
+            ApiSessionId::from("session-id"),
             "incident-review".to_string(),
             "Incident Review".to_string(),
             4,

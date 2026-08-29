@@ -579,6 +579,7 @@ async fn system_status_lists_every_subsystem_with_an_owner() {
         "metrics_exposure",
         "event_bus",
         "config_security_posture",
+        "domain_packs",
     ];
     let ids: Vec<&str> = subsystems.iter().filter_map(|s| s["id"].as_str()).collect();
     for expected in expected_ids {
@@ -692,5 +693,37 @@ async fn system_status_turn_event_persistence_reports_a_count() {
     assert_eq!(
         turn_events["details"]["active_turn_buffers"], 0,
         "no turns have streamed in this test state"
+    );
+}
+
+#[tokio::test]
+async fn system_status_domain_packs_reports_zero_counts_when_none_configured() {
+    // WHY(#5208): the loader's PackReport was structured and logged at
+    // startup but never reached an operator-facing endpoint; this proves it
+    // does now, at the baseline (no packs configured) state.
+    let (app, _dir) = app().await;
+
+    let resp = app
+        .oneshot(authed_get("/api/v1/system/status"))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    let subsystems = body["subsystems"].as_array().expect("subsystems array");
+    let domain_packs = subsystems
+        .iter()
+        .find(|s| s["id"] == "domain_packs")
+        .expect("domain_packs present");
+    assert_eq!(domain_packs["status"], "healthy");
+    assert_eq!(domain_packs["owner"], "crates/thesauros::health");
+    assert_eq!(domain_packs["details"]["active"], 0);
+    assert_eq!(domain_packs["details"]["degraded"], 0);
+    assert_eq!(domain_packs["details"]["failed"], 0);
+    assert_eq!(
+        domain_packs["details"]["packs"]
+            .as_array()
+            .expect("packs array"),
+        &Vec::<serde_json::Value>::new(),
+        "no packs configured in test state"
     );
 }

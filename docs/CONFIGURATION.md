@@ -40,6 +40,8 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [feature_flags](#feature_flags)
 - [embedding](#embedding)
 - [packs](#packs)
+- [requiredPacks](#requiredpacks)
+- [packRequiredFailureMode](#packrequiredfailuremode)
 - [packOverlays](#packoverlays)
 - [maintenance](#maintenance)
 - [pricing](#pricing)
@@ -524,7 +526,7 @@ Runtime data lifecycle settings.
 
 ### data.retention
 
-Retention policy mirrored into `maintenance.retention` for compatibility.
+DEPRECATED (#5327): legacy alias for `maintenance.retention`, the sole runtime retention-enforcement owner. Set `maintenance.retention` directly instead. Mirrored into `maintenance.retention` at load time only when the canonical path is absent from the file; a file setting both paths with conflicting values fails to load.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -632,6 +634,24 @@ External domain pack paths (directories containing pack.toml).
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `packs` | path[] | [] | External domain pack paths (directories containing pack.toml). |
+
+## requiredPacks
+
+*(array of tables)*
+
+Subset of `packs` that every deployment must have active (#5208). A path listed here that is not also in `packs` has no pack to require and is ignored. A required pack that fails to load, or fails a `Priority::Required` context entry, follows `pack_required_failure_mode`; an optional pack failing the same way only degrades that pack's own health record.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `requiredPacks` | path[] | [] | Subset of `packs` that every deployment must have active (#5208). A path listed here that is not also in `packs` has no pack to require and is ignored. A required pack that fails to load, or fails a `Priority::Required` context entry, follows `pack_required_failure_mode`; an optional pack failing the same way only degrades that pack's own health record. |
+
+## packRequiredFailureMode
+
+Startup policy when a `required_packs` entry cannot activate (#5208).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `packRequiredFailureMode` | "fail_startup" \| "degraded" | "fail_startup" | Startup policy when a `required_packs` entry cannot activate (#5208). |
 
 ## packOverlays
 
@@ -1212,6 +1232,15 @@ Per-agent outbound-recipient allowlist and default-deny posture, enforced by `ag
 | `allowlist` | map<string, string[]> | {} | Allowed recipients per sending agent: `nous_id` -> recipient patterns. A pattern of exactly `"*"` allows any recipient for that agent; any other pattern must match the recipient exactly. |
 | `defaultDeny` | bool | true | Deny a send when the sending agent has no `allowlist` entry at all. Default: `true` (fail closed) -- an operator who never configured `[messaging.outbound]` blocks every send rather than allowing every send, matching `RecallSourcesConfig`'s network-source default-off posture. |
 
+### messaging.rawPayload
+
+Opt-in, bounded raw provider-payload retention on `InboundMessage::raw` (Signal envelopes, Matrix events).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `capture` | bool | false | Whether providers attach a raw payload to `InboundMessage::raw` at all. Default: `false`. |
+| `maxBytes` | integer | 4096 | Maximum encoded size in bytes of a retained (already-redacted) raw payload. Default: 4096. |
+
 ## tuning
 
 Self-tuning feedback loop configuration. WHY configurable: tuning is disabled by default (experimental). The global kill switch and evidence thresholds let operators enable and tune the feedback loop incrementally.
@@ -1680,8 +1709,13 @@ The effective thresholds for a running agent are exposed by
 
 ### data
 
+`data.retention` is a deprecated legacy alias -- set retention under
+`maintenance.retention` (the canonical, sole runtime enforcement owner)
+instead:
+
 ```toml
-[data.retention]
+[maintenance.retention]
+enabled = true
 closedSessionTtlDays = 90
 archiveBeforeDelete = true
 ```
@@ -1865,6 +1899,25 @@ packs = [
     "/srv/aletheia/packs/engineering",
     "/srv/aletheia/packs/research",
 ]
+```
+
+### requiredPacks / packRequiredFailureMode
+
+`requiredPacks` names the subset of `packs` a deployment cannot run
+without. A required pack that fails to load, or loses required content
+after loading, follows `packRequiredFailureMode` (default
+`"fail_startup"`, shared with [`tools.requiredFailureMode`](#tools)):
+abort startup, or continue in an explicit degraded state under
+`"degraded"`. A pack not listed here never blocks startup on its own
+status — see [pack health](PACKS.md#pack-health).
+
+```toml
+packs = [
+    "/srv/aletheia/packs/engineering",
+    "/srv/aletheia/packs/research",
+]
+requiredPacks = ["/srv/aletheia/packs/engineering"]
+packRequiredFailureMode = "fail_startup"
 ```
 
 ### packOverlays

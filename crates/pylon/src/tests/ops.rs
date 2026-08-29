@@ -126,6 +126,7 @@ async fn seed_tool_history(state: &crate::state::AppState) {
             usage: Some(&usage),
             tool_audit_records: &audits,
             completion_note: None,
+            turn_record: None,
         })
         .expect("finalize tool audit records");
 }

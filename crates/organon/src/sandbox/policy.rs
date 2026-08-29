@@ -283,21 +283,21 @@ impl EgressGate {
 ///
 /// `Deny` rejects before DNS. `Allow` deliberately performs no lookup.
 /// `Allowlist` resolves `host:port` and rejects the whole attempt if any
-/// candidate address is outside the configured IP or CIDR networks. The HTTP
-/// client is not pinned to that answer, so callers must also validate the
-/// transport-reported peer.
-///
-/// This gate does not classify private or internal addresses. That SSRF
-/// decision remains a separate caller responsibility. A successful empty DNS
-/// answer currently contains no candidate to reject and passes this preflight;
-/// callers must not treat success as proof that a later connection uses a
-/// validated peer.
+/// candidate address is outside the configured IP or CIDR networks, or if
+/// resolution returns no candidates at all (SECURITY #5229: an empty answer
+/// has no address to reject and must not read as "nothing to complain
+/// about"). This preflight is one of two independent lookups on the path
+/// callers assemble from [`PolicyDnsResolver`](super::PolicyDnsResolver) +
+/// this function + [`check_egress_remote_addr`]: it can reject fast before a
+/// connection is attempted, but only [`PolicyDnsResolver`](super::PolicyDnsResolver)
+/// -- installed as the HTTP client's own DNS resolver -- makes the address
+/// actually connected to the SAME address this check validated.
 ///
 /// # Errors
 ///
-/// Fails when policy is `Deny`, the resolver fails, or an `Allowlist` answer
-/// contains an unlisted address. An error is terminal for the attempted
-/// connection.
+/// Fails when policy is `Deny`, the resolver fails, an `Allowlist` answer
+/// contains an unlisted address, or an `Allowlist` answer is empty. An error
+/// is terminal for the attempted connection.
 pub async fn check_egress<R>(
     gate: &EgressGate,
     host: &str,
@@ -312,6 +312,9 @@ where
         return Ok(());
     }
     let addrs = resolver.resolve_host(host, port).await?;
+    if addrs.is_empty() {
+        return Err(format!("DNS resolution returned no addresses for {host}"));
+    }
     for addr in &addrs {
         gate.check_addr(addr.ip()).map_err(|e| e.to_string())?;
     }
@@ -320,25 +323,35 @@ where
 
 /// Decide whether a response from the transport-reported peer may be accepted.
 ///
-/// SECURITY(#5229): this is a post-connect defense against a connect-time DNS
-/// answer differing from the pre-connect check. It can reject a private,
-/// internal, or policy-disallowed rebound peer before response handling, but
-/// does not compare the peer with the original DNS answer. The request has
+/// SECURITY(#5229): this is defense-in-depth alongside
+/// [`PolicyDnsResolver`](super::PolicyDnsResolver), which is the mechanism
+/// that actually pins the connected address to the validated one. This
+/// function catches whatever `PolicyDnsResolver` cannot see -- a pooled
+/// connection reused from an earlier, already-validated lookup, or a client
+/// this crate did not construct. It can reject a private, internal, or
+/// policy-disallowed peer before response handling, but the request has
 /// already been sent and any remote side effect cannot be undone. A reported
 /// private or internal peer is rejected under every egress mode; every other
 /// peer is checked again against `gate`.
 ///
-/// `None` is accepted because the transport supplied no peer to inspect. In
-/// that case this function provides no rebinding check and security rests on
-/// the earlier validation.
+/// `None` is rejected rather than treated as a silent pass: every real TCP
+/// connection reqwest makes reports a peer via `Response::remote_addr()`, so
+/// `None` means the transport is something other than a genuine network
+/// connection this checkpoint can inspect -- exactly the case where this
+/// defense-in-depth layer must not be the one thing standing between the
+/// caller and an unvalidated peer.
 ///
 /// # Errors
 ///
-/// Fails when a reported peer is private or internal, or is rejected by the
-/// configured egress policy.
+/// Fails when a reported peer is private or internal, is rejected by the
+/// configured egress policy, or absent.
 pub fn check_egress_remote_addr(gate: &EgressGate, addr: Option<SocketAddr>) -> Result<(), String> {
     let Some(addr) = addr else {
-        return Ok(());
+        return Err(
+            "connection reported no remote address to verify (possible DNS rebinding); \
+             rejecting"
+                .to_owned(),
+        );
     };
     if is_private_ip(&addr.ip()) {
         return Err(format!(

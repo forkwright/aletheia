@@ -306,6 +306,7 @@ fn register_pack_tools_success() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -342,6 +343,7 @@ fn register_pack_tools_applies_declared_capability_metadata() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -373,6 +375,7 @@ fn register_pack_tools_rejects_unknown_capability_metadata() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -403,6 +406,7 @@ fn register_pack_tools_skips_missing_command() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -439,6 +443,7 @@ fn register_pack_tools_skips_bad_schema() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1067,6 +1072,7 @@ fn error_count_per_pack_not_cumulative() {
             write_paths: Vec::new(),
             egress: None,
             platforms: Vec::new(),
+            required: false,
         }],
     );
 
@@ -1087,6 +1093,7 @@ fn error_count_per_pack_not_cumulative() {
             write_paths: Vec::new(),
             egress: None,
             platforms: Vec::new(),
+            required: false,
         }],
     );
 
@@ -1130,6 +1137,7 @@ fn duplicate_tool_name_in_same_named_roots_degrades_actual_occurrence() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack_a = minimal_loaded_pack(&dir_a, vec![tool("dup_tool")]);
     let pack_b = loaded_pack_with_id(
@@ -1172,6 +1180,59 @@ fn duplicate_tool_name_in_same_named_roots_degrades_actual_occurrence() {
 
 #[cfg(unix)]
 #[test]
+fn required_tool_failure_fails_the_whole_pack() {
+    // WHY(#5208): a non-required tool that fails to register only degrades
+    // its pack (see the duplicate-name tests above); a `required = true`
+    // tool failing the same way must fail the pack outright, the same
+    // escalation a `priority = "required"` context entry already gets.
+    let dir = setup_pack_dir(&[]);
+    let pack = minimal_loaded_pack(
+        &dir,
+        vec![PackToolDef {
+            name: "must_have_tool".to_owned(),
+            description: "Required but missing command".to_owned(),
+            command: "tools/nonexistent.sh".to_owned(),
+            timeout: 5000,
+            input_schema: None,
+            groups: Vec::new(),
+            tags: Vec::new(),
+            reversibility: None,
+            env: Vec::new(),
+            write_paths: Vec::new(),
+            egress: None,
+            platforms: Vec::new(),
+            required: true,
+        }],
+    );
+    let pack_id = pack.instance_id();
+
+    let mut registry = ToolRegistry::new();
+    let failures = register_pack_tools(&[pack], &mut registry);
+    assert_eq!(failures.len(), 1);
+    assert!(failures[0].required, "failure must carry required = true");
+
+    let mut report = crate::health::PackReport::default();
+    report.packs.push(crate::health::PackHealth::active(
+        pack_id,
+        "test-pack".to_owned(),
+        dir.path().to_path_buf(),
+    ));
+    report.record_tool_failures(&failures);
+
+    assert_eq!(
+        report.packs[0].status,
+        crate::health::PackStatus::Failed,
+        "a required tool's registration failure must fail the whole pack"
+    );
+    assert!(
+        report.packs[0].issues[0].message.contains("must_have_tool"),
+        "health issue should name the failed required tool: {}",
+        report.packs[0].issues[0].message
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn repeated_configured_pack_path_degrades_only_second_occurrence() {
     let dir = setup_pack_dir(&[("tools/dup.sh", "#!/bin/sh\necho a")]);
     make_executable(&dir, "tools/dup.sh");
@@ -1188,6 +1249,7 @@ fn repeated_configured_pack_path_degrades_only_second_occurrence() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let first = minimal_loaded_pack(&dir, vec![tool.clone()]);
     let second = loaded_pack_with_id(
@@ -1489,6 +1551,7 @@ fn register_with_limits_rejects_zero_timeout() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1528,6 +1591,7 @@ async fn register_with_limits_clamps_timeout_below_floor() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1576,6 +1640,7 @@ async fn register_with_limits_clamps_timeout_above_ceiling() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1624,6 +1689,7 @@ async fn register_with_limits_leaves_in_range_timeout_unclamped() {
         write_paths: Vec::new(),
         egress: None,
         platforms: Vec::new(),
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1675,6 +1741,7 @@ fn tool_def_with_policy(
         write_paths,
         egress,
         platforms: Vec::new(),
+        required: false,
     }
 }
 
@@ -1918,6 +1985,7 @@ fn register_skips_tool_for_unsupported_platform() {
         write_paths: Vec::new(),
         egress: None,
         platforms: vec![foreign.to_owned()],
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 
@@ -1950,6 +2018,7 @@ fn register_accepts_tool_covering_current_host() {
         write_paths: Vec::new(),
         egress: None,
         platforms: vec!["unix".to_owned()],
+        required: false,
     };
     let pack = minimal_loaded_pack(&dir, vec![tool]);
 

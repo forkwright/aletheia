@@ -15,6 +15,7 @@ use agora::command::{self, AgentSnapshot, ChannelSnapshot, CommandContext};
 use agora::registry::ChannelRegistry;
 use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
+use koina::redact::redact_channel_id;
 use nous::manager::NousManager;
 use organon::types::BlackboardViewer;
 
@@ -53,7 +54,7 @@ pub(crate) fn spawn_dispatcher(
                 let msg_span = tracing::info_span!(
                     "dispatch",
                     channel = %msg.channel,
-                    sender = %msg.sender,
+                    sender = %redact_channel_id(&msg.sender),
                 );
                 in_flight.spawn(
                     dispatch_one(msg, router, nous_mgr, channels, session_store)
@@ -95,7 +96,7 @@ async fn dispatch_one(
     let Some(decision) = router.resolve(&msg) else {
         warn!(
             channel = %msg.channel,
-            sender = %msg.sender,
+            sender = %redact_channel_id(&msg.sender),
             "no route for inbound message, dropping"
         );
         return;
@@ -461,14 +462,29 @@ fn command_result_record(
     })
 }
 
+/// Build the `origin` block of a command record.
+///
+/// WHY redacted (#5198): command records are persisted to the session
+/// store and read back into agent context (`command_history`), so a raw
+/// phone number or Matrix ID here reaches the same surface a channel
+/// identity redaction is meant to keep clear of. `sender`/`group_id` are
+/// redacted via the shared [`redact_channel_id`]; `conversation_id`
+/// derives from the already-redacted values so it never reintroduces the
+/// raw identifier. `sender_name` carries a real display name with no
+/// correlation value from partial redaction, so its presence is recorded
+/// without the name itself.
 fn command_origin_record(msg: &InboundMessage) -> serde_json::Value {
-    let conversation_id = msg.group_id.as_deref().unwrap_or(msg.sender.as_str());
+    let redacted_sender = redact_channel_id(&msg.sender);
+    let redacted_group_id = msg.group_id.as_deref().map(redact_channel_id);
+    let conversation_id = redacted_group_id
+        .clone()
+        .unwrap_or_else(|| redacted_sender.clone());
     serde_json::json!({
         "channel": msg.channel.as_str(),
-        "sender": msg.sender.as_str(),
-        "sender_name": msg.sender_name.as_deref(),
-        "group_id": msg.group_id.as_deref(),
-        "thread_id": msg.group_id.as_deref(),
+        "sender": redacted_sender,
+        "sender_name": msg.sender_name.as_ref().map(|_| "[REDACTED]"),
+        "group_id": redacted_group_id.clone(),
+        "thread_id": redacted_group_id,
         "conversation_id": conversation_id,
         "timestamp_ms": msg.timestamp,
     })
@@ -1063,7 +1079,12 @@ mod tests {
         assert_eq!(json_str(&invocation, "/event"), Some("invocation"));
         assert_eq!(json_str(&invocation, "/command/name"), Some("ping"));
         assert_eq!(json_str(&invocation, "/origin/channel"), Some("signal"));
-        assert_eq!(json_str(&invocation, "/origin/sender"), Some("+15550100"));
+        assert_eq!(
+            json_str(&invocation, "/origin/sender"),
+            Some(redact_channel_id("+15550100").as_str()),
+            "sender must be redacted, not stored raw in the command record"
+        );
+        assert_ne!(json_str(&invocation, "/origin/sender"), Some("+15550100"));
         assert_eq!(
             json_str(&invocation, "/session_key"),
             Some(session_key.as_str())
@@ -1457,6 +1478,58 @@ mod tests {
         assert!(
             blackboard_reply.contains("Blackboard empty"),
             "{blackboard_reply}"
+        );
+    }
+
+    #[test]
+    fn command_origin_record_redacts_identity_fields() {
+        let msg = InboundMessage {
+            channel: "matrix".to_owned(),
+            sender: "@alice:example.org".to_owned(),
+            sender_name: Some("Alice".to_owned()),
+            group_id: Some("!room:example.org".to_owned()),
+            text: "!ping".to_owned(),
+            timestamp: 1_709_312_345_678,
+            attachments: vec![],
+            raw: None,
+        };
+
+        let record = command_origin_record(&msg);
+        let dump = record.to_string();
+        assert!(!dump.contains("@alice:example.org"), "{dump}");
+        assert!(!dump.contains("Alice"), "{dump}");
+        assert!(!dump.contains("!room:example.org"), "{dump}");
+        assert_eq!(
+            json_str(&record, "/sender"),
+            Some(redact_channel_id("@alice:example.org").as_str())
+        );
+        assert_eq!(
+            json_str(&record, "/group_id"),
+            Some(redact_channel_id("!room:example.org").as_str())
+        );
+        assert_eq!(
+            json_str(&record, "/conversation_id"),
+            json_str(&record, "/group_id")
+        );
+    }
+
+    #[test]
+    fn command_origin_record_conversation_id_falls_back_to_redacted_sender() {
+        let msg = InboundMessage {
+            channel: "signal".to_owned(),
+            sender: "+15550100".to_owned(),
+            sender_name: None,
+            group_id: None,
+            text: "!ping".to_owned(),
+            timestamp: 1_709_312_345_678,
+            attachments: vec![],
+            raw: None,
+        };
+
+        let record = command_origin_record(&msg);
+        assert_eq!(
+            json_str(&record, "/conversation_id"),
+            Some(redact_channel_id("+15550100").as_str())
         );
     }
 

@@ -289,16 +289,15 @@ workspace = "{workspace}"
 # baseUrl = "http://127.0.0.1:5005/v1"  # required for openai-compat
 # apiKeyEnv = "VOYAGE_API_KEY"          # required for voyage unless using VOYAGE_API_KEY
 
-# --- Data retention ---
-# [data.retention]
-# session_max_age_days = 90
-# archive_before_delete = true
-
 # --- Maintenance ---
 # [maintenance.trace_rotation]
 # max_age_days = 14
 # [maintenance.db_monitoring]
 # warn_threshold_mb = 100
+# [maintenance.retention]
+# enabled = true
+# session_max_age_days = 90
+# archive_before_delete = true
 
 # --- Cost tracking ---
 [pricing.{pricing_key}]

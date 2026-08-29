@@ -669,7 +669,7 @@ mod health_tests;
 mod window_tests {
     use super::*;
     use crate::store::EnergeiaStore;
-    use crate::store::records::{DispatchId, SessionId};
+    use crate::store::records::{DispatchId, PromptSessionId};
 
     fn setup() -> (tempfile::TempDir, EnergeiaStore) {
         let dir = tempfile::TempDir::new().expect("temp dir");
@@ -693,7 +693,7 @@ mod window_tests {
     /// and QA verdicts attached to ids that belong to no live session or
     /// dispatch. The orphans stand in for records that have aged out of the
     /// reporting window.
-    fn seed(store: &EnergeiaStore, orphan_count: usize) -> (DispatchId, SessionId) {
+    fn seed(store: &EnergeiaStore, orphan_count: usize) -> (DispatchId, PromptSessionId) {
         let spec = crate::types::DispatchSpec::new("proj".to_owned(), vec![1]);
         let dispatch_id = store.create_dispatch("proj", &spec).expect("dispatch");
         let session_id = store.create_session(&dispatch_id, 1).expect("session");
@@ -706,8 +706,10 @@ mod window_tests {
             .expect("live qa verdict");
 
         for i in 0..orphan_count {
-            let orphan_session = SessionId::new(format!("orphan-session-{i}"));
-            let orphan_dispatch = DispatchId::new(format!("orphan-dispatch-{i}"));
+            let orphan_session =
+                PromptSessionId::new(format!("orphan-session-{i}")).expect("valid orphan id");
+            let orphan_dispatch =
+                DispatchId::new(format!("orphan-dispatch-{i}")).expect("valid orphan id");
             store
                 .add_ci_validation(&orphan_session, "build", 2, CiValidationStatus::Fail, None)
                 .expect("orphan ci validation");

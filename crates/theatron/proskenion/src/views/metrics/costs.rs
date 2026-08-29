@@ -154,17 +154,23 @@ pub(crate) fn Costs() -> Element {
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4);",
+            role: "region",
+            "aria-label": "Costs",
 
             div {
                 style: "display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap;",
                 div {
                     style: "display: flex; gap: var(--space-1);",
+                    role: "radiogroup",
+                    "aria-label": "Granularity",
                     for g in [Granularity::Daily, Granularity::Weekly, Granularity::Monthly] {
                         {
                             let active = *granularity.read() == g;
                             rsx! {
                                 button {
                                     style: if active { CONTROL_BTN_ACTIVE } else { CONTROL_BTN_INACTIVE },
+                                    role: "radio",
+                                    "aria-checked": if active { "true" } else { "false" },
                                     onclick: move |_| granularity.set(g),
                                     "{g.label()}"
                                 }
@@ -175,6 +181,8 @@ pub(crate) fn Costs() -> Element {
                 div { style: "width: 1px; height: 20px; background: var(--border);" }
                 div {
                     style: "display: flex; gap: var(--space-1);",
+                    role: "radiogroup",
+                    "aria-label": "Date range",
                     for r in [DateRange::Last7Days, DateRange::Last30Days, DateRange::Last90Days] {
                         {
                             let is_active = matches!(
@@ -185,6 +193,8 @@ pub(crate) fn Costs() -> Element {
                             rsx! {
                                 button {
                                     style: if is_active { CONTROL_BTN_ACTIVE } else { CONTROL_BTN_INACTIVE },
+                                    role: "radio",
+                                    "aria-checked": if is_active { "true" } else { "false" },
                                     onclick: move |_| date_range.set(r2.clone()),
                                     "{r.label()}"
                                 }
@@ -384,6 +394,11 @@ fn budget_panel(
                 }
                 div {
                     style: "height: 8px; background: var(--bg-surface); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border);",
+                    role: "progressbar",
+                    "aria-label": "Budget spent",
+                    "aria-valuenow": "{budget_pct:.0}",
+                    "aria-valuemin": "0",
+                    "aria-valuemax": "100",
                     div {
                         style: "height: 100%; width: {budget_pct:.0}%; background: {bar_color}; border-radius: var(--radius-sm); transition: width var(--transition-measured);",
                     }
@@ -394,10 +409,12 @@ fn budget_panel(
                         style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
                         placeholder: "New limit $",
                         value: "{input_value}",
+                        "aria-label": "New budget limit",
                         oninput: move |e| on_input(e.value()),
                     }
                     button {
                         style: "padding: var(--space-1) 10px; font-size: var(--text-xs); background: var(--border); color: var(--text-primary); border: 1px solid var(--input-border); border-radius: var(--radius-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); font-family: var(--font-mono);",
+                        "aria-label": "Set budget limit",
                         onclick: move |_| {
                             if let Ok(v) = input_for_set.trim().parse::<f64>() {
                                 on_set(v);
@@ -422,10 +439,12 @@ fn budget_panel(
                         style: "padding: var(--space-1) var(--space-2); font-size: var(--text-xs); background: var(--bg); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--text-primary); width: 100px; font-family: var(--font-mono);",
                         placeholder: "Monthly limit $",
                         value: "{input_value}",
+                        "aria-label": "Monthly budget limit",
                         oninput: move |e| on_input(e.value()),
                     }
                     button {
                         style: "padding: var(--space-1) 10px; font-size: var(--text-xs); background: var(--border); color: var(--text-primary); border: 1px solid var(--input-border); border-radius: var(--radius-sm); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick); font-family: var(--font-mono);",
+                        "aria-label": "Set budget limit",
                         onclick: move |_| {
                             if let Ok(v) = input_for_set.trim().parse::<f64>() {
                                 on_set(v);

@@ -1158,16 +1158,103 @@ fn normalize_tool_result(
     }
 }
 
+/// Run `f` against the locked ledger, recovering from a poisoned lock the
+/// same way at every call site rather than repeating the lock+recover
+/// boilerplate inline. No-op when `receipt_ledger` is `None`.
+fn with_receipt_ledger<F>(
+    receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
+    f: F,
+) where
+    F: FnOnce(&mut organon::receipts::ReceiptLedger),
+{
+    if let Some(ledger) = receipt_ledger {
+        let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
+            poisoned.into_inner()
+        });
+        f(&mut guard);
+    }
+}
+
+/// Sign and record a v2 receipt for a completed tool call, then tag the
+/// LLM-facing content with the resulting receipt marker.
+///
+/// WHY unconditional (#4835): receipt issuance is a runtime invariant on
+/// this path now that `receipt_signer` is non-optional -- see
+/// `dispatch_single_tool`'s parameter docs.
+///
+/// WHY(#6808): the ledger retains only redacted display copies. Receipt V2
+/// separately commits (under the ephemeral session key) to the exact
+/// prepared executor-bound JSON and bounded result content, plus the tool,
+/// policy, and approval identities that admitted execution. This does not
+/// claim inode-level physical-effect identity for path-based OS calls.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "carries the same receipt-issuance inputs dispatch_single_tool already threads through"
+)]
+#[expect(
+    clippy::expect_used,
+    reason = "ToolResultContent contains only JSON-native strings and arrays; serialization cannot fail"
+)]
+fn issue_receipt(
+    tool_id: &str,
+    tool_name: &str,
+    execution_input: &PreparedToolInput,
+    persisted_input: &serde_json::Value,
+    receipt_signer: &organon::receipts::ReceiptSigner,
+    receipt_ledger: Option<&std::sync::Mutex<organon::receipts::ReceiptLedger>>,
+    approval_requirement: ApprovalRequirement,
+    approval_outcome: &str,
+    redaction: &RedactionPolicy,
+    content: ToolResultContent,
+) -> (ToolResultContent, Option<String>) {
+    organon::metrics::record_receipt(tool_name, "emitted");
+    let ts = jiff::Timestamp::now();
+    let actual_result = content.text_summary();
+    let result_text = redacted_trace_result(redaction, &actual_result);
+    let output_value = serde_json::to_value(&content)
+        .expect("ToolResultContent is composed exclusively of JSON-native values");
+    let attestation = receipt_signer.attest_v2(
+        tool_id,
+        tool_name,
+        &execution_input.as_tool_input().arguments,
+        &output_value,
+        approval_requirement.to_string(),
+        approval_outcome,
+        redaction.clone(),
+        ts,
+    );
+    let receipt_str = receipt_signer.sign_v2(&attestation);
+    with_receipt_ledger(receipt_ledger, |guard| {
+        guard.record_v2(
+            receipt_str.clone(),
+            attestation,
+            persisted_input.to_string(),
+            result_text.clone(),
+        );
+    });
+    let tagged = match content {
+        ToolResultContent::Text(text) => {
+            ToolResultContent::Text(format!("{text}\n\n[receipt:{receipt_str}]"))
+        }
+        ToolResultContent::Blocks(mut blocks) => {
+            blocks.push(ToolResultBlock::Text {
+                text: format!("\n\n[receipt:{receipt_str}]"),
+            });
+            ToolResultContent::Blocks(blocks)
+        }
+        // WHY: ToolResultContent is #[non_exhaustive]; forward-compatibility arm.
+        other => other,
+    };
+    (tagged, Some(receipt_str))
+}
+
 /// Execute one prepared tool call: invoke the executor, truncate + log + build
 /// the (`ToolCall`, `ContentBlock::ToolResult`) pair. Loop-detection
 /// bookkeeping is handled by the caller.
 #[expect(
     clippy::too_many_arguments,
     reason = "dispatch needs tool id, name, input, registry, context, limits, receipt infra, and approval outcome"
-)]
-#[expect(
-    clippy::expect_used,
-    reason = "ToolResultContent contains only JSON-native strings and arrays; serialization cannot fail"
 )]
 async fn dispatch_single_tool(
     tool_id: &str,
@@ -1198,7 +1285,30 @@ async fn dispatch_single_tool(
     approval_outcome: &str,
 ) -> error::Result<SingleToolOutcome> {
     let start = std::time::Instant::now();
+
+    // WHY(#5225): journal the call as `Started` *before* the side-effecting
+    // future is polled, with no `.await` in between -- the same
+    // cancel-safety shape `record`/`record_v2` below already rely on. If
+    // this future is dropped while `execute_prepared` is in flight (turn
+    // cancellation, actor restart), the next turn's `reconcile_interrupted`
+    // call finds this entry still `Started` and surfaces it rather than
+    // losing the fact that the side effect was ever attempted.
+    with_receipt_ledger(receipt_ledger, |guard| {
+        guard.journal_started(
+            tool_id.to_owned(),
+            tool_name.to_owned(),
+            persisted_input.to_string(),
+            jiff::Timestamp::now(),
+        );
+    });
+
     let result = tools.execute_prepared(execution_input, tool_ctx).await;
+
+    // WHY(#5225): resolve the journal entry immediately on return, before
+    // any further `.await` -- see the `Started` write above.
+    with_receipt_ledger(receipt_ledger, |guard| {
+        guard.journal_completed(tool_id, jiff::Timestamp::now());
+    });
 
     #[expect(
         clippy::cast_possible_truncation,
@@ -1226,63 +1336,21 @@ async fn dispatch_single_tool(
         debug!(tool = tool_name, duration_ms, "tool executed");
     }
 
-    // WHY unconditional (#4835): receipt issuance is a runtime invariant
-    // on this path now that `receipt_signer` is non-optional -- see this
-    // function's parameter docs.
-    //
-    // WHY(#6808): the ledger retains only redacted display copies. Receipt V2
-    // separately commits (under the ephemeral session key) to the exact
-    // prepared executor-bound JSON and bounded result content, plus the tool,
-    // policy, and approval identities that admitted execution. This does not
-    // claim inode-level physical-effect identity for path-based OS calls.
     let redaction = tools
         .capability_metadata(&execution_input.as_tool_input().name)
         .redaction;
-    let (content, receipt) = {
-        organon::metrics::record_receipt(tool_name, "emitted");
-        let ts = jiff::Timestamp::now();
-        let actual_result = content.text_summary();
-        let result_text = redacted_trace_result(&redaction, &actual_result);
-        let output_value = serde_json::to_value(&content)
-            .expect("ToolResultContent is composed exclusively of JSON-native values");
-        let attestation = receipt_signer.attest_v2(
-            tool_id,
-            tool_name,
-            &execution_input.as_tool_input().arguments,
-            &output_value,
-            approval_requirement.to_string(),
-            approval_outcome,
-            redaction.clone(),
-            ts,
-        );
-        let receipt_str = receipt_signer.sign_v2(&attestation);
-        if let Some(ledger) = receipt_ledger {
-            let mut guard = ledger.lock().unwrap_or_else(|poisoned| {
-                tracing::warn!("receipt_ledger lock poisoned, recovering with last value");
-                poisoned.into_inner()
-            });
-            guard.record_v2(
-                receipt_str.clone(),
-                attestation,
-                persisted_input.to_string(),
-                result_text.clone(),
-            );
-        }
-        let tagged = match content {
-            ToolResultContent::Text(text) => {
-                ToolResultContent::Text(format!("{text}\n\n[receipt:{receipt_str}]"))
-            }
-            ToolResultContent::Blocks(mut blocks) => {
-                blocks.push(ToolResultBlock::Text {
-                    text: format!("\n\n[receipt:{receipt_str}]"),
-                });
-                ToolResultContent::Blocks(blocks)
-            }
-            // WHY: ToolResultContent is #[non_exhaustive]; forward-compatibility arm.
-            other => other,
-        };
-        (tagged, Some(receipt_str))
-    };
+    let (content, receipt) = issue_receipt(
+        tool_id,
+        tool_name,
+        execution_input,
+        persisted_input,
+        receipt_signer,
+        receipt_ledger,
+        approval_requirement,
+        approval_outcome,
+        &redaction,
+        content,
+    );
 
     // WHY(#6808): the persisted record's result text follows the declared
     // policy even though the LLM-facing `result_block` above does not --

@@ -4,7 +4,7 @@
 //! app root. Child components project into individual fields. This replaces
 //! the monolithic `App` struct from the ratatui TUI.
 
-use skene::id::{NousId, SessionId};
+use skene::id::{ApiNousId, ApiSessionId};
 
 use super::connection::{ConnectionConfig, ConnectionState};
 
@@ -12,7 +12,7 @@ use super::connection::{ConnectionConfig, ConnectionState};
 #[derive(Debug, Clone)]
 pub struct AgentEntry {
     /// Agent identifier.
-    pub id: NousId,
+    pub id: ApiNousId,
     /// Human-readable agent name.
     pub name: String,
     /// Agent status label (idle, busy, etc.).
@@ -31,7 +31,7 @@ pub struct AppState {
     /// All registered agents, fetched on startup and updated via SSE.
     pub agents: Vec<AgentEntry>,
     /// Currently focused agent. `None` before first agent load.
-    pub focused_agent: Option<NousId>,
+    pub focused_agent: Option<ApiNousId>,
     /// Tab bar managing multiple open conversations.
     pub tabs: TabBar,
     /// Server connection lifecycle state.
@@ -68,11 +68,11 @@ pub struct TabEntry {
     /// Unique tab identifier.
     pub id: TabId,
     /// Agent associated with this tab.
-    pub agent_id: NousId,
+    pub agent_id: ApiNousId,
     /// Server session key associated with the tab, if known.
     pub session_key: Option<String>, // kanon:ignore RUST/plain-string-secret
     /// Durable server session ID, if this tab was opened from an existing session.
-    pub session_id: Option<SessionId>,
+    pub session_id: Option<ApiSessionId>,
     /// Server-reported total message count, if known.
     pub message_count: Option<u32>,
     /// Display title for the tab.
@@ -103,7 +103,7 @@ impl TabBar {
     }
 
     /// Create a new tab, returning its index.
-    pub(crate) fn create(&mut self, agent_id: NousId, title: impl Into<String>) -> usize {
+    pub(crate) fn create(&mut self, agent_id: ApiNousId, title: impl Into<String>) -> usize {
         let id = self.next_id;
         self.next_id += 1;
         self.tabs.push(TabEntry {
@@ -121,7 +121,7 @@ impl TabBar {
     /// Create a tab bound to a known server session, returning its index.
     pub(crate) fn create_for_session(
         &mut self,
-        agent_id: NousId,
+        agent_id: ApiNousId,
         session_key: String, // kanon:ignore RUST/plain-string-secret
         title: impl Into<String>,
     ) -> usize {
@@ -142,8 +142,8 @@ impl TabBar {
     /// Create a tab bound to a known server session and history metadata.
     pub(crate) fn create_for_existing_session(
         &mut self,
-        agent_id: NousId,
-        session_id: SessionId,
+        agent_id: ApiNousId,
+        session_id: ApiSessionId,
         session_key: String, // kanon:ignore RUST/plain-string-secret
         message_count: Option<u32>,
         title: impl Into<String>,
@@ -261,7 +261,7 @@ mod tests {
     #[test]
     fn tab_bar_create_and_close() {
         let mut bar = TabBar::new();
-        let idx = bar.create(NousId::from("syn"), "main");
+        let idx = bar.create(ApiNousId::from("syn"), "main");
         assert_eq!(idx, 0);
         assert_eq!(bar.len(), 1);
         assert!(!bar.is_empty());
@@ -274,9 +274,9 @@ mod tests {
     #[test]
     fn tab_bar_close_adjusts_active() {
         let mut bar = TabBar::new();
-        bar.create(NousId::from("syn"), "a");
-        bar.create(NousId::from("syn"), "b");
-        bar.create(NousId::from("syn"), "c");
+        bar.create(ApiNousId::from("syn"), "a");
+        bar.create(ApiNousId::from("syn"), "b");
+        bar.create(ApiNousId::from("syn"), "c");
         bar.active = 2;
         bar.close(0); // remove "a", active should adjust from 2 to 1
         assert_eq!(bar.active, 1);
@@ -285,7 +285,7 @@ mod tests {
     #[test]
     fn tab_bar_close_out_of_range() {
         let mut bar = TabBar::new();
-        bar.create(NousId::from("syn"), "a");
+        bar.create(ApiNousId::from("syn"), "a");
         assert!(bar.close(5).is_none());
         assert_eq!(bar.len(), 1);
     }
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn tab_bar_active_tab() {
         let mut bar = TabBar::new();
-        bar.create(NousId::from("syn"), "first");
+        bar.create(ApiNousId::from("syn"), "first");
         let tab = bar.active_tab();
         assert!(tab.is_some());
         assert_eq!(tab.unwrap().title, "first");
@@ -303,13 +303,13 @@ mod tests {
     fn tab_bar_create_for_session_records_session_key() {
         let mut bar = TabBar::new();
         let idx = bar.create_for_session(
-            NousId::from("syn"),
+            ApiNousId::from("syn"),
             "incident-review".to_string(),
             "Incident Review",
         );
 
         let tab = &bar.tabs[idx];
-        assert_eq!(tab.agent_id, NousId::from("syn"));
+        assert_eq!(tab.agent_id, ApiNousId::from("syn"));
         assert_eq!(tab.session_key.as_deref(), Some("incident-review"));
         assert_eq!(tab.title, "Incident Review");
     }
@@ -323,9 +323,9 @@ mod tests {
     #[test]
     fn tab_ids_are_unique() {
         let mut bar = TabBar::new();
-        bar.create(NousId::from("a"), "t1");
-        bar.create(NousId::from("b"), "t2");
-        bar.create(NousId::from("c"), "t3");
+        bar.create(ApiNousId::from("a"), "t1");
+        bar.create(ApiNousId::from("b"), "t2");
+        bar.create(ApiNousId::from("c"), "t3");
         let ids: Vec<TabId> = bar.tabs.iter().map(|t| t.id).collect();
         let unique: std::collections::HashSet<TabId> = ids.iter().copied().collect();
         assert_eq!(ids.len(), unique.len());

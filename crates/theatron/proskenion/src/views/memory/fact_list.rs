@@ -203,12 +203,15 @@ pub(crate) fn FactList(
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Fact list",
             div {
                 style: "{SORT_BAR_STYLE}",
                 span { "Sort:" }
                 select {
                     style: "{SORT_SELECT_STYLE}",
                     value: "{sort.label()}",
+                    "aria-label": "Sort facts",
                     onchange: move |evt: Event<FormData>| {
                         let label = evt.value();
                         for s in FactSort::ALL {
@@ -352,6 +355,7 @@ pub(crate) fn FactList(
                                             if forgotten {
                                                 button {
                                                     style: "{ACTION_BTN_STYLE}",
+                                                    "aria-label": "Restore fact",
                                                     onclick: {
                                                         let id = id.clone();
                                                         let content = content.clone();
@@ -364,6 +368,7 @@ pub(crate) fn FactList(
                                             } else {
                                                 button {
                                                     style: "{ACTION_BTN_STYLE}",
+                                                    "aria-label": "Edit confidence for fact",
                                                     onclick: {
                                                         let id = id.clone();
                                                         let content = content.clone();
@@ -375,6 +380,7 @@ pub(crate) fn FactList(
                                                 }
                                                 button {
                                                     style: "{ACTION_BTN_STYLE}",
+                                                    "aria-label": "Edit sensitivity for fact",
                                                     onclick: {
                                                         let id = id.clone();
                                                         let content = content.clone();
@@ -386,6 +392,7 @@ pub(crate) fn FactList(
                                                 }
                                                 button {
                                                     style: "{ACTION_BTN_STYLE} color: var(--status-error); border-color: var(--status-error)44;",
+                                                    "aria-label": "Forget fact",
                                                     onclick: {
                                                         let id = id.clone();
                                                         let content = content.clone();

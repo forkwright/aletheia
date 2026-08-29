@@ -4,7 +4,7 @@
 //! an agent calls `AgentStore::set_active`, switching the active chat session.
 
 use dioxus::prelude::*;
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 use crate::state::agents::{AgentStatus, AgentStore};
 use crate::state::events::EventState;
@@ -12,7 +12,7 @@ use crate::state::events::EventState;
 /// Derives the display status for an agent from the current `EventState`.
 ///
 /// Active turns take priority over the status string in `agent_statuses`.
-fn derive_status(nous_id: &NousId, event_state: &EventState) -> AgentStatus {
+fn derive_status(nous_id: &ApiNousId, event_state: &EventState) -> AgentStatus {
     if event_state
         .active_turns
         .iter()
@@ -48,7 +48,7 @@ pub(crate) fn AgentSidebarView(collapsed: bool) -> Element {
         };
     }
 
-    let agents: Vec<(NousId, String, String, AgentStatus, bool)> = {
+    let agents: Vec<(ApiNousId, String, String, AgentStatus, bool)> = {
         let s = store.read();
         let es = event_state.read();
         s.all()

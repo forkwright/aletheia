@@ -26,7 +26,7 @@ packs = [
 ]
 ```
 
-Relative paths resolve from the instance root (`$ALETHEIA_ROOT` or `./instance`). Absolute paths are used as-is. Packs load at startup. Invalid or missing packs log warnings and are skipped (graceful degradation); the structured [pack health](#pack-health) report records exactly what was skipped or failed.
+Relative paths resolve from the instance root (`$ALETHEIA_ROOT` or `./instance`). Absolute paths are used as-is. Packs load at startup. Invalid or missing packs log warnings and are skipped (graceful degradation); the structured [pack health](#pack-health) report records exactly what was skipped or failed. A pack named in `required_packs` is the exception — see [Failing startup on a required pack](#failing-startup-on-a-required-pack).
 
 ## Manifest: pack.toml
 
@@ -125,6 +125,7 @@ Tools are shell commands exposed to the LLM as callable functions. The runtime p
 | `egress` | string | `inherit` | Network egress intent: `inherit` (deployment sandbox policy applies) or `none` (deny outbound network for this tool) |
 | `platforms` | list | `["unix"]` | Host platforms the tool supports: `linux`, `macos`, `unix`. A tool whose list excludes the current host is skipped at registration and the pack is marked degraded |
 | `input_schema` | object | none | JSON Schema for input parameters |
+| `required` | bool | `false` | Whether the pack is unusable without this tool. `false`: a validation or registration failure skips this tool and marks the pack `degraded`. `true`: the same failure fails the whole pack (`failed` in [pack health](#pack-health)) |
 
 Input schema properties support types: `string`, `number`, `integer`, `boolean`, `array`, `object`. Each property has a `description` field and optional `enum` and `default` values.
 
@@ -316,7 +317,7 @@ domains = ["healthcare"]
 Packs are loaded in the order they appear in the `packs` config list. When multiple packs match an agent:
 
 - **Context sections**: all matching sections from all packs are included (additive)
-- **Tools**: tool names must be unique across all packs. The first registration wins; a later duplicate is skipped with a warning, and the pack that declared it is marked degraded in its [pack health](#pack-health) record
+- **Tools**: tool names must be unique across all packs. The first registration wins; a later duplicate is skipped with a warning. A tool declaring `required = false` (the default) marks the pack that lost the race `degraded`; a tool declaring `required = true` fails the whole pack instead, the same escalation a `priority = "required"` context entry gets
 - **Domain overlays**: merged (union) across all packs for each agent
 - **Model and agency overlays**: among values permitted by operator policy, the last loaded pack targeting the configured agent wins
 - **System-prompt additions**: retained additions concatenate in pack configuration order; the byte cap is enforced independently for each pack and agent
@@ -330,10 +331,14 @@ Every configured pack gets a structured health record (`thesauros::health::PackH
 | Status | Meaning |
 |--------|---------|
 | `active` | No degradation has been reported at the current stage. The loader can report this before tool registration; later registration or reconciliation failures are folded into the same record, so the state makes no effectiveness claim |
-| `degraded` | Pack loaded, but something declared was skipped or failed: a missing optional context file, a tool that failed validation or registration (including a duplicate name), or a dropped overlay power |
-| `failed` | Pack did not load: the manifest was unreadable/invalid, or a `priority = "required"` context file could not be read |
+| `degraded` | Pack loaded, but something declared was skipped or failed: a missing optional context file, a non-required tool that failed validation or registration (including a duplicate name), or a dropped overlay power |
+| `failed` | Pack did not load, or lost required material after loading: the manifest was unreadable/invalid, a `priority = "required"` context file could not be read, or a `required = true` tool failed validation or registration |
 
-The startup log prints a per-status summary, followed by every recorded issue at its severity with the pack name, configured ordinal, path, component, and reason. The structured report is available in-process via `NousManager::pack_report()` for control-plane surfaces.
+The startup log prints a per-status summary, followed by every recorded issue at its severity with the pack name, configured ordinal, path, component, and reason. The structured report is available in-process via `NousManager::pack_report()`, and operator-facing at `GET /api/v1/system/status` as the `domain_packs` subsystem — the per-pack detail (status, issues, path) is in that subsystem's `details.packs`.
+
+### Failing startup on a required pack
+
+`packs` is every configured pack path; `required_packs` (a subset of it) names the ones a deployment cannot run without. A `required_packs` entry that ends up `failed` follows `pack_required_failure_mode` (default `fail_startup`, shared with `[tools.requiredFailureMode]`): abort startup, or continue in an explicit degraded state under `degraded`. A pack not listed in `required_packs` never blocks startup regardless of its own status — it degrades or fails on its own record only.
 
 ## See also
 

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::id::NousId;
+use crate::id::ApiNousId;
 use crate::msg::NotificationKind;
 
 /// Auto-dismissing notification toast.
@@ -52,7 +52,7 @@ pub struct Notification {
         )
     )]
     pub id: u64,
-    pub nous_id: Option<NousId>,
+    pub nous_id: Option<ApiNousId>,
     pub message: String,
     pub kind: NotificationKind,
     pub read: bool,
@@ -82,7 +82,7 @@ pub struct NotificationStore {
 impl NotificationStore {
     pub(crate) fn push(
         &mut self,
-        nous_id: Option<NousId>,
+        nous_id: Option<ApiNousId>,
         message: String,
         kind: NotificationKind,
     ) {
@@ -113,7 +113,7 @@ impl NotificationStore {
             reason = "per-agent unread badge; used in future sidebar rendering"
         )
     )]
-    pub(crate) fn unread_count_for(&self, nous_id: &NousId) -> usize {
+    pub(crate) fn unread_count_for(&self, nous_id: &ApiNousId) -> usize {
         self.items
             .iter()
             .filter(|n| n.nous_id.as_ref() == Some(nous_id) && !n.read)
@@ -133,7 +133,7 @@ impl NotificationStore {
             reason = "per-agent mark-read; used in future overlay interactions"
         )
     )]
-    pub(crate) fn mark_read_for(&mut self, nous_id: &NousId) {
+    pub(crate) fn mark_read_for(&mut self, nous_id: &ApiNousId) {
         for n in self.items.iter_mut() {
             if n.nous_id.as_ref() == Some(nous_id) {
                 n.read = true;
@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn notification_store_unread_count_for_agent() {
         let mut store = NotificationStore::default();
-        let id: NousId = "syn".into();
+        let id: ApiNousId = "syn".into();
         store.push(Some(id.clone()), "msg".to_string(), NotificationKind::Error);
         store.push(None, "global".to_string(), NotificationKind::Info);
         assert_eq!(store.unread_count_for(&id), 1);

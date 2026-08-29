@@ -56,4 +56,4 @@ Domain pack loader: parses pack.toml manifests, resolves context files, register
 ## Dependencies
 
 Uses: koina, organon, indexmap, serde, toml, tokio
-Used by: nous, aletheia (binary)
+Used by: nous, pylon, aletheia (binary)

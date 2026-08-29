@@ -34,6 +34,7 @@ use symbolon::auth::{AuthConfig, AuthFacade};
 use symbolon::jwt::{JwtConfig, JwtManager};
 use taxis::config::AletheiaConfig;
 use taxis::config::DaemonRunnerOutputMode;
+use taxis::config::RequiredFailureMode;
 #[cfg(feature = "recall")]
 use taxis::config::resolve_nous;
 use taxis::oikos::Oikos;
@@ -173,6 +174,25 @@ fn resolve_pack_paths(oikos: &Oikos, configured: &[PathBuf]) -> Vec<PathBuf> {
     configured
         .iter()
         .map(|path| resolve_pack_path(oikos, path))
+        .collect()
+}
+
+/// Names of every `required_paths` pack that ended up [`PackStatus::Failed`]
+/// (#5208).
+///
+/// Matched on the resolved [`PackHealth::path`], the same identity
+/// `PackReport::record_tool_failures` and the startup issue log already key
+/// on — never on name, which two configured packs may share.
+fn failed_required_pack_names(
+    report: &thesauros::health::PackReport,
+    required_paths: &[PathBuf],
+) -> Vec<String> {
+    report
+        .packs
+        .iter()
+        .filter(|p| p.status == thesauros::health::PackStatus::Failed)
+        .filter(|p| required_paths.iter().any(|rp| rp == &p.path))
+        .map(|p| p.name.clone())
         .collect()
 }
 
@@ -409,11 +429,24 @@ impl RuntimeBuilder {
         let shutdown_token = CancellationToken::new();
         let task_tracker = TaskTracker::new();
 
+        // SECURITY(#5229): one gate, shared by every reqwest client this
+        // build() constructs, so the address a client actually connects to
+        // is pinned to the address `PolicyDnsResolver` validated for it --
+        // not a fresh, independently-checked gate per client that happens
+        // to agree today.
+        let egress_gate = Arc::new(organon::sandbox::EgressGate::from_config(&sandbox_config(
+            &self.config,
+        )));
+
         // WHY: canonical general/SSRF-safe client pair (organon::types::ToolHttpClients),
         // built once and shared: the recall source registry needs the same
         // redirect-disabled, 30s-timeout policy as the SSRF-safe tool client
         // rather than restating it.
-        let tool_http_clients = ToolHttpClients::new();
+        // SECURITY(#5229): propagate rather than degrade -- a client built
+        // without the policy resolver would connect to whatever DNS returns
+        // at connect time, which is the rebinding window this closes.
+        let tool_http_clients = ToolHttpClients::with_gate(Arc::clone(&egress_gate))
+            .whatever_context("failed to build SSRF-pinned HTTP clients")?;
 
         info!(root = %self.oikos.root().display(), "instance discovered");
 
@@ -643,14 +676,55 @@ impl RuntimeBuilder {
                     }
                 }
             }
+
+            if !self.config.required_packs.is_empty() {
+                let required_paths = resolve_pack_paths(&self.oikos, &self.config.required_packs);
+                let failed_required = failed_required_pack_names(&pack_report, &required_paths);
+                if !failed_required.is_empty() {
+                    let joined = failed_required.join(", ");
+                    // WHY the `_` arm fails startup rather than naming
+                    // `FailStartup`: `RequiredFailureMode` is `#[non_exhaustive]` in
+                    // taxis, so a variant added there compiles here without anyone
+                    // deciding what it means. Failing closed is the only safe
+                    // default -- a mode this build does not understand must not
+                    // silently continue in a degraded state with required packs
+                    // missing. `FailStartup` is also the enum's `#[default]`.
+                    match self.config.pack_required_failure_mode {
+                        RequiredFailureMode::Degraded => {
+                            warn!(
+                                packs = %joined,
+                                "required domain pack(s) failed to load; continuing per \
+                                 pack_required_failure_mode = \"degraded\""
+                            );
+                        }
+                        _ => {
+                            snafu::whatever!(
+                                "required domain pack(s) failed to load: {joined} (see pack \
+                                 health issues above for the failing component and reason; set \
+                                 pack_required_failure_mode = \"degraded\" to continue \
+                                 startup instead)"
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // SECURITY(#4842): redirects disabled at the client level -- the
         // executor's `send_with_safe_redirects` call follows and revalidates
         // each hop itself. A client that auto-follows would return an
         // already-redirected response, silently skipping that revalidation.
+        //
+        // SECURITY(#5229): `dns_resolver` shares the same `egress_gate` as
+        // `tool_http_clients` above, so this third, independently-built
+        // client pins its connections to the validated address exactly like
+        // the first-party tool clients rather than carrying its own,
+        // unpinned resolution.
         let external_tools_client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
+            .dns_resolver(Arc::new(organon::sandbox::PolicyDnsResolver::new(
+                Arc::clone(&egress_gate),
+            )))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         let tool_manifest = crate::external_tools::register_external_tools(
@@ -1384,7 +1458,8 @@ mod tests {
     use thesauros::loader::load_packs;
 
     use super::{
-        build_recall_source_registry, prosoche_task_def, resolve_pack_paths, sandbox_config,
+        build_recall_source_registry, failed_required_pack_names, prosoche_task_def,
+        resolve_pack_paths, sandbox_config,
     };
 
     static CWD_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -1475,6 +1550,92 @@ mod tests {
         let pack = packs.first().expect("one pack loaded");
         assert_eq!(pack.name(), "absolute-test");
         assert_eq!(pack.root(), pack_dir);
+    }
+
+    #[test]
+    fn failed_required_pack_names_matches_by_resolved_path_not_name() {
+        use thesauros::health::{PackHealth, PackInstanceId, PackReport, PackStatus};
+
+        let required_path = PathBuf::from("/packs/must-have");
+        let other_path = PathBuf::from("/packs/optional");
+
+        // Two packs share a name; only the one at the required path counts,
+        // since a configured path — not a manifest-declared name two packs
+        // may share — is what `required_packs` names.
+        let mut report = PackReport::default();
+        report.packs.push(PackHealth {
+            instance_id: PackInstanceId::from_ordinal(0),
+            name: "shared-name".to_owned(),
+            path: required_path.clone(),
+            status: PackStatus::Failed,
+            issues: Vec::new(),
+        });
+        report.packs.push(PackHealth {
+            instance_id: PackInstanceId::from_ordinal(1),
+            name: "shared-name".to_owned(),
+            path: other_path,
+            status: PackStatus::Failed,
+            issues: Vec::new(),
+        });
+
+        let failed = failed_required_pack_names(&report, std::slice::from_ref(&required_path));
+        assert_eq!(failed, vec!["shared-name".to_owned()]);
+    }
+
+    #[test]
+    fn failed_required_pack_names_ignores_degraded_and_active() {
+        use thesauros::health::{PackHealth, PackInstanceId, PackReport, PackStatus};
+
+        let required_path = PathBuf::from("/packs/must-have");
+
+        let mut report = PackReport::default();
+        report.packs.push(PackHealth {
+            instance_id: PackInstanceId::from_ordinal(0),
+            name: "fine".to_owned(),
+            path: required_path.clone(),
+            status: PackStatus::Active,
+            issues: Vec::new(),
+        });
+        report.packs.push(PackHealth {
+            instance_id: PackInstanceId::from_ordinal(1),
+            name: "somewhat-fine".to_owned(),
+            path: required_path.clone(),
+            status: PackStatus::Degraded,
+            issues: Vec::new(),
+        });
+
+        let failed = failed_required_pack_names(&report, std::slice::from_ref(&required_path));
+        assert!(
+            failed.is_empty(),
+            "an active or merely-degraded required pack must not be reported as failed: \
+             {failed:?}"
+        );
+    }
+
+    #[test]
+    fn failed_required_pack_names_ignores_a_failed_optional_pack() {
+        // WHY(#5208): a pack that is not in `required_packs` degrades or
+        // fails on its own health record only -- it must never block
+        // startup, however badly it failed.
+        use thesauros::health::{PackHealth, PackInstanceId, PackReport, PackStatus};
+
+        let required_path = PathBuf::from("/packs/must-have");
+        let optional_path = PathBuf::from("/packs/nice-to-have");
+
+        let mut report = PackReport::default();
+        report.packs.push(PackHealth {
+            instance_id: PackInstanceId::from_ordinal(0),
+            name: "unrequired".to_owned(),
+            path: optional_path,
+            status: PackStatus::Failed,
+            issues: Vec::new(),
+        });
+
+        let failed = failed_required_pack_names(&report, std::slice::from_ref(&required_path));
+        assert!(
+            failed.is_empty(),
+            "a failed pack outside required_packs must never be reported: {failed:?}"
+        );
     }
 
     #[test]

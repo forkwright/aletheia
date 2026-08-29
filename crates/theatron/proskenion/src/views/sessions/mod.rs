@@ -10,7 +10,7 @@ use skene::api::error::{format_http_error_body, parse_pylon_error_body};
 use skene::api::types::{
     HistoryMessage, HistoryResponse, PaginatedSessionsResponse, Session, SessionsResponse,
 };
-use skene::id::SessionId;
+use skene::id::ApiSessionId;
 
 use crate::api::client::authenticated_client;
 use crate::components::resize_handle::{ResizeDir, ResizeHandle, use_resize_state};
@@ -280,7 +280,7 @@ pub(crate) fn Sessions() -> Element {
     let selection_store = use_signal(SessionSelectionStore::new);
     let detail_state =
         use_signal(|| SessionLoadState::<SessionDetailStore>::Empty(SessionDetailStore::default()));
-    let mut selected_session_id: Signal<Option<SessionId>> = use_signal(|| None);
+    let mut selected_session_id: Signal<Option<ApiSessionId>> = use_signal(|| None);
 
     let resize = use_resize_state(DEFAULT_LIST_WIDTH, MIN_LIST_WIDTH, MAX_LIST_WIDTH);
 
@@ -477,7 +477,7 @@ pub(crate) fn Sessions() -> Element {
 
     let fetch_detail = {
         let mut detail_state = detail_state;
-        move |session_id: SessionId, session: Session| {
+        move |session_id: ApiSessionId, session: Session| {
             let cfg = config.read().clone();
             detail_state.set(SessionLoadState::Loading);
 
@@ -590,7 +590,7 @@ pub(crate) fn Sessions() -> Element {
     };
 
     let archive_session = {
-        move |session_id: SessionId| {
+        move |session_id: ApiSessionId| {
             let cfg = config.read().clone();
             let id = session_id.clone();
 
@@ -633,7 +633,7 @@ pub(crate) fn Sessions() -> Element {
     };
 
     let restore_session = {
-        move |session_id: SessionId| {
+        move |session_id: ApiSessionId| {
             let cfg = config.read().clone();
             let id = session_id.clone();
 
@@ -749,7 +749,7 @@ pub(crate) fn Sessions() -> Element {
                         selection_store,
                         on_select_session: {
                             let mut fetch_detail = fetch_detail;
-                            move |id: SessionId| {
+                            move |id: ApiSessionId| {
                                 selected_session_id.set(Some(id.clone()));
                                 let session = list_store.read().sessions
                                     .iter()
@@ -777,14 +777,14 @@ pub(crate) fn Sessions() -> Element {
                     BulkActionBar {
                         list_store,
                         selection_store,
-                        on_bulk_archive: move |ids: Vec<SessionId>| {
+                        on_bulk_archive: move |ids: Vec<ApiSessionId>| {
                             for id in ids {
                                 archive_session(id);
                             }
                             list_store.write().page = 0;
                             fetch_sessions();
                         },
-                        on_bulk_restore: move |ids: Vec<SessionId>| {
+                        on_bulk_restore: move |ids: Vec<ApiSessionId>| {
                             for id in ids {
                                 restore_session(id);
                             }
@@ -804,7 +804,7 @@ pub(crate) fn Sessions() -> Element {
                     if selected_session_id.read().is_some() {
                         SessionDetail {
                             detail_state,
-                            on_open_chat: move |id: SessionId| {
+                            on_open_chat: move |id: ApiSessionId| {
                                 let selected = match &*detail_state.read() {
                                     SessionLoadState::Loaded(store)
                                     | SessionLoadState::Empty(store) => store.session.clone(),
@@ -831,12 +831,12 @@ pub(crate) fn Sessions() -> Element {
                                 let nav = navigator();
                                 nav.push(crate::app::Route::Chat {});
                             },
-                            on_archive: move |id: SessionId| {
+                            on_archive: move |id: ApiSessionId| {
                                 archive_session(id);
                                 list_store.write().page = 0;
                                 fetch_sessions();
                             },
-                            on_restore: move |id: SessionId| {
+                            on_restore: move |id: ApiSessionId| {
                                 restore_session(id);
                                 list_store.write().page = 0;
                                 fetch_sessions();
@@ -870,14 +870,14 @@ pub(crate) fn Sessions() -> Element {
 
 #[cfg(test)]
 mod tests {
-    use skene::id::{NousId, SessionId};
+    use skene::id::{ApiNousId, ApiSessionId};
 
     use super::*;
 
     fn session(display_name: Option<&str>) -> Session {
         Session {
-            id: SessionId::from("session-id"),
-            nous_id: NousId::from("syn"),
+            id: ApiSessionId::from("session-id"),
+            nous_id: ApiNousId::from("syn"),
             key: "incident-review".to_string(),
             status: Some("active".to_string()),
             model: None,
@@ -916,7 +916,7 @@ mod tests {
     fn chat_selection_uses_session_owner_key_and_label() {
         let selection = chat_selection_for_session(&session(Some("Incident Review")));
 
-        assert_eq!(selection.agent_id, NousId::from("syn"));
+        assert_eq!(selection.agent_id, ApiNousId::from("syn"));
         assert_eq!(selection.session_id.as_deref(), Some("session-id"));
         assert_eq!(selection.session_key, "incident-review");
         assert_eq!(selection.title, "Incident Review");

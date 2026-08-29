@@ -286,7 +286,7 @@ mod tests {
     fn format_message_ids_joins_all_present_ids() {
         let mut msg = make_message(Role::Assistant, 1000);
         msg.turn_id = Some(skene::id::TurnId::from("t1"));
-        msg.session_id = Some(skene::id::SessionId::from("s1"));
+        msg.session_id = Some(skene::id::ApiSessionId::from("s1"));
         msg.request_id = Some(skene::id::RequestId::from("r1"));
 
         assert_eq!(

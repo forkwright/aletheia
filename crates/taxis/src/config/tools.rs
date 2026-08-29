@@ -11,6 +11,8 @@ use std::path::PathBuf;
 use koina::secret::SecretString;
 use serde::{Deserialize, Serialize};
 
+use super::RequiredFailureMode;
+
 /// Authentication configuration for external HTTP-based tools and MCP servers.
 ///
 /// WHY: authenticated streamable HTTP MCP servers need first-class header or
@@ -98,23 +100,11 @@ impl ExternalToolAuth {
 #[serde(deny_unknown_fields)]
 pub struct ExternalToolsConfig {
     /// Startup policy when a required external tool cannot be registered.
-    pub required_failure_mode: ExternalToolRequiredFailureMode,
+    pub required_failure_mode: RequiredFailureMode,
     /// Tools that every deployment must have. Unavailability follows `required_failure_mode`.
     pub required: HashMap<String, ExternalToolEntry>,
     /// Tools that are deployment-specific. Registered if available.
     pub optional: HashMap<String, ExternalToolEntry>,
-}
-
-/// Startup policy for unavailable `[tools.required]` declarations.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[non_exhaustive]
-pub enum ExternalToolRequiredFailureMode {
-    /// Abort startup when a required tool cannot be registered.
-    #[default]
-    FailStartup,
-    /// Continue startup in an explicit degraded state.
-    Degraded,
 }
 
 /// A single external tool declaration.
@@ -262,7 +252,7 @@ mod tests {
     fn required_tools_fail_startup_by_default() {
         assert_eq!(
             ExternalToolsConfig::default().required_failure_mode,
-            ExternalToolRequiredFailureMode::FailStartup
+            RequiredFailureMode::FailStartup
         );
     }
 
@@ -271,10 +261,7 @@ mod tests {
         let json = r#"{"requiredFailureMode":"degraded"}"#;
         let config: ExternalToolsConfig =
             serde_json::from_str(json).expect("requiredFailureMode must deserialize");
-        assert_eq!(
-            config.required_failure_mode,
-            ExternalToolRequiredFailureMode::Degraded
-        );
+        assert_eq!(config.required_failure_mode, RequiredFailureMode::Degraded);
     }
 
     #[test]

@@ -14,7 +14,7 @@ fn make_manager() -> ChatStateManager {
 fn make_outcome(text: &str) -> TurnOutcome {
     TurnOutcome {
         text: text.to_string(),
-        nous_id: NousId::from("syn"),
+        nous_id: ApiNousId::from("syn"),
         session_id: "s1".into(),
         model: Some("claude-opus-4-6".to_string()),
         tool_calls: 0,
@@ -667,7 +667,7 @@ fn full_turn_lifecycle() {
         StreamEvent::TurnComplete {
             outcome: TurnOutcome {
                 text: "Hi there! Found it.".to_string(),
-                nous_id: NousId::from("syn"),
+                nous_id: ApiNousId::from("syn"),
                 session_id: "s1".into(),
                 model: Some("claude-opus-4-6".to_string()),
                 tool_calls: 1,

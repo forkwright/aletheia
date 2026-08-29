@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 // -- Agent card data ----------------------------------------------------------
 
@@ -73,7 +73,7 @@ pub(crate) struct AgentCapabilities {
 /// Display data for a single agent status card.
 #[derive(Debug, Clone)]
 pub(crate) struct AgentCardData {
-    pub id: NousId,
+    pub id: ApiNousId,
     pub name: String,
     pub emoji: Option<String>,
     pub health: HealthTier,
@@ -86,11 +86,11 @@ pub(crate) struct AgentCardData {
     pub capabilities: Option<AgentCapabilities>,
 }
 
-/// Store for agent status card data, keyed by NousId.
+/// Store for agent status card data, keyed by ApiNousId.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct AgentStatusStore {
-    pub cards: HashMap<NousId, AgentCardData>,
-    pub order: Vec<NousId>,
+    pub cards: HashMap<ApiNousId, AgentCardData>,
+    pub order: Vec<ApiNousId>,
 }
 
 impl AgentStatusStore {
@@ -111,14 +111,14 @@ impl AgentStatusStore {
     }
 
     /// Update active turn count for an agent.
-    pub(crate) fn set_active_turns(&mut self, id: &NousId, count: u32) {
+    pub(crate) fn set_active_turns(&mut self, id: &ApiNousId, count: u32) {
         if let Some(card) = self.cards.get_mut(id) {
             card.active_turns = count;
         }
     }
 
     /// Update health tier for an agent from SSE status string.
-    pub(crate) fn set_health(&mut self, id: &NousId, health: HealthTier) {
+    pub(crate) fn set_health(&mut self, id: &ApiNousId, health: HealthTier) {
         if let Some(card) = self.cards.get_mut(id) {
             card.health = health;
         }
@@ -129,7 +129,7 @@ impl AgentStatusStore {
         not(test),
         expect(dead_code, reason = "wired when SSE activity events are plumbed")
     )]
-    pub(crate) fn set_last_activity(&mut self, id: &NousId, activity: String) {
+    pub(crate) fn set_last_activity(&mut self, id: &ApiNousId, activity: String) {
         if let Some(card) = self.cards.get_mut(id) {
             card.last_activity = Some(activity);
         }
@@ -268,7 +268,7 @@ impl ServiceHealthStore {
 /// An agent toggle entry: enabled/disabled with in-flight state.
 #[derive(Debug, Clone)]
 pub(crate) struct AgentToggle {
-    pub id: NousId,
+    pub id: ApiNousId,
     pub name: String,
     pub enabled: bool,
     pub pending: bool,
@@ -287,7 +287,7 @@ pub(crate) struct AgentToggle {
 /// enabled/disabled switch.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ToolToggle {
-    pub agent_id: NousId,
+    pub agent_id: ApiNousId,
     pub tool_name: String,
     pub enabled: bool,
     pub pending: bool,
@@ -435,7 +435,7 @@ pub(crate) struct ToggleStore {
     pub agent_toggles: Vec<AgentToggle>,
     pub tool_toggles: Vec<ToolToggle>,
     pub feature_flags: Vec<FeatureFlag>,
-    pub expanded_agent: Option<NousId>,
+    pub expanded_agent: Option<ApiNousId>,
     /// Paths returned by the last config update that require a server restart.
     /// Surfaced in the feature-flag panel so operators know when a restart is
     /// needed for a change to take effect.
@@ -452,10 +452,10 @@ pub(crate) struct ToggleStore {
     /// would discard per-toggle in-flight state. Recovery is a deliberate
     /// operator action on a degraded actor, so one in flight at a time is
     /// the honest model.
-    pub recover_pending: Option<NousId>,
+    pub recover_pending: Option<ApiNousId>,
     /// Outcome of the last manual recovery, paired with the agent it
     /// targeted. Kept visible until the next recovery attempt.
-    pub recover_outcome: Option<(NousId, RecoverOutcome)>,
+    pub recover_outcome: Option<(ApiNousId, RecoverOutcome)>,
 }
 
 impl ToggleStore {
@@ -465,7 +465,7 @@ impl ToggleStore {
     }
 
     /// Optimistically flip an agent toggle. Returns the previous state for rollback.
-    pub(crate) fn flip_agent(&mut self, id: &NousId) -> Option<bool> {
+    pub(crate) fn flip_agent(&mut self, id: &ApiNousId) -> Option<bool> {
         self.agent_toggles
             .iter_mut()
             .find(|t| t.id == *id)
@@ -481,7 +481,7 @@ impl ToggleStore {
     /// Resolve an in-flight agent toggle (clear pending state).
     pub(crate) fn resolve_agent(
         &mut self,
-        id: &NousId,
+        id: &ApiNousId,
         success: bool,
         prev: bool,
         error: Option<String>,
@@ -501,7 +501,7 @@ impl ToggleStore {
     /// the write did not land instead of an unexplained switch bounce.
     pub(crate) fn resolve_agent_result(
         &mut self,
-        id: &NousId,
+        id: &ApiNousId,
         prev: bool,
         applied_enabled: Option<bool>,
         live_status: Option<String>,
@@ -533,7 +533,7 @@ impl ToggleStore {
     }
 
     /// Optimistically flip a tool toggle.
-    pub(crate) fn flip_tool(&mut self, agent_id: &NousId, tool_name: &str) -> Option<bool> {
+    pub(crate) fn flip_tool(&mut self, agent_id: &ApiNousId, tool_name: &str) -> Option<bool> {
         self.tool_toggles
             .iter_mut()
             .find(|t| t.agent_id == *agent_id && t.tool_name == tool_name)
@@ -549,7 +549,7 @@ impl ToggleStore {
     /// Resolve an in-flight tool toggle.
     pub(crate) fn resolve_tool(
         &mut self,
-        agent_id: &NousId,
+        agent_id: &ApiNousId,
         tool_name: &str,
         success: bool,
         prev: bool,
@@ -570,7 +570,7 @@ impl ToggleStore {
     /// the write did not land instead of an unexplained switch bounce.
     pub(crate) fn resolve_tool_result(
         &mut self,
-        agent_id: &NousId,
+        agent_id: &ApiNousId,
         tool_name: &str,
         prev: bool,
         applied_enabled: Option<bool>,
@@ -728,32 +728,32 @@ impl ToggleStore {
     /// WHY the stale outcome is cleared: it belongs to the previous attempt,
     /// and leaving it rendered beside a spinner reads as the result of the
     /// attempt now running.
-    pub(crate) fn begin_recover(&mut self, id: &NousId) {
+    pub(crate) fn begin_recover(&mut self, id: &ApiNousId) {
         self.recover_pending = Some(id.clone());
         self.recover_outcome = None;
     }
 
     /// Resolve a successful manual recovery.
-    pub(crate) fn resolve_recover_success(&mut self, id: &NousId, recovered: bool) {
+    pub(crate) fn resolve_recover_success(&mut self, id: &ApiNousId, recovered: bool) {
         self.recover_pending = None;
         self.recover_outcome = Some((id.clone(), RecoverOutcome::Applied { recovered }));
     }
 
     /// Resolve a failed manual recovery.
-    pub(crate) fn resolve_recover_failure(&mut self, id: &NousId, message: String) {
+    pub(crate) fn resolve_recover_failure(&mut self, id: &ApiNousId, message: String) {
         self.recover_pending = None;
         self.recover_outcome = Some((id.clone(), RecoverOutcome::Failed(message)));
     }
 
     /// Whether a manual recovery is in flight for one agent.
     #[must_use]
-    pub(crate) fn is_recovering(&self, id: &NousId) -> bool {
+    pub(crate) fn is_recovering(&self, id: &ApiNousId) -> bool {
         self.recover_pending.as_ref() == Some(id)
     }
 
     /// The last recovery outcome, if it targeted this agent.
     #[must_use]
-    pub(crate) fn recover_outcome_for(&self, id: &NousId) -> Option<&RecoverOutcome> {
+    pub(crate) fn recover_outcome_for(&self, id: &ApiNousId) -> Option<&RecoverOutcome> {
         self.recover_outcome
             .as_ref()
             .filter(|(target, _)| target == id)
@@ -762,7 +762,7 @@ impl ToggleStore {
 
     /// Get tools filtered by the currently expanded agent.
     #[must_use]
-    pub(crate) fn tools_for_agent(&self, agent_id: &NousId) -> Vec<&ToolToggle> {
+    pub(crate) fn tools_for_agent(&self, agent_id: &ApiNousId) -> Vec<&ToolToggle> {
         self.tool_toggles
             .iter()
             .filter(|t| t.agent_id == *agent_id)
@@ -799,8 +799,8 @@ pub(crate) fn health_from_status(status: &str) -> HealthTier {
 mod tests {
     use super::*;
 
-    fn nid(s: &str) -> NousId {
-        NousId::from(s)
+    fn nid(s: &str) -> ApiNousId {
+        ApiNousId::from(s)
     }
 
     fn sample_card(id: &str) -> AgentCardData {
