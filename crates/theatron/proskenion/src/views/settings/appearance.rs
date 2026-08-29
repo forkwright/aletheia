@@ -39,12 +39,16 @@ pub(crate) fn AppearancePanel() -> Element {
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-6); max-width: 540px;",
+            role: "region",
+            "aria-label": "Appearance",
 
             section {
                 style: SECTION_STYLE,
                 div { style: SECTION_LABEL_STYLE, "Theme" }
                 div {
                     style: "display: flex; gap: var(--space-2);",
+                    role: "radiogroup",
+                    "aria-label": "Theme",
                     for mode in [ThemeMode::Dark, ThemeMode::Light, ThemeMode::System] {
                         {
                             let is_active = current.theme == mode_str(mode);
@@ -61,6 +65,8 @@ pub(crate) fn AppearancePanel() -> Element {
                                 button {
                                     key: "{mode:?}",
                                     style: "{style}",
+                                    role: "radio",
+                                    "aria-checked": if is_active { "true" } else { "false" },
                                     onclick: move |_| {
                                         theme_mode.set(mode);
                                         appearance.write().theme = mode_str(mode).to_string();
@@ -93,6 +99,10 @@ pub(crate) fn AppearancePanel() -> Element {
                         step: "1",
                         value: "{current.font_size}",
                         style: "flex: 1; accent-color: var(--accent);",
+                        "aria-label": "Font size",
+                        "aria-valuenow": "{current.font_size}",
+                        "aria-valuemin": "12",
+                        "aria-valuemax": "20",
                         oninput: move |e| {
                             if let Ok(v) = e.value().parse::<u8>() {
                                 appearance.write().set_font_size(v);
@@ -117,6 +127,7 @@ pub(crate) fn AppearancePanel() -> Element {
                                 border-radius: var(--radius-sm); padding: var(--space-1) var(--space-2); \
                                 color: var(--text-primary); font-size: var(--text-sm); \
                                 font-family: var(--font-mono); text-align: center;",
+                        "aria-label": "Font size in pixels",
                         // WHY: oninput applies only in-range values so partial typing
                         // ("1" en route to "16") does not snap to the clamp floor.
                         oninput: move |e| {
@@ -153,6 +164,8 @@ pub(crate) fn AppearancePanel() -> Element {
                 div { style: SECTION_LABEL_STYLE, "UI Density" }
                 div {
                     style: "display: flex; gap: var(--space-2);",
+                    role: "radiogroup",
+                    "aria-label": "UI Density",
                     for density in [UiDensity::Compact, UiDensity::Comfortable, UiDensity::Spacious] {
                         {
                             let is_active = current.density == density;
@@ -169,6 +182,8 @@ pub(crate) fn AppearancePanel() -> Element {
                                 button {
                                     key: "{density:?}",
                                     style: "{style}",
+                                    role: "radio",
+                                    "aria-checked": if is_active { "true" } else { "false" },
                                     onclick: move |_| {
                                         appearance.write().density = density;
                                         let store = server_store.read();
@@ -189,6 +204,8 @@ pub(crate) fn AppearancePanel() -> Element {
                 div { style: SECTION_LABEL_STYLE, "Accent Color" }
                 div {
                     style: "display: flex; gap: var(--space-3); flex-wrap: wrap;",
+                    role: "radiogroup",
+                    "aria-label": "Accent Color",
                     for (label, hex) in ACCENT_PRESETS.iter() {
                         {
                             let is_active = current.accent_color == *hex;
@@ -208,6 +225,9 @@ pub(crate) fn AppearancePanel() -> Element {
                                     key: "{label}",
                                     title: "{label}",
                                     style: "{style}",
+                                    role: "radio",
+                                    "aria-checked": if is_active { "true" } else { "false" },
+                                    "aria-label": "{label}",
                                     onclick: move |_| {
                                         appearance.write().accent_color = hex_owned.clone();
                                         let store = server_store.read();

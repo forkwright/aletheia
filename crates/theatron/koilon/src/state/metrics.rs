@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use crate::api::types::{CostMetricsResponse, HealthResponse, TokenMetricsResponse};
-use crate::id::NousId;
+use crate::id::ApiNousId;
 
 /// Canonical backend-wide token/cost telemetry, fetched independently of the
 /// process-local turn accumulator below (#4987). `None` fields mean that
@@ -58,7 +58,7 @@ pub struct MetricsState {
     /// Cumulative cache-write tokens across all turns since startup.
     pub(crate) total_cache_write_tokens: u64,
     /// Per-agent statistics keyed by agent ID.
-    pub(crate) agent_stats: HashMap<NousId, AgentMetrics>,
+    pub(crate) agent_stats: HashMap<ApiNousId, AgentMetrics>,
     /// Recent turn token totals for the sparkline, capped at SPARKLINE_CAPACITY.
     pub(crate) turn_history: Vec<TurnTokens>,
     /// Whether the last health check returned OK.
@@ -109,7 +109,7 @@ impl MetricsState {
     /// Record token usage from a completed turn and update the sparkline.
     pub(crate) fn record_turn(
         &mut self,
-        nous_id: &NousId,
+        nous_id: &ApiNousId,
         input_tokens: u32,
         output_tokens: u32,
         cache_read_tokens: u32,
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn record_turn_accumulates() {
         let mut s = MetricsState::new();
-        let id: NousId = "agent1".into();
+        let id: ApiNousId = "agent1".into();
         s.record_turn(&id, 100, 50, 20, 5);
         assert_eq!(s.total_input_tokens, 100);
         assert_eq!(s.total_output_tokens, 50);
@@ -264,8 +264,8 @@ mod tests {
     #[test]
     fn record_turn_multiple_agents() {
         let mut s = MetricsState::new();
-        let a: NousId = "a".into();
-        let b: NousId = "b".into();
+        let a: ApiNousId = "a".into();
+        let b: ApiNousId = "b".into();
         s.record_turn(&a, 100, 50, 0, 0);
         s.record_turn(&b, 200, 80, 10, 0);
         assert_eq!(s.total_input_tokens, 300);
@@ -277,7 +277,7 @@ mod tests {
     #[test]
     fn sparkline_capacity_cap() {
         let mut s = MetricsState::new();
-        let id: NousId = "a".into();
+        let id: ApiNousId = "a".into();
         for i in 0..40 {
             s.record_turn(&id, i, 0, 0, 0);
         }
@@ -293,7 +293,7 @@ mod tests {
     #[test]
     fn cache_hit_rate_correct() {
         let mut s = MetricsState::new();
-        let id: NousId = "a".into();
+        let id: ApiNousId = "a".into();
         s.record_turn(&id, 100, 50, 100, 0);
         // cache_read=100, total = input(100) + cache_read(100) = 200, rate = 50%
         assert!((s.cache_hit_rate() - 0.5).abs() < 0.001);

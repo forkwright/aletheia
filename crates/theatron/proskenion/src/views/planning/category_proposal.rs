@@ -80,6 +80,8 @@ pub(crate) fn CategoryProposalCard(
     rsx! {
         div {
             style: "{CARD_STYLE}",
+            role: "group",
+            "aria-label": "Category change proposal: {proposal.requirement_title}",
 
             div {
                 style: "{CARD_HEADER}",
@@ -121,6 +123,7 @@ pub(crate) fn CategoryProposalCard(
                 button {
                     style: "{ACCEPT_BTN}",
                     disabled: is_submitting,
+                    "aria-label": "Accept category change for {proposal.requirement_title}",
                     onclick: move |_| {
                         send_proposal_action(
                             config, &pid_accept, &prop_id_accept,
@@ -132,6 +135,7 @@ pub(crate) fn CategoryProposalCard(
                 button {
                     style: "{REJECT_BTN}",
                     disabled: is_submitting,
+                    "aria-label": "Reject category change for {proposal.requirement_title}",
                     onclick: move |_| {
                         send_proposal_action(
                             config, &pid_reject, &prop_id_reject,

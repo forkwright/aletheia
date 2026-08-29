@@ -27,7 +27,10 @@ jobs:
       # through a process substitution whose failure it discarded — so it
       # reported clean on every PR without scanning anything.
       - name: Install ripgrep
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ripgrep
+          verify: command -v rg >/dev/null
       - name: Check retired backup references
         run: scripts/check-docs-retired-backup.sh
       - name: Check public doc contracts

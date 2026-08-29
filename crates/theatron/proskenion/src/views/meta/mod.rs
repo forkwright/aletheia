@@ -513,11 +513,14 @@ pub(crate) fn Meta() -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Meta-Insights",
             div {
                 style: "{HEADER_STYLE}",
                 h2 { style: "font-size: var(--text-xl); margin: 0;", "Meta-Insights" }
                 button {
                     style: "{REFRESH_BTN}",
+                    "aria-label": "Refresh meta-insights",
                     onclick: move |_| do_refresh(),
                     "Refresh"
                 }
@@ -587,6 +590,9 @@ fn AccordionSection(
         div {
             div {
                 style: "{SECTION_HEADER_STYLE}",
+                role: "button",
+                tabindex: "0",
+                "aria-expanded": if expanded { "true" } else { "false" },
                 onclick: move |evt| on_toggle.call(evt),
                 span { style: "{SECTION_TITLE_STYLE}", "{title}" }
                 span { style: "color: var(--text-muted); font-size: var(--text-base);", "{arrow}" }

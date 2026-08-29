@@ -385,11 +385,15 @@ pub(crate) fn pick_session_id_pub(
     app: &App,
     cursor: usize,
     show_archived: bool,
-) -> Option<crate::id::SessionId> {
+) -> Option<crate::id::ApiSessionId> {
     pick_session_id(app, cursor, show_archived)
 }
 
-fn pick_session_id(app: &App, cursor: usize, show_archived: bool) -> Option<crate::id::SessionId> {
+fn pick_session_id(
+    app: &App,
+    cursor: usize,
+    show_archived: bool,
+) -> Option<crate::id::ApiSessionId> {
     let agent_id = app.dashboard.focused_agent.as_ref()?;
     let agent = app.dashboard.agents.iter().find(|a| &a.id == agent_id)?;
     let sessions: Vec<_> = if show_archived {
@@ -446,25 +450,6 @@ mod tests {
             }
         });
         (format!("http://{addr}"), handle)
-    }
-
-    fn point_app_at(app: &mut App, url: &str) {
-        app.config.url = url.to_string();
-        app.client = match crate::api::client::ApiClient::new(url, None) {
-            Ok(client) => client,
-            Err(e) => panic!("test ApiClient::new failed: {e}"),
-        };
-    }
-
-    async fn drain_one_background(app: &mut App) {
-        let Some(result) = app.background_tasks.join_next().await else {
-            panic!("expected one background task");
-        };
-        let msg = match result {
-            Ok(msg) => msg,
-            Err(e) => panic!("background task failed: {e}"),
-        };
-        app.update(msg).await;
     }
 
     fn tool_approval_overlay() -> Overlay {

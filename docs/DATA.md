@@ -57,10 +57,15 @@ All processing happens locally. The only external call is to the configured LLM 
 
 ## Retention defaults
 
-Configured in `instance/config/aletheia.toml` under `data.retention`:
+Configured in `instance/config/aletheia.toml` under `maintenance.retention` --
+the sole runtime retention-enforcement owner. (`data.retention` is a
+deprecated legacy alias: it is mirrored into `maintenance.retention` when the
+canonical path is absent from the file, and rejected at startup if both are
+set with conflicting values. Set `maintenance.retention` directly.)
 
 ```toml
-[data.retention]
+[maintenance.retention]
+enabled = true                      # Automatic enforcement must be explicitly opted in
 session_max_age_days = 90           # Delete closed sessions older than 90 days
 orphan_message_max_age_days = 30    # Delete orphan messages older than 30 days
 max_sessions_per_nous = 0           # 0 = unlimited; nonzero caps closed sessions per agent

@@ -1,6 +1,6 @@
 //! Stack-based navigation for hierarchical view drill-in/drill-out.
 
-use crate::id::{NousId, SessionId};
+use crate::id::{ApiNousId, ApiSessionId};
 
 /// A distinct view that can be navigated to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -10,11 +10,11 @@ pub enum View {
     /// Top-level: agent sidebar + active conversation.
     Home,
     /// Session list for a specific agent.
-    Sessions { agent_id: NousId },
+    Sessions { agent_id: ApiNousId },
     /// Single conversation view.
     Conversation {
-        agent_id: NousId,
-        session_id: SessionId,
+        agent_id: ApiNousId,
+        session_id: ApiSessionId,
     },
     /// Full message detail (content, tool results, metadata).
     MessageDetail { message_index: usize },

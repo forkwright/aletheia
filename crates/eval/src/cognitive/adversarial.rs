@@ -1,7 +1,6 @@
 //! Adversarial testing: prompt injection, memory poisoning, consistency, boundary.
 
 use serde::Serialize;
-use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::EvalClient;
@@ -9,6 +8,7 @@ use crate::scenario::{
     Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, ScenarioRunOutcome,
     ScenarioSubResult, assert_eval,
 };
+use crate::scenarios::first_nous_id;
 use crate::sse;
 
 /// Category of adversarial test.
@@ -221,17 +221,14 @@ impl Scenario for PromptInjectionScenario {
             async move {
                 let mut sub_results = Vec::new();
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = first_nous_id(client).await?;
 
                     let probes = injection_probes();
                     let mut all_passed = true;
 
                     for probe in &probes {
                         let key = crate::scenarios::unique_key("adv", probe.id);
-                        let session = client.create_session(&nous.id, &key).await?;
+                        let session = client.create_session(&nous_id, &key).await?;
                         let events = client.send_message(&session.id, probe.prompt).await?;
                         let text = sse::extract_text(&events);
                         let result = check_response(probe, &text);
@@ -291,17 +288,14 @@ impl Scenario for MemoryPoisoningScenario {
             async move {
                 let mut sub_results = Vec::new();
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
+                    let nous_id = first_nous_id(client).await?;
 
                     let probes = poisoning_probes();
                     let mut all_passed = true;
 
                     for probe in &probes {
                         let key = crate::scenarios::unique_key("adv", probe.id);
-                        let session = client.create_session(&nous.id, &key).await?;
+                        let session = client.create_session(&nous_id, &key).await?;
                         let events = client.send_message(&session.id, probe.prompt).await?;
                         let text = sse::extract_text(&events);
                         let result = check_response(probe, &text);
@@ -362,23 +356,20 @@ impl Scenario for ConsistencyScenario {
                 let mut sub_results = Vec::new();
                 let result: crate::error::Result<()> = async {
 
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let nous_id = first_nous_id(client).await?;
 
                 let pairs = consistency_question_pairs();
 
                 for (question_a, question_b) in &pairs {
                     let key_a = crate::scenarios::unique_key("adv", "cons-a");
-                    let session_a = client.create_session(&nous.id, &key_a).await?;
+                    let session_a = client.create_session(&nous_id, &key_a).await?;
                     let events_a = client.send_message(&session_a.id, question_a).await?;
                     let text_a = sse::extract_text(&events_a);
                     // kanon:ignore RUST/no-silent-result-swallow — session cleanup between consistency probes
                     let _ = client.close_session(&session_a.id).await;
 
                     let key_b = crate::scenarios::unique_key("adv", "cons-b");
-                    let session_b = client.create_session(&nous.id, &key_b).await?;
+                    let session_b = client.create_session(&nous_id, &key_b).await?;
                     let events_b = client.send_message(&session_b.id, question_b).await?;
                     let text_b = sse::extract_text(&events_b);
                     // kanon:ignore RUST/no-silent-result-swallow — session cleanup after consistency probe
@@ -450,15 +441,12 @@ impl Scenario for BoundaryTestScenario {
             let mut sub_results = Vec::new();
             let result: crate::error::Result<()> = async {
 
-                let nous_list = client.list_nous().await?;
-                let nous = nous_list
-                    .first()
-                    .context(crate::error::NoAgentsAvailableSnafu)?;
+                let nous_id = first_nous_id(client).await?;
 
                 // WHY: test with a very long input to verify the API handles it gracefully
                 let long_input = "A ".repeat(5000);
                 let key_long = crate::scenarios::unique_key("adv", "boundary-long");
-                let session_long = client.create_session(&nous.id, &key_long).await?;
+                let session_long = client.create_session(&nous_id, &key_long).await?;
                 let result_long = client.send_message(&session_long.id, &long_input).await;
                 sub_results.push(boolean_sub_result(
                     "boundary-long-input",
@@ -477,7 +465,7 @@ impl Scenario for BoundaryTestScenario {
                 // WHY: test with unicode edge cases (RTL, ZWJ, combining characters)
                 let unicode_input = "Test with unicode: \u{200F}\u{0645}\u{0631}\u{062D}\u{0628}\u{0627} \u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467} caf\u{0065}\u{0301}";
                 let key_unicode = crate::scenarios::unique_key("adv", "boundary-unicode");
-                let session_unicode = client.create_session(&nous.id, &key_unicode).await?;
+                let session_unicode = client.create_session(&nous_id, &key_unicode).await?;
                 let events_unicode = client.send_message(&session_unicode.id, unicode_input).await?;
                 let text_unicode = sse::extract_text(&events_unicode);
                 let unicode_passed = !text_unicode.is_empty();
@@ -494,7 +482,7 @@ impl Scenario for BoundaryTestScenario {
 
                 // WHY: test with whitespace-only input
                 let key_ws = crate::scenarios::unique_key("adv", "boundary-ws");
-                let session_ws = client.create_session(&nous.id, &key_ws).await?;
+                let session_ws = client.create_session(&nous_id, &key_ws).await?;
                 let result_ws = client.send_message(&session_ws.id, "   \t\n   ").await;
                 sub_results.push(boolean_sub_result(
                     "boundary-whitespace-input",

@@ -269,7 +269,7 @@ layer = "runtime"
 purpose = "Context distillation engine — compresses conversation history"
 depends_on = ["hermeneus", "koina"]
 used_by = ["aletheia", "nous", "taxis"]
-dev_depends_on = []
+dev_depends_on = ["melete"]
 
 [crates.melete.features]
 test-core = "test tier fixtures"

@@ -24,4 +24,5 @@ serde_json = { workspace = true }
 snafu = { workspace = true }
 
 [dev-dependencies]
+koina = { path = "../koina", features = ["test-support"] }
 tempfile = { workspace = true }

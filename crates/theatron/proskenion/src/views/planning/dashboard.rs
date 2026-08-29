@@ -135,6 +135,8 @@ pub(crate) fn Planning() -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Planning",
 
             div {
                 style: "display: flex; align-items: center; justify-content: space-between;",
@@ -179,13 +181,19 @@ pub(crate) fn Planning() -> Element {
                         rsx! {
                             div {
                                 style: "{GRID_STYLE}",
+                                role: "list",
+                                "aria-label": "Projects",
                                 for project in &store.projects {
                                     {
                                         let pid = project.id.clone();
+                                        let project_name = project.name.clone();
                                         rsx! {
                                             div {
                                                 key: "{project.id}",
                                                 style: "{CARD_STYLE}",
+                                                role: "button",
+                                                tabindex: "0",
+                                                "aria-label": "Open project {project_name}",
                                                 onclick: move |_| {
                                                     nav.push(Route::PlanningProject { project_id: pid.clone() });
                                                 },
@@ -249,6 +257,11 @@ fn render_project_card(project: &Project) -> Element {
             style: "display: flex; align-items: center; gap: var(--space-2);",
             div {
                 style: "{PROGRESS_TRACK} flex: 1;",
+                role: "progressbar",
+                "aria-label": "Progress",
+                "aria-valuenow": "{pct}",
+                "aria-valuemin": "0",
+                "aria-valuemax": "100",
                 div { style: "{progress_fill}" }
             }
             span { style: "font-size: var(--text-xs); color: var(--text-secondary); min-width: 32px;",

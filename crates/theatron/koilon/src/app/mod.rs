@@ -19,7 +19,7 @@ use crate::config::Config;
 use crate::error::{GatewayUnreachableSnafu, Result};
 use crate::events::StreamEvent;
 use crate::hyperlink::OscLink;
-use crate::id::{NousId, SessionId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, TurnId};
 use crate::keybindings::KeyMap;
 use crate::msg::{ErrorToast, Msg};
 use crate::sanitize::sanitize_for_display;
@@ -62,10 +62,10 @@ const MIN_RENDER_INTERVAL_MS: u64 = 33;
 /// Agent roster, sessions, messages, and cost tracking.
 pub struct DashboardState {
     pub agents: Vec<AgentState>,
-    pub focused_agent: Option<NousId>,
+    pub focused_agent: Option<ApiNousId>,
     /// PERF: ArcVec clone is O(1): tab switches share the Arc pointer, not the Vec.
     pub messages: ArcVec<ChatMessage>,
-    pub focused_session_id: Option<SessionId>,
+    pub focused_session_id: Option<ApiSessionId>,
     pub daily_cost_cents: u32,
     pub session_cost_cents: u32,
     pub context_usage_pct: Option<u8>,
@@ -74,7 +74,7 @@ pub struct DashboardState {
     /// Total context window capacity for the current model.
     pub context_tokens_total: Option<u32>,
     /// Last-active session per agent, loaded from disk on startup and saved on exit.
-    pub(crate) saved_sessions: HashMap<NousId, SessionId>,
+    pub(crate) saved_sessions: HashMap<ApiNousId, ApiSessionId>,
     pub submitted_decisions: Vec<crate::state::SubmittedDecision>,
     pub(crate) new_session_status: ControlMutationStatus,
 }
@@ -132,7 +132,7 @@ impl ConnectionState {
 pub struct RenderState {
     pub scroll_offset: usize,
     pub auto_scroll: bool,
-    pub(crate) scroll_states: HashMap<NousId, SavedScrollState>,
+    pub(crate) scroll_states: HashMap<ApiNousId, SavedScrollState>,
     pub(crate) virtual_scroll: VirtualScroll,
     pub markdown_cache: MarkdownCache,
     /// Pre-rendered lines for finalized (committed) messages.
@@ -441,7 +441,7 @@ impl App {
             .config
             .default_agent
             .clone()
-            .map(NousId::from)
+            .map(ApiNousId::from)
             .or_else(|| self.dashboard.agents.first().map(|a| a.id.clone()));
 
         if let Some(agent_id) = self.dashboard.focused_agent.clone() {
@@ -587,7 +587,7 @@ impl App {
     }
 
     #[tracing::instrument(skip(self), fields(%agent_id))]
-    pub(crate) async fn load_tools_for_agent(&mut self, agent_id: &NousId) {
+    pub(crate) async fn load_tools_for_agent(&mut self, agent_id: &ApiNousId) {
         let tools = match self.client.tools(agent_id).await {
             Ok(tools) => tools,
             Err(_) => {

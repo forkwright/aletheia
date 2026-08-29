@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 
 use koina::secret::SecretString;
 
-use crate::id::{GitSha, NousId, PlanId, SessionId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, GitSha, PlanId, TurnId};
 
 /// Backend-owned lifecycle status for a session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -81,7 +81,7 @@ impl SessionLifecycle {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
     /// Agent identifier.
-    pub id: NousId,
+    pub id: ApiNousId,
     /// Display name: falls back to `id` if absent.
     #[serde(default)]
     pub name: Option<String>,
@@ -111,9 +111,9 @@ impl Agent {
 #[derive(Debug, Clone, Serialize, Deserialize)] // kanon:ignore RUST/no-debug-derive-on-public-types
 pub struct Session {
     /// Session identifier.
-    pub id: SessionId,
+    pub id: ApiSessionId,
     /// Agent this session belongs to.
-    pub nous_id: NousId,
+    pub nous_id: ApiNousId,
     /// Session key (human-readable slug, not a secret).
     #[serde(rename = "session_key")]
     pub key: String, // kanon:ignore RUST/plain-string-secret
@@ -431,10 +431,10 @@ pub struct TurnOutcome {
     pub text: String,
     /// Agent that processed this turn.
     #[serde(rename = "nousId", alias = "nous_id")]
-    pub nous_id: NousId,
+    pub nous_id: ApiNousId,
     /// Session this turn belongs to.
     #[serde(rename = "sessionId", alias = "session_id")]
-    pub session_id: SessionId,
+    pub session_id: ApiSessionId,
     /// Model used for this turn; `None` when the gateway could not resolve it.
     #[serde(default)]
     pub model: Option<String>,
@@ -487,10 +487,10 @@ pub struct Plan {
     pub id: PlanId,
     /// Session this plan was proposed in.
     #[serde(rename = "sessionId")]
-    pub session_id: SessionId,
+    pub session_id: ApiSessionId,
     /// Agent that proposed the plan.
     #[serde(rename = "nousId")]
-    pub nous_id: NousId,
+    pub nous_id: ApiNousId,
     /// Ordered list of plan steps.
     pub steps: Vec<PlanStep>,
     /// Estimated total cost in cents.
@@ -516,26 +516,26 @@ pub enum SseEvent {
     /// A turn is about to start.
     TurnBefore {
         /// Agent processing the turn.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Session the turn belongs to.
-        session_id: SessionId,
+        session_id: ApiSessionId,
         /// Turn identifier.
         turn_id: TurnId,
     },
     /// A turn has completed.
     TurnAfter {
         /// Agent that processed the turn.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Session the turn belongs to.
-        session_id: SessionId,
+        session_id: ApiSessionId,
     },
     /// A domain event reporting that a turn completed, emitted on the
     /// `EventBus` topic `turn.complete`.
     TurnComplete {
         /// Session the turn belongs to.
-        session_id: SessionId,
+        session_id: ApiSessionId,
         /// Agent that processed the turn.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Turn identifier.
         turn_id: TurnId,
         /// Input tokens consumed.
@@ -549,7 +549,7 @@ pub enum SseEvent {
         /// Fact identifier.
         fact_id: String,
         /// Agent that owns the fact.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Short preview of the fact content.
         content_preview: String,
     },
@@ -557,7 +557,7 @@ pub enum SseEvent {
     /// `EventBus` topic `nous.lifecycle`.
     NousLifecycle {
         /// Agent whose lifecycle changed.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Lifecycle event name (e.g. "created").
         event: String,
         /// Whether the server requires a restart to activate the change.
@@ -566,14 +566,14 @@ pub enum SseEvent {
     /// A tool was invoked during a turn.
     ToolCalled {
         /// Agent invoking the tool.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Name of the tool.
         tool_name: String,
     },
     /// A tool invocation failed.
     ToolFailed {
         /// Agent whose tool failed.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Name of the failed tool.
         tool_name: String,
         /// Error description.
@@ -582,40 +582,40 @@ pub enum SseEvent {
     /// Agent status changed.
     StatusUpdate {
         /// Agent whose status changed.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// New status value.
         status: String,
     },
     /// A new session was created.
     SessionCreated {
         /// Agent the session was created for.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// New session identifier.
-        session_id: SessionId,
+        session_id: ApiSessionId,
     },
     /// A session was archived.
     SessionArchived {
         /// Agent the session belongs to.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Archived session identifier.
-        session_id: SessionId,
+        session_id: ApiSessionId,
     },
     /// Memory distillation is about to start.
     DistillBefore {
         /// Agent undergoing distillation.
-        nous_id: NousId,
+        nous_id: ApiNousId,
     },
     /// Memory distillation progressed to a new stage.
     DistillStage {
         /// Agent undergoing distillation.
-        nous_id: NousId,
+        nous_id: ApiNousId,
         /// Current distillation stage.
         stage: String,
     },
     /// Memory distillation completed.
     DistillAfter {
         /// Agent that completed distillation.
-        nous_id: NousId,
+        nous_id: ApiNousId,
     },
     /// A new checkpoint was created in a planning project.
     CheckpointCreated {
@@ -676,10 +676,10 @@ pub enum SseEvent {
 pub struct ActiveTurn {
     /// Agent processing this turn.
     #[serde(rename = "nousId")]
-    pub nous_id: NousId,
+    pub nous_id: ApiNousId,
     /// Session this turn belongs to.
     #[serde(rename = "sessionId")]
-    pub session_id: SessionId,
+    pub session_id: ApiSessionId,
     /// Turn identifier.
     #[serde(rename = "turnId")]
     pub turn_id: TurnId,

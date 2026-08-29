@@ -165,7 +165,7 @@ pub(crate) fn QuickInputOverlay() -> Element {
 
 #[cfg(test)]
 mod tests {
-    use skene::id::NousId;
+    use skene::id::ApiNousId;
 
     use super::*;
 
@@ -174,7 +174,7 @@ mod tests {
         let mut state = QuickInputState::default();
         assert!(!state.visible);
 
-        state.open(Some(NousId::from("syn")));
+        state.open(Some(ApiNousId::from("syn")));
         assert!(state.visible);
         assert_eq!(state.selected_agent.as_deref(), Some("syn"));
 

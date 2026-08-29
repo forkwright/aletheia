@@ -166,7 +166,7 @@ fn active_session_matches(state: &ChatState, selection: &ChatSelection) -> bool 
 
 fn chat_history_url(
     base_url: &str,
-    session_id: &skene::id::SessionId,
+    session_id: &skene::id::ApiSessionId,
     before: Option<i64>,
 ) -> String {
     let base = base_url.trim_end_matches('/');
@@ -726,11 +726,11 @@ pub(crate) fn Chat() -> Element {
             let routing_agent_name = {
                 let store = agent_store.read();
                 store
-                    .get(&skene::id::NousId::from(nous_id.as_str()))
+                    .get(&skene::id::ApiNousId::from(nous_id.as_str()))
                     .map(|r| r.display_name().to_string())
                     .unwrap_or_else(|| nous_id.clone())
             };
-            let routing_agent_id = skene::id::NousId::from(nous_id.as_str());
+            let routing_agent_id = skene::id::ApiNousId::from(nous_id.as_str());
 
             update_routing_stage(
                 &mut routing_signal,

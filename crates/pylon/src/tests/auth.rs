@@ -155,6 +155,68 @@ async fn missing_auth_header_returns_401() {
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
 
+/// WHY(#6826): a missing credential and an expired one must not be
+/// wire-identical — a client needs to tell "log in" from "re-authenticate"
+/// apart. Asserts the two 401 response bodies carry distinct `reason`
+/// values rather than both collapsing to the same string.
+#[tokio::test]
+async fn missing_header_and_expired_token_401_bodies_are_distinguishable() {
+    use symbolon::types::{Claims, Role, TokenKind};
+
+    let (app, _dir) = app().await;
+
+    let missing_req = json_request(
+        "POST",
+        "/api/v1/sessions",
+        Some(serde_json::json!({
+            "nous_id": "syn",
+            "session_key": "missing-header-test"
+        })),
+    );
+    let missing_resp = app.clone().oneshot(missing_req).await.expect("response");
+    assert_eq!(missing_resp.status(), StatusCode::UNAUTHORIZED);
+    let missing_body = body_json(missing_resp).await;
+    let missing_reason = missing_body["error"]["details"]["reason"]
+        .as_str()
+        .expect("missing-credentials response carries a reason");
+
+    let claims = Claims {
+        sub: "test-user".to_owned(),
+        role: Role::Operator,
+        nous_id: None,
+        iss: "aletheia-test".to_owned(),
+        iat: 1_000_000,
+        nbf: None,
+        exp: 1_000_001,
+        jti: "expired-jti-2".to_owned(),
+        kind: TokenKind::Access,
+    };
+    let token = test_jwt_manager().encode_claims(&claims).unwrap();
+    let expired_req = Request::builder()
+        .method("POST")
+        .uri("/api/v1/sessions")
+        .header("content-type", "application/json")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({
+                "nous_id": "syn",
+                "session_key": "expired-token-test"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+    let expired_resp = app.oneshot(expired_req).await.expect("response");
+    assert_eq!(expired_resp.status(), StatusCode::UNAUTHORIZED);
+    let expired_body = body_json(expired_resp).await;
+    let expired_reason = expired_body["error"]["details"]["reason"]
+        .as_str()
+        .expect("expired-token response carries a reason");
+
+    assert_eq!(missing_reason, "missing_credentials");
+    assert_eq!(expired_reason, "token_expired");
+    assert_ne!(missing_reason, expired_reason);
+}
+
 async fn app_auth_disabled() -> (axum::Router, tempfile::TempDir) {
     let (state, dir) = test_state().await;
     let default_config = taxis::config::AletheiaConfig::default();

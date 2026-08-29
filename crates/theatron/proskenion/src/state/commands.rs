@@ -1,6 +1,6 @@
 //! Slash command state -- client commands and server-provided agent commands.
 
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 /// Where a command originates.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +65,7 @@ pub enum CommandAction {
     /// Open details for a server-discovered agent tool.
     OpenToolDetails {
         /// Agent that advertised the tool capability.
-        agent_id: NousId,
+        agent_id: ApiNousId,
         /// Tool name as reported by the server.
         tool_name: String,
     },
@@ -96,7 +96,7 @@ pub struct Command {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ServerCommandDescriptor {
     /// Agent that owns the advertised capability.
-    pub agent_id: NousId,
+    pub agent_id: ApiNousId,
     /// Human-readable agent label.
     pub agent_name: String,
     /// Tool name from the server discovery payload.

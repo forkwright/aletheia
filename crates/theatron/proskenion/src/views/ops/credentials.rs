@@ -521,6 +521,8 @@ pub(crate) fn CredentialsView(refresh_trigger: Signal<u32>) -> Element {
     rsx! {
         div {
             style: "{PANEL_STYLE}",
+            role: "region",
+            "aria-label": "Credentials",
 
             if fetch_loading {
                 div { style: "color: var(--text-secondary); font-size: var(--text-sm);", "Loading credentials..." }
@@ -562,6 +564,7 @@ pub(crate) fn CredentialsView(refresh_trigger: Signal<u32>) -> Element {
                                     r#type: "text",
                                     placeholder: "anthropic",
                                     value: "{add_provider}",
+                                    "aria-label": "Provider",
                                     oninput: move |evt: Event<FormData>| {
                                         add_provider.set(evt.value().clone());
                                         add_error.set(None);
@@ -576,6 +579,7 @@ pub(crate) fn CredentialsView(refresh_trigger: Signal<u32>) -> Element {
                                     style: "{FORM_INPUT}",
                                     r#type: "password",
                                     placeholder: "sk-...",
+                                    "aria-label": "API Key",
                                     oninput: move |evt: Event<FormData>| {
                                         add_key.set(koina::secret::SecretString::from(evt.value().clone()));
                                         add_error.set(None);
@@ -587,6 +591,7 @@ pub(crate) fn CredentialsView(refresh_trigger: Signal<u32>) -> Element {
                                 span { style: "{FORM_LABEL}", "Role" }
                                 select {
                                     style: "{FORM_SELECT}",
+                                    "aria-label": "Role",
                                     onchange: move |evt: Event<FormData>| {
                                         let role = if evt.value() == "primary" {
                                             CredentialRole::Primary
@@ -648,6 +653,7 @@ pub(crate) fn CredentialsView(refresh_trigger: Signal<u32>) -> Element {
                 } else {
                     button {
                         style: "{BTN_STD}",
+                        "aria-expanded": "false",
                         onclick: move |_| {
                             // WHY(#4877): reset all add-form state on open, so
                             // a value left over from a prior cancelled/failed
@@ -830,6 +836,8 @@ fn CredentialCard(
     rsx! {
         div {
             style: "{CRED_CARD_STYLE}",
+            role: "group",
+            "aria-label": "{entry.provider} credential ({entry.role.label()})",
 
             div {
                 style: "{CARD_HEADER}",
@@ -888,6 +896,7 @@ fn CredentialCard(
                 } else {
                     button {
                         style: "{BTN_STD}",
+                        "aria-label": "Validate {entry_provider} credential",
                         onclick: move |_| do_validate(),
                         "Validate"
                     }
@@ -897,6 +906,7 @@ fn CredentialCard(
                     button {
                         style: if rotating { "{BTN_DISABLED}" } else { "{BTN_STD}" },
                         disabled: rotating,
+                        "aria-label": "Rotate {entry_provider} credential",
                         onclick: move |_| {
                             confirm_rotate.set(true);
                             confirm_remove.set(false);
@@ -910,12 +920,14 @@ fn CredentialCard(
                         style: "{BTN_DISABLED}",
                         disabled: true,
                         title: "Cannot remove the last primary credential",
+                        "aria-label": "Remove {entry_provider} credential (disabled: last primary)",
                         "Remove"
                     }
                 } else {
                     button {
                         style: if removing { "{BTN_DISABLED}" } else { "{BTN_DANGER}" },
                         disabled: removing,
+                        "aria-label": "Remove {entry_provider} credential",
                         onclick: move |_| {
                             confirm_remove.set(true);
                             confirm_rotate.set(false);
@@ -928,6 +940,7 @@ fn CredentialCard(
             if show_rotate {
                 div {
                     style: "{CONFIRM_BANNER}",
+                    role: "alert",
                     span {
                         style: "{WARN_TEXT}",
                         "Swap primary and backup for {entry_provider}? \
@@ -958,6 +971,7 @@ fn CredentialCard(
             if show_remove {
                 div {
                     style: "{CONFIRM_BANNER}",
+                    role: "alert",
                     span { style: "{WARN_TEXT}", "Permanently remove this credential?" }
                     if removing {
                         button { style: "{BTN_DISABLED}", disabled: true, "Removing..." }

@@ -1,12 +1,12 @@
 //! Session CRUD lifecycle scenarios.
 
-use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::{EvalClient, SessionStatus};
 use crate::scenario::{
     Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eq_eval, assert_eval,
 };
+use crate::scenarios::first_nous_id;
 
 #[tracing::instrument(skip_all)]
 pub(crate) fn scenarios() -> Vec<Box<dyn Scenario>> {
@@ -36,15 +36,11 @@ impl Scenario for SessionCreateAndGet {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = super::unique_key("session", "create");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
                     assert_eval(!session.id.is_empty(), "session id should not be empty")?;
-                    assert_eq_eval(&session.nous_id, nous_id, "nous_id should match")?;
+                    assert_eq_eval(&session.nous_id, &nous_id, "nous_id should match")?;
                     assert_eq_eval(&session.session_key, &key, "session_key should match")?;
                     assert_eq_eval(
                         &session.status,
@@ -88,13 +84,9 @@ impl Scenario for SessionCloseArchives {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = super::unique_key("session", "close");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
                     client.close_session(&session.id).await?;
                     // WHY: after DELETE the session is archived; GET must return 404 (#1251).
                     match client.get_session(&session.id).await {

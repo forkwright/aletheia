@@ -1,10 +1,10 @@
-use snafu::OptionExt as _;
 use tracing::Instrument;
 
 use crate::client::EvalClient;
 use crate::scenario::{
     Scenario, ScenarioClassification, ScenarioFuture, ScenarioMeta, assert_eval,
 };
+use crate::scenarios::first_nous_id;
 use crate::sse;
 
 /// File read tool capability query smoke test.
@@ -29,13 +29,9 @@ impl Scenario for ToolFileReadContent {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "tool-read");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     // Ask to read a standard file - will use tool or respond about capability
                     let events = client
@@ -87,13 +83,9 @@ impl Scenario for ToolFileWriteReadRoundtrip {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "tool-roundtrip");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     // Ask about file write capability - system should respond appropriately
                     let events = client
@@ -146,13 +138,9 @@ impl Scenario for ToolWebSearchStructured {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "tool-websearch");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     let events = client
                         .send_message(
@@ -202,13 +190,9 @@ impl Scenario for ToolMultiToolChain {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "tool-chain");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     let events = client
                         .send_message(
@@ -258,13 +242,9 @@ impl Scenario for ToolInvalidInputError {
         Box::pin(
             async move {
                 let result: crate::error::Result<()> = async {
-                    let nous_list = client.list_nous().await?;
-                    let nous = nous_list
-                        .first()
-                        .context(crate::error::NoAgentsAvailableSnafu)?;
-                    let nous_id = &nous.id;
+                    let nous_id = first_nous_id(client).await?;
                     let key = crate::scenarios::unique_key("canary", "tool-error");
-                    let session = client.create_session(nous_id, &key).await?;
+                    let session = client.create_session(&nous_id, &key).await?;
 
                     let events = client
                         .send_message(

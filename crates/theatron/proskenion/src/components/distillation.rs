@@ -5,7 +5,7 @@
 //! is active. Reads `Signal<EventState>` from context.
 
 use dioxus::prelude::*;
-use skene::id::NousId;
+use skene::id::ApiNousId;
 
 use crate::state::events::{DistillationProgress, EventState};
 
@@ -62,7 +62,7 @@ fn stage_pct(label: &str) -> u8 {
 /// Takes `nous_id` as a prop to look up distillation state for a specific
 /// agent. Hidden when no distillation is active for that agent.
 #[component]
-pub(crate) fn DistillationIndicatorView(nous_id: NousId) -> Element {
+pub(crate) fn DistillationIndicatorView(nous_id: ApiNousId) -> Element {
     let event_state = use_context::<Signal<EventState>>();
 
     let progress: Option<DistillationProgress> =

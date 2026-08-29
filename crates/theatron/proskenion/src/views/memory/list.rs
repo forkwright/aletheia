@@ -139,12 +139,15 @@ pub(crate) fn EntityList(
     rsx! {
         div {
             style: "{LIST_CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Entity list",
             div {
                 style: "{SORT_BAR_STYLE}",
                 span { "Sort:" }
                 select {
                     style: "{SORT_SELECT_STYLE}",
                     value: "{sort.label()}",
+                    "aria-label": "Sort entities",
                     onchange: move |evt: Event<FormData>| {
                         let label = evt.value();
                         for s in EntitySort::ALL {
@@ -195,6 +198,10 @@ pub(crate) fn EntityList(
                                 div {
                                     key: "{entity_id}",
                                     style: "{ROW_STYLE} {bg}",
+                                    role: "button",
+                                    tabindex: "0",
+                                    "aria-label": "{name}",
+                                    "aria-selected": if is_selected { "true" } else { "false" },
                                     onmouseenter: move |evt: Event<MouseData>| {
                                         // NOTE: hover effect handled via CSS transition.
                                         let _ = evt;
@@ -234,6 +241,9 @@ pub(crate) fn EntityList(
                     if has_more {
                         div {
                             style: "{LOAD_MORE_STYLE}",
+                            role: "button",
+                            tabindex: "0",
+                            "aria-label": "Load more entities",
                             onclick: move |_| on_load_more.call(()),
                             "Load more..."
                         }

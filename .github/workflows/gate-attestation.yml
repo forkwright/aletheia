@@ -327,12 +327,14 @@ jobs:
       # one of the three the required `gate` context aggregates, reported
       # success on every PR without scanning anything.
       - name: Install ripgrep
-        # WHY the explicit assertion: this job's own history records that ripgrep's ABSENCE once
-        # let it report success without scanning anything (#6523). An install that half-fails must
-        # stop the job, not quietly disarm the check it feeds.
-        run: |
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends ripgrep
-          command -v rg >/dev/null || { echo '::error::ripgrep missing after install'; exit 1; }
+        uses: ./.github/actions/apt-install
+        with:
+          packages: ripgrep
+          no_install_recommends: "true"
+          # WHY the explicit assertion: this job's own history records that ripgrep's ABSENCE once
+          # let it report success without scanning anything (#6523). An install that half-fails
+          # must stop the job, not quietly disarm the check it feeds.
+          verify: command -v rg >/dev/null
 
       - name: Check shared temp paths
         run: scripts/check-shared-temp-paths.sh
@@ -610,6 +612,20 @@ jobs:
       # tooling changes.
       - name: Krites sovereign-HNSW feature gate
         run: cargo test -p krites --features krites_sovereign_hnsw
+
+      # WHY(#7042): same rationale as the sovereign-HNSW step above — the
+      # default build selects the CozoDB-derived `fixed_rule/algos/pagerank.rs`,
+      # so a break in the sovereign `pagerank_native.rs` shell is invisible to
+      # every other check. Unlike HNSW, PageRank's only live consumer is
+      # episteme's optional `graph-algo` feature (not a workspace-wide reach
+      # through mneme/aletheia/nous/pylon), and the property tests that gate
+      # this wave (fixed_rule/tests/wave5_reference_semantics.rs,
+      # proptest_algos.rs's pagerank suite) run through krites' own
+      # DbInstance — so the crate-scoped run here, not a separate
+      # workspace-wide job, is what actually exercises them against the
+      # replacement shell.
+      - name: Krites sovereign-PageRank feature gate
+        run: cargo test -p krites --features krites_sovereign_pagerank
 
       - name: Poiesis-charts Vega-Lite feature gate
         run: cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings

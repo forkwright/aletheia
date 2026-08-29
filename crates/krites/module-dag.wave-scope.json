@@ -92,7 +92,7 @@
     {
       "from": "W3prime_algos_19",
       "to": "W5prime_value_model",
-      "count": 34,
+      "count": 36,
       "evidence": [
         "fixed_rule/algos/all_pairs_shortest_path.rs:31 -> crate::data::symb::Symbol",
         "fixed_rule/algos/all_pairs_shortest_path.rs:32 -> crate::data::value::DataValue",
@@ -111,6 +111,8 @@
         "fixed_rule/algos/kruskal.rs:16 -> crate::data::value::DataValue",
         "fixed_rule/algos/label_propagation.rs:22 -> crate::data::symb::Symbol",
         "fixed_rule/algos/label_propagation.rs:23 -> crate::data::value::DataValue",
+        "fixed_rule/algos/pagerank_native.rs:15 -> crate::data::symb::Symbol",
+        "fixed_rule/algos/pagerank_native.rs:16 -> crate::data::value::DataValue",
         "fixed_rule/algos/prim.rs:21 -> crate::data::symb::Symbol",
         "fixed_rule/algos/prim.rs:22 -> crate::data::value::DataValue",
         "fixed_rule/algos/random_walk.rs:19 -> crate::data::symb::Symbol",
@@ -235,7 +237,7 @@
         "W3prime_algos_19",
         "W5prime_value_model"
       ],
-      "W3prime_algos_19_imports_W5prime_value_model": 34,
+      "W3prime_algos_19_imports_W5prime_value_model": 36,
       "W5prime_value_model_imports_W3prime_algos_19": 0
     },
     {

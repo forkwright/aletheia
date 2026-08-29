@@ -77,9 +77,13 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
     rsx! {
         div {
             style: "display: flex; flex-direction: column; gap: var(--space-4); flex: 1;",
+            role: "region",
+            "aria-label": "Tools",
 
             div {
                 style: "display: flex; align-items: center; gap: var(--space-2);",
+                role: "radiogroup",
+                "aria-label": "Date range",
                 span { style: "font-size: var(--text-xs); color: var(--text-secondary);", "Range:" }
                 for range in DateRange::all() {
                     {
@@ -93,6 +97,8 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
                             button {
                                 key: "{range.days()}d",
                                 style: "{btn_style}",
+                                role: "radio",
+                                "aria-checked": if is_active { "true" } else { "false" },
                                 onclick: move |_| {
                                     store.write().date_range = range;
                                     do_fetch();
@@ -104,6 +110,7 @@ pub(crate) fn ToolsOverview(date_range: DateRange) -> Element {
                 }
                 button {
                     style: "background: var(--border); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-1) var(--space-3); font-size: var(--text-xs); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                    "aria-label": "Refresh tools",
                     onclick: move |_| do_fetch(),
                     "Refresh"
                 }

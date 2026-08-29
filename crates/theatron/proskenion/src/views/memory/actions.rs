@@ -197,9 +197,13 @@ pub(crate) fn MergeDialog(
     rsx! {
         div {
             style: "{OVERLAY_STYLE}",
+            "aria-label": "Merge entities backdrop",
             onclick: move |_| on_close.call(()),
             div {
                 style: "{DIALOG_STYLE}",
+                role: "dialog",
+                "aria-modal": "true",
+                "aria-label": "Merge entities",
                 onclick: |evt: Event<MouseData>| evt.stop_propagation(),
                 div { style: "{DIALOG_TITLE_STYLE}", "Merge Entities" }
 
@@ -236,6 +240,7 @@ pub(crate) fn MergeDialog(
                 select {
                     style: "{SELECT_STYLE}",
                     value: "{selected_merge_id}",
+                    "aria-label": "Entity to merge into {entity_name}",
                     onchange: move |evt: Event<FormData>| {
                         selected_merge_id.set(evt.value().clone());
                     },
@@ -353,9 +358,13 @@ pub(crate) fn FlagDialog(
     rsx! {
         div {
             style: "{OVERLAY_STYLE}",
+            "aria-label": "Flag entity backdrop",
             onclick: move |_| on_close.call(()),
             div {
                 style: "{DIALOG_STYLE}",
+                role: "dialog",
+                "aria-modal": "true",
+                "aria-label": "Flag entity for review",
                 onclick: |evt: Event<MouseData>| evt.stop_propagation(),
                 div { style: "{DIALOG_TITLE_STYLE}", "Flag Entity for Review" }
 
@@ -373,6 +382,7 @@ pub(crate) fn FlagDialog(
                 select {
                     style: "{SELECT_STYLE}",
                     value: "{severity.read().label()}",
+                    "aria-label": "Severity",
                     onchange: move |evt: Event<FormData>| {
                         let label = evt.value();
                         for s in FlagSeverity::ALL {
@@ -399,6 +409,7 @@ pub(crate) fn FlagDialog(
                     style: "{INPUT_STYLE} min-height: 80px; resize: vertical;",
                     placeholder: "Why should this entity be reviewed?",
                     value: "{reason}",
+                    "aria-label": "Reason",
                     oninput: move |evt: Event<FormData>| {
                         reason.set(evt.value().clone());
                     },
@@ -509,9 +520,13 @@ pub(crate) fn DeleteDialog(
     rsx! {
         div {
             style: "{OVERLAY_STYLE}",
+            "aria-label": "Delete entity backdrop",
             onclick: move |_| on_close.call(()),
             div {
                 style: "{DIALOG_STYLE}",
+                role: "dialog",
+                "aria-modal": "true",
+                "aria-label": "Delete entity: {entity_name}",
                 onclick: |evt: Event<MouseData>| evt.stop_propagation(),
                 div { style: "{DIALOG_TITLE_STYLE}", "Delete Entity" }
 

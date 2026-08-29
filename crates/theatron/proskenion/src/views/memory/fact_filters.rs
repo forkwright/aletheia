@@ -93,6 +93,8 @@ pub(crate) fn FactFilters(
     rsx! {
         div {
             style: "{BAR_STYLE}",
+            role: "region",
+            "aria-label": "Fact search and filters",
             div {
                 style: "{GROUP_STYLE}",
                 input {
@@ -100,6 +102,7 @@ pub(crate) fn FactFilters(
                     r#type: "text",
                     placeholder: "Search what I remember...",
                     value: "{search_query}",
+                    "aria-label": "Search facts",
                     oninput: move |evt: Event<FormData>| {
                         let query = evt.value().clone();
                         list_store.write().search_query = query.clone();
@@ -123,6 +126,8 @@ pub(crate) fn FactFilters(
             // ── Fact-type chips ──
             div {
                 style: "{GROUP_STYLE}",
+                role: "group",
+                "aria-label": "Filter by type",
                 span { style: "{GROUP_LABEL_STYLE}", "Type" }
                 for ft in FactType::FILTERABLE {
                     {
@@ -133,6 +138,9 @@ pub(crate) fn FactFilters(
                             span {
                                 key: "ft-{ft.wire()}",
                                 style: "{style}",
+                                role: "checkbox",
+                                tabindex: "0",
+                                "aria-checked": if active { "true" } else { "false" },
                                 onclick: move |_| {
                                     let mut s = list_store.write();
                                     if let Some(pos) = s.type_filter.iter().position(|t| t == &ft_clone) {
@@ -153,6 +161,8 @@ pub(crate) fn FactFilters(
             // ── Trust-tier chips ──
             div {
                 style: "{GROUP_STYLE}",
+                role: "group",
+                "aria-label": "Filter by trust tier",
                 span { style: "{GROUP_LABEL_STYLE}", "Trust" }
                 for tier in FactTier::FILTERABLE {
                     {
@@ -163,6 +173,9 @@ pub(crate) fn FactFilters(
                             span {
                                 key: "tier-{t.wire()}",
                                 style: "{style}",
+                                role: "checkbox",
+                                tabindex: "0",
+                                "aria-checked": if active { "true" } else { "false" },
                                 onclick: move |_| {
                                     let mut s = list_store.write();
                                     if let Some(pos) = s.tier_filter.iter().position(|x| *x == t) {
@@ -183,6 +196,8 @@ pub(crate) fn FactFilters(
             // -- Review mode --
             div {
                 style: "{GROUP_STYLE}",
+                role: "radiogroup",
+                "aria-label": "Review mode",
                 span { style: "{GROUP_LABEL_STYLE}", "Review" }
                 for mode in FactReviewMode::ALL {
                     {
@@ -193,6 +208,9 @@ pub(crate) fn FactFilters(
                             span {
                                 key: "review-{m.label()}",
                                 style: "{style}",
+                                role: "radio",
+                                tabindex: "0",
+                                "aria-checked": if active { "true" } else { "false" },
                                 onclick: move |_| {
                                     list_store.write().review_mode = m;
                                     on_filter_change.call(());
@@ -207,6 +225,8 @@ pub(crate) fn FactFilters(
             // ── Recency window ──
             div {
                 style: "{GROUP_STYLE}",
+                role: "radiogroup",
+                "aria-label": "Age window",
                 span { style: "{GROUP_LABEL_STYLE}", "Age" }
                 for window in FactRecency::ALL {
                     {
@@ -217,6 +237,9 @@ pub(crate) fn FactFilters(
                             span {
                                 key: "age-{w.label()}",
                                 style: "{style}",
+                                role: "radio",
+                                tabindex: "0",
+                                "aria-checked": if active { "true" } else { "false" },
                                 onclick: move |_| {
                                     list_store.write().recency = w;
                                     // NOTE: recency is a client-side window over

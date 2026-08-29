@@ -76,7 +76,8 @@ fn read_dispatch_record(
 }
 
 fn stale_running_dispatch_record() -> energeia::store::records::DispatchRecord {
-    let id = energeia::store::records::DispatchId::new(koina::ulid::Ulid::new().to_string());
+    let id = energeia::store::records::DispatchId::new(koina::ulid::Ulid::new().to_string())
+        .expect("valid dispatch id");
     let created_at = jiff::Timestamp::now()
         .checked_sub(jiff::SignedDuration::from_hours(2))
         .expect("valid stale timestamp");

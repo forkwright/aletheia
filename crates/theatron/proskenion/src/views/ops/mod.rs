@@ -537,7 +537,7 @@ pub(crate) fn Ops() -> Element {
             let tool_toggles: Vec<ToolToggle> = agents_data
                 .iter()
                 .flat_map(|a| {
-                    let aid: skene::id::NousId = a.id.as_str().into();
+                    let aid: skene::id::ApiNousId = a.id.as_str().into();
                     a.tools.iter().map(move |t| ToolToggle {
                         agent_id: aid.clone(),
                         tool_name: t.name.clone(),
@@ -730,11 +730,11 @@ pub(crate) fn Ops() -> Element {
     use_effect(move || {
         let events = event_state.read();
         let mut store = agent_store.write();
-        let mut turn_counts: HashMap<skene::id::NousId, u32> = HashMap::new();
+        let mut turn_counts: HashMap<skene::id::ApiNousId, u32> = HashMap::new();
         for turn in &events.active_turns {
             *turn_counts.entry(turn.nous_id.clone()).or_default() += 1;
         }
-        let ids: Vec<skene::id::NousId> = store.order.clone();
+        let ids: Vec<skene::id::ApiNousId> = store.order.clone();
         for id in &ids {
             store.set_active_turns(id, turn_counts.get(id).copied().unwrap_or(0));
         }
@@ -750,6 +750,8 @@ pub(crate) fn Ops() -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Operations",
 
             // ── Header with tabs ──
             div {
@@ -757,23 +759,33 @@ pub(crate) fn Ops() -> Element {
                 h2 { style: "font-size: var(--text-xl); margin: 0;", "Operations" }
                 div {
                     style: "display: flex; align-items: center; gap: var(--space-2);",
+                    role: "tablist",
+                    "aria-label": "Operations sections",
                     button {
                         style: if tab == OpsTab::Dashboard { TAB_ACTIVE } else { TAB_INACTIVE },
+                        role: "tab",
+                        "aria-selected": if tab == OpsTab::Dashboard { "true" } else { "false" },
                         onclick: move |_| active_tab.set(OpsTab::Dashboard),
                         "Dashboard"
                     }
                     button {
                         style: if tab == OpsTab::Tools { TAB_ACTIVE } else { TAB_INACTIVE },
+                        role: "tab",
+                        "aria-selected": if tab == OpsTab::Tools { "true" } else { "false" },
                         onclick: move |_| active_tab.set(OpsTab::Tools),
                         "Tools"
                     }
                     button {
                         style: if tab == OpsTab::Credentials { TAB_ACTIVE } else { TAB_INACTIVE },
+                        role: "tab",
+                        "aria-selected": if tab == OpsTab::Credentials { "true" } else { "false" },
                         onclick: move |_| active_tab.set(OpsTab::Credentials),
                         "Credentials"
                     }
                     button {
                         style: if tab == OpsTab::Providers { TAB_ACTIVE } else { TAB_INACTIVE },
+                        role: "tab",
+                        "aria-selected": if tab == OpsTab::Providers { "true" } else { "false" },
                         onclick: move |_| {
                             active_tab.set(OpsTab::Providers);
                             refresh_providers();
@@ -782,6 +794,7 @@ pub(crate) fn Ops() -> Element {
                     }
                     button {
                         style: "{REFRESH_BTN}",
+                        "aria-label": "Refresh operations data",
                         onclick: move |_| {
                             match tab {
                                 OpsTab::Dashboard => refresh_dashboard(),

@@ -207,10 +207,14 @@ pub(crate) fn HorizBarChart(
                         String::new()
                     };
                     let id = entry.label.clone();
+                    let is_clickable = on_click.is_some();
                     rsx! {
                         div {
                             key: "{idx}",
                             style: "display: flex; align-items: center; gap: var(--space-2); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                            role: if is_clickable { "button" } else { "presentation" },
+                            tabindex: if is_clickable { "0" } else { "-1" },
+                            "aria-label": "{label}",
                             onclick: move |_| {
                                 if let Some(handler) = &on_click {
                                     handler.call(id.clone());
@@ -610,10 +614,14 @@ pub(crate) fn StackedBarChart(
                     let failure_pct = 100u32.saturating_sub(success_pct);
                     let label = entry.label.clone();
                     let id = entry.label.clone();
+                    let is_clickable = on_click.is_some();
                     rsx! {
                         div {
                             key: "{idx}",
                             style: "display: flex; align-items: center; gap: var(--space-2); cursor: pointer; transition: background-color var(--transition-quick), color var(--transition-quick), border-color var(--transition-quick);",
+                            role: if is_clickable { "button" } else { "presentation" },
+                            tabindex: if is_clickable { "0" } else { "-1" },
+                            "aria-label": "{label}",
                             onclick: move |_| {
                                 if let Some(handler) = &on_click {
                                     handler.call(id.clone());

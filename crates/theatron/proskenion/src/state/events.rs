@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 
 use skene::api::types::ActiveTurn;
-use skene::id::{NousId, RequestId, SessionId, ToolId, TurnId};
+use skene::id::{ApiNousId, ApiSessionId, RequestId, ToolId, TurnId};
 
 use super::tools::{PlanCardState, ToolApprovalState, ToolCallState};
 
@@ -30,10 +30,10 @@ pub struct EventState {
 
     /// Per-agent status string from `StatusUpdate` events.
     /// The string value maps to an agent status label at the component layer.
-    pub agent_statuses: HashMap<NousId, String>,
+    pub agent_statuses: HashMap<ApiNousId, String>,
 
     /// Per-agent distillation progress from `Distill*` events.
-    pub distillation: HashMap<NousId, DistillationProgress>,
+    pub distillation: HashMap<ApiNousId, DistillationProgress>,
 
     /// Per-project checkpoint revision counter. Incremented by
     /// `CheckpointCreated` and `CheckpointUpdated` SSE events.
@@ -140,7 +140,7 @@ pub struct StreamingState {
     /// Turn ID if a turn is in progress.
     pub turn_id: Option<TurnId>,
     /// Session ID the active turn belongs to, from `TurnStart`.
-    pub session_id: Option<SessionId>,
+    pub session_id: Option<ApiSessionId>,
     /// Server-assigned request ID for the active turn, from `TurnStart`.
     pub request_id: Option<RequestId>,
     /// Error message if the stream errored.

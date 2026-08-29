@@ -188,6 +188,13 @@ impl ToolHttpClients {
     /// inside `f` arrives too late; the client builder itself is the one
     /// place early enough to always precede its own
     /// `reqwest::Client::builder()` call.
+    ///
+    /// Installs no [`PolicyDnsResolver`](crate::sandbox::PolicyDnsResolver):
+    /// callers that need the connected address pinned to the validated one
+    /// (SECURITY #5229) use [`with_gate`](Self::with_gate) instead. This
+    /// constructor stays gate-free because most call sites are tests with no
+    /// `SandboxConfig` in scope, not because unpinned clients are an
+    /// accepted production shape.
     #[must_use]
     pub fn new() -> Self {
         let _ = koina::crypto::install_default_provider();
@@ -199,6 +206,48 @@ impl ToolHttpClients {
                 .build()
                 .unwrap_or_else(|_| reqwest::Client::new()),
         }
+    }
+
+    /// Build the paired HTTP clients with a
+    /// [`PolicyDnsResolver`](crate::sandbox::PolicyDnsResolver) installed on
+    /// each, so the address either client actually connects to is the same
+    /// address `gate` validated (SECURITY #5229) -- one lookup, not two
+    /// independent ones for a DNS answer to change between.
+    ///
+    /// The production constructor: every runtime-wired `ToolHttpClients`
+    /// (`aletheia::runtime::Runtime::build`, the external-tools client) uses
+    /// this rather than [`new`](Self::new).
+    /// # Errors
+    /// Returns the builder's error if either client cannot be constructed.
+    ///
+    /// SECURITY(#5229): this does NOT fall back to a default client the way
+    /// [`new`](Self::new) does. A default client carries no
+    /// [`PolicyDnsResolver`](crate::sandbox::PolicyDnsResolver), so falling
+    /// back would silently return exactly the unpinned client this
+    /// constructor exists to prevent -- a fail-open on the control itself,
+    /// visible nowhere at runtime. Callers propagate the error and refuse to
+    /// start instead.
+    pub fn with_gate(
+        gate: std::sync::Arc<crate::sandbox::EgressGate>,
+    ) -> Result<Self, reqwest::Error> {
+        // WHY(crypto): same contract as `new` -- the rustls provider must be
+        // installed before the first TLS-backed client is constructed, and this
+        // builder is the one place early enough to precede its own
+        // `reqwest::Client::builder()`. This is the PRODUCTION constructor, so
+        // it needs the guarantee at least as much as the test-path one does.
+        // `install_default_provider` is idempotent; a second call is a no-op.
+        let _ = koina::crypto::install_default_provider();
+        let resolver = std::sync::Arc::new(crate::sandbox::PolicyDnsResolver::new(gate));
+        Ok(Self {
+            general: reqwest::Client::builder()
+                .dns_resolver(std::sync::Arc::clone(&resolver))
+                .build()?,
+            ssrf_safe: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(std::time::Duration::from_secs(30))
+                .dns_resolver(resolver)
+                .build()?,
+        })
     }
 }
 

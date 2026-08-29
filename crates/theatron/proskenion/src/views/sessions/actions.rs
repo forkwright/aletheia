@@ -1,7 +1,7 @@
 //! Archive, restore, and bulk action components for session management.
 
 use dioxus::prelude::*;
-use skene::id::SessionId;
+use skene::id::ApiSessionId;
 
 use crate::state::sessions::{
     SessionListStore, SessionSelectionStore, session_can_archive, session_can_restore,
@@ -120,8 +120,8 @@ const DIALOG_CONFIRM_BTN: &str = "\
 pub(crate) fn BulkActionBar(
     list_store: Signal<SessionListStore>,
     mut selection_store: Signal<SessionSelectionStore>,
-    on_bulk_archive: EventHandler<Vec<SessionId>>,
-    on_bulk_restore: EventHandler<Vec<SessionId>>,
+    on_bulk_archive: EventHandler<Vec<ApiSessionId>>,
+    on_bulk_restore: EventHandler<Vec<ApiSessionId>>,
 ) -> Element {
     let count = selection_store.read().count();
     let mut show_archive_confirm = use_signal(|| false);

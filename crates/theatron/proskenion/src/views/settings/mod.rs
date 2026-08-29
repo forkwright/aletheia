@@ -38,9 +38,13 @@ pub(crate) fn Settings() -> Element {
     rsx! {
         div {
             style: "display: flex; flex-direction: column; height: 100%; overflow: hidden;",
+            role: "region",
+            "aria-label": "Settings",
 
             div {
                 style: "display: flex; gap: var(--space-2); padding: 0 var(--space-5); border-bottom: 1px solid var(--border); background: var(--bg-surface);",
+                role: "tablist",
+                "aria-label": "Settings sections",
                 for tab in [SettingsTab::Servers, SettingsTab::Appearance, SettingsTab::Keybindings, SettingsTab::Notifications] {
                     SettingsTabButton {
                         key: "{tab:?}",
@@ -96,6 +100,8 @@ fn SettingsTabButton(label: &'static str, is_active: bool, on_select: EventHandl
     rsx! {
         button {
             style: "{style}",
+            role: "tab",
+            "aria-selected": if is_active { "true" } else { "false" },
             onmouseenter: move |_| hovered.set(true),
             onmouseleave: move |_| hovered.set(false),
             onclick: move |_| on_select.call(()),

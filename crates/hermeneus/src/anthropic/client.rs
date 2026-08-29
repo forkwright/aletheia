@@ -1171,8 +1171,8 @@ impl LlmProvider for AnthropicProvider {
         self.meta.deployment_target
     }
 
-    fn supports_streaming(&self) -> bool {
-        true
+    fn streaming_capability(&self) -> crate::provider::StreamingCapability {
+        crate::provider::StreamingCapability::REALTIME_LIFECYCLE
     }
 
     fn complete_streaming<'a>(

@@ -1,4 +1,4 @@
-use crate::id::{NousId, SessionId, ToolId, TurnId};
+use crate::id::{ApiNousId, ApiSessionId, ToolId, TurnId};
 use crate::msg::MessageActionKind;
 
 use super::settings::SettingsOverlay;
@@ -53,9 +53,9 @@ impl SessionSearchOverlay {
 
 #[derive(Debug, Clone)]
 pub struct SearchResult {
-    pub agent_id: NousId,
+    pub agent_id: ApiNousId,
     pub agent_name: String,
-    pub session_id: SessionId,
+    pub session_id: ApiSessionId,
     pub session_label: String,
     pub snippet: String,
     pub kind: SearchResultKind,

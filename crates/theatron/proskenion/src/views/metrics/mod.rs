@@ -54,21 +54,31 @@ pub(crate) fn Metrics() -> Element {
     rsx! {
         div {
             style: "display: flex; flex-direction: column; height: 100%; overflow: hidden;",
+            role: "region",
+            "aria-label": "Metrics",
 
             div {
                 style: "{TAB_BAR_STYLE}",
+                role: "tablist",
+                "aria-label": "Metrics sections",
                 button {
                     style: if *active_tab.read() == MetricsTab::Tokens { TAB_ACTIVE_STYLE } else { TAB_INACTIVE_STYLE },
+                    role: "tab",
+                    "aria-selected": if *active_tab.read() == MetricsTab::Tokens { "true" } else { "false" },
                     onclick: move |_| active_tab.set(MetricsTab::Tokens),
                     "Tokens"
                 }
                 button {
                     style: if *active_tab.read() == MetricsTab::Costs { TAB_ACTIVE_STYLE } else { TAB_INACTIVE_STYLE },
+                    role: "tab",
+                    "aria-selected": if *active_tab.read() == MetricsTab::Costs { "true" } else { "false" },
                     onclick: move |_| active_tab.set(MetricsTab::Costs),
                     "Costs"
                 }
                 button {
                     style: if *active_tab.read() == MetricsTab::Tools { TAB_ACTIVE_STYLE } else { TAB_INACTIVE_STYLE },
+                    role: "tab",
+                    "aria-selected": if *active_tab.read() == MetricsTab::Tools { "true" } else { "false" },
                     onclick: move |_| active_tab.set(MetricsTab::Tools),
                     "Tools"
                 }

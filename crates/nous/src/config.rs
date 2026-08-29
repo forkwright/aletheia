@@ -204,6 +204,10 @@ pub struct NousLimits {
     ///
     /// Matches `taxis::config::NousBehaviorConfig::cycle_detection_max_len`.
     pub cycle_detection_max_len: usize,
+    /// What the execute loop does when it observes the client has
+    /// disconnected mid-turn (#5225). Default: [`ClientDisconnectPolicy::CancelBeforeToolStart`],
+    /// preserving the loop's pre-existing behavior.
+    pub client_disconnect_policy: ClientDisconnectPolicy,
 }
 
 impl Default for NousLimits {
@@ -220,8 +224,43 @@ impl Default for NousLimits {
             consecutive_mistake_limit: default_consecutive_mistake_limit(),
             loop_detection_window: 50,
             cycle_detection_max_len: 10,
+            client_disconnect_policy: ClientDisconnectPolicy::default(),
         }
     }
+}
+
+/// What the execute loop does when `stream_tx` is dropped mid-turn — the
+/// client has disconnected (#5225).
+///
+/// WHY three explicit modes rather than one hardcoded behavior: a
+/// long-running harness has legitimate reasons to want any of the three —
+/// stop immediately to save compute/credits (the historical default), let
+/// an already-committed tool side effect finish before stopping so it is
+/// never left dangling, or keep going and let the agent finish its work
+/// unattended. Making the choice explicit config rather than a single
+/// hardcoded policy is the "make client disconnect behavior explicit"
+/// half of the durable-execution issue this type closes.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ClientDisconnectPolicy {
+    /// Stop before dispatching any tool call the model requested after the
+    /// disconnect was observed. Already-running tool calls from *before*
+    /// the disconnect are unaffected — this only gates the next dispatch.
+    /// The historical (and only) behavior before this type existed.
+    #[default]
+    CancelBeforeToolStart,
+    /// Let the tool calls already decided for the current iteration finish,
+    /// then stop before the next LLM call. Never leaves a tool call started
+    /// by this turn without an observed result.
+    FinishCurrentToolThenStop,
+    /// Ignore the disconnect and run the turn to its normal completion.
+    /// The result is still computed and persisted at finalize — it is
+    /// simply never delivered to the disconnected caller — and each
+    /// disconnect is recorded via `metrics::record_background_disconnect`
+    /// so the fact remains operator-visible even though the `TurnResult`
+    /// reaches nobody.
+    ContinueInBackground,
 }
 
 /// Named recall behavior profile for a nous agent.
@@ -817,6 +856,7 @@ mod tests {
                 consecutive_mistake_limit: 5,
                 loop_detection_window: 50,
                 cycle_detection_max_len: 10,
+                client_disconnect_policy: ClientDisconnectPolicy::default(),
             },
             domains: vec!["medical".to_owned()],
             private: true,

@@ -137,6 +137,8 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
     rsx! {
         div {
             style: "{CONTAINER_STYLE}",
+            role: "region",
+            "aria-label": "Planning project",
 
             div {
                 style: "{BREADCRUMB_STYLE}",
@@ -204,6 +206,8 @@ pub(crate) fn PlanningProject(project_id: String) -> Element {
 
             div {
                 style: "{TAB_BAR_STYLE}",
+                role: "tablist",
+                "aria-label": "Project sections",
                 {render_tab(ActiveTab::Requirements, active_tab, caps)}
                 {render_tab(ActiveTab::Roadmap, active_tab, caps)}
                 {render_tab(ActiveTab::Checkpoints, active_tab, caps)}
@@ -278,6 +282,8 @@ fn render_tab(
         rsx! {
             button {
                 style: if is_active { "{TAB_ACTIVE}" } else { "{TAB_INACTIVE}" },
+                role: "tab",
+                "aria-selected": if is_active { "true" } else { "false" },
                 onclick: move |_| active_tab.set(tab),
                 "{label}"
             }
@@ -287,6 +293,9 @@ fn render_tab(
             button {
                 style: "{TAB_DISABLED}",
                 disabled: true,
+                role: "tab",
+                "aria-selected": "false",
+                "aria-disabled": "true",
                 "{label}"
             }
         }

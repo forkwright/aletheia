@@ -41,7 +41,7 @@ Core types, errors, tracing, and system abstractions shared by every Aletheia cr
 
 ## Patterns
 
-- **`newtype_id!` macro**: generates serde-transparent ID types with Display, FromStr, AsRef, Borrow, Deref, and equality impls.
+- **`newtype_id!` macro**: generates serde-transparent ID types with Display, FromStr, AsRef, Borrow, Deref, and equality impls. `new()` validates by construction (non-empty, ≤ `NEWTYPE_ID_MAX_LEN` bytes, no control characters) and returns `Result<Self, IdError>`; `From`/`FromStr` stay unchecked for call sites that already hold a trusted value. A type needing a domain-specific charset (like `NousId`'s lowercase-alnum-plus-hyphen) still needs its own hand-rolled validator rather than a macro parameter.
 - **System abstraction**: `RealSystem` for production, `TestSystem` (in-memory filesystem, controllable clock) for tests. Accept `impl FileSystem` in function signatures.
 - **Dual-dispatch events**: `InternalEvent` implementors define both a log message and metric labels. Single `emit()` call writes to both sinks.
 - **Redaction pipeline**: `redact::redact_sensitive()` strips API keys, bearer tokens, JWTs via regex. `RedactingLayer` applies this to tracing output.

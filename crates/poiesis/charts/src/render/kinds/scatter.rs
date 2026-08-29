@@ -210,18 +210,11 @@ fn emit_labels(
 mod tests {
     use super::*;
     use crate::model::{
-        Axes, AxisSide, Chart, ChartKind, CiteOrScalar, CiteOrText, FactCite, FactId, LegendSpec,
-        Point, Series, SeriesStyle, ToneRef, Unit,
+        Axes, AxisSide, Chart, ChartKind, CiteOrScalar, CiteOrText, FactCite, LegendSpec, Point,
+        Series, SeriesStyle, ToneRef,
     };
     use crate::render::canvas::DeckCanvas;
-
-    fn cite(id: &str, v: f64) -> FactCite {
-        FactCite {
-            id: FactId::new(id.to_owned()).expect("valid fact id"),
-            value: v,
-            unit: Unit::Number,
-        }
-    }
+    use crate::render::kinds::shared::test_support::cite;
 
     fn pt_xy(x: f64, y_cite: FactCite) -> Point {
         Point {
