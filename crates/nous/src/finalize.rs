@@ -320,8 +320,8 @@ fn turn_attempt_record(
 
 /// Dedup guard: reports whether this turn was already finalized.
 ///
-/// Canonical turn_id is the primary idempotency key. The legacy
-/// usage_exists_for_turn guard remains for backward compatibility with
+/// Canonical `turn_id` is the primary idempotency key. The legacy
+/// `usage_exists_for_turn` guard remains for backward compatibility with
 /// turns finalized before the turn-attempt note protocol.
 ///
 /// When `usage_exists` but the turn never reached a terminal note (a crash
