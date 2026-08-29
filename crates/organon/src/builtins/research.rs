@@ -335,6 +335,8 @@ pub(crate) fn register(registry: &mut ToolRegistry, sandbox: &SandboxConfig) -> 
 #[cfg(test)]
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod tests {
+    use std::sync::Arc;
+
     use koina::id::ToolName;
 
     use crate::testing::install_crypto_provider;
