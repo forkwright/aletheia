@@ -505,6 +505,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
     fn bounded_redacted_payload_returns_redacted_value_within_budget() {
         let raw = serde_json::json!({"sourceNumber": "+15550100", "text": "hi"});
         let bounded = bounded_redacted_payload(&raw, 4096).expect("within budget");
