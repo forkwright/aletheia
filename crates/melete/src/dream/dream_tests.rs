@@ -2,9 +2,10 @@
 
 use std::sync::atomic::AtomicUsize;
 
-use hermeneus::types::{Content, Role};
+use hermeneus::types::Role;
 
 use super::*;
+use crate::test_support::text_msg;
 
 /// Mock transcript source that returns a configurable session count and messages.
 struct MockTranscriptSource {
@@ -184,14 +185,6 @@ fn make_config(lock_path: PathBuf) -> DreamConfig {
         scan_interval_secs: 0, // WHY: disable scan throttle for most tests
         stale_threshold_secs: DEFAULT_STALE_THRESHOLD_SECS,
         distill_config: DistillConfig::default(),
-    }
-}
-
-fn text_msg(role: Role, text: &str) -> Message {
-    Message {
-        role,
-        content: Content::Text(text.to_owned()),
-        cache_breakpoint: false,
     }
 }
 

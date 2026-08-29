@@ -148,14 +148,7 @@ fn truncate_tool_result(content: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn text_msg(role: Role, text: &str) -> Message {
-        Message {
-            role,
-            content: Content::Text(text.to_owned()),
-            cache_breakpoint: false,
-        }
-    }
+    use crate::test_support::text_msg;
 
     #[test]
     fn build_system_prompt_contains_all_standard_sections() {

@@ -5300,6 +5300,7 @@ dependencies = [
  "jiff",
  "koina",
  "libc",
+ "melete",
  "prometheus-client",
  "rustix",
  "serde",

@@ -869,14 +869,6 @@ mod tests {
             (format!("http://{addr}"), handle)
         }
 
-        fn point_app_at(app: &mut App, url: &str) {
-            app.config.url = url.to_string();
-            app.client = match crate::api::client::ApiClient::new(url, None) {
-                Ok(client) => client,
-                Err(e) => panic!("test ApiClient::new failed: {e}"),
-            };
-        }
-
         /// Regression for #4913: before `session_replay` existed on the
         /// client, koilon's export had no path to the replay-faithful audit
         /// export at all -- only the lossy Markdown transcript. This asserts

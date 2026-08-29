@@ -6,9 +6,7 @@ mod provenance;
 mod threshold_prompt;
 
 use hermeneus::test_utils::MockProvider;
-use hermeneus::types::{
-    CompletionResponse, Content, ContentBlock, Message, Role, StopReason, Usage,
-};
+use hermeneus::types::{CompletionResponse, ContentBlock, Message, Role, StopReason, Usage};
 
 use super::{DistillConfig, DistillEngine};
 
@@ -81,13 +79,7 @@ pub(super) fn empty_text_provider() -> MockProvider {
     .named("mock-distill")
 }
 
-pub(super) fn text_msg(role: Role, text: &str) -> Message {
-    Message {
-        role,
-        content: Content::Text(text.to_owned()),
-        cache_breakpoint: false,
-    }
-}
+pub(super) use crate::test_support::text_msg;
 
 pub(super) fn sample_conversation() -> Vec<Message> {
     vec![

@@ -418,7 +418,9 @@ fn extract_texts_from_array(arr: &[serde_json::Value]) -> Option<String> {
 )]
 mod tests {
     use super::*;
-    use crate::app::test_helpers::{test_agent, test_app_with_messages};
+    use crate::app::test_helpers::{
+        drain_one_background, point_app_at, test_agent, test_app_with_messages,
+    };
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
     use tokio::task::JoinHandle;
@@ -457,25 +459,6 @@ mod tests {
             }
         });
         (format!("http://{addr}"), handle)
-    }
-
-    fn point_app_at(app: &mut App, url: &str) {
-        app.config.url = url.to_string();
-        app.client = match crate::api::client::ApiClient::new(url, None) {
-            Ok(client) => client,
-            Err(e) => panic!("test ApiClient::new failed: {e}"),
-        };
-    }
-
-    async fn drain_one_background(app: &mut App) {
-        let Some(result) = app.background_tasks.join_next().await else {
-            panic!("expected one background task");
-        };
-        let msg = match result {
-            Ok(msg) => msg,
-            Err(e) => panic!("background task failed: {e}"),
-        };
-        app.update(msg).await;
     }
 
     #[tokio::test]
