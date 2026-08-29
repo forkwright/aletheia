@@ -108,6 +108,7 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fixed_rule/algos/louvain.rs": "fixed_rule/algos/louvain.rs",
     "fixed_rule/algos/mod.rs": "fixed_rule/algos/mod.rs",
     "fixed_rule/algos/pagerank.rs": "fixed_rule/algos/pagerank.rs",
+    "fixed_rule/algos/pagerank_native.rs": None,
     "fixed_rule/algos/prim.rs": None,
     "fixed_rule/algos/random_walk.rs": None,
     "fixed_rule/algos/shortest_path_bfs.rs": None,
@@ -333,6 +334,7 @@ SOVEREIGN_VERIFY_MAP: dict[str, str] = {
     "fixed_rule/algos/dfs.rs": "fixed_rule/algos/dfs.rs",
     "fixed_rule/algos/kruskal.rs": "fixed_rule/algos/kruskal.rs",
     "fixed_rule/algos/label_propagation.rs": "fixed_rule/algos/label_propagation.rs",
+    "fixed_rule/algos/pagerank_native.rs": "fixed_rule/algos/pagerank.rs",
     "fixed_rule/algos/prim.rs": "fixed_rule/algos/prim.rs",
     "fixed_rule/algos/random_walk.rs": "fixed_rule/algos/random_walk.rs",
     "fixed_rule/algos/shortest_path_bfs.rs": "fixed_rule/algos/shortest_path_bfs.rs",
@@ -408,6 +410,16 @@ DUAL_SOAK_WINDOW: dict[str, int] = {
     # (tests/bmp_equivalence.rs), so there is no soak-observation need beyond
     # CI turning green on the sovereign feature.
     "fts/tokenizer/ascii_folding_filter/fold_table.rs": 2838,
+    # wave5/live-3-algos: land-dark PR lands at approximately commit count 3113.
+    # +30 is RETIREMENT-PLAN.md's own Q3 window for wave 5 -- unlike the 19
+    # zero-call-site algorithms already retired from this same module, PageRank
+    # is one of "the live 3" (episteme/src/graph_intelligence.rs:202,206 calls it
+    # via embedded Datalog), so this soak observes the sovereign shell against a
+    # real consumer rather than idle code. Both shells delegate to the same
+    # already-sovereign numeric core (fixed_rule::csr::page_rank); the reference-
+    # semantics gate RETIREMENT-PLAN.md calls for this wave (convergence +
+    # sum-to-1) lives at fixed_rule/tests/wave5_reference_semantics.rs.
+    "fixed_rule/algos/pagerank.rs": 3143,
 }
 
 _upstream_cache: dict[str, str] = {}
