@@ -24,6 +24,7 @@ Session persistence layer: fjall-backed session/message store with agent portabi
 | `Session` | `types.rs` | Session record (id, nous_id, status, type, metrics, timestamps) |
 | `Message` | `types.rs` | Conversation message (role, content, tool calls, token estimate) |
 | `UsageRecord` | `types.rs` | Per-turn token usage and model info |
+| `TurnRecord` | `types.rs` | Authoritative durable turn record binding messages, usage, tool audit, and lifecycle together |
 | `SessionStatus` | `types.rs` | Enum: Active, Archived, Distilled |
 | `SessionType` | `types.rs` | Enum: Primary, Background, Ephemeral |
 | `Role` | `types.rs` | Enum: User, Assistant, ToolResult, System |

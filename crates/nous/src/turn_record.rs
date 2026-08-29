@@ -9,6 +9,16 @@
 //! WHY: the graphe store does not expose a multi-write transaction, so nous
 //! builds an idempotency/recovery protocol on top of the existing note and
 //! message partitions rather than mutating the lower-level store.
+//!
+//! Distinct from [`mneme::types::TurnRecord`] (aletheia#5267): that type is
+//! the store's own authoritative, queryable row binding one turn's
+//! messages/usage/tool-audit together, written once per finalized turn.
+//! [`TurnAttemptRecord`] is nous's own recovery *log* -- every intermediate
+//! state transition for a turn, several rows per turn, existing because
+//! graphe has no multi-write transaction for this crate to build on. This
+//! module derives one terminal [`mneme::store::FinalizeTurnRecordSpec`] from
+//! its own terminal `TurnAttemptRecord` (see `finalize::turn_record_status_for`)
+//! rather than the two ever being merged into one type.
 
 use koina::ulid::Ulid;
 use serde::{Deserialize, Serialize};

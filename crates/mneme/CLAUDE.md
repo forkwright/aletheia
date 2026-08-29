@@ -37,8 +37,8 @@ Only types with downstream consumers are surfaced. Modules not listed here (admi
 | `eidos` | `id`, `knowledge` | (full modules) | always |
 | `graphe` | `error` | `Error` | always |
 | `graphe` | `portability` | `AgentFile`, export metadata, omitted/truncated section records, workspace binary payloads, session/message/knowledge export DTOs | always |
-| `graphe` | `store` | `SessionStore`, finalize-turn request/result DTOs | always |
-| `graphe` | `types` | `Message`, `Role`, `Session`, `SessionMetrics`, `SessionOrigin`, `SessionStatus`, `SessionType`, `ToolAuditRecord`, `UsageRecord`, validated session/agent ID helpers | always |
+| `graphe` | `store` | `SessionStore`, finalize-turn request/result DTOs, `FinalizeTurnRecordSpec` | always |
+| `graphe` | `types` | `Message`, `Role`, `Session`, `SessionMetrics`, `SessionOrigin`, `SessionStatus`, `SessionType`, `ToolAuditRecord`, `TurnRecord`, `TurnRecordStatus`, `UsageRecord`, validated session/agent ID helpers | always |
 | `episteme` | `consolidation` | `ConsolidationConfig` | always |
 | `episteme` | `embedding` | `EmbeddingProvider`, `DegradedEmbeddingProvider`, `EmbeddingConfig`, `EmbeddingError`, `create_provider`, `is_degraded_provider`, `MockEmbeddingProvider` (test-support) | always |
 | `episteme` | `embedding_eval` | `EvalDataset`, `EvalRunResult`, `compare_models` | always |

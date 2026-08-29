@@ -132,7 +132,8 @@ pub mod portability {
 pub mod store {
     pub use graphe::store::{FinalizeMessage, FinalizeNote, FinalizeToolAuditRecord};
     pub use graphe::store::{
-        FinalizeTurnRequest, FinalizeTurnResult, SchemaManifest, SessionStatusCounts, SessionStore,
+        FinalizeTurnRecordSpec, FinalizeTurnRequest, FinalizeTurnResult, SchemaManifest,
+        SessionStatusCounts, SessionStore,
     };
 
     /// Atomic per-session agent-import entry points (issue #5033). Gated on
@@ -155,7 +156,8 @@ pub mod store {
 pub mod types {
     pub use graphe::types::{
         AgentNote, BlackboardRow, BlackboardVisibility, Message, Role, Session, SessionMetrics,
-        SessionOrigin, SessionStatus, SessionType, ToolAuditRecord, UsageRecord,
+        SessionOrigin, SessionStatus, SessionType, ToolAuditRecord, TurnRecord, TurnRecordStatus,
+        UsageRecord,
     };
     pub use graphe::types::{
         ReservedIdPrefixError, ReservedIdPrefixSnafu, ValidatedId, is_reserved_session_prefix,
