@@ -98,10 +98,12 @@ mod tests {
         assert!(filter.check_and_record(&msg("c", 3)));
         assert_eq!(filter.len(), 2);
         // WHY: "a" was evicted, so a late redelivery is (correctly, under a
-        // bounded window) treated as new rather than pinned forever.
+        // bounded window) treated as new rather than pinned forever. Under a
+        // capacity of 2 this re-insertion itself evicts the oldest surviving
+        // key ("b"), so only "c" — not "b" — is still in the window.
         assert!(filter.check_and_record(&msg("a", 1)));
-        // "b" and "c" are still in the window.
-        assert!(!filter.check_and_record(&msg("b", 2)));
+        assert!(!filter.check_and_record(&msg("c", 3)));
+        assert!(filter.check_and_record(&msg("b", 2)));
     }
 
     #[test]
