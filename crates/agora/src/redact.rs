@@ -74,8 +74,13 @@ mod tests {
 
     #[test]
     fn redacts_matrix_ids() {
-        assert_eq!(identifier("@alice:example.org"), "...org");
-        assert_eq!(identifier("!room:example.org"), "...org");
+        // WHY: `identifier` keeps exactly the last 4 raw characters
+        // (see `keeps_only_last_four_chars`), uniformly across ID shapes.
+        // A Matrix id's domain suffix puts the '.' before "org" inside that
+        // 4-character window, so the redacted form carries four dots, not
+        // three -- this is not special-cased per domain.
+        assert_eq!(identifier("@alice:example.org"), "....org");
+        assert_eq!(identifier("!room:example.org"), "....org");
     }
 
     #[test]
