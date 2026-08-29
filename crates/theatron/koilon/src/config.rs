@@ -275,9 +275,83 @@ impl Config {
         Ok(())
     }
 
+    /// Persist a freshly-entered token via the same secret-storage path
+    /// `Config::load` resolves at startup, update this `Config`'s
+    /// in-memory token/credential-label to match, and return it wrapped
+    /// for immediate use by the running API client.
+    ///
+    /// WHY(#6818): re-authenticating mid-session reuses `secret_store.rs`
+    /// rather than a parallel write path — the same fact (where the token
+    /// lives) written two ways is exactly what `resolve_token`'s
+    /// legacy-plaintext migration already exists to collapse to one.
+    ///
+    /// Persistence failure (keyring unavailable, disk write failure) is
+    /// logged and does not fail the call: the token still takes effect for
+    /// the running session either way, only the next-launch restore is
+    /// affected, and that degrades to the pre-#6818 "re-enter on restart"
+    /// behavior rather than blocking in-session recovery on a storage
+    /// backend the operator does not control.
+    #[tracing::instrument(skip(self, token))]
+    pub(crate) fn store_new_token(&mut self, token: &str) -> SecretString {
+        match dirs::config_dir() {
+            Some(base) => persist_new_token(&base, token),
+            None => tracing::warn!(
+                "could not determine config directory; re-entered token will not persist across restart"
+            ),
+        }
+        self.apply_new_token(token)
+    }
+
+    /// Update this `Config`'s in-memory token and credential-label to
+    /// `token`, independent of whether it was ever persisted to disk.
+    ///
+    /// Split out of [`Self::store_new_token`] so the in-memory update is
+    /// unit-testable without exercising `dirs::config_dir()` against the
+    /// real OS config directory — this crate denies `unsafe_code`, so a
+    /// test cannot scope `XDG_CONFIG_HOME` to a tempdir to make that call
+    /// hermetic the way [`persist_new_token`]'s explicit-`base` tests do.
+    fn apply_new_token(&mut self, token: &str) -> SecretString {
+        self.token = Some(SecretString::from(token));
+        self.credential_label = detect_credential_label(Some(token));
+        SecretString::from(token)
+    }
+
     fn load_file() -> Option<ConfigFile> {
         let base = dirs::config_dir()?;
         load_file_in(&base)
+    }
+}
+
+/// Persist a freshly re-entered token under `base` via secret storage and
+/// rewrite the `token_ref`-only config there — the same on-disk shape
+/// `resolve_token` already produces when migrating a legacy plaintext
+/// token, applied here to one entered through `:reauth` (#6818) instead of
+/// one found in an old config file.
+///
+/// Failure at either step is logged and does not propagate: the token
+/// still takes effect for the running session regardless (the caller sets
+/// it on `self.token` unconditionally), only the next-launch restore is
+/// affected.
+fn persist_new_token(base: &Path, token: &str) {
+    if let Err(err) = secret_store::store_token(base, token) {
+        tracing::warn!(error = %err, "failed to persist re-entered TUI token to secret storage");
+        return;
+    }
+
+    let path = config_path_in(base);
+    // kanon:ignore RUST/no-result-unwrap-or-default — missing config file is normal; empty default is correct
+    let mut file_config = load_file_in(base).unwrap_or_default();
+    file_config.token = None;
+    file_config.token_ref = Some(secret_store::TOKEN_REF.to_owned());
+    match toml::to_string(&file_config) {
+        Ok(toml_str) => {
+            if let Err(err) = write_config(&path, &toml_str) {
+                tracing::warn!(error = %err, "failed to persist token_ref after re-authentication");
+            }
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to serialize TUI config after re-authentication");
+        }
     }
 }
 
@@ -533,6 +607,73 @@ mod tests {
 
         let loaded = load_file_in(base).unwrap();
         assert_eq!(loaded.token.as_deref(), Some("kept-in-storage"));
+    }
+
+    /// #6818: `:reauth` must write the newly entered token through the
+    /// exact same secret-storage path startup resolution uses, and leave
+    /// `tui.toml` carrying only a `token_ref` -- never the plaintext value
+    /// -- so a subsequent restart also picks it up.
+    #[test]
+    fn persist_new_token_stores_via_secret_storage_and_leaves_only_a_ref_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+
+        persist_new_token(base, "fresh-reauth-token");
+
+        assert_eq!(
+            secret_store::load_token(base)
+                .unwrap()
+                .as_ref()
+                .map(SecretString::expose_secret),
+            Some("fresh-reauth-token")
+        );
+
+        let path = config_path_in(base);
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(!on_disk.contains("fresh-reauth-token"));
+        assert!(on_disk.contains(secret_store::TOKEN_REF));
+
+        let loaded = load_file_in(base).unwrap();
+        assert_eq!(loaded.token.as_deref(), Some("fresh-reauth-token"));
+    }
+
+    /// #6818: re-authenticating a second time (the expired-token-again
+    /// case) must replace the stored value, not merely add to it.
+    #[test]
+    fn persist_new_token_overwrites_a_previously_stored_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+
+        persist_new_token(base, "first-token");
+        persist_new_token(base, "second-token");
+
+        assert_eq!(
+            secret_store::load_token(base)
+                .unwrap()
+                .as_ref()
+                .map(SecretString::expose_secret),
+            Some("second-token")
+        );
+    }
+
+    /// #6818: the in-memory half of `store_new_token` must update
+    /// immediately regardless of whether disk persistence succeeds -- the
+    /// running session's client must use the new token even if the
+    /// keyring/fallback write fails.
+    #[test]
+    fn apply_new_token_updates_in_memory_state_synchronously() {
+        ensure_crypto_provider();
+        let mut config = Config::load(None, Some("sk-ant-oat-old".into()), None, None).unwrap();
+        assert_eq!(config.credential_label, CredentialLabel::OAuthToken);
+
+        let returned = config.apply_new_token("sk-ant-api01-new-static-key");
+
+        assert_eq!(returned.expose_secret(), "sk-ant-api01-new-static-key");
+        assert_eq!(
+            config.token.as_ref().map(SecretString::expose_secret),
+            Some("sk-ant-api01-new-static-key")
+        );
+        assert_eq!(config.credential_label, CredentialLabel::StaticApiKey);
     }
 
     #[test]

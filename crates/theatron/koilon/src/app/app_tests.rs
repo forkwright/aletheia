@@ -73,6 +73,38 @@ mod tests {
         format!("http://{addr}")
     }
 
+    /// A minimal test server for `:reauth` (#6818): `reauthenticate` only
+    /// probes `/api/v1/system/health` (it deliberately never calls
+    /// `connect()`'s full `/api/v1/nous` startup sequence), so this serves
+    /// exactly that route on an open-ended accept loop rather than
+    /// `spawn_startup_server`'s fixed two-request/two-route shape.
+    async fn spawn_health_only_server(status: u16, reason: &'static str, body: String) -> String {
+        let listener = TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind reauth test server");
+        let addr = listener
+            .local_addr()
+            .expect("read reauth test server address");
+
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut socket, _)) = listener.accept().await else {
+                    return;
+                };
+                let mut buf = [0_u8; 4096];
+                let _ = socket.read(&mut buf).await;
+                let response = format!(
+                    "HTTP/1.1 {status} {reason}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.shutdown().await;
+            }
+        });
+
+        format!("http://{addr}")
+    }
+
     fn config_for_url(url: String) -> Config {
         Config {
             url,
@@ -290,4 +322,88 @@ mod tests {
             "new App must be dirty so first frame renders"
         );
     }
+
+    #[tokio::test]
+    async fn reauthenticate_rejects_a_blank_token_before_any_network_call() {
+        let mut app = test_app();
+        let err = app
+            .reauthenticate("   ")
+            .await
+            .expect_err("a blank token must be rejected");
+        assert!(
+            matches!(err, crate::error::Error::TokenRequired { .. }),
+            "expected TokenRequired, got {err:?}"
+        );
+        assert!(
+            app.config.token.is_none(),
+            "rejecting a blank token must not touch the existing credential"
+        );
+    }
+
+    #[tokio::test]
+    async fn reauthenticate_surfaces_auth_rejected_and_leaves_config_untouched_on_401() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let url = spawn_health_only_server(
+            401,
+            "Unauthorized",
+            r#"{"error":{"code":"auth_failed","message":"invalid token"}}"#.to_string(),
+        )
+        .await;
+        let mut app = test_app();
+        app.config.url = url;
+
+        let err = app
+            .reauthenticate("still-bad-token")
+            .await
+            .expect_err("a 401 from the verification probe must fail reauthenticate");
+        assert!(
+            matches!(err, crate::error::Error::AuthRejected { .. }),
+            "expected AuthRejected (#6818), got {err:?}"
+        );
+        // WHY(#6818): reauthenticate verifies the candidate BEFORE
+        // committing it — a mistyped/still-wrong token must not replace
+        // whatever credential (however broken) was already in place.
+        assert!(
+            app.config.token.is_none(),
+            "a candidate token that fails verification must not be committed to Config"
+        );
+        assert_eq!(
+            app.client.token(),
+            None,
+            "a candidate token that fails verification must not reach the live client either"
+        );
+    }
+
+    #[tokio::test]
+    async fn reauthenticate_surfaces_gateway_unreachable_distinctly_from_auth_rejected() {
+        let mut app = test_app();
+        // WHY: test_app()'s default URL (localhost:18789) has no listener,
+        // so the probe hits a connection refusal rather than a 401/403 —
+        // the other branch of the same classification this issue exists
+        // to split apart.
+        let err = app
+            .reauthenticate("some-token")
+            .await
+            .expect_err("an unreachable gateway must fail reauthenticate");
+        assert!(
+            matches!(err, crate::error::Error::GatewayUnreachable { .. }),
+            "expected GatewayUnreachable, not AuthRejected, got {err:?}"
+        );
+    }
+
+    // WHY(#6818): the success path of `reauthenticate` is deliberately not
+    // exercised end-to-end here. Past the verification probe it calls
+    // `Config::store_new_token`, which resolves the real OS config
+    // directory (`dirs::config_dir()`, not overridable without mutating
+    // process env — denied by this crate's `unsafe_code = "deny"`) and
+    // writes through `secret_store.rs` — a developer running `cargo test`
+    // locally would have this test silently overwrite their real saved
+    // koilon credential. Each piece of that path is covered hermetically
+    // instead: `config.rs`'s `persist_new_token_*` tests (explicit `base`,
+    // tempdir) and `apply_new_token_updates_in_memory_state_synchronously`
+    // for the Config half, and skene's
+    // `set_token_rebuilds_headers_used_by_subsequent_requests` for the
+    // client-rebuild half. The two failure-path tests above cover
+    // `reauthenticate` itself because both return before `store_new_token`
+    // is ever called.
 }

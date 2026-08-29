@@ -122,11 +122,35 @@ impl ApiClient {
         })
     }
 
-    /// Replace the authentication token.
-    #[expect(dead_code, reason = "API client methods for TUI/desktop integration")]
-    pub(crate) fn set_token(&mut self, token: SecretString) {
+    /// Replace the authentication token and rebuild the underlying HTTP
+    /// clients so subsequent requests actually carry it.
+    ///
+    /// WHY(#6818): the token is baked into each client's default
+    /// `Authorization` header at construction (`request()` above injects no
+    /// per-request header), so mutating only the `token` field left the old
+    /// header in place on every live connection — this method previously
+    /// did exactly that and had zero call sites anywhere, dead code that
+    /// would not have worked had anything called it. Rebuilding both
+    /// clients here is what makes in-session re-authentication (a fresh
+    /// token replacing an expired one, without restarting) actually take
+    /// effect.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::InvalidToken`] if `token` contains characters
+    /// invalid in an HTTP header value.
+    #[must_use]
+    #[expect(
+        clippy::double_must_use,
+        reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
+    )]
+    pub fn set_token(&mut self, token: SecretString) -> Result<()> {
         // kanon:ignore RUST/pub-visibility
+        let raw = token.expose_secret();
+        self.client = build_http_client(Some(raw))?;
+        self.streaming_client = build_streaming_client(Some(raw))?;
         self.token = Some(token);
+        Ok(())
     }
 
     /// The base URL this client connects to.
@@ -975,6 +999,10 @@ impl ApiClient {
     /// Consumes a response, returning it unchanged if 2xx.
     ///
     /// On non-2xx:
+    /// - 401/403 → [`ApiError::Auth`], distinct from the generic
+    ///   [`ApiError::Server`] variant so callers can tell "credentials
+    ///   rejected" apart from every other server-side failure and offer
+    ///   re-authentication instead of generic troubleshooting advice.
     /// - 429 without a canonical pylon envelope → [`ApiError::RateLimited`]
     ///   with `retry_after_secs` parsed from the `Retry-After` header
     ///   (delta-seconds form only).
@@ -989,6 +1017,17 @@ impl ApiClient {
             return Ok(resp);
         }
         let status = resp.status();
+
+        // WHY(#6818): matches keryx's own `response::ensure_success` contract
+        // (401/403 -> ApiError::Auth) rather than the doc-only claim it made
+        // before this fix -- this client reimplements status classification
+        // instead of calling that helper, and had never actually produced
+        // ApiError::Auth, so every credential rejection fell into the generic
+        // Server variant and every consumer's error message read like a
+        // server-side failure with nothing to distinguish it from one.
+        if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+            return Err(ApiError::Auth);
+        }
 
         if status == StatusCode::TOO_MANY_REQUESTS {
             let retry_after_secs = parse_retry_after_secs(resp.headers());
@@ -1340,6 +1379,84 @@ mod tests {
             panic!("expected legacy RateLimited error");
         };
         assert_eq!(retry_after_secs, Some(7));
+    }
+
+    #[tokio::test]
+    async fn rest_401_maps_to_auth_error_not_generic_server() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_error_once(
+            "401 Unauthorized",
+            "",
+            r#"{"error":{"code":"auth_failed","message":"invalid token"}}"#,
+        );
+        let client =
+            ApiClient::new(&base_url, Some("stale-token".to_string())).expect("build test client");
+
+        let Err(err) = client.agents().await else {
+            panic!("agents request should fail on 401");
+        };
+        server.join().expect("test server thread should finish");
+
+        assert!(
+            matches!(err, ApiError::Auth),
+            "expected ApiError::Auth, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rest_403_maps_to_auth_error_not_generic_server() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) =
+            serve_http_error_once("403 Forbidden", "", r#"{"message":"forbidden"}"#);
+        let client =
+            ApiClient::new(&base_url, Some("stale-token".to_string())).expect("build test client");
+
+        let Err(err) = client.agents().await else {
+            panic!("agents request should fail on 403");
+        };
+        server.join().expect("test server thread should finish");
+
+        assert!(
+            matches!(err, ApiError::Auth),
+            "expected ApiError::Auth, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_token_rebuilds_headers_used_by_subsequent_requests() {
+        crate::install_test_crypto_provider();
+        let (base_url, server) = serve_http_capture_once("200 OK", "{}");
+        let mut client =
+            ApiClient::new(&base_url, Some("old-token".to_string())).expect("build test client");
+
+        client
+            .set_token(SecretString::from("fresh-token"))
+            .expect("set_token should accept a valid header value");
+        assert_eq!(client.token(), Some("fresh-token"));
+
+        // WHY(#6818): before this fix, set_token only mutated the `token`
+        // field -- the reqwest clients built at construction kept the old
+        // Authorization header baked into their default headers, so a
+        // caller who replaced an expired token still sent the expired one
+        // on every subsequent request. This asserts the wire request, not
+        // just the field, so a regression to field-only mutation fails
+        // here even though `client.token()` above would still read right.
+        let _ = client.agents().await;
+        let request = server.join().expect("test server thread should finish");
+        // NOTE: header name is asserted lowercase -- `http`'s HeaderName
+        // stores/emits the canonical lowercase form on the wire (hyper
+        // does not title-case HTTP/1.1 headers unless
+        // `http1_title_case_headers()` is set, which this client does
+        // not), so a mock server's raw capture reads
+        // "authorization: ..." rather than "Authorization: ...".
+        assert!(
+            request.contains("authorization: Bearer fresh-token"),
+            "request should carry the token set via set_token, got: {request}"
+        );
+        assert!(
+            !request.contains("Bearer old-token"),
+            "request must not carry the stale token set_token replaced, got: {request}"
+        );
     }
 
     #[tokio::test]

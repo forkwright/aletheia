@@ -23,6 +23,14 @@ pub enum Error {
     ))]
     GatewayUnreachable { url: String },
 
+    /// Gateway rejected the request's credentials (401/403) — split out of
+    /// [`Error::GatewayUnreachable`] (#6818) because the server IS running
+    /// here and the fix is re-authenticating, not checking whether it started.
+    #[snafu(display(
+        "gateway at {url} rejected the token\n  Token invalid or expired. Re-authenticate with :reauth <token>, or restart with --logout to clear it and sign in again."
+    ))]
+    AuthRejected { url: String },
+
     /// Could not determine the OS config directory (e.g. $HOME unset).
     #[snafu(display("could not determine config directory"))]
     ConfigDir,
