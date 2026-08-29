@@ -7,7 +7,8 @@ use std::time::Duration;
 
 use snafu::prelude::*;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tokio_util::task::TaskTracker;
+use tracing::{Instrument, info, warn};
 
 use agora::listener::ChannelListener;
 use agora::matrix::MatrixProvider;
@@ -1326,15 +1327,36 @@ pub(super) fn build_matrix_provider(
     Some(Arc::new(provider))
 }
 
+/// The channel providers a runtime may listen on, each present only when its
+/// transport is configured.
+///
+/// WHY grouped: they are one question -- which transports to subscribe to --
+/// and passing them separately took `start_inbound_dispatch` to eight
+/// arguments against this crate's default `too_many_arguments` threshold of
+/// seven. Grouping the pair that actually belongs together is the honest fix;
+/// a catch-all `Deps` struct would only be hiding the count.
+///
+/// WHY `Copy`: both fields are `Option<&Arc<_>>`, which is `Copy` already, and
+/// `needless_pass_by_value` fires on a by-value non-`Copy` parameter the body
+/// only reads. Taking it by reference instead would add an indirection to two
+/// borrows for nothing.
+#[derive(Clone, Copy)]
+pub(super) struct ChannelProviders<'a> {
+    pub(super) signal: Option<&'a Arc<SignalProvider>>,
+    pub(super) matrix: Option<&'a Arc<MatrixProvider>>,
+}
+
 pub(super) fn start_inbound_dispatch(
     config: &AletheiaConfig,
     nous_manager: &Arc<NousManager>,
     session_store: Arc<Mutex<SessionStore>>,
     ready_rx: tokio::sync::watch::Receiver<bool>,
-    signal_provider: Option<&Arc<SignalProvider>>,
-    matrix_provider: Option<&Arc<MatrixProvider>>,
+    providers: ChannelProviders<'_>,
     shutdown_token: &CancellationToken,
+    task_tracker: &TaskTracker,
 ) -> Result<(Arc<ChannelRegistry>, Option<tokio::task::JoinHandle<()>>)> {
+    let signal_provider = providers.signal;
+    let matrix_provider = providers.matrix;
     let mut channel_registry =
         ChannelRegistry::new().with_outbound_policy(config.messaging.outbound.clone());
     let mut listen_providers: Vec<&dyn ChannelProvider> = Vec::new();
@@ -1376,7 +1398,27 @@ pub(super) fn start_inbound_dispatch(
             config.messaging.max_concurrent_handlers,
         );
         info!("channel listeners started");
-        let (rx, _poll_handles) = listener.into_receiver();
+        let (rx, poll_handles) = listener.into_receiver();
+
+        // WHY(#5204): `into_receiver` transfers the provider polling-task
+        // handles out of `ChannelListener` as an `ActiveSubscriptionGuard`;
+        // its own drop path can then no longer clear the
+        // active-subscriptions gauge. Previously the handles were bound to
+        // `_poll_handles` and dropped when this function returned --
+        // clearing nothing (the old return type had no metrics-bearing
+        // `Drop`) while also aborting the provider tasks moments after they
+        // started, since `JoinSet::drop` aborts everything it still owns.
+        // Holding the guard on `task_tracker` until shutdown keeps both the
+        // tasks and the gauge alive for as long as the tasks actually run,
+        // then drains and clears the gauge once they stop.
+        let listener_shutdown = shutdown_token.clone();
+        task_tracker.spawn(
+            async move {
+                listener_shutdown.cancelled().await;
+                poll_handles.shutdown().await;
+            }
+            .instrument(tracing::info_span!("channel_listener_handles")),
+        );
 
         let default_nous_id = resolve_default_nous_id(&config.agents.list);
         let router = Arc::new(MessageRouter::new(config.bindings.clone(), default_nous_id));
