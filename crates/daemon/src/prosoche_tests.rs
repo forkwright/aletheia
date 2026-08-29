@@ -252,17 +252,25 @@ async fn disk_usage_percent_times_out_on_hanging_df() {
     let pid = wait_for_pid_file(&pid_file).await;
 
     // WHY: advance past the 10 s df timeout so the test does not wait in real time.
-    let start = Instant::now();
     tokio::time::advance(Duration::from_secs(11)).await;
     let result = handle.await.expect("join task");
-    let elapsed = start.elapsed();
     let err = result.expect_err("hanging df should time out");
 
+    // WHY(#7100) there is no wall-clock assertion here: the paused clock is what
+    // proves the timeout fired without waiting, and `handle.await` returning at
+    // all is the proof. If the timeout had NOT fired, the fake `df` would still
+    // be in `sleep 120` and this await would block for two minutes rather than
+    // return a late `elapsed` -- so a real-time bound adds nothing the join
+    // already establishes.
+    //
+    // It previously asserted `elapsed < 1s` against `std::time::Instant`, which
+    // `tokio::time::pause()` does not affect. That bounded a real subprocess
+    // spawn, a pid-file poll and a process kill to one second on a shared
+    // runner, and reddened PRs whose diffs could not reach this crate. It is the
+    // same mistake `SUBPROCESS_WAIT` below was widened to 10 s to fix
+    // (WHY(#6908)); that fix covered one of the two real-time bounds in this
+    // function and left this one.
     assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
-    assert!(
-        elapsed < Duration::from_secs(1),
-        "timeout should fire quickly under paused time, took {elapsed:?}"
-    );
 
     #[cfg(target_os = "linux")]
     assert!(
