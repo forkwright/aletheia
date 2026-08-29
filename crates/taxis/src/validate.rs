@@ -240,9 +240,32 @@ pub fn validate_section(section: &str, value: &Value) -> Result<(), ValidationEr
         // arm unlisted is NOT harmless -- it falls to the catch-all below and
         // fails `check-config` with "unknown config section", which means a
         // fresh `aletheia init` writes a config its own checker rejects.
-        "packs" | "pricing" | "sandbox" | "logging" | "observability" | "mcp" | "localProvider"
-        | "anthropic" | "promptAudit" | "dispatch" | "workspace" | "recallSources"
-        | "serverTools" => {}
+        //
+        // WHY requiredPacks/packRequiredFailureMode are here rather than
+        // getting a validator (#5208 follow-up): `requiredPacks` is a plain
+        // `Vec<PathBuf>` and `packRequiredFailureMode` is a `#[non_exhaustive]`
+        // enum -- deserialization already rejects every shape a validator
+        // could catch, same reasoning as `packs` above. Their absence from
+        // this list meant every config -- including a fresh `aletheia init`,
+        // since both fields serialize even at their zero/default value --
+        // fell through to the catch-all below, because `validate_each_section`
+        // derives its section list from serialization rather than a
+        // hand-kept one and had never heard of either field.
+        "packs"
+        | "pricing"
+        | "sandbox"
+        | "logging"
+        | "observability"
+        | "mcp"
+        | "localProvider"
+        | "anthropic"
+        | "promptAudit"
+        | "dispatch"
+        | "workspace"
+        | "recallSources"
+        | "serverTools"
+        | "requiredPacks"
+        | "packRequiredFailureMode" => {}
         _ => errors.push(format!("unknown config section: {section}")),
     }
 

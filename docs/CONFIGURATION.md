@@ -40,6 +40,8 @@ Runtime configuration uses the three-layer TOML cascade above. Agent bootstrap f
 - [feature_flags](#feature_flags)
 - [embedding](#embedding)
 - [packs](#packs)
+- [requiredPacks](#requiredpacks)
+- [packRequiredFailureMode](#packrequiredfailuremode)
 - [packOverlays](#packoverlays)
 - [maintenance](#maintenance)
 - [pricing](#pricing)
@@ -632,6 +634,24 @@ External domain pack paths (directories containing pack.toml).
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `packs` | path[] | [] | External domain pack paths (directories containing pack.toml). |
+
+## requiredPacks
+
+*(array of tables)*
+
+Subset of `packs` that every deployment must have active (#5208). A path listed here that is not also in `packs` has no pack to require and is ignored. A required pack that fails to load, or fails a `Priority::Required` context entry, follows `pack_required_failure_mode`; an optional pack failing the same way only degrades that pack's own health record.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `requiredPacks` | path[] | [] | Subset of `packs` that every deployment must have active (#5208). A path listed here that is not also in `packs` has no pack to require and is ignored. A required pack that fails to load, or fails a `Priority::Required` context entry, follows `pack_required_failure_mode`; an optional pack failing the same way only degrades that pack's own health record. |
+
+## packRequiredFailureMode
+
+Startup policy when a `required_packs` entry cannot activate (#5208).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `packRequiredFailureMode` | "fail_startup" \| "degraded" | "fail_startup" | Startup policy when a `required_packs` entry cannot activate (#5208). |
 
 ## packOverlays
 
@@ -1879,6 +1899,25 @@ packs = [
     "/srv/aletheia/packs/engineering",
     "/srv/aletheia/packs/research",
 ]
+```
+
+### requiredPacks / packRequiredFailureMode
+
+`requiredPacks` names the subset of `packs` a deployment cannot run
+without. A required pack that fails to load, or loses required content
+after loading, follows `packRequiredFailureMode` (default
+`"fail_startup"`, shared with [`tools.requiredFailureMode`](#tools)):
+abort startup, or continue in an explicit degraded state under
+`"degraded"`. A pack not listed here never blocks startup on its own
+status — see [pack health](PACKS.md#pack-health).
+
+```toml
+packs = [
+    "/srv/aletheia/packs/engineering",
+    "/srv/aletheia/packs/research",
+]
+requiredPacks = ["/srv/aletheia/packs/engineering"]
+packRequiredFailureMode = "fail_startup"
 ```
 
 ### packOverlays

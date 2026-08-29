@@ -17,6 +17,7 @@ use symbolon::types::Role;
 use hermeneus::health::{DownReason, ProviderHealth};
 use hermeneus::provider::ProviderRegistry;
 use organon::registry::ToolRegistry;
+use thesauros::health::PackStatus;
 
 use crate::error::ApiError;
 use crate::extract::{Claims, require_role};
@@ -1571,6 +1572,7 @@ async fn collect_subsystem_status(state: &HealthState, generated_at: &str) -> Ve
         ),
         subsystem_turn_event_persistence(state, generated_at).await,
         subsystem_memory_graph(state, generated_at),
+        subsystem_domain_packs(state, generated_at),
         subsystem_daemon_runtime(&state.daemon_task_states, &checks.prosoche, generated_at),
         subsystem_tool_execution_history(state, generated_at).await,
         subsystem_training_qa_persistence(generated_at),
@@ -1680,6 +1682,65 @@ fn subsystem_memory_graph(state: &HealthState, generated_at: &str) -> SubsystemS
             details: None,
             suggested_action: None,
         }
+    }
+}
+
+/// Domain pack health subsystem (#5208): surfaces the loader's structured
+/// per-pack [`thesauros::health::PackReport`] through the operator-grade
+/// status endpoint, so a pack that failed to load, lost required context,
+/// or dropped a tool registration is visible here instead of only in a
+/// startup log line nobody is tailing.
+///
+/// The report is a load-time snapshot taken once at server startup
+/// (`NousManager::with_pack_report`); it does not re-probe pack state on
+/// every call, matching how the packs themselves are loaded once and held
+/// for the life of the process.
+fn subsystem_domain_packs(state: &HealthState, generated_at: &str) -> SubsystemStatus {
+    let report = state.nous_manager.pack_report();
+    let counts = report.status_counts();
+
+    let status = if report.has_failures() {
+        "failed"
+    } else if counts.degraded > 0 {
+        "degraded"
+    } else {
+        "healthy"
+    };
+
+    let named = |predicate: fn(PackStatus) -> bool| -> String {
+        report
+            .packs
+            .iter()
+            .filter(|p| predicate(p.status))
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+
+    SubsystemStatus {
+        id: "domain_packs".to_owned(),
+        name: "Domain Packs".to_owned(),
+        status: status.to_owned(),
+        owner: "crates/thesauros::health".to_owned(),
+        last_checked: generated_at.to_owned(),
+        last_success: None,
+        last_failure: None,
+        degraded_reason: (status == "degraded")
+            .then(|| format!("degraded packs: {}", named(|s| s == PackStatus::Degraded))),
+        failure_reason: (status == "failed")
+            .then(|| format!("failed packs: {}", named(|s| s == PackStatus::Failed))),
+        details: Some(serde_json::json!({
+            "active": counts.active,
+            "degraded": counts.degraded,
+            "failed": counts.failed,
+            "packs": report.packs,
+            "notes": report.notes,
+        })),
+        suggested_action: (status != "healthy").then_some(
+            "Check startup logs for `domain pack loaded` / `failed to load domain pack`; \
+             each pack's `issues` array in `details` names the failing component and reason."
+                .to_owned(),
+        ),
     }
 }
 

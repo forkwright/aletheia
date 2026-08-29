@@ -41,7 +41,7 @@ pub use resolved::{
 };
 pub use tools::{
     ExternalToolAuth, ExternalToolEntry, ExternalToolGroupId, ExternalToolKind, ExternalToolMethod,
-    ExternalToolRequiredFailureMode, ExternalToolReversibility, ExternalToolsConfig,
+    ExternalToolReversibility, ExternalToolsConfig,
 };
 
 use std::collections::HashMap;
@@ -133,6 +133,24 @@ impl Default for PackOverlaysConfig {
     }
 }
 
+/// Startup policy for an unavailable required declaration.
+///
+/// Shared by `[tools.requiredFailureMode]` and `[packRequiredFailureMode]`
+/// (#5208) rather than duplicated per section: "a required thing is
+/// missing" has exactly one deployment-facing question attached to it —
+/// abort, or continue explicitly degraded — regardless of which subsystem
+/// is asking.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum RequiredFailureMode {
+    /// Abort startup when a required declaration cannot be satisfied.
+    #[default]
+    FailStartup,
+    /// Continue startup in an explicit degraded state.
+    Degraded,
+}
+
 /// Root configuration for an Aletheia instance.
 // kanon:ignore RUST/no-debug-derive-on-public-types
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -166,6 +184,16 @@ pub struct AletheiaConfig {
     pub embedding: EmbeddingSettings,
     /// External domain pack paths (directories containing pack.toml).
     pub packs: Vec<PathBuf>,
+    /// Subset of `packs` that every deployment must have active (#5208).
+    ///
+    /// A path listed here that is not also in `packs` has no pack to
+    /// require and is ignored. A required pack that fails to load, or
+    /// fails a `Priority::Required` context entry, follows
+    /// `pack_required_failure_mode`; an optional pack failing the same way
+    /// only degrades that pack's own health record.
+    pub required_packs: Vec<PathBuf>,
+    /// Startup policy when a `required_packs` entry cannot activate (#5208).
+    pub pack_required_failure_mode: RequiredFailureMode,
     /// Operator opt-in for high-impact pack overlay powers (model, agency,
     /// durable system-prompt additions).
     ///
