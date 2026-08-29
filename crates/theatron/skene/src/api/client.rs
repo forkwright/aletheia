@@ -1443,8 +1443,14 @@ mod tests {
         // here even though `client.token()` above would still read right.
         let _ = client.agents().await;
         let request = server.join().expect("test server thread should finish");
+        // NOTE: header name is asserted lowercase -- `http`'s HeaderName
+        // stores/emits the canonical lowercase form on the wire (hyper
+        // does not title-case HTTP/1.1 headers unless
+        // `http1_title_case_headers()` is set, which this client does
+        // not), so a mock server's raw capture reads
+        // "authorization: ..." rather than "Authorization: ...".
         assert!(
-            request.contains("Authorization: Bearer fresh-token"),
+            request.contains("authorization: Bearer fresh-token"),
             "request should carry the token set via set_token, got: {request}"
         );
         assert!(
