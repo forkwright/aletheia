@@ -1,5 +1,50 @@
 # Changelog
 
+## [0.44.0](https://github.com/forkwright/aletheia/compare/v0.43.0...v0.44.0) (2026-08-29)
+
+
+### Features
+
+* **diaporeia:** bind a fixed identity for stdio MCP sessions ([#7086](https://github.com/forkwright/aletheia/issues/7086)) ([501760c](https://github.com/forkwright/aletheia/commit/501760c8a58a98c7f020adf91d9ca712b8271bc8))
+* **episteme:** make extraction persistence atomic and report skipped rows ([#7098](https://github.com/forkwright/aletheia/issues/7098)) ([be6df81](https://github.com/forkwright/aletheia/commit/be6df81371e4616205ef609b6c9a943a28f9d9a0))
+* **episteme:** type query schema fields and identify observations ([#7037](https://github.com/forkwright/aletheia/issues/7037)) ([67c11b8](https://github.com/forkwright/aletheia/commit/67c11b87f3f86d43d883ed991cf15496b11ba4a0))
+* **graphe:** add a first-class durable TurnRecord partition ([#7084](https://github.com/forkwright/aletheia/issues/7084)) ([0759983](https://github.com/forkwright/aletheia/commit/0759983318825876fb94086597b8efb5f42dbd15))
+* **koilon:** in-session token re-authentication ([#7089](https://github.com/forkwright/aletheia/issues/7089)) ([2a2250f](https://github.com/forkwright/aletheia/commit/2a2250f140c7cef70881e1cc4fc8a8aec913cddc))
+* **krites:** land the sovereign PageRank shell dark, dual-status ([#7085](https://github.com/forkwright/aletheia/issues/7085)) ([8a735b5](https://github.com/forkwright/aletheia/commit/8a735b5a5c4b41850d7f0321234c23309724ced3))
+* **nous,organon:** journal in-flight tool calls and make disconnect policy explicit ([#7091](https://github.com/forkwright/aletheia/issues/7091)) ([97f63ed](https://github.com/forkwright/aletheia/commit/97f63edc61ba5b47c289e515a328e11f4a3a6867))
+* **nous:** carry turn identity through the nous path ([#7071](https://github.com/forkwright/aletheia/issues/7071)) ([346fa14](https://github.com/forkwright/aletheia/commit/346fa14caa3ee30820e066e34bedb714010a9b89))
+* **organon:** derive report-tool capability metadata from one policy ([#7070](https://github.com/forkwright/aletheia/issues/7070)) ([882896c](https://github.com/forkwright/aletheia/commit/882896c5c00cc23e61d1632958f4e43a3bf1d4e0))
+* **proskenion:** extend ARIA markup to the six uncovered view domains ([#7094](https://github.com/forkwright/aletheia/issues/7094)) ([603a60f](https://github.com/forkwright/aletheia/commit/603a60fd93db9a7aaff1d6498853877e85f281cf)), closes [#6820](https://github.com/forkwright/aletheia/issues/6820)
+* **thesauros,pylon,taxis:** fail startup on required packs/tools, expose pack health ([#7090](https://github.com/forkwright/aletheia/issues/7090)) ([0251f38](https://github.com/forkwright/aletheia/commit/0251f389fe8ea3fb98b374d7ad890fa700513c27))
+
+
+### Bug Fixes
+
+* **agora:** centralize channel-identity redaction, make raw payload capture opt-in ([#7093](https://github.com/forkwright/aletheia/issues/7093)) ([81b62d0](https://github.com/forkwright/aletheia/commit/81b62d0ca081d94f1872d3813cce0275b55cbeb8))
+* **ci:** make release smoke checks shell-safe ([#7009](https://github.com/forkwright/aletheia/issues/7009)) ([149cf90](https://github.com/forkwright/aletheia/commit/149cf9024ffe9c13ed52210b99a11a1608353d97))
+* **config:** wire or remove the dead config surface ([#7048](https://github.com/forkwright/aletheia/issues/7048)) ([65ee1ec](https://github.com/forkwright/aletheia/commit/65ee1ece4bc6e57c1d69f39d0cfb3c41bea76fac))
+* **daemon:** drop the real-time bound from the hanging-df timeout test ([#7106](https://github.com/forkwright/aletheia/issues/7106)) ([3789cf3](https://github.com/forkwright/aletheia/commit/3789cf3302d72faaec9884c934d82831f2e651c5))
+* **deps:** move off the yanked chacha20 0.10.1 ([#7043](https://github.com/forkwright/aletheia/issues/7043)) ([8279e21](https://github.com/forkwright/aletheia/commit/8279e216694b053da6e5d8d45873a935f00be729))
+* **eidos:** unify the three RecallWeights definitions ([#7056](https://github.com/forkwright/aletheia/issues/7056)) ([778755a](https://github.com/forkwright/aletheia/commit/778755abc04f3c972cb36c1bd44b16ad14abc9c0))
+* **episteme:** consolidate the golden-set harness's ported fjall snapshot copy ([#7061](https://github.com/forkwright/aletheia/issues/7061)) ([ffbf1bf](https://github.com/forkwright/aletheia/commit/ffbf1bfc78a5540b2859e7604f63bee8670e9989))
+* **episteme:** cover all relations in typed query schema ([#7010](https://github.com/forkwright/aletheia/issues/7010)) ([ffeed93](https://github.com/forkwright/aletheia/commit/ffeed933597d166db25d511ef1b6ea0573158553))
+* **gitleaks:** allowlist the NANP reserved 555 range instead of enumerating files ([#7044](https://github.com/forkwright/aletheia/issues/7044)) ([8b9fd25](https://github.com/forkwright/aletheia/commit/8b9fd25a44de4afeba537b2452f5eed333d84166))
+* **hermeneus:** consolidate duplicated anthropic/openai transport helpers ([#7051](https://github.com/forkwright/aletheia/issues/7051)) ([8af7040](https://github.com/forkwright/aletheia/commit/8af7040d6d44c62d8cd1d8555ae5ba04f4de7738))
+* **koina:** consolidate micro-utility forks across formatting, codecs, and predicates ([#7068](https://github.com/forkwright/aletheia/issues/7068)) ([0ef3f29](https://github.com/forkwright/aletheia/commit/0ef3f297d8442a838075daa1b676b5a98271f323))
+* **koina:** make build-time model-seed validation share the runtime schema ([#7057](https://github.com/forkwright/aletheia/issues/7057)) ([ed3841f](https://github.com/forkwright/aletheia/commit/ed3841fd9b8adf00f5ff1c290c2875e1189f3de3))
+* **koina:** unify the forked redaction and sanitization policies ([#7066](https://github.com/forkwright/aletheia/issues/7066)) ([00cb336](https://github.com/forkwright/aletheia/commit/00cb336a05ff6fe708aaad474d26fd77a9daca11))
+* **koina:** validate newtype_id! new() and resolve the NousId/SessionId collisions ([#7087](https://github.com/forkwright/aletheia/issues/7087)) ([91633ef](https://github.com/forkwright/aletheia/commit/91633efc9a147109a5fe2d25a0ef48d9082ce8de))
+* **krites:** make recall discriminator evidence typed ([#7005](https://github.com/forkwright/aletheia/issues/7005)) ([e85c53f](https://github.com/forkwright/aletheia/commit/e85c53f4f413290bdb1f40fc0b239a79117314ce))
+* **organon:** pin SSRF-checked DNS answers to the connected address ([#7092](https://github.com/forkwright/aletheia/issues/7092)) ([687efd7](https://github.com/forkwright/aletheia/commit/687efd72e925fd51d164d98d18e456e95333ecaf))
+* **organon:** unify SKILL.md rendering through eidos::skill_md ([#7058](https://github.com/forkwright/aletheia/issues/7058)) ([69d096f](https://github.com/forkwright/aletheia/commit/69d096fea70ee7d8dde02657a4dc0ee4dfd366c1))
+* **poiesis:** stop diff re-implementing the slide-gap bug inspect already fixed ([#7049](https://github.com/forkwright/aletheia/issues/7049)) ([518995c](https://github.com/forkwright/aletheia/commit/518995c94a4df9610e91f63e20337486e654b8c9))
+* **proskenion:** remove UI components with no consumer ([#7050](https://github.com/forkwright/aletheia/issues/7050)) ([fcec239](https://github.com/forkwright/aletheia/commit/fcec23966f49b8ab3c212027c2ca940350a5f52f))
+* **pylon:** make error and extraction paths report honestly ([#7038](https://github.com/forkwright/aletheia/issues/7038)) ([8be8858](https://github.com/forkwright/aletheia/commit/8be8858d8306f0233be339370b1475ef42a0596b))
+* **security:** enforce live and durable tool privacy boundaries ([#7006](https://github.com/forkwright/aletheia/issues/7006)) ([99e0c24](https://github.com/forkwright/aletheia/commit/99e0c248d53ac18333c8716108f83394ecce2ba4))
+* **taxis:** reject multiple default agents and disabled defaults ([#7041](https://github.com/forkwright/aletheia/issues/7041)) ([c83f79f](https://github.com/forkwright/aletheia/commit/c83f79fcc51ccd59a5199b2ee6f0aa2934b6c2bc))
+* **theatron:** consolidate duplicated presentation helpers ([#7060](https://github.com/forkwright/aletheia/issues/7060)) ([d517000](https://github.com/forkwright/aletheia/commit/d5170005a4233e8aa986a6d61542d2561797fd09))
+* **thesauros:** harden domain-pack authority boundaries ([#7001](https://github.com/forkwright/aletheia/issues/7001)) ([d2ac0b0](https://github.com/forkwright/aletheia/commit/d2ac0b0ac0081482f91bdd48e7542444477bcd3e))
+
 ## [0.43.0](https://github.com/forkwright/aletheia/compare/v0.42.3...v0.43.0) (2026-08-26)
 
 
