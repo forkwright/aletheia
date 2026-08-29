@@ -34,7 +34,7 @@ pub use provider::ExtractionProvider;
 pub use types::{
     BookkeepingProviderKind, ConversationMessage, ExtractedEntity, ExtractedFact,
     ExtractedRelationship, ExtractedToolCall, Extraction, ExtractionConfig, ExtractionPrompt,
-    PersistResult, RefinedExtraction,
+    PersistItemKind, PersistResult, RefinedExtraction, SkippedItem,
 };
 
 #[cfg(test)]

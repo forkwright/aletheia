@@ -163,6 +163,46 @@ impl RefinedExtraction {
     }
 }
 
+/// Which kind of extracted item a [`SkippedItem`] describes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PersistItemKind {
+    /// An extracted entity.
+    Entity,
+    /// An extracted relationship.
+    Relationship,
+    /// An extracted fact.
+    Fact,
+}
+
+/// One extracted item that never reached the knowledge store, and why
+/// (aletheia#5306) — over the per-kind `max_entities`/`max_relationships`/
+/// `max_facts` limit, structurally invalid, or rejected by the admission
+/// policy. Truncation used to be a bare `tracing::warn!` with no trace in
+/// the return value, so a caller reporting extraction success had no way to
+/// know knowledge was dropped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkippedItem {
+    /// Which kind of item this describes.
+    pub kind: PersistItemKind,
+    /// Human-readable identifier for the item (entity name, relation triple,
+    /// or fact triple) — for diagnostics, not for re-lookup.
+    pub label: String,
+    /// Why the item was not persisted.
+    pub reason: String,
+}
+
+impl SkippedItem {
+    /// Construct a skipped-item record.
+    #[must_use]
+    pub fn new(kind: PersistItemKind, label: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            kind,
+            label: label.into(),
+            reason: reason.into(),
+        }
+    }
+}
+
 /// Counts of knowledge items persisted to the store.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PersistResult {
@@ -180,6 +220,13 @@ pub struct PersistResult {
     pub fact_entities_inserted: usize,
     /// Number of fact-entity link attempts that failed and were dropped.
     pub fact_entity_link_failures: usize,
+    /// Extracted items dropped before or during persistence — over-limit,
+    /// structurally invalid, or admission-rejected — each with its reason.
+    /// Per-kind truncated/rejected/failed counts are derived from this list
+    /// (see [`PersistResult::skipped_count`]) rather than tracked as
+    /// separate fields, so there is exactly one place a caller reads to
+    /// learn what extraction lost.
+    pub skipped: Vec<SkippedItem>,
 }
 
 impl PersistResult {
@@ -191,5 +238,21 @@ impl PersistResult {
             && self.relationships_skipped == 0
             && self.facts_inserted == 0
             && self.causal_edges_inserted == 0
+    }
+
+    /// Count of [`skipped`](Self::skipped) items of `kind` — the truncated,
+    /// rejected, or failed row count for that kind, for callers surfacing
+    /// loss in metrics or UI diagnostics without re-deriving the filter.
+    #[must_use]
+    pub fn skipped_count(&self, kind: PersistItemKind) -> usize {
+        self.skipped.iter().filter(|item| item.kind == kind).count()
+    }
+
+    /// Whether extraction dropped any knowledge on the way to the store —
+    /// over a limit, structurally invalid, admission-rejected, or a failed
+    /// fact-entity link.
+    #[must_use]
+    pub fn has_loss(&self) -> bool {
+        !self.skipped.is_empty() || self.fact_entity_link_failures > 0
     }
 }

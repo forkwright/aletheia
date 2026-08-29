@@ -620,6 +620,81 @@ fn persist_skips_is_type() {
     );
 }
 
+#[cfg(feature = "mneme-engine")]
+#[test]
+fn persist_counts_over_limit_relationship_as_skipped() {
+    // WHY (aletheia#5306): the issue names the over-limit case explicitly —
+    // `relationships_skipped` must count it, not just the banned/malformed
+    // type rejections the pre-existing counter covered.
+    let store = crate::knowledge_store::KnowledgeStore::open_mem()
+        .expect("in-memory knowledge store should open successfully");
+    let config = ExtractionConfig {
+        max_relationships: 1,
+        ..ExtractionConfig::default()
+    };
+    let engine = ExtractionEngine::new(config);
+
+    let extraction = Extraction {
+        entities: vec![
+            ExtractedEntity {
+                name: "Nyx".to_owned(),
+                entity_type: "person".to_owned(),
+                description: String::new(),
+            },
+            ExtractedEntity {
+                name: "Sol".to_owned(),
+                entity_type: "person".to_owned(),
+                description: String::new(),
+            },
+            ExtractedEntity {
+                name: "Helios".to_owned(),
+                entity_type: "person".to_owned(),
+                description: String::new(),
+            },
+        ],
+        relationships: vec![
+            ExtractedRelationship {
+                source: "Nyx".to_owned(),
+                relation: "works on".to_owned(),
+                target: "Sol".to_owned(),
+                confidence: 0.9,
+            },
+            ExtractedRelationship {
+                source: "Sol".to_owned(),
+                relation: "works on".to_owned(),
+                target: "Helios".to_owned(),
+                confidence: 0.9,
+            },
+        ],
+        facts: vec![],
+    };
+
+    let result = engine
+        .persist(&extraction, &store, "session:test", "syn")
+        .expect("persist should succeed even when the relationship limit truncates the batch");
+    assert_eq!(
+        result.relationships_inserted, 1,
+        "only the relationship within max_relationships should be inserted"
+    );
+    assert_eq!(
+        result.relationships_skipped, 1,
+        "the over-limit relationship must be counted as skipped, not silently dropped"
+    );
+    assert_eq!(
+        result.skipped_count(PersistItemKind::Relationship),
+        1,
+        "relationships_skipped must agree with the skipped list it is derived from"
+    );
+    assert!(
+        result
+            .skipped
+            .iter()
+            .any(|item| item.kind == PersistItemKind::Relationship
+                && item.reason.contains("limit")),
+        "the skipped list should record the over-limit relationship with a limit reason"
+    );
+}
+
 #[expect(clippy::expect_used, reason = "test assertions")]
 mod proptests {
     use proptest::prelude::*;
