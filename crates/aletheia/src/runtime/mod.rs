@@ -1209,6 +1209,7 @@ impl RuntimeBuilder {
             signal_provider.as_ref(),
             matrix_provider.as_ref(),
             &shutdown_token,
+            &task_tracker,
         )?;
 
         if self.daemons {
