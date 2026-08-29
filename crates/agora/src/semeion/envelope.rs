@@ -72,8 +72,15 @@ pub struct Attachment {
 ///
 /// Returns `None` for sync messages, receipt messages, typing indicators,
 /// data messages with no text, and messages with no identifiable sender.
+///
+/// `raw_payload` governs whether the deserialized envelope is attached to
+/// `InboundMessage::raw` at all (opt-in, bounded, redacted -- #5198); see
+/// `taxis::config::RawPayloadPolicy`.
 #[must_use]
-pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessage> {
+pub(crate) fn extract_message(
+    envelope: &SignalEnvelope,
+    raw_payload: &taxis::config::RawPayloadPolicy,
+) -> Option<InboundMessage> {
     let data = envelope.data_message.as_ref()?;
 
     let text = data.message.as_deref()?;
@@ -98,8 +105,6 @@ pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessag
         })
         .unwrap_or_default(); // kanon:ignore RUST/no-result-unwrap-or-default WHY: Option::unwrap_or_default on Option<Vec<_>> chain; no Result involved
 
-    let raw_value = serde_json::to_value(envelope).ok(); // WHY: optional diagnostic data; serialization failure is non-fatal
-
     Some(InboundMessage {
         channel: "signal".to_owned(),
         sender: sender.to_owned(),
@@ -111,18 +116,23 @@ pub(crate) fn extract_message(envelope: &SignalEnvelope) -> Option<InboundMessag
             0
         }),
         attachments,
-        raw: raw_value,
+        raw: crate::types::capture_raw_payload(raw_payload, envelope),
     })
 }
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::indexing_slicing,
     reason = "test: JSON key indexing on known-present keys"
 )]
 mod tests {
     use super::*;
+
+    fn default_policy() -> taxis::config::RawPayloadPolicy {
+        taxis::config::RawPayloadPolicy::default()
+    }
 
     fn dm_envelope() -> serde_json::Value {
         serde_json::json!({
@@ -156,7 +166,7 @@ mod tests {
     #[test]
     fn extract_dm_with_text() {
         let env: SignalEnvelope = serde_json::from_value(dm_envelope()).unwrap();
-        let msg = extract_message(&env).unwrap();
+        let msg = extract_message(&env, &default_policy()).unwrap();
 
         assert_eq!(msg.channel, "signal");
         assert_eq!(msg.sender, "+1234567890");
@@ -165,13 +175,43 @@ mod tests {
         assert!(msg.group_id.is_none());
         assert_eq!(msg.timestamp, 1_709_312_345_678);
         assert!(msg.attachments.is_empty());
-        assert!(msg.raw.is_some());
+        assert!(
+            msg.raw.is_none(),
+            "raw payload capture is opt-in and off by default"
+        );
+    }
+
+    #[test]
+    fn extract_dm_captures_redacted_raw_when_enabled() {
+        let env: SignalEnvelope = serde_json::from_value(dm_envelope()).unwrap();
+        let policy = taxis::config::RawPayloadPolicy {
+            capture: true,
+            max_bytes: 4096,
+        };
+        let msg = extract_message(&env, &policy).unwrap();
+
+        let raw = msg.raw.expect("raw captured when policy enables it");
+        let dump = raw.to_string();
+        assert!(!dump.contains("1234567890"), "{dump}");
+        assert!(!dump.contains("uuid-abc"), "{dump}");
+        assert!(!dump.contains("Alice"), "{dump}");
+    }
+
+    #[test]
+    fn extract_dm_drops_raw_when_over_budget() {
+        let env: SignalEnvelope = serde_json::from_value(dm_envelope()).unwrap();
+        let policy = taxis::config::RawPayloadPolicy {
+            capture: true,
+            max_bytes: 1,
+        };
+        let msg = extract_message(&env, &policy).unwrap();
+        assert!(msg.raw.is_none(), "oversized payload must be dropped");
     }
 
     #[test]
     fn extract_group_message() {
         let env: SignalEnvelope = serde_json::from_value(group_envelope()).unwrap();
-        let msg = extract_message(&env).unwrap();
+        let msg = extract_message(&env, &default_policy()).unwrap();
 
         assert_eq!(msg.sender, "+1234567890");
         assert_eq!(msg.text, "group hello");
@@ -186,7 +226,7 @@ mod tests {
             "syncMessage": {"sentMessage": {}}
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env).is_none());
+        assert!(extract_message(&env, &default_policy()).is_none());
     }
 
     #[test]
@@ -197,7 +237,7 @@ mod tests {
             "receiptMessage": {"type": "DELIVERY"}
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env).is_none());
+        assert!(extract_message(&env, &default_policy()).is_none());
     }
 
     #[test]
@@ -208,7 +248,7 @@ mod tests {
             "typingMessage": {"action": "STARTED"}
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env).is_none());
+        assert!(extract_message(&env, &default_policy()).is_none());
     }
 
     #[test]
@@ -221,7 +261,7 @@ mod tests {
             }
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env).is_none());
+        assert!(extract_message(&env, &default_policy()).is_none());
     }
 
     #[test]
@@ -239,7 +279,7 @@ mod tests {
             }
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        let msg = extract_message(&env).unwrap();
+        let msg = extract_message(&env, &default_policy()).unwrap();
 
         assert_eq!(msg.attachments.len(), 2);
         assert_eq!(msg.attachments[0], "photo.jpg");
@@ -256,7 +296,7 @@ mod tests {
             }
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        assert!(extract_message(&env).is_none());
+        assert!(extract_message(&env, &default_policy()).is_none());
     }
 
     #[test]
@@ -309,7 +349,7 @@ mod tests {
         assert!(env.timestamp.is_none());
         assert!(env.sync_message.is_none());
 
-        let msg = extract_message(&env).unwrap();
+        let msg = extract_message(&env, &default_policy()).unwrap();
         assert_eq!(msg.text, "hi");
         assert_eq!(msg.timestamp, 0); // no timestamp available: warns at runtime
     }
@@ -324,7 +364,7 @@ mod tests {
             }
         });
         let env: SignalEnvelope = serde_json::from_value(json).unwrap();
-        let msg = extract_message(&env).unwrap();
+        let msg = extract_message(&env, &default_policy()).unwrap();
         assert_eq!(msg.timestamp, 1_709_000_000_000);
     }
 }

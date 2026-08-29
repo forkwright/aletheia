@@ -20,6 +20,8 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
 
+use koina::redact::redact_channel_id;
+
 use crate::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult,
     SendParams as ChannelSendParams, SendResult,
@@ -93,6 +95,9 @@ pub struct SignalProvider {
     buffer_capacity: usize,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
+    /// Opt-in, bounded raw-envelope retention on inbound messages. Off by
+    /// default (#5198): see `taxis::config::RawPayloadPolicy`.
+    raw_payload: taxis::config::RawPayloadPolicy,
 }
 
 impl SignalProvider {
@@ -113,6 +118,7 @@ impl SignalProvider {
             buffer_capacity: capacity,
             circuit_breaker_threshold: CIRCUIT_BREAKER_THRESHOLD,
             halted_health_check_interval: HALTED_HEALTH_CHECK_INTERVAL,
+            raw_payload: taxis::config::RawPayloadPolicy::default(),
         }
     }
 
@@ -129,6 +135,7 @@ impl SignalProvider {
             halted_health_check_interval: Duration::from_secs(
                 config.halted_health_check_interval_secs,
             ),
+            raw_payload: config.raw_payload.clone(),
         }
     }
 
@@ -180,7 +187,10 @@ impl SignalProvider {
             // WHY: skip accounts where auto_start is false -- they are registered
             // for outbound sends but should not spawn a receive poll loop.
             if !self.auto_start.get(account_id).copied().unwrap_or(true) {
-                tracing::info!(account = %account_id, "skipping receive loop (auto_start=false)");
+                tracing::info!(
+                    account = %redact_channel_id(account_id),
+                    "skipping receive loop (auto_start=false)"
+                );
                 continue;
             }
             let tx = tx.clone();
@@ -198,7 +208,7 @@ impl SignalProvider {
                 .clone();
             let span = tracing::info_span!(
                 "signal_poll",
-                account = %account_id
+                account = %redact_channel_id(&account_id)
             );
 
             handles.spawn(
@@ -210,6 +220,7 @@ impl SignalProvider {
                     token,
                     self.circuit_breaker_threshold,
                     self.halted_health_check_interval,
+                    self.raw_payload.clone(),
                 )
                 .instrument(span),
             );
@@ -384,7 +395,10 @@ impl ChannelProvider for SignalProvider {
                     }
                 }
 
-                account_results.insert(account_id.clone(), detail);
+                // WHY(#5198): `account_id` is a phone number; probe details
+                // are Serialize and reach diagnostic/health surfaces, so the
+                // key is redacted before it ever leaves this function.
+                account_results.insert(redact_channel_id(account_id), detail);
             }
 
             ProbeResult {
@@ -414,6 +428,7 @@ impl std::fmt::Debug for SignalProvider {
                 "halted_health_check_interval",
                 &self.halted_health_check_interval,
             )
+            .field("raw_payload", &self.raw_payload)
             .finish()
     }
 }
@@ -421,6 +436,10 @@ impl std::fmt::Debug for SignalProvider {
 #[expect(
     clippy::too_many_lines,
     reason = "single cohesive state machine: halted-state health check + receive success/error branches share lock acquisition order; splitting would risk the lock dance and obscure the connection-state transitions"
+)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "poll_loop is a single cohesive state machine; the shared halted-state recovery loop requires these parameters together — splitting would obscure the state transitions (mirrors matrix::sync_loop)"
 )]
 async fn poll_loop(
     signal_client: client::SignalClient,
@@ -430,6 +449,7 @@ async fn poll_loop(
     cancel: CancellationToken,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
+    raw_payload: taxis::config::RawPayloadPolicy,
 ) {
     tracing::info!("polling started");
     loop {
@@ -502,7 +522,7 @@ async fn poll_loop(
                         }
 
                         for env in &envelopes {
-                            if let Some(msg) = envelope::extract_message(env) {
+                            if let Some(msg) = envelope::extract_message(env, &raw_payload) {
                                 if tx.send(msg).await.is_err() {
                                     tracing::info!("receiver dropped, stopping poll");
                                     return;
@@ -747,6 +767,7 @@ mod tests {
                 token,
                 CIRCUIT_BREAKER_THRESHOLD,
                 HALTED_HEALTH_CHECK_INTERVAL,
+                taxis::config::RawPayloadPolicy::default(),
             )
             .instrument(tracing::info_span!("test_poll_loop")),
         );

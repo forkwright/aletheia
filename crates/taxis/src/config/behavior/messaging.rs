@@ -19,6 +19,8 @@ pub(crate) const DEFAULT_HEALTH_TIMEOUT_SECS: u64 = 2;
 pub(crate) const DEFAULT_RECEIVE_TIMEOUT_SECS: u64 = 15;
 /// Default value used for `MessagingConfig::agent_dispatch_timeout_secs`.
 pub(crate) const DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS: u64 = 300;
+/// Default value used for `RawPayloadPolicy::max_bytes`.
+pub(crate) const DEFAULT_RAW_PAYLOAD_MAX_BYTES: usize = 4096;
 
 /// Agora messaging transport poll, buffer, circuit-breaker, and RPC settings.
 ///
@@ -51,6 +53,9 @@ pub struct MessagingConfig {
     /// Per-agent outbound-recipient allowlist and default-deny posture,
     /// enforced by `agora::ChannelRegistry::send` before any provider send.
     pub outbound: OutboundMessagePolicy,
+    /// Opt-in, bounded raw provider-payload retention on
+    /// `InboundMessage::raw` (Signal envelopes, Matrix events).
+    pub raw_payload: RawPayloadPolicy,
 }
 
 impl Default for MessagingConfig {
@@ -66,6 +71,42 @@ impl Default for MessagingConfig {
             agent_dispatch_timeout_secs: DEFAULT_AGENT_DISPATCH_TIMEOUT_SECS,
             max_concurrent_handlers: 64,
             outbound: OutboundMessagePolicy::default(),
+            raw_payload: RawPayloadPolicy::default(),
+        }
+    }
+}
+
+/// Opt-in, bounded raw provider-payload retention on
+/// `InboundMessage::raw`.
+///
+/// WHY default-off (#5198): a captured Signal envelope or Matrix event
+/// nests phone numbers, Matrix IDs, and attachment URLs several levels
+/// deep. Storing it unconditionally means every trace/diagnostic sink
+/// downstream of `InboundMessage` inherits that PII surface -- capture is
+/// off by default, matching `OutboundMessagePolicy`'s default-deny
+/// posture for the same reason (an operator must opt in to a wider
+/// surface, not opt out of one enabled by default). When enabled, a
+/// captured payload is still redacted via
+/// `koina::redact::redact_json_identifiers` and dropped outright if it
+/// exceeds `max_bytes` after redaction.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(default)]
+#[serde(deny_unknown_fields)]
+pub struct RawPayloadPolicy {
+    /// Whether providers attach a raw payload to `InboundMessage::raw` at
+    /// all. Default: `false`.
+    pub capture: bool,
+    /// Maximum encoded size in bytes of a retained (already-redacted) raw
+    /// payload. Default: 4096.
+    pub max_bytes: usize,
+}
+
+impl Default for RawPayloadPolicy {
+    fn default() -> Self {
+        Self {
+            capture: false,
+            max_bytes: DEFAULT_RAW_PAYLOAD_MAX_BYTES,
         }
     }
 }
@@ -200,5 +241,17 @@ mod outbound_policy_tests {
         // WHY: default_deny only relaxes "no allowlist entry" -- an
         // unattributed sender is still refused.
         assert!(!policy.allows(None, "+15550100"));
+    }
+
+    #[test]
+    fn raw_payload_policy_defaults_to_capture_disabled() {
+        let policy = super::RawPayloadPolicy::default();
+        assert!(!policy.capture);
+        assert_eq!(policy.max_bytes, super::DEFAULT_RAW_PAYLOAD_MAX_BYTES);
+    }
+
+    #[test]
+    fn messaging_config_defaults_to_raw_payload_capture_disabled() {
+        assert!(!super::MessagingConfig::default().raw_payload.capture);
     }
 }

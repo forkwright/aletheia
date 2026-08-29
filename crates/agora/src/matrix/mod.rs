@@ -17,6 +17,8 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
 
+use koina::redact::redact_channel_id;
+
 use crate::connection_utils::reconnect_delay;
 use crate::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult,
@@ -116,6 +118,9 @@ pub struct MatrixProvider {
     default_account: Option<String>,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
+    /// Opt-in, bounded raw-event retention on inbound messages. Off by
+    /// default (#5198): see `taxis::config::RawPayloadPolicy`.
+    raw_payload: taxis::config::RawPayloadPolicy,
 }
 
 impl MatrixProvider {
@@ -127,6 +132,7 @@ impl MatrixProvider {
             default_account: None,
             circuit_breaker_threshold: 5,
             halted_health_check_interval: Duration::from_mins(1),
+            raw_payload: taxis::config::RawPayloadPolicy::default(),
         }
     }
 
@@ -140,6 +146,7 @@ impl MatrixProvider {
             halted_health_check_interval: Duration::from_secs(
                 config.halted_health_check_interval_secs,
             ),
+            raw_payload: config.raw_payload.clone(),
         }
     }
 
@@ -183,7 +190,10 @@ impl MatrixProvider {
 
         for (account_id, account) in &self.accounts {
             if !account.auto_start {
-                tracing::info!(account = %account_id, "skipping Matrix sync loop (auto_start=false)");
+                tracing::info!(
+                    account = %redact_channel_id(account_id),
+                    "skipping Matrix sync loop (auto_start=false)"
+                );
                 continue;
             }
 
@@ -192,7 +202,7 @@ impl MatrixProvider {
             let client = account.client.clone();
             let since = Arc::clone(&account.since);
             let user_id = account.user_id.clone();
-            let span = tracing::info_span!("matrix_sync", account = %account_id);
+            let span = tracing::info_span!("matrix_sync", account = %redact_channel_id(account_id));
 
             handles.spawn(
                 sync_loop(
@@ -204,6 +214,7 @@ impl MatrixProvider {
                     token,
                     self.circuit_breaker_threshold,
                     self.halted_health_check_interval,
+                    self.raw_payload.clone(),
                 )
                 .instrument(span),
             );
@@ -297,8 +308,11 @@ impl ChannelProvider for MatrixProvider {
             for (account_id, account) in &self.accounts {
                 let ok = account.client.health().await;
                 any_ok |= ok;
+                // WHY(#5198): `account_id` is a Matrix user ID; probe
+                // details are Serialize and reach diagnostic/health
+                // surfaces, so the key is redacted before it leaves here.
                 details.insert(
-                    account_id.clone(),
+                    redact_channel_id(account_id),
                     serde_json::json!({
                         "reachable": ok,
                         "auto_start": account.auto_start,
@@ -330,6 +344,7 @@ impl std::fmt::Debug for MatrixProvider {
                 "halted_health_check_interval",
                 &self.halted_health_check_interval,
             )
+            .field("raw_payload", &self.raw_payload)
             .finish()
     }
 }
@@ -347,6 +362,7 @@ async fn sync_loop(
     cancel: CancellationToken,
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
+    raw_payload: taxis::config::RawPayloadPolicy,
 ) {
     tracing::info!("Matrix sync started");
     let mut consecutive_failures = 0_u32;
@@ -358,7 +374,7 @@ async fn sync_loop(
                 tracing::info!("cancellation received, stopping Matrix sync");
                 return;
             }
-            result = sync_once(&client, &tx, &since, user_id.as_deref()) => {
+            result = sync_once(&client, &tx, &since, user_id.as_deref(), &raw_payload) => {
                 match result {
                     Ok(()) => {
                         consecutive_failures = 0;
@@ -424,6 +440,7 @@ async fn sync_once(
     tx: &mpsc::Sender<InboundMessage>,
     since: &Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
     own_user_id: Option<&str>,
+    raw_payload: &taxis::config::RawPayloadPolicy,
 ) -> error::Result<()> {
     let since_token = { since.lock().await.clone() };
     let response = client.sync(since_token.as_deref()).await?;
@@ -439,7 +456,7 @@ async fn sync_once(
 
     for (room_id, room) in &response.rooms.join {
         for event in &room.timeline.events {
-            if let Some(message) = extract_message(room_id, event, own_user_id)
+            if let Some(message) = extract_message(room_id, event, own_user_id, raw_payload)
                 && tx.send(message).await.is_err()
             {
                 // WHY: the listener has shut down; returning an error lets
@@ -456,6 +473,7 @@ fn extract_message(
     room_id: &str,
     event: &MatrixEvent,
     own_user_id: Option<&str>,
+    raw_payload: &taxis::config::RawPayloadPolicy,
 ) -> Option<InboundMessage> {
     if event.event_type != "m.room.message" {
         return None;
@@ -490,7 +508,7 @@ fn extract_message(
             0
         }),
         attachments,
-        raw: serde_json::to_value(event).ok(), // kanon:ignore RUST/silent-error-ok WHY: optional diagnostic field; serde failure is non-fatal and pre-existing WHY documents this
+        raw: crate::types::capture_raw_payload(raw_payload, event),
     })
 }
 
@@ -574,13 +592,52 @@ mod tests {
         }))
         .expect("event");
 
-        let msg = extract_message("!room:example.org", &event, Some("@bot:example.org"))
-            .expect("message");
+        let policy = taxis::config::RawPayloadPolicy::default();
+        let msg = extract_message(
+            "!room:example.org",
+            &event,
+            Some("@bot:example.org"),
+            &policy,
+        )
+        .expect("message");
         assert_eq!(msg.channel, "matrix");
         assert_eq!(msg.sender, "@alice:example.org");
         assert_eq!(msg.group_id.as_deref(), Some("!room:example.org"));
         assert_eq!(msg.text, "hello");
         assert_eq!(msg.timestamp, 100);
+        assert_eq!(
+            msg.raw, None,
+            "raw payload capture is opt-in and off by default"
+        );
+    }
+
+    #[test]
+    fn extract_matrix_message_captures_redacted_raw_when_enabled() {
+        let event: MatrixEvent = serde_json::from_value(serde_json::json!({
+            "type": "m.room.message",
+            "sender": "@alice:example.org",
+            "event_id": "$event",
+            "origin_server_ts": 100,
+            "content": {
+                "msgtype": "m.text",
+                "body": "hello"
+            }
+        }))
+        .expect("event");
+
+        let policy = taxis::config::RawPayloadPolicy {
+            capture: true,
+            max_bytes: 4096,
+        };
+        let msg = extract_message(
+            "!room:example.org",
+            &event,
+            Some("@bot:example.org"),
+            &policy,
+        )
+        .expect("message");
+        let raw = msg.raw.expect("raw captured when policy enables it");
+        assert!(!raw.to_string().contains("@alice:example.org"));
     }
 
     #[test]
@@ -596,7 +653,16 @@ mod tests {
         }))
         .expect("event");
 
-        assert!(extract_message("!room:example.org", &event, Some("@bot:example.org")).is_none());
+        let policy = taxis::config::RawPayloadPolicy::default();
+        assert!(
+            extract_message(
+                "!room:example.org",
+                &event,
+                Some("@bot:example.org"),
+                &policy
+            )
+            .is_none()
+        );
     }
 
     #[tokio::test]
@@ -775,8 +841,16 @@ mod tests {
         let since_ref = Arc::clone(&since);
         let tx_ref = tx.clone();
         let own_user_id = "@bot:example.org".to_owned();
+        let raw_payload = taxis::config::RawPayloadPolicy::default();
         let handle = tokio::spawn(async move {
-            sync_once(&client_ref, &tx_ref, &since_ref, Some(&own_user_id)).await
+            sync_once(
+                &client_ref,
+                &tx_ref,
+                &since_ref,
+                Some(&own_user_id),
+                &raw_payload,
+            )
+            .await
         });
 
         // WHY: wait until sync_once has advanced the cursor; that happens

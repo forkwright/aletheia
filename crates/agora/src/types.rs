@@ -10,6 +10,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
+use koina::redact::redact_channel_id;
+
 /// What a channel supports.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[expect(
@@ -119,7 +121,17 @@ pub struct ProbeResult {
 }
 
 /// A normalized inbound message received from any channel.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// WHY manual `Debug` (#5198): the derived `Debug` printed `sender` (a
+/// phone number or Matrix ID), `sender_name` (a real display name), and
+/// the full `raw` provider payload verbatim into any log or trace that
+/// captured this type -- the exact leak this issue centralizes a fix for.
+/// `Serialize`/`Deserialize` stay derived: those drive the store's own
+/// wire format (round-tripped byte-for-byte, e.g. in session persistence),
+/// not a log or diagnostic sink; callers that DO serialize an
+/// `InboundMessage` toward a log or command record must redact it
+/// explicitly at that boundary (see `dispatch::command_origin_record`).
+#[derive(Clone, Serialize, Deserialize)]
 pub struct InboundMessage {
     /// Channel this message came from (e.g., "signal").
     pub channel: String,
@@ -136,7 +148,62 @@ pub struct InboundMessage {
     /// Attachment file paths or identifiers.
     pub attachments: Vec<String>,
     /// Raw channel-specific payload for extensions.
+    ///
+    /// Opt-in via `taxis::config::RawPayloadPolicy::capture` (default
+    /// `false`), bounded by `RawPayloadPolicy::max_bytes`, and redacted of
+    /// PII-shaped fields (phone numbers, Matrix/user IDs, names,
+    /// attachment URLs) before it is ever attached here -- see
+    /// [`capture_raw_payload`].
     pub raw: Option<serde_json::Value>,
+}
+
+impl std::fmt::Debug for InboundMessage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InboundMessage")
+            .field("channel", &self.channel)
+            .field("sender", &redact_channel_id(&self.sender))
+            .field(
+                "sender_name",
+                &self.sender_name.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("group_id", &self.group_id.as_deref().map(redact_channel_id))
+            .field("text_len", &self.text.len())
+            .field("timestamp", &self.timestamp)
+            .field("attachment_count", &self.attachments.len())
+            .field(
+                "raw_bytes",
+                &self
+                    .raw
+                    .as_ref()
+                    .and_then(|v| serde_json::to_vec(v).ok())
+                    .map(|bytes| bytes.len()),
+            )
+            .finish()
+    }
+}
+
+/// Compute an [`InboundMessage::raw`] value for a captured provider
+/// payload under the opt-in, bounded, redacted raw-payload policy
+/// (#5198).
+///
+/// Returns `None` outright when `policy.capture` is `false` (the
+/// default). When capture is enabled, `value` is redacted via
+/// [`koina::redact::redact_json_identifiers`] and the result is kept only
+/// if its encoded size is within `policy.max_bytes`; an oversized payload
+/// is dropped rather than truncated into invalid JSON.
+#[must_use]
+pub fn capture_raw_payload<T: Serialize>(
+    policy: &taxis::config::RawPayloadPolicy,
+    value: &T,
+) -> Option<serde_json::Value> {
+    if !policy.capture {
+        return None;
+    }
+    // WHY: raw payload capture is best-effort diagnostic data; a
+    // serialization failure aborts capture for this message via `?`
+    // rather than being silently discarded.
+    let raw = serde_json::to_value(value).ok()?;
+    koina::redact::bounded_redacted_payload(&raw, policy.max_bytes)
 }
 
 /// The contract every channel provider must implement.
@@ -236,5 +303,52 @@ mod tests {
         assert_eq!(back.timestamp, msg.timestamp);
         assert_eq!(back.attachments, msg.attachments);
         assert_eq!(back.raw, msg.raw);
+    }
+
+    #[test]
+    fn inbound_message_debug_redacts_identity_and_raw() {
+        let msg = InboundMessage {
+            channel: "signal".to_owned(),
+            sender: "+15550100".to_owned(),
+            sender_name: Some("Alice".to_owned()),
+            group_id: Some("group-abc123".to_owned()),
+            text: "my ssn is 123-45-6789".to_owned(), // pii-allow: synthetic SSN fixture asserting redaction, not a real value
+            timestamp: 1_709_312_345_678,
+            attachments: vec!["photo.jpg".to_owned()],
+            raw: Some(serde_json::json!({"sourceNumber": "+15550100"})),
+        };
+
+        let debug = format!("{msg:?}");
+        assert!(!debug.contains("+15550100"), "{debug}");
+        assert!(!debug.contains("Alice"), "{debug}");
+        assert!(!debug.contains("group-abc123"), "{debug}");
+        assert!(!debug.contains("my ssn is"), "{debug}");
+        assert!(!debug.contains("photo.jpg"), "{debug}");
+        assert!(debug.contains("channel"), "{debug}");
+    }
+
+    #[test]
+    fn capture_raw_payload_disabled_by_default() {
+        let policy = taxis::config::RawPayloadPolicy::default();
+        assert!(!policy.capture);
+        let value = serde_json::json!({"sourceNumber": "+15550100"});
+        assert_eq!(capture_raw_payload(&policy, &value), None);
+    }
+
+    #[test]
+    fn capture_raw_payload_redacts_and_bounds_when_enabled() {
+        let policy = taxis::config::RawPayloadPolicy {
+            capture: true,
+            max_bytes: 4096,
+        };
+        let value = serde_json::json!({"sourceNumber": "+15550100", "text": "hi"});
+        let captured = capture_raw_payload(&policy, &value).expect("captured");
+        assert!(!captured.to_string().contains("+15550100"));
+
+        let tiny_budget = taxis::config::RawPayloadPolicy {
+            capture: true,
+            max_bytes: 1,
+        };
+        assert_eq!(capture_raw_payload(&tiny_budget, &value), None);
     }
 }

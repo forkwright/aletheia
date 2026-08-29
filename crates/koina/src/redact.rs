@@ -165,6 +165,123 @@ pub fn redact_argv<'a>(tokens: impl IntoIterator<Item = &'a str>) -> Vec<String>
     out
 }
 
+/// Number of trailing characters preserved by [`redact_channel_id`] as a
+/// correlation aid (enough to distinguish accounts in logs, not enough to
+/// re-identify a person).
+const CHANNEL_ID_VISIBLE_SUFFIX: usize = 4;
+
+/// Redact a channel identity value -- a phone number, Matrix ID
+/// (`@user:server`), account ID, or any other provider-specific sender
+/// identifier -- for logs, tracing spans, and diagnostic records.
+///
+/// WHY(#5198): the single channel-identity redaction used everywhere an
+/// external identifier reaches a log or serialized diagnostic, replacing
+/// per-provider helpers (`agora::listener::redact_phone` covered only
+/// Signal's numeric format) that left Matrix IDs and other channel
+/// identities unredacted by omission.
+///
+/// Preserves the trailing [`CHANNEL_ID_VISIBLE_SUFFIX`] characters (by
+/// Unicode scalar, not byte, so this never panics on a multi-byte
+/// boundary) as a correlation aid; anything at or under that length is
+/// fully masked.
+#[must_use]
+pub fn redact_channel_id(id: &str) -> String {
+    let chars: Vec<char> = id.chars().collect();
+    if chars.len() > CHANNEL_ID_VISIBLE_SUFFIX {
+        let tail: String = chars
+            .get(chars.len() - CHANNEL_ID_VISIBLE_SUFFIX..)
+            .map(|s| s.iter().collect())
+            .unwrap_or_default();
+        format!("...{tail}")
+    } else {
+        "****".to_owned()
+    }
+}
+
+/// JSON object key substrings (case-insensitive) treated as carrying a
+/// channel identity, personal identifier, or attachment location when
+/// found in a raw provider payload.
+const PII_KEY_SUBSTRINGS: &[&str] = &[
+    "number", "phone", "uuid", "sender", "source", "mxid", "user", "url", "name", "id", "address",
+    "email",
+];
+
+fn key_is_pii(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    PII_KEY_SUBSTRINGS.iter().any(|s| lower.contains(s))
+}
+
+/// Recursively redact leaf string values anywhere beneath `value`,
+/// preserving object/array structure. Used once a PII-shaped key has been
+/// matched, so everything nested under it (e.g. a `source` object holding
+/// both a `number` and a `uuid`) is covered even if a nested key itself
+/// does not match [`PII_KEY_SUBSTRINGS`].
+fn redact_json_leaf(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::String(s) => serde_json::Value::String(redact_channel_id(s)),
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.iter()
+                .map(|(k, v)| (k.clone(), redact_json_leaf(v)))
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(redact_json_leaf).collect())
+        }
+        other => other.clone(),
+    }
+}
+
+/// Recursively redact a raw channel payload (a deserialized Signal
+/// envelope or Matrix event) so it is safe to retain and serialize.
+///
+/// Walks every JSON object key; a key whose name matches
+/// [`PII_KEY_SUBSTRINGS`] (phone numbers, Matrix/user IDs, sender/source
+/// fields, names, attachment URLs) has every string beneath it replaced
+/// via [`redact_channel_id`], everything else is preserved unredacted so
+/// the retained value stays useful for structural diagnostics.
+#[must_use]
+pub fn redact_json_identifiers(value: &serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.iter()
+                .map(|(k, v)| {
+                    let redacted = if key_is_pii(k) {
+                        redact_json_leaf(v)
+                    } else {
+                        redact_json_identifiers(v)
+                    };
+                    (k.clone(), redacted)
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.iter().map(redact_json_identifiers).collect())
+        }
+        other => other.clone(),
+    }
+}
+
+/// Redact `value` via [`redact_json_identifiers`] and return `None` when
+/// its encoded size exceeds `max_bytes`.
+///
+/// WHY(#5198): raw provider-payload capture is opt-in and bounded --
+/// callers use this so a payload that redaction cannot shrink enough
+/// (e.g. very large attachment metadata) is dropped outright rather than
+/// truncated mid-structure into invalid JSON.
+#[must_use]
+pub fn bounded_redacted_payload(
+    value: &serde_json::Value,
+    max_bytes: usize,
+) -> Option<serde_json::Value> {
+    let redacted = redact_json_identifiers(value);
+    let encoded = serde_json::to_vec(&redacted).ok()?;
+    if encoded.len() > max_bytes {
+        None
+    } else {
+        Some(redacted)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,6 +415,107 @@ mod tests {
         // unrelated flag ending in "key" is left alone.
         let redacted = redact_argv(["--monkey", "banana"]);
         assert_eq!(redacted, vec!["--monkey", "banana"]);
+    }
+
+    #[test]
+    fn redact_channel_id_keeps_trailing_digits_of_phone_number() {
+        let redacted = redact_channel_id("+15550100");
+        assert_eq!(redacted, "...0100");
+        assert!(!redacted.contains("+1555"));
+    }
+
+    #[test]
+    fn redact_channel_id_keeps_trailing_chars_of_matrix_id() {
+        let redacted = redact_channel_id("@alice:example.org");
+        assert_eq!(redacted, "....org");
+        assert!(!redacted.contains("alice"));
+    }
+
+    #[test]
+    fn redact_channel_id_fully_masks_short_values() {
+        assert_eq!(redact_channel_id(""), "****");
+        assert_eq!(redact_channel_id("ab"), "****");
+        assert_eq!(redact_channel_id("abcd"), "****");
+    }
+
+    #[test]
+    fn redact_channel_id_is_stable() {
+        assert_eq!(
+            redact_channel_id("+15550100"),
+            redact_channel_id("+15550100")
+        );
+    }
+
+    #[test]
+    fn redact_channel_id_does_not_panic_on_multibyte_boundary() {
+        // WHY(#5198): byte-index slicing (`&id[id.len() - 4..]`) can split a
+        // multi-byte UTF-8 char and panic; char-based slicing must not.
+        let redacted = redact_channel_id("@ドンとん:example.org");
+        assert_eq!(redacted, "....org");
+    }
+
+    #[test]
+    fn redact_json_identifiers_redacts_signal_style_source_fields() {
+        let raw = serde_json::json!({
+            "sourceNumber": "+15550100",
+            "sourceUuid": "uuid-abc-123",
+            "sourceName": "Alice",
+            "dataMessage": {
+                "message": "hello",
+                "attachments": [{"id": "att-1", "url": "https://cdn.example/a.jpg"}],
+            },
+        });
+        let redacted = redact_json_identifiers(&raw);
+        let dump = redacted.to_string();
+        assert!(!dump.contains("+15550100"), "{dump}");
+        assert!(!dump.contains("uuid-abc-123"), "{dump}");
+        assert!(!dump.contains("Alice"), "{dump}");
+        assert!(!dump.contains("https://cdn.example/a.jpg"), "{dump}");
+        // Non-PII structural field untouched.
+        assert_eq!(
+            redacted
+                .pointer("/dataMessage/message")
+                .and_then(serde_json::Value::as_str),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn redact_json_identifiers_redacts_matrix_style_sender() {
+        let raw = serde_json::json!({
+            "sender": "@alice:example.org",
+            "content": {"body": "hi", "url": "mxc://example.org/abc"},
+        });
+        let redacted = redact_json_identifiers(&raw);
+        let dump = redacted.to_string();
+        assert!(!dump.contains("@alice:example.org"), "{dump}");
+        assert!(!dump.contains("mxc://example.org/abc"), "{dump}");
+        assert_eq!(
+            redacted
+                .pointer("/content/body")
+                .and_then(serde_json::Value::as_str),
+            Some("hi")
+        );
+    }
+
+    #[test]
+    fn redact_json_identifiers_preserves_non_pii_arrays() {
+        let raw = serde_json::json!({"tags": ["a", "b", "c"]});
+        assert_eq!(redact_json_identifiers(&raw), raw);
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test assertions")]
+    fn bounded_redacted_payload_returns_redacted_value_within_budget() {
+        let raw = serde_json::json!({"sourceNumber": "+15550100", "text": "hi"});
+        let bounded = bounded_redacted_payload(&raw, 4096).expect("within budget");
+        assert!(!bounded.to_string().contains("+15550100"));
+    }
+
+    #[test]
+    fn bounded_redacted_payload_drops_oversized_value() {
+        let raw = serde_json::json!({"text": "x".repeat(100)});
+        assert!(bounded_redacted_payload(&raw, 10).is_none());
     }
 }
 

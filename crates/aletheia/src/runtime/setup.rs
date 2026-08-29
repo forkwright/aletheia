@@ -27,6 +27,7 @@ use hermeneus::provider::{
     DeploymentTarget as HermeneusDeploymentTarget, ProviderConfig, ProviderRegistry,
 };
 use koina::credential::{CredentialProvider, CredentialSource};
+use koina::redact::redact_channel_id;
 use koina::secret::SecretString;
 use mneme::embedding::{DegradedEmbeddingProvider, EmbeddingProvider, create_provider};
 use mneme::store::SessionStore;
@@ -1165,7 +1166,7 @@ pub(super) fn build_signal_provider(
         }
         let Some(provider_account_id) = signal_provider_account_id(account_id, account_cfg) else {
             warn!(
-                account = %account_id,
+                account = %redact_channel_id(account_id),
                 "Signal account config has an empty account field; skipping account"
             );
             continue;
@@ -1173,15 +1174,15 @@ pub(super) fn build_signal_provider(
         let cli_path = resolve_signal_cli_path(account_cfg.cli_path.as_deref());
         if account_cfg.cli_path.is_some() && cli_path.is_none() {
             warn!(
-                account = %account_id,
-                display_name = %signal_account_display_name(account_id, account_cfg),
+                account = %redact_channel_id(account_id),
+                display_name = %redact_channel_id(signal_account_display_name(account_id, account_cfg)),
                 "configured signal-cli path is unavailable; skipping Signal account"
             );
             continue;
         }
         if account_cfg.cli_path.is_none() && cli_path.is_none() {
             tracing::debug!(
-                account = %account_id,
+                account = %redact_channel_id(account_id),
                 "signal-cli not found on PATH; assuming the JSON-RPC daemon is managed externally"
             );
         }
@@ -1198,15 +1199,15 @@ pub(super) fn build_signal_provider(
             Ok(client) => {
                 provider.add_account(provider_account_id, client, account_cfg.auto_start);
                 info!(
-                    account = %account_id,
-                    display_name = %signal_account_display_name(account_id, account_cfg),
+                    account = %redact_channel_id(account_id),
+                    display_name = %redact_channel_id(signal_account_display_name(account_id, account_cfg)),
                     cli_path = %cli_path_label,
                     auto_start = account_cfg.auto_start,
                     "signal account added"
                 );
             }
             Err(e) => {
-                warn!(account = %account_id, error = %e, "failed to CREATE signal client");
+                warn!(account = %redact_channel_id(account_id), error = %e, "failed to CREATE signal client");
             }
         }
     }
@@ -1279,7 +1280,7 @@ pub(super) fn build_matrix_provider(
             Ok(token) if !token.is_empty() => token,
             Ok(_) => {
                 warn!(
-                    account = %account_id,
+                    account = %redact_channel_id(account_id),
                     env = %account_cfg.access_token_env,
                     "Matrix access token environment variable is empty"
                 );
@@ -1287,7 +1288,7 @@ pub(super) fn build_matrix_provider(
             }
             Err(e) => {
                 warn!(
-                    account = %account_id,
+                    account = %redact_channel_id(account_id),
                     env = %account_cfg.access_token_env,
                     error = %e,
                     "Matrix access token environment variable is unavailable"
@@ -1310,10 +1311,14 @@ pub(super) fn build_matrix_provider(
                     account_cfg.auto_start,
                     account_cfg.initial_since.clone(),
                 );
-                info!(account = %account_id, auto_start = account_cfg.auto_start, "Matrix account added");
+                info!(
+                    account = %redact_channel_id(account_id),
+                    auto_start = account_cfg.auto_start,
+                    "Matrix account added"
+                );
             }
             Err(e) => {
-                warn!(account = %account_id, error = %e, "failed to CREATE Matrix client");
+                warn!(account = %redact_channel_id(account_id), error = %e, "failed to CREATE Matrix client");
             }
         }
     }
