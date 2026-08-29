@@ -178,8 +178,19 @@ impl ToolHttpClients {
     /// `aletheia::dispatch`, integration tests, `nous` actor tests). One
     /// constructor is the canonical policy; call sites -- production and
     /// test alike -- adopt it rather than rebuilding the pair by hand.
+    ///
+    /// WHY(crypto): installs the process-wide rustls provider first, per
+    /// `koina::crypto`'s documented contract ("lazily before the first
+    /// TLS-backed client is constructed"). A caller building this struct as
+    /// part of a larger argument expression -- e.g.
+    /// `f(ToolServices { field: Some(x), ..Default::default() })` -- has that
+    /// struct-update base evaluated before `f`'s body runs, so an install
+    /// inside `f` arrives too late; the client builder itself is the one
+    /// place early enough to always precede its own
+    /// `reqwest::Client::builder()` call.
     #[must_use]
     pub fn new() -> Self {
+        let _ = koina::crypto::install_default_provider();
         Self {
             general: reqwest::Client::new(),
             ssrf_safe: reqwest::Client::builder()
