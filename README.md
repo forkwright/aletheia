@@ -51,7 +51,7 @@ The tarball contains `instance.example/` with the reference config layout. See [
 
 ## Architecture
 
-Single binary deployment. The substrate includes persistent sessions, Datalog-backed memory, working-memory injection, HTTP/SSE, optional runtime MCP bridging, Signal, dispatch, and a substrate canary suite. For current workspace crate count, canary scenario count, and the full dependency graph, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Single binary deployment. The substrate includes persistent sessions, Datalog-backed memory, working-memory injection, HTTP/SSE, optional runtime MCP bridging, Signal, dispatch, and a substrate canary suite. For current workspace crate count, canary scenario count, and the full dependency graph, see [ARCHITECTURE.md](docs/ARCHITECTURE.md). Planning state, roadmaps, and phase plans for Aletheia live in the kanon canonical location (`forkwright/kanon`); this repository does not carry a duplicate planning tree.
 
 ---
 

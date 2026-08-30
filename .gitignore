@@ -4,8 +4,6 @@
 
 # === Legacy paths ===
 /theke/
-/projects/*
-!/projects/README.md
 /archive/
 nous/*/
 shared/memory/
