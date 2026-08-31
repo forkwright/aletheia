@@ -274,3 +274,52 @@ async fn list_facts_without_knowledge_store_returns_503() {
     let body = body_json(resp).await;
     assert_eq!(body["error"]["code"], "service_unavailable");
 }
+
+/// Error path: `memory_health` reports 503 when the knowledge store is not enabled.
+#[tokio::test]
+async fn memory_health_without_knowledge_store_returns_503() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get("/api/v1/knowledge/health"))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "service_unavailable");
+}
+
+/// Error path: `memory_health` rejects nous-scoped tokens before touching the store.
+#[tokio::test]
+async fn memory_health_scoped_token_returns_403() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get_scoped_as(
+            "/api/v1/knowledge/health",
+            symbolon::types::Role::Operator,
+            "test-nous",
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "forbidden");
+}
+
+/// Error path: `memory_health` requires the operator role.
+#[tokio::test]
+async fn memory_health_readonly_role_returns_403() {
+    let (app, _dir) = app().await;
+    let resp = app
+        .oneshot(authed_get_as(
+            "/api/v1/knowledge/health",
+            symbolon::types::Role::Readonly,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    let body = body_json(resp).await;
+    assert_eq!(body["error"]["code"], "forbidden");
+}

@@ -12,6 +12,10 @@
 //! Exported as Prometheus gauges via [`crate::metrics::update_memory_health_gauges`]
 //! rather than kept purely internal, so the health trend is visible without
 //! opening the TUI -- see `docs/OBSERVABILITY.md`'s Memory Health SLO section.
+//! Also served as JSON via `GET /api/v1/knowledge/health` (#6823) so headless
+//! drivers read this same server-computed snapshot instead of recomputing it
+//! from raw fact/entity lists; both surfaces call
+//! [`compute_memory_health_metrics`], never a second bookkeeping path.
 
 use std::sync::Arc;
 
@@ -36,6 +40,17 @@ pub(crate) struct MemoryHealthMetrics {
     pub orphan_ratio: f64,
     pub staleness_ratio: f64,
     pub health_score: f64,
+}
+
+impl From<MemoryHealthMetrics> for super::MemoryHealthResponse {
+    fn from(metrics: MemoryHealthMetrics) -> Self {
+        Self {
+            avg_confidence: metrics.avg_confidence,
+            orphan_ratio: metrics.orphan_ratio,
+            staleness_ratio: metrics.staleness_ratio,
+            health_score: metrics.health_score,
+        }
+    }
 }
 
 /// Compute memory-health metrics from the knowledge store.

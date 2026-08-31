@@ -49,4 +49,15 @@ pub enum Error {
         /// Source location captured by snafu.
         location: snafu::Location,
     },
+
+    /// Persisting the `/sync` resumption cursor failed; the batch is not
+    /// accepted and the next sync re-fetches the same window (#7104).
+    #[snafu(display("Matrix cursor persistence error: {source}"))]
+    Cursor {
+        /// Underlying cursor store error.
+        source: std::io::Error,
+        #[snafu(implicit)]
+        /// Source location captured by snafu.
+        location: snafu::Location,
+    },
 }

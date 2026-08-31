@@ -1,4 +1,11 @@
 //! Signal channel provider: wraps signal-cli JSON-RPC.
+//!
+//! Signal deliberately persists no resumption cursor (#7104): signal-cli's
+//! `receive` consumes messages destructively on the daemon side, so a
+//! [`crate::cursor::CursorStore`] record for Signal would be a second,
+//! disagreeing source of truth about what has been consumed. Matrix, whose
+//! `/sync` transport is non-destructive, is the provider that resumes from a
+//! persisted cursor.
 
 /// JSON-RPC client for the signal-cli HTTP daemon.
 pub mod client;

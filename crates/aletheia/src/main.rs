@@ -6,6 +6,7 @@
 
 mod cli;
 mod commands;
+mod cursor_store;
 mod daemon_bridge;
 mod dispatch;
 mod embedding_config;

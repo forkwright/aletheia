@@ -367,6 +367,9 @@ pub(crate) enum MetricSource {
     /// Computed client-side from backend graph/fact data.
     #[default]
     Computed,
+    /// Reported by the server as-is (e.g. `GET /api/v1/knowledge/health`),
+    /// not recomputed client-side (#6823).
+    Reported,
     /// No backend data was available; value is a placeholder.
     Unavailable,
 }
@@ -377,6 +380,7 @@ impl MetricSource {
     pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Computed => "computed",
+            Self::Reported => "server-reported",
             Self::Unavailable => "unavailable",
         }
     }
@@ -427,6 +431,11 @@ pub(crate) struct StaleEntity {
 /// formula itself can never drift between client and server even though
 /// the two sides query their inputs independently. See that module's doc
 /// comment for what "independently" means here in practice.
+///
+/// NOTE(#6823): since pylon exposes its snapshot over
+/// `GET /api/v1/knowledge/health`, this client-side path only runs as the
+/// fallback when that route is unavailable (older server, knowledge store
+/// disabled) -- see `views/meta/assembly.rs`.
 #[must_use]
 pub(crate) fn compute_health_score(
     avg_confidence: f64,
