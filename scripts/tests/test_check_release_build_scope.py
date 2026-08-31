@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import sys
 import unittest
@@ -23,89 +24,138 @@ CROSS = (
 )
 
 
+def step(name: str, condition: str, run: str) -> dict:
+    return {
+        "name": name,
+        "if": condition,
+        "run": run,
+        "env": {"BUILD_TARGET": "${{ matrix.target }}"},
+    }
+
+
 def workflow(native: str = NATIVE, cross: str = CROSS) -> dict:
     return {
         "jobs": {
             "build": {
                 "strategy": {"matrix": {"include": [
-                    {"target": "x86_64-unknown-linux-musl"},
-                    {"target": "aarch64-apple-darwin"},
+                    {"target": "x86_64-unknown-linux-musl", "cross": True},
+                    {"target": "aarch64-apple-darwin", "cross": False},
                 ]}},
-                "steps": [{"run": native}, {"run": cross}],
+                "steps": [
+                    step("Build (native)", "${{ !matrix.cross }}", native),
+                    step("Build (cross)", "${{ matrix.cross }}", cross),
+                ],
             }
         }
     }
 
 
-class ReleaseBuildCommands(unittest.TestCase):
-    def test_finds_native_and_cross_builds(self) -> None:
-        self.assertEqual(scope.release_build_commands(workflow()), [NATIVE, CROSS])
+class ReleaseBuildValidation(unittest.TestCase):
+    def assert_rejected(self, candidate: dict) -> None:
+        with self.assertRaises(scope.ScopeCheckError):
+            scope.validated_release_builds(candidate)
 
-    def test_finds_a_build_inside_multiline_shell(self) -> None:
+    def test_current_grammar_is_accepted_and_derives_replay_args(self) -> None:
+        builds = scope.validated_release_builds(workflow())
+        self.assertEqual([build.package for build in builds], ["aletheia", "aletheia"])
+        self.assertEqual([build.features for build in builds], ["recall,embed-candle"] * 2)
         self.assertEqual(
-            scope.release_build_commands(workflow(native=f"set -eu\n{NATIVE}\necho done")),
-            [NATIVE, CROSS],
+            [build.expected.matrix_target for build in builds],
+            ["aarch64-apple-darwin", "x86_64-unknown-linux-musl"],
         )
 
-    def test_scope_requires_package_bin_features_and_lock(self) -> None:
-        for removed in ("-p aletheia", "--bin aletheia", "--features recall,embed-candle", "--locked"):
-            with self.subTest(removed=removed):
-                self.assertTrue(scope.command_violations([NATIVE.replace(f" {removed}", "")]))
+    def test_rejects_test_support_and_all_features(self) -> None:
+        for extra in ("--features recall,embed-candle,test-support", "--all-features"):
+            with self.subTest(extra=extra):
+                self.assert_rejected(workflow(native=f"{NATIVE} {extra}"))
 
-    def test_workspace_scope_is_rejected(self) -> None:
-        self.assertTrue(scope.command_violations([NATIVE + " --workspace"]))
+    def test_rejects_package_and_bin_prefixes(self) -> None:
+        self.assert_rejected(workflow(native=NATIVE.replace("-p aletheia", "-p aletheia-malicious")))
+        self.assert_rejected(workflow(native=NATIVE.replace("--bin aletheia", "--bin aletheia-helper")))
 
-    def test_missing_build_commands_fails_closed(self) -> None:
-        self.assertTrue(scope.command_violations([]))
+    def test_rejects_missing_native_or_cross_step(self) -> None:
+        for index in (0, 1):
+            with self.subTest(index=index):
+                candidate = workflow()
+                del candidate["jobs"]["build"]["steps"][index]
+                self.assert_rejected(candidate)
+
+    def test_rejects_duplicate_and_decoy_build(self) -> None:
+        candidate = workflow()
+        candidate["jobs"]["build"]["steps"].append(step("Build (native)", "${{ !matrix.cross }}", NATIVE))
+        self.assert_rejected(candidate)
+
+    def test_rejects_an_extra_unscoped_cargo_build(self) -> None:
+        for run in (
+            "cargo build --locked --release",
+            "bash -c 'cargo auditable build --locked --release'",
+        ):
+            with self.subTest(run=run):
+                candidate = workflow()
+                candidate["jobs"]["build"]["steps"].append(
+                    step("Decoy", "${{ matrix.cross }}", run)
+                )
+                self.assert_rejected(candidate)
+
+    def test_rejects_repeated_scope_or_feature_flags(self) -> None:
+        for extra in ("-p aletheia", "--bin aletheia", "--features recall,embed-candle"):
+            with self.subTest(extra=extra):
+                self.assert_rejected(workflow(native=f"{NATIVE} {extra}"))
+
+    def test_rejects_wrong_target_matrix_linkage(self) -> None:
+        mutations = (
+            lambda candidate: candidate["jobs"]["build"]["steps"][0]["env"].update({"BUILD_TARGET": "x86_64-unknown-linux-musl"}),
+            lambda candidate: candidate["jobs"]["build"]["steps"][1].update({"if": "${{ !matrix.cross }}"}),
+            lambda candidate: candidate["jobs"]["build"]["strategy"]["matrix"]["include"].__setitem__(0, {"target": "x86_64-unknown-linux-gnu", "cross": True}),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                candidate = copy.deepcopy(workflow())
+                mutate(candidate)
+                self.assert_rejected(candidate)
+
+    def test_rejects_compound_or_multiline_release_builds(self) -> None:
+        for run in (f"set -eu\n{NATIVE}", f"{NATIVE}; cargo build --release"):
+            with self.subTest(run=run):
+                self.assert_rejected(workflow(native=run))
 
 
 class ResolutionParsing(unittest.TestCase):
     CLEAN = """\\
-aletheia v0.45.0 (/w/crates/aletheia) default,embed-candle,recall
-koina v0.45.0 (/w/crates/koina) default,rustls-provider
-mneme v0.45.0 (/w/crates/mneme) default,mneme-engine
+aletheia v0.45.0 (/workspace/crates/aletheia) default,embed-candle,recall
+koina v0.45.0 (/workspace/crates/koina) default,rustls-provider
+mneme v0.45.0 (/workspace/crates/mneme) default,mneme-engine
 serde v1.0.0 default,derive
 """
     LEAKY = """\\
-aletheia v0.45.0 (/w/crates/aletheia) default,embed-candle,recall
-koina v0.45.0 (/w/crates/koina) default,test-support
-mneme v0.45.0 (/w/crates/mneme) crash-injection,default
-hermeneus v0.45.0 (/w/crates/hermeneus) test-support,test-utils
-integration-tests v0.45.0 (/w/crates/integration-tests) default
+aletheia v0.45.0 (/workspace/crates/aletheia) default,embed-candle,recall
+koina v0.45.0 (/workspace/crates/koina) default,test-support
+mneme v0.45.0 (/workspace/crates/mneme) crash-injection,default
+hermeneus v0.45.0 (/workspace/crates/hermeneus) test-support,test-utils
+integration-tests v0.45.0 (/workspace/crates/integration-tests) default
 """
 
-    def test_parses_only_workspace_members(self) -> None:
-        members = scope.resolved_member_features(self.CLEAN)
-        self.assertEqual(members["koina"], {"default", "rustls-provider"})
-        self.assertNotIn("serde", members)
+    def members(self, output: str) -> dict[str, set[str]]:
+        return scope.resolved_member_features(output, Path("/workspace"))
 
     def test_clean_scoped_graph_passes(self) -> None:
-        self.assertEqual(
-            scope.forbidden_resolutions(scope.resolved_member_features(self.CLEAN), "test"), []
-        )
+        self.assertEqual(scope.forbidden_resolutions(self.members(self.CLEAN), "test"), [])
 
     def test_leaky_graph_reports_features_and_harness(self) -> None:
-        report = "\n".join(
-            scope.forbidden_resolutions(scope.resolved_member_features(self.LEAKY), "test")
-        )
+        report = "\n".join(scope.forbidden_resolutions(self.members(self.LEAKY), "test"))
         for expected in ("test-support", "test-utils", "crash-injection", "integration-tests"):
             with self.subTest(expected=expected):
                 self.assertIn(expected, report)
 
-    def test_empty_parse_fails_closed(self) -> None:
-        self.assertTrue(scope.forbidden_resolutions({}, "test"))
-
-
-class MatrixTargets(unittest.TestCase):
-    def test_reads_all_release_targets(self) -> None:
-        self.assertEqual(
-            scope.matrix_targets(workflow()),
-            ["x86_64-unknown-linux-musl", "aarch64-apple-darwin"],
-        )
-
-    def test_missing_matrix_fails_closed(self) -> None:
+    def test_partial_local_package_output_fails_closed(self) -> None:
+        partial = "koina v0.45.0 (/workspace/crates/koina) default trailing-field\n"
         with self.assertRaises(scope.ScopeCheckError):
-            scope.matrix_targets({"jobs": {"build": {}}})
+            self.members(partial)
+
+    def test_outside_workspace_local_source_fails_closed(self) -> None:
+        outside = "koina v0.45.0 (/other/crates/koina) default\n"
+        with self.assertRaises(scope.ScopeCheckError):
+            self.members(outside)
 
 
 if __name__ == "__main__":
