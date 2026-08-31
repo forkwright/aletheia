@@ -241,44 +241,54 @@ def validate_cross_inputs(root: Path) -> None:
 def cargo_configuration_paths(root: Path) -> list[Path]:
     """Find Cargo configs without following live, dangling, or looping links."""
     configurations: list[Path] = []
-    pending = [root]
+    pending = [(root, lstat_path(root))]
     while pending:
-        directory = pending.pop()
-        try:
-            with os.scandir(directory) as entries:
-                children = list(entries)
-        except OSError as error:
-            raise ScopeCheckError(f"cannot scan candidate Cargo path {directory}: {error}") from error
-        for entry in children:
-            path = Path(entry.path)
-            if entry.name == CARGO_DIRECTORY:
-                configurations.extend(cargo_directory_risks(root, directory, entry))
-            elif entry.is_dir(follow_symlinks=False):
-                pending.append(path)
+        directory, expected = pending.pop()
+        for path, name in stable_directory_entries(directory, expected):
+            before = lstat_path(path)
+            if name == CARGO_DIRECTORY:
+                configurations.extend(cargo_directory_risks(root, directory, path, before))
+            elif stat.S_ISDIR(before.st_mode):
+                pending.append((path, before))
     return configurations
 
 
-def cargo_directory_risks(root: Path, parent: Path, entry: os.DirEntry[str]) -> list[Path]:
-    """Allow only the checked-out root directory while rejecting every other type."""
-    path = Path(entry.path)
-    if parent != root or not entry.is_dir(follow_symlinks=False):
-        return [path]
+def lstat_path(path: Path) -> os.stat_result:
+    """Read path type and identity without resolving a possible symlink."""
     try:
-        before = entry.stat(follow_symlinks=False)
-        with os.scandir(path) as entries:
-            names = {child.name for child in entries}
-        after = os.lstat(path)
-    except OSError:
-        return [path]
+        return os.lstat(path)
+    except OSError as error:
+        raise ScopeCheckError(f"cannot stat candidate Cargo path {path}: {error}") from error
+
+
+def stable_directory_entries(directory: Path, expected: os.stat_result) -> list[tuple[Path, str]]:
+    """Read a real directory and reject replacement before or after traversal."""
+    before = lstat_path(directory)
+    if cargo_directory_changed(expected, before) or not stat.S_ISDIR(before.st_mode):
+        raise ScopeCheckError(f"candidate Cargo directory changed type or identity: {directory}")
+    try:
+        with os.scandir(directory) as entries:
+            children = [(Path(entry.path), entry.name) for entry in entries]
+    except OSError as error:
+        raise ScopeCheckError(f"cannot scan candidate Cargo path {directory}: {error}") from error
+    after = lstat_path(directory)
     if cargo_directory_changed(before, after):
+        raise ScopeCheckError(f"candidate Cargo directory changed during traversal: {directory}")
+    return children
+
+
+def cargo_directory_risks(root: Path, parent: Path, path: Path, expected: os.stat_result) -> list[Path]:
+    """Allow only the checked-out root directory while rejecting every other type."""
+    before = lstat_path(path)
+    if cargo_directory_changed(expected, before) or parent != root or not stat.S_ISDIR(before.st_mode):
         return [path]
-    return [path / name for name in CARGO_CONFIG_NAMES if name in names]
+    return [candidate for candidate, name in stable_directory_entries(path, before) if name in CARGO_CONFIG_NAMES]
 
 
 def cargo_directory_changed(before: os.stat_result, after: os.stat_result) -> bool:
     """Fail closed if a config directory changes while the immutable tree is checked."""
-    before_identity = (before.st_dev, before.st_ino, stat.S_IFMT(before.st_mode))
-    after_identity = (after.st_dev, after.st_ino, stat.S_IFMT(after.st_mode))
+    before_identity = (before.st_dev, before.st_ino, before.st_mode)
+    after_identity = (after.st_dev, after.st_ino, after.st_mode)
     return before_identity != after_identity
 
 

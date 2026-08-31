@@ -6,7 +6,6 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest import mock
 from pathlib import Path
 
 import yaml
@@ -322,18 +321,42 @@ class CargoConfigurationBoundary(unittest.TestCase):
                     with self.assertRaises(scope.ScopeCheckError):
                         scope.validate_cargo_configuration_boundary(root)
 
-    def test_cargo_directory_type_change_fails_closed(self) -> None:
+    def test_captured_directory_entry_replacement_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             cargo_directory = root / ".cargo"
             cargo_directory.mkdir()
             with os.scandir(root) as entries:
-                entry = next(item for item in entries if item.name == ".cargo")
-            before = entry.stat(follow_symlinks=False)
-            changed = list(before)
-            changed[1] += 1
-            with mock.patch.object(scope.os, "lstat", return_value=os.stat_result(changed)):
-                self.assertEqual(scope.cargo_directory_risks(root, root, entry), [cargo_directory])
+                captured = next(item for item in entries if item.name == ".cargo")
+            self.assertTrue(captured.is_dir(follow_symlinks=False))
+            before = os.lstat(cargo_directory)
+            cargo_directory.rmdir()
+            cargo_directory.symlink_to("evil-cargo", target_is_directory=True)
+            self.assertEqual(
+                scope.cargo_directory_risks(root, root, cargo_directory, before), [cargo_directory]
+            )
+
+    def test_symlink_and_directory_replacements_fail_closed(self) -> None:
+        for original, replacement in (("symlink", "directory"), ("directory", "directory")):
+            with self.subTest(original=original, replacement=replacement):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    cargo_directory = root / ".cargo"
+                    if original == "symlink":
+                        target = root / "target"
+                        target.mkdir()
+                        cargo_directory.symlink_to(target, target_is_directory=True)
+                    else:
+                        cargo_directory.mkdir()
+                    before = os.lstat(cargo_directory)
+                    if cargo_directory.is_symlink():
+                        cargo_directory.unlink()
+                    else:
+                        cargo_directory.rmdir()
+                    cargo_directory.mkdir()
+                    self.assertEqual(
+                        scope.cargo_directory_risks(root, root, cargo_directory, before), [cargo_directory]
+                    )
 
 
 if __name__ == "__main__":
