@@ -358,6 +358,20 @@ jobs:
       - name: Check feature namespace resolves under cargo metadata
         run: scripts/check-feature-namespace.py
 
+      # WHY(#6999): the release build ships exactly `-p aletheia --bin
+      # aletheia --features recall,embed-candle`. Before that scoping, the
+      # virtual-root build unified integration-tests' test-support/
+      # test-utils/crash-injection features into shipped binaries, and only
+      # the tag-triggered build ever exercised the resolution. This replays
+      # the scoped resolution per release target (tree-only, no compile)
+      # and fails the PR if release.yml loses its build scoping or a
+      # test-only feature reappears in the shipped dependency graph.
+      - name: Test check-release-build-scope.py
+        run: python3 -m unittest discover -s scripts/tests -p 'test_check_release_build_scope.py'
+
+      - name: Check the release build ships the declared package and features
+        run: scripts/check-release-build-scope.py
+
       - name: Release versioning
         run: |
           python3 scripts/check-automation-pr-gates.py
