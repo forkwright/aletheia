@@ -220,6 +220,13 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Action,
         shortcut: None,
     },
+    Command {
+        name: "context",
+        aliases: &["budget"],
+        description: "Show context window usage",
+        category: CommandCategory::Query,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;

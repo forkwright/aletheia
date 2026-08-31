@@ -25,7 +25,6 @@ pub(crate) async fn handle_open_overlay(app: &mut App, kind: OverlayKind) {
                     new_session_status: app.dashboard.new_session_status.clone(),
                 }),
                 OverlayKind::SystemStatus => Overlay::SystemStatus,
-                OverlayKind::ContextBudget => Overlay::ContextBudget,
                 OverlayKind::Settings => {
                     // kanon:ignore RUST/unreachable-in-match — Settings overlay is dispatched through a dedicated handler, not the generic overlay router
                     unreachable!()

@@ -369,6 +369,11 @@ pub(crate) async fn execute_command(app: &mut App) {
         "reconnect" => {
             execute_reconnect(app).await;
         }
+        // WHY(#6819): the overlay's former Ctrl+B fallback was shadowed by
+        // ToggleThinking's default binding; the command is its reachable path.
+        "context" | "budget" => {
+            app.layout.overlay = Some(Overlay::ContextBudget);
+        }
         _ => {
             app.viewport.error_toast =
                 Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
@@ -1064,6 +1069,23 @@ mod tests {
         assert!(
             app.viewport.success_toast.is_some(),
             "a successful retry must confirm visibly"
+        );
+    }
+
+    /// Regression for #6819: the ContextBudget overlay existed with no way to
+    /// open it -- its Ctrl+B fallback was shadowed by ToggleThinking's default
+    /// binding, and no command reached it.
+    #[tokio::test]
+    async fn context_command_opens_context_budget_overlay() {
+        let mut app = test_app();
+        app.interaction.command_palette.active = true;
+        app.interaction.command_palette.input = "context".into();
+
+        execute_command(&mut app).await;
+
+        assert!(
+            matches!(app.layout.overlay, Some(Overlay::ContextBudget)),
+            "the :context command must open the context budget overlay"
         );
     }
 }
