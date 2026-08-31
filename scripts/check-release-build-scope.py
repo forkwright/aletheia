@@ -20,6 +20,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,18 @@ CROSS_INSTALLER = Path("scripts/install-cargo-auditable-cross.sh")
 CARGO_DIRECTORY = ".cargo"
 CARGO_CONFIG_NAMES = ("config.toml", "config")
 ALLOWED_CARGO_TREE_ENTRY = ("100644", ".cargo/audit.toml")
+RUST_TOOLCHAIN = Path("rust-toolchain.toml")
+RUST_TOOLCHAIN_CHANNEL = "1.97.1"
+RUST_TOOLCHAIN_COMPONENTS = ("rustfmt", "clippy")
+RUST_TOOLCHAIN_PROFILE = "default"
+RUST_TOOLCHAIN_TARGETS = ("aarch64-apple-darwin", "x86_64-unknown-linux-musl")
+RUST_TOOLCHAIN_DIGEST = "0cdc1f132157e51ec479c2d6103efb37f115495b16c64dfc2baf7d895d45db7c"
+ALLOWED_TOOLCHAIN_TREE_ENTRY = ("100644", RUST_TOOLCHAIN.as_posix())
+RUSTUP_SELECTOR_NAMES = frozenset(
+    {"rust-toolchain", "rust-toolchain.toml", "rustup", "rustup.toml", ".rustup"}
+)
+CROSS_PRE_BUILD = 'pre-build = "./scripts/install-cargo-auditable-cross.sh"'
+CROSS_TOOLCHAIN_CARGO = 'exec /rust/bin/cargo auditable "$@"'
 SHIPPED_PACKAGE = "aletheia"
 SHIPPED_BIN = "aletheia"
 RELEASE_FEATURES = "recall,embed-candle"
@@ -123,11 +136,13 @@ EXPECTED_WORKFLOW_ENV = {
     "RELEASE_SHA": "${{ inputs.release_sha || github.sha }}",
     "RELEASE_TAG": "${{ inputs.tag_name || github.ref_name }}",
 }
+EXPECTED_BUILD_ENV = {"RUSTUP_TOOLCHAIN": RUST_TOOLCHAIN_CHANNEL}
 CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+RUST_TOOLCHAIN_ACTION = "dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7"
 EXPECTED_ACTIONS = frozenset(
     {
         CHECKOUT_ACTION,
-        "dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7",
+        RUST_TOOLCHAIN_ACTION,
         "taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518",
         "Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6",
         "anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610",
@@ -136,7 +151,7 @@ EXPECTED_ACTIONS = frozenset(
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
     }
 )
-SAFE_BUILD_JOB_DIGEST = "8d7af53b17f2bfcfc2c540fa596c4b7b808584337dda63d861b595b782881ff5"
+SAFE_BUILD_JOB_DIGEST = "e2912932b31c5fc612194005c91e85dffa6741462110c16b5dbf57c9b8f84139"
 TRUSTED_BUILD_STEP_DIGESTS = {
     "Build (native)": "d93be08a02ad6d7580059f7cd104cb9568dfdd1e876d7c0980c735645265986d",
     "Build (cross)": "b082568fcb69bca5c417cea6bec6862b84333e1a06b948251e10dec2c8173e55",
@@ -152,7 +167,7 @@ SAFE_STEP_DIGESTS = (
     "d1016ce5746c54a2f8916b6899a6b3d4d8c1aa552dca182364c386d3747018f1",
     "f15858d5aa5e3a0cdf7386474998073069eb5afb72d67368aa728ab1eafc37cf",
     "522453cb2d8914f58a3e2731c036e5964b973afe8663297937af774428158912",
-    "7e5adfd0bc284c926908190c2564adef683afde5fc0fbbbbf4c731e5d8e63f01",
+    "c674226898a8f57726378bafbf9668c5419da78533994126472fcbca2297928c",
     "6d53fd65a3ee6d39a8b3fe0fc2401136bb58817015a0933ecceff56908312275",
     "51e58b431773670272c7c4786699b87a95129ef96fa0c6c2f2badeaaf729227c",
     "7737c0fa3076e51a8cb4e6ca1d79d4cb1cc7214aa457862a5fedac5590fedcee",
@@ -232,11 +247,15 @@ def file_digest(path: Path) -> str:
 
 
 def validate_cross_inputs(root: Path) -> None:
-    """Pin the local Cross configuration and its image-side Cargo wrapper."""
+    """Pin Cross's image-side Cargo wrapper and its mounted host toolchain use."""
     for relative, expected in TRUSTED_CROSS_INPUTS.items():
         candidate = root / relative
         if not candidate.is_file() or file_digest(candidate) != expected:
             raise ScopeCheckError(f"cross build input differs from its trusted content: {relative}")
+    if CROSS_PRE_BUILD not in (root / CROSS_CONFIG).read_text(encoding="utf-8"):
+        raise ScopeCheckError("Cross no longer runs the trusted image setup")
+    if CROSS_TOOLCHAIN_CARGO not in (root / CROSS_INSTALLER).read_text(encoding="utf-8"):
+        raise ScopeCheckError("Cross no longer invokes Cargo from its mounted toolchain")
 
 
 def git_output(root: Path, arguments: list[str]) -> bytes:
@@ -274,11 +293,28 @@ def is_cargo_config_name(name: str) -> bool:
     return name.casefold() in CARGO_CONFIG_NAMES
 
 
+def is_toolchain_selector_name(name: str) -> bool:
+    """Recognize rustup selectors/configuration on either release runner filesystem."""
+    return name.casefold() in RUSTUP_SELECTOR_NAMES
+
+
+def is_toolchain_tree_path(path: str) -> bool:
+    """Whether a tracked path can select or configure a repository Rust toolchain."""
+    return any(is_toolchain_selector_name(component) for component in Path(path).parts)
+
+
 def validate_head_cargo_tree(root: Path) -> None:
     """Allow only the audited root Cargo directory in the immutable HEAD tree."""
     cargo_entries = [entry for entry in head_tree_entries(root) if is_cargo_tree_path(entry[1])]
     if cargo_entries != [ALLOWED_CARGO_TREE_ENTRY]:
         raise ScopeCheckError(f"HEAD tree has untrusted Cargo paths or modes: {cargo_entries!r}")
+
+
+def validate_head_toolchain_tree(root: Path) -> None:
+    """Permit one exact canonical rustup selector in the immutable HEAD tree."""
+    selectors = [entry for entry in head_tree_entries(root) if is_toolchain_tree_path(entry[1])]
+    if selectors != [ALLOWED_TOOLCHAIN_TREE_ENTRY]:
+        raise ScopeCheckError(f"HEAD tree has untrusted Rust toolchain selectors: {selectors!r}")
 
 
 def require_clean_checkout(root: Path) -> None:
@@ -289,37 +325,51 @@ def require_clean_checkout(root: Path) -> None:
         raise ScopeCheckError("release scope requires a clean worktree and index")
 
 
-def filesystem_cargo_config_paths(root: Path) -> list[Path]:
-    """Supplement Git's immutable tree check with untracked/ignored config detection."""
-    configurations: list[Path] = []
+def workspace_entries(root: Path) -> list[tuple[Path, str, Path, int]]:
+    """List candidate workspace entries without following links or entering .git."""
+    entries: list[tuple[Path, str, Path, int]] = []
     pending = [root]
     while pending:
         directory = pending.pop()
         try:
-            with os.scandir(directory) as entries:
-                children = [(Path(entry.path), entry.name) for entry in entries]
+            with os.scandir(directory) as directory_entries:
+                children = [(Path(entry.path), entry.name) for entry in directory_entries]
         except OSError as error:
-            raise ScopeCheckError(f"cannot scan Cargo configuration path {directory}: {error}") from error
+            raise ScopeCheckError(f"cannot scan release workspace path {directory}: {error}") from error
         for path, name in children:
             if directory == root and name == ".git":
                 continue
             try:
                 mode = os.lstat(path).st_mode
             except OSError as error:
-                raise ScopeCheckError(f"cannot stat Cargo configuration path {path}: {error}") from error
-            is_link = stat.S_ISLNK(mode)
-            is_directory = stat.S_ISDIR(mode)
-            in_cargo_directory = directory.name.casefold() == CARGO_DIRECTORY
-            is_cargo_directory = name.casefold() == CARGO_DIRECTORY
-            if in_cargo_directory and is_cargo_config_name(name):
-                configurations.append(path)
-            if is_cargo_directory and is_link:
-                configurations.append(path)
-            if not is_cargo_directory and is_directory:
+                raise ScopeCheckError(f"cannot stat release workspace path {path}: {error}") from error
+            entries.append((path, name, directory, mode))
+            if stat.S_ISDIR(mode):
                 pending.append(path)
-            if is_cargo_directory and is_directory:
-                pending.append(path)
+    return entries
+
+
+def filesystem_cargo_config_paths(root: Path) -> list[Path]:
+    """Supplement Git's immutable tree check with untracked/ignored config detection."""
+    configurations: list[Path] = []
+    for path, name, directory, mode in workspace_entries(root):
+        is_link = stat.S_ISLNK(mode)
+        in_cargo_directory = directory.name.casefold() == CARGO_DIRECTORY
+        is_cargo_directory = name.casefold() == CARGO_DIRECTORY
+        if in_cargo_directory and is_cargo_config_name(name):
+            configurations.append(path)
+        if is_cargo_directory and is_link:
+            configurations.append(path)
     return configurations
+
+
+def filesystem_toolchain_selector_paths(root: Path) -> list[Path]:
+    """Find ignored or untracked rustup selectors without following symlinks."""
+    selectors: list[Path] = []
+    for path, name, _directory, _mode in workspace_entries(root):
+        if is_toolchain_selector_name(name) and path != root / RUST_TOOLCHAIN:
+            selectors.append(path)
+    return selectors
 
 
 def validate_cargo_configuration_boundary(root: Path) -> None:
@@ -337,13 +387,46 @@ def validate_cargo_configuration_boundary(root: Path) -> None:
         raise ScopeCheckError(f"untracked Cargo configuration is forbidden: {paths}")
 
 
+def validate_toolchain_definition(root: Path) -> None:
+    """Verify the complete canonical rustup selector before Cargo can execute."""
+    candidate = root / RUST_TOOLCHAIN
+    if not candidate.is_file() or file_digest(candidate) != RUST_TOOLCHAIN_DIGEST:
+        raise ScopeCheckError("rust-toolchain.toml differs from the trusted release pin")
+    try:
+        parsed = tomllib.loads(candidate.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as error:
+        raise ScopeCheckError(f"cannot parse trusted rust-toolchain.toml: {error}") from error
+    expected = {
+        "toolchain": {
+            "channel": RUST_TOOLCHAIN_CHANNEL,
+            "components": list(RUST_TOOLCHAIN_COMPONENTS),
+            "profile": RUST_TOOLCHAIN_PROFILE,
+            "targets": list(RUST_TOOLCHAIN_TARGETS),
+        }
+    }
+    if parsed != expected:
+        raise ScopeCheckError("rust-toolchain.toml has an unexpected release toolchain definition")
+
+
+def validate_toolchain_boundary(root: Path) -> None:
+    """Bind rustup selection to the clean immutable checkout, not candidate wrappers."""
+    validate_head_toolchain_tree(root)
+    require_clean_checkout(root)
+    validate_toolchain_definition(root)
+    selectors = filesystem_toolchain_selector_paths(root)
+    if selectors:
+        paths = ", ".join(str(path.relative_to(root)) for path in selectors)
+        raise ScopeCheckError(f"untracked Rust toolchain selectors are forbidden: {paths}")
+
+
 def validate_release_repository(root: Path) -> None:
     """Validate candidate-controlled files before the release commands run."""
+    validate_toolchain_boundary(root)
     validate_cargo_configuration_boundary(root)
     validate_cross_inputs(root)
 
 
-def validate_environment(env: Any, scope: str) -> None:
+def validate_environment(env: Any, scope: str, allowed: frozenset[str] = frozenset()) -> None:
     """Reject environment variables that redirect a Cargo/Rust invocation."""
     if env is None:
         return
@@ -357,7 +440,10 @@ def validate_environment(env: Any, scope: str) -> None:
     }
     redirected = sorted(
         key for key in env
-        if key in forbidden or key.startswith("CARGO_ALIAS_") or key.startswith("CARGO_BUILD_")
+        if key not in allowed and (
+            key in forbidden or key.startswith("CARGO_ALIAS_") or key.startswith("CARGO_BUILD_")
+            or key.startswith("RUSTUP_")
+        )
     )
     if redirected:
         raise ScopeCheckError(f"{scope} env redirects execution: {', '.join(redirected)}")
@@ -369,8 +455,9 @@ def validate_job_context(workflow: dict[str, Any]) -> None:
     envelope = {key: value for key, value in job.items() if key != "steps"}
     if step_digest(envelope) != SAFE_BUILD_JOB_DIGEST:
         raise ScopeCheckError("jobs.build execution envelope differs from the trusted release job")
-    if job.get("defaults") is not None or job.get("env") is not None:
-        raise ScopeCheckError("jobs.build may not set defaults or environment")
+    if job.get("defaults") is not None or job.get("env") != EXPECTED_BUILD_ENV:
+        raise ScopeCheckError("jobs.build must use only the trusted toolchain environment")
+    validate_environment(job.get("env"), "jobs.build", frozenset(EXPECTED_BUILD_ENV))
 
 
 def validate_workflow_context(workflow: dict[str, Any]) -> None:
@@ -407,6 +494,17 @@ def validate_checkout(steps: list[dict[str, Any]]) -> None:
         raise ScopeCheckError("checkout must use the release ref at repository root with no submodules")
 
 
+def validate_toolchain_action(steps: list[dict[str, Any]]) -> None:
+    """Require the action that installs the same pinned toolchain for both legs."""
+    actions = [step for step in steps if step.get("uses") == RUST_TOOLCHAIN_ACTION]
+    expected_with = {
+        "toolchain": RUST_TOOLCHAIN_CHANNEL,
+        "targets": "${{ matrix.target }}",
+    }
+    if len(actions) != 1 or actions[0].get("with") != expected_with:
+        raise ScopeCheckError("release builds must install the exact matrix Rust toolchain")
+
+
 def validate_execution_envelope(workflow: dict[str, Any], steps: list[dict[str, Any]]) -> None:
     """Bind defaults, inherited environment, actions, and checkout semantics."""
     validate_job_context(workflow)
@@ -414,6 +512,7 @@ def validate_execution_envelope(workflow: dict[str, Any], steps: list[dict[str, 
     for step in steps:
         validate_step_context(step)
     validate_checkout(steps)
+    validate_toolchain_action(steps)
 
 
 def validate_build_step(step: dict[str, Any], index: int, expected: ExpectedBuild) -> ValidatedBuild:

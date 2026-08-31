@@ -126,6 +126,8 @@ class ReleaseBuildValidation(unittest.TestCase):
             lambda candidate: candidate["jobs"]["build"].update({"defaults": {"run": {"working-directory": "decoy"}}}),
             lambda candidate: candidate["env"].update({"CARGO_ALIAS_BUILD": "build --workspace"}),
             lambda candidate: candidate["jobs"]["build"].update({"env": {"RUSTC_WRAPPER": "./wrapper"}}),
+            lambda candidate: candidate["jobs"]["build"]["env"].update({"RUSTUP_HOME": "./rustup"}),
+            lambda candidate: candidate["jobs"]["build"]["env"].update({"RUSTUP_TOOLCHAIN": "candidate"}),
             lambda candidate: build_step(candidate, "Build (cross)")["env"].update({"CARGO_HOME": "./decoy"}),
             lambda candidate: build_step(candidate, "Build (native)")["env"].update({"UNRELATED": "value"}),
             lambda candidate: candidate["jobs"]["build"].update({"container": "evil:latest"}),
@@ -160,6 +162,7 @@ class ReleaseBuildValidation(unittest.TestCase):
             lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION)["with"].update({"ref": "main"}),
             lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION)["with"].update({"path": "decoy"}),
             lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION).update({"working-directory": "decoy"}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.RUST_TOOLCHAIN_ACTION)["with"].update({"toolchain": "candidate"}),
         ):
             with self.subTest(mutate=mutate):
                 candidate = workflow()
@@ -380,6 +383,90 @@ class CargoConfigurationBoundary(unittest.TestCase):
             (root / ".cargo" / "audit.toml").write_text("[advisories]\nignore = []\n", encoding="utf-8")
             with self.assertRaises(scope.ScopeCheckError):
                 scope.validate_cargo_configuration_boundary(root)
+
+
+class ToolchainBoundary(CargoConfigurationBoundary):
+    def initialize_toolchain_checkout(self, root: Path) -> None:
+        self.initialize_checkout(root)
+        (root / scope.RUST_TOOLCHAIN).write_bytes((scope.REPO_ROOT / scope.RUST_TOOLCHAIN).read_bytes())
+        self.git(root, "add", scope.RUST_TOOLCHAIN.as_posix())
+        self.git(root, "commit", "-qm", "canonical toolchain")
+
+    def assert_toolchain_tree_rejected(
+        self, create: Callable[[Path], None], expected_entry: tuple[str, str]
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.initialize_toolchain_checkout(root)
+            create(root)
+            self.git(root, "add", "-A")
+            self.git(root, "commit", "-qm", "candidate selector")
+            self.assertIn(expected_entry, scope.head_tree_entries(root))
+            with self.assertRaises(scope.ScopeCheckError):
+                scope.validate_toolchain_boundary(root)
+
+    def test_canonical_toolchain_definition_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.initialize_toolchain_checkout(root)
+            self.assertEqual(
+                [entry for entry in scope.head_tree_entries(root) if scope.is_toolchain_tree_path(entry[1])],
+                [("100644", "rust-toolchain.toml")],
+            )
+            scope.validate_toolchain_boundary(root)
+
+    def test_legacy_path_toolchain_and_wrappers_are_rejected(self) -> None:
+        def create(root: Path) -> None:
+            (root / "candidate-toolchain" / "bin").mkdir(parents=True)
+            for executable in ("cargo", "rustc"):
+                path = root / "candidate-toolchain" / "bin" / executable
+                path.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+                path.chmod(0o755)
+            (root / "rust-toolchain").write_text(
+                '[toolchain]\npath = "candidate-toolchain"\n', encoding="utf-8"
+            )
+
+        self.assert_toolchain_tree_rejected(create, ("100644", "rust-toolchain"))
+
+    def test_tampered_canonical_and_casefolded_selectors_are_rejected(self) -> None:
+        cases = (
+            (Path("rust-toolchain.toml"), '[toolchain]\nchannel = "candidate"\n'),
+            (Path("Rust-toolchain"), '[toolchain]\npath = "candidate-toolchain"\n'),
+            (Path(".rustup"), "candidate rustup selector\n"),
+        )
+        for relative, contents in cases:
+            with self.subTest(relative=relative):
+                def create(root: Path, relative: Path = relative, contents: str = contents) -> None:
+                    selector = root / relative
+                    selector.parent.mkdir(parents=True, exist_ok=True)
+                    selector.write_text(contents, encoding="utf-8")
+
+                self.assert_toolchain_tree_rejected(create, ("100644", relative.as_posix()))
+
+    def test_canonical_toolchain_symlink_is_rejected_by_mode(self) -> None:
+        def create(root: Path) -> None:
+            canonical = root / scope.RUST_TOOLCHAIN
+            canonical.unlink()
+            target = root / "candidate-toolchain.toml"
+            target.write_text('[toolchain]\npath = "candidate-toolchain"\n', encoding="utf-8")
+            canonical.symlink_to(target.name)
+
+        self.assert_toolchain_tree_rejected(create, ("120000", "rust-toolchain.toml"))
+
+    def test_ignored_toolchain_selector_is_rejected_before_tool_invocation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.initialize_toolchain_checkout(root)
+            (root / ".gitignore").write_text("Rust-toolchain\n", encoding="utf-8")
+            self.git(root, "add", ".gitignore")
+            self.git(root, "commit", "-qm", "ignore selector")
+            (root / "Rust-toolchain").write_text(
+                '[toolchain]\npath = "candidate-toolchain"\n', encoding="utf-8"
+            )
+            with mock.patch.object(scope, "validate_cross_inputs") as cross_inputs:
+                with self.assertRaises(scope.ScopeCheckError):
+                    scope.validate_release_repository(root)
+            cross_inputs.assert_not_called()
 
 
 if __name__ == "__main__":
