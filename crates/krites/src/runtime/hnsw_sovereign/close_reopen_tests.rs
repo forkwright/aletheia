@@ -288,6 +288,12 @@ fn close_reopen_preserves_recall_across_inserts_and_deletes() {
                 );
             }
         }
+        let query_dump: Vec<(usize, [f32; 4])> = query_targets
+            .iter()
+            .copied()
+            .zip(queries.iter().copied())
+            .collect();
+        dump_graph_state(&db, &to_delete, &query_dump);
         let measured = measure_recall(&db, &queries, &remaining, 10);
         recall_phases.insert(POST_DELETE_REOPEN_PHASE, measured);
         write_recall_sidecar(&recall_phases);
@@ -310,6 +316,76 @@ fn close_reopen_preserves_recall_across_inserts_and_deletes() {
             measured.hits,
             measured.possible
         );
+    }
+}
+
+
+/// #6952 investigation instrumentation: dump the post-delete-reopen index
+/// graph (all levels), the search-derived entry row, and per-query results
+/// as JSON lines on stderr, tagged DUMP6952.
+fn dump_graph_state(db: &TestDb, deleted: &[i64], queries: &[(usize, [f32; 4])]) {
+    let tx = db.transact().unwrap();
+    let base = tx.get_relation("v", false).unwrap();
+    let (idx_handle, _manifest) = base.hnsw_indices.get("idx").unwrap().clone();
+    // All index rows with level < ENTRY_POINT_LEVEL (i.e. every real row).
+    let rows: Vec<Vec<DataValue>> = idx_handle
+        .scan_bounded_prefix(
+            &tx,
+            &[],
+            &[DataValue::from(i64::MIN)],
+            &[DataValue::from(1)],
+        )
+        .map(|r| r.unwrap())
+        .collect();
+    // First row is what search derives its entry point from.
+    let ep_row = rows
+        .first()
+        .map(|r| (r[0].get_int(), r[1].get_int(), r[4].get_int()));
+    let mut out = String::new();
+    out.push_str(&format!(
+        "{{\"ep_row\":{:?},\"deleted\":{:?},\"levels\":{{",
+        ep_row, deleted
+    ));
+    use std::collections::BTreeMap;
+    let mut by_level: BTreeMap<i64, (Vec<i64>, Vec<(i64, i64, bool)>)> = BTreeMap::new();
+    for r in &rows {
+        let (Some(level), Some(fr), Some(to)) =
+            (r[0].get_int(), r[1].get_int(), r[4].get_int())
+        else {
+            eprintln!("DUMP6952-ODDROW {r:?}");
+            continue;
+        };
+        let entry = by_level.entry(level).or_default();
+        if fr == to {
+            entry.0.push(fr);
+        } else if let Some(del) = r[9].get_bool() {
+            entry.1.push((fr, to, del));
+        } else {
+            eprintln!("DUMP6952-ODDROW {r:?}");
+        }
+    }
+    let mut first = true;
+    for (level, (nodes, edges)) in &by_level {
+        if !first {
+            out.push(',');
+        }
+        first = false;
+        let edges_json: Vec<String> = edges
+            .iter()
+            .map(|(f, t, d)| format!("[{f},{t},{}]", i32::from(*d)))
+            .collect();
+        out.push_str(&format!(
+            "\"{level}\":{{\"nodes\":{:?},\"edges\":[{}]}}",
+            nodes,
+            edges_json.join(",")
+        ));
+    }
+    out.push_str("}}");
+    drop(tx);
+    eprintln!("DUMP6952-GRAPH {out}");
+    for &(target, q) in queries {
+        let approx = search(db, q, 10);
+        eprintln!("DUMP6952-QUERY {{\"target\":{target},\"approx\":{approx:?}}}");
     }
 }
 
