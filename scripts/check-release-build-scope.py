@@ -27,6 +27,10 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = Path(".github/workflows/release.yml")
+MANIFEST_NAME = "Cargo.toml"
+LOCKFILE_NAME = "Cargo.lock"
+CROSS_CONFIG = Path("Cross.toml")
+CROSS_INSTALLER = Path("scripts/install-cargo-auditable-cross.sh")
 SHIPPED_PACKAGE = "aletheia"
 SHIPPED_BIN = "aletheia"
 RELEASE_FEATURES = "recall,embed-candle"
@@ -53,6 +57,8 @@ LOCAL_PACKAGE_LINE = re.compile(
 DEV_DEPENDENCY_SECTION = re.compile(
     r"(?ms)^\[(?:dev-dependencies|target\..*\.dev-dependencies)\]\n.*?(?=^\[|\Z)"
 )
+MEMBERS_SECTION = re.compile(r"(?ms)^members = \[\n.*?^\]")
+EXCLUDE_SECTION = re.compile(r"(?ms)^exclude = \[\n.*?^\]")
 
 
 class ScopeCheckError(Exception):
@@ -130,6 +136,14 @@ EXPECTED_ACTIONS = frozenset(
     }
 )
 SAFE_BUILD_JOB_DIGEST = "8d7af53b17f2bfcfc2c540fa596c4b7b808584337dda63d861b595b782881ff5"
+TRUSTED_BUILD_STEP_DIGESTS = {
+    "Build (native)": "d93be08a02ad6d7580059f7cd104cb9568dfdd1e876d7c0980c735645265986d",
+    "Build (cross)": "b082568fcb69bca5c417cea6bec6862b84333e1a06b948251e10dec2c8173e55",
+}
+TRUSTED_CROSS_INPUTS = {
+    CROSS_CONFIG: "c59f137bd29a0c72e07313f4ac636e00a2a5c8e5b5a61a2204465b5977724b17",
+    CROSS_INSTALLER: "3b4dee409d2372bc4f8993624f1cb99659adf6f03500090a9697f22d50e254fc",
+}
 # Exact fingerprints of every non-release jobs.build step, in workflow order.
 # They bind run text, uses references, `with`, `if`, env, shell, and working
 # directory together. None marks the only two permitted artifact builds.
@@ -211,6 +225,19 @@ def step_digest(step: dict[str, Any]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def file_digest(path: Path) -> str:
+    """Return the exact bytes digest for a local build-time input."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def validate_cross_inputs(root: Path) -> None:
+    """Pin the local Cross configuration and its image-side Cargo wrapper."""
+    for relative, expected in TRUSTED_CROSS_INPUTS.items():
+        candidate = root / relative
+        if not candidate.is_file() or file_digest(candidate) != expected:
+            raise ScopeCheckError(f"cross build input differs from its trusted content: {relative}")
+
+
 def validate_environment(env: Any, scope: str) -> None:
     """Reject environment variables that redirect a Cargo/Rust invocation."""
     if env is None:
@@ -231,46 +258,73 @@ def validate_environment(env: Any, scope: str) -> None:
         raise ScopeCheckError(f"{scope} env redirects execution: {', '.join(redirected)}")
 
 
-def validate_execution_envelope(workflow: dict[str, Any], steps: list[dict[str, Any]]) -> None:
-    """Bind defaults, inherited environment, actions, and checkout semantics."""
+def validate_job_context(workflow: dict[str, Any]) -> None:
+    """Reject job-level shell, environment, runner, or container redirection."""
     job = workflow["jobs"]["build"]
-    job_envelope = {key: value for key, value in job.items() if key != "steps"}
-    if step_digest(job_envelope) != SAFE_BUILD_JOB_DIGEST:
+    envelope = {key: value for key, value in job.items() if key != "steps"}
+    if step_digest(envelope) != SAFE_BUILD_JOB_DIGEST:
         raise ScopeCheckError("jobs.build execution envelope differs from the trusted release job")
-    for scope, mapping in (("workflow", workflow), ("jobs.build", workflow["jobs"]["build"])):
-        defaults = mapping.get("defaults")
-        if defaults is not None:
-            raise ScopeCheckError(f"{scope} defaults are forbidden for release artifact execution")
+    if job.get("defaults") is not None or job.get("env") is not None:
+        raise ScopeCheckError("jobs.build may not set defaults or environment")
+
+
+def validate_workflow_context(workflow: dict[str, Any]) -> None:
+    """Accept only the release workflow's known inherited environment."""
+    if workflow.get("defaults") is not None:
+        raise ScopeCheckError("workflow defaults are forbidden for release artifact execution")
     if workflow.get("env") != EXPECTED_WORKFLOW_ENV:
         raise ScopeCheckError("workflow env differs from the allowed release environment")
     validate_environment(workflow.get("env"), "workflow")
-    if job.get("env") is not None:
-        raise ScopeCheckError("jobs.build env is forbidden; command steps declare their own inputs")
 
-    checkout_steps: list[dict[str, Any]] = []
-    for step in steps:
-        validate_environment(step.get("env"), f"jobs.build step {step.get('name')!r}")
-        if "run" in step:
-            if "shell" in step or "working-directory" in step:
-                raise ScopeCheckError(
-                    f"jobs.build command step {step.get('name')!r} changes shell or working directory"
-                )
-        uses = step.get("uses")
-        if uses is not None:
-            if not isinstance(uses, str) or uses.startswith("./") or uses not in EXPECTED_ACTIONS:
-                raise ScopeCheckError(f"jobs.build uses untrusted action: {uses!r}")
-            if uses == CHECKOUT_ACTION:
-                checkout_steps.append(step)
-    if len(checkout_steps) != 1:
-        raise ScopeCheckError("jobs.build must contain exactly one trusted checkout step")
-    checkout = checkout_steps[0]
+
+def validate_step_context(step: dict[str, Any]) -> None:
+    """Reject shell, directory, action, and environment indirection per step."""
+    name = step.get("name")
+    validate_environment(step.get("env"), f"jobs.build step {name!r}")
+    if "run" in step and ("shell" in step or "working-directory" in step):
+        raise ScopeCheckError(f"jobs.build command step {name!r} changes shell or working directory")
+    uses = step.get("uses")
+    if uses is not None and (
+        not isinstance(uses, str) or uses.startswith("./") or uses not in EXPECTED_ACTIONS
+    ):
+        raise ScopeCheckError(f"jobs.build uses untrusted action: {uses!r}")
+
+
+def validate_checkout(steps: list[dict[str, Any]]) -> None:
+    """Require one checkout of the supplied release SHA at the repository root."""
+    checkouts = [step for step in steps if step.get("uses") == CHECKOUT_ACTION]
     expected_with = {
         "persist-credentials": False,
         "ref": "${{ inputs.release_sha || github.sha }}",
         "submodules": False,
     }
-    if checkout.get("with") != expected_with or "path" in checkout:
+    if len(checkouts) != 1 or checkouts[0].get("with") != expected_with or "path" in checkouts[0]:
         raise ScopeCheckError("checkout must use the release ref at repository root with no submodules")
+
+
+def validate_execution_envelope(workflow: dict[str, Any], steps: list[dict[str, Any]]) -> None:
+    """Bind defaults, inherited environment, actions, and checkout semantics."""
+    validate_job_context(workflow)
+    validate_workflow_context(workflow)
+    for step in steps:
+        validate_step_context(step)
+    validate_checkout(steps)
+
+
+def validate_build_step(step: dict[str, Any], index: int, expected: ExpectedBuild) -> ValidatedBuild:
+    """Require every artifact-step key to match the trusted release step."""
+    if SAFE_STEP_DIGESTS[index] is not None or step_digest(step) != TRUSTED_BUILD_STEP_DIGESTS[expected.name]:
+        raise ScopeCheckError(f"{expected.kind} release build differs from the trusted step")
+    run = step["run"]
+    argv = direct_shell_argv(run)
+    if tuple(argv) != expected.argv:
+        raise ScopeCheckError(f"unrecognized {expected.kind} release command: {argv!r}")
+    return ValidatedBuild(
+        expected=expected,
+        package=argv[argv.index("-p") + 1],
+        binary=argv[argv.index("--bin") + 1],
+        features=argv[argv.index("--features") + 1],
+    )
 
 
 def validated_release_builds(workflow: dict[str, Any]) -> list[ValidatedBuild]:
@@ -278,6 +332,7 @@ def validated_release_builds(workflow: dict[str, Any]) -> list[ValidatedBuild]:
     validate_matrix(workflow)
     steps = build_steps(workflow)
     validate_execution_envelope(workflow, steps)
+    validate_cross_inputs(REPO_ROOT)
     if len(steps) != len(SAFE_STEP_DIGESTS):
         raise ScopeCheckError("jobs.build step count differs from the trusted execution graph")
     expected_by_name = {build.name: build for build in EXPECTED_BUILDS}
@@ -288,24 +343,9 @@ def validated_release_builds(workflow: dict[str, Any]) -> list[ValidatedBuild]:
         name = step.get("name")
         expected = expected_by_name.get(name)
         if expected is not None:
-            if SAFE_STEP_DIGESTS[index] is not None or not isinstance(run, str):
-                raise ScopeCheckError(f"{expected.kind} release build appears outside its trusted step slot")
-            argv = direct_shell_argv(run)
-            if tuple(argv) != expected.argv:
-                raise ScopeCheckError(f"unrecognized {expected.kind} release command: {argv!r}")
-            if step.get("if") != expected.condition:
-                raise ScopeCheckError(f"{expected.kind} release build has incorrect matrix condition")
-            env = step.get("env")
-            if env != {"BUILD_TARGET": "${{ matrix.target }}"}:
-                raise ScopeCheckError(f"{expected.kind} release build lacks BUILD_TARGET matrix linkage")
             if expected.kind in seen_builds:
                 raise ScopeCheckError(f"duplicate {expected.kind} release build command")
-            seen_builds[expected.kind] = ValidatedBuild(
-                expected=expected,
-                package=argv[argv.index("-p") + 1],
-                binary=argv[argv.index("--bin") + 1],
-                features=argv[argv.index("--features") + 1],
-            )
+            seen_builds[expected.kind] = validate_build_step(step, index, expected)
             continue
 
         expected_digest = SAFE_STEP_DIGESTS[index]
@@ -322,8 +362,8 @@ def require_workspace_root() -> Path:
     """Do not accept a graph generated from a different checkout."""
     if Path.cwd().resolve() != REPO_ROOT:
         raise ScopeCheckError(f"must run from workspace root {REPO_ROOT}")
-    if not (REPO_ROOT / "Cargo.toml").is_file():
-        raise ScopeCheckError(f"workspace root {REPO_ROOT} has no Cargo.toml")
+    if not (REPO_ROOT / MANIFEST_NAME).is_file():
+        raise ScopeCheckError(f"workspace root {REPO_ROOT} has no {MANIFEST_NAME}")
     return REPO_ROOT
 
 
@@ -348,192 +388,225 @@ def with_probe_workspace(manifest: str, manifest_dir: Path, probe: Path) -> str:
     return rewritten
 
 
-def metadata_for(build: ValidatedBuild) -> dict[str, Any]:
-    """Resolve the shipped package in an isolated, lock-pinned workspace.
+def crate_manifests() -> list[Path]:
+    """List local manifests shallow-first so nested crate paths stay lexical."""
+    return sorted((REPO_ROOT / "crates").rglob(MANIFEST_NAME), key=lambda path: len(path.parts))
 
-    `cargo metadata` at the virtual root resolves every member and therefore
-    unifies integration-tests' features into unrelated local packages.  Cargo
-    has no package-selection flag for metadata, so materialize a temporary
-    workspace which retains the real manifests, lockfile, and workspace
-    settings but declares only the shipped package as a member.  Its
-    ``resolve.nodes[].features`` fields are the authoritative, machine-readable
-    resolved features used to certify the tree replay below.
-    """
-    with tempfile.TemporaryDirectory(prefix="aletheia-release-scope-") as temp:
-        probe = Path(temp).resolve()
-        manifests = sorted(
-            (REPO_ROOT / "crates").rglob("Cargo.toml"), key=lambda path: len(path.parts)
-        )
-        manifest_dirs = {manifest.parent for manifest in manifests}
-        source_manifest = (REPO_ROOT / "Cargo.toml").read_text(encoding="utf-8")
-        members = re.compile(r"(?ms)^members = \[\n.*?^\]")
-        root_manifest, replacements = members.subn(
-            f'members = [\n    "crates/{build.package}",\n]', source_manifest, count=1
-        )
-        if replacements != 1:
-            raise ScopeCheckError("cannot isolate the workspace members in Cargo.toml")
-        excluded = [
-            source_dir.relative_to(REPO_ROOT).as_posix()
-            for source_dir in manifest_dirs
-            if source_dir != REPO_ROOT / "crates" / build.package
-        ]
-        exclude = re.compile(r"(?ms)^exclude = \[\n.*?^\]")
-        root_manifest, replacements = exclude.subn(
-            "exclude = [\n" + "".join(f'    "{path}",\n' for path in sorted(excluded)) + "]",
-            root_manifest,
-            count=1,
-        )
-        if replacements != 1:
-            raise ScopeCheckError("cannot isolate the workspace exclusions in Cargo.toml")
-        (probe / "Cargo.toml").write_text(root_manifest, encoding="utf-8")
-        shutil.copyfile(REPO_ROOT / "Cargo.lock", probe / "Cargo.lock")
 
-        # Keep manifests lexical to the temporary root so Cargo discovers the
-        # isolated workspace; every other crate entry is a symlink, making the
-        # probe cheap and read-only with respect to the checkout.
-        for manifest in manifests:
-            source_dir = manifest.parent
-            destination_dir = probe / source_dir.relative_to(REPO_ROOT)
-            destination_dir.mkdir(parents=True, exist_ok=True)
-            (destination_dir / "Cargo.toml").write_text(
-                with_probe_workspace(
-                    without_dev_dependencies(manifest.read_text(encoding="utf-8")),
-                    destination_dir,
-                    probe,
-                ),
-                encoding="utf-8",
-            )
-            for entry in source_dir.iterdir():
-                if entry.name == "Cargo.toml":
-                    continue
-                if entry.is_dir() and any(entry == child or entry in child.parents for child in manifest_dirs):
-                    (destination_dir / entry.name).mkdir(exist_ok=True)
-                    continue
-                os.symlink(entry, destination_dir / entry.name, target_is_directory=entry.is_dir())
-        completed = subprocess.run(
-            [
-                "cargo", "metadata", "--manifest-path", str(probe / "Cargo.toml"),
-                "--offline", "--format-version", "1", "--filter-platform",
-                build.expected.matrix_target, "--features", build.features,
-            ],
-            capture_output=True,
-            text=True,
-            cwd=REPO_ROOT,
-            env=cargo_environment(),
-            check=False,
-        )
+def replace_manifest_section(pattern: re.Pattern[str], replacement: str, message: str, manifest: str) -> str:
+    """Replace one required root-workspace TOML section or fail closed."""
+    rewritten, replacements = pattern.subn(replacement, manifest, count=1)
+    if replacements != 1:
+        raise ScopeCheckError(message)
+    return rewritten
+
+
+def probe_root_manifest(build: ValidatedBuild, manifest_dirs: set[Path]) -> str:
+    """Keep workspace settings but select and exclude exactly the probe graph."""
+    source = (REPO_ROOT / MANIFEST_NAME).read_text(encoding="utf-8")
+    members = f'members = [\n    "crates/{build.package}",\n]'
+    rewritten = replace_manifest_section(
+        MEMBERS_SECTION, members, f"cannot isolate the workspace members in {MANIFEST_NAME}", source
+    )
+    excluded = [
+        directory.relative_to(REPO_ROOT).as_posix()
+        for directory in manifest_dirs
+        if directory != REPO_ROOT / "crates" / build.package
+    ]
+    exclude = "exclude = [\n" + "".join(f'    "{path}",\n' for path in sorted(excluded)) + "]"
+    return replace_manifest_section(
+        EXCLUDE_SECTION, exclude, f"cannot isolate the workspace exclusions in {MANIFEST_NAME}", rewritten
+    )
+
+
+def has_nested_manifest(entry: Path, manifest_dirs: set[Path]) -> bool:
+    """Whether a directory needs a lexical copy rather than one source symlink."""
+    return entry.is_dir() and any(entry == child or entry in child.parents for child in manifest_dirs)
+
+
+def mirror_crate_manifest(source: Path, probe: Path, manifest_dirs: set[Path]) -> None:
+    """Copy one manifest and link its non-manifest contents into the probe."""
+    source_dir = source.parent
+    destination = probe / source_dir.relative_to(REPO_ROOT)
+    destination.mkdir(parents=True, exist_ok=True)
+    copied = with_probe_workspace(without_dev_dependencies(source.read_text(encoding="utf-8")), destination, probe)
+    (destination / MANIFEST_NAME).write_text(copied, encoding="utf-8")
+    for entry in source_dir.iterdir():
+        if entry.name == MANIFEST_NAME:
+            continue
+        target = destination / entry.name
+        if has_nested_manifest(entry, manifest_dirs):
+            target.mkdir(exist_ok=True)
+        else:
+            os.symlink(entry, target, target_is_directory=entry.is_dir())
+
+
+def materialize_probe(build: ValidatedBuild, probe: Path) -> None:
+    """Create the isolated manifests-only workspace used for metadata resolution."""
+    manifests = crate_manifests()
+    directories = {manifest.parent for manifest in manifests}
+    (probe / MANIFEST_NAME).write_text(probe_root_manifest(build, directories), encoding="utf-8")
+    shutil.copyfile(REPO_ROOT / LOCKFILE_NAME, probe / LOCKFILE_NAME)
+    for manifest in manifests:
+        mirror_crate_manifest(manifest, probe, directories)
+
+
+def probe_metadata(build: ValidatedBuild, probe: Path) -> dict[str, Any]:
+    """Run and decode Cargo's authoritative machine-readable feature graph."""
+    command = [
+        "cargo", "metadata", "--manifest-path", str(probe / MANIFEST_NAME), "--offline",
+        "--format-version", "1", "--filter-platform", build.expected.matrix_target,
+        "--features", build.features,
+    ]
+    completed = subprocess.run(
+        command, capture_output=True, text=True, cwd=REPO_ROOT, env=cargo_environment(), check=False
+    )
     if completed.returncode:
         detail = completed.stderr.strip().splitlines()
-        raise ScopeCheckError(
-            f"cargo metadata failed: {' | '.join(detail[:6]) if detail else '(no stderr output)'}"
-        )
+        message = " | ".join(detail[:6]) if detail else "(no stderr output)"
+        raise ScopeCheckError(f"cargo metadata failed: {message}")
     try:
         metadata = json.loads(completed.stdout)
     except json.JSONDecodeError as error:
         raise ScopeCheckError(f"cargo metadata emitted invalid JSON: {error}") from error
     if not isinstance(metadata, dict):
         raise ScopeCheckError("cargo metadata root is not an object")
+    return metadata
+
+
+def normalize_probe_paths(metadata: dict[str, Any], probe: Path) -> list[dict[str, Any]]:
+    """Map probe-local manifest paths back to their checked-out source paths."""
     packages = metadata.get("packages")
-    if not isinstance(packages, list):
-        raise ScopeCheckError("cargo metadata packages is not a list")
+    if not isinstance(packages, list) or not all(isinstance(package, dict) for package in packages):
+        raise ScopeCheckError("cargo metadata packages is not a list of objects")
     for package in packages:
-        if not isinstance(package, dict):
-            raise ScopeCheckError("cargo metadata package is not an object")
         manifest_path = package.get("manifest_path")
         if not isinstance(manifest_path, str):
             raise ScopeCheckError("cargo metadata package has no manifest path")
         path = Path(manifest_path).resolve()
-        if path != probe and probe not in path.parents:
-            continue
-        package["manifest_path"] = str(REPO_ROOT / path.relative_to(probe))
-    workspace_members = metadata.get("workspace_members")
-    if not isinstance(workspace_members, list) or not all(isinstance(member, str) for member in workspace_members):
+        if path == probe or probe in path.parents:
+            package["manifest_path"] = str(REPO_ROOT / path.relative_to(probe))
+    return packages
+
+
+def validate_probe_members(metadata: dict[str, Any], packages: list[dict[str, Any]], build: ValidatedBuild) -> None:
+    """Require metadata to select exactly the shipped workspace member."""
+    members = metadata.get("workspace_members")
+    if not isinstance(members, list) or not all(isinstance(member, str) for member in members):
         raise ScopeCheckError("cargo metadata workspace_members is not a string list")
-    shipped = [
-        package.get("id") for package in packages
-        if package.get("name") == build.package
-        and package.get("manifest_path") == str(REPO_ROOT / "crates" / build.package / "Cargo.toml")
-    ]
-    if len(shipped) != 1 or workspace_members != shipped:
+    manifest = str(REPO_ROOT / "crates" / build.package / MANIFEST_NAME)
+    shipped = [package.get("id") for package in packages if package.get("name") == build.package and package.get("manifest_path") == manifest]
+    if len(shipped) != 1 or members != shipped:
         raise ScopeCheckError("probe metadata includes workspace members outside the shipped package")
+
+
+def metadata_for(build: ValidatedBuild) -> dict[str, Any]:
+    """Resolve the shipped graph in an isolated workspace with no dev inputs."""
+    with tempfile.TemporaryDirectory(prefix="aletheia-release-scope-") as directory:
+        probe = Path(directory).resolve()
+        materialize_probe(build, probe)
+        metadata = probe_metadata(build, probe)
+        packages = normalize_probe_paths(metadata, probe)
+    validate_probe_members(metadata, packages, build)
     return metadata
 
 
-def expected_local_packages(metadata: dict[str, Any], workspace_root: Path) -> dict[Path, ExpectedLocalPackage]:
-    """Traverse metadata from aletheia to establish complete local coverage."""
+def package_index(metadata: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Index well-formed metadata packages by Cargo's stable package ID."""
     packages = metadata.get("packages")
-    resolve = metadata.get("resolve")
-    if not isinstance(packages, list) or not isinstance(resolve, dict):
-        raise ScopeCheckError("cargo metadata lacks packages or resolve")
-    by_id = {package.get("id"): package for package in packages if isinstance(package, dict)}
-    root_manifest = (workspace_root / "crates" / SHIPPED_PACKAGE / "Cargo.toml").resolve()
+    if not isinstance(packages, list):
+        raise ScopeCheckError("cargo metadata packages is not a list")
+    indexed = {
+        package.get("id"): package
+        for package in packages
+        if isinstance(package, dict) and isinstance(package.get("id"), str)
+    }
+    if not indexed:
+        raise ScopeCheckError("cargo metadata has no package IDs")
+    return indexed
+
+
+def shipped_package_id(packages: dict[str, dict[str, Any]], workspace_root: Path) -> str:
+    """Find the one metadata package that represents the shipped binary crate."""
+    manifest = (workspace_root / "crates" / SHIPPED_PACKAGE / MANIFEST_NAME).resolve()
     roots = [
-        package_id for package_id, package in by_id.items()
-        if isinstance(package_id, str)
-        and package.get("name") == SHIPPED_PACKAGE
-        and Path(str(package.get("manifest_path", ""))).resolve() == root_manifest
+        package_id for package_id, package in packages.items()
+        if package.get("name") == SHIPPED_PACKAGE
+        and Path(str(package.get("manifest_path", ""))).resolve() == manifest
     ]
     if len(roots) != 1:
-        candidates = [
-            str(package.get("manifest_path"))
-            for package in by_id.values() if package.get("name") == SHIPPED_PACKAGE
-        ]
-        raise ScopeCheckError(
-            f"cargo metadata cannot identify exactly one shipped package root: {candidates!r}"
-        )
-    nodes = resolve.get("nodes")
+        raise ScopeCheckError("cargo metadata cannot identify exactly one shipped package root")
+    return roots[0]
+
+
+def normal_or_build_dependency(dependency: Any) -> str | None:
+    """Return one dependency ID only when it participates in a shipped build."""
+    if not isinstance(dependency, dict) or not isinstance(dependency.get("pkg"), str):
+        return None
+    kinds = dependency.get("dep_kinds")
+    if not isinstance(kinds, list):
+        raise ScopeCheckError("cargo metadata resolve.dep_kinds is not a list")
+    if any(isinstance(kind, dict) and kind.get("kind") in (None, "build") for kind in kinds):
+        return dependency["pkg"]
+    return None
+
+
+def resolution_index(metadata: dict[str, Any]) -> tuple[dict[str, frozenset[str]], dict[str, list[str]]]:
+    """Extract exact resolved features and non-dev edges from Cargo metadata."""
+    resolve = metadata.get("resolve")
+    nodes = resolve.get("nodes") if isinstance(resolve, dict) else None
     if not isinstance(nodes, list):
         raise ScopeCheckError("cargo metadata resolve.nodes is not a list")
-    node_features: dict[str, frozenset[str]] = {}
+    features: dict[str, frozenset[str]] = {}
     dependencies: dict[str, list[str]] = {}
     for node in nodes:
         if not isinstance(node, dict) or not isinstance(node.get("id"), str):
             continue
-        deps = node.get("deps")
-        if not isinstance(deps, list):
-            raise ScopeCheckError("cargo metadata resolve.deps is not a list")
-        features = node.get("features")
-        if not isinstance(features, list) or not all(isinstance(feature, str) for feature in features):
+        node_features = node.get("features")
+        node_deps = node.get("deps")
+        if not isinstance(node_features, list) or not all(isinstance(feature, str) for feature in node_features):
             raise ScopeCheckError("cargo metadata resolve.features is not a string list")
-        node_features[node["id"]] = frozenset(features)
+        if not isinstance(node_deps, list):
+            raise ScopeCheckError("cargo metadata resolve.deps is not a list")
+        features[node["id"]] = frozenset(node_features)
         dependencies[node["id"]] = [
-            dependency["pkg"]
-            for dependency in deps
-            if isinstance(dependency, dict)
-            and isinstance(dependency.get("pkg"), str)
-            and isinstance(dependency.get("dep_kinds"), list)
-            and any(
-                isinstance(kind, dict) and kind.get("kind") in (None, "build")
-                for kind in dependency["dep_kinds"]
-            )
+            package for dependency in node_deps if (package := normal_or_build_dependency(dependency))
         ]
-    if roots[0] not in dependencies:
-        raise ScopeCheckError("cargo metadata resolve omits the shipped package root")
+    return features, dependencies
+
+
+def reachable_packages(root: str, packages: dict[str, dict[str, Any]], dependencies: dict[str, list[str]]) -> set[str]:
+    """Traverse every normal/build edge and reject an incomplete metadata graph."""
     reachable: set[str] = set()
-    pending = [roots[0]]
+    pending = [root]
     while pending:
         package_id = pending.pop()
         if package_id in reachable:
             continue
-        if package_id not in by_id or not isinstance(dependencies.get(package_id), list):
+        if package_id not in packages or package_id not in dependencies:
             raise ScopeCheckError("cargo metadata dependency graph is incomplete")
         reachable.add(package_id)
-        pending.extend(dependency for dependency in dependencies[package_id] if isinstance(dependency, str))
+        pending.extend(dependencies[package_id])
+    return reachable
 
+
+def expected_local_packages(metadata: dict[str, Any], workspace_root: Path) -> dict[Path, ExpectedLocalPackage]:
+    """Bind all reachable local rows to Cargo's resolved feature arrays."""
+    packages = package_index(metadata)
+    root = shipped_package_id(packages, workspace_root)
+    features, dependencies = resolution_index(metadata)
+    reachable = reachable_packages(root, packages, dependencies)
     expected: dict[Path, ExpectedLocalPackage] = {}
-    root = workspace_root.resolve()
+    local_root = workspace_root.resolve()
     for package_id in reachable:
-        package = by_id[package_id]
-        manifest = Path(str(package.get("manifest_path", ""))).resolve()
-        source = manifest.parent
-        if source != root and root not in source.parents:
+        package = packages[package_id]
+        source = Path(str(package.get("manifest_path", ""))).resolve().parent
+        if source != local_root and local_root not in source.parents:
             continue
         name = package.get("name")
-        if not isinstance(name, str) or source in expected:
-            raise ScopeCheckError("cargo metadata local package row is malformed or duplicated")
-        if package_id not in node_features:
-            raise ScopeCheckError(f"cargo metadata resolve omits feature data for {name}")
-        expected[source] = ExpectedLocalPackage(name, node_features[package_id])
+        if not isinstance(name, str) or source in expected or package_id not in features:
+            raise ScopeCheckError("cargo metadata local package row is malformed or incomplete")
+        expected[source] = ExpectedLocalPackage(name, features[package_id])
     if not expected:
         raise ScopeCheckError("cargo metadata found no reachable local packages")
     return expected

@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -130,6 +131,20 @@ class ReleaseBuildValidation(unittest.TestCase):
                 mutate(candidate)
                 self.assert_rejected(candidate)
 
+    def test_rejects_build_step_failure_and_timeout_controls(self) -> None:
+        mutations = (
+            lambda step: step.update({"continue-on-error": True}),
+            lambda step: step.update({"timeout-minutes": 1}),
+            lambda step: step.update({"id": "cached-artifact"}),
+            lambda step: step.update({"unexpected": "accepted-nowhere"}),
+        )
+        for name in ("Build (native)", "Build (cross)"):
+            for mutate in mutations:
+                with self.subTest(name=name, mutate=mutate):
+                    candidate = workflow()
+                    mutate(build_step(candidate, name))
+                    self.assert_rejected(candidate)
+
     def test_rejects_untrusted_actions_and_checkout_context_mutation(self) -> None:
         candidate = workflow()
         candidate["jobs"]["build"]["steps"].append({"uses": "./.github/actions/unscoped-build"})
@@ -222,6 +237,24 @@ workspace = true
         self.assertIn('kept = "1"', rewritten)
         self.assertIn("[lints]", rewritten)
         self.assertNotIn("test-only", rewritten)
+
+
+class CrossInputs(unittest.TestCase):
+    def test_cross_configuration_and_wrapper_are_content_pinned(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in scope.TRUSTED_CROSS_INPUTS:
+                target = root / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((scope.REPO_ROOT / relative).read_bytes())
+            scope.validate_cross_inputs(root)
+            for relative in scope.TRUSTED_CROSS_INPUTS:
+                with self.subTest(relative=relative):
+                    target = root / relative
+                    target.write_bytes(target.read_bytes() + b"\n# unscoped cargo wrapper\n")
+                    with self.assertRaises(scope.ScopeCheckError):
+                        scope.validate_cross_inputs(root)
+                    target.write_bytes((scope.REPO_ROOT / relative).read_bytes())
 
 
 if __name__ == "__main__":
