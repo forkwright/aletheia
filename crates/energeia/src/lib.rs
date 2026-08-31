@@ -46,11 +46,6 @@ pub mod error;
 // WHY(#5576): `compute_frontier` is re-exported at `dag` (the consumed
 // cross-crate surface); the module path itself has zero external consumers.
 pub(crate) mod frontier;
-/// Hermeneus-based dispatch engine with prompt caching.
-// WHY(#6750): `HermeneusEngine` has zero real callers — dead code under
-// the plain `cargo check` (lib) pass `-D warnings` runs under if demoted to
-// `pub(crate)`. Stays `pub`.
-pub mod hermeneus_engine;
 /// HTTP/SSE dispatch engine: subprocess-based `DispatchEngine` and mock.
 pub mod http;
 /// Metrics and reporting: health signals, cost reports, status dashboard, Prometheus.
