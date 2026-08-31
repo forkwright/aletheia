@@ -162,12 +162,10 @@
     {
       "from": "W5_live3_algos",
       "to": "W5prime_value_model",
-      "count": 6,
+      "count": 4,
       "evidence": [
         "fixed_rule/algos/louvain.rs:22 -> crate::data::symb::Symbol",
         "fixed_rule/algos/louvain.rs:23 -> crate::data::value::DataValue",
-        "fixed_rule/algos/pagerank.rs:19 -> crate::data::symb::Symbol",
-        "fixed_rule/algos/pagerank.rs:20 -> crate::data::value::DataValue",
         "fixed_rule/utilities/rrf.rs:10 -> crate::data::value::DataValue",
         "fixed_rule/utilities/rrf.rs:9 -> crate::data::symb::Symbol"
       ]
