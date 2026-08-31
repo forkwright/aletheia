@@ -167,7 +167,7 @@ dependencies = [
  "predicates",
  "pylon",
  "qdrant-client",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "rand 0.10.2",
  "reqwest 0.13.4",
  "rmcp",
@@ -6506,7 +6506,7 @@ dependencies = [
  "include_dir",
  "indexmap",
  "jiff",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "serde",
  "serde_json",
  "snafu",
@@ -6549,7 +6549,7 @@ dependencies = [
  "poiesis-core",
  "poiesis-text",
  "poiesis-typst",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "resvg 0.48.1",
  "serde",
  "serde_json",
@@ -6603,7 +6603,7 @@ dependencies = [
 name = "poiesis-ooxml-parse"
 version = "0.45.0"
 dependencies = [
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "snafu",
  "zip 8.6.0",
 ]
@@ -6653,7 +6653,7 @@ version = "0.45.0"
 dependencies = [
  "poiesis-core",
  "poiesis-ooxml-parse",
- "quick-xml 0.41.0",
+ "quick-xml 0.42.0",
  "serde",
  "serde_json",
  "snafu",
@@ -7214,6 +7214,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
 dependencies = [
  "encoding_rs",
+ "memchr",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.42.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "41b1177fdf999d2321d3fb46ff47159d9c1fb9ad66a4879f8c50a0b504615e9b"
+dependencies = [
  "memchr",
 ]
 
