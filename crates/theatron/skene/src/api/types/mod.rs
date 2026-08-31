@@ -563,6 +563,42 @@ pub enum SseEvent {
         /// Whether the server requires a restart to activate the change.
         restart_required: bool,
     },
+    /// A domain event reporting that a tool call is blocked awaiting operator
+    /// approval, emitted on the `EventBus` topic `tool.approval_required`.
+    ///
+    /// Carries routing identity and display metadata only — never the tool
+    /// input, which stays on the per-turn stream (aletheia#6813).
+    ToolApprovalRequired {
+        /// Session that owns the blocked turn.
+        session_id: ApiSessionId,
+        /// Agent whose tool call is awaiting approval.
+        nous_id: ApiNousId,
+        /// Turn the tool call belongs to.
+        turn_id: TurnId,
+        /// Identifier of the blocked tool call.
+        tool_id: String,
+        /// Name of the tool awaiting approval.
+        tool_name: String,
+        /// Risk classification (e.g. "critical").
+        risk: String,
+        /// Human-readable reason approval is required.
+        reason: String,
+    },
+    /// A domain event reporting that a pending tool approval was resolved
+    /// (operator decision or gate-timeout default-deny), emitted on the
+    /// `EventBus` topic `tool.approval_resolved`.
+    ToolApprovalResolved {
+        /// Session that owned the blocked turn.
+        session_id: ApiSessionId,
+        /// Agent whose tool call was resolved.
+        nous_id: ApiNousId,
+        /// Turn the tool call belonged to.
+        turn_id: TurnId,
+        /// Identifier of the resolved tool call.
+        tool_id: String,
+        /// Resolution decision: "approved" or "denied".
+        decision: String,
+    },
     /// A tool was invoked during a turn.
     ToolCalled {
         /// Agent invoking the tool.
