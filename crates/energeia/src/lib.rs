@@ -54,11 +54,6 @@ pub mod metrics;
 pub mod orchestrator;
 /// 4-stage dispatch pipeline: preparation → execution → post-processing.
 pub(crate) mod pipeline;
-/// Predictive budget allocation from prompt characteristics.
-// WHY(#6750): `classify_with_detail`/`predict_budget` have zero real
-// callers — dead code under the plain `cargo check` (lib) pass `-D warnings`
-// runs under if demoted to `pub(crate)`. Stays `pub`.
-pub mod predictive_budget;
 /// Prompt loading from YAML frontmatter files.
 pub mod prompt;
 /// Prompt cache optimization: static prefix / dynamic suffix split.
