@@ -24,11 +24,6 @@
 
 pub(crate) const CLI_BINARY: &str = "claude";
 
-/// High-level dispatch backend trait for control plane integration.
-// WHY(#6750): `DispatchBackend` has zero real callers outside its own file
-// — dead code under the plain `cargo check` (lib) pass `-D warnings` runs
-// under if demoted to `pub(crate)`. Stays `pub`.
-pub mod backend;
 /// Atomic budget tracking for dispatch runs.
 // WHY(#5576): `Budget`/`BudgetStatus` are re-exported at `types` (the
 // consumed cross-crate surface); the module path itself has zero external
