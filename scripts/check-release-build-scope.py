@@ -34,6 +34,7 @@ CROSS_CONFIG = Path("Cross.toml")
 CROSS_INSTALLER = Path("scripts/install-cargo-auditable-cross.sh")
 CARGO_DIRECTORY = ".cargo"
 CARGO_CONFIG_NAMES = ("config.toml", "config")
+ALLOWED_CARGO_TREE_ENTRY = ("100644", ".cargo/audit.toml")
 SHIPPED_PACKAGE = "aletheia"
 SHIPPED_BIN = "aletheia"
 RELEASE_FEATURES = "recall,embed-candle"
@@ -238,66 +239,108 @@ def validate_cross_inputs(root: Path) -> None:
             raise ScopeCheckError(f"cross build input differs from its trusted content: {relative}")
 
 
-def cargo_configuration_paths(root: Path) -> list[Path]:
-    """Find Cargo configs without following live, dangling, or looping links."""
+def git_output(root: Path, arguments: list[str]) -> bytes:
+    """Run Git plumbing without a shell and return its byte-preserving output."""
+    completed = subprocess.run(
+        ["git", "-C", str(root), *arguments], capture_output=True, check=False
+    )
+    if completed.returncode:
+        detail = completed.stderr.decode("utf-8", "replace").strip()
+        raise ScopeCheckError(f"git {' '.join(arguments)} failed: {detail or completed.returncode}")
+    return completed.stdout
+
+
+def head_tree_entries(root: Path) -> list[tuple[str, str]]:
+    """Parse the exact HEAD tree in a NUL-safe, mode-preserving representation."""
+    entries: list[tuple[str, str]] = []
+    for record in git_output(root, ["ls-tree", "-rz", "--full-tree", "HEAD"]).split(b"\0"):
+        if not record:
+            continue
+        metadata, separator, raw_path = record.partition(b"\t")
+        fields = metadata.split()
+        if not separator or len(fields) != 3:
+            raise ScopeCheckError("git ls-tree emitted a malformed record")
+        entries.append((fields[0].decode("ascii"), raw_path.decode("utf-8", "surrogateescape")))
+    return entries
+
+
+def is_cargo_tree_path(path: str) -> bool:
+    """Whether a path is a Cargo directory on the case-insensitive macOS runner."""
+    return any(component.casefold() == CARGO_DIRECTORY for component in Path(path).parts)
+
+
+def is_cargo_config_name(name: str) -> bool:
+    """Recognize both legacy Cargo config spellings on macOS's release filesystem."""
+    return name.casefold() in CARGO_CONFIG_NAMES
+
+
+def validate_head_cargo_tree(root: Path) -> None:
+    """Allow only the audited root Cargo directory in the immutable HEAD tree."""
+    cargo_entries = [entry for entry in head_tree_entries(root) if is_cargo_tree_path(entry[1])]
+    if cargo_entries != [ALLOWED_CARGO_TREE_ENTRY]:
+        raise ScopeCheckError(f"HEAD tree has untrusted Cargo paths or modes: {cargo_entries!r}")
+
+
+def require_clean_checkout(root: Path) -> None:
+    """Require the index and tracked worktree to equal the checked-out HEAD tree."""
+    git_output(root, ["diff", "--quiet", "--exit-code", "HEAD", "--"])
+    status = git_output(root, ["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+    if status:
+        raise ScopeCheckError("release scope requires a clean worktree and index")
+
+
+def filesystem_cargo_config_paths(root: Path) -> list[Path]:
+    """Supplement Git's immutable tree check with untracked/ignored config detection."""
     configurations: list[Path] = []
-    pending = [(root, lstat_path(root))]
+    pending = [root]
     while pending:
-        directory, expected = pending.pop()
-        for path, name in stable_directory_entries(directory, expected):
-            before = lstat_path(path)
-            if name == CARGO_DIRECTORY:
-                configurations.extend(cargo_directory_risks(root, directory, path, before))
-            elif stat.S_ISDIR(before.st_mode):
-                pending.append((path, before))
+        directory = pending.pop()
+        try:
+            with os.scandir(directory) as entries:
+                children = [(Path(entry.path), entry.name) for entry in entries]
+        except OSError as error:
+            raise ScopeCheckError(f"cannot scan Cargo configuration path {directory}: {error}") from error
+        for path, name in children:
+            if directory == root and name == ".git":
+                continue
+            try:
+                mode = os.lstat(path).st_mode
+            except OSError as error:
+                raise ScopeCheckError(f"cannot stat Cargo configuration path {path}: {error}") from error
+            is_link = stat.S_ISLNK(mode)
+            is_directory = stat.S_ISDIR(mode)
+            in_cargo_directory = directory.name.casefold() == CARGO_DIRECTORY
+            is_cargo_directory = name.casefold() == CARGO_DIRECTORY
+            if in_cargo_directory and is_cargo_config_name(name):
+                configurations.append(path)
+            if is_cargo_directory and is_link:
+                configurations.append(path)
+            if not is_cargo_directory and is_directory:
+                pending.append(path)
+            if is_cargo_directory and is_directory:
+                pending.append(path)
     return configurations
 
 
-def lstat_path(path: Path) -> os.stat_result:
-    """Read path type and identity without resolving a possible symlink."""
-    try:
-        return os.lstat(path)
-    except OSError as error:
-        raise ScopeCheckError(f"cannot stat candidate Cargo path {path}: {error}") from error
-
-
-def stable_directory_entries(directory: Path, expected: os.stat_result) -> list[tuple[Path, str]]:
-    """Read a real directory and reject replacement before or after traversal."""
-    before = lstat_path(directory)
-    if cargo_directory_changed(expected, before) or not stat.S_ISDIR(before.st_mode):
-        raise ScopeCheckError(f"candidate Cargo directory changed type or identity: {directory}")
-    try:
-        with os.scandir(directory) as entries:
-            children = [(Path(entry.path), entry.name) for entry in entries]
-    except OSError as error:
-        raise ScopeCheckError(f"cannot scan candidate Cargo path {directory}: {error}") from error
-    after = lstat_path(directory)
-    if cargo_directory_changed(before, after):
-        raise ScopeCheckError(f"candidate Cargo directory changed during traversal: {directory}")
-    return children
-
-
-def cargo_directory_risks(root: Path, parent: Path, path: Path, expected: os.stat_result) -> list[Path]:
-    """Allow only the checked-out root directory while rejecting every other type."""
-    before = lstat_path(path)
-    if cargo_directory_changed(expected, before) or parent != root or not stat.S_ISDIR(before.st_mode):
-        return [path]
-    return [candidate for candidate, name in stable_directory_entries(path, before) if name in CARGO_CONFIG_NAMES]
-
-
-def cargo_directory_changed(before: os.stat_result, after: os.stat_result) -> bool:
-    """Fail closed if a config directory changes while the immutable tree is checked."""
-    before_identity = (before.st_dev, before.st_ino, before.st_mode)
-    after_identity = (after.st_dev, after.st_ino, after.st_mode)
-    return before_identity != after_identity
-
-
 def validate_cargo_configuration_boundary(root: Path) -> None:
-    """Reject configs Cargo could load from the checked-out build tree."""
-    configurations = cargo_configuration_paths(root)
+    """Bind Cargo configuration to HEAD before any candidate code can run.
+
+    The trusted authority is the immutable Git tree plus a clean index/worktree;
+    the filesystem scan only catches untracked or ignored configuration surfaces.
+    This deliberately does not claim protection from arbitrary post-check mutation.
+    """
+    validate_head_cargo_tree(root)
+    require_clean_checkout(root)
+    configurations = filesystem_cargo_config_paths(root)
     if configurations:
         paths = ", ".join(str(path.relative_to(root)) for path in configurations)
-        raise ScopeCheckError(f"candidate Cargo configuration is forbidden: {paths}")
+        raise ScopeCheckError(f"untracked Cargo configuration is forbidden: {paths}")
+
+
+def validate_release_repository(root: Path) -> None:
+    """Validate candidate-controlled files before the release commands run."""
+    validate_cargo_configuration_boundary(root)
+    validate_cross_inputs(root)
 
 
 def validate_environment(env: Any, scope: str) -> None:
@@ -394,8 +437,7 @@ def validated_release_builds(workflow: dict[str, Any]) -> list[ValidatedBuild]:
     validate_matrix(workflow)
     steps = build_steps(workflow)
     validate_execution_envelope(workflow, steps)
-    validate_cross_inputs(REPO_ROOT)
-    validate_cargo_configuration_boundary(REPO_ROOT)
+    validate_release_repository(REPO_ROOT)
     if len(steps) != len(SAFE_STEP_DIGESTS):
         raise ScopeCheckError("jobs.build step count differs from the trusted execution graph")
     expected_by_name = {build.name: build for build in EXPECTED_BUILDS}

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import copy
 import importlib.util
-import os
+import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
+from typing import Callable
 
 import yaml
 
@@ -46,11 +48,13 @@ def expected_packages(koina_features: frozenset[str] | None = None) -> dict[Path
 
 class ReleaseBuildValidation(unittest.TestCase):
     def assert_rejected(self, candidate: dict) -> None:
-        with self.assertRaises(scope.ScopeCheckError):
-            scope.validated_release_builds(candidate)
+        with mock.patch.object(scope, "validate_release_repository"):
+            with self.assertRaises(scope.ScopeCheckError):
+                scope.validated_release_builds(candidate)
 
     def test_current_job_is_accepted_and_derives_replay_args(self) -> None:
-        builds = scope.validated_release_builds(workflow())
+        with mock.patch.object(scope, "validate_release_repository"):
+            builds = scope.validated_release_builds(workflow())
         self.assertEqual([build.package for build in builds], ["aletheia", "aletheia"])
         self.assertEqual([build.features for build in builds], ["recall,embed-candle"] * 2)
         self.assertEqual(
@@ -259,104 +263,120 @@ class CrossInputs(unittest.TestCase):
 
 
 class CargoConfigurationBoundary(unittest.TestCase):
-    def assert_config_rejected(self, relative: Path, contents: str) -> None:
+    def git(self, root: Path, *arguments: str) -> None:
+        completed = subprocess.run(
+            ["git", "-C", str(root), *arguments], capture_output=True, check=False
+        )
+        if completed.returncode:
+            self.fail(completed.stderr.decode("utf-8", "replace"))
+
+    def initialize_checkout(self, root: Path, ignored_config: bool = False) -> None:
+        cargo = root / ".cargo"
+        cargo.mkdir(parents=True)
+        (cargo / "audit.toml").write_text("[advisories]\n", encoding="utf-8")
+        if ignored_config:
+            (root / ".gitignore").write_text(".cargo/config.toml\n", encoding="utf-8")
+        self.git(root, "init", "-q")
+        self.git(root, "config", "user.name", "release scope test")
+        self.git(root, "config", "user.email", "release-scope@example.invalid")
+        self.git(root, "add", "-A")
+        self.git(root, "commit", "-qm", "fixture")
+
+    def assert_tree_rejected(self, create: Callable[[Path], None]) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            config = root / relative
-            config.parent.mkdir(parents=True, exist_ok=True)
-            config.write_text(contents, encoding="utf-8")
+            create(root)
+            self.git(root, "init", "-q")
+            self.git(root, "config", "user.name", "release scope test")
+            self.git(root, "config", "user.email", "release-scope@example.invalid")
+            self.git(root, "add", "-A")
+            self.git(root, "commit", "-qm", "fixture")
             with self.assertRaises(scope.ScopeCheckError):
                 scope.validate_cargo_configuration_boundary(root)
 
-    def test_alias_wrapper_and_redirecting_configs_are_rejected(self) -> None:
+    def test_clean_head_allows_only_root_audit_toml(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.initialize_checkout(root)
+            self.assertEqual(scope.head_tree_entries(root), [("100644", ".cargo/audit.toml")])
+            scope.validate_cargo_configuration_boundary(root)
+
+    def test_tracked_configuration_paths_are_rejected_from_head(self) -> None:
         cases = (
-            (
-                Path(".cargo/config.toml"),
-                '[alias]\nauditable = ["run", "--bin", "wrapper", "--"]\n',
-            ),
+            (Path(".cargo/config.toml"), '[alias]\nauditable = ["run", "--bin", "wrapper", "--"]\n'),
             (Path(".cargo/config"), '[build]\nrustc-wrapper = "./wrapper"\n'),
             (Path("decoy/.cargo/config.toml"), '[target.x86_64-unknown-linux-musl]\nrunner = "./runner"\n'),
+            (Path("decoy/.cargo/config"), '[env]\nPATH = "./wrapper"\n'),
         )
         for relative, contents in cases:
             with self.subTest(relative=relative):
-                self.assert_config_rejected(relative, contents)
+                def create(root: Path, relative: Path = relative, contents: str = contents) -> None:
+                    config = root / relative
+                    config.parent.mkdir(parents=True, exist_ok=True)
+                    config.write_text(contents, encoding="utf-8")
 
-    def test_symlinked_cargo_configuration_directory_is_rejected(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            linked = root / "linked-cargo"
-            linked.mkdir()
-            (linked / "config.toml").write_text('[build]\ntarget-dir = "./target"\n', encoding="utf-8")
-            (root / ".cargo").symlink_to(linked, target_is_directory=True)
-            with self.assertRaises(scope.ScopeCheckError):
-                scope.validate_cargo_configuration_boundary(root)
+                self.assert_tree_rejected(create)
 
-    def test_live_and_dangling_cargo_directory_links_are_rejected(self) -> None:
-        targets = (
-            ("evil-cargo", False),
-            ("/project/evil-cargo", True),
-            ("missing-cargo", False),
-            ("/project/missing-cargo", True),
-        )
-        for target, cross_rebased in targets:
+    def test_case_colliding_cargo_configuration_is_rejected_for_macos(self) -> None:
+        def create(root: Path) -> None:
+            (root / ".cargo").mkdir()
+            (root / ".cargo" / "audit.toml").write_text("[advisories]\n", encoding="utf-8")
+            (root / ".Cargo").mkdir()
+            (root / ".Cargo" / "config.toml").write_text(
+                '[alias]\nauditable = ["run", "--bin", "wrapper", "--"]\n', encoding="utf-8"
+            )
+
+        self.assert_tree_rejected(create)
+
+    def test_tracked_cargo_symlinks_are_rejected_by_git_mode(self) -> None:
+        cases = ("evil-cargo", "missing-cargo", "/project/evil-cargo", "/project/missing-cargo")
+        for target in cases:
             with self.subTest(target=target):
-                with tempfile.TemporaryDirectory() as directory:
-                    root = Path(directory)
-                    if cross_rebased:
-                        host_target = root / "evil-cargo"
-                        host_target.mkdir()
-                        (host_target / "config.toml").write_text(
-                            '[alias]\nauditable = ["run", "--bin", "wrapper", "--"]\n',
-                            encoding="utf-8",
+                def create(root: Path, target: str = target) -> None:
+                    if target == "/project/evil-cargo":
+                        (root / "evil-cargo").mkdir()
+                        (root / "evil-cargo" / "config.toml").write_text(
+                            '[alias]\nauditable = ["run", "--bin", "wrapper", "--"]\n', encoding="utf-8"
                         )
                     elif target == "evil-cargo":
-                        host_target = root / target
-                        host_target.mkdir()
-                        (host_target / "config").write_text('[build]\nrustc-wrapper = "./wrapper"\n', encoding="utf-8")
+                        (root / target).mkdir()
                     (root / ".cargo").symlink_to(target, target_is_directory=True)
-                    if target == "/project/evil-cargo":
-                        _, directories, files = next(os.walk(root, followlinks=False))
-                        self.assertNotIn(".cargo", directories)
-                        self.assertIn(".cargo", files)
+
+                self.assert_tree_rejected(create)
+
+    def test_untracked_and_ignored_configuration_surfaces_are_rejected(self) -> None:
+        for ignored in (False, True):
+            with self.subTest(ignored=ignored):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    self.initialize_checkout(root, ignored_config=ignored)
+                    (root / ".cargo" / "config.toml").write_text(
+                        '[alias]\nauditable = ["run", "--bin", "wrapper", "--"]\n', encoding="utf-8"
+                    )
                     with self.assertRaises(scope.ScopeCheckError):
                         scope.validate_cargo_configuration_boundary(root)
 
-    def test_captured_directory_entry_replacement_fails_closed(self) -> None:
+    def test_ignored_casefolded_configuration_is_rejected_for_macos(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            cargo_directory = root / ".cargo"
-            cargo_directory.mkdir()
-            with os.scandir(root) as entries:
-                captured = next(item for item in entries if item.name == ".cargo")
-            self.assertTrue(captured.is_dir(follow_symlinks=False))
-            before = os.lstat(cargo_directory)
-            cargo_directory.rmdir()
-            cargo_directory.symlink_to("evil-cargo", target_is_directory=True)
-            self.assertEqual(
-                scope.cargo_directory_risks(root, root, cargo_directory, before), [cargo_directory]
+            self.initialize_checkout(root)
+            (root / ".gitignore").write_text(".Cargo/CONFIG\n", encoding="utf-8")
+            self.git(root, "add", ".gitignore")
+            self.git(root, "commit", "-qm", "ignore casefolded config")
+            (root / ".Cargo").mkdir()
+            (root / ".Cargo" / "CONFIG").write_text(
+                '[build]\nrustc-wrapper = "./wrapper"\n', encoding="utf-8"
             )
+            with self.assertRaises(scope.ScopeCheckError):
+                scope.validate_cargo_configuration_boundary(root)
 
-    def test_symlink_and_directory_replacements_fail_closed(self) -> None:
-        for original, replacement in (("symlink", "directory"), ("directory", "directory")):
-            with self.subTest(original=original, replacement=replacement):
-                with tempfile.TemporaryDirectory() as directory:
-                    root = Path(directory)
-                    cargo_directory = root / ".cargo"
-                    if original == "symlink":
-                        target = root / "target"
-                        target.mkdir()
-                        cargo_directory.symlink_to(target, target_is_directory=True)
-                    else:
-                        cargo_directory.mkdir()
-                    before = os.lstat(cargo_directory)
-                    if cargo_directory.is_symlink():
-                        cargo_directory.unlink()
-                    else:
-                        cargo_directory.rmdir()
-                    cargo_directory.mkdir()
-                    self.assertEqual(
-                        scope.cargo_directory_risks(root, root, cargo_directory, before), [cargo_directory]
-                    )
+    def test_dirty_tracked_audit_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.initialize_checkout(root)
+            (root / ".cargo" / "audit.toml").write_text("[advisories]\nignore = []\n", encoding="utf-8")
+            with self.assertRaises(scope.ScopeCheckError):
+                scope.validate_cargo_configuration_boundary(root)
 
 
 if __name__ == "__main__":
