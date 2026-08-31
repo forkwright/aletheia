@@ -90,6 +90,65 @@ async fn get_config_includes_feature_flags() {
 }
 
 #[tokio::test]
+async fn get_config_reports_restart_required_staged_by_earlier_put() {
+    let (app, _dir) = app().await;
+
+    // WHY(#6825): the pending restart must be observable by a request that
+    // was not the mutator, so stage the cold change first and read it back
+    // through a plain GET.
+    let req = authed_request(
+        "PUT",
+        "/api/v1/config/gateway",
+        Some(serde_json::json!({
+            "port": 3999
+        })),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app.oneshot(authed_get("/api/v1/config")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(
+        body["restart_required"]
+            .as_array()
+            .expect("GET /config should carry a restart_required array")
+            .iter()
+            .any(|path| path.as_str() == Some("gateway.port")),
+        "GET /config should report the staged gateway.port change as pending; body={body}"
+    );
+}
+
+#[tokio::test]
+async fn get_config_reports_no_restart_required_when_nothing_staged() {
+    let (app, _dir) = app().await;
+
+    // WHY(#6825): a hot-only PUT rewrites the on-disk config from the live
+    // one, so afterwards nothing is staged; the harness fixture file on its
+    // own diverges from the harness's default in-memory config.
+    let req = authed_request(
+        "PUT",
+        "/api/v1/config/embedding",
+        Some(serde_json::json!({
+            "provider": "candle"
+        })),
+    );
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let resp = app.oneshot(authed_get("/api/v1/config")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(
+        body["restart_required"]
+            .as_array()
+            .expect("GET /config should carry a restart_required array")
+            .is_empty(),
+        "GET /config should report no pending restart when live and disk agree; body={body}"
+    );
+}
+
+#[tokio::test]
 async fn update_section_preserves_cold_gateway_value_in_live_response() {
     let (app, _dir) = app().await;
     let req = authed_request(
