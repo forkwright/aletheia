@@ -77,6 +77,9 @@ pub struct DashboardState {
     pub(crate) saved_sessions: HashMap<ApiNousId, ApiSessionId>,
     pub submitted_decisions: Vec<crate::state::SubmittedDecision>,
     pub(crate) new_session_status: ControlMutationStatus,
+    /// WHY(#6814): a failed agents fetch must render distinctly from the
+    /// pre-connect "waiting" state and keep pointing at `:reconnect`.
+    pub agents_load_failed: bool,
 }
 
 /// SSE link, stream receiver, and reconnect bookkeeping.
@@ -303,6 +306,7 @@ impl App {
                 saved_sessions,
                 submitted_decisions: Vec::new(),
                 new_session_status: ControlMutationStatus::Idle,
+                agents_load_failed: false,
             },
             connection: ConnectionState {
                 sse: None,
@@ -416,44 +420,16 @@ impl App {
             Err(err) => return Err(self.classify_health_check_error(err)),
         }
 
-        // SAFETY: sanitized at ingestion: all agent fields from API are sanitized here.
-        // NOTE: Best-effort -- if the agent fetch fails, start with an empty list
-        // and show an error toast.
-        let agents = match self.client.agents().await {
-            Ok(a) => a,
-            Err(e) => {
-                tracing::error!("failed to load agents: {e}");
-                self.viewport.error_toast = Some(ErrorToast::new(format!(
-                    "Failed to load agents: {e}. Retry with :reconnect"
-                )));
-                Vec::new()
-            }
-        };
-        self.dashboard.agents = agents
-            .into_iter()
-            .map(|a| {
-                let name = sanitize_for_display(a.display_name()).into_owned();
-                let name_lower = name.to_lowercase();
-                AgentState {
-                    id: a.id.clone(),
-                    name,
-                    name_lower,
-                    emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
-                    status: AgentStatus::Idle,
-                    backend_health: BackendHealth::from_status(a.status.as_deref()),
-                    active_tool: None,
-                    sessions: Vec::new(),
-                    model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
-                    compaction_stage: None,
-                    distill_completed_at: None,
-                    unread_count: 0,
-                    tools: Vec::new(),
-                }
-            })
-            .collect();
-
-        // WHY: sorted alphabetically so the default selection is deterministic.
-        self.dashboard.agents.sort_by(|a, b| a.name.cmp(&b.name));
+        // NOTE: Best-effort -- if the agent fetch fails, start with an empty list,
+        // show an error toast, and mark the failure so the sidebar does not
+        // pretend to still be "waiting for connection" (#6814).
+        if let Err(e) = self.reload_agents().await {
+            tracing::error!("failed to load agents: {e}");
+            self.viewport.error_toast = Some(ErrorToast::new(format!(
+                "Failed to load agents: {e}. Retry with :reconnect"
+            )));
+            self.dashboard.agents_load_failed = true;
+        }
 
         self.dashboard.focused_agent = self
             .config
@@ -491,6 +467,94 @@ impl App {
         ));
 
         Ok(())
+    }
+
+    /// Fetch the agent roster and rebuild sidebar state, preserving unread
+    /// counts across the reload. Shared by startup [`Self::connect`], SSE
+    /// reconnection, and `:reconnect` so the mapping cannot drift (#6814).
+    ///
+    /// Clears [`DashboardState::agents_load_failed`] on success; the caller
+    /// decides what a failure means for its own state.
+    // SAFETY: sanitized at ingestion: all agent fields from API are sanitized here.
+    pub(crate) async fn reload_agents(
+        &mut self,
+    ) -> std::result::Result<usize, crate::api::ApiError> {
+        let agents = self.client.agents().await?;
+        let unread: HashMap<ApiNousId, u32> = self
+            .dashboard
+            .agents
+            .iter()
+            .map(|a| (a.id.clone(), a.unread_count))
+            .collect();
+        self.dashboard.agents = agents
+            .into_iter()
+            .map(|a| {
+                let unread_count = unread.get(&a.id).copied().unwrap_or(0);
+                let name = sanitize_for_display(a.display_name()).into_owned();
+                let name_lower = name.to_lowercase();
+                AgentState {
+                    id: a.id.clone(),
+                    name,
+                    name_lower,
+                    emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
+                    status: AgentStatus::Idle,
+                    backend_health: BackendHealth::from_status(a.status.as_deref()),
+                    active_tool: None,
+                    sessions: Vec::new(),
+                    model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
+                    compaction_stage: None,
+                    distill_completed_at: None,
+                    unread_count,
+                    tools: Vec::new(),
+                }
+            })
+            .collect();
+
+        // WHY: sorted alphabetically so the default selection is deterministic.
+        self.dashboard.agents.sort_by(|a, b| a.name.cmp(&b.name));
+        self.dashboard.agents_load_failed = false;
+        Ok(self.dashboard.agents.len())
+    }
+
+    /// Retry the startup connection sequence behind `:reconnect` (#6814):
+    /// reload the agent roster, restore focus and tab state when none exists
+    /// yet, and re-establish SSE with the same client the retry just used.
+    pub(crate) async fn reconnect(&mut self) -> std::result::Result<usize, crate::api::ApiError> {
+        let count = self.reload_agents().await?;
+
+        if self.dashboard.focused_agent.is_none() {
+            self.dashboard.focused_agent = self
+                .config
+                .default_agent
+                .clone()
+                .map(ApiNousId::from)
+                .or_else(|| self.dashboard.agents.first().map(|a| a.id.clone()));
+        }
+        if let Some(agent_id) = self.dashboard.focused_agent.clone() {
+            self.load_focused_session().await;
+            self.load_tools_for_agent(&agent_id).await;
+            if self.layout.tab_bar.is_empty() {
+                let agent_name = self
+                    .dashboard
+                    .agents
+                    .iter()
+                    .find(|a| a.id == agent_id)
+                    .map(|a| a.name.clone())
+                    .unwrap_or_else(|| agent_id.to_string());
+                let title = self.tab_title_for_current(&agent_name);
+                let idx = self.layout.tab_bar.create_tab(agent_id, title);
+                self.layout.tab_bar.active = idx;
+                self.save_to_active_tab();
+            }
+        }
+
+        // WHY: the SSE stream may be as dead as the fetch that failed; rebuild
+        // it rather than leaving a connection from before the outage.
+        self.connection.sse = Some(SseConnection::connect(
+            self.client.streaming_client().clone(),
+            &self.config.url,
+        ));
+        Ok(count)
     }
 
     /// Replace the running session's bearer token without restarting (#6818).

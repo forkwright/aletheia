@@ -150,10 +150,12 @@ fn render_facts_table(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
                 Span::styled("Loading facts...", theme.style_dim()),
             ]));
         } else {
-            lines.push(Line::from(vec![
-                Span::raw("  "),
-                Span::styled("No facts found.", theme.style_dim()),
-            ]));
+            lines.push(empty_or_error_line(
+                theme,
+                app.layout.memory.facts_error.as_deref(),
+                "No facts found.",
+                "Failed to load facts — retry with :memory",
+            ));
         }
     } else {
         let filter = app.layout.memory.filters.filter_text.to_lowercase();
@@ -312,10 +314,12 @@ fn render_entity_list(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     let mut lines: Vec<Line> = Vec::new();
 
     if app.layout.memory.graph.entity_stats.is_empty() {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("No entities loaded.", theme.style_dim()),
-        ]));
+        lines.push(empty_or_error_line(
+            theme,
+            app.layout.memory.graph_error.as_deref(),
+            "No entities loaded.",
+            "Failed to load entities — retry with :memory",
+        ));
     } else {
         let header_style = theme.style_dim().add_modifier(Modifier::BOLD);
         lines.push(Line::from(vec![
@@ -537,10 +541,12 @@ fn render_timeline_view(app: &App, frame: &mut Frame, area: Rect, theme: &Theme)
     lines.push(Line::raw(""));
 
     if app.layout.memory.graph.timeline_events.is_empty() {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("No timeline events.", theme.style_dim()),
-        ]));
+        lines.push(empty_or_error_line(
+            theme,
+            app.layout.memory.graph_error.as_deref(),
+            "No timeline events.",
+            "Failed to load timeline — retry with :memory",
+        ));
     } else {
         for (i, event) in app.layout.memory.graph.timeline_events.iter().enumerate() {
             let is_selected = i == app.layout.memory.fact_list.selected;
@@ -668,9 +674,46 @@ pub(super) fn truncate(s: &str, max_len: usize) -> String {
     }
 }
 
+/// WHY(#6816): a failed fetch must not render like an empty store -- the
+/// caller passes both texts and the recorded error decides which one shows.
+fn empty_or_error_line(
+    theme: &Theme,
+    error: Option<&str>,
+    empty_text: &'static str,
+    failed_text: &'static str,
+) -> Line<'static> {
+    match error {
+        Some(_) => Line::from(vec![
+            Span::raw("  "),
+            Span::styled(failed_text, theme.style_warning()),
+        ]),
+        None => Line::from(vec![
+            Span::raw("  "),
+            Span::styled(empty_text, theme.style_dim()),
+        ]),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_state_and_error_state_render_distinctly() {
+        let theme = Theme::detect();
+        let empty = empty_or_error_line(&theme, None, "No facts found.", "Failed to load facts");
+        let failed = empty_or_error_line(
+            &theme,
+            Some("boom"),
+            "No facts found.",
+            "Failed to load facts",
+        );
+        let empty_text: String = empty.spans.iter().map(|s| s.content.clone()).collect();
+        let failed_text: String = failed.spans.iter().map(|s| s.content.clone()).collect();
+        assert!(empty_text.contains("No facts found."));
+        assert!(failed_text.contains("Failed to load facts"));
+        assert_ne!(empty_text, failed_text);
+    }
 
     #[test]
     fn truncate_short_string() {

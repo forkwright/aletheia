@@ -7,11 +7,15 @@ use crate::state::view_stack::View;
 
 use super::data_loading;
 
-pub(crate) async fn handle_open(app: &mut App) {
+pub(crate) fn handle_open(app: &mut App) {
     app.layout.view_stack.push(View::MemoryInspector);
+    // WHY(#6815): the fetches run as background tasks so this update returns
+    // (and the next frame draws) while `loading` is still observably true.
     app.layout.memory.loading = true;
-    data_loading::load_facts(app).await;
-    data_loading::load_graph_data(app).await;
+    app.layout.memory.facts_error = None;
+    app.layout.memory.graph_error = None;
+    data_loading::spawn_load_facts(app);
+    data_loading::spawn_load_graph_data(app);
 }
 
 pub(crate) fn handle_close(app: &mut App) {
@@ -96,7 +100,7 @@ pub(crate) fn handle_filter_backspace(app: &mut App) {
     }
 }
 
-pub(crate) async fn handle_drill_in(app: &mut App) {
+pub(crate) fn handle_drill_in(app: &mut App) {
     if app.layout.memory.tab == MemoryTab::Facts
         && let Some(fact) = app.layout.memory.selected_fact()
     {
@@ -104,7 +108,9 @@ pub(crate) async fn handle_drill_in(app: &mut App) {
         app.layout.view_stack.push(View::FactDetail {
             fact_id: fact_id.clone(),
         });
-        data_loading::load_fact_detail(app, &fact_id).await;
+        // WHY(#6815): background fetch, so the "Loading fact detail..."
+        // placeholder this push exposes is actually rendered.
+        data_loading::spawn_load_fact_detail(app, &fact_id);
     } else if app.layout.memory.tab == MemoryTab::Graph {
         let selected = app.layout.memory.graph.selected_entity;
         if let Some(stat) = app.layout.memory.graph.entity_stats.get(selected) {

@@ -207,7 +207,8 @@ impl KeyMap {
         self.dispatch.get(&(modifiers, code)).copied()
     }
 
-    fn defaults() -> Vec<(Action, Vec<(KeyModifiers, KeyCode)>)> {
+    /// Default bindings; `pub(super)` so the registry drift test can walk them (#6819).
+    pub(super) fn defaults() -> Vec<(Action, Vec<(KeyModifiers, KeyCode)>)> {
         vec![
             (
                 Action::Quit,

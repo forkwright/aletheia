@@ -3,10 +3,11 @@
 use std::collections::BTreeMap;
 
 use crate::app::App;
-use crate::msg::ErrorToast;
+use crate::msg::{ErrorToast, Msg};
 use crate::state::memory::{
-    DriftTab, FactDetail, GraphNodeCard, MemoryEntity, MemoryFact, MemoryRelationship, MemoryTab,
-    NodeCardFact, relationship_from_entity_relative,
+    DriftTab, FactDetail, GraphNodeCard, MemoryEntity, MemoryFact, MemoryGraphLoad,
+    MemoryRelationship, MemoryTab, MemoryTimelineEvent, NodeCardFact,
+    relationship_from_entity_relative,
 };
 
 use super::graph_analysis;
@@ -15,6 +16,7 @@ pub(crate) fn handle_facts_loaded(app: &mut App, facts: Vec<MemoryFact>, total: 
     app.layout.memory.fact_list.facts = facts;
     app.layout.memory.fact_list.total_facts = total;
     app.layout.memory.loading = false;
+    app.layout.memory.facts_error = None;
     app.layout.memory.fact_list.selected = 0;
     app.layout.memory.fact_list.scroll_offset = 0;
 }
@@ -27,7 +29,12 @@ pub(crate) fn handle_action_result(app: &mut App, message: String) {
     app.viewport.error_toast = Some(ErrorToast::new(message));
 }
 
-pub(super) async fn load_facts(app: &mut App) {
+// WHY(#6815): the render loop draws only between `update()` calls, so a
+// handler that awaits fetches inline sets and clears `loading` inside a single
+// update -- the loading state is architecturally unobservable. Every fetch here
+// runs as a background task that reports back via a `Msg`, letting frames
+// render in between.
+pub(super) fn spawn_load_facts(app: &mut App) {
     let client = app.client.clone();
     let sort = app.layout.memory.fact_list.sort.as_str();
     let order = if app.layout.memory.fact_list.sort_asc {
@@ -36,53 +43,59 @@ pub(super) async fn load_facts(app: &mut App) {
         "desc"
     };
 
-    match client.knowledge_facts(sort, order, 500).await {
-        Ok(resp) => {
-            app.layout.memory.fact_list.facts =
-                resp.facts.into_iter().map(MemoryFact::from).collect();
-            app.layout.memory.fact_list.total_facts = resp.total;
-            app.layout.memory.loading = false;
+    app.background_tasks.spawn(async move {
+        match client.knowledge_facts(sort, order, 500).await {
+            Ok(resp) => Msg::MemoryFactsLoaded {
+                facts: resp.facts.into_iter().map(MemoryFact::from).collect(),
+                total: resp.total,
+            },
+            Err(e) => Msg::MemoryFactsLoadFailed(format!("failed to load facts: {e}")),
         }
-        Err(e) => {
-            // WHY(#6821) a toast rather than a debug line: the server now distinguishes
-            // "the store holds no facts" from "there is no store", and that distinction
-            // is worth nothing if the client renders both as an empty panel. A debug log
-            // reaches nobody watching the TUI, which is where the wrong conclusion --
-            // that the agent has forgotten everything -- actually gets drawn.
-            tracing::debug!("failed to load facts: {e}");
-            handle_action_result(app, format!("failed to load facts: {e}"));
-            app.layout.memory.loading = false;
-        }
-    }
+    });
 }
 
-pub(super) async fn load_fact_detail(app: &mut App, fact_id: &str) {
-    let client = app.client.clone();
+pub(crate) fn handle_facts_load_failed(app: &mut App, message: String) {
+    // WHY(#6821) a toast rather than a debug line: the server now distinguishes
+    // "the store holds no facts" from "there is no store", and that distinction
+    // is worth nothing if the client renders both as an empty panel. A debug log
+    // reaches nobody watching the TUI, which is where the wrong conclusion --
+    // that the agent has forgotten everything -- actually gets drawn.
+    tracing::warn!("{message}");
+    app.layout.memory.facts_error = Some(message.clone());
+    handle_action_result(app, message);
+    app.layout.memory.loading = false;
+}
 
-    match client.knowledge_fact_detail(fact_id).await {
-        Ok(detail) => {
-            app.layout.memory.fact_list.detail = Some(FactDetail::from(detail));
-            return;
-        }
-        Err(e) => {
-            tracing::debug!("failed to load fact detail: {e}");
-        }
-    }
-    // NOTE: fallback to local data when API detail fetch fails
-    if let Some(fact) = app
+pub(super) fn spawn_load_fact_detail(app: &mut App, fact_id: &str) {
+    let client = app.client.clone();
+    // NOTE: fallback to local data when the API detail fetch fails; captured
+    // before the spawn because the task cannot reach back into `App`.
+    let fallback = app
         .layout
         .memory
         .fact_list
         .facts
         .iter()
         .find(|f| f.id == fact_id)
-    {
-        app.layout.memory.fact_list.detail = Some(FactDetail {
-            fact: fact.clone(),
-            relationships: Vec::new(),
-            similar: Vec::new(),
-        });
-    }
+        .cloned();
+    let fact_id = fact_id.to_owned();
+
+    app.background_tasks.spawn(async move {
+        match client.knowledge_fact_detail(&fact_id).await {
+            Ok(detail) => Msg::MemoryDetailLoaded(Box::new(FactDetail::from(detail))),
+            Err(e) => {
+                tracing::debug!("failed to load fact detail: {e}");
+                match fallback {
+                    Some(fact) => Msg::MemoryDetailLoaded(Box::new(FactDetail {
+                        fact,
+                        relationships: Vec::new(),
+                        similar: Vec::new(),
+                    })),
+                    None => Msg::MemoryActionResult(format!("failed to load fact detail: {e}")),
+                }
+            }
+        }
+    });
 }
 
 pub(super) fn item_count(app: &App) -> usize {
@@ -119,51 +132,85 @@ pub(super) fn adjust_scroll(app: &mut App) {
     }
 }
 
-pub(super) async fn load_graph_data(app: &mut App) {
+pub(super) fn spawn_load_graph_data(app: &mut App) {
     let client = app.client.clone();
 
-    let mut entities: Vec<MemoryEntity> = Vec::new();
-    let mut relationships: Vec<MemoryRelationship> = Vec::new();
+    app.background_tasks.spawn(async move {
+        let mut error: Option<String> = None;
+        let mut entities: Vec<MemoryEntity> = Vec::new();
+        let mut relationships: Vec<MemoryRelationship> = Vec::new();
 
-    match client.knowledge_entities().await {
-        Ok(resp) => {
-            entities = resp.entities.into_iter().map(MemoryEntity::from).collect();
+        match client.knowledge_entities().await {
+            Ok(resp) => {
+                entities = resp.entities.into_iter().map(MemoryEntity::from).collect();
+            }
+            Err(e) => {
+                // Same reason as facts: an unreachable store and an empty one drew the
+                // same blank graph, so the operator had no way to tell them apart.
+                tracing::debug!("failed to load entities: {e}");
+                error = Some(format!("failed to load entities: {e}"));
+            }
         }
-        Err(e) => {
-            // Same reason as load_facts: an unreachable store and an empty one drew the
-            // same blank graph, so the operator had no way to tell them apart.
-            tracing::debug!("failed to load entities: {e}");
-            handle_action_result(app, format!("failed to load entities: {e}"));
-        }
-    }
 
-    // WHY: fetch all relationships by iterating entities; the API exposes per-entity endpoints.
-    // Each row is entity-relative (direction + the *other* entity's id), so
-    // `relationship_from_entity_relative` reconstructs the global (src, dst)
-    // edge using the entity id this request was made for (#4870).
-    let mut seen_rels = std::collections::HashSet::new();
-    for entity in &entities {
-        if let Ok(resp) = client.knowledge_entity_relationships(&entity.id).await {
-            for rel in resp.relationships {
-                let rel = relationship_from_entity_relative(&entity.id, rel);
-                let key = format!("{}:{}:{}", rel.src, rel.relation, rel.dst);
-                if seen_rels.insert(key) {
-                    relationships.push(rel);
+        // WHY: fetch all relationships by iterating entities; the API exposes per-entity endpoints.
+        // Each row is entity-relative (direction + the *other* entity's id), so
+        // `relationship_from_entity_relative` reconstructs the global (src, dst)
+        // edge using the entity id this request was made for (#4870).
+        let mut seen_rels = std::collections::HashSet::new();
+        for entity in &entities {
+            match client.knowledge_entity_relationships(&entity.id).await {
+                Ok(resp) => {
+                    for rel in resp.relationships {
+                        let rel = relationship_from_entity_relative(&entity.id, rel);
+                        let key = format!("{}:{}:{}", rel.src, rel.relation, rel.dst);
+                        if seen_rels.insert(key) {
+                            relationships.push(rel);
+                        }
+                    }
+                }
+                // WHY(#6816): previously swallowed silently -- a failed fetch
+                // rendered exactly like an empty graph. First error wins; the
+                // rest of the load still completes with partial data.
+                Err(e) => {
+                    error.get_or_insert_with(|| {
+                        format!("failed to load relationships for {}: {e}", entity.name)
+                    });
                 }
             }
         }
-    }
 
-    if let Ok(resp) = client.knowledge_timeline().await {
-        app.layout.memory.graph.timeline_events = resp
-            .events
-            .into_iter()
-            .map(crate::state::memory::MemoryTimelineEvent::from)
-            .collect();
-    }
+        let mut timeline_events: Vec<MemoryTimelineEvent> = Vec::new();
+        match client.knowledge_timeline().await {
+            Ok(resp) => {
+                timeline_events = resp
+                    .events
+                    .into_iter()
+                    .map(MemoryTimelineEvent::from)
+                    .collect();
+            }
+            Err(e) => {
+                error.get_or_insert_with(|| format!("failed to load timeline: {e}"));
+            }
+        }
 
-    app.layout.memory.graph.entities = entities.clone();
-    app.layout.memory.graph.relationships = relationships.clone();
+        Msg::MemoryGraphLoaded(Box::new(MemoryGraphLoad {
+            entities,
+            relationships,
+            timeline_events,
+            error,
+        }))
+    });
+}
+
+pub(crate) fn handle_graph_loaded(app: &mut App, load: MemoryGraphLoad) {
+    app.layout.memory.graph_error = load.error;
+    if let Some(message) = app.layout.memory.graph_error.clone() {
+        tracing::warn!("{message}");
+        handle_action_result(app, message);
+    }
+    app.layout.memory.graph.entities = load.entities;
+    app.layout.memory.graph.relationships = load.relationships;
+    app.layout.memory.graph.timeline_events = load.timeline_events;
 
     graph_analysis::compute_graph_stats(app);
     graph_analysis::compute_drift_analysis(app);

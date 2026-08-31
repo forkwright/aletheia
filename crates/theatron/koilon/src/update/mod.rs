@@ -302,7 +302,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::SettingsLoaded(config) => settings::handle_loaded(app, config),
         Msg::SettingsSaved => settings::handle_saved(app),
         Msg::SettingsSaveError(msg) => settings::handle_save_error(app, msg),
-        Msg::MemoryOpen => memory::handle_open(app).await,
+        Msg::MemoryOpen => memory::handle_open(app),
         Msg::MemoryClose => memory::handle_close(app),
         Msg::MemoryTabNext => memory::handle_tab_next(app),
         Msg::MemoryTabPrev => memory::handle_tab_prev(app),
@@ -315,7 +315,7 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MemoryFilterClose => memory::handle_filter_close(app),
         Msg::MemoryFilterInput(c) => memory::handle_filter_input(app, c),
         Msg::MemoryFilterBackspace => memory::handle_filter_backspace(app),
-        Msg::MemoryDrillIn => memory::handle_drill_in(app).await,
+        Msg::MemoryDrillIn => memory::handle_drill_in(app),
         Msg::MemoryPopBack => memory::handle_pop_back(app),
         Msg::MemoryForget => memory::handle_forget(app).await,
         Msg::MemoryRestore => memory::handle_restore(app).await,
@@ -334,11 +334,9 @@ pub(crate) async fn update(app: &mut App, msg: Msg) {
         Msg::MemoryDriftTabNext => memory::handle_drift_tab_next(app),
         Msg::MemoryDriftTabPrev => memory::handle_drift_tab_prev(app),
         Msg::MemoryFactsLoaded { facts, total } => memory::handle_facts_loaded(app, facts, total),
+        Msg::MemoryFactsLoadFailed(message) => memory::handle_facts_load_failed(app, message),
         Msg::MemoryDetailLoaded(detail) => memory::handle_detail_loaded(app, *detail),
-        // NOTE: memory data variants handled in memory inspector view
-        Msg::MemoryEntitiesLoaded(_)
-        | Msg::MemoryRelationshipsLoaded(_)
-        | Msg::MemoryTimelineLoaded(_) => {}
+        Msg::MemoryGraphLoaded(load) => memory::handle_graph_loaded(app, *load),
         Msg::MemorySearchResults(_) => {}
         Msg::MemoryActionResult(msg) => memory::handle_action_result(app, msg),
 

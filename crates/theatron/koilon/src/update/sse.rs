@@ -1,11 +1,9 @@
-use std::collections::HashMap;
-
 use crate::api::types::ActiveTurn;
 use crate::app::App;
 use crate::id::{ApiNousId, ApiSessionId};
 use crate::msg::ErrorToast;
 use crate::sanitize::sanitize_for_display;
-use crate::state::{ActiveTool, AgentState, AgentStatus, BackendHealth, ChatMessage};
+use crate::state::{ActiveTool, AgentStatus, ChatMessage};
 
 const RECONNECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -22,37 +20,10 @@ pub(crate) async fn handle_sse_connected(app: &mut App) {
 
     if was_disconnected {
         tracing::info!("SSE reconnected — reloading agent state");
-        if let Ok(agents) = app.client.agents().await {
-            let unread: HashMap<ApiNousId, u32> = app
-                .dashboard
-                .agents
-                .iter()
-                .map(|a| (a.id.clone(), a.unread_count))
-                .collect();
-
-            app.dashboard.agents = agents
-                .into_iter()
-                .map(|a| {
-                    let count = unread.get(&a.id).copied().unwrap_or(0);
-                    let name = sanitize_for_display(a.display_name()).into_owned();
-                    let name_lower = name.to_lowercase();
-                    AgentState {
-                        id: a.id.clone(),
-                        name,
-                        name_lower,
-                        emoji: a.emoji.map(|e| sanitize_for_display(&e).into_owned()),
-                        status: AgentStatus::Idle,
-                        backend_health: BackendHealth::from_status(a.status.as_deref()),
-                        active_tool: None,
-                        sessions: Vec::new(),
-                        model: a.model.map(|m| sanitize_for_display(&m).into_owned()),
-                        compaction_stage: None,
-                        distill_completed_at: None,
-                        unread_count: count,
-                        tools: Vec::new(),
-                    }
-                })
-                .collect();
+        // NOTE: best-effort -- on failure the roster from before the drop
+        // stays; the reconnect itself already proved the server reachable.
+        if let Err(e) = app.reload_agents().await {
+            tracing::warn!("failed to reload agents after SSE reconnect: {e}");
         }
         // WHY: skip reload when a stream is pending, active, or just completed:
         // the optimistic user message and streaming state must not be clobbered

@@ -419,47 +419,8 @@ fn extract_texts_from_array(arr: &[serde_json::Value]) -> Option<String> {
 mod tests {
     use super::*;
     use crate::app::test_helpers::{
-        drain_one_background, point_app_at, test_agent, test_app_with_messages,
+        drain_one_background, failing_server, point_app_at, test_agent, test_app_with_messages,
     };
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use tokio::net::TcpListener;
-    use tokio::task::JoinHandle;
-
-    async fn failing_server() -> (String, JoinHandle<()>) {
-        let listener = match TcpListener::bind("127.0.0.1:0").await {
-            Ok(listener) => listener,
-            Err(e) => panic!("bind failing test server: {e}"),
-        };
-        let addr = match listener.local_addr() {
-            Ok(addr) => addr,
-            Err(e) => panic!("read failing test server address: {e}"),
-        };
-        let handle = tokio::spawn(async move {
-            loop {
-                let Ok((mut stream, _addr)) = listener.accept().await else {
-                    break;
-                };
-                let _connection = tokio::spawn(async move {
-                    let mut request = [0_u8; 1024];
-                    if stream.read(&mut request).await.is_err() {
-                        return;
-                    }
-                    let response = concat!(
-                        "HTTP/1.1 500 Internal Server Error\r\n",
-                        "content-type: text/plain\r\n",
-                        "content-length: 19\r\n",
-                        "connection: close\r\n",
-                        "\r\n",
-                        "backend unavailable"
-                    );
-                    if let Err(e) = stream.write_all(response.as_bytes()).await {
-                        tracing::debug!("failed to write test response: {e}");
-                    }
-                });
-            }
-        });
-        (format!("http://{addr}"), handle)
-    }
 
     #[tokio::test]
     async fn new_session_failure_keeps_current_transcript_and_reports_action_id() {

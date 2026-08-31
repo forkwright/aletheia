@@ -323,4 +323,59 @@ mod tests {
             "config_key values must be unique"
         );
     }
+
+    /// Regression for #6819: the hand-authored registry drives the Help/F1
+    /// overlay and status-bar hints; every action the default keymap binds
+    /// must appear there, or the binding is invisible to users.
+    #[test]
+    fn every_default_keymap_binding_has_a_registry_entry() {
+        fn display_combo(modifiers: KeyModifiers, code: KeyCode) -> String {
+            let mut parts: Vec<String> = Vec::new();
+            if modifiers.contains(KeyModifiers::CONTROL) {
+                parts.push("ctrl".into());
+            }
+            if modifiers.contains(KeyModifiers::ALT) {
+                parts.push("alt".into());
+            }
+            if modifiers.contains(KeyModifiers::SHIFT) {
+                parts.push("shift".into());
+            }
+            let key = match code {
+                KeyCode::Char(c) => c.to_string(),
+                KeyCode::F(n) => format!("f{n}"),
+                KeyCode::PageUp => "pgup".into(),
+                KeyCode::PageDown => "pgdn".into(),
+                KeyCode::Up => "up".into(),
+                KeyCode::Down => "down".into(),
+                other => format!("{other:?}").to_lowercase(),
+            };
+            parts.push(key);
+            parts.join("+")
+        }
+
+        // NOTE: registry `keys` strings are display-form ("Ctrl+E / Ctrl+G",
+        // "PgUp/PgDn"), so matching is substring-on-normalized rather than
+        // exact -- good enough to catch a binding with no entry at all.
+        let registry_keys: Vec<String> = all_keybindings()
+            .iter()
+            .map(|kb| kb.keys.to_lowercase().replace(' ', ""))
+            .collect();
+
+        for (action, keys) in keymap::KeyMap::defaults() {
+            if keys.is_empty() {
+                continue;
+            }
+            let combos: Vec<String> = keys
+                .iter()
+                .map(|&(modifiers, code)| display_combo(modifiers, code))
+                .collect();
+            assert!(
+                combos
+                    .iter()
+                    .any(|combo| registry_keys.iter().any(|k| k.contains(combo.as_str()))),
+                "action {action:?} is bound to {combos:?} by the default keymap but has \
+                 no registry entry -- the binding is invisible in Help/F1 and the status bar"
+            );
+        }
+    }
 }

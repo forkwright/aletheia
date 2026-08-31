@@ -428,6 +428,30 @@ pub(crate) fn all_keybindings() -> &'static [Keybinding] {
             show_in_status_bar: false,
         },
         Keybinding {
+            keys: "Ctrl+M",
+            description: "Memory inspector",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+D",
+            description: "Metrics dashboard",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+P",
+            description: "Planning view",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
+            keys: "Ctrl+H",
+            description: "Retrospective view",
+            contexts: &[KeyContext::Global],
+            show_in_status_bar: false,
+        },
+        Keybinding {
             keys: "Ctrl+N",
             description: "New session",
             contexts: &[KeyContext::Global],

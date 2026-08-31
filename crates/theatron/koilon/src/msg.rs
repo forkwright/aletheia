@@ -333,22 +333,15 @@ pub enum Msg {
     MemorySearchBackspace,
     MemorySearchSubmit,
     MemorySearchClose,
-    #[expect(dead_code, reason = "planned TUI feature")]
     MemoryFactsLoaded {
         facts: Vec<crate::state::memory::MemoryFact>,
         total: usize,
     },
-    #[expect(dead_code, reason = "planned TUI feature")]
+    MemoryFactsLoadFailed(String),
     MemoryDetailLoaded(Box<crate::state::memory::FactDetail>),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemoryEntitiesLoaded(Vec<crate::state::memory::MemoryEntity>),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemoryRelationshipsLoaded(Vec<crate::state::memory::MemoryRelationship>),
-    #[expect(dead_code, reason = "planned TUI feature")]
-    MemoryTimelineLoaded(Vec<crate::state::memory::MemoryTimelineEvent>),
+    MemoryGraphLoaded(Box<crate::state::memory::MemoryGraphLoad>),
     #[expect(dead_code, reason = "planned TUI feature")]
     MemorySearchResults(Vec<crate::state::memory::MemorySearchResult>),
-    #[expect(dead_code, reason = "planned TUI feature")]
     MemoryActionResult(String),
     MemoryPageDown,
     MemoryPageUp,
@@ -552,7 +545,6 @@ pub enum OverlayKind {
     #[expect(dead_code, reason = "planned TUI feature")]
     SessionPickerAll,
     SystemStatus,
-    ContextBudget,
     #[expect(dead_code, reason = "planned TUI feature")]
     Settings,
     #[cfg_attr(
