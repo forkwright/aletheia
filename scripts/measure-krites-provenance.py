@@ -37,7 +37,7 @@ RAW_BASE = f"https://raw.githubusercontent.com/cozodb/cozo/{UPSTREAM_REF}/cozo-c
 # directories look like splits but are not (fixed_rule/algos/kcore.rs has no
 # upstream counterpart despite fixed_rule/algos/degree_centrality.rs sitting beside
 # it; fixed_rule/csr/page_rank.rs is a from-scratch CSR implementation, not a split
-# of algos/pagerank.rs). Every grouping below was verified by cross-referencing
+# of upstream algos/pagerank.rs). Every grouping below was verified by cross-referencing
 # public fn/struct/enum names between the local fragment set and the upstream file
 # it is claimed to split.
 UPSTREAM_MAP: dict[str, str | None] = {
@@ -107,7 +107,6 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fixed_rule/algos/label_propagation.rs": None,
     "fixed_rule/algos/louvain.rs": "fixed_rule/algos/louvain.rs",
     "fixed_rule/algos/mod.rs": "fixed_rule/algos/mod.rs",
-    "fixed_rule/algos/pagerank.rs": "fixed_rule/algos/pagerank.rs",
     "fixed_rule/algos/pagerank_native.rs": None,
     "fixed_rule/algos/prim.rs": None,
     "fixed_rule/algos/random_walk.rs": None,
@@ -124,6 +123,7 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "fixed_rule/tests/centrality_spanning.rs": None,
     "fixed_rule/tests/connectivity_misc.rs": None,
     "fixed_rule/tests/mod.rs": None,
+    "fixed_rule/tests/pagerank_wiring.rs": None,
     "fixed_rule/tests/path_algorithms.rs": None,
     "fixed_rule/tests/proptest_algos.rs": None,
     "fixed_rule/tests/wave5_reference_semantics.rs": None,
@@ -410,16 +410,6 @@ DUAL_SOAK_WINDOW: dict[str, int] = {
     # (tests/bmp_equivalence.rs), so there is no soak-observation need beyond
     # CI turning green on the sovereign feature.
     "fts/tokenizer/ascii_folding_filter/fold_table.rs": 2838,
-    # wave5/live-3-algos: land-dark PR lands at approximately commit count 3113.
-    # +30 is RETIREMENT-PLAN.md's own Q3 window for wave 5 -- unlike the 19
-    # zero-call-site algorithms already retired from this same module, PageRank
-    # is one of "the live 3" (episteme/src/graph_intelligence.rs:202,206 calls it
-    # via embedded Datalog), so this soak observes the sovereign shell against a
-    # real consumer rather than idle code. Both shells delegate to the same
-    # already-sovereign numeric core (fixed_rule::csr::page_rank); the reference-
-    # semantics gate RETIREMENT-PLAN.md calls for this wave (convergence +
-    # sum-to-1) lives at fixed_rule/tests/wave5_reference_semantics.rs.
-    "fixed_rule/algos/pagerank.rs": 3143,
 }
 
 _upstream_cache: dict[str, str] = {}
