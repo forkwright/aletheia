@@ -12,8 +12,6 @@
 
 ## Public API surface
 
-- `energeia::backend/backend_impl` - public items from `src/backend/backend_impl.rs`
-- `energeia::backend` - public items from `src/backend.rs`
 - `energeia::budget` - public items from `src/budget.rs`
 - `energeia::cost_ledger` - public items from `src/cost_ledger.rs`
 
