@@ -95,7 +95,10 @@ pub struct MatrixEvent {
 /// Matrix room-message content subset.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MatrixEventContent {
-    /// Matrix message type, e.g. `m.text`.
+    /// Matrix message type, e.g. `m.text`. Read by `extract_message` to
+    /// decide which message kinds become inbound messages: `m.text` and
+    /// `m.emote` are accepted, everything else (including an absent
+    /// msgtype) is dropped.
     pub msgtype: Option<String>,
     /// Plain-text body.
     pub body: Option<String>,
@@ -484,10 +487,38 @@ fn extract_message(
         return None;
     }
 
-    let text = event.content.body.as_deref()?;
-    if text.is_empty() {
+    // WHY(#7082): msgtype decides whether an event is turn-worthy text.
+    // `m.notice` is reserved by the Matrix spec for automated clients so
+    // that other automated clients do not respond to it -- forwarding one
+    // risks a bot loop. Media and every other non-text kind are dropped
+    // because this provider declares `media: false` and their `body` is a
+    // filename or caption, not a message. A missing msgtype violates the
+    // spec for `m.room.message` and is treated as non-text, not as
+    // implicit `m.text`.
+    let annotate_emote = match event.content.msgtype.as_deref() {
+        Some("m.text") => false,
+        Some("m.emote") => true,
+        other => {
+            tracing::debug!(
+                msgtype = other.unwrap_or("<absent>"),
+                "dropping Matrix message with non-text msgtype"
+            );
+            return None;
+        }
+    };
+
+    let body = event.content.body.as_deref()?;
+    if body.is_empty() {
         return None;
     }
+    // NOTE: `* ` is the conventional client rendering for emotes; it keeps
+    // the action framing ("* waves" vs "waves") through normalization,
+    // since downstream sees only `text` plus a separate `sender`.
+    let text = if annotate_emote {
+        format!("* {body}")
+    } else {
+        body.to_owned()
+    };
 
     let attachments = event
         .content
@@ -503,7 +534,7 @@ fn extract_message(
         sender_name: None,
         group_id: Some(room_id.to_owned()),
         message_id: event.event_id.clone(),
-        text: text.to_owned(),
+        text,
         timestamp: event.origin_server_ts.unwrap_or_else(|| {
             tracing::warn!("Matrix event has no timestamp, defaulting to 0");
             0
@@ -665,6 +696,239 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    #[test]
+    fn extract_matrix_message_drops_notice() {
+        // WHY(#7082): the Matrix spec reserves m.notice for automated
+        // clients precisely so other automated clients do not respond to
+        // it; forwarding one into the turn pipeline risks a bot loop.
+        let event: MatrixEvent = serde_json::from_value(serde_json::json!({
+            "type": "m.room.message",
+            "sender": "@alice:example.org",
+            "event_id": "$notice",
+            "origin_server_ts": 100,
+            "content": {
+                "msgtype": "m.notice",
+                "body": "automated status report"
+            }
+        }))
+        .expect("event");
+
+        let policy = taxis::config::RawPayloadPolicy::default();
+        assert!(
+            extract_message(
+                "!room:example.org",
+                &event,
+                Some("@bot:example.org"),
+                &policy
+            )
+            .is_none(),
+            "m.notice must not produce an inbound message"
+        );
+    }
+
+    #[test]
+    fn extract_matrix_message_drops_non_text_msgtypes() {
+        let policy = taxis::config::RawPayloadPolicy::default();
+        for msgtype in [
+            "m.image",
+            "m.file",
+            "m.audio",
+            "m.video",
+            "m.location",
+            "m.server_notice",
+            "m.key.verification.request",
+            "com.example.custom",
+        ] {
+            let event: MatrixEvent = serde_json::from_value(serde_json::json!({
+                "type": "m.room.message",
+                "sender": "@alice:example.org",
+                "event_id": "$media",
+                "origin_server_ts": 100,
+                "content": {
+                    "msgtype": msgtype,
+                    "body": "photo.jpg",
+                    "url": "mxc://example.org/abc123"
+                }
+            }))
+            .expect("event");
+
+            assert!(
+                extract_message(
+                    "!room:example.org",
+                    &event,
+                    Some("@bot:example.org"),
+                    &policy
+                )
+                .is_none(),
+                "{msgtype} must not produce an inbound message"
+            );
+        }
+    }
+
+    #[test]
+    fn extract_matrix_message_drops_missing_msgtype() {
+        // WHY(#7082): the spec requires msgtype on every m.room.message;
+        // an event without one is malformed, not implicitly m.text.
+        let event: MatrixEvent = serde_json::from_value(serde_json::json!({
+            "type": "m.room.message",
+            "sender": "@alice:example.org",
+            "event_id": "$malformed",
+            "origin_server_ts": 100,
+            "content": {
+                "body": "hello"
+            }
+        }))
+        .expect("event");
+
+        let policy = taxis::config::RawPayloadPolicy::default();
+        assert!(
+            extract_message(
+                "!room:example.org",
+                &event,
+                Some("@bot:example.org"),
+                &policy
+            )
+            .is_none(),
+            "an event without a msgtype must not produce an inbound message"
+        );
+    }
+
+    #[test]
+    fn extract_matrix_message_annotates_emote() {
+        let event: MatrixEvent = serde_json::from_value(serde_json::json!({
+            "type": "m.room.message",
+            "sender": "@alice:example.org",
+            "event_id": "$emote",
+            "origin_server_ts": 100,
+            "content": {
+                "msgtype": "m.emote",
+                "body": "waves"
+            }
+        }))
+        .expect("event");
+
+        let policy = taxis::config::RawPayloadPolicy::default();
+        let msg = extract_message(
+            "!room:example.org",
+            &event,
+            Some("@bot:example.org"),
+            &policy,
+        )
+        .expect("emote is user-authored text and must be accepted");
+        assert_eq!(
+            msg.text, "* waves",
+            "emote text must carry the action annotation"
+        );
+    }
+
+    #[tokio::test]
+    async fn provider_listen_drops_non_text_events() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(header("authorization", "Bearer token-123"))
+            .and(query_param("timeout", "50"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "next_batch": "s1",
+                "rooms": {
+                    "join": {
+                        "!room:example.org": {
+                            "timeline": {
+                                "events": [
+                                    {
+                                        "type": "m.room.message",
+                                        "sender": "@alice:example.org",
+                                        "event_id": "$notice",
+                                        "origin_server_ts": 121,
+                                        "content": {
+                                            "msgtype": "m.notice",
+                                            "body": "automated status report"
+                                        }
+                                    },
+                                    {
+                                        "type": "m.room.message",
+                                        "sender": "@alice:example.org",
+                                        "event_id": "$image",
+                                        "origin_server_ts": 122,
+                                        "content": {
+                                            "msgtype": "m.image",
+                                            "body": "photo.jpg",
+                                            "url": "mxc://example.org/abc123"
+                                        }
+                                    },
+                                    // NOTE: the text event comes last so receiving it
+                                    // proves the earlier non-text events were dropped,
+                                    // not merely still in flight (forwarding is in
+                                    // timeline order).
+                                    {
+                                        "type": "m.room.message",
+                                        "sender": "@alice:example.org",
+                                        "event_id": "$text",
+                                        "origin_server_ts": 123,
+                                        "content": {
+                                            "msgtype": "m.text",
+                                            "body": "hello from Matrix"
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let mut provider = MatrixProvider::from_config(&taxis::config::MessagingConfig {
+            receive_timeout_secs: 1,
+            circuit_breaker_threshold: 1,
+            ..taxis::config::MessagingConfig::default()
+        });
+        let client = client::MatrixClient::with_timeouts(
+            &server.uri(),
+            "token-123",
+            Duration::from_secs(1),
+            Duration::from_millis(50),
+        )
+        .expect("client");
+        provider.add_account(
+            "primary".to_owned(),
+            client,
+            Some("@bot:example.org".to_owned()),
+            true,
+            None,
+        );
+
+        let token = CancellationToken::new();
+        let (mut rx, mut handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
+        let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("timeout")
+            .expect("message");
+
+        assert_eq!(
+            msg.message_id.as_deref(),
+            Some("$text"),
+            "only the m.text event may produce a turn"
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "the m.notice and m.image events must not produce turns"
+        );
+
+        token.cancel();
+        drop(rx);
+        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next())
+            .await
+            .ok()
+            .flatten()
+        {
+            let _ = result;
+        }
     }
 
     #[tokio::test]
