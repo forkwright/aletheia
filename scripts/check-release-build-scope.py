@@ -54,9 +54,6 @@ LOCAL_PACKAGE_LINE = re.compile(
     r"^(?P<name>[A-Za-z0-9_-]+) v[^ ]+ \((?P<source>/[^)]*)\)\|"
     r"(?P<features>[^ ]*)(?: \(\*\))?$"
 )
-DEV_DEPENDENCY_SECTION = re.compile(
-    r"(?ms)^\[(?:dev-dependencies|target\..*\.dev-dependencies)\]\n.*?(?=^\[|\Z)"
-)
 MEMBERS_SECTION = re.compile(r"(?ms)^members = \[\n.*?^\]")
 EXCLUDE_SECTION = re.compile(r"(?ms)^exclude = \[\n.*?^\]")
 
@@ -339,7 +336,6 @@ def validated_release_builds(workflow: dict[str, Any]) -> list[ValidatedBuild]:
     seen_builds: dict[str, ValidatedBuild] = {}
 
     for index, step in enumerate(steps):
-        run = step.get("run")
         name = step.get("name")
         expected = expected_by_name.get(name)
         if expected is not None:
@@ -374,7 +370,21 @@ def cargo_environment() -> dict[str, str]:
 
 def without_dev_dependencies(manifest: str) -> str:
     """Remove dev-only resolution inputs from a copied probe manifest."""
-    return DEV_DEPENDENCY_SECTION.sub("", manifest)
+    retained: list[str] = []
+    skipping = False
+    for line in manifest.splitlines(keepends=True):
+        if line.startswith("[") and line.rstrip().endswith("]"):
+            skipping = is_dev_dependency_header(line.rstrip())
+        if not skipping:
+            retained.append(line)
+    return "".join(retained)
+
+
+def is_dev_dependency_header(header: str) -> bool:
+    """Recognize only Cargo's plain and target-specific dev-dependency tables."""
+    return header == "[dev-dependencies]" or (
+        header.startswith("[target.") and header.endswith(".dev-dependencies]")
+    )
 
 
 def with_probe_workspace(manifest: str, manifest_dir: Path, probe: Path) -> str:
