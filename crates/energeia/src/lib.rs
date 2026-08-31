@@ -42,11 +42,6 @@ pub(crate) mod diff;
 pub mod engine;
 /// Error types for energeia operations.
 pub mod error;
-/// Friction capture: parse structured observations from PR bodies.
-// WHY(#6750): `Observation`/`parse_pr_body` have zero real callers — dead
-// code under the plain `cargo check` (lib) pass `-D warnings` runs under if
-// demoted to `pub(crate)`. Stays `pub`.
-pub mod friction;
 /// Parallel-execution frontier derivation from a [`dag::PromptDag`].
 // WHY(#5576): `compute_frontier` is re-exported at `dag` (the consumed
 // cross-crate surface); the module path itself has zero external consumers.
