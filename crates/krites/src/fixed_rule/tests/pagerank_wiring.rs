@@ -11,6 +11,7 @@
 //! stay green through exactly the unwiring this one exists to catch.
 
 #![cfg(test)]
+#![expect(clippy::expect_used, reason = "test assertions")]
 
 use crate::DbInstance;
 
