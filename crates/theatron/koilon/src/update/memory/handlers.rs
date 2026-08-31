@@ -12,6 +12,8 @@ pub(crate) fn handle_open(app: &mut App) {
     // WHY(#6815): the fetches run as background tasks so this update returns
     // (and the next frame draws) while `loading` is still observably true.
     app.layout.memory.loading = true;
+    app.layout.memory.facts_error = None;
+    app.layout.memory.graph_error = None;
     data_loading::spawn_load_facts(app);
     data_loading::spawn_load_graph_data(app);
 }

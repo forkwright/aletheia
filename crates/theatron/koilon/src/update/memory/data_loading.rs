@@ -16,6 +16,7 @@ pub(crate) fn handle_facts_loaded(app: &mut App, facts: Vec<MemoryFact>, total: 
     app.layout.memory.fact_list.facts = facts;
     app.layout.memory.fact_list.total_facts = total;
     app.layout.memory.loading = false;
+    app.layout.memory.facts_error = None;
     app.layout.memory.fact_list.selected = 0;
     app.layout.memory.fact_list.scroll_offset = 0;
 }
@@ -59,7 +60,8 @@ pub(crate) fn handle_facts_load_failed(app: &mut App, message: String) {
     // is worth nothing if the client renders both as an empty panel. A debug log
     // reaches nobody watching the TUI, which is where the wrong conclusion --
     // that the agent has forgotten everything -- actually gets drawn.
-    tracing::debug!("{message}");
+    tracing::warn!("{message}");
+    app.layout.memory.facts_error = Some(message.clone());
     handle_action_result(app, message);
     app.layout.memory.loading = false;
 }
@@ -156,24 +158,39 @@ pub(super) fn spawn_load_graph_data(app: &mut App) {
         // edge using the entity id this request was made for (#4870).
         let mut seen_rels = std::collections::HashSet::new();
         for entity in &entities {
-            if let Ok(resp) = client.knowledge_entity_relationships(&entity.id).await {
-                for rel in resp.relationships {
-                    let rel = relationship_from_entity_relative(&entity.id, rel);
-                    let key = format!("{}:{}:{}", rel.src, rel.relation, rel.dst);
-                    if seen_rels.insert(key) {
-                        relationships.push(rel);
+            match client.knowledge_entity_relationships(&entity.id).await {
+                Ok(resp) => {
+                    for rel in resp.relationships {
+                        let rel = relationship_from_entity_relative(&entity.id, rel);
+                        let key = format!("{}:{}:{}", rel.src, rel.relation, rel.dst);
+                        if seen_rels.insert(key) {
+                            relationships.push(rel);
+                        }
                     }
+                }
+                // WHY(#6816): previously swallowed silently -- a failed fetch
+                // rendered exactly like an empty graph. First error wins; the
+                // rest of the load still completes with partial data.
+                Err(e) => {
+                    error.get_or_insert_with(|| {
+                        format!("failed to load relationships for {}: {e}", entity.name)
+                    });
                 }
             }
         }
 
         let mut timeline_events: Vec<MemoryTimelineEvent> = Vec::new();
-        if let Ok(resp) = client.knowledge_timeline().await {
-            timeline_events = resp
-                .events
-                .into_iter()
-                .map(MemoryTimelineEvent::from)
-                .collect();
+        match client.knowledge_timeline().await {
+            Ok(resp) => {
+                timeline_events = resp
+                    .events
+                    .into_iter()
+                    .map(MemoryTimelineEvent::from)
+                    .collect();
+            }
+            Err(e) => {
+                error.get_or_insert_with(|| format!("failed to load timeline: {e}"));
+            }
         }
 
         Msg::MemoryGraphLoaded(Box::new(MemoryGraphLoad {
@@ -186,7 +203,9 @@ pub(super) fn spawn_load_graph_data(app: &mut App) {
 }
 
 pub(crate) fn handle_graph_loaded(app: &mut App, load: MemoryGraphLoad) {
-    if let Some(message) = load.error {
+    app.layout.memory.graph_error = load.error;
+    if let Some(message) = app.layout.memory.graph_error.clone() {
+        tracing::warn!("{message}");
         handle_action_result(app, message);
     }
     app.layout.memory.graph.entities = load.entities;

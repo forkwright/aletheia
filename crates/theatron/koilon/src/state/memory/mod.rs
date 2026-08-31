@@ -296,6 +296,13 @@ pub struct MemoryInspectorState {
     pub(crate) tab: MemoryTab,
     /// Whether data is being loaded.
     pub(crate) loading: bool,
+    /// WHY(#6816): a failed facts fetch must render distinctly from a
+    /// genuinely empty store; `None` means the last load succeeded (or none
+    /// ran yet).
+    pub(crate) facts_error: Option<String>,
+    /// Same distinction for the graph-derived tabs (entities, relationships,
+    /// drift, timeline), which share one background load.
+    pub(crate) graph_error: Option<String>,
     /// Fact list state: facts, selection, sorting, detail.
     pub(crate) fact_list: FactListState,
     /// Filter state: text filter, type/tier filters.
@@ -311,6 +318,8 @@ impl MemoryInspectorState {
         Self {
             tab: MemoryTab::Facts,
             loading: false,
+            facts_error: None,
+            graph_error: None,
             fact_list: FactListState::new(),
             filters: MemoryFilterState::new(),
             search: MemorySearchState::new(),

@@ -452,3 +452,100 @@ async fn memory_open_leaves_loading_observable_until_background_load_completes()
         "loading must clear once the background facts load reports back"
     );
 }
+
+/// Regression for #6816: a failed fetch must be distinguishable from a
+/// genuinely empty knowledge store -- recorded in state for the views and
+/// surfaced as a toast, instead of silently rendering the empty state.
+#[tokio::test]
+async fn memory_fetch_failure_is_distinct_from_empty_state() {
+    let (url, _server) = failing_server().await;
+    let mut app = test_app();
+    point_app_at(&mut app, &url);
+
+    app.update(crate::msg::Msg::MemoryOpen).await;
+    drain_one_background(&mut app).await;
+    drain_one_background(&mut app).await;
+
+    assert!(
+        app.layout.memory.facts_error.is_some(),
+        "facts fetch failure must be recorded, not rendered as empty"
+    );
+    assert!(
+        app.layout.memory.graph_error.is_some(),
+        "entities fetch failure must be recorded, not rendered as empty"
+    );
+    assert!(
+        app.viewport.error_toast.is_some(),
+        "fetch failure must surface a toast"
+    );
+    assert!(!app.layout.memory.loading);
+}
+
+/// Counterpart to the failure case: a genuinely empty store records no
+/// errors, so the views fall through to their true empty-state strings.
+#[tokio::test]
+async fn memory_open_against_empty_store_records_no_errors() {
+    let (url, _server) = routing_server(vec![
+        (
+            "/api/v1/knowledge/facts".into(),
+            r#"{"facts":[],"total":0}"#.into(),
+        ),
+        (
+            "/api/v1/knowledge/entities".into(),
+            r#"{"entities":[],"total":0}"#.into(),
+        ),
+        (
+            "/api/v1/knowledge/timeline".into(),
+            r#"{"events":[],"total":0}"#.into(),
+        ),
+    ])
+    .await;
+    let mut app = test_app();
+    point_app_at(&mut app, &url);
+
+    app.update(crate::msg::Msg::MemoryOpen).await;
+    drain_one_background(&mut app).await;
+    drain_one_background(&mut app).await;
+
+    assert!(app.layout.memory.facts_error.is_none());
+    assert!(app.layout.memory.graph_error.is_none());
+    assert!(app.viewport.error_toast.is_none());
+    assert!(!app.layout.memory.loading);
+}
+
+/// Regression for #6816: the timeline fetch previously failed fully silently
+/// (no log, no toast) -- indistinguishable from "no timeline events".
+#[tokio::test]
+async fn timeline_failure_alone_is_surfaced() {
+    let (url, _server) = routing_server(vec![
+        (
+            "/api/v1/knowledge/facts".into(),
+            r#"{"facts":[],"total":0}"#.into(),
+        ),
+        (
+            "/api/v1/knowledge/entities".into(),
+            r#"{"entities":[],"total":0}"#.into(),
+        ),
+        // NOTE: no timeline route -- that endpoint answers 500.
+    ])
+    .await;
+    let mut app = test_app();
+    point_app_at(&mut app, &url);
+
+    app.update(crate::msg::Msg::MemoryOpen).await;
+    drain_one_background(&mut app).await;
+    drain_one_background(&mut app).await;
+
+    assert!(app.layout.memory.facts_error.is_none());
+    let Some(graph_error) = app.layout.memory.graph_error.as_deref() else {
+        panic!("timeline failure must be recorded as a graph load error");
+    };
+    assert!(
+        graph_error.contains("timeline"),
+        "error must name the failing fetch: {graph_error}"
+    );
+    assert!(
+        app.viewport.error_toast.is_some(),
+        "timeline failure must surface a toast"
+    );
+}
