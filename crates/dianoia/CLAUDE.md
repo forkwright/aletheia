@@ -15,7 +15,7 @@ Planning and project orchestration: multi-phase state machine with workspace per
 3. `src/plan.rs`: Plan struct, PlanState, dependency tracking, iteration limits
 4. `src/phase.rs`: Phase struct, PhaseState, completion tracking
 5. `src/workspace.rs`: ProjectWorkspace (on-disk JSON persistence and directory layout)
-6. `src/stuck.rs`: StuckDetector (pattern-based loop detection)
+6. `src/stuck.rs`: StuckConfig (stuck-detection thresholds consumed by taxis defaults)
 
 ## Key types
 
@@ -27,11 +27,10 @@ Planning and project orchestration: multi-phase state machine with workspace per
 | `Phase` | `phase.rs` | Grouping of related plans with lifecycle state and completion tracking |
 | `Plan` | `plan.rs` | Executable plan: dependencies, iteration limits, blockers |
 | `ProjectWorkspace` | `workspace.rs` | On-disk persistence: PROJECT.json, phases/, blockers/, artifacts/ |
-| `StuckDetector` | `stuck.rs` | Sliding-window pattern detection: repeated errors, same-args loops, alternating failures |
+| `StuckConfig` | `stuck.rs` | Stuck-detection thresholds; `taxis` derives `planning_stuck_*` defaults from it |
 | `HandoffContext` | `handoff.rs` | Context preserved across distillation/shutdown for continuity |
 | `HandoffFile` | `handoff.rs` | Reads/writes `.continue-here.json` and `.continue-here.md` |
 | `VerificationResult` | `verify.rs` | Goal-backward verification against phase success criteria |
-| `ReconciliationResult` | `reconciler.rs` | Database-vs-filesystem state reconciliation outcome |
 | `ResearchLevel` | `research.rs` | Complexity-based research depth: Quick, Standard, Deep |
 
 ## Patterns
@@ -39,7 +38,6 @@ Planning and project orchestration: multi-phase state machine with workspace per
 - **State machine**: `ProjectState::transition()` validates moves; invalid transitions return errors. `Paused` remembers previous state.
 - **Three project modes**: Full (all phases), Quick (skip research/scoping), Autonomous (background execution).
 - **Workspace layout**: `PROJECT.json` + `phases/` + `.dianoia/blockers/` + `artifacts/`.
-- **Stuck detection**: sliding window of tool invocations; detects repeated errors, same-args loops, alternating failures, escalating retries.
 - **Handoff protocol**: `.continue-here.json`/`.md` written before context breaks; `detect_orphaned()` finds abandoned handoffs.
 - **Verification**: goal-backward tracing matches phase criteria against collected evidence.
 
@@ -49,7 +47,7 @@ Planning and project orchestration: multi-phase state machine with workspace per
 |------|-------|
 | Add project state | `src/state.rs` (ProjectState enum + Transition enum + transition logic) |
 | Add plan feature | `src/plan.rs` (Plan struct, PlanState) |
-| Modify stuck detection | `src/stuck.rs` (StuckPattern enum, detection functions) |
+| Modify stuck-detection thresholds | `src/stuck.rs` (StuckConfig) |
 | Add verification check | `src/verify.rs` (verify_phase, CriterionInput) |
 | Add research domain | `src/research.rs` (ResearchDomain enum) |
 | Modify workspace layout | `src/workspace.rs` (WorkspaceLayout, create/save/load) |
