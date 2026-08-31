@@ -26,6 +26,10 @@ impl SessionResponse {
             token_count_estimate: s.metrics.token_count_estimate,
             created_at: s.created_at.clone(),
             updated_at: s.updated_at.clone(),
+            // WHY(#6824): stored session state knows nothing about in-flight
+            // turns; `get_session` overlays this from the turn buffer
+            // registry, and every other producer correctly reports "none".
+            active_turn_id: None,
         }
     }
 }
