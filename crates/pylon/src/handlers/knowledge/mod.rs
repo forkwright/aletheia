@@ -22,7 +22,7 @@ pub use dto::{
     EntitiesQuery, EntitiesResponse, EntityListItem, EntityMemory, EntityRelationship,
     ExplainCandidate, ExplainDecision, ExplainQuery, ExplainResponse, FactDetailResponse,
     FactorScoreBreakdown, FactsQuery, FactsResponse, FlagRequest, FlagSeverity, ForgetRequest,
-    GraphCheckReport, MergeRequest, RecallWeightsView, RelationshipDirection,
+    GraphCheckReport, MemoryHealthResponse, MergeRequest, RecallWeightsView, RelationshipDirection,
     RelationshipsResponse, SearchQuery, SearchResponse, SearchResult, SimilarFact, TimelineEvent,
     TimelineQuery, TimelineResponse, UpdateConfidenceRequest, UpdateSensitivityRequest,
 };
@@ -693,6 +693,63 @@ pub async fn check_graph_health(
         location: snafu::location!(),
     }
     .into_response()
+}
+
+/// GET /api/v1/knowledge/health -- server-computed memory-health metrics.
+///
+/// Returns the same snapshot the `aletheia_memory_health_*` Prometheus
+/// gauges export (both call `compute_memory_health_metrics`), so headless
+/// drivers read the server-computed score over JSON instead of recomputing
+/// it client-side from raw fact/entity lists (#6823).
+///
+/// # Cancel safety
+///
+/// Cancel-safe. Axum handler; cancellation drops the future with no
+/// side effects beyond not returning a response.
+///
+/// # Errors
+///
+/// Returns 403 for non-operator or nous-scoped tokens, 503 when the
+/// knowledge store is not enabled, and 500 when the store queries fail.
+#[utoipa::path(
+    get,
+    path = "/api/v1/knowledge/health",
+    responses(
+        (status = 200, description = "Server-computed memory-health metrics", body = MemoryHealthResponse),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorResponse),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorResponse),
+        (status = 503, description = "Knowledge store not enabled", body = crate::error::ErrorResponse),
+    ),
+    security(("bearer_auth" = []))
+)]
+pub async fn memory_health(
+    State(state): State<KnowledgeState>,
+    claims: Claims,
+) -> Result<Json<MemoryHealthResponse>, ApiError> {
+    require_role(&claims, Role::Operator)?;
+    // WHY: same policy as `check_graph_health` -- these are aggregate,
+    // store-wide numbers, so a nous-scoped token must not read them.
+    if claims.nous_id.is_some() {
+        return Err(ApiError::forbidden(
+            "scoped tokens cannot inspect aggregate knowledge health",
+        ));
+    }
+
+    #[cfg(feature = "knowledge-store")]
+    if let Some(ref store) = state.knowledge_store {
+        let metrics =
+            compute_memory_health_metrics(store).map_err(|message| ApiError::Internal {
+                message,
+                location: snafu::location!(),
+            })?;
+        return Ok(Json(MemoryHealthResponse::from(metrics)));
+    }
+
+    let _ = &state;
+    Err(ApiError::ServiceUnavailable {
+        message: "knowledge store not enabled on this server".to_owned(),
+        location: snafu::location!(),
+    })
 }
 
 /// Count rows in a knowledge-store relation via a `count(k)` Datalog query.

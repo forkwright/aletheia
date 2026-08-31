@@ -100,6 +100,7 @@ use crate::state::AppState;
         crate::handlers::knowledge::explain,
         crate::handlers::knowledge::timeline,
         crate::handlers::knowledge::check_graph_health,
+        crate::handlers::knowledge::memory_health,
         crate::handlers::sessions::purge,
         crate::handlers::config::reload_config,
         crate::handlers::insights::get_agent_perf,
@@ -196,6 +197,7 @@ use crate::state::AppState;
         crate::handlers::knowledge::RecallWeightsView,
         crate::handlers::knowledge::ExplainResponse,
         crate::handlers::knowledge::WebhookIngestResponse,
+        crate::handlers::knowledge::MemoryHealthResponse,
         crate::error::ErrorResponse,
         crate::error::ErrorBody,
         crate::error::FieldError,
@@ -339,6 +341,22 @@ mod tests {
         assert!(
             json.contains("/api/health"),
             "spec JSON must include the health endpoint path"
+        );
+    }
+
+    #[test]
+    fn openapi_spec_json_contains_knowledge_health_path() {
+        let spec = openapi_value_for_auth_mode("token");
+        let paths = spec
+            .get("paths")
+            .and_then(serde_json::Value::as_object)
+            .expect("paths object");
+        assert!(
+            paths
+                .get("/api/v1/knowledge/health")
+                .and_then(|path| path.get("get"))
+                .is_some(),
+            "spec must include GET /api/v1/knowledge/health (#6823)"
         );
     }
 
