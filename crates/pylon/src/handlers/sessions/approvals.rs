@@ -16,8 +16,10 @@ use symbolon::types::Role;
 use tracing::{info, instrument};
 use utoipa::ToSchema;
 
+use crate::approval_registry::RouteOutcome;
 use crate::error::{
-    ApiError, ErrorResponse, FieldError, SessionNotFoundSnafu, ValidationFailedSnafu,
+    ApiError, ApprovalGoneSnafu, ApprovalNotFoundSnafu, ErrorResponse, FieldError,
+    ValidationFailedSnafu,
 };
 use crate::extract::{Claims, require_nous_access, require_role};
 use crate::handlers::sessions::find_session;
@@ -37,8 +39,28 @@ pub struct ApprovalRequest {
 /// Acknowledgement of a routed decision.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApprovalResponse {
-    /// `true` if the decision was routed to an active turn.
-    pub routed: bool,
+    /// The decision routed to the active turn: `"approved"` or `"denied"`.
+    ///
+    /// WHY(#6822): replaces the vestigial `routed: bool` — both failure
+    /// branches early-return before the response is built, so every 200
+    /// carried `routed: true` and the field could never be observed varying.
+    pub decision: String,
+}
+
+/// Map a non-routed registry outcome onto the error naming the state the
+/// operator is actually in (#6822): 410 with `details.reason` when the
+/// approval existed but is gone, 404 when it never did.
+fn require_routed(outcome: RouteOutcome, turn_id: &str, tool_id: &str) -> Result<(), ApiError> {
+    match outcome {
+        RouteOutcome::Routed => Ok(()),
+        RouteOutcome::Gone(disposition) => ApprovalGoneSnafu {
+            turn_id,
+            tool_id,
+            disposition,
+        }
+        .fail(),
+        RouteOutcome::Unknown => ApprovalNotFoundSnafu { turn_id, tool_id }.fail(),
+    }
 }
 
 /// `POST /api/v1/sessions/{session_id}/approvals` — resolve a pending tool approval.
@@ -56,7 +78,8 @@ pub struct ApprovalResponse {
     responses(
         (status = 200, description = "Decision routed", body = ApprovalResponse),
         (status = 422, description = "Invalid decision value", body = ErrorResponse),
-        (status = 404, description = "No active turn for session", body = ErrorResponse),
+        (status = 404, description = "Session not found, or no approval was ever registered for the turn/tool pair", body = ErrorResponse),
+        (status = 410, description = "Approval is gone: details.reason is already_resolved (details.decision names the winning choice), timed_out, or turn_ended", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -93,7 +116,7 @@ pub async fn resolve(
     let session = find_session(&state, &session_id).await?;
     require_nous_access(&claims, &session.nous_id)?;
 
-    let routed = state
+    let outcome = state
         .approval_registry
         .try_send(
             Some(&session_id),
@@ -105,10 +128,7 @@ pub async fn resolve(
             },
         )
         .await;
-
-    if !routed {
-        return SessionNotFoundSnafu { id: session_id }.fail();
-    }
+    require_routed(outcome, &body.turn_id, &body.tool_id)?;
 
     info!(
         session_id = session_id.as_str(),
@@ -117,7 +137,12 @@ pub async fn resolve(
         decision = body.decision.as_str(),
         "approval decision routed"
     );
-    Ok((StatusCode::OK, Json(ApprovalResponse { routed })))
+    Ok((
+        StatusCode::OK,
+        Json(ApprovalResponse {
+            decision: choice.as_wire_str().to_owned(),
+        }),
+    ))
 }
 
 /// `POST /api/v1/turns/{turn_id}/tools/{tool_id}/approve` — approve a pending tool.
@@ -134,7 +159,8 @@ pub async fn resolve(
     ),
     responses(
         (status = 200, description = "Decision routed", body = ApprovalResponse),
-        (status = 404, description = "No active approval for turn/tool", body = ErrorResponse),
+        (status = 404, description = "No approval was ever registered for the turn/tool pair", body = ErrorResponse),
+        (status = 410, description = "Approval is gone: details.reason is already_resolved (details.decision names the winning choice), timed_out, or turn_ended", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -162,7 +188,8 @@ pub async fn approve_tool(
     ),
     responses(
         (status = 200, description = "Decision routed", body = ApprovalResponse),
-        (status = 404, description = "No active approval for turn/tool", body = ErrorResponse),
+        (status = 404, description = "No approval was ever registered for the turn/tool pair", body = ErrorResponse),
+        (status = 410, description = "Approval is gone: details.reason is already_resolved (details.decision names the winning choice), timed_out, or turn_ended", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
     ),
     security(("bearer_auth" = []))
@@ -193,7 +220,7 @@ async fn resolve_path_decision(
         ));
     }
 
-    let routed = state
+    let outcome = state
         .approval_registry
         .try_send(
             None,
@@ -205,13 +232,7 @@ async fn resolve_path_decision(
             },
         )
         .await;
-
-    if !routed {
-        return SessionNotFoundSnafu {
-            id: format!("{turn_id}/{tool_id}"),
-        }
-        .fail();
-    }
+    require_routed(outcome, &turn_id, &tool_id)?;
 
     info!(
         turn_id = turn_id.as_str(),
@@ -219,5 +240,10 @@ async fn resolve_path_decision(
         decision = choice.as_wire_str(),
         "approval decision routed"
     );
-    Ok((StatusCode::OK, Json(ApprovalResponse { routed })))
+    Ok((
+        StatusCode::OK,
+        Json(ApprovalResponse {
+            decision: choice.as_wire_str().to_owned(),
+        }),
+    ))
 }

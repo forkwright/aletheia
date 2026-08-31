@@ -6,6 +6,8 @@ use axum::response::{IntoResponse, Response};
 use eidos::{FailureCategory, NextAction, Recoverability};
 use snafu::Snafu;
 
+use crate::approval_registry::ApprovalDisposition;
+
 #[path = "error_dto.rs"]
 mod error_dto;
 pub use error_dto::{ErrorBody, ErrorResponse, FieldError};
@@ -27,6 +29,35 @@ pub enum ApiError {
     #[snafu(display("nous not found: {id}"))]
     NousNotFound {
         id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// No pending approval was ever registered for the turn/tool pair (404).
+    #[snafu(display("no pending approval for turn '{turn_id}' tool '{tool_id}'"))]
+    ApprovalNotFound {
+        turn_id: String,
+        tool_id: String,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
+    /// A pending approval existed but is gone (410).
+    ///
+    /// WHY(#6822): "already resolved", "timed out server-side", and "turn
+    /// ended" call for different operator reactions (nothing / accept the
+    /// default-deny / restart the turn), so they must not collapse into the
+    /// 404 shape reserved for keys that never existed. The disposition is
+    /// carried in `details.reason`, with `details.decision` naming the
+    /// winning choice when one was routed.
+    #[snafu(display(
+        "approval for turn '{turn_id}' tool '{tool_id}' is gone ({})",
+        disposition.as_reason_str()
+    ))]
+    ApprovalGone {
+        turn_id: String,
+        tool_id: String,
+        disposition: ApprovalDisposition,
         #[snafu(implicit)]
         location: snafu::Location,
     },
@@ -228,8 +259,19 @@ impl ApiError {
     /// discipline `impl_from_error!` below uses for HTTP status mapping.
     fn classify(&self) -> (FailureCategory, Recoverability, NextAction) {
         match self {
-            Self::SessionNotFound { .. } | Self::NousNotFound { .. } | Self::NotFound { .. } => (
+            Self::SessionNotFound { .. }
+            | Self::NousNotFound { .. }
+            | Self::ApprovalNotFound { .. }
+            | Self::NotFound { .. } => (
                 FailureCategory::Persistence,
+                Recoverability::NotRecoverable,
+                NextAction::None,
+            ),
+            // WHY(#6822): the gate already settled this tool call — retrying
+            // the resolve cannot change the outcome, and no reconfiguration
+            // applies. The next turn is a fresh approval.
+            Self::ApprovalGone { .. } => (
+                FailureCategory::Tool,
                 Recoverability::NotRecoverable,
                 NextAction::None,
             ),
@@ -284,6 +326,17 @@ impl ApiError {
         match self {
             Self::SessionNotFound { .. } => (StatusCode::NOT_FOUND, "session_not_found", None),
             Self::NousNotFound { .. } => (StatusCode::NOT_FOUND, "nous_not_found", None),
+            Self::ApprovalNotFound { .. } => (StatusCode::NOT_FOUND, "approval_not_found", None),
+            Self::ApprovalGone { disposition, .. } => {
+                let details = match disposition.resolved_decision() {
+                    Some(decision) => serde_json::json!({
+                        "reason": disposition.as_reason_str(),
+                        "decision": decision,
+                    }),
+                    None => serde_json::json!({ "reason": disposition.as_reason_str() }),
+                };
+                (StatusCode::GONE, "approval_gone", Some(details))
+            }
             Self::BadRequest { .. } => (StatusCode::BAD_REQUEST, "bad_request", None),
             Self::Internal { .. } => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", None),
             Self::Unauthorized { reason, .. } => (
