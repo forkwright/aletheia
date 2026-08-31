@@ -45,8 +45,6 @@ pub(crate) mod execute;
 pub(crate) mod extraction;
 /// Turn finalization: persists messages and emits post-turn events.
 pub(crate) mod finalize;
-/// Shared big-endian/zero-padded key codec for fjall-backed stores.
-pub(crate) mod fjall_keys;
 /// Cloneable handle for sending commands to a `NousActor`.
 pub mod handle;
 /// Conversation history retrieval and token-budgeted formatting.
@@ -113,13 +111,6 @@ pub mod tuning;
 /// `RunContextRecord`s without duplicating the note-category/store
 /// mechanics.
 pub mod turn_record;
-/// Uncertainty quantification: calibration tracking for agent confidence predictions.
-// WHY(#6750): `CalibrationBin`/`OverconfidencePattern`/`CalibrationSummary`
-// are `pub` with zero real callers, only exercised by the module's own
-// `#[cfg(test)]` block — dead code under the plain `cargo check` (lib) pass
-// when the module itself is `pub(crate)`. Stays `pub`. `UncertaintyTracker`
-// is separately `pub(crate)` at the item level and unaffected by this line.
-pub mod uncertainty;
 /// User-facing error formatting for display in chat responses.
 pub mod user_error;
 /// Working-memory checkpoint persistence.
