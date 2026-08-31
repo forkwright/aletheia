@@ -30,6 +30,11 @@ struct HandlerFailureLabels {
     channel_id: String,
 }
 
+#[derive(Clone, Debug, Hash, PartialEq, Eq, EncodeLabelSet)]
+struct IngressDuplicateLabels {
+    channel_id: String,
+}
+
 // ── Metric families ──
 
 static CHANNEL_MESSAGES_TOTAL: LazyLock<Family<ChannelMessageLabels, Counter>> =
@@ -41,6 +46,9 @@ static PROVIDER_FAILURES_TOTAL: LazyLock<Family<ProviderFailureLabels, Counter>>
     LazyLock::new(Family::default);
 
 static HANDLER_FAILURES_TOTAL: LazyLock<Family<HandlerFailureLabels, Counter>> =
+    LazyLock::new(Family::default);
+
+static INGRESS_DUPLICATES_TOTAL: LazyLock<Family<IngressDuplicateLabels, Counter>> =
     LazyLock::new(Family::default);
 
 // ── Registration ──
@@ -66,6 +74,11 @@ pub fn register(registry: &mut Registry) {
         "aletheia_handler_failures",
         "Total inbound-message handler task failures",
         HANDLER_FAILURES_TOTAL.clone(),
+    );
+    registry.register(
+        "aletheia_ingress_duplicates",
+        "Total inbound messages dropped as provider redeliveries",
+        INGRESS_DUPLICATES_TOTAL.clone(),
     );
 }
 
@@ -100,6 +113,15 @@ pub(crate) fn record_provider_failure(channel_id: &str) {
 pub(crate) fn record_handler_failure(channel_id: &str) {
     HANDLER_FAILURES_TOTAL
         .get_or_create(&HandlerFailureLabels {
+            channel_id: channel_id.to_owned(),
+        })
+        .inc();
+}
+
+/// Record an inbound message dropped as a provider redelivery.
+pub(crate) fn record_ingress_duplicate(channel_id: &str) {
+    INGRESS_DUPLICATES_TOTAL
+        .get_or_create(&IngressDuplicateLabels {
             channel_id: channel_id.to_owned(),
         })
         .inc();
@@ -184,6 +206,17 @@ mod tests {
         let out = encode(&r);
         assert!(
             out.contains("aletheia_handler_failures_total{channel_id=\"_test_handler\"} 1"),
+            "got: {out}"
+        );
+    }
+
+    #[test]
+    fn register_and_record_ingress_duplicate() {
+        let r = fresh_registry();
+        record_ingress_duplicate("_test_ingress");
+        let out = encode(&r);
+        assert!(
+            out.contains("aletheia_ingress_duplicates_total{channel_id=\"_test_ingress\"} 1"),
             "got: {out}"
         );
     }

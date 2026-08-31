@@ -127,6 +127,16 @@ pub struct SessionResponse {
     pub created_at: String,
     /// ISO 8601 last-updated timestamp.
     pub updated_at: String,
+    /// Turn currently executing on this session, if any (#6824).
+    ///
+    /// Present only while a turn is in flight, so a client reconnecting
+    /// without a remembered turn id can join the live stream at
+    /// `GET /api/v1/sessions/{id}/turns/{active_turn_id}/events` -- which
+    /// replays buffered events and reports authoritative `{state, live}`
+    /// via its `turn_reconnect_state` control event -- instead of pulling
+    /// the full replay export just to learn whether a turn is running.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_turn_id: Option<String>,
 }
 
 /// Response for `GET /api/v1/sessions/{id}/history`.

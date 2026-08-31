@@ -1373,6 +1373,18 @@ pub async fn stream_turn(
                                 tool_id,
                                 decision,
                             } => {
+                                // WHY(#6822): a resolution reaching the bridge
+                                // with the key still registered was not routed
+                                // through the approvals endpoint (routing
+                                // removes the key first) — the gate resolved
+                                // it alone, i.e. the timeout default-denied.
+                                // Record that so a late resolve is answered
+                                // 410 timed_out instead of 404.
+                                approval_registry.mark_gate_resolved(
+                                    &approval_session_id,
+                                    &approval_turn_id,
+                                    &tool_id,
+                                );
                                 let event = PylonTurnStreamEvent::ToolApprovalResolved {
                                     tool_id,
                                     decision,

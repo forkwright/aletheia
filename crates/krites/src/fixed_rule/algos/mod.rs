@@ -1,15 +1,17 @@
 //! Graph algorithm implementations as fixed rules.
 //!
-//! Every module here is sovereign except `pagerank`, which is still landed
-//! **dual**: the derived implementation stays the default, and a fresh
-//! sovereign rewrite sits behind the `krites_sovereign_pagerank` feature
-//! (RETIREMENT-PLAN.md wave 5, "the live 3" — `PageRank` has a live episteme
-//! consumer via embedded Datalog, unlike the 19 zero-call-site algorithms
-//! that already went through this same land-dark/soak/delete cycle). The
-//! `_native.rs` filenames the other 19 were authored under, and the
-//! `#[path]` attributes that reached them, were retired once their soak
-//! completed; `pagerank_native.rs` carries the same suffix for the same
-//! reason and will drop it the same way.
+//! Every module here is sovereign. `pagerank` was the last to go through
+//! the land-dark/soak/delete cycle (RETIREMENT-PLAN.md wave 5, "the live
+//! 3" — `PageRank` has a live episteme consumer via embedded Datalog,
+//! unlike the 19 zero-call-site algorithms that preceded it): the
+//! CozoDB-derived shell soaked as `dual` and was deleted in #7042, and the
+//! sovereign shell in `pagerank_native.rs` is now the only implementation.
+//! The `_native.rs` filenames the other 19 were authored under, and the
+//! `#[path]` attributes that reached them, were dropped once their derived
+//! siblings were gone; `pagerank_native.rs` carries the suffix for the
+//! same historical reason and drops it the same way, in a follow-up rename
+//! kept out of the retirement diff so the ledger's path-keyed maps move in
+//! a change that changes nothing else.
 pub(crate) mod kcore;
 
 pub(crate) mod all_pairs_shortest_path;
@@ -21,9 +23,6 @@ pub(crate) mod kruskal;
 pub(crate) mod label_propagation;
 pub(crate) mod louvain;
 
-#[cfg(not(feature = "krites_sovereign_pagerank"))]
-pub(crate) mod pagerank;
-#[cfg(feature = "krites_sovereign_pagerank")]
 #[path = "pagerank_native.rs"]
 pub(crate) mod pagerank;
 

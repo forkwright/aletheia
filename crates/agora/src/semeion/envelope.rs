@@ -110,6 +110,7 @@ pub(crate) fn extract_message(
         sender: sender.to_owned(),
         sender_name: envelope.source_name.clone(),
         group_id,
+        message_id: None,
         text: text.to_owned(),
         timestamp: envelope.timestamp.or(data.timestamp).unwrap_or_else(|| {
             tracing::warn!("signal envelope has no timestamp, defaulting to 0");
@@ -173,6 +174,10 @@ mod tests {
         assert_eq!(msg.sender_name.as_deref(), Some("Alice"));
         assert_eq!(msg.text, "hello");
         assert!(msg.group_id.is_none());
+        assert!(
+            msg.message_id.is_none(),
+            "signal-cli exposes no message ID; dedupe falls back to the content hash"
+        );
         assert_eq!(msg.timestamp, 1_709_312_345_678);
         assert!(msg.attachments.is_empty());
         assert!(

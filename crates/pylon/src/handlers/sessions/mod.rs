@@ -435,7 +435,15 @@ pub async fn get_session(
     if session.status == SessionStatus::Archived {
         return Err(SessionNotFoundSnafu { id: id.clone() }.build());
     }
-    Ok(Json(SessionResponse::from_mneme(&session)))
+    let mut response = SessionResponse::from_mneme(&session);
+    // WHY(#6824): let a client reconnecting without a remembered turn id
+    // discover the in-flight turn (and rejoin its event stream) without
+    // fetching the heavy replay export.
+    response.active_turn_id = state
+        .turn_buffer_registry
+        .active_turn_for_session(&session.id)
+        .await;
+    Ok(Json(response))
 }
 
 /// GET /api/v1/sessions/{id}/replay: replay-faithful session export.

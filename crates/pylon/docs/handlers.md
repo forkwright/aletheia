@@ -752,6 +752,10 @@ Config endpoints require an `Operator` or `Admin` role.
 Full redacted runtime configuration.
 
 **Response `200 OK`** - JSON object with all config sections. Secrets are redacted.
+Carries a top-level `restart_required` array: dotted field paths staged on disk (by an
+earlier `PUT /api/v1/config/{section}`, `POST /api/v1/config/reload`, or a direct file
+edit) that take effect only after a process restart. Empty when live and on-disk config
+agree on restart-required fields.
 
 ---
 

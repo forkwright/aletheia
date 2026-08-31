@@ -6,14 +6,12 @@
 //! implementation's internals. The 19 zero-call-site algorithms in this
 //! wave landed sovereign-by-default, so those tests exercise the sovereign
 //! implementations directly. `PageRank` is one of wave 5's "live 3"
-//! (RETIREMENT-PLAN.md §5) and is still landed **dual** — the tests below
-//! query it through `PageRank(...)` without selecting a feature, so they
-//! run against whichever shell is compiled: the CozoDB-derived one by
-//! default, and the sovereign `pagerank_native.rs` shell under
-//! `--features krites_sovereign_pagerank`. Both shells delegate to the same
-//! already-sovereign numeric core (`fixed_rule::csr::page_rank`), so this
-//! is a genuine equivalence check on the option-parsing glue, not a
-//! restatement of the core's own math.
+//! (RETIREMENT-PLAN.md §5) and completed the same cycle in #7042: the
+//! CozoDB-derived shell it soaked against is deleted, so the tests below
+//! query the sovereign `pagerank_native.rs` shell — the only one — through
+//! `PageRank(...)`. The shell delegates to the already-sovereign numeric
+//! core (`fixed_rule::csr::page_rank`), so this is a genuine check on the
+//! option-parsing glue, not a restatement of the core's own math.
 #![cfg(test)]
 #![expect(clippy::expect_used, reason = "test assertions")]
 #![expect(
@@ -314,9 +312,9 @@ proptest! {
 
 /// Bidirectional-chain-plus-extra-edges generator: every node keeps out-degree
 /// `>= 1`, so `power_iteration_reference`'s per-node division by out-degree never
-/// hits zero. `page_rank`'s dangling-node behavior (out-degree 0) is identical
-/// on both shells since they share the numeric core, so it is out of scope for
-/// an equivalence test between them.
+/// hits zero. `page_rank`'s dangling-node behavior (out-degree 0) lives in the
+/// numeric core, not the shell's option-parsing glue, so it is out of scope for
+/// a reference test of the shell.
 fn connected_directed_edges(n: usize, extra: &[(usize, usize)]) -> Vec<(usize, usize)> {
     let mut edges = vec![];
     let mut seen: BTreeSet<(usize, usize)> = BTreeSet::new();
@@ -398,8 +396,7 @@ proptest! {
     /// wave 5's own gate for "the live 3" ("PageRank convergence and
     /// sum-to-one"; sum-to-one is covered separately by
     /// `proptest_algos::pagerank_scores_sum_to_one`, which this test leaves
-    /// alone rather than duplicating). Runs against whichever shell is
-    /// compiled — see the module doc comment.
+    /// alone rather than duplicating).
     #[test]
     fn pagerank_agrees_with_power_iteration_reference(
         n in 3usize..8,

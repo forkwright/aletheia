@@ -754,7 +754,7 @@ consulted = []
 path = "fixed_rule/algos/mod.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/mod.rs"
-verbatim_pct = 65.4
+verbatim_pct = 66.7
 status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
@@ -762,21 +762,10 @@ method_evidence = "none"
 consulted = []
 
 [[file]]
-path = "fixed_rule/algos/pagerank.rs"
-upstream_path = "fixed_rule/algos/pagerank.rs"
-replaced_upstream_path = "none"
-verbatim_pct = 37.0
-status = "dual"
-soak_expires_at_commit_count = 3143
-method = "none"
-method_evidence = "none"
-consulted = []
-
-[[file]]
 path = "fixed_rule/algos/pagerank_native.rs"
 upstream_path = "none"
 replaced_upstream_path = "fixed_rule/algos/pagerank.rs"
-verbatim_pct = 34.3
+verbatim_pct = 33.8
 status = "sovereign"
 soak_expires_at_commit_count = 0
 method = "unknown"
@@ -939,6 +928,17 @@ consulted = []
 
 [[file]]
 path = "fixed_rule/tests/mod.rs"
+upstream_path = "none"
+replaced_upstream_path = "none"
+verbatim_pct = 0.0
+status = "sovereign"
+soak_expires_at_commit_count = 0
+method = "unknown"
+method_evidence = "none"
+consulted = []
+
+[[file]]
+path = "fixed_rule/tests/pagerank_wiring.rs"
 upstream_path = "none"
 replaced_upstream_path = "none"
 verbatim_pct = 0.0

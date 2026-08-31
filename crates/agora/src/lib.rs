@@ -9,6 +9,8 @@
 pub mod command;
 /// Shared connection utilities used by channel providers.
 pub(crate) mod connection_utils;
+/// Bounded dedupe filter that drops provider-redelivered inbound messages before dispatch.
+pub mod dedupe;
 /// Error types for channel operations and provider failures.
 pub(crate) mod error;
 /// Unified channel listener that merges inbound messages from all providers into a single stream.
