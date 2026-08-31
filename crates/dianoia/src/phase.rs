@@ -92,12 +92,6 @@ impl Phase {
         self.plans.push(plan);
     }
 
-    /// Whether this phase has reached the `Complete` state.
-    #[must_use]
-    pub(crate) fn is_complete(&self) -> bool {
-        self.state == PhaseState::Complete
-    }
-
     /// Percentage of plans in a terminal state (complete, skipped, failed, stuck).
     #[must_use]
     #[cfg_attr(not(test), expect(dead_code, reason = "WIP: planning phase lifecycle"))]
@@ -145,19 +139,6 @@ mod tests {
         let plan = Plan::new("task".into(), "desc".into(), 1);
         phase.add_plan(plan);
         assert_eq!(phase.plans.len(), 1);
-    }
-
-    #[test]
-    fn is_complete_when_complete() {
-        let mut phase = Phase::new("P1".into(), "g".into(), 1);
-        phase.state = PhaseState::Complete;
-        assert!(phase.is_complete());
-    }
-
-    #[test]
-    fn is_not_complete_when_pending() {
-        let phase = Phase::new("P1".into(), "g".into(), 1);
-        assert!(!phase.is_complete());
     }
 
     #[test]
