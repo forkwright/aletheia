@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use snafu::ResultExt as _;
 use tokio::sync::{Mutex, mpsc};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
@@ -20,6 +21,7 @@ use tracing::{Instrument, instrument};
 use koina::redact::redact_channel_id;
 
 use crate::connection_utils::reconnect_delay;
+use crate::cursor::CursorStore;
 use crate::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult,
     SendParams as ChannelSendParams, SendResult,
@@ -115,6 +117,23 @@ struct MatrixAccount {
     since: Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
 }
 
+/// One account's cursor persistence wiring, resolved at listen time (#7104).
+struct AccountCursor {
+    store: Arc<dyn CursorStore>,
+    account_id: String,
+    /// Cursor loaded before the sync loop starts; it seeds `since` ahead of
+    /// the first request and takes precedence over the configured
+    /// `initial_since` — config seeds a brand-new account, while the store
+    /// knows where this instance actually stopped.
+    persisted: Option<String>,
+}
+
+impl AccountCursor {
+    fn save(&self, cursor: &str) -> std::io::Result<()> {
+        self.store.save("matrix", &self.account_id, cursor)
+    }
+}
+
 /// Matrix channel provider implementing `ChannelProvider`.
 pub struct MatrixProvider {
     accounts: HashMap<String, MatrixAccount>,
@@ -124,6 +143,10 @@ pub struct MatrixProvider {
     /// Opt-in, bounded raw-event retention on inbound messages. Off by
     /// default (#5198): see `taxis::config::RawPayloadPolicy`.
     raw_payload: taxis::config::RawPayloadPolicy,
+    /// Persistent store for `/sync` resumption cursors, when the runtime
+    /// wires one in (#7104). Without it, cursors live only in memory and a
+    /// restart replays the batch preceding it.
+    cursor_store: Option<Arc<dyn CursorStore>>,
 }
 
 impl MatrixProvider {
@@ -136,6 +159,7 @@ impl MatrixProvider {
             circuit_breaker_threshold: 5,
             halted_health_check_interval: Duration::from_mins(1),
             raw_payload: taxis::config::RawPayloadPolicy::default(),
+            cursor_store: None,
         }
     }
 
@@ -150,7 +174,18 @@ impl MatrixProvider {
                 config.halted_health_check_interval_secs,
             ),
             raw_payload: config.raw_payload.clone(),
+            cursor_store: None,
         }
+    }
+
+    /// Wire a persistent store for `/sync` resumption cursors (#7104).
+    ///
+    /// With a store attached, each auto-started account seeds its `since`
+    /// token from the last persisted cursor — taking precedence over the
+    /// configured `initial_since` — and checkpoints every accepted batch, so
+    /// a restart resumes after that batch instead of replaying it.
+    pub fn set_cursor_store(&mut self, store: Arc<dyn CursorStore>) {
+        self.cursor_store = Some(store);
     }
 
     /// Register a Matrix account.
@@ -200,6 +235,23 @@ impl MatrixProvider {
                 continue;
             }
 
+            let cursor = match self.load_account_cursor(account_id) {
+                Ok(cursor) => cursor,
+                Err(error) => {
+                    // WHY fail closed (#7104): an unreadable cursor means the
+                    // resumption point is unknown, and syncing anyway would
+                    // replay already-accepted batches — the exact defect the
+                    // cursor exists to prevent. Corruption must not degrade
+                    // into a silent fresh start.
+                    tracing::error!(
+                        account = %redact_channel_id(account_id),
+                        error = %error,
+                        "failed to load the persisted Matrix sync cursor; not starting this account's sync loop"
+                    );
+                    continue;
+                }
+            };
+
             let tx = tx.clone();
             let token = cancel.clone();
             let client = account.client.clone();
@@ -218,6 +270,7 @@ impl MatrixProvider {
                     self.circuit_breaker_threshold,
                     self.halted_health_check_interval,
                     self.raw_payload.clone(),
+                    cursor,
                 )
                 .instrument(span),
             );
@@ -229,6 +282,21 @@ impl MatrixProvider {
     fn resolve_account(&self, account_id: Option<&str>) -> Option<&MatrixAccount> {
         let key = account_id.or(self.default_account.as_deref())?;
         self.accounts.get(key)
+    }
+
+    /// Resolve one account's cursor wiring: `Ok(None)` without a store,
+    /// `Ok(Some(_))` with a store and a readable (possibly absent) cursor,
+    /// `Err` when a present cursor cannot be read.
+    fn load_account_cursor(&self, account_id: &str) -> std::io::Result<Option<AccountCursor>> {
+        let Some(store) = self.cursor_store.as_ref() else {
+            return Ok(None);
+        };
+        let persisted = store.load("matrix", account_id)?;
+        Ok(Some(AccountCursor {
+            store: Arc::clone(store),
+            account_id: account_id.to_owned(),
+            persisted,
+        }))
     }
 }
 
@@ -348,6 +416,7 @@ impl std::fmt::Debug for MatrixProvider {
                 &self.halted_health_check_interval,
             )
             .field("raw_payload", &self.raw_payload)
+            .field("cursor_store", &self.cursor_store.is_some())
             .finish()
     }
 }
@@ -366,8 +435,15 @@ async fn sync_loop(
     circuit_breaker_threshold: u32,
     halted_health_check_interval: Duration,
     raw_payload: taxis::config::RawPayloadPolicy,
+    cursor: Option<AccountCursor>,
 ) {
     tracing::info!("Matrix sync started");
+    if let Some(persisted) = cursor.as_ref().and_then(|c| c.persisted.clone()) {
+        // WHY(#7104): resume after the last batch this instance accepted
+        // rather than from `initial_since` (or the server's default window),
+        // which would replay it.
+        *since.lock().await = Some(persisted);
+    }
     let mut consecutive_failures = 0_u32;
 
     loop {
@@ -377,7 +453,7 @@ async fn sync_loop(
                 tracing::info!("cancellation received, stopping Matrix sync");
                 return;
             }
-            result = sync_once(&client, &tx, &since, user_id.as_deref(), &raw_payload) => {
+            result = sync_once(&client, &tx, &since, user_id.as_deref(), &raw_payload, cursor.as_ref()) => {
                 match result {
                     Ok(()) => {
                         consecutive_failures = 0;
@@ -444,6 +520,7 @@ async fn sync_once(
     since: &Arc<Mutex<Option<String>>>, // kanon:ignore RUST/no-arc-mutex-anti-pattern WHY: already uses tokio::sync::Mutex — correct for async code
     own_user_id: Option<&str>,
     raw_payload: &taxis::config::RawPayloadPolicy,
+    cursor: Option<&AccountCursor>,
 ) -> error::Result<()> {
     let since_token = { since.lock().await.clone() };
     let response = client.sync(since_token.as_deref()).await?;
@@ -453,6 +530,18 @@ async fn sync_once(
     // below, we would rather lose the in-flight events than replay the whole
     // batch on the next sync.
     if let Some(next_batch) = response.next_batch {
+        // WHY(#7104): checkpoint durably before the in-memory token advances
+        // and before any event is forwarded. A batch that cannot be
+        // checkpointed is not accepted: the error propagates, `since` keeps
+        // its previous value, and the retry re-fetches the same window, so
+        // nothing is forwarded twice within a run or lost across a restart.
+        // Skipped when the token is unchanged (an idle long-poll) to avoid a
+        // redundant durable write per poll.
+        if since_token.as_deref() != Some(next_batch.as_str())
+            && let Some(cursor) = cursor
+        {
+            cursor.save(&next_batch).context(error::CursorSnafu)?;
+        }
         let mut guard = since.lock().await;
         *guard = Some(next_batch);
     }
@@ -582,6 +671,135 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     use super::*;
+
+    /// In-memory `CursorStore` double: persistence-free, but shared across
+    /// provider instances via `Arc` to model state surviving a restart.
+    #[derive(Default)]
+    struct MemoryCursorStore {
+        cursors: std::sync::RwLock<HashMap<(String, String), String>>,
+    }
+
+    impl crate::cursor::CursorStore for MemoryCursorStore {
+        fn load(&self, channel: &str, account: &str) -> std::io::Result<Option<String>> {
+            Ok(self
+                .cursors
+                .read()
+                .expect("cursor lock")
+                .get(&(channel.to_owned(), account.to_owned()))
+                .cloned())
+        }
+
+        fn save(&self, channel: &str, account: &str, cursor: &str) -> std::io::Result<()> {
+            self.cursors
+                .write()
+                .expect("cursor lock")
+                .insert((channel.to_owned(), account.to_owned()), cursor.to_owned());
+            Ok(())
+        }
+    }
+
+    /// `CursorStore` double whose loads always fail, modelling a corrupt or
+    /// unreadable persisted cursor.
+    struct FailingCursorStore;
+
+    impl crate::cursor::CursorStore for FailingCursorStore {
+        fn load(&self, _channel: &str, _account: &str) -> std::io::Result<Option<String>> {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "cursor record is corrupt",
+            ))
+        }
+
+        fn save(&self, _channel: &str, _account: &str, _cursor: &str) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn sync_body(next_batch: &str, message: &str) -> serde_json::Value {
+        serde_json::json!({
+            "next_batch": next_batch,
+            "rooms": {
+                "join": {
+                    "!room:example.org": {
+                        "timeline": {
+                            "events": [
+                                {
+                                    "type": "m.room.message",
+                                    "sender": "@alice:example.org",
+                                    "event_id": "$event",
+                                    "origin_server_ts": 123,
+                                    "content": {
+                                        "msgtype": "m.text",
+                                        "body": message
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+            }
+        })
+    }
+
+    fn provider_with_store<S: crate::cursor::CursorStore + 'static>(
+        server_uri: &str,
+        store: Arc<S>,
+    ) -> MatrixProvider {
+        let mut provider = MatrixProvider::from_config(&taxis::config::MessagingConfig {
+            receive_timeout_secs: 1,
+            circuit_breaker_threshold: 1,
+            ..taxis::config::MessagingConfig::default()
+        });
+        provider.set_cursor_store(store);
+        let client = client::MatrixClient::with_timeouts(
+            server_uri,
+            "token-123",
+            Duration::from_secs(1),
+            Duration::from_millis(50),
+        )
+        .expect("client");
+        provider.add_account(
+            "primary".to_owned(),
+            client,
+            Some("@bot:example.org".to_owned()),
+            true,
+            None,
+        );
+        provider
+    }
+
+    async fn recv_one(
+        provider: &MatrixProvider,
+    ) -> (
+        InboundMessage,
+        CancellationToken,
+        mpsc::Receiver<InboundMessage>,
+        JoinSet<()>,
+    ) {
+        let token = CancellationToken::new();
+        let (mut rx, handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
+        let msg = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .expect("timeout")
+            .expect("message");
+        (msg, token, rx, handles)
+    }
+
+    async fn shut_down(
+        token: CancellationToken,
+        rx: mpsc::Receiver<InboundMessage>,
+        mut handles: JoinSet<()>,
+    ) {
+        token.cancel();
+        drop(rx);
+        while let Some(result) = tokio::time::timeout(Duration::from_secs(5), handles.join_next())
+            .await
+            .ok()
+            .flatten()
+        {
+            let _ = result;
+        }
+    }
 
     #[test]
     fn matrix_sync_error_backoff_grows_with_failures() {
@@ -1115,6 +1333,7 @@ mod tests {
                 &since_ref,
                 Some(&own_user_id),
                 &raw_payload,
+                None,
             )
             .await
         });
@@ -1142,6 +1361,85 @@ mod tests {
             guard.as_deref(),
             Some("s1"),
             "next_batch should be persisted even when the future is cancelled mid-send"
+        );
+    }
+
+    #[tokio::test]
+    async fn listen_resumes_from_persisted_cursor_after_restart() {
+        install_crypto_provider();
+        let store = Arc::new(MemoryCursorStore::default());
+
+        // First run: a fresh account with no persisted cursor accepts the
+        // batch the homeserver hands out with `next_batch: s1`.
+        let first_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(header("authorization", "Bearer token-123"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(sync_body("s1", "first")))
+            .mount(&first_server)
+            .await;
+
+        let provider = provider_with_store(&first_server.uri(), Arc::clone(&store));
+        let (msg, token, rx, handles) = recv_one(&provider).await;
+        assert_eq!(msg.text, "first");
+        shut_down(token, rx, handles).await;
+
+        assert_eq!(
+            store.load("matrix", "primary").expect("load").as_deref(),
+            Some("s1"),
+            "the accepted batch's next_batch token must be checkpointed to the store"
+        );
+
+        // Restart: a new provider instance sharing the store must sync with
+        // `since=s1`. The second server only answers that request — a
+        // cursorless restart would send no `since`, match nothing, and
+        // receive no message.
+        let second_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .and(header("authorization", "Bearer token-123"))
+            .and(query_param("since", "s1"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(sync_body("s2", "second")))
+            .mount(&second_server)
+            .await;
+
+        let provider = provider_with_store(&second_server.uri(), Arc::clone(&store));
+        let (msg, token, rx, handles) = recv_one(&provider).await;
+        assert_eq!(
+            msg.text, "second",
+            "a restart must resume after the accepted batch, not replay it"
+        );
+        shut_down(token, rx, handles).await;
+    }
+
+    #[tokio::test]
+    async fn listen_does_not_start_sync_when_cursor_load_fails() {
+        install_crypto_provider();
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/_matrix/client/v3/sync"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(sync_body("s1", "replayed")))
+            .expect(0)
+            .mount(&server)
+            .await;
+
+        let provider = provider_with_store(&server.uri(), Arc::new(FailingCursorStore));
+        let token = CancellationToken::new();
+        let (mut rx, handles) = provider.listen(Some(Duration::from_mins(1)), token.clone());
+
+        // WHY fail closed: an unreadable cursor means the resumption point is
+        // unknown; syncing anyway would replay already-accepted batches, the
+        // exact defect the cursor exists to prevent (#7104).
+        assert!(
+            handles.is_empty(),
+            "no sync loop may start for an account whose cursor cannot be read"
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(1), rx.recv())
+                .await
+                .expect("recv resolves immediately once all senders are dropped")
+                .is_none(),
+            "no message may be forwarded for an account whose cursor cannot be read"
         );
     }
 }

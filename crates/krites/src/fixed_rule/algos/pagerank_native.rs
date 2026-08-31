@@ -31,6 +31,7 @@ use crate::runtime::temp_store::RegularTempStore;
 pub(crate) struct PageRank;
 
 #[expect(
+    clippy::as_conversions,
     clippy::cast_possible_truncation,
     reason = "the theta/epsilon options are small unit-interval magnitudes; the f32 narrowing is the core's established config contract"
 )]

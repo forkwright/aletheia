@@ -186,6 +186,13 @@ const PROSKENION_API_INVENTORY: &[DesktopApiContract] = &[
     },
     DesktopApiContract {
         method: "GET",
+        source_path: "/api/v1/knowledge/health",
+        pylon_route: "/api/v1/knowledge/health",
+        expected_shape: "memory-health object with avg_confidence/orphan_ratio/staleness_ratio/health_score",
+        coverage: ContractCoverage::Covered,
+    },
+    DesktopApiContract {
+        method: "GET",
         source_path: "/api/v1/knowledge/timeline",
         pylon_route: "/api/v1/knowledge/timeline",
         expected_shape: "events array and numeric total",

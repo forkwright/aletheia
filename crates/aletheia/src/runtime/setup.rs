@@ -1258,6 +1258,7 @@ fn find_on_path(command: &Path) -> Option<PathBuf> {
 pub(super) fn build_matrix_provider(
     matrix_config: &taxis::config::MatrixConfig,
     messaging_config: &taxis::config::MessagingConfig,
+    cursor_store: Option<Arc<dyn agora::cursor::CursorStore>>,
 ) -> Option<Arc<MatrixProvider>> {
     if !matrix_config.enabled {
         info!("Matrix channel disabled");
@@ -1270,6 +1271,9 @@ pub(super) fn build_matrix_provider(
     }
 
     let mut provider = MatrixProvider::from_config(messaging_config);
+    if let Some(store) = cursor_store {
+        provider.set_cursor_store(store);
+    }
     let rpc_timeout = std::time::Duration::from_secs(messaging_config.rpc_timeout_secs);
     let receive_timeout = std::time::Duration::from_secs(messaging_config.receive_timeout_secs);
 

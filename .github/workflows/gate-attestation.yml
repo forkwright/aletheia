@@ -613,20 +613,6 @@ jobs:
       - name: Krites sovereign-HNSW feature gate
         run: cargo test -p krites --features krites_sovereign_hnsw
 
-      # WHY(#7042): same rationale as the sovereign-HNSW step above — the
-      # default build selects the CozoDB-derived `fixed_rule/algos/pagerank.rs`,
-      # so a break in the sovereign `pagerank_native.rs` shell is invisible to
-      # every other check. Unlike HNSW, PageRank's only live consumer is
-      # episteme's optional `graph-algo` feature (not a workspace-wide reach
-      # through mneme/aletheia/nous/pylon), and the property tests that gate
-      # this wave (fixed_rule/tests/wave5_reference_semantics.rs,
-      # proptest_algos.rs's pagerank suite) run through krites' own
-      # DbInstance — so the crate-scoped run here, not a separate
-      # workspace-wide job, is what actually exercises them against the
-      # replacement shell.
-      - name: Krites sovereign-PageRank feature gate
-        run: cargo test -p krites --features krites_sovereign_pagerank
-
       - name: Poiesis-charts Vega-Lite feature gate
         run: cargo clippy -p poiesis-charts --features charts-vega --all-targets -- -D warnings
 

@@ -23,13 +23,6 @@ storage-fjall = ["dep:fjall"]
 # on-disk encoding is byte-identical either way, so the switch is reversible with a
 # plain revert rather than an index migration.
 krites_sovereign_hnsw = []
-# WHY: retirement RETIREMENT-PLAN.md wave 5 (the live 3) land-dark/soak/delete -- selects the
-# sovereign PageRank fixed-rule shell (fixed_rule/algos/pagerank_native.rs) over the CozoDB-derived
-# one (fixed_rule/algos/pagerank.rs) via a #[path] swap on fixed_rule/algos/mod.rs, off by default
-# during the soak window. Both shells delegate to the same already-sovereign numeric core
-# (fixed_rule::csr::page_rank), so the switch changes only option-parsing glue, never PageRank's
-# observable output -- see fixed_rule/tests/wave5_reference_semantics.rs.
-krites_sovereign_pagerank = []
 test-core = ["storage-fjall"]
 test-full = ["test-core"]
 

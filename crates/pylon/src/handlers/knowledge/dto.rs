@@ -475,6 +475,27 @@ pub struct TimelineResponse {
     pub total: usize,
 }
 
+/// Server-computed memory-health snapshot (#6823).
+///
+/// JSON mirror of `health_metrics::MemoryHealthMetrics` -- the same
+/// snapshot the `aletheia_memory_health_*` Prometheus gauges export. Both
+/// surfaces read `health_metrics::compute_memory_health_metrics`, so a
+/// headless driver polling this route and a Prometheus scrape can never
+/// disagree on the numbers, only on when they sampled.
+#[derive(Debug, Clone, Copy, Serialize, ToSchema)]
+pub struct MemoryHealthResponse {
+    /// Mean confidence across active (non-forgotten, non-superseded) facts.
+    pub avg_confidence: f64,
+    /// Fraction of entities with no relationships and no fact links.
+    pub orphan_ratio: f64,
+    /// Fraction of active facts past the staleness threshold or their
+    /// `valid_to`.
+    pub staleness_ratio: f64,
+    /// Composite score from [`koina::memory_health::compute_health_score`]:
+    /// confidence 0.4, non-orphan 0.3, non-stale 0.3.
+    pub health_score: f64,
+}
+
 /// Response type for graph health check.
 #[derive(Debug, serde::Serialize)]
 pub struct GraphCheckReport {

@@ -5,9 +5,9 @@ use std::collections::HashMap;
 use super::{
     AgentEntry, AgentPerformanceApiResponse, AgentPerformanceStore, CostMetricsApiResponse,
     EntityEntry, FactEntry, HealthApiResponse, JournalEventEntry, KnowledgeGrowthStore,
-    META_SERIES_COLORS, MemoryHealthStore, MetaData, QualityMetricsApiResponse, QualityStore,
-    SessionEntry, SystemReflectionStore, TimeSeriesPointEntry, TimelineEntry,
-    TokenMetricsApiResponse,
+    META_SERIES_COLORS, MemoryHealthApiResponse, MemoryHealthStore, MetaData,
+    QualityMetricsApiResponse, QualityStore, SessionEntry, SystemReflectionStore,
+    TimeSeriesPointEntry, TimelineEntry, TokenMetricsApiResponse,
 };
 use crate::state::meta::MetricSource;
 
@@ -23,6 +23,7 @@ pub(super) fn assemble_meta_data(
     facts: Vec<FactEntry>,
     entities: Vec<EntityEntry>,
     timeline: Vec<TimelineEntry>,
+    server_memory_health: Option<MemoryHealthApiResponse>,
     sessions: Vec<SessionEntry>,
     agents: Vec<AgentEntry>,
     perf: AgentPerformanceApiResponse,
@@ -218,35 +219,60 @@ pub(super) fn assemble_meta_data(
     };
 
     // -- Memory health --
-    let avg_confidence = if facts.is_empty() {
-        0.0
-    } else {
-        facts.iter().map(|f| f.confidence).sum::<f64>() / count_to_f64(facts.len())
-    };
-
-    // WHY: an orphan has zero relationships, not one; a single relationship is
-    // still connected to the graph.
-    let orphan_count = entities
-        .iter()
-        .filter(|e| e.relationship_count == 0)
-        .count();
-    let orphan_ratio = if entities.is_empty() {
-        0.0
-    } else {
-        count_to_f64(orphan_count) / count_to_f64(entities.len())
-    };
-
-    // WHY: staleness is computed from fact recorded_at age, not an empty string.
+    // NOTE: active (non-forgotten) facts feed the confidence histogram and
+    // decay pressure below regardless of which health source wins.
     let active_facts: Vec<&FactEntry> = facts.iter().filter(|f| !f.is_forgotten).collect();
-    let stale_count = active_facts.iter().filter(|f| fact_is_stale(f)).count();
-    let staleness_ratio = if active_facts.is_empty() {
-        0.0
-    } else {
-        count_to_f64(stale_count) / count_to_f64(active_facts.len())
-    };
 
-    let health_score =
-        crate::state::meta::compute_health_score(avg_confidence, orphan_ratio, staleness_ratio);
+    // WHY(#6823): the server-computed snapshot from GET /api/v1/knowledge/health
+    // wins when the route responded -- it reads the knowledge store directly,
+    // the same source the aletheia_memory_health_* Prometheus gauges export.
+    // The client-side recomputation below is the documented fallback for an
+    // older server or a disabled knowledge store; both sides share
+    // koina::memory_health::compute_health_score, so only the inputs can
+    // differ, never the formula.
+    let (avg_confidence, orphan_ratio, staleness_ratio, health_score) = match server_memory_health {
+        Some(server) => (
+            server.avg_confidence,
+            server.orphan_ratio,
+            server.staleness_ratio,
+            server.health_score,
+        ),
+        None => {
+            let avg_confidence = if facts.is_empty() {
+                0.0
+            } else {
+                facts.iter().map(|f| f.confidence).sum::<f64>() / count_to_f64(facts.len())
+            };
+
+            // WHY: an orphan has zero relationships, not one; a single
+            // relationship is still connected to the graph.
+            let orphan_count = entities
+                .iter()
+                .filter(|e| e.relationship_count == 0)
+                .count();
+            let orphan_ratio = if entities.is_empty() {
+                0.0
+            } else {
+                count_to_f64(orphan_count) / count_to_f64(entities.len())
+            };
+
+            // WHY: staleness is computed from fact recorded_at age, not an
+            // empty string.
+            let stale_count = active_facts.iter().filter(|f| fact_is_stale(f)).count();
+            let staleness_ratio = if active_facts.is_empty() {
+                0.0
+            } else {
+                count_to_f64(stale_count) / count_to_f64(active_facts.len())
+            };
+
+            let health_score = crate::state::meta::compute_health_score(
+                avg_confidence,
+                orphan_ratio,
+                staleness_ratio,
+            );
+            (avg_confidence, orphan_ratio, staleness_ratio, health_score)
+        }
+    };
 
     // WHY: Build confidence distribution histogram (10 buckets of 0.1 width).
     let mut confidence_buckets = vec![0u32; 10];
@@ -324,7 +350,9 @@ pub(super) fn assemble_meta_data(
         confidence_distribution,
         stale_entities,
         orphan_ratio,
-        orphan_ratio_source: if entities.is_empty() {
+        orphan_ratio_source: if server_memory_health.is_some() {
+            MetricSource::Reported
+        } else if entities.is_empty() {
             MetricSource::Unavailable
         } else {
             MetricSource::Computed
@@ -580,6 +608,7 @@ mod tests {
             Vec::new(),
             Vec::new(),
             Vec::new(),
+            None,
             Vec::new(),
             Vec::new(),
             perf,
@@ -650,5 +679,69 @@ mod tests {
         assert!(data.performance.endpoint_available);
         assert!(!data.quality.charts_endpoint_available);
         assert!(data.reflection.journal_endpoint_available);
+    }
+
+    /// #6823: when `GET /api/v1/knowledge/health` responds, its snapshot
+    /// must win over the client-side recomputation, and the UI must label
+    /// the value as server-reported.
+    #[test]
+    fn server_memory_health_snapshot_wins_over_client_recomputation() {
+        // Client-side inputs that would compute a perfect 1.0 score, so a
+        // passing assertion cannot be the two paths coinciding.
+        let facts = vec![FactEntry {
+            confidence: 1.0,
+            ..FactEntry::default()
+        }];
+        let entities = vec![EntityEntry {
+            name: "linked".to_owned(),
+            relationship_count: 1,
+            ..EntityEntry::default()
+        }];
+        let server = MemoryHealthApiResponse {
+            avg_confidence: 0.9,
+            orphan_ratio: 0.25,
+            staleness_ratio: 0.5,
+            health_score: 0.63,
+        };
+        let data = assemble_meta_data(
+            no_health(),
+            TokenMetricsApiResponse::default(),
+            CostMetricsApiResponse::default(),
+            facts,
+            entities,
+            Vec::new(),
+            Some(server),
+            Vec::new(),
+            Vec::new(),
+            AgentPerformanceApiResponse::default(),
+            QualityMetricsApiResponse::default(),
+            Vec::new(),
+            false,
+            false,
+            false,
+            None,
+        );
+        assert!((data.health.health_score - 0.63).abs() < f64::EPSILON);
+        assert!((data.health.orphan_ratio - 0.25).abs() < f64::EPSILON);
+        assert_eq!(data.health.orphan_ratio_source, MetricSource::Reported);
+    }
+
+    /// #6823: without the server route (older server, knowledge store
+    /// disabled) the client-side computation stays on as the documented
+    /// fallback.
+    #[test]
+    fn missing_server_memory_health_falls_back_to_client_computation() {
+        let data = assemble(
+            AgentPerformanceApiResponse::default(),
+            QualityMetricsApiResponse::default(),
+            Vec::new(),
+            false,
+            false,
+            false,
+        );
+        // Empty lists: confidence 0.0, no orphans, no stale facts.
+        let expected = crate::state::meta::compute_health_score(0.0, 0.0, 0.0);
+        assert!((data.health.health_score - expected).abs() < f64::EPSILON);
+        assert_eq!(data.health.orphan_ratio_source, MetricSource::Unavailable);
     }
 }

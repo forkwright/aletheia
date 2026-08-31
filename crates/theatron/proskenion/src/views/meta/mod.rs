@@ -108,6 +108,24 @@ struct EntityEntry {
     updated_at: String,
 }
 
+/// Server-computed memory-health metrics from `GET /api/v1/knowledge/health`.
+///
+/// WHY(#6823): pylon computes the same avg-confidence/orphan/staleness
+/// inputs from the knowledge store directly (the source its Prometheus
+/// gauges read). When this fetch succeeds, its snapshot replaces the
+/// client-side recomputation in `assembly.rs`.
+#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
+struct MemoryHealthApiResponse {
+    #[serde(default)]
+    avg_confidence: f64,
+    #[serde(default)]
+    orphan_ratio: f64,
+    #[serde(default)]
+    staleness_ratio: f64,
+    #[serde(default)]
+    health_score: f64,
+}
+
 #[derive(Debug, Clone, Default, serde::Deserialize)]
 struct TimelineEntry {
     #[serde(default)]
@@ -626,6 +644,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
     let facts_url = format!("{base}/api/v1/knowledge/facts?limit=1000&include_forgotten=true");
     let entities_url = format!("{base}/api/v1/knowledge/entities");
     let timeline_url = format!("{base}/api/v1/knowledge/timeline");
+    let memory_health_url = format!("{base}/api/v1/knowledge/health");
     let sessions_url = format!("{base}/api/v1/sessions");
     let agents_url = format!("{base}/api/v1/nous");
     let perf_url = format!("{base}/api/v1/metrics/agents");
@@ -640,6 +659,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         facts_res,
         entities_res,
         timeline_res,
+        memory_health_res,
         sessions_res,
         agents_res,
         perf_res,
@@ -652,6 +672,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         client.get(&facts_url).send(),
         client.get(&entities_url).send(),
         client.get(&timeline_url).send(),
+        client.get(&memory_health_url).send(),
         client.get(&sessions_url).send(),
         client.get(&agents_url).send(),
         client.get(&perf_url).send(),
@@ -722,6 +743,14 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         _ => Vec::new(),
     };
 
+    // WHY(#6823): when the server route responds, its store-derived snapshot
+    // replaces the client-side recomputation from the fact/entity lists
+    // above (see `assemble_meta_data`). `fetch_source` degrades to
+    // `(default, false)` on an older server or a disabled knowledge store,
+    // which keeps that client-side computation as the fallback.
+    let (server_memory_health, server_memory_health_available): (MemoryHealthApiResponse, bool) =
+        fetch_source(memory_health_res, "memory health").await;
+
     let (perf, perf_available): (AgentPerformanceApiResponse, bool) =
         fetch_source(perf_res, "agent performance").await;
 
@@ -753,6 +782,7 @@ async fn fetch_meta_data(cfg: &ConnectionConfig) -> FetchState<MetaData> {
         facts,
         entities,
         timeline,
+        server_memory_health_available.then_some(server_memory_health),
         sessions,
         agents,
         perf,
