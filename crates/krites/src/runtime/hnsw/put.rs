@@ -78,7 +78,7 @@ impl SessionTx<'_> {
             {
                 return Ok(());
             }
-            self.hnsw_remove_vec(tuple_key, idx, subidx, orig_table, idx_table)?;
+            self.hnsw_remove_vec(tuple_key, idx, subidx, manifest, orig_table, idx_table)?;
         }
 
         let ep_res = idx_table
@@ -445,7 +445,7 @@ impl SessionTx<'_> {
         if let Some(code) = filter
             && !eval_bytecode_pred(code, tuple, stack, Default::default())?
         {
-            self.hnsw_remove(orig_table, idx_table, tuple)?;
+            self.hnsw_remove(manifest, orig_table, idx_table, tuple)?;
             return Ok(false);
         }
 

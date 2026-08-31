@@ -232,6 +232,11 @@ UPSTREAM_MAP: dict[str, str | None] = {
     "runtime/hnsw/search.rs": "runtime/hnsw.rs",
     "runtime/hnsw/types.rs": "runtime/hnsw.rs",
     "runtime/hnsw/visited_pool.rs": "runtime/hnsw.rs",
+    # #6952: deterministic delete-disconnection regression tests, compiled once
+    # against whichever HNSW tree the land-dark selector resolves. A wholly
+    # independent addition (upstream has no such test), not a replacement, so
+    # None here and no SOVEREIGN_VERIFY_MAP row.
+    "runtime/hnsw_disconnect_tests.rs": None,
     "runtime/imperative.rs": "runtime/imperative.rs",
     "runtime/minhash_lsh.rs": "runtime/minhash_lsh.rs",
     "runtime/query_context_impl.rs": None,

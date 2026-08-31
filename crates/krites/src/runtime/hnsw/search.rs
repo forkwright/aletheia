@@ -9,7 +9,7 @@
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 
-use super::types::{DEFAULT_VECTOR_CACHE_CAPACITY, VectorCache};
+use super::types::{CompoundKey, DEFAULT_VECTOR_CACHE_CAPACITY, VectorCache};
 use super::visited_pool::VisitedPool;
 use crate::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::data::program::HnswSearch;
@@ -18,6 +18,7 @@ use crate::data::tuple::Tuple;
 use crate::data::value::Vector;
 use crate::error::InternalResult as Result;
 use crate::runtime::error::InvalidOperationSnafu;
+use crate::runtime::relation::RelationHandle;
 use crate::runtime::transact::SessionTx;
 use crate::{DataValue, SourceSpan};
 
@@ -145,6 +146,56 @@ impl SessionTx<'_> {
                 &mut vec_cache,
                 Some(&pool),
             )?;
+
+            // WHY (#6952): escape hatch for a disconnected layer-0 graph.
+            // The layer-0 expansion rule pushes every discovered neighbour
+            // while `found_nn` holds fewer than `ef` candidates and never
+            // evicts below `ef`, so a beam that ends under `ef` has
+            // provably visited the *entire* layer-0 component of every
+            // seed — fewer results than requested means the seeds'
+            // components are exhausted, not that the search converged. The
+            // entry point is re-derived as the first row of an ascending
+            // scan (lowest id at the topmost layer), which under id-ordered
+            // workloads sits systematically beside any deleted hub —
+            // precisely the node most likely to be walled into a severed
+            // island. Seeding one node from each unreached component (every
+            // layer-0 self-entry not already in `found_nn` starts one) and
+            // re-running the layer-0 beam makes confinement impossible: the
+            // search returns fewer than `ef` candidates only once every
+            // live vector has been visited.
+            //
+            // PERF: free on the healthy path (a connected graph with
+            // `>= ef` reachable vectors fills the beam and never enters
+            // this block); when it does trigger, the scan walks layer-0
+            // rows (`O(n * m)`) once, resuming across seeds — the price of
+            // correctness on an index that is small, fragmented, or
+            // freshly hub-deleted.
+            if found_nn.len() < config.ef {
+                for key in
+                    self.hnsw_scan_level0_self_entries(&config.base_handle, &config.idx_handle)
+                {
+                    if found_nn.len() >= config.ef {
+                        break;
+                    }
+                    if found_nn.get(&key).is_some() {
+                        continue;
+                    }
+                    vec_cache.ensure_key(&key, &config.base_handle, self)?;
+                    let dist = vec_cache.v_dist(&q, &key)?;
+                    found_nn.push(key, OrderedFloat(dist));
+                    self.hnsw_search_level_pooled(
+                        &q,
+                        config.ef,
+                        0,
+                        &config.base_handle,
+                        &config.idx_handle,
+                        &mut found_nn,
+                        &mut vec_cache,
+                        Some(&pool),
+                    )?;
+                }
+            }
+
             if found_nn.is_empty() {
                 return Ok(vec![]);
             }
@@ -234,6 +285,46 @@ impl SessionTx<'_> {
         } else {
             Ok(vec![])
         }
+    }
+
+    /// Enumerate every vector currently in the index: one [`CompoundKey`]
+    /// per layer-0 self-entry (`fr == to`), which every indexed vector
+    /// carries exactly one of. Feeds the disconnection escape hatch in
+    /// [`Self::hnsw_knn`] (#6952) — each entry not yet reached by the beam
+    /// marks an unreached layer-0 component.
+    fn hnsw_scan_level0_self_entries<'b>(
+        &'b self,
+        orig_table: &RelationHandle,
+        idx_table: &RelationHandle,
+    ) -> impl Iterator<Item = CompoundKey> + 'b {
+        let key_len = orig_table.metadata.keys.len();
+        idx_table
+            .scan_prefix(self, &vec![DataValue::from(0_i64)])
+            .filter_map(move |res| {
+                let tuple = res.ok()?;
+                if tuple[1..key_len + 3] != tuple[key_len + 3..2 * key_len + 5] {
+                    return None;
+                }
+                #[expect(
+                    clippy::cast_sign_loss,
+                    clippy::cast_possible_truncation,
+                    reason = "HNSW field/sub-index values are non-negative and bounded by m_max"
+                )]
+                let field = tuple[key_len + 1]
+                    .get_int()
+                    .unwrap_or_else(|| unreachable!("HNSW self-entry field is not an integer"))
+                    as usize;
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "HNSW sub-index bounded by m_max (< i32::MAX)"
+                )]
+                let subidx = tuple[key_len + 2]
+                    .get_int()
+                    .unwrap_or_else(|| unreachable!("HNSW self-entry sub-index is not an integer"))
+                    as i32;
+                let key = tuple[1..key_len + 1].to_vec();
+                Some((key, field, subidx))
+            })
     }
 }
 #[cfg(test)]

@@ -292,7 +292,7 @@
     {
       "from": "runtime",
       "to": "data",
-      "count": 158,
+      "count": 160,
       "production_count": 148,
       "test_only": false,
       "first_evidence": "runtime/db.rs:35",
@@ -380,8 +380,8 @@
       "first_production_evidence": "storage/fjall_backend.rs:7"
     }
   ],
-  "file_count": 206,
-  "statement_count": 1038,
+  "file_count": 207,
+  "statement_count": 1043,
   "required_edges_present": [
     [
       "runtime",

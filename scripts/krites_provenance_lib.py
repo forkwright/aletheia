@@ -216,6 +216,13 @@ NO_PREDECESSOR_REASONS: dict[str, str] = {
     ),
     "query_cache.rs": "aletheia-native query cache; NOTICE.md lists it among aletheia's own sovereign additions",
     "runtime/error.rs": "cozo-core has no error.rs anywhere",
+    "runtime/hnsw_disconnect_tests.rs": (
+        "deterministic HNSW delete-disconnection regression tests (aletheia#6952), "
+        "fabricating severed graph topologies directly against the shared on-disk "
+        "row layout; cozo-core has no HNSW deletion-repair or disconnection test "
+        "of any kind (its runtime/hnsw.rs test module holds a single "
+        "random-level-distribution test and nothing touching removal or search)"
+    ),
     "runtime/query_context_impl.rs": (
         "krites-native SessionTx -> QueryContext trait impl completing the "
         "query/context.rs decoupling; cozo-core has no such abstraction"

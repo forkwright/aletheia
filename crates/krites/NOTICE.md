@@ -9,9 +9,9 @@ This table is rendered from [`PROVENANCE.toml`](PROVENANCE.toml) — the file-le
 A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has something to measure against — a completed `dual` soak (RETIREMENT-PLAN.md §2(c)), or a from-scratch rewrite with a natural predecessor — the ledger retains that predecessor as `replaced_upstream_path` (shown below as "cf. `path`") and keeps measuring against it. `upstream_path` itself stays `none` on every `sovereign` row either way: this is not an MPL lineage claim, only a retained comparison the anti-backsliding gate keeps honest. A row with no predecessor at all (`replaced_upstream_path` also `none`) has nothing to measure and its `verbatim_pct` is genuinely 0.0.
 
 - Upstream: <https://github.com/cozodb/cozo>, pinned at `481af058abac9444ea8c9c52c78f096ed4b5bfc4`
-- 211 files under `src/`: 141 derived, 70 sovereign, 0 dual
-- Mean verbatim match across the 141 derived files: 44.1% (unweighted average of the per-file `verbatim_pct` column below)
-- Of the 70 sovereign files, **57 carry `method = "unknown"`** (no record of how they were written) and 13 carry a resolved, evidence-backed method — see "Authorship method" below.
+- 212 files under `src/`: 141 derived, 71 sovereign, 0 dual
+- Mean verbatim match across the 141 derived files: 43.9% (unweighted average of the per-file `verbatim_pct` column below)
+- Of the 71 sovereign files, **57 carry `method = "unknown"`** (no record of how they were written) and 14 carry a resolved, evidence-backed method — see "Authorship method" below.
 
 | File | Upstream | Verbatim | Status | Method |
 |---|---|---:|---|---|
@@ -187,18 +187,19 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/hnsw/adaptive.rs` | `runtime/hnsw.rs` | 0.0% | derived | — |
 | `src/runtime/hnsw/graph.rs` | `runtime/hnsw.rs` | 46.1% | derived | — |
 | `src/runtime/hnsw/mod.rs` | `runtime/hnsw.rs` | 0.0% | derived | — |
-| `src/runtime/hnsw/put.rs` | `runtime/hnsw.rs` | 27.5% | derived | — |
-| `src/runtime/hnsw/remove.rs` | `runtime/hnsw.rs` | 49.3% | derived | — |
-| `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 19.7% | derived | — |
+| `src/runtime/hnsw/put.rs` | `runtime/hnsw.rs` | 27.3% | derived | — |
+| `src/runtime/hnsw/remove.rs` | `runtime/hnsw.rs` | 19.5% | derived | — |
+| `src/runtime/hnsw/search.rs` | `runtime/hnsw.rs` | 15.9% | derived | — |
 | `src/runtime/hnsw/types.rs` | `runtime/hnsw.rs` | 11.9% | derived | — |
 | `src/runtime/hnsw/visited_pool.rs` | `runtime/hnsw.rs` | 3.3% | derived | — |
+| `src/runtime/hnsw_disconnect_tests.rs` | — | 0.0% | sovereign | from_spec_derived_siblings (cf. `#6952`) |
 | `src/runtime/hnsw_sovereign/adaptive.rs` | cf. `runtime/hnsw.rs` | 0.0% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
 | `src/runtime/hnsw_sovereign/close_reopen_tests.rs` | cf. `runtime/hnsw.rs` | 0.8% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
 | `src/runtime/hnsw_sovereign/graph.rs` | cf. `runtime/hnsw.rs` | 13.6% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
 | `src/runtime/hnsw_sovereign/mod.rs` | cf. `runtime/hnsw.rs` | 0.0% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
 | `src/runtime/hnsw_sovereign/put.rs` | cf. `runtime/hnsw.rs` | 9.6% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
-| `src/runtime/hnsw_sovereign/remove.rs` | cf. `runtime/hnsw.rs` | 8.3% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
-| `src/runtime/hnsw_sovereign/search.rs` | cf. `runtime/hnsw.rs` | 15.8% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
+| `src/runtime/hnsw_sovereign/remove.rs` | cf. `runtime/hnsw.rs` | 4.6% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
+| `src/runtime/hnsw_sovereign/search.rs` | cf. `runtime/hnsw.rs` | 13.0% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
 | `src/runtime/hnsw_sovereign/types.rs` | cf. `runtime/hnsw.rs` | 3.4% | sovereign | from_behavioral_oracle (cf. `3d0c035eedda8c476bb6d9b71dbdd1f5c336377c`) |
 | `src/runtime/imperative.rs` | `runtime/imperative.rs` | 33.9% | derived | — |
 | `src/runtime/minhash_lsh.rs` | `runtime/minhash_lsh.rs` | 53.0% | derived | — |
@@ -211,7 +212,7 @@ A `sovereign` row's `verbatim_pct` is not always 0.0: when the row still has som
 | `src/runtime/relation/mod.rs` | `runtime/relation.rs` | 0.0% | derived | — |
 | `src/runtime/relation/mutation.rs` | `query/stored.rs` | 63.7% | derived | — |
 | `src/runtime/relation/relation_crud.rs` | `runtime/relation.rs` | 48.0% | derived | — |
-| `src/runtime/relation/validation.rs` | `query/stored.rs` | 73.3% | derived | — |
+| `src/runtime/relation/validation.rs` | `query/stored.rs` | 72.9% | derived | — |
 | `src/runtime/sys.rs` | `runtime/db.rs` | 55.1% | derived | — |
 | `src/runtime/temp_store.rs` | `runtime/temp_store.rs` | 81.0% | derived | — |
 | `src/runtime/tests/basic_queries.rs` | `runtime/tests.rs` | 12.3% | derived | — |
@@ -243,15 +244,16 @@ Aletheia's own additions are real and sit alongside the derived files — `async
 | `attested_original` | no predecessor existed; this is aletheia's own new code |
 | `unknown` | no record exists |
 
-**57 of 70** sovereign rows carry `method = "unknown"` today. They were migrated there deliberately, not defaulted to a clean value: no evidence existed to support one, and a clean-by-default value would repeat this scheme's own history — `krites-provenance-transition.py` once hardcoded `verbatim_pct = 0.0` on every `dual` → `sovereign` transition, and 17 files that entered `sovereign` that way later re-measured at 18–41%. `unknown` is not itself a failure; it is the honest state until cleared with evidence.
+**57 of 71** sovereign rows carry `method = "unknown"` today. They were migrated there deliberately, not defaulted to a clean value: no evidence existed to support one, and a clean-by-default value would repeat this scheme's own history — `krites-provenance-transition.py` once hardcoded `verbatim_pct = 0.0` on every `dual` → `sovereign` transition, and 17 files that entered `sovereign` that way later re-measured at 18–41%. `unknown` is not itself a failure; it is the honest state until cleared with evidence.
 
 `from_spec` and `from_spec_derived_siblings` differ only in what the author read for local convention, and the ledger records that as a `consulted` list per row — the source paths read while writing, `[]` when none. It exists because most of this crate is derived, so the sibling that best demonstrates a convention is usually the sibling doing the same job. Mechanical conventions (error type, lint attributes, module layout, naming) may come from any sibling; the shape of the same algorithm may only come from a `sovereign` one. CI reads each consulted path's own status: a `from_spec` row that consulted a `derived` sibling fails, and so does a `from_spec_derived_siblings` row whose list is empty or entirely `sovereign`. What the check cannot reach is the list's completeness — nothing observes what an author opened, so an omitted path reads exactly like a path never read.
 
 | File | Consulted while writing |
 |---|---|
 | `src/fts/tokenizer/stop_word_filter/sovereign/mod.rs` | `src/fts/tokenizer/remove_long.rs`, `src/fts/tokenizer/stemmer.rs`, `src/fts/tokenizer/simple_tokenizer.rs`, `src/fts/tokenizer/split_compound_words.rs` |
+| `src/runtime/hnsw_disconnect_tests.rs` | `src/runtime/hnsw/put.rs`, `src/runtime/hnsw/remove.rs`, `src/runtime/hnsw/search.rs`, `src/runtime/hnsw/graph.rs`, `src/runtime/hnsw/types.rs`, `src/runtime/hnsw_sovereign/put.rs`, `src/runtime/hnsw_sovereign/remove.rs`, `src/runtime/hnsw_sovereign/search.rs`, `src/runtime/hnsw_sovereign/graph.rs`, `src/runtime/hnsw_sovereign/types.rs`, `src/runtime/hnsw_sovereign/close_reopen_tests.rs` |
 
-**13** carry a resolved method backed by a `method_evidence` pointer — a PR/issue reference, a commit SHA, or a spec path, always independently checkable, never a hand-typed justification. `unknown` is cleared only through `scripts/krites-provenance-transition.py --set-method <value> --evidence <pointer>` (plus `--consulted <paths>`, which the two `from_spec` values require), never by hand-editing a row.
+**14** carry a resolved method backed by a `method_evidence` pointer — a PR/issue reference, a commit SHA, or a spec path, always independently checkable, never a hand-typed justification. `unknown` is cleared only through `scripts/krites-provenance-transition.py --set-method <value> --evidence <pointer>` (plus `--consulted <paths>`, which the two `from_spec` values require), never by hand-editing a row.
 
 ## Reading `verbatim_pct`: what it can and cannot prove
 
