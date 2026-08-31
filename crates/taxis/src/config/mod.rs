@@ -430,18 +430,15 @@ pub struct EmbeddingSettings {
     /// Provider-specific model name.
     pub model: Option<String>,
     /// Output vector dimension (must match knowledge store HNSW index).
-    ///
-    /// `None` means "not configured": resolve it through
-    /// [`Self::effective_dimension`], which falls back to the provider's
-    /// default model dimension (candle 384, openai-compat 1024, voyage 1024).
-    ///
-    /// WHY `Option` + `skip_serializing_if` rather than a scalar default: the
-    /// loader cascade serializes compiled defaults into the merge tree before
-    /// the operator's TOML lands on top, so a scalar default is
-    /// indistinguishable from an operator-set value — it silently paired
-    /// `provider = "openai-compat"` (whose default endpoint serves a 1024-dim
-    /// model) with candle's 384. Keeping "unset" representable lets the
-    /// provider choose.
+    /// Unset resolves to the provider's default model dimension:
+    /// candle 384, openai-compat 1024, voyage 1024.
+    // WHY: `Option` + `skip_serializing_if` rather than a scalar default — the
+    // loader cascade serializes compiled defaults into the merge tree before
+    // the operator's TOML lands on top, so a scalar default is
+    // indistinguishable from an operator-set value — it silently paired
+    // `provider = "openai-compat"` (whose default endpoint serves a 1024-dim
+    // model) with candle's 384. Keeping "unset" representable lets the
+    // provider choose; readers resolve through `Self::effective_dimension`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dimension: Option<usize>,
     /// OpenAI-compatible embedding endpoint base URL.
