@@ -41,6 +41,7 @@ use taxis::oikos::Oikos;
 use taxis::validate::{validate_config, validate_startup};
 
 use crate::commands::maintenance;
+use crate::cursor_store;
 use crate::daemon_bridge;
 use crate::error::Result;
 use crate::planning_adapter;
@@ -790,7 +791,24 @@ impl RuntimeBuilder {
             None
         };
         let matrix_provider = if self.tool_services {
-            build_matrix_provider(&self.config.channels.matrix, &self.config.messaging)
+            let matrix_config = &self.config.channels.matrix;
+            // WHY(#7104): the cursor store gives Matrix `/sync` a durable
+            // resumption point, so a restart resumes after the last accepted
+            // batch instead of replaying it. Opened only when a Matrix
+            // account could actually sync; an unopenable store fails startup
+            // like the other data-directory stores rather than silently
+            // degrading to replay-on-restart.
+            let matrix_cursor_store: Option<Arc<dyn agora::cursor::CursorStore>> =
+                if matrix_config.enabled && !matrix_config.accounts.is_empty() {
+                    let path = self.oikos.data().join(cursor_store::CURSOR_DB_DIR);
+                    let store = cursor_store::FjallCursorStore::open(&path).with_whatever_context(
+                        |_| format!("failed to open channel cursor store at {}", path.display()),
+                    )?;
+                    Some(Arc::new(store))
+                } else {
+                    None
+                };
+            build_matrix_provider(matrix_config, &self.config.messaging, matrix_cursor_store)
         } else {
             None
         };
