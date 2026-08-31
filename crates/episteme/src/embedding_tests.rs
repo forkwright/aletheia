@@ -212,6 +212,55 @@ fn create_provider_custom_dimension() {
 }
 
 #[test]
+fn default_dimension_matches_each_provider_default_model() {
+    assert_eq!(
+        default_dimension_for_provider("mock"),
+        384,
+        "mock provider keeps the historical 384 test dimension"
+    );
+    assert_eq!(
+        default_dimension_for_provider("candle"),
+        384,
+        "candle default model bge-small-en-v1.5 emits 384-dim vectors"
+    );
+    assert_eq!(
+        default_dimension_for_provider("openai-compat"),
+        1024,
+        "openai-compat default endpoint serves Qwen3-Embedding-0.6B (1024-dim)"
+    );
+    assert_eq!(
+        default_dimension_for_provider("voyage"),
+        1024,
+        "voyage keeps the crate's long-standing 1024 fallback"
+    );
+    assert_eq!(
+        default_dimension_for_provider("telepathy"),
+        384,
+        "unknown providers fall back to the legacy default (they are rejected \
+         by config validation and create_provider before the dimension matters)"
+    );
+}
+
+#[cfg(feature = "openai-embed")]
+#[test]
+fn create_openai_compat_provider_without_dimension_defaults_to_1024() {
+    let config = EmbeddingConfig {
+        provider: "openai-compat".to_owned(),
+        model: None,
+        dimension: None,
+        api_key: None,
+        base_url: Some("http://127.0.0.1:5005/v1".to_owned()),
+    };
+    let provider = create_provider(&config).expect("create openai-compat provider");
+    assert_eq!(
+        provider.dimension(),
+        1024,
+        "openai-compat without an explicit dimension must match the served \
+         1024-dim embedder, not candle's 384"
+    );
+}
+
+#[test]
 fn embedding_batch_empty_list() {
     let provider = MockEmbeddingProvider::new(64);
     let result = provider.embed_batch(&[]);
