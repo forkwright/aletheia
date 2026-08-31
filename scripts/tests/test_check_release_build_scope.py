@@ -257,5 +257,39 @@ class CrossInputs(unittest.TestCase):
                     target.write_bytes((scope.REPO_ROOT / relative).read_bytes())
 
 
+class CargoConfigurationBoundary(unittest.TestCase):
+    def assert_config_rejected(self, relative: Path, contents: str) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / relative
+            config.parent.mkdir(parents=True, exist_ok=True)
+            config.write_text(contents, encoding="utf-8")
+            with self.assertRaises(scope.ScopeCheckError):
+                scope.validate_cargo_configuration_boundary(root)
+
+    def test_alias_wrapper_and_redirecting_configs_are_rejected(self) -> None:
+        cases = (
+            (
+                Path(".cargo/config.toml"),
+                '[alias]\nauditable = ["run", "--bin", "wrapper", "--"]\n',
+            ),
+            (Path(".cargo/config"), '[build]\nrustc-wrapper = "./wrapper"\n'),
+            (Path("decoy/.cargo/config.toml"), '[target.x86_64-unknown-linux-musl]\nrunner = "./runner"\n'),
+        )
+        for relative, contents in cases:
+            with self.subTest(relative=relative):
+                self.assert_config_rejected(relative, contents)
+
+    def test_symlinked_cargo_configuration_directory_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            linked = root / "linked-cargo"
+            linked.mkdir()
+            (linked / "config.toml").write_text('[build]\ntarget-dir = "./target"\n', encoding="utf-8")
+            (root / ".cargo").symlink_to(linked, target_is_directory=True)
+            with self.assertRaises(scope.ScopeCheckError):
+                scope.validate_cargo_configuration_boundary(root)
+
+
 if __name__ == "__main__":
     unittest.main()

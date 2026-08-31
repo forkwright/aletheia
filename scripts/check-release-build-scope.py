@@ -31,6 +31,8 @@ MANIFEST_NAME = "Cargo.toml"
 LOCKFILE_NAME = "Cargo.lock"
 CROSS_CONFIG = Path("Cross.toml")
 CROSS_INSTALLER = Path("scripts/install-cargo-auditable-cross.sh")
+CARGO_DIRECTORY = ".cargo"
+CARGO_CONFIG_NAMES = ("config.toml", "config")
 SHIPPED_PACKAGE = "aletheia"
 SHIPPED_BIN = "aletheia"
 RELEASE_FEATURES = "recall,embed-candle"
@@ -235,6 +237,32 @@ def validate_cross_inputs(root: Path) -> None:
             raise ScopeCheckError(f"cross build input differs from its trusted content: {relative}")
 
 
+def cargo_configuration_paths(root: Path) -> list[Path]:
+    """Find every repository-controlled Cargo config and config-directory symlink."""
+    configurations: list[Path] = []
+    for directory, directories, _ in os.walk(root, followlinks=False):
+        current = Path(directory)
+        cargo_directory = current / CARGO_DIRECTORY
+        if CARGO_DIRECTORY in directories and cargo_directory.is_symlink():
+            configurations.append(cargo_directory)
+        if current.name != CARGO_DIRECTORY:
+            continue
+        configurations.extend(
+            candidate
+            for name in CARGO_CONFIG_NAMES
+            if (candidate := current / name).exists() or candidate.is_symlink()
+        )
+    return configurations
+
+
+def validate_cargo_configuration_boundary(root: Path) -> None:
+    """Reject configs Cargo could load from the checked-out build tree."""
+    configurations = cargo_configuration_paths(root)
+    if configurations:
+        paths = ", ".join(str(path.relative_to(root)) for path in configurations)
+        raise ScopeCheckError(f"candidate Cargo configuration is forbidden: {paths}")
+
+
 def validate_environment(env: Any, scope: str) -> None:
     """Reject environment variables that redirect a Cargo/Rust invocation."""
     if env is None:
@@ -330,6 +358,7 @@ def validated_release_builds(workflow: dict[str, Any]) -> list[ValidatedBuild]:
     steps = build_steps(workflow)
     validate_execution_envelope(workflow, steps)
     validate_cross_inputs(REPO_ROOT)
+    validate_cargo_configuration_boundary(REPO_ROOT)
     if len(steps) != len(SAFE_STEP_DIGESTS):
         raise ScopeCheckError("jobs.build step count differs from the trusted execution graph")
     expected_by_name = {build.name: build for build in EXPECTED_BUILDS}
