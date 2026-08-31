@@ -17,7 +17,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
 
-use koina::redact::redact_channel_id;
+use koina::redact::{opaque_channel_id, redact_channel_id};
 
 use crate::connection_utils::reconnect_delay;
 use crate::types::{
@@ -310,12 +310,20 @@ impl ChannelProvider for MatrixProvider {
                 any_ok |= ok;
                 // WHY(#5198): `account_id` is a Matrix user ID; probe
                 // details are Serialize and reach diagnostic/health
-                // surfaces, so the key is redacted before it leaves here.
+                // surfaces, so the raw value never leaves here.
+                //
+                // WHY opaque (#7101): a map key is a correlation key, and
+                // suffix-redacted keys alias -- two accounts sharing their
+                // last four characters would silently overwrite each
+                // other's detail -- so the key is the collision-resistant
+                // handle and the lossy suffix form rides inside the detail
+                // as `display`.
                 details.insert(
-                    redact_channel_id(account_id),
+                    opaque_channel_id("matrix-account", account_id),
                     serde_json::json!({
                         "reachable": ok,
                         "auto_start": account.auto_start,
+                        "display": redact_channel_id(account_id),
                     }),
                 );
             }

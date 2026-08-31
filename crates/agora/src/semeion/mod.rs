@@ -20,7 +20,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{Instrument, instrument};
 
-use koina::redact::redact_channel_id;
+use koina::redact::{opaque_channel_id, redact_channel_id};
 
 use crate::types::{
     ChannelCapabilities, ChannelProvider, InboundMessage, ProbeResult,
@@ -377,7 +377,13 @@ impl ChannelProvider for SignalProvider {
                 if ok {
                     any_ok = true;
                 }
-                let mut detail = serde_json::json!({"reachable": ok});
+                let mut detail = serde_json::json!({
+                    "reachable": ok,
+                    // Human-facing hint only; the suffix form aliases, so
+                    // it rides inside the detail rather than keying it
+                    // (#7101).
+                    "display": redact_channel_id(account_id),
+                });
 
                 if let Some(state_mutex) = self.account_states.get(account_id) {
                     let s = state_mutex.lock().await;
@@ -397,8 +403,15 @@ impl ChannelProvider for SignalProvider {
 
                 // WHY(#5198): `account_id` is a phone number; probe details
                 // are Serialize and reach diagnostic/health surfaces, so the
-                // key is redacted before it ever leaves this function.
-                account_results.insert(redact_channel_id(account_id), detail);
+                // raw value never leaves this function.
+                //
+                // WHY opaque (#7101): a map key is a correlation key, and
+                // suffix-redacted keys alias -- two accounts sharing their
+                // last four characters would silently overwrite each
+                // other's detail -- so the key is the collision-resistant
+                // handle and the lossy suffix form rides inside the detail
+                // as `display`.
+                account_results.insert(opaque_channel_id("signal-account", account_id), detail);
             }
 
             ProbeResult {

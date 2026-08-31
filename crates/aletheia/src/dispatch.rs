@@ -16,7 +16,7 @@ use agora::dedupe::{DEFAULT_DEDUPE_CAPACITY, DedupeFilter};
 use agora::registry::ChannelRegistry;
 use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
-use koina::redact::redact_channel_id;
+use koina::redact::{opaque_channel_id, redact_channel_id};
 use nous::manager::NousManager;
 use organon::types::BlackboardViewer;
 
@@ -479,29 +479,44 @@ fn command_result_record(
     })
 }
 
+/// Domain separator for the opaque conversation handles minted in
+/// command records. `thread_id` and `conversation_id` share it so a
+/// group's thread handle equals its conversation handle.
+const CONVERSATION_HANDLE_DOMAIN: &str = "dispatch.conversation";
+
 /// Build the `origin` block of a command record.
 ///
 /// WHY redacted (#5198): command records are persisted to the session
 /// store and read back into agent context (`command_history`), so a raw
 /// phone number or Matrix ID here reaches the same surface a channel
-/// identity redaction is meant to keep clear of. `sender`/`group_id` are
-/// redacted via the shared [`redact_channel_id`]; `conversation_id`
-/// derives from the already-redacted values so it never reintroduces the
-/// raw identifier. `sender_name` carries a real display name with no
-/// correlation value from partial redaction, so its presence is recorded
-/// without the name itself.
+/// identity redaction is meant to keep clear of. `sender`/`group_id`
+/// are display context, redacted via the shared [`redact_channel_id`].
+/// `sender_name` carries a real display name with no correlation value
+/// from partial redaction, so its presence is recorded without the name
+/// itself.
+///
+/// WHY opaque (#7101): `conversation_id` and `thread_id` are correlation
+/// keys, and the suffix form aliases -- distinct identities sharing a
+/// four-character suffix redact identically, silently merging their
+/// conversations. They are minted from the raw identity via the
+/// collision-resistant [`opaque_channel_id`] instead, which never
+/// reintroduces the raw identifier.
 fn command_origin_record(msg: &InboundMessage) -> serde_json::Value {
     let redacted_sender = redact_channel_id(&msg.sender);
     let redacted_group_id = msg.group_id.as_deref().map(redact_channel_id);
-    let conversation_id = redacted_group_id
+    let thread_id = msg
+        .group_id
+        .as_deref()
+        .map(|group| opaque_channel_id(CONVERSATION_HANDLE_DOMAIN, group));
+    let conversation_id = thread_id
         .clone()
-        .unwrap_or_else(|| redacted_sender.clone());
+        .unwrap_or_else(|| opaque_channel_id(CONVERSATION_HANDLE_DOMAIN, &msg.sender));
     serde_json::json!({
         "channel": msg.channel.as_str(),
         "sender": redacted_sender,
         "sender_name": msg.sender_name.as_ref().map(|_| "[REDACTED]"),
-        "group_id": redacted_group_id.clone(),
-        "thread_id": redacted_group_id,
+        "group_id": redacted_group_id,
+        "thread_id": thread_id,
         "conversation_id": conversation_id,
         "timestamp_ms": msg.timestamp,
     })
@@ -1564,14 +1579,20 @@ mod tests {
             json_str(&record, "/group_id"),
             Some(redact_channel_id("!room:example.org").as_str())
         );
+        // WHY(#7101): the correlation fields carry the opaque handle of the
+        // raw group, not the aliasing suffix form.
         assert_eq!(
             json_str(&record, "/conversation_id"),
-            json_str(&record, "/group_id")
+            Some(opaque_channel_id(CONVERSATION_HANDLE_DOMAIN, "!room:example.org").as_str())
+        );
+        assert_eq!(
+            json_str(&record, "/thread_id"),
+            json_str(&record, "/conversation_id")
         );
     }
 
     #[test]
-    fn command_origin_record_conversation_id_falls_back_to_redacted_sender() {
+    fn command_origin_record_conversation_id_falls_back_to_sender_handle() {
         let msg = InboundMessage {
             channel: "signal".to_owned(),
             sender: "+15550100".to_owned(),
@@ -1587,7 +1608,35 @@ mod tests {
         let record = command_origin_record(&msg);
         assert_eq!(
             json_str(&record, "/conversation_id"),
-            Some(redact_channel_id("+15550100").as_str())
+            Some(opaque_channel_id(CONVERSATION_HANDLE_DOMAIN, "+15550100").as_str())
+        );
+        assert_eq!(record.pointer("/thread_id"), Some(&serde_json::Value::Null));
+    }
+
+    #[test]
+    fn command_origin_record_conversation_id_distinguishes_suffix_sharing_senders() {
+        // WHY(#7101): `@alice:example.org` and `@bob:example.org` share their
+        // trailing four characters, so suffix redaction maps both to
+        // "....org". `conversation_id` is a correlation key; two distinct
+        // identities must never produce the same value.
+        let make = |sender: &str| InboundMessage {
+            channel: "matrix".to_owned(),
+            sender: sender.to_owned(),
+            sender_name: None,
+            group_id: None,
+            message_id: None,
+            text: "!ping".to_owned(),
+            timestamp: 1_709_312_345_678,
+            attachments: vec![],
+            raw: None,
+        };
+
+        let alice = command_origin_record(&make("@alice:example.org"));
+        let bob = command_origin_record(&make("@bob:example.org"));
+        assert_ne!(
+            json_str(&alice, "/conversation_id"),
+            json_str(&bob, "/conversation_id"),
+            "distinct senders must not alias to the same conversation_id"
         );
     }
 

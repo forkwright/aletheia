@@ -2,10 +2,20 @@
 //!
 //! Strips API keys (Anthropic `sk-ant-*`, generic `sk-*`), bearer tokens,
 //! JWTs, and password-like key=value pairs from strings before they reach logs.
+//!
+//! Channel identities (phone numbers, Matrix IDs, account IDs) have two
+//! redacted forms with distinct contracts:
+//!
+//! - [`redact_channel_id`] — lossy suffix form for human-facing display
+//!   (logs, spans, debug output). Distinct identities alias; never use it
+//!   as a correlation key.
+//! - [`opaque_channel_id`] — collision-resistant hash form for correlation
+//!   keys, map keys, and anything durable.
 
 use std::sync::LazyLock;
 
 use regex::Regex;
+use sha2::{Digest as _, Sha256};
 
 /// Compile a static regex from a literal pattern.
 macro_rules! static_regex {
@@ -166,13 +176,21 @@ pub fn redact_argv<'a>(tokens: impl IntoIterator<Item = &'a str>) -> Vec<String>
 }
 
 /// Number of trailing characters preserved by [`redact_channel_id`] as a
-/// correlation aid (enough to distinguish accounts in logs, not enough to
-/// re-identify a person).
+/// human-readability aid (enough to tell log lines apart at a glance in
+/// the common case, not enough to re-identify a person).
 const CHANNEL_ID_VISIBLE_SUFFIX: usize = 4;
 
 /// Redact a channel identity value -- a phone number, Matrix ID
 /// (`@user:server`), account ID, or any other provider-specific sender
-/// identifier -- for logs, tracing spans, and diagnostic records.
+/// identifier -- for human-facing display: logs, tracing spans, and
+/// debug output.
+///
+/// **Display-only. This form is lossy and aliases: any two identities
+/// sharing their trailing [`CHANNEL_ID_VISIBLE_SUFFIX`] characters
+/// redact to the same string** (`@alice:example.org` and
+/// `@bob:example.org` both become `....org`), **so it must never be
+/// used as a correlation key, map key, or durable identifier.** Use
+/// [`opaque_channel_id`] for those (#7101).
 ///
 /// WHY(#5198): the single channel-identity redaction used everywhere an
 /// external identifier reaches a log or serialized diagnostic, replacing
@@ -182,8 +200,7 @@ const CHANNEL_ID_VISIBLE_SUFFIX: usize = 4;
 ///
 /// Preserves the trailing [`CHANNEL_ID_VISIBLE_SUFFIX`] characters (by
 /// Unicode scalar, not byte, so this never panics on a multi-byte
-/// boundary) as a correlation aid; anything at or under that length is
-/// fully masked.
+/// boundary); anything at or under that length is fully masked.
 #[must_use]
 pub fn redact_channel_id(id: &str) -> String {
     let chars: Vec<char> = id.chars().collect();
@@ -196,6 +213,64 @@ pub fn redact_channel_id(id: &str) -> String {
     } else {
         "****".to_owned()
     }
+}
+
+/// Domain-separation context prefix for [`opaque_channel_id`] digests.
+///
+/// Versioned so a future change to the handle encoding mints visibly
+/// different handles instead of silently colliding with existing ones.
+const OPAQUE_CHANNEL_ID_CONTEXT: &[u8] = b"aletheia.koina.channel-id.v1\0";
+
+/// Collision-resistant opaque handle for a channel identity -- the form
+/// to use for correlation keys, map keys, and anything durable.
+///
+/// Unlike [`redact_channel_id`], distinct identities cannot alias
+/// except with cryptographically negligible probability: the identity
+/// is digested with SHA-256 rather than truncated to a suffix. The
+/// handle is stable (the same `(domain, id)` pair always yields the
+/// same handle), irreversible, and leaks nothing of the raw value.
+///
+/// `domain` names the purpose minting the handle (e.g.
+/// `"signal-account"`). Both fields are length-prefixed into the
+/// digest, so handles minted for one purpose can never be confused
+/// with handles minted for another and no `(domain, id)` pair can
+/// collide with a different pair by shifting bytes across the field
+/// boundary.
+///
+/// WHY(#7101): suffix redaction was used for `conversation_id` and
+/// probe-detail map keys, silently merging unrelated identities that
+/// share a four-character suffix. Correlation goes through this handle;
+/// the suffix form remains for human-facing display only.
+#[must_use]
+pub fn opaque_channel_id(domain: &str, id: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(OPAQUE_CHANNEL_ID_CONTEXT);
+    for field in [domain, id] {
+        hasher.update(field.len().to_string().as_bytes());
+        hasher.update(b"\0");
+        hasher.update(field.as_bytes());
+        hasher.update(b"\0");
+    }
+    format!("h:{}", hex_lower(&hasher.finalize()))
+}
+
+/// Lowercase hex encoding without external dependencies or per-byte
+/// allocation.
+fn hex_lower(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len().saturating_mul(2));
+    for &byte in bytes {
+        out.push(hex_digit(byte >> 4));
+        out.push(hex_digit(byte & 0x0f));
+    }
+    out
+}
+
+fn hex_digit(nibble: u8) -> char {
+    char::from(match nibble {
+        0..=9 => b'0' + nibble,
+        10..=15 => b'a' + (nibble - 10),
+        _ => b'?',
+    })
 }
 
 /// JSON object key substrings (case-insensitive) treated as carrying a
@@ -444,6 +519,52 @@ mod tests {
             redact_channel_id("+15550100"),
             redact_channel_id("+15550100")
         );
+    }
+
+    #[test]
+    fn opaque_channel_id_distinguishes_identities_sharing_a_suffix() {
+        // WHY(#7101): the suffix form aliases these pairs ("....org" and
+        // "...0100" respectively); the opaque handle must not.
+        assert_ne!(
+            opaque_channel_id("matrix-account", "@alice:example.org"),
+            opaque_channel_id("matrix-account", "@bob:example.org"),
+        );
+        assert_ne!(
+            opaque_channel_id("signal-account", "+15550100"),
+            opaque_channel_id("signal-account", "+19990100"),
+        );
+    }
+
+    #[test]
+    fn opaque_channel_id_is_stable() {
+        assert_eq!(
+            opaque_channel_id("signal-account", "+15550100"),
+            opaque_channel_id("signal-account", "+15550100"),
+        );
+    }
+
+    #[test]
+    fn opaque_channel_id_separates_domains() {
+        assert_ne!(
+            opaque_channel_id("signal-account", "+15550100"),
+            opaque_channel_id("send-target", "+15550100"),
+        );
+    }
+
+    #[test]
+    fn opaque_channel_id_length_prefix_blocks_field_boundary_shifts() {
+        // WHY(#7101): without length prefixes, ("ab", "c") and ("a", "bc")
+        // would feed identical bytes to the hasher.
+        assert_ne!(opaque_channel_id("ab", "c"), opaque_channel_id("a", "bc"));
+    }
+
+    #[test]
+    fn opaque_channel_id_is_a_prefixed_hex_digest_without_the_raw_value() {
+        let handle = opaque_channel_id("signal-account", "+15550100");
+        assert!(!handle.contains("+15550100"), "{handle}");
+        let hex = handle.strip_prefix("h:").unwrap_or_default();
+        assert_eq!(hex.len(), 64, "{handle}");
+        assert!(hex.chars().all(|c| c.is_ascii_hexdigit()), "{handle}");
     }
 
     #[test]
