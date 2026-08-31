@@ -409,12 +409,69 @@ mod newtype_id_macro {
     }
 
     #[test]
-    fn from_str_infallible() {
-        // WHY still infallible: FromStr is left unchecked (matching From/Into)
-        // for call sites parsing an already-trusted value. `new()` is the
-        // validating constructor.
+    fn from_str_validates_like_new() {
+        // WHY(#7088): FromStr used to be `Infallible` and accept anything,
+        // which made a parsed id weaker than a constructed one. It now routes
+        // through `new()`, so every text entrypoint (clap, `.parse()`) gets
+        // the same validation floor.
         let id: TestStringId = "hello".parse().unwrap();
         assert_eq!(id.as_str(), "hello");
+
+        let oversized = "a".repeat(NEWTYPE_ID_MAX_LEN + 1);
+        for candidate in ["", "bad\u{0}id", "bad\nid", oversized.as_str()] {
+            assert!(
+                candidate.parse::<TestStringId>().is_err(),
+                "FromStr must reject {candidate:?}"
+            );
+            assert_eq!(
+                candidate
+                    .parse::<TestStringId>()
+                    .err()
+                    .map(|e| e.to_string()),
+                TestStringId::new(candidate).err().map(|e| e.to_string()),
+                "FromStr and new must fail identically on {candidate:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn deserialize_rejects_empty() {
+        // WHY(#7088): deserialization is the path that carries untrusted
+        // input; it must fail exactly where the validated constructor does.
+        let err = serde_json::from_str::<TestStringId>(r#""""#).unwrap_err();
+        let expected = TestStringId::new("").unwrap_err();
+        assert!(
+            err.to_string().contains(&expected.to_string()),
+            "serde error {err:?} must carry the constructor error: {expected}"
+        );
+    }
+
+    #[test]
+    fn deserialize_rejects_oversized() {
+        let raw = "a".repeat(NEWTYPE_ID_MAX_LEN + 1);
+        let json = format!("\"{raw}\"");
+        let err = serde_json::from_str::<TestStringId>(&json).unwrap_err();
+        let expected = TestStringId::new(raw).unwrap_err();
+        assert!(
+            err.to_string().contains(&expected.to_string()),
+            "serde error {err:?} must carry the constructor error: {expected}"
+        );
+    }
+
+    #[test]
+    fn deserialize_rejects_control_character() {
+        let err = serde_json::from_str::<TestStringId>(r#""bad\nid""#).unwrap_err();
+        let expected = TestStringId::new("bad\nid").unwrap_err();
+        assert!(
+            err.to_string().contains(&expected.to_string()),
+            "serde error {err:?} must carry the constructor error: {expected}"
+        );
+    }
+
+    #[test]
+    fn deserialize_accepts_valid() {
+        let id: TestStringId = serde_json::from_str(r#""ok-1""#).unwrap();
+        assert_eq!(id.as_str(), "ok-1");
     }
 
     #[test]
@@ -464,9 +521,8 @@ mod newtype_id_macro {
 
 #[test]
 fn nous_id_from_str_validates() {
-    // WHY both directions: the macro-generated `FromStr` on the sibling id types is `Infallible` and
-    // accepts anything. A hand-written impl that forgot to validate would still compile, still parse,
-    // and silently make a parsed id weaker than a constructed one.
+    // WHY both directions: a hand-written impl that forgot to validate would still compile, still
+    // parse, and silently make a parsed id weaker than a constructed one.
     assert_eq!("worker-1".parse::<NousId>().unwrap().as_str(), "worker-1");
     assert!("Worker_1".parse::<NousId>().is_err());
     assert!("".parse::<NousId>().is_err());

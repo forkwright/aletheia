@@ -63,16 +63,22 @@ pub fn newtype_id_validate(value: &str, kind: &'static str) -> Result<(), IdErro
 /// charset — a type needing lowercase-alnum-plus-hyphen enforcement (like
 /// [`NousId`]) still needs its own hand-rolled validator.
 ///
-/// `From<String>`/`From<&str>`/`FromStr` remain unchecked conversions for
+/// `Deserialize` and `FromStr` route through `new()` (#7088), so untrusted
+/// input arriving via serde (an HTTP body, a persisted record) or `.parse()`
+/// (a clap argument) is subject to the same floor as explicit construction;
+/// a validation failure surfaces as a serde error or an `IdError`.
+/// `From<String>`/`From<&str>` remain the only unchecked conversions, for
 /// call sites that already hold a trusted value (a literal, a value already
 /// validated upstream). Prefer `new()` at any boundary that accepts
 /// caller-controlled input.
 ///
 /// # Generated API
 ///
-/// - **Derives:** `Debug`, `Clone`, `PartialEq`, `Eq`, `Hash`, `Serialize`, `Deserialize`
-/// - **Traits:** `Display`, `FromStr`, `AsRef<str>`, `Borrow<str>`, `Deref<Target=str>`,
-///   `From<String>`, `From<&str>`, `From<T> for String`, `PartialEq<str>`
+/// - **Derives:** `Debug`, `Clone`, `PartialEq`, `Eq`, `Hash`, `Serialize`
+/// - **Traits:** `Deserialize` (validating, via `new()`), `Display`,
+///   `FromStr` (validating, `Err = IdError`), `AsRef<str>`, `Borrow<str>`,
+///   `Deref<Target=str>`, `From<String>`, `From<&str>`, `From<T> for String`,
+///   `PartialEq<str>`
 /// - **Methods:** `new()` (validating, fallible), `into_inner()`, `as_str()`
 ///
 /// # Examples
@@ -92,6 +98,7 @@ pub fn newtype_id_validate(value: &str, kind: &'static str) -> Result<(), IdErro
 /// assert_eq!(back, "w-1");
 ///
 /// assert!(WidgetId::new("").is_err());
+/// assert!("".parse::<WidgetId>().is_err());
 /// ```
 #[macro_export]
 macro_rules! newtype_id {
@@ -99,10 +106,27 @@ macro_rules! newtype_id {
         $(#[$meta])*
         #[derive(
             Debug, Clone, PartialEq, Eq, Hash,
-            ::serde::Serialize, ::serde::Deserialize,
+            ::serde::Serialize,
         )]
         #[serde(transparent)]
         $vis struct $name($inner);
+
+        /// WHY hand-written rather than derived: a derived transparent
+        /// `Deserialize` constructs the inner value directly, bypassing
+        /// `new()`'s validation -- and deserialization is precisely the
+        /// path that carries untrusted input (#7088). Delegating to the
+        /// inner type's `Deserialize` keeps the wire shape identical to
+        /// the previous `#[serde(transparent)]` derive; only invalid
+        /// values change behavior (they now error).
+        impl<'de> ::serde::Deserialize<'de> for $name {
+            fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+            where
+                D: ::serde::Deserializer<'de>,
+            {
+                let inner = <$inner as ::serde::Deserialize>::deserialize(deserializer)?;
+                Self::new(inner).map_err(<D::Error as ::serde::de::Error>::custom)
+            }
+        }
 
         impl $name {
             /// Create a new identifier, validating it by construction.
@@ -138,10 +162,14 @@ macro_rules! newtype_id {
         }
 
         impl ::std::str::FromStr for $name {
-            type Err = ::std::convert::Infallible;
+            type Err = $crate::id::IdError;
 
-            fn from_str(s: &str) -> Result<Self, Self::Err> {
-                Ok(Self(s.into()))
+            /// WHY fallible: an `Infallible` `FromStr` accepts anything,
+            /// making a parsed id weaker than a constructed one (#7088).
+            /// Routing through `new()` gives every text entrypoint
+            /// (`.parse()`, clap) the same validation floor.
+            fn from_str(s: &str) -> ::std::result::Result<Self, Self::Err> {
+                Self::new(s)
             }
         }
 
@@ -244,9 +272,9 @@ impl Borrow<str> for NousId {
     }
 }
 
-/// WHY a hand-written impl rather than the macro's: the macro's `FromStr` is `Infallible` and
-/// accepts anything, which is exactly what this type exists to prevent. Parsing a `NousId` has to
-/// run the same validation `new` does, or a parsed id is weaker than a constructed one.
+/// WHY a hand-written impl: parsing a `NousId` must run the same validation `new` does -- with
+/// this type's stricter charset, not the generic `newtype_id!` floor -- or a parsed id is weaker
+/// than a constructed one.
 ///
 /// WHY it matters beyond tidiness: with `FromStr`, clap parses CLI arguments straight into a
 /// validated `NousId`, so the command-line surface gets the same check #4638 wired into config
