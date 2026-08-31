@@ -323,15 +323,27 @@ jobs:
         if: ${{ !matrix.cross }}
         run: cargo install cargo-auditable --locked --version 0.7.4
 
+      # WHY(#6999) `-p aletheia --bin aletheia`: the previous virtual-root
+      # invocation built every workspace member and unified their features
+      # into the shipped binary. `integration-tests`' normal dependencies
+      # enable test-support/test-utils/crash-injection code that the release
+      # feature line never declares.
+      #
+      # This build attests only package `aletheia`, bin `aletheia`, and
+      # `recall,embed-candle` plus that package's defaults. It does not attest
+      # other workspace members, bins, or feature combinations; those are
+      # checked but not shipped. check-release-build-scope.py replays this
+      # resolution in PR CI and fails if this scope or its clean feature graph
+      # drifts.
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo auditable build --locked --release --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cargo auditable build --locked --release -p aletheia --bin aletheia --target "$BUILD_TARGET" --features recall,embed-candle
         env:
           BUILD_TARGET: ${{ matrix.target }}
 
       - name: Build (cross)
         if: ${{ matrix.cross }}
-        run: cross build --locked --release --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cross build --locked --release -p aletheia --bin aletheia --target "$BUILD_TARGET" --features recall,embed-candle
         env:
           BUILD_TARGET: ${{ matrix.target }}
 

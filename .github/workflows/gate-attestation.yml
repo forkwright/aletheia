@@ -358,6 +358,17 @@ jobs:
       - name: Check feature namespace resolves under cargo metadata
         run: scripts/check-feature-namespace.py
 
+      # WHY(#6999): release artifacts must resolve exactly `-p aletheia --bin
+      # aletheia --features recall,embed-candle`. A virtual-root build unified
+      # integration-tests' test-only features into the shipped graph; this
+      # tree-only replay runs before a tag and fails if the scope or graph
+      # regresses for either release target.
+      - name: Test check-release-build-scope.py
+        run: python3 -m unittest scripts/tests/test_check_release_build_scope.py
+
+      - name: Check release build feature scope
+        run: scripts/check-release-build-scope.py
+
       - name: Release versioning
         run: |
           python3 scripts/check-automation-pr-gates.py
