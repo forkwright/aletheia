@@ -170,6 +170,11 @@ NO_PREDECESSOR_REASONS: dict[str, str] = {
         "module declarations for krites-native fixed_rule test files; cozo-core has "
         "no fixed_rule/tests/ directory"
     ),
+    "fixed_rule/tests/pagerank_wiring.rs": (
+        "krites-native wiring gate asserting the live PageRank registry entry "
+        "reaches the sovereign shell (#7042); cozo-core has no fixed_rule/tests/ "
+        "directory"
+    ),
     "fixed_rule/tests/path_algorithms.rs": (
         "krites-native DbInstance integration tests; cozo-core has no "
         "fixed_rule/tests/ directory"
