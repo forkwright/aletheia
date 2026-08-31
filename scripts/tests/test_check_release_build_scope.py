@@ -31,13 +31,13 @@ def build_step(candidate: dict, name: str) -> dict:
     return next(step for step in candidate["jobs"]["build"]["steps"] if step.get("name") == name)
 
 
-def expected_packages() -> dict[Path, scope.ExpectedLocalPackage]:
+def expected_packages(koina_features: frozenset[str] | None = None) -> dict[Path, scope.ExpectedLocalPackage]:
     return {
         Path("/workspace/crates/aletheia"): scope.ExpectedLocalPackage(
             "aletheia", frozenset({"default", "recall", "embed-candle"})
         ),
         Path("/workspace/crates/koina"): scope.ExpectedLocalPackage(
-            "koina", frozenset({"default", "rustls-provider", "test-support"})
+            "koina", koina_features or frozenset({"default", "rustls-provider"})
         ),
     }
 
@@ -111,10 +111,45 @@ class ReleaseBuildValidation(unittest.TestCase):
                 mutate(candidate)
                 self.assert_rejected(candidate)
 
+    def test_rejects_shell_working_directory_defaults_and_environment_redirects(self) -> None:
+        mutations = (
+            lambda candidate: build_step(candidate, "Build (native)").update({"shell": "./scripts/unscoped-wrapper {0}"}),
+            lambda candidate: build_step(candidate, "Build (native)").update({"working-directory": "decoy-workspace"}),
+            lambda candidate: build_step(candidate, "Build (native)")["env"].update({"PATH": "./decoy:$PATH"}),
+            lambda candidate: candidate.update({"defaults": {"run": {"shell": "bash {0}"}}}),
+            lambda candidate: candidate["jobs"]["build"].update({"defaults": {"run": {"working-directory": "decoy"}}}),
+            lambda candidate: candidate["env"].update({"CARGO_ALIAS_BUILD": "build --workspace"}),
+            lambda candidate: candidate["jobs"]["build"].update({"env": {"RUSTC_WRAPPER": "./wrapper"}}),
+            lambda candidate: build_step(candidate, "Build (cross)")["env"].update({"CARGO_HOME": "./decoy"}),
+            lambda candidate: build_step(candidate, "Build (native)")["env"].update({"UNRELATED": "value"}),
+            lambda candidate: candidate["jobs"]["build"].update({"container": "evil:latest"}),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                candidate = workflow()
+                mutate(candidate)
+                self.assert_rejected(candidate)
+
+    def test_rejects_untrusted_actions_and_checkout_context_mutation(self) -> None:
+        candidate = workflow()
+        candidate["jobs"]["build"]["steps"].append({"uses": "./.github/actions/unscoped-build"})
+        self.assert_rejected(candidate)
+        for mutate in (
+            lambda candidate: candidate["jobs"]["build"]["steps"].append({"uses": "actions/cache@deadbeef"}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION)["with"].update({"submodules": True}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION)["with"].update({"ref": "main"}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION)["with"].update({"path": "decoy"}),
+            lambda candidate: next(step for step in candidate["jobs"]["build"]["steps"] if step.get("uses") == scope.CHECKOUT_ACTION).update({"working-directory": "decoy"}),
+        ):
+            with self.subTest(mutate=mutate):
+                candidate = workflow()
+                mutate(candidate)
+                self.assert_rejected(candidate)
+
 
 class ResolutionParsing(unittest.TestCase):
-    def parse(self, output: str) -> dict[str, set[str]]:
-        return scope.resolved_member_features(output, expected_packages())
+    def parse(self, output: str, expected: dict[Path, scope.ExpectedLocalPackage] | None = None) -> dict[str, set[str]]:
+        return scope.resolved_member_features(output, expected or expected_packages())
 
     def test_clean_complete_graph_passes(self) -> None:
         output = """\\
@@ -136,11 +171,21 @@ koina v0.45.0 (/workspace/crates/koina)|default,rustls-provider
 aletheia v0.45.0 (/workspace/crates/aletheia)|default,embed-candle,recall
 koina v0.45.0 (/workspace/crates/koina)|default,test-support
 """
-        report = "\n".join(scope.forbidden_resolutions(self.parse(output), "test"))
+        report = "\n".join(
+            scope.forbidden_resolutions(self.parse(output, expected_packages(frozenset({"default", "test-support"}))), "test")
+        )
         self.assertIn("test-support", report)
         unexpected = output.replace("test-support", "made-up")
         with self.assertRaises(scope.ScopeCheckError):
             self.parse(unexpected)
+
+    def test_empty_feature_columns_cannot_certify_a_resolved_graph(self) -> None:
+        output = """\\
+aletheia v0.45.0 (/workspace/crates/aletheia)|
+koina v0.45.0 (/workspace/crates/koina)|
+"""
+        with self.assertRaises(scope.ScopeCheckError):
+            self.parse(output)
 
     def test_missing_truncated_or_unexpected_local_rows_fail_closed(self) -> None:
         cases = (
@@ -153,6 +198,30 @@ koina v0.45.0 (/workspace/crates/koina)|default,test-support
             with self.subTest(output=output):
                 with self.assertRaises(scope.ScopeCheckError):
                     self.parse(output)
+
+
+class ProbeManifest(unittest.TestCase):
+    def test_dev_dependency_sections_are_not_resolution_inputs(self) -> None:
+        manifest = """\
+[package]
+name = "probe"
+
+[dependencies]
+kept = "1"
+
+[dev-dependencies]
+test-only = "1"
+
+[target.'cfg(unix)'.dev-dependencies]
+also-test-only = "1"
+
+[lints]
+workspace = true
+"""
+        rewritten = scope.without_dev_dependencies(manifest)
+        self.assertIn('kept = "1"', rewritten)
+        self.assertIn("[lints]", rewritten)
+        self.assertNotIn("test-only", rewritten)
 
 
 if __name__ == "__main__":
