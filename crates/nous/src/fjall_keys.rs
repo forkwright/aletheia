@@ -1,10 +1,9 @@
 //! Shared big-endian/zero-padded key encoding for fjall-backed stores.
 //!
-//! Both [`crate::uncertainty`] and [`crate::competence`] key their fjall
-//! partitions on a zero-padded decimal sequence (for lexicographic ordering)
-//! plus a big-endian `u64` counter value. This module owns that codec so the
-//! two stores cannot drift on it; each keeps its own `SEQ_WIDTH` constant
-//! since the width is part of that store's on-disk key schema.
+//! [`crate::uncertainty`] keys its fjall partition on a zero-padded decimal
+//! sequence (for lexicographic ordering) plus a big-endian `u64` counter
+//! value. This module owns that codec; the store keeps its own `SEQ_WIDTH`
+//! constant since the width is part of the on-disk key schema.
 
 /// Format a `u64` as a zero-padded decimal string `width` characters wide, so
 /// lexicographic ordering of the resulting keys matches numeric ordering.
