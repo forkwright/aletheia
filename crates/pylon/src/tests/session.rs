@@ -114,6 +114,62 @@ async fn get_session_returns_created_session() {
     assert_eq!(body["nous_id"], "syn");
 }
 
+// WHY(#6824): a client reconnecting cold (no remembered turn_id, e.g. after
+// an app restart) must be able to learn from the session GET alone whether a
+// turn is in flight and which turn stream to rejoin, without pulling the
+// full replay export.
+#[tokio::test]
+async fn get_session_reports_active_turn_id_while_turn_is_running() {
+    let (state, _dir) = test_state().await;
+    let router = build_router(Arc::clone(&state), &test_security_config());
+    let created = create_test_session(&router).await;
+    let id = created["id"].as_str().unwrap();
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(
+        body.get("active_turn_id").is_none(),
+        "idle session must omit active_turn_id, got: {body}"
+    );
+
+    // Register a running turn the way the streaming handlers do.
+    let turn_id = koina::ulid::Ulid::new().to_string();
+    let buffer = state.turn_buffer_registry.get_or_create(id, &turn_id).await;
+    let handle = crate::turn_buffer::TurnBufferHandle::new(buffer);
+
+    let resp = router
+        .clone()
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(
+        body["active_turn_id"],
+        serde_json::Value::String(turn_id),
+        "running turn id must be reported, got: {body}"
+    );
+
+    // Terminal turn: no longer active, even while its replay buffer is
+    // still retained for late reconnects.
+    handle.mark_completed().await;
+    let resp = router
+        .oneshot(authed_get(&format!("/api/v1/sessions/{id}")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(
+        body.get("active_turn_id").is_none(),
+        "completed turn must not be reported as active, got: {body}"
+    );
+}
+
 #[tokio::test]
 async fn get_unknown_session_returns_404() {
     let (app, _dir) = app().await;

@@ -288,6 +288,39 @@ impl TurnBufferRegistry {
         map.get(&key).cloned()
     }
 
+    /// Turn id of the most recently started still-running turn for a
+    /// session, if any.
+    ///
+    /// Backs the `active_turn_id` field on `GET /sessions/{id}` (#6824): a
+    /// client reconnecting without a remembered turn id asks the session
+    /// which turn is in flight, then joins its event stream via
+    /// `GET /sessions/{id}/turns/{turn_id}/events`. Terminal turns are never
+    /// reported, even while their replay buffers are retained for late
+    /// reconnects. Turn ids are ULIDs, so when a race leaves more than one
+    /// buffer running the lexicographic maximum is the most recently
+    /// started turn.
+    pub(crate) async fn active_turn_for_session(&self, session_id: &str) -> Option<String> {
+        // WHY: snapshot matching entries under a brief outer critical
+        // section (INVARIANT: see `reap_expired` -- the outer `buffers`
+        // lock is never held across an inner `Mutex::lock().await`).
+        let candidates: Vec<(String, Arc<Mutex<TurnBuffer>>)> = {
+            let map = self.buffers.lock().await;
+            map.iter()
+                .filter(|(key, _)| key.session_id == session_id)
+                .map(|(key, buffer)| (key.turn_id.clone(), Arc::clone(buffer)))
+                .collect()
+        };
+
+        let mut latest: Option<String> = None;
+        for (turn_id, buffer) in candidates {
+            let running = buffer.lock().await.state == TurnState::Running;
+            if running && latest.as_ref().is_none_or(|current| turn_id > *current) {
+                latest = Some(turn_id);
+            }
+        }
+        latest
+    }
+
     /// Number of turn buffers currently held (active plus not-yet-reaped
     /// completed/failed/aborted entries).
     ///
@@ -836,6 +869,43 @@ mod tests {
             TurnState::Aborted {
                 reason: TURN_ABORT_REASON_TIMEOUT.to_owned(),
             }
+        );
+    }
+
+    #[tokio::test]
+    async fn active_turn_for_session_reports_only_running_turns() {
+        let registry = TurnBufferRegistry::new();
+        assert_eq!(registry.active_turn_for_session("ses-1").await, None);
+
+        let buf = registry.get_or_create("ses-1", "turn-1").await;
+        assert_eq!(
+            registry.active_turn_for_session("ses-1").await,
+            Some("turn-1".to_owned())
+        );
+        // Another session's running turn is invisible to ses-1.
+        registry.get_or_create("ses-2", "turn-9").await;
+        assert_eq!(
+            registry.active_turn_for_session("ses-1").await,
+            Some("turn-1".to_owned())
+        );
+
+        // A terminal turn is no longer active, even while its replay
+        // buffer is retained for late reconnects.
+        TurnBufferHandle::new(buf).mark_completed().await;
+        assert_eq!(registry.active_turn_for_session("ses-1").await, None);
+        assert!(registry.get("ses-1", "turn-1").await.is_some());
+    }
+
+    #[tokio::test]
+    async fn active_turn_for_session_prefers_latest_when_multiple_running() {
+        // WHY(#6824): turn ids are ULIDs, so the lexicographic maximum is
+        // the most recently started turn if a race leaves two running.
+        let registry = TurnBufferRegistry::new();
+        registry.get_or_create("ses-1", "turn-2").await;
+        registry.get_or_create("ses-1", "turn-1").await;
+        assert_eq!(
+            registry.active_turn_for_session("ses-1").await,
+            Some("turn-2".to_owned())
         );
     }
 }
