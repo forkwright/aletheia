@@ -28,7 +28,7 @@ Dispatch orchestration: actualization of plans into execution. Absorbs kanon's p
 | `ResumePolicy` | `types.rs` | Multi-stage escalation with turn budgets |
 | `QaResult` | `types.rs` | QA evaluation outcome: verdict, criteria, mechanical issues |
 | `QaVerdict` | `types.rs` | Pass, Partial, Fail |
-| `DispatchEngine` | `engine.rs` | Trait: spawn/resume sessions against Agent SDK |
+| `DispatchEngine` | `engine.rs` | Trait: spawn/resume/stream coding-agent sessions |
 | `SessionHandle` | `engine.rs` | Trait: event stream, wait, abort for a running session |
 | `QaGate` | `qa.rs` | Trait: evaluate PR quality, mechanical checks |
 | `CronTask` / `CronScheduler` | `cron.rs` | Recurring dispatch driven by `jiff-cron`; fjall-backed cross-restart lock and per-task overlap policy. Feature: `storage-fjall`. |
@@ -40,7 +40,7 @@ Dispatch orchestration: actualization of plans into execution. Absorbs kanon's p
 - **Atomic budget tracking**: Budget uses atomic operations for thread-safe concurrent recording
 - **Health-driven escalation**: ResumePolicy defines stages with escalating urgency
 - **Mechanical pre-screening**: QaGate separates fast structural checks from LLM evaluation
-- **Agent SDK target**: DispatchEngine targets Anthropic Agent SDK HTTP/SSE API
+- **Subprocess engine**: the production DispatchEngine (`http::HttpEngine`) wraps the Claude CLI; no Anthropic-hosted Agent SDK HTTP/SSE endpoint exists to target (see `src/http/mod.rs` docs)
 
 ## Common tasks
 
