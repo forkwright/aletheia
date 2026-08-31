@@ -6,6 +6,7 @@ use std::pin::Pin;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest as _, Sha256};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
@@ -141,6 +142,12 @@ pub struct InboundMessage {
     pub sender_name: Option<String>,
     /// Group/conversation identifier (None for DM).
     pub group_id: Option<String>,
+    /// Stable provider message ID (e.g. Matrix `event_id`), when the
+    /// provider exposes one. Drives inbound dedupe; `None` for providers
+    /// without message IDs (signal-cli) -- [`Self::dedupe_key`] falls back
+    /// to a content hash.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_id: Option<String>,
     /// Message text content.
     pub text: String,
     /// Unix timestamp in milliseconds.
@@ -167,6 +174,10 @@ impl std::fmt::Debug for InboundMessage {
                 &self.sender_name.as_ref().map(|_| "[REDACTED]"),
             )
             .field("group_id", &self.group_id.as_deref().map(redact_channel_id))
+            .field(
+                "message_id",
+                &self.message_id.as_ref().map(|_| "[REDACTED]"),
+            )
             .field("text_len", &self.text.len())
             .field("timestamp", &self.timestamp)
             .field("attachment_count", &self.attachments.len())
@@ -179,6 +190,80 @@ impl std::fmt::Debug for InboundMessage {
                     .map(|bytes| bytes.len()),
             )
             .finish()
+    }
+}
+
+impl InboundMessage {
+    /// Stable identity key for inbound dedupe.
+    ///
+    /// Always returns an opaque SHA-256 handle. A provider message ID is
+    /// scoped by channel and conversation before hashing; the fallback for
+    /// providers without message IDs commits to sender, group, timestamp,
+    /// text, and attachments instead. The returned handle contains no raw
+    /// provider identifier, so it is safe to log or export as-is.
+    #[must_use]
+    pub fn dedupe_key(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"aletheia.agora.inbound-message.v1\0");
+        hash_part(&mut hasher, &self.channel);
+        if let Some(id) = self.message_id.as_deref().filter(|id| !id.is_empty()) {
+            hash_part(&mut hasher, "provider-id");
+            if let Some(group) = self.group_id.as_deref() {
+                hash_part(&mut hasher, "group");
+                hash_part(&mut hasher, group);
+            } else {
+                hash_part(&mut hasher, "dm");
+                hash_part(&mut hasher, &self.sender);
+            }
+            hash_part(&mut hasher, id);
+        } else {
+            hash_part(&mut hasher, "content-fallback");
+            hash_part(&mut hasher, &self.sender);
+            hash_optional_part(&mut hasher, self.group_id.as_deref());
+            hash_part(&mut hasher, &self.timestamp.to_string());
+            hash_part(&mut hasher, &self.text);
+            hash_part(&mut hasher, &self.attachments.len().to_string());
+            for attachment in &self.attachments {
+                hash_part(&mut hasher, attachment);
+            }
+        }
+        format!("sha256:{}", hex_lower(&hasher.finalize()))
+    }
+}
+
+/// Feed one length-delimited field into a dedupe-key hash, so adjacent
+/// fields can never collide by concatenation.
+fn hash_part(hasher: &mut Sha256, value: &str) {
+    hasher.update(value.len().to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(value.as_bytes());
+    hasher.update(b"\0");
+}
+
+fn hash_optional_part(hasher: &mut Sha256, value: Option<&str>) {
+    match value {
+        Some(value) => {
+            hash_part(hasher, "some");
+            hash_part(hasher, value);
+        }
+        None => hash_part(hasher, "none"),
+    }
+}
+
+fn hex_lower(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len().saturating_mul(2));
+    for &byte in bytes {
+        out.push(hex_digit(byte >> 4));
+        out.push(hex_digit(byte & 0x0f));
+    }
+    out
+}
+
+fn hex_digit(nibble: u8) -> char {
+    // NOTE: call sites pass `byte >> 4` / `byte & 0x0f` (always 0..=15).
+    match nibble {
+        0..=9 => char::from(b'0' + nibble),
+        _ => char::from(b'a' + (nibble - 10)),
     }
 }
 
@@ -286,6 +371,7 @@ mod tests {
             sender: "+1234567890".to_owned(),
             sender_name: Some("Alice".to_owned()),
             group_id: Some("grp123".to_owned()),
+            message_id: Some("msg-1".to_owned()),
             text: "hello world".to_owned(),
             timestamp: 1_709_312_345_678,
             attachments: vec!["photo.jpg".to_owned()],
@@ -299,6 +385,7 @@ mod tests {
         assert_eq!(back.sender, msg.sender);
         assert_eq!(back.sender_name, msg.sender_name);
         assert_eq!(back.group_id, msg.group_id);
+        assert_eq!(back.message_id, msg.message_id);
         assert_eq!(back.text, msg.text);
         assert_eq!(back.timestamp, msg.timestamp);
         assert_eq!(back.attachments, msg.attachments);
@@ -312,6 +399,7 @@ mod tests {
             sender: "+15550100".to_owned(),
             sender_name: Some("Alice".to_owned()),
             group_id: Some("group-abc123".to_owned()),
+            message_id: Some("provider-msg-abc123".to_owned()),
             text: "my ssn is 123-45-6789".to_owned(), // pii-allow: synthetic SSN fixture asserting redaction, not a real value
             timestamp: 1_709_312_345_678,
             attachments: vec!["photo.jpg".to_owned()],
@@ -322,9 +410,62 @@ mod tests {
         assert!(!debug.contains("+15550100"), "{debug}");
         assert!(!debug.contains("Alice"), "{debug}");
         assert!(!debug.contains("group-abc123"), "{debug}");
+        assert!(!debug.contains("provider-msg-abc123"), "{debug}");
         assert!(!debug.contains("my ssn is"), "{debug}");
         assert!(!debug.contains("photo.jpg"), "{debug}");
         assert!(debug.contains("channel"), "{debug}");
+    }
+
+    fn dedupe_fixture() -> InboundMessage {
+        InboundMessage {
+            channel: "matrix".to_owned(),
+            sender: "@alice:acme.corp".to_owned(),
+            sender_name: None,
+            group_id: Some("!room:acme.corp".to_owned()),
+            message_id: Some("$event1".to_owned()),
+            text: "hello".to_owned(),
+            timestamp: 1,
+            attachments: vec![],
+            raw: None,
+        }
+    }
+
+    #[test]
+    fn dedupe_key_follows_provider_message_id_across_content() {
+        let msg = dedupe_fixture();
+        let mut redelivered = dedupe_fixture();
+        // WHY: a provider may re-render the same event differently on
+        // redelivery (edited body, refreshed timestamp); the provider ID
+        // is the identity, not the content.
+        redelivered.text = "hello (edited)".to_owned();
+        redelivered.timestamp = 2;
+        assert_eq!(msg.dedupe_key(), redelivered.dedupe_key());
+
+        let mut other_event = dedupe_fixture();
+        other_event.message_id = Some("$event2".to_owned());
+        assert_ne!(msg.dedupe_key(), other_event.dedupe_key());
+    }
+
+    #[test]
+    fn dedupe_key_without_provider_id_commits_to_content() {
+        let mut msg = dedupe_fixture();
+        msg.message_id = None;
+        let mut same = dedupe_fixture();
+        same.message_id = None;
+        assert_eq!(msg.dedupe_key(), same.dedupe_key());
+
+        let mut different = dedupe_fixture();
+        different.message_id = None;
+        different.timestamp = 2;
+        assert_ne!(msg.dedupe_key(), different.dedupe_key());
+    }
+
+    #[test]
+    fn dedupe_key_is_opaque() {
+        let key = dedupe_fixture().dedupe_key();
+        assert!(key.starts_with("sha256:"), "{key}");
+        assert!(!key.contains("$event1"), "{key}");
+        assert!(!key.contains("alice"), "{key}");
     }
 
     #[test]
