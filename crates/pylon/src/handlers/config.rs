@@ -217,11 +217,20 @@ mod section_schemas {
 }
 
 /// GET /api/v1/config: full redacted config.
+///
+/// Alongside the config sections, the response carries a top-level
+/// `restart_required` key: the dotted paths of config changes staged on disk
+/// that take effect only after a process restart.
 #[utoipa::path(
     get,
     path = "/api/v1/config",
     responses(
-        (status = 200, description = "Redacted runtime config"),
+        (
+            status = 200,
+            description = "Redacted runtime config, plus a top-level `restart_required` \
+                array of dotted field paths staged on disk that take effect only after \
+                a process restart"
+        ),
         (status = 401, description = "Unauthorized"),
         (status = 403, description = "Forbidden"),
     ),
@@ -236,8 +245,48 @@ pub async fn get_config(
     // config mutations and reload; gate them at the Operator boundary.
     require_role(&claims, Role::Operator)?;
     let config = state.config.read().await;
-    let redacted = taxis::redact::redact(&config);
+    let mut redacted = taxis::redact::redact(&config);
+    let restart_required = pending_restart_paths(&state.oikos, &config);
+    drop(config);
+    if let Value::Object(root) = &mut redacted {
+        root.insert(
+            "restart_required".to_owned(),
+            Value::Array(restart_required.into_iter().map(Value::String).collect()),
+        );
+    }
     Ok(Json(redacted))
+}
+
+/// Dotted paths of config changes staged on disk that take effect only after
+/// a process restart.
+///
+/// WHY(#6825): `restart_required` used to be observable only in the
+/// transactional response of the mutating call (`PUT /config/{section}`,
+/// `POST /config/reload`), so a client that was not the mutator could never
+/// see a pending restart. Both mutating paths leave the same at-rest residue
+/// — the on-disk config diverges from the live one on cold fields — so GET
+/// derives the pending set from that residue with the same loader and diff
+/// those calls use.
+///
+/// An unreadable or invalid on-disk config stages nothing a restart could
+/// apply, so it contributes no pending paths; `POST /config/reload` remains
+/// the surface that reports why a staged config is rejected.
+fn pending_restart_paths(
+    oikos: &taxis::oikos::Oikos,
+    current: &taxis::config::AletheiaConfig,
+) -> Vec<String> {
+    match taxis::reload::prepare_reload(oikos, current) {
+        Ok(outcome) => outcome
+            .diff
+            .cold_changes()
+            .iter()
+            .map(|change| change.path.clone())
+            .collect(),
+        Err(e) => {
+            tracing::warn!(error = %e, "pending restart paths unavailable: on-disk config did not load");
+            Vec::new()
+        }
+    }
 }
 
 /// GET /api/v1/config/{section}: redacted config section.
