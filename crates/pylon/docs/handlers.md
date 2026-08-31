@@ -821,6 +821,7 @@ GET  /api/v1/knowledge/search
 GET  /api/v1/knowledge/search/explain
 GET  /api/v1/knowledge/timeline
 GET  /api/v1/knowledge/check
+GET  /api/v1/knowledge/health
 ```
 
 ### `GET /api/v1/knowledge/facts`
@@ -995,6 +996,17 @@ Health check for the knowledge graph store (connectivity, index integrity). Retu
 a machine-readable status object in the response body.
 
 **Response `200 OK`** - `{ "status": "ok", "fact_count": 142, "entity_count": 37 }`
+
+---
+
+### `GET /api/v1/knowledge/health`
+
+Server-computed memory-health metrics — the same snapshot the
+`aletheia_memory_health_*` Prometheus gauges export, served as JSON so headless
+drivers read the server's score instead of recomputing it client-side (#6823).
+Operator role required; nous-scoped tokens are rejected.
+
+**Response `200 OK`** - `{ "avg_confidence": 0.82, "orphan_ratio": 0.05, "staleness_ratio": 0.12, "health_score": 0.88 }`
 
 ---
 

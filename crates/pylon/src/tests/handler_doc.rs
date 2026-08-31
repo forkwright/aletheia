@@ -45,6 +45,7 @@ const ROUTES: &[&str] = &[
     "/api/v1/knowledge/entities/{id}/relationships",
     "/api/v1/knowledge/search",
     "/api/v1/knowledge/timeline",
+    "/api/v1/knowledge/health",
 ];
 
 #[test]
