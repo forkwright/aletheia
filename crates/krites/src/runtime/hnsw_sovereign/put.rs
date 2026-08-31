@@ -68,7 +68,7 @@ impl SessionTx<'_> {
             {
                 return Ok(());
             }
-            self.hnsw_remove_vec(tuple_key, idx, subidx, orig_table, idx_table)?;
+            self.hnsw_remove_vec(tuple_key, idx, subidx, manifest, orig_table, idx_table)?;
         }
 
         let Some(ep) = idx_table
@@ -212,8 +212,9 @@ impl SessionTx<'_> {
     /// Wire `target -> neighbour` and `neighbour -> target` (both live) at
     /// `level`, then bump `neighbour`'s own self-entry degree — shrinking
     /// `neighbour`'s outbound adjacency first if that pushes it past
-    /// `m_max`.
-    fn hnsw_connect_at_level(
+    /// `m_max`. (`pub(super)`: also the edge-writing primitive for
+    /// [`super::remove`]'s post-delete repair pass, #6952.)
+    pub(super) fn hnsw_connect_at_level(
         &mut self,
         level: i64,
         target: &CompoundKey,
@@ -380,7 +381,7 @@ impl SessionTx<'_> {
         if let Some(code) = filter
             && !eval_bytecode_pred(code, tuple, stack, Default::default())?
         {
-            self.hnsw_remove(orig_table, idx_table, tuple)?;
+            self.hnsw_remove(manifest, orig_table, idx_table, tuple)?;
             return Ok(false);
         }
 

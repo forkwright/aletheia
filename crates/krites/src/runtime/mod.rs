@@ -102,6 +102,12 @@ pub(crate) mod hnsw;
 )]
 #[path = "hnsw_sovereign/mod.rs"]
 pub(crate) mod hnsw;
+// WHY (#6952): compiled once against whichever HNSW tree the land-dark
+// selector above resolved, so the default gate exercises the derived tree
+// and the `krites_sovereign_hnsw` jobs exercise the sovereign one with the
+// same deterministic delete-disconnection regression tests.
+#[cfg(test)]
+mod hnsw_disconnect_tests;
 #[expect(
     clippy::default_trait_access,
     clippy::explicit_iter_loop,

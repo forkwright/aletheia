@@ -4,7 +4,7 @@
 use ordered_float::OrderedFloat;
 use priority_queue::PriorityQueue;
 
-use super::types::{DEFAULT_VECTOR_CACHE_CAPACITY, VectorCache};
+use super::types::{DEFAULT_VECTOR_CACHE_CAPACITY, VectorCache, scan_indexed_keys};
 use super::visited_pool::VisitedPool;
 use crate::data::expr::{Bytecode, eval_bytecode_pred};
 use crate::data::program::HnswSearch;
@@ -129,6 +129,52 @@ impl SessionTx<'_> {
             &mut vec_cache,
             Some(&pool),
         )?;
+
+        // WHY (#6952): escape hatch for a disconnected level-0 graph. The
+        // level-0 expansion rule pushes every discovered neighbour while
+        // `found_nn` holds fewer than `ef` candidates and never evicts
+        // below `ef`, so a beam that ends under `ef` has provably visited
+        // the *entire* level-0 component of every seed — fewer results
+        // than requested means the seeds' components are exhausted, not
+        // that the search converged. The entry point is re-derived as the
+        // first row of an ascending scan (lowest id at the topmost level),
+        // which under id-ordered workloads sits systematically beside any
+        // deleted hub — precisely the node most likely to be walled into a
+        // severed island. Seeding one node from each unreached component
+        // (every level-0 self-entry not already in `found_nn` starts one)
+        // and re-running the level-0 beam makes confinement impossible: the
+        // search returns fewer than `ef` candidates only once every live
+        // vector has been visited.
+        //
+        // PERF: free on the healthy path (a connected graph with `>= ef`
+        // reachable vectors fills the beam and never enters this block);
+        // when it does trigger, the scan walks level-0 rows (`O(n * m)`)
+        // once, resuming across seeds — the price of correctness on an
+        // index that is small, fragmented, or freshly hub-deleted.
+        if found_nn.len() < config.ef {
+            for key in scan_indexed_keys(self, &config.base_handle, &config.idx_handle) {
+                if found_nn.len() >= config.ef {
+                    break;
+                }
+                if found_nn.get(&key).is_some() {
+                    continue;
+                }
+                vec_cache.ensure_key(&key, &config.base_handle, self)?;
+                let dist = vec_cache.v_dist(&q, &key)?;
+                found_nn.push(key, OrderedFloat(dist));
+                self.hnsw_search_level_pooled(
+                    &q,
+                    config.ef,
+                    0,
+                    &config.base_handle,
+                    &config.idx_handle,
+                    &mut found_nn,
+                    &mut vec_cache,
+                    Some(&pool),
+                )?;
+            }
+        }
+
         if found_nn.is_empty() {
             return Ok(vec![]);
         }
