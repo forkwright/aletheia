@@ -430,7 +430,20 @@ pub struct EmbeddingSettings {
     /// Provider-specific model name.
     pub model: Option<String>,
     /// Output vector dimension (must match knowledge store HNSW index).
-    pub dimension: usize,
+    ///
+    /// `None` means "not configured": resolve it through
+    /// [`Self::effective_dimension`], which falls back to the provider's
+    /// default model dimension (candle 384, openai-compat 1024, voyage 1024).
+    ///
+    /// WHY `Option` + `skip_serializing_if` rather than a scalar default: the
+    /// loader cascade serializes compiled defaults into the merge tree before
+    /// the operator's TOML lands on top, so a scalar default is
+    /// indistinguishable from an operator-set value — it silently paired
+    /// `provider = "openai-compat"` (whose default endpoint serves a 1024-dim
+    /// model) with candle's 384. Keeping "unset" representable lets the
+    /// provider choose.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dimension: Option<usize>,
     /// OpenAI-compatible embedding endpoint base URL.
     #[serde(alias = "baseurl")]
     pub base_url: Option<String>,
@@ -459,7 +472,7 @@ impl Default for EmbeddingSettings {
         Self {
             provider: "candle".to_owned(),
             model: None,
-            dimension: 384,
+            dimension: None,
             base_url: None,
             api_key_env: None,
         }
@@ -467,6 +480,14 @@ impl Default for EmbeddingSettings {
 }
 
 impl EmbeddingSettings {
+    /// The embedding dimension to use: the configured value, or the default
+    /// model dimension of the configured provider when unset.
+    #[must_use]
+    pub fn effective_dimension(&self) -> usize {
+        self.dimension
+            .unwrap_or_else(|| episteme::embedding::default_dimension_for_provider(&self.provider))
+    }
+
     /// Convert public TOML settings into the embedding provider config shape
     /// without resolving secrets from the process environment.
     #[must_use]
@@ -483,7 +504,7 @@ impl EmbeddingSettings {
         episteme::embedding::EmbeddingConfig {
             provider: self.provider.clone(),
             model: self.model.clone(),
-            dimension: Some(self.dimension),
+            dimension: Some(self.effective_dimension()),
             api_key,
             base_url: self.base_url.clone(),
         }

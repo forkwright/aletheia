@@ -58,7 +58,8 @@ fn default_agent_list_is_empty() {
 fn default_embedding_provider_is_candle_with_384_dimensions() {
     let c = AletheiaConfig::default();
     assert_eq!(c.embedding.provider, "candle");
-    assert_eq!(c.embedding.dimension, 384);
+    assert_eq!(c.embedding.dimension, None);
+    assert_eq!(c.embedding.effective_dimension(), 384);
 }
 
 #[test]
@@ -175,12 +176,12 @@ fn full_config_json_roundtrip_preserves_defaults() {
 fn full_config_toml_roundtrip_preserves_overrides() {
     let mut config = AletheiaConfig::default();
     config.gateway.port = 9001;
-    config.embedding.dimension = 1536;
+    config.embedding.dimension = Some(1536);
 
     let toml_str = toml::to_string(&config).expect("serialize toml");
     let back: AletheiaConfig = toml::from_str(&toml_str).expect("deserialize toml");
     assert_eq!(back.gateway.port, 9001);
-    assert_eq!(back.embedding.dimension, 1536);
+    assert_eq!(back.embedding.dimension, Some(1536));
 }
 
 #[test]

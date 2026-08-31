@@ -219,6 +219,7 @@ impl OpenAiEmbeddingProvider {
             client,
             request,
             expected_model,
+            self.dimension,
             batch_size,
         ));
         crate::metrics::record_embedding_duration(&self.model, start.elapsed().as_secs_f64());
@@ -231,6 +232,7 @@ async fn execute_embedding_request(
     client: Client,
     request: reqwest::Request,
     expected_model: String,
+    expected_dimension: usize,
     batch_size: usize,
 ) -> EmbeddingResult<Vec<Vec<f32>>> {
     let response = client.execute(request).await.map_err(|e| {
@@ -272,6 +274,23 @@ async fn execute_embedding_request(
 
     let mut results = vec![Vec::new(); batch_size];
     for entry in parsed.data {
+        // WHY: dimension drift check — vectors of the wrong length would
+        // poison the fixed-dimension HNSW embedding space downstream, so a
+        // mismatch between the endpoint's actual output and the configured
+        // dimension must fail here with the config field named, not surface
+        // later as an opaque index error.
+        if entry.embedding.len() != expected_dimension {
+            return EmbedFailedSnafu {
+                message: format!(
+                    "embedding endpoint returned {}-dim vectors but embedding.dimension \
+                     is configured as {expected_dimension} (model {}); update \
+                     embedding.dimension to match the served model",
+                    entry.embedding.len(),
+                    parsed.model,
+                ),
+            }
+            .fail();
+        }
         if entry.index >= batch_size {
             return EmbedFailedSnafu {
                 message: format!(
@@ -350,11 +369,14 @@ mod tests {
     use super::*;
 
     fn mock_provider(server: &MockServer) -> OpenAiEmbeddingProvider {
+        // WHY dimension 3: the wiremock fixtures return 3-element vectors and
+        // the provider rejects responses whose length differs from the
+        // configured dimension.
         OpenAiEmbeddingProvider::new(&OpenAiCompatConfig {
             base_url: format!("{}/v1", server.uri()),
             api_key: None,
             model: "qwen-embed".to_owned(),
-            dimension: 384,
+            dimension: 3,
         })
         .expect("mock provider construct")
     }
@@ -433,6 +455,35 @@ mod tests {
         assert_eq!(result[0], vec![1.0, 2.0, 3.0]);
         assert_eq!(result[1], vec![4.0, 5.0, 6.0]);
         assert_eq!(result[2], vec![7.0, 8.0, 9.0]);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn embed_error_on_dimension_mismatch() {
+        let server = MockServer::start().await;
+        // Endpoint emits 4-dim vectors while the provider is configured for 3.
+        Mock::given(method("POST"))
+            .and(path("/v1/embeddings"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(embedding_response(vec![vec![0.1_f32, 0.2, 0.3, 0.4]])),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let provider = mock_provider(&server);
+        let err = provider
+            .embed("hello")
+            .expect_err("dimension mismatch should error, not corrupt downstream indexes");
+        let msg = err.to_string();
+        assert!(
+            msg.contains('4') && msg.contains('3'),
+            "error should name the returned and configured dimensions: {msg}"
+        );
+        assert!(
+            msg.contains("embedding.dimension"),
+            "error should point the operator at the config field: {msg}"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]
