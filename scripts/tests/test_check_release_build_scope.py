@@ -282,7 +282,9 @@ class CargoConfigurationBoundary(unittest.TestCase):
         self.git(root, "add", "-A")
         self.git(root, "commit", "-qm", "fixture")
 
-    def assert_tree_rejected(self, create: Callable[[Path], None]) -> None:
+    def assert_tree_rejected(
+        self, create: Callable[[Path], None], expected_entry: tuple[str, str]
+    ) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             create(root)
@@ -291,6 +293,7 @@ class CargoConfigurationBoundary(unittest.TestCase):
             self.git(root, "config", "user.email", "release-scope@example.invalid")
             self.git(root, "add", "-A")
             self.git(root, "commit", "-qm", "fixture")
+            self.assertIn(expected_entry, scope.head_tree_entries(root))
             with self.assertRaises(scope.ScopeCheckError):
                 scope.validate_cargo_configuration_boundary(root)
 
@@ -315,7 +318,7 @@ class CargoConfigurationBoundary(unittest.TestCase):
                     config.parent.mkdir(parents=True, exist_ok=True)
                     config.write_text(contents, encoding="utf-8")
 
-                self.assert_tree_rejected(create)
+                self.assert_tree_rejected(create, ("100644", relative.as_posix()))
 
     def test_case_colliding_cargo_configuration_is_rejected_for_macos(self) -> None:
         def create(root: Path) -> None:
@@ -326,7 +329,7 @@ class CargoConfigurationBoundary(unittest.TestCase):
                 '[alias]\nauditable = ["run", "--bin", "wrapper", "--"]\n', encoding="utf-8"
             )
 
-        self.assert_tree_rejected(create)
+        self.assert_tree_rejected(create, ("100644", ".Cargo/config.toml"))
 
     def test_tracked_cargo_symlinks_are_rejected_by_git_mode(self) -> None:
         cases = ("evil-cargo", "missing-cargo", "/project/evil-cargo", "/project/missing-cargo")
@@ -342,7 +345,7 @@ class CargoConfigurationBoundary(unittest.TestCase):
                         (root / target).mkdir()
                     (root / ".cargo").symlink_to(target, target_is_directory=True)
 
-                self.assert_tree_rejected(create)
+                self.assert_tree_rejected(create, ("120000", ".cargo"))
 
     def test_untracked_and_ignored_configuration_surfaces_are_rejected(self) -> None:
         for ignored in (False, True):
