@@ -71,6 +71,7 @@ pub(crate) fn test_app() -> App {
             saved_sessions: HashMap::new(),
             submitted_decisions: Vec::new(),
             new_session_status: ControlMutationStatus::Idle,
+            agents_load_failed: false,
         },
         connection: ConnectionState {
             sse: None,

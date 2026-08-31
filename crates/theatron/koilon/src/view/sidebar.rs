@@ -14,14 +14,27 @@ pub(crate) fn render(app: &App, frame: &mut Frame, area: Rect, theme: &Theme) {
     lines.push(Line::raw(""));
 
     if app.dashboard.agents.is_empty() {
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("no agents", theme.style_dim()),
-        ]));
-        lines.push(Line::from(vec![
-            Span::raw("  "),
-            Span::styled("waiting for connection…", theme.style_muted()),
-        ]));
+        // WHY(#6814): a completed, failed fetch is not "waiting" -- name the
+        // failure and the real recovery command instead.
+        if app.dashboard.agents_load_failed {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("agent list unavailable", theme.style_warning()),
+            ]));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("retry with :reconnect", theme.style_muted()),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("no agents", theme.style_dim()),
+            ]));
+            lines.push(Line::from(vec![
+                Span::raw("  "),
+                Span::styled("waiting for connection…", theme.style_muted()),
+            ]));
+        }
     }
 
     for agent in &app.dashboard.agents {

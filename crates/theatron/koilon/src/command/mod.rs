@@ -213,6 +213,13 @@ pub static COMMANDS: &[Command] = &[
         category: CommandCategory::Action,
         shortcut: None,
     },
+    Command {
+        name: "reconnect",
+        aliases: &[],
+        description: "Retry the gateway connection and reload agents",
+        category: CommandCategory::Action,
+        shortcut: None,
+    },
 ];
 
 const MAX_SUGGESTIONS: usize = 8;

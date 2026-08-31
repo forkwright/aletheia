@@ -366,9 +366,28 @@ pub(crate) async fn execute_command(app: &mut App) {
                 execute_reauth(app, args).await;
             }
         }
+        "reconnect" => {
+            execute_reconnect(app).await;
+        }
         _ => {
             app.viewport.error_toast =
                 Some(ErrorToast::new(format!("Unknown command: {cmd_name}")));
+        }
+    }
+}
+
+/// WHY(#6814): the startup agents-fetch failure toast names `:reconnect` as
+/// the recovery action, so this retries exactly what failed there.
+async fn execute_reconnect(app: &mut App) {
+    match app.reconnect().await {
+        Ok(count) => {
+            app.viewport.success_toast = Some(ErrorToast::new(format!(
+                "Reconnected — {count} agent{s} loaded",
+                s = if count == 1 { "" } else { "s" }
+            )));
+        }
+        Err(e) => {
+            app.viewport.error_toast = Some(ErrorToast::new(format!("Reconnect failed: {e}")));
         }
     }
 }
@@ -982,5 +1001,69 @@ mod tests {
                 .expect("must report an error with no focused session");
             assert_eq!(toast.message, "No session to export");
         }
+    }
+
+    /// Regression for #6814: the startup agents-fetch failure toast points the
+    /// user at `:reconnect`, so that command must exist and actually retry --
+    /// previously it fell through to "Unknown command: reconnect".
+    #[tokio::test]
+    async fn reconnect_from_agents_fetch_failure_retries_and_reports() {
+        let (url, _server) = failing_server().await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        app.dashboard.agents_load_failed = true;
+        app.interaction.command_palette.active = true;
+        app.interaction.command_palette.input = "reconnect".into();
+
+        execute_command(&mut app).await;
+
+        let toast = app
+            .viewport
+            .error_toast
+            .as_ref()
+            .map(|t| t.message.clone())
+            .unwrap_or_default();
+        assert!(
+            !toast.starts_with("Unknown command"),
+            "the failure toast names :reconnect, so it must be a real command: {toast}"
+        );
+        assert!(
+            toast.contains("Reconnect failed"),
+            "a failed retry must say so: {toast}"
+        );
+        assert!(
+            app.dashboard.agents_load_failed,
+            "a failed retry must keep the failure state"
+        );
+    }
+
+    #[tokio::test]
+    async fn reconnect_success_reloads_agents_and_clears_failure_state() {
+        let (url, _server) = routing_server(vec![(
+            "/api/v1/nous".into(),
+            r#"{"nous":[{"id":"syn","name":"Syn"}]}"#.into(),
+        )])
+        .await;
+        let mut app = test_app();
+        point_app_at(&mut app, &url);
+        app.dashboard.agents_load_failed = true;
+        app.interaction.command_palette.active = true;
+        app.interaction.command_palette.input = "reconnect".into();
+
+        execute_command(&mut app).await;
+
+        assert!(
+            !app.dashboard.agents_load_failed,
+            "a successful retry must clear the failure state"
+        );
+        assert_eq!(app.dashboard.agents.len(), 1);
+        assert_eq!(
+            app.dashboard.agents.first().map(|a| a.name.as_str()),
+            Some("Syn")
+        );
+        assert!(
+            app.viewport.success_toast.is_some(),
+            "a successful retry must confirm visibly"
+        );
     }
 }
