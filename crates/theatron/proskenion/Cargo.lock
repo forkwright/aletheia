@@ -2976,7 +2976,7 @@ dependencies = [
 
 [[package]]
 name = "koina"
-version = "0.44.0"
+version = "0.45.0"
 dependencies = [
  "jiff",
  "prometheus-client",
@@ -5163,7 +5163,7 @@ checksum = "b2aa850e253778c88a04c3d7323b043aeda9d3e30d5971937c1855769763678e"
 
 [[package]]
 name = "skene"
-version = "0.44.0"
+version = "0.45.0"
 dependencies = [
  "aes-gcm",
  "bathron",

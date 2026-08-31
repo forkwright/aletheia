@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.45.0](https://github.com/forkwright/aletheia/compare/v0.44.0...v0.45.0) (2026-08-31)
+
+
+### Features
+
+* **pylon:** expose memory-health metrics over GET /api/v1/knowledge/health ([#7115](https://github.com/forkwright/aletheia/issues/7115)) ([1a2fd9e](https://github.com/forkwright/aletheia/commit/1a2fd9ebb6efc3806149e8dd7f18df7e0b0eec09))
+* **pylon:** expose pending restart_required on GET /config ([#7111](https://github.com/forkwright/aletheia/issues/7111)) ([580c66a](https://github.com/forkwright/aletheia/commit/580c66ae27b4c4ebbd0eb45f30222c0efd83a71b)), closes [#6825](https://github.com/forkwright/aletheia/issues/6825)
+* **pylon:** publish tool-approval domain events on the event bus ([#7123](https://github.com/forkwright/aletheia/issues/7123)) ([9c6a2f6](https://github.com/forkwright/aletheia/commit/9c6a2f6bb51595e5569520b0a9678906fe37001a))
+* **pylon:** report the in-flight turn id on the session GET ([#7110](https://github.com/forkwright/aletheia/issues/7110)) ([9d926a7](https://github.com/forkwright/aletheia/commit/9d926a728f530f97c1f9fffb29901b3331444ab5)), closes [#6824](https://github.com/forkwright/aletheia/issues/6824)
+
+
+### Bug Fixes
+
+* **agora,aletheia:** persist Matrix /sync cursors across restarts ([#7114](https://github.com/forkwright/aletheia/issues/7114)) ([cdb734e](https://github.com/forkwright/aletheia/commit/cdb734ef545a3dbaca47f53aaf17a11b2b57c4e7)), closes [#7104](https://github.com/forkwright/aletheia/issues/7104)
+* **agora:** dedupe redelivered inbound messages before dispatch ([#7112](https://github.com/forkwright/aletheia/issues/7112)) ([cc01630](https://github.com/forkwright/aletheia/commit/cc01630dbdf864518e560df1968e334475e6a536)), closes [#7102](https://github.com/forkwright/aletheia/issues/7102)
+* **agora:** filter Matrix events on msgtype before they become turns ([#7122](https://github.com/forkwright/aletheia/issues/7122)) ([3ecf236](https://github.com/forkwright/aletheia/commit/3ecf23625424f9df1e88fc9bda4a0d512ae53570)), closes [#7082](https://github.com/forkwright/aletheia/issues/7082)
+* **koilon:** TUI audit batch — observable loading, error-vs-empty, :reconnect, hidden keybindings ([#7124](https://github.com/forkwright/aletheia/issues/7124)) ([d02faa9](https://github.com/forkwright/aletheia/commit/d02faa911028e6b86df7c8d95274094f91186765))
+* **koina:** mint collision-resistant opaque handles for channel-identity correlation ([#7126](https://github.com/forkwright/aletheia/issues/7126)) ([45e455a](https://github.com/forkwright/aletheia/commit/45e455aa9b18b9a08539058806d17d6cda7f7c05)), closes [#7101](https://github.com/forkwright/aletheia/issues/7101)
+* **koina:** validate newtype_id! ids in Deserialize and FromStr ([#7125](https://github.com/forkwright/aletheia/issues/7125)) ([e488f22](https://github.com/forkwright/aletheia/commit/e488f220ff8d676006fae046e9b625a5d6077b7d))
+* **pylon:** distinguish resolved, timed-out, and unknown approvals on resolve ([#7113](https://github.com/forkwright/aletheia/issues/7113)) ([7c94fd3](https://github.com/forkwright/aletheia/commit/7c94fd3cb798d680bbde83c475f0bf5151a9a578)), closes [#6822](https://github.com/forkwright/aletheia/issues/6822)
+
 ## [0.44.0](https://github.com/forkwright/aletheia/compare/v0.43.0...v0.44.0) (2026-08-29)
 
 
