@@ -1169,3 +1169,79 @@ async fn delete_entity_no_store_returns_503() {
         "unexpected error: {err:?}"
     );
 }
+
+/// Happy path: `memory_health` derives its payload from the knowledge store
+/// through the same `compute_memory_health_metrics` the Prometheus gauges
+/// read (#6823) -- no second bookkeeping path.
+#[cfg(feature = "knowledge-store")]
+#[tokio::test]
+async fn memory_health_reports_store_derived_metrics() {
+    use mneme::id::{EntityId, FactId};
+    use mneme::knowledge::Entity;
+
+    let store = mneme::knowledge_store::KnowledgeStore::open_mem().unwrap();
+
+    // Two active facts: one fresh at confidence 0.8, one stale (epoch
+    // recorded_at, via make_fact's default temporal) at 0.4. A forgotten
+    // fact must not count toward any ratio.
+    let mut fresh = make_fact("fact-fresh", "fresh", 0.8);
+    fresh.temporal.recorded_at = jiff::Timestamp::now();
+    store.insert_fact(&fresh).unwrap();
+    store
+        .insert_fact(&make_fact("fact-stale", "stale", 0.4))
+        .unwrap();
+    let mut forgotten = make_fact("fact-forgotten", "forgotten", 0.1);
+    forgotten.lifecycle.is_forgotten = true;
+    store.insert_fact(&forgotten).unwrap();
+
+    // Two entities: one linked to a fact, one orphaned.
+    let now = jiff::Timestamp::UNIX_EPOCH;
+    for (id, name) in [("entity-linked", "Linked"), ("entity-orphan", "Orphan")] {
+        store
+            .insert_entity(&Entity {
+                id: EntityId::new(id).unwrap(),
+                name: name.to_owned(),
+                entity_type: "concept".to_owned(),
+                aliases: Vec::new(),
+                created_at: now,
+                updated_at: now,
+            })
+            .unwrap();
+    }
+    store
+        .insert_fact_entity(
+            &FactId::new("fact-fresh").unwrap(),
+            &EntityId::new("entity-linked").unwrap(),
+        )
+        .unwrap();
+
+    let state = knowledge_state_with_store(store);
+    let response = match memory_health(State(state), operator_claims()).await {
+        Ok(response) => response,
+        Err(err) => panic!("memory health: {err:?}"),
+    };
+    let health = response.0;
+
+    assert!((health.avg_confidence - 0.6).abs() < 1e-9);
+    assert!((health.staleness_ratio - 0.5).abs() < 1e-9);
+    assert!((health.orphan_ratio - 0.5).abs() < 1e-9);
+    let expected = koina::memory_health::compute_health_score(
+        health.avg_confidence,
+        health.orphan_ratio,
+        health.staleness_ratio,
+    );
+    assert!((health.health_score - expected).abs() < 1e-9);
+}
+
+/// Error path: `memory_health` reports 503 when the state has no store.
+#[tokio::test]
+async fn memory_health_no_store_returns_503() {
+    let state = knowledge_state_without_store();
+    let err = memory_health(State(state), operator_claims())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, ApiError::ServiceUnavailable { .. }),
+        "unexpected error: {err:?}"
+    );
+}

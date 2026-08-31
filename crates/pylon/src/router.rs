@@ -98,6 +98,7 @@ pub fn build_router_with(
         .route("/search", get(knowledge::search))
         .route("/timeline", get(knowledge::timeline))
         .route("/check", get(knowledge::check_graph_health))
+        .route("/health", get(knowledge::memory_health))
         .route_layer(axum::middleware::from_fn_with_state(
             Arc::clone(&state),
             require_bearer_auth,

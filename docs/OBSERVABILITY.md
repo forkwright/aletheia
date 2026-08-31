@@ -103,7 +103,7 @@ Canonical source per crate: each crate's own `src/metrics.rs` `register()` funct
 | `aletheia_memory_orphan_ratio` | Gauge | - | Fraction of entities with no relationship and no fact link |
 | `aletheia_memory_staleness_ratio` | Gauge | - | Fraction of active facts unreviewed past the 30-day staleness threshold |
 
-> **Memory health semantics:** these four gauges are server-side counterparts of what `theatron/proskenion`'s Memory Health panel computes client-side from an already-fetched fact/entity list (`crates/theatron/proskenion/src/views/meta/assembly.rs`). Both sides call the identical `koina::memory_health::compute_health_score` formula (0.4 confidence + 0.3 non-orphan + 0.3 non-stale), so the two numbers should track each other; they are computed from independent queries (server scrape vs. client fetch, at different times, over potentially different visibility scopes for a scoped token), not wired point-to-point, so brief divergence during active writes is expected rather than a bug.
+> **Memory health semantics:** these four gauges share their computation (`pylon`'s `compute_memory_health_metrics`) with the JSON route `GET /api/v1/knowledge/health` (#6823), so a Prometheus scrape and an API poll can only differ in sample time, never in derivation. `theatron/proskenion`'s Memory Health panel reads that route and falls back to computing the same components client-side from an already-fetched fact/entity list (`crates/theatron/proskenion/src/views/meta/assembly.rs`) when the route is unavailable (older server, knowledge store disabled). Both sides call the identical `koina::memory_health::compute_health_score` formula (0.4 confidence + 0.3 non-orphan + 0.3 non-stale), so in the fallback case the two numbers should still track each other; they are then computed from independent queries (server scrape vs. client fetch, at different times, over potentially different visibility scopes for a scoped token), not wired point-to-point, so brief divergence during active writes is expected rather than a bug.
 
 > **Quality semantics:** `aletheia_knowledge_facts_total` and `aletheia_knowledge_extractions_total` measure throughput and liveness. The `aletheia_extraction_*_quality` counters measure whether the admitted facts are calibrated, non-redundant, and non-contradictory. A healthy deployment should see stable or falling rejection/empty-extraction rates, a broad confidence distribution rather than a spike at 0.95+, and contradiction rates that are low relative to the volume of new facts.
 
@@ -321,7 +321,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 
 ### MemoryHealthScoreLow
 
-**What it means:** The composite memory health score (`aletheia_memory_health_score`) stayed below 0.4 for 30 minutes -- the same red-band threshold `theatron/proskenion`'s Memory Health panel uses for its own client-side score.
+**What it means:** The composite memory health score (`aletheia_memory_health_score`) stayed below 0.4 for 30 minutes -- the same red-band threshold `theatron/proskenion`'s Memory Health panel uses for the score it reads from `GET /api/v1/knowledge/health`.
 
 **Impact:** Low confidence, a high orphan ratio, and/or heavy staleness are compounding; recall quality and trust in stored facts are degraded.
 
@@ -330,7 +330,7 @@ These thresholds are defaults. Tune them per deployment based on traffic volume,
 2. Cross-check against `GET /api/v1/knowledge/check` (`GraphCheckReport`) for orphaned-entity and dangling-edge counts.
 3. If staleness dominates, review whether a distillation/decay pass is running on schedule.
 4. If confidence dominates, check for a recent extraction-quality regression (see the `Extraction*` alerts above).
-5. Open the TUI's Memory Health panel to see the same score computed client-side; persistent divergence between the two (beyond normal query-timing skew) suggests a visibility-scope or query bug worth filing, not just a data-quality issue.
+5. Query `GET /api/v1/knowledge/health` directly (#6823) to confirm the API surface reports the same snapshot the gauges export; if the desktop panel shows a "computed" (fallback) score instead of "server-reported", it recomputed client-side, and persistent divergence from the gauges (beyond normal query-timing skew) suggests a visibility-scope or query bug worth filing, not just a data-quality issue.
 
 ### MemoryOrphanRatioHigh
 

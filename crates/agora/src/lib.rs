@@ -9,6 +9,8 @@
 pub mod command;
 /// Shared connection utilities used by channel providers.
 pub(crate) mod connection_utils;
+/// Per-account provider resumption cursors (persistence seam; stores live outside agora).
+pub mod cursor;
 /// Bounded dedupe filter that drops provider-redelivered inbound messages before dispatch.
 pub mod dedupe;
 /// Error types for channel operations and provider failures.
