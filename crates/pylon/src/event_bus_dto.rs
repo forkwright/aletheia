@@ -32,6 +32,18 @@ pub(crate) const DISCOVERABLE_TOPICS: &[&str] = &[
     // on `crate::handlers::credentials::CredentialAuditEvent`.
     "credential.mutation",
     "credential.validation",
+    // WHY(#6813): the per-turn `tool_approval_required`/`tool_approval_resolved`
+    // stream events reach only the one client holding that turn's SSE stream
+    // open; a tool call blocked on approval in any other agent/session was
+    // invisible on the always-open domain-bus connection. These topics mirror
+    // that per-turn pair one-to-one — published from the same bridge that
+    // translates the nous stream events (the single point every gated
+    // approval flows through) — carrying routing identity only, never tool
+    // input. Payload builders: `tool_approval_required_event_payload` /
+    // `tool_approval_resolved_event_payload` in
+    // `crate::handlers::sessions::streaming`.
+    "tool.approval_required",
+    "tool.approval_resolved",
 ];
 
 /// A domain event with a stable topic name, monotonic id, JSON payload, and

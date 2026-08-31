@@ -540,3 +540,111 @@ async fn path_route_unknown_approval_is_404_approval_not_found() {
         "unknown turn/tool must not masquerade as session_not_found"
     );
 }
+
+/// Await the next domain event with `topic` on the bus, skipping events on
+/// other topics, and panic with the skipped-topic trail after 5s.
+async fn await_domain_event(
+    rx: &mut tokio::sync::broadcast::Receiver<crate::event_bus::DomainEvent>,
+    topic: &str,
+) -> crate::event_bus::DomainEvent {
+    let mut skipped: Vec<String> = Vec::new();
+    loop {
+        let event = tokio::time::timeout(Duration::from_secs(5), rx.recv())
+            .await
+            .unwrap_or_else(|_| {
+                panic!("timed out waiting for domain event {topic}; skipped topics: {skipped:?}")
+            })
+            .expect("event bus closed or lagged before expected domain event");
+        if event.topic == topic {
+            return event;
+        }
+        skipped.push(event.topic);
+    }
+}
+
+/// #6813 `Done when:`: pylon publishes tool-approval domain events alongside
+/// the per-turn `tool_approval_required`/`tool_approval_resolved` stream
+/// events, carrying enough identity (nous/session/turn/tool id) to route the
+/// approval from a subscriber that has no per-turn stream open.
+#[tokio::test]
+async fn stream_turn_approval_publishes_tool_approval_domain_events() {
+    let executions = Arc::new(AtomicUsize::new(0));
+    let (router, state, _dir) = approval_test_app(Arc::clone(&executions)).await;
+
+    // Subscribe before the request so no domain event can be missed.
+    let mut event_bus_rx = state.event_bus.subscribe();
+
+    let resp = router
+        .clone()
+        .oneshot(stream_turn_req(
+            "stream-approval-domain-events",
+            "run approval test tool",
+            "01ARZ3NDEKTSV4RRFFQ69G5FC4",
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let mut stream = resp.into_body().into_data_stream();
+    let mut buffer = String::new();
+    let start = read_sse_data_event(&mut stream, &mut buffer, "message_start").await;
+    let session_id = start["session_id"]
+        .as_str()
+        .expect("message_start.session_id")
+        .to_owned();
+    let turn_id = start["turn_id"]
+        .as_str()
+        .expect("message_start.turn_id")
+        .to_owned();
+
+    // The per-turn stream event fires first; the domain event must fire
+    // alongside it on the bus every subscriber shares.
+    let _required = read_sse_data_event(&mut stream, &mut buffer, "tool_approval_required").await;
+    let required = await_domain_event(&mut event_bus_rx, "tool.approval_required").await;
+    assert_eq!(required.payload["session_id"], session_id);
+    assert_eq!(required.payload["nous_id"], "syn");
+    assert_eq!(required.payload["turn_id"], turn_id);
+    assert_eq!(required.payload["tool_id"], APPROVAL_TEST_TOOL_ID);
+    assert_eq!(required.payload["tool_name"], APPROVAL_TEST_TOOL);
+    assert_eq!(required.payload["risk"], "critical");
+    assert!(
+        required.payload["reason"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("mandatory approval")),
+        "domain event must carry the same reason vocabulary as the per-turn \
+         event: {required:?}"
+    );
+    assert!(
+        required.payload.get("input").is_none(),
+        "the broadcast domain event is a routing signal, not a payload \
+         mirror -- tool input stays on the per-turn stream: {required:?}"
+    );
+
+    let approve_req = authed_request(
+        "POST",
+        &format!("/api/v1/sessions/{session_id}/approvals"),
+        Some(serde_json::json!({
+            "turn_id": turn_id,
+            "tool_id": APPROVAL_TEST_TOOL_ID,
+            "decision": "approved",
+        })),
+    );
+    let approve_resp = router.clone().oneshot(approve_req).await.unwrap();
+    assert_eq!(approve_resp.status(), StatusCode::OK);
+
+    let _resolved = read_sse_data_event(&mut stream, &mut buffer, "tool_approval_resolved").await;
+    let resolved = await_domain_event(&mut event_bus_rx, "tool.approval_resolved").await;
+    assert_eq!(resolved.payload["session_id"], session_id);
+    assert_eq!(resolved.payload["nous_id"], "syn");
+    assert_eq!(resolved.payload["turn_id"], turn_id);
+    assert_eq!(resolved.payload["tool_id"], APPROVAL_TEST_TOOL_ID);
+    assert_eq!(resolved.payload["decision"], "approved");
+
+    // Drain the turn to completion so the approved tool demonstrably ran.
+    let _complete = read_sse_data_event(&mut stream, &mut buffer, "message_complete").await;
+    assert_eq!(
+        executions.load(Ordering::SeqCst),
+        1,
+        "approved irreversible tool should execute exactly once"
+    );
+}

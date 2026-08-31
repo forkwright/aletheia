@@ -261,6 +261,8 @@ pub fn parse_sse_event(event_type: &str, data: &str) -> Option<SseEvent> {
         "turn.complete" => turn_complete_event(&json, event_type),
         "fact.created" => fact_created_event(&json, event_type),
         "nous.lifecycle" => nous_lifecycle_event(&json, event_type),
+        "tool.approval_required" => tool_approval_required_event(&json, event_type),
+        "tool.approval_resolved" => tool_approval_resolved_event(&json, event_type),
         "tool:called" => Some(SseEvent::ToolCalled {
             nous_id: ApiNousId::from(str_field(&json, "nousId", event_type)?.to_string()),
             tool_name: str_field(&json, "toolName", event_type)?.to_string(),
@@ -370,6 +372,28 @@ fn nous_lifecycle_event(json: &serde_json::Value, event_type: &str) -> Option<Ss
         nous_id: ApiNousId::from(str_field(json, "nous_id", event_type)?.to_string()),
         event: str_field(json, "event", event_type)?.to_string(),
         restart_required: bool_field(json, "restart_required", event_type)?,
+    })
+}
+
+fn tool_approval_required_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::ToolApprovalRequired {
+        session_id: ApiSessionId::from(str_field(json, "session_id", event_type)?.to_string()),
+        nous_id: ApiNousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        turn_id: TurnId::from(str_field(json, "turn_id", event_type)?.to_string()),
+        tool_id: str_field(json, "tool_id", event_type)?.to_string(),
+        tool_name: str_field(json, "tool_name", event_type)?.to_string(),
+        risk: str_field(json, "risk", event_type)?.to_string(),
+        reason: str_field(json, "reason", event_type)?.to_string(),
+    })
+}
+
+fn tool_approval_resolved_event(json: &serde_json::Value, event_type: &str) -> Option<SseEvent> {
+    Some(SseEvent::ToolApprovalResolved {
+        session_id: ApiSessionId::from(str_field(json, "session_id", event_type)?.to_string()),
+        nous_id: ApiNousId::from(str_field(json, "nous_id", event_type)?.to_string()),
+        turn_id: TurnId::from(str_field(json, "turn_id", event_type)?.to_string()),
+        tool_id: str_field(json, "tool_id", event_type)?.to_string(),
+        decision: str_field(json, "decision", event_type)?.to_string(),
     })
 }
 
@@ -533,6 +557,72 @@ mod tests {
     fn parse_checkpoint_updated_missing_status_returns_none() {
         let data = r#"{"projectId":"p1","checkpointId":"cp-1"}"#;
         let result = parse_sse_event("checkpoint:updated", data);
+        assert!(result.is_none());
+    }
+
+    // ── #6813: tool-approval domain events decode on the domain-bus
+    // connection, same snake_case payload contract as `turn.complete` ──
+
+    #[test]
+    fn parse_tool_approval_required_domain_event_valid() {
+        let data = r#"{"session_id":"sess-1","nous_id":"syn","turn_id":"turn-1","request_id":"req-1","tool_id":"toolu_1","tool_name":"shell_execute","risk":"critical","reason":"mandatory approval"}"#;
+        let result = parse_sse_event("tool.approval_required", data);
+        if let Some(SseEvent::ToolApprovalRequired {
+            session_id,
+            nous_id,
+            turn_id,
+            tool_id,
+            tool_name,
+            risk,
+            reason,
+        }) = result
+        {
+            assert_eq!(&*session_id, "sess-1");
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*turn_id, "turn-1");
+            assert_eq!(tool_id, "toolu_1");
+            assert_eq!(tool_name, "shell_execute");
+            assert_eq!(risk, "critical");
+            assert_eq!(reason, "mandatory approval");
+        } else {
+            panic!("expected ToolApprovalRequired, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn parse_tool_approval_resolved_domain_event_valid() {
+        let data = r#"{"session_id":"sess-1","nous_id":"syn","turn_id":"turn-1","request_id":"req-1","tool_id":"toolu_1","decision":"approved"}"#;
+        let result = parse_sse_event("tool.approval_resolved", data);
+        if let Some(SseEvent::ToolApprovalResolved {
+            session_id,
+            nous_id,
+            turn_id,
+            tool_id,
+            decision,
+        }) = result
+        {
+            assert_eq!(&*session_id, "sess-1");
+            assert_eq!(&*nous_id, "syn");
+            assert_eq!(&*turn_id, "turn-1");
+            assert_eq!(tool_id, "toolu_1");
+            assert_eq!(decision, "approved");
+        } else {
+            panic!("expected ToolApprovalResolved, got {result:?}");
+        }
+    }
+
+    #[test]
+    fn parse_tool_approval_required_missing_tool_id_returns_none() {
+        let data = r#"{"session_id":"sess-1","nous_id":"syn","turn_id":"turn-1","tool_name":"shell_execute","risk":"critical","reason":"mandatory approval"}"#;
+        let result = parse_sse_event("tool.approval_required", data);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn parse_tool_approval_resolved_missing_decision_returns_none() {
+        let data =
+            r#"{"session_id":"sess-1","nous_id":"syn","turn_id":"turn-1","tool_id":"toolu_1"}"#;
+        let result = parse_sse_event("tool.approval_resolved", data);
         assert!(result.is_none());
     }
 

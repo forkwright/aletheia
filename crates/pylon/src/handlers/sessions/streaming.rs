@@ -327,6 +327,61 @@ fn turn_cancelled_event_payload(
     })
 }
 
+/// Build the `tool.approval_required` domain-event payload.
+///
+/// WHY(#6813): identity plus display metadata only — deliberately NOT the
+/// tool input the per-turn `tool_approval_required` stream event carries.
+/// The domain bus is a broadcast every subscriber shares; the payload is a
+/// routing signal ("agent X is blocked on tool Y in turn Z") that lets a
+/// client surface the approval and open the per-turn stream or the
+/// approvals endpoint for the full detail, without leaking tool arguments
+/// to subscribers that never asked for that turn. `identity` is nous's
+/// canonical `TurnEventIdentity` (#5016) — pylon never substitutes its own
+/// turn id; `nous_id` rides separately because the nous event does not
+/// carry it (the handler's resolved agent id is the authority).
+fn tool_approval_required_event_payload(
+    identity: &nous::stream::TurnEventIdentity,
+    nous_id: &str,
+    tool_id: &str,
+    tool_name: &str,
+    risk: &str,
+    reason: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": identity.session_id,
+        "nous_id": nous_id,
+        "turn_id": identity.turn_id.to_string(),
+        "request_id": identity.request_id.as_deref().unwrap_or(""),
+        "tool_id": tool_id,
+        "tool_name": tool_name,
+        "risk": risk,
+        "reason": reason,
+    })
+}
+
+/// Build the `tool.approval_resolved` domain-event payload.
+///
+/// WHY(#6813): `decision` is the closed `ApprovalChoice::as_wire_str`
+/// vocabulary (`"approved"`/`"denied"`) the per-turn
+/// `tool_approval_resolved` stream event already uses — one taxonomy on
+/// both connections, not two drifting in parallel (same principle as
+/// `turn.failed`'s `error_class`, WHY(#4557) above).
+fn tool_approval_resolved_event_payload(
+    identity: &nous::stream::TurnEventIdentity,
+    nous_id: &str,
+    tool_id: &str,
+    decision: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "session_id": identity.session_id,
+        "nous_id": nous_id,
+        "turn_id": identity.turn_id.to_string(),
+        "request_id": identity.request_id.as_deref().unwrap_or(""),
+        "tool_id": tool_id,
+        "decision": decision,
+    })
+}
+
 /// Map a nous pipeline error to the `turn.failed` `recoverable` field.
 ///
 /// WHY(#4557): delegates to `Classifiable` (`koina::error_class`) — the
@@ -1285,6 +1340,13 @@ pub async fn stream_turn(
     let approval_turn_id = turn_id.clone();
     let approval_tx_for_bridge = approval_tx.clone();
     let turn_cancel_for_bridge = turn_cancel.clone();
+    // WHY(#6813): the bridge is the single point every gated approval flows
+    // through — both the `ToolApprovalRequired` emission and its resolution
+    // come back as nous stream events here — so it is also where the
+    // matching domain events are published. `nous_id` is not on the nous
+    // event's `TurnIdentity`; the handler's resolved agent id travels in.
+    let bridge_event_bus = Arc::clone(&state.event_bus);
+    let bridge_nous_id = aid.clone();
     let bridge_handle = tokio::spawn(
         async move {
             // WHY(#5375): accumulated across the whole bridge lifetime and
@@ -1346,6 +1408,24 @@ pub async fn stream_turn(
                                         approval_tx_for_bridge.clone(),
                                     )
                                     .await;
+                                // WHY(#6813): published after `register_tool`
+                                // so a subscriber reacting to the domain
+                                // event can immediately resolve the approval
+                                // through the approvals endpoint.
+                                bridge_event_bus
+                                    .publish(crate::event_bus::DomainEvent::new(
+                                        bridge_event_bus.next_id(),
+                                        "tool.approval_required",
+                                        tool_approval_required_event_payload(
+                                            &identity,
+                                            &bridge_nous_id,
+                                            &tool_id,
+                                            &tool_name,
+                                            &risk,
+                                            &reason,
+                                        ),
+                                    ))
+                                    .await;
                                 let live = PylonTurnStreamEvent::ToolApprovalRequired {
                                     turn_id: identity.turn_id.to_string(),
                                     tool_name: tool_name.clone(),
@@ -1385,6 +1465,23 @@ pub async fn stream_turn(
                                     &approval_turn_id,
                                     &tool_id,
                                 );
+                                // WHY(#6813): mirrors every resolution the
+                                // per-turn stream reports — operator decision
+                                // and gate timeout default-deny alike — so a
+                                // domain-bus subscriber can clear the pending
+                                // approval it surfaced on `tool.approval_required`.
+                                bridge_event_bus
+                                    .publish(crate::event_bus::DomainEvent::new(
+                                        bridge_event_bus.next_id(),
+                                        "tool.approval_resolved",
+                                        tool_approval_resolved_event_payload(
+                                            &identity,
+                                            &bridge_nous_id,
+                                            &tool_id,
+                                            &decision,
+                                        ),
+                                    ))
+                                    .await;
                                 let event = PylonTurnStreamEvent::ToolApprovalResolved {
                                     tool_id,
                                     decision,
