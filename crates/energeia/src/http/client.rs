@@ -4,8 +4,8 @@
 //! (matching phronesis's approach), not an HTTP/SSE client. There is no
 //! Anthropic-hosted "Agent SDK" HTTP/SSE endpoint waiting to be documented —
 //! the Claude Agent SDK is Claude Code packaged as a library, a harness the
-//! caller hosts locally, not a server product (see `crate::agent_sdk` for
-//! the full reasoning). The [`DispatchEngine`] trait boundary still
+//! caller hosts locally, not a server product (see the `crate::http` module
+//! docs for the full reasoning). The [`DispatchEngine`] trait boundary still
 //! insulates callers from this implementation detail.
 
 use std::future::Future;
@@ -25,7 +25,7 @@ use crate::http::stream::EventStream;
 /// Spawns `claude --output-format stream-json` subprocesses and streams
 /// NDJSON events. This is not a placeholder for an eventual HTTP/SSE
 /// replacement — no such Anthropic-hosted endpoint exists for the Claude
-/// Agent SDK to migrate to (see `crate::agent_sdk`).
+/// Agent SDK to migrate to (see the `crate::http` module docs).
 pub struct HttpEngine {
     /// Default model identifier (e.g., "claude-sonnet-4-20250514").
     default_model: String,
