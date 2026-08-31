@@ -383,7 +383,7 @@ async fn approval_required_approved_tool_executes() {
     // Poll until the approval gate blocks the turn, then approve.
     // WHY: The gate is registered before the turn task starts, but the pipeline
     // must run bootstrap/recall/execute before reaching `gate.await_decision`.
-    // We retry the approval POST until `routed=true` or give up.
+    // We retry the approval POST until it routes (200) or give up.
     let approve_body = {
         let mut result = None;
         for _ in 0..20u8 {
@@ -400,7 +400,7 @@ async fn approval_required_approved_tool_executes() {
                 .expect("send approval");
             if resp.status().as_u16() == 200 {
                 let body: serde_json::Value = resp.json().await.expect("approval json");
-                if body["routed"].as_bool() == Some(true) {
+                if body["decision"].as_str() == Some("approved") {
                     result = Some(body);
                     break;
                 }
@@ -410,8 +410,8 @@ async fn approval_required_approved_tool_executes() {
         result.expect("approval not routed within timeout")
     };
     assert_eq!(
-        approve_body["routed"], true,
-        "approval must report routed=true when session is active"
+        approve_body["decision"], "approved",
+        "a routed approval must echo the decision that was applied (#6822)"
     );
 
     // Wait for the SSE stream to complete (pipeline resumes after approval).
@@ -530,7 +530,7 @@ async fn approval_required_denied_tool_does_not_execute() {
             .expect("send denial");
         if resp.status().as_u16() == 200 {
             let body: serde_json::Value = resp.json().await.expect("denial json");
-            if body["routed"].as_bool() == Some(true) {
+            if body["decision"].as_str() == Some("denied") {
                 break;
             }
         }
