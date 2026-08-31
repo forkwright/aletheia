@@ -423,3 +423,32 @@ fn days_between_approx_calculates() {
         0
     );
 }
+
+/// Regression for #6815: the render loop only draws between `update()` calls,
+/// so `loading` must still be `true` when the `MemoryOpen` update returns --
+/// an inline awaited fetch would set and clear it inside one update, making
+/// the "Loading facts..." state architecturally unobservable.
+#[tokio::test]
+async fn memory_open_leaves_loading_observable_until_background_load_completes() {
+    let (url, _server) = failing_server().await;
+    let mut app = test_app();
+    point_app_at(&mut app, &url);
+
+    app.update(crate::msg::Msg::MemoryOpen).await;
+
+    assert!(
+        app.layout.memory.loading,
+        "loading must still be set when the MemoryOpen update returns, \
+         so the next draw can render the loading state"
+    );
+    assert_eq!(app.layout.view_stack.current(), &View::MemoryInspector);
+
+    // NOTE: two loads run in the background: facts and graph data.
+    drain_one_background(&mut app).await;
+    drain_one_background(&mut app).await;
+
+    assert!(
+        !app.layout.memory.loading,
+        "loading must clear once the background facts load reports back"
+    );
+}

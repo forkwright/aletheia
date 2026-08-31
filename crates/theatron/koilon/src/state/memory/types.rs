@@ -199,6 +199,20 @@ pub(crate) struct FactDetail {
     pub(crate) similar: Vec<SimilarFact>,
 }
 
+/// Payload of a completed background graph fetch (#6815).
+///
+/// Carried by `Msg::MemoryGraphLoaded` from the background task back into
+/// `update()`, where the graph analyses run against `&mut App`.
+#[derive(Debug)]
+pub(crate) struct MemoryGraphLoad {
+    pub(crate) entities: Vec<MemoryEntity>,
+    pub(crate) relationships: Vec<MemoryRelationship>,
+    pub(crate) timeline_events: Vec<MemoryTimelineEvent>,
+    /// First fetch error encountered, if any -- surfaced as a toast so a
+    /// failed load is distinguishable from an empty store.
+    pub(crate) error: Option<String>,
+}
+
 // WHY(#4870): explicit conversions from Skene's typed knowledge DTOs (which
 // deserialize correctly against Pylon's actual wire shape) into these local
 // view models, instead of deserializing the wire JSON directly into structs

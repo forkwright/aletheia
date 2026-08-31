@@ -183,3 +183,50 @@ pub(crate) fn test_agent(id: &str, name: &str) -> AgentState {
         tools: Vec::new(),
     }
 }
+
+/// Serves `response` verbatim to every connection until dropped.
+///
+/// Shared plumbing for the failing/canned test servers below; tests hold the
+/// returned [`tokio::task::JoinHandle`] so the listener lives for the test.
+async fn raw_response_server(response: &'static str) -> (String, tokio::task::JoinHandle<()>) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = match tokio::net::TcpListener::bind("127.0.0.1:0").await {
+        Ok(listener) => listener,
+        Err(e) => panic!("bind test server: {e}"),
+    };
+    let addr = match listener.local_addr() {
+        Ok(addr) => addr,
+        Err(e) => panic!("read test server address: {e}"),
+    };
+    let handle = tokio::spawn(async move {
+        loop {
+            let Ok((mut stream, _addr)) = listener.accept().await else {
+                break;
+            };
+            let _connection = tokio::spawn(async move {
+                let mut request = [0_u8; 1024];
+                if stream.read(&mut request).await.is_err() {
+                    return;
+                }
+                if let Err(e) = stream.write_all(response.as_bytes()).await {
+                    tracing::debug!("failed to write test response: {e}");
+                }
+            });
+        }
+    });
+    (format!("http://{addr}"), handle)
+}
+
+/// Local HTTP server that answers every request with `500 Internal Server Error`.
+pub(crate) async fn failing_server() -> (String, tokio::task::JoinHandle<()>) {
+    raw_response_server(concat!(
+        "HTTP/1.1 500 Internal Server Error\r\n",
+        "content-type: text/plain\r\n",
+        "content-length: 19\r\n",
+        "connection: close\r\n",
+        "\r\n",
+        "backend unavailable"
+    ))
+    .await
+}

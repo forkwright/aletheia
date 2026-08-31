@@ -325,7 +325,7 @@ pub(crate) async fn execute_command(app: &mut App) {
             execute_unarchive(app).await;
         }
         "memory" | "mem" | "m" => {
-            super::memory::handle_open(app).await;
+            super::memory::handle_open(app);
         }
         "settings" => {
             super::settings::handle_open(app).await;
