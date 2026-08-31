@@ -92,10 +92,6 @@ pub(crate) mod skills;
 pub mod spawn_svc;
 /// Real-time streaming events for the turn pipeline.
 pub mod stream;
-/// Task registry with progress streaming, cooperative cancellation, and GC.
-// WHY(#6750): same dead-code trap as `degraded_mode` above — `TaskRegistry` has
-// zero real callers anywhere in the workspace. Stays `pub`.
-pub mod tasks;
 /// Training data capture: append-only JSONL writer for conversation turns.
 ///
 /// Pipeline tap that observes the turn loop and writes qualifying turns
