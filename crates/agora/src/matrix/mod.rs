@@ -502,6 +502,7 @@ fn extract_message(
         sender: sender.to_owned(),
         sender_name: None,
         group_id: Some(room_id.to_owned()),
+        message_id: event.event_id.clone(),
         text: text.to_owned(),
         timestamp: event.origin_server_ts.unwrap_or_else(|| {
             tracing::warn!("Matrix event has no timestamp, defaulting to 0");
@@ -603,6 +604,7 @@ mod tests {
         assert_eq!(msg.channel, "matrix");
         assert_eq!(msg.sender, "@alice:example.org");
         assert_eq!(msg.group_id.as_deref(), Some("!room:example.org"));
+        assert_eq!(msg.message_id.as_deref(), Some("$event"));
         assert_eq!(msg.text, "hello");
         assert_eq!(msg.timestamp, 100);
         assert_eq!(

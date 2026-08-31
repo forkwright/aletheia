@@ -12,6 +12,7 @@ use tokio::task::{JoinHandle, JoinSet};
 use tracing::{Instrument, debug, info, warn};
 
 use agora::command::{self, AgentSnapshot, ChannelSnapshot, CommandContext};
+use agora::dedupe::{DEFAULT_DEDUPE_CAPACITY, DedupeFilter};
 use agora::registry::ChannelRegistry;
 use agora::router::{MessageRouter, reply_target};
 use agora::types::{InboundMessage, SendParams};
@@ -45,8 +46,24 @@ pub(crate) fn spawn_dispatcher(
             info!("dispatch loop started");
 
             let mut in_flight = JoinSet::new();
+            // WHY(#7102): providers redeliver on reconnects, retries, and
+            // cursor resets (at-least-once transports recover that way), and
+            // nothing downstream dedupes -- unchecked, a redelivery runs the
+            // same turn twice, billing a second model call and posting a
+            // duplicate reply. Consulted here so a duplicate is dropped
+            // before it becomes work, whatever shape the loop itself takes
+            // (#7103).
+            let mut dedupe = DedupeFilter::with_capacity(DEFAULT_DEDUPE_CAPACITY);
 
             while let Some(msg) = rx.recv().await {
+                if !dedupe.check_and_record(&msg) {
+                    debug!(
+                        channel = %msg.channel,
+                        sender = %redact_channel_id(&msg.sender),
+                        "dropping redelivered inbound message"
+                    );
+                    continue;
+                }
                 let router = Arc::clone(&router);
                 let nous_mgr = Arc::clone(&nous_manager);
                 let channels = Arc::clone(&channel_registry);
@@ -1017,11 +1034,50 @@ mod tests {
             sender: "+15550100".to_owned(),
             sender_name: Some("Alice".to_owned()),
             group_id: None,
+            message_id: None,
             text: text.to_owned(),
             timestamp,
             attachments: vec![],
             raw: None,
         }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn redelivered_message_runs_exactly_one_turn() {
+        let harness = make_dispatch_harness().await;
+        let (tx, rx) = mpsc::channel(8);
+        let (ready_tx, ready_rx) = watch::channel(true);
+
+        let dispatcher = spawn_dispatcher(
+            rx,
+            Arc::clone(&harness.router),
+            Arc::clone(&harness.nous_manager),
+            Arc::clone(&harness.channel_registry),
+            Arc::clone(&harness.session_store),
+            ready_rx,
+        );
+
+        let mut msg = command_message("hello there", 1_709_312_345_678);
+        msg.message_id = Some("provider-msg-1".to_owned());
+        tx.send(msg.clone()).await.expect("send original");
+        // WHY: identical provider message identity -- an at-least-once
+        // transport redelivering after a reconnect, not a new message.
+        tx.send(msg).await.expect("send redelivery");
+        drop(tx);
+
+        dispatcher.await.expect("dispatcher drains and exits");
+        drop(ready_tx);
+
+        {
+            let sent = harness.sent.lock().await;
+            assert_eq!(
+                sent.len(),
+                1,
+                "a redelivered inbound message must not run a second turn: {sent:?}"
+            );
+        }
+
+        shutdown_harness(harness).await;
     }
 
     async fn command_history(harness: &DispatchHarness) -> Vec<mneme::types::Message> {
@@ -1488,6 +1544,7 @@ mod tests {
             sender: "@alice:example.org".to_owned(),
             sender_name: Some("Alice".to_owned()),
             group_id: Some("!room:example.org".to_owned()),
+            message_id: None,
             text: "!ping".to_owned(),
             timestamp: 1_709_312_345_678,
             attachments: vec![],
@@ -1520,6 +1577,7 @@ mod tests {
             sender: "+15550100".to_owned(),
             sender_name: None,
             group_id: None,
+            message_id: None,
             text: "!ping".to_owned(),
             timestamp: 1_709_312_345_678,
             attachments: vec![],
