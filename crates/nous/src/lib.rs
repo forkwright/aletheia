@@ -76,10 +76,6 @@ pub mod recall;
 pub mod recipes;
 /// Shared compile-time regex construction for pattern tables.
 pub(crate) mod regex_util;
-/// Parallel research orchestrator: spawns domain researchers via the sub-agent system.
-// WHY(#6750): same dead-code trap as `degraded_mode` above — zero real callers,
-// only exercised by its own `#[cfg(test)]` block. Stays `pub`.
-pub mod research;
 /// Specialized role templates for ephemeral sub-agents.
 // WHY(#6750): same dead-code trap as `degraded_mode` above —
 // `ToolPolicy::Unrestricted`, `RoleTemplate::role`, and most of
