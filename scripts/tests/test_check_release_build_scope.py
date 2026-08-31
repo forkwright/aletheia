@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import yaml
@@ -289,6 +291,49 @@ class CargoConfigurationBoundary(unittest.TestCase):
             (root / ".cargo").symlink_to(linked, target_is_directory=True)
             with self.assertRaises(scope.ScopeCheckError):
                 scope.validate_cargo_configuration_boundary(root)
+
+    def test_live_and_dangling_cargo_directory_links_are_rejected(self) -> None:
+        targets = (
+            ("evil-cargo", False),
+            ("/project/evil-cargo", True),
+            ("missing-cargo", False),
+            ("/project/missing-cargo", True),
+        )
+        for target, cross_rebased in targets:
+            with self.subTest(target=target):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    if cross_rebased:
+                        host_target = root / "evil-cargo"
+                        host_target.mkdir()
+                        (host_target / "config.toml").write_text(
+                            '[alias]\nauditable = ["run", "--bin", "wrapper", "--"]\n',
+                            encoding="utf-8",
+                        )
+                    elif target == "evil-cargo":
+                        host_target = root / target
+                        host_target.mkdir()
+                        (host_target / "config").write_text('[build]\nrustc-wrapper = "./wrapper"\n', encoding="utf-8")
+                    (root / ".cargo").symlink_to(target, target_is_directory=True)
+                    if target == "/project/evil-cargo":
+                        _, directories, files = next(os.walk(root, followlinks=False))
+                        self.assertNotIn(".cargo", directories)
+                        self.assertIn(".cargo", files)
+                    with self.assertRaises(scope.ScopeCheckError):
+                        scope.validate_cargo_configuration_boundary(root)
+
+    def test_cargo_directory_type_change_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cargo_directory = root / ".cargo"
+            cargo_directory.mkdir()
+            with os.scandir(root) as entries:
+                entry = next(item for item in entries if item.name == ".cargo")
+            before = entry.stat(follow_symlinks=False)
+            changed = list(before)
+            changed[1] += 1
+            with mock.patch.object(scope.os, "lstat", return_value=os.stat_result(changed)):
+                self.assertEqual(scope.cargo_directory_risks(root, root, entry), [cargo_directory])
 
 
 if __name__ == "__main__":

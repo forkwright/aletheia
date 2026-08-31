@@ -16,6 +16,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -238,21 +239,47 @@ def validate_cross_inputs(root: Path) -> None:
 
 
 def cargo_configuration_paths(root: Path) -> list[Path]:
-    """Find every repository-controlled Cargo config and config-directory symlink."""
+    """Find Cargo configs without following live, dangling, or looping links."""
     configurations: list[Path] = []
-    for directory, directories, _ in os.walk(root, followlinks=False):
-        current = Path(directory)
-        cargo_directory = current / CARGO_DIRECTORY
-        if CARGO_DIRECTORY in directories and cargo_directory.is_symlink():
-            configurations.append(cargo_directory)
-        if current.name != CARGO_DIRECTORY:
-            continue
-        configurations.extend(
-            candidate
-            for name in CARGO_CONFIG_NAMES
-            if (candidate := current / name).exists() or candidate.is_symlink()
-        )
+    pending = [root]
+    while pending:
+        directory = pending.pop()
+        try:
+            with os.scandir(directory) as entries:
+                children = list(entries)
+        except OSError as error:
+            raise ScopeCheckError(f"cannot scan candidate Cargo path {directory}: {error}") from error
+        for entry in children:
+            path = Path(entry.path)
+            if entry.name == CARGO_DIRECTORY:
+                configurations.extend(cargo_directory_risks(root, directory, entry))
+            elif entry.is_dir(follow_symlinks=False):
+                pending.append(path)
     return configurations
+
+
+def cargo_directory_risks(root: Path, parent: Path, entry: os.DirEntry[str]) -> list[Path]:
+    """Allow only the checked-out root directory while rejecting every other type."""
+    path = Path(entry.path)
+    if parent != root or not entry.is_dir(follow_symlinks=False):
+        return [path]
+    try:
+        before = entry.stat(follow_symlinks=False)
+        with os.scandir(path) as entries:
+            names = {child.name for child in entries}
+        after = os.lstat(path)
+    except OSError:
+        return [path]
+    if cargo_directory_changed(before, after):
+        return [path]
+    return [path / name for name in CARGO_CONFIG_NAMES if name in names]
+
+
+def cargo_directory_changed(before: os.stat_result, after: os.stat_result) -> bool:
+    """Fail closed if a config directory changes while the immutable tree is checked."""
+    before_identity = (before.st_dev, before.st_ino, stat.S_IFMT(before.st_mode))
+    after_identity = (after.st_dev, after.st_ino, stat.S_IFMT(after.st_mode))
+    return before_identity != after_identity
 
 
 def validate_cargo_configuration_boundary(root: Path) -> None:
