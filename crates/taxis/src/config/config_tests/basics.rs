@@ -138,8 +138,13 @@ fn defaults_are_sensible() {
         "embedding model should be unset by default"
     );
     assert_eq!(
-        config.embedding.dimension, 384,
-        "default embedding dimension should be 384"
+        config.embedding.dimension, None,
+        "default embedding dimension should be unset so the provider default applies"
+    );
+    assert_eq!(
+        config.embedding.effective_dimension(),
+        384,
+        "default candle provider should resolve to 384"
     );
     assert!(
         config.maintenance.trace_rotation.enabled,
@@ -221,8 +226,8 @@ fn serde_roundtrip() {
         "embedding provider should survive serde roundtrip"
     );
     assert_eq!(
-        back.embedding.dimension, 384,
-        "embedding dimension should survive serde roundtrip"
+        back.embedding.dimension, None,
+        "unset embedding dimension should survive serde roundtrip as unset"
     );
 }
 
@@ -918,7 +923,8 @@ fn embedding_override_from_json() {
         "embedding model should be parsed from json"
     );
     assert_eq!(
-        config.embedding.dimension, 512,
+        config.embedding.dimension,
+        Some(512),
         "embedding dimension override should be parsed from json"
     );
     assert_eq!(
@@ -953,6 +959,95 @@ fn embedding_env_overlay_alias_keys_deserialize() {
         config.embedding.api_key_env,
         Some("ALETHEIA_EMBEDDING_KEY".to_owned()),
         "lowercase apikeyenv alias should parse for env overlay"
+    );
+}
+
+#[test]
+fn embedding_openai_compat_without_dimension_defaults_to_1024() {
+    let json = r#"{
+        "embedding": {
+            "provider": "openai-compat",
+            "baseUrl": "http://127.0.0.1:5005/v1"
+        }
+    }"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
+    assert_eq!(
+        config.embedding.dimension, None,
+        "unset dimension should stay unset on the parsed config"
+    );
+    assert_eq!(
+        config.embedding.effective_dimension(),
+        1024,
+        "openai-compat without an explicit dimension should resolve to the \
+         1024-dim served embedder, not candle's 384"
+    );
+}
+
+#[test]
+fn embedding_voyage_without_dimension_defaults_to_1024() {
+    let json = r#"{
+        "embedding": {
+            "provider": "voyage"
+        }
+    }"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
+    assert_eq!(
+        config.embedding.effective_dimension(),
+        1024,
+        "voyage without an explicit dimension should resolve to the crate's 1024 fallback"
+    );
+}
+
+#[test]
+fn embedding_candle_without_dimension_defaults_to_384() {
+    let json = r#"{
+        "embedding": {
+            "provider": "candle"
+        }
+    }"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
+    assert_eq!(
+        config.embedding.effective_dimension(),
+        384,
+        "candle without an explicit dimension should keep bge-small-en-v1.5's 384"
+    );
+}
+
+#[test]
+fn embedding_explicit_dimension_overrides_provider_default() {
+    let json = r#"{
+        "embedding": {
+            "provider": "openai-compat",
+            "baseUrl": "http://127.0.0.1:5005/v1",
+            "dimension": 512
+        }
+    }"#;
+    let config: AletheiaConfig = serde_json::from_str(json).expect("parse embedding");
+    assert_eq!(
+        config.embedding.dimension,
+        Some(512),
+        "an explicit dimension should be preserved as configured"
+    );
+    assert_eq!(
+        config.embedding.effective_dimension(),
+        512,
+        "an explicit dimension should win over the provider default"
+    );
+}
+
+#[test]
+fn embedding_rejects_unknown_fields() {
+    let json = r#"{
+        "embedding": {
+            "provider": "candle",
+            "dimensions": 384
+        }
+    }"#;
+    let err = serde_json::from_str::<AletheiaConfig>(json)
+        .expect_err("unknown embedding field should fail deserialization");
+    assert!(
+        err.to_string().contains("unknown field"),
+        "deny_unknown_fields should survive the provider-aware dimension default: {err}"
     );
 }
 
