@@ -166,7 +166,7 @@ def reconciliation(
     tag_refs: dict[str, bool],
     now: dt.datetime,
     grace_hours: int,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str]]:
     tags = {
         row.get("name"): row
         for row in tag_rows
@@ -174,7 +174,8 @@ def reconciliation(
     }
     by_tag, duplicate_tags = release_snapshot(releases)
     failures: list[str] = []
-    ambiguities: list[str] = []
+    evidence_unknown: list[str] = []
+    warnings: list[str] = []
     for tag in sorted(tags):
         if not in_contract(tag):
             continue
@@ -184,7 +185,7 @@ def reconciliation(
         if failure is not None:
             failures.append(failure)
         if ambiguity is not None:
-            ambiguities.append(ambiguity)
+            evidence_unknown.append(ambiguity)
     for tag in sorted(duplicate_tags - set(tags)):
         if in_contract(tag):
             failures.append(
@@ -201,7 +202,7 @@ def reconciliation(
             continue
         published_at = release.get("published_at")
         if not isinstance(published_at, str):
-            ambiguities.append(
+            evidence_unknown.append(
                 f"{tag}: readable published release has no usable publication timestamp "
                 "for its currently missing tag ref"
             )
@@ -211,11 +212,11 @@ def reconciliation(
                 "past publication grace"
             )
         else:
-            ambiguities.append(
+            warnings.append(
                 f"{tag}: readable published release has a currently missing tag ref "
                 "inside publication grace"
             )
-    return failures, ambiguities
+    return failures, evidence_unknown, warnings
 
 
 def violations(
@@ -226,7 +227,7 @@ def violations(
         row.get("name") for row in tag_rows if isinstance(row.get("name"), str)
     }
     tag_refs = {tag: True for tag in orphan_published_tags(tags, releases)}
-    failures, _ = reconciliation(tag_rows, releases, tag_refs, now, grace_hours)
+    failures, _, _ = reconciliation(tag_rows, releases, tag_refs, now, grace_hours)
     return failures
 
 
@@ -250,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
         tag: tag_ref_exists(repo, tag)
         for tag in orphan_published_tags(tag_names, releases)
     }
-    problems, ambiguities = reconciliation(
+    problems, evidence_unknown, warnings = reconciliation(
         tag_rows, releases, tag_refs, dt.datetime.now(dt.timezone.utc), args.grace_hours
     )
     if problems:
@@ -259,11 +260,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"::error title=release reconciliation::{problems[0]}")
         return 1
     checked = sum(in_contract(str(row.get("name", ""))) for row in tag_rows)
-    if ambiguities:
-        for ambiguity in ambiguities:
+    if evidence_unknown:
+        for ambiguity in evidence_unknown:
             print(f"release-health: evidence unknown: {ambiguity}", file=sys.stderr)
-        print(f"::error title=release reconciliation evidence unknown::{ambiguities[0]}")
+        print(f"::error title=release reconciliation evidence unknown::{evidence_unknown[0]}")
         return 1
+    for warning in warnings:
+        print(f"release-health: warning: {warning}")
     print(f"release-health: {checked} in-contract tags have verified readable inventories")
     return 0
 

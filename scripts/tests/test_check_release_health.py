@@ -63,8 +63,9 @@ class HealthTests(unittest.TestCase):
         self.assertIn("zero assets", health.violations(rows(self.tag), [release(self.tag)], NOW, 12)[0])
 
     def test_unreadable_release_is_explicitly_ambiguous(self) -> None:
-        failures, ambiguities = health.reconciliation(rows(self.tag), [], {}, NOW, 12)
+        failures, ambiguities, warnings = health.reconciliation(rows(self.tag), [], {}, NOW, 12)
         self.assertEqual(failures, [])
+        self.assertEqual(warnings, [])
         self.assertIn("no readable published release", ambiguities[0])
         self.assertIn("indistinguishable", ambiguities[0])
 
@@ -94,16 +95,18 @@ class HealthTests(unittest.TestCase):
 
     def test_draft_with_no_release_activity_clock_is_ambiguous(self) -> None:
         unreadable_clock = release(self.tag, draft=True, updated_at=None)
-        failures, ambiguities = health.reconciliation(
+        failures, ambiguities, warnings = health.reconciliation(
             rows(self.tag), [unreadable_clock], {}, NOW, 12
         )
         self.assertEqual(failures, [])
+        self.assertEqual(warnings, [])
         self.assertIn("no usable release-update timestamp", ambiguities[0])
 
     def test_old_commit_cannot_make_an_unreadable_release_stale(self) -> None:
         old_commit = [{"name": self.tag, "commit": {"date": OLD}}]
-        failures, ambiguities = health.reconciliation(old_commit, [], {}, NOW, 12)
+        failures, ambiguities, warnings = health.reconciliation(old_commit, [], {}, NOW, 12)
         self.assertEqual(failures, [])
+        self.assertEqual(warnings, [])
         self.assertNotIn("past grace", ambiguities[0])
 
     def test_incomplete_inventory_fails_and_rerun_is_idempotent(self) -> None:
@@ -117,25 +120,44 @@ class HealthTests(unittest.TestCase):
         self.assertIn("multiple readable release objects", health.violations(rows(self.tag), duplicate, NOW, 12)[0])
 
     def test_missing_tag_for_old_published_release_fails_after_publication_grace(self) -> None:
-        failures, ambiguities = health.reconciliation(
+        failures, ambiguities, warnings = health.reconciliation(
             [], [release(self.tag)], {self.tag: False}, NOW, 12
         )
         self.assertIn("currently missing tag ref", failures[0])
         self.assertEqual(ambiguities, [])
+        self.assertEqual(warnings, [])
 
     def test_missing_tag_for_fresh_published_release_is_within_grace(self) -> None:
         fresh = release(self.tag, published_at=FRESH)
-        failures, ambiguities = health.reconciliation(
+        failures, ambiguities, warnings = health.reconciliation(
             [], [fresh], {self.tag: False}, NOW, 12
         )
         self.assertEqual(failures, [])
-        self.assertIn("inside publication grace", ambiguities[0])
+        self.assertEqual(ambiguities, [])
+        self.assertIn("inside publication grace", warnings[0])
 
     def test_tag_ref_appearing_after_paged_snapshot_is_not_called_deleted(self) -> None:
-        failures, ambiguities = health.reconciliation(
+        failures, ambiguities, warnings = health.reconciliation(
             [], [release(self.tag)], {self.tag: True}, NOW, 12
         )
-        self.assertEqual((failures, ambiguities), ([], []))
+        self.assertEqual((failures, ambiguities, warnings), ([], [], []))
+
+    def test_fresh_missing_tag_ref_exits_zero_with_a_warning(self) -> None:
+        original_fetch = health.fetch_paged
+        original_ref = health.tag_ref_exists
+        output = io.StringIO()
+        now = dt.datetime.now(dt.timezone.utc)
+        fresh = release(self.tag, published_at=now.isoformat().replace("+00:00", "Z"))
+        try:
+            health.fetch_paged = lambda _repo, resource: [] if resource == "tags" else [fresh]
+            health.tag_ref_exists = lambda _repo, _tag: False
+            with redirect_stdout(output):
+                self.assertEqual(health.main([]), 0)
+        finally:
+            health.fetch_paged = original_fetch
+            health.tag_ref_exists = original_ref
+        self.assertIn("warning", output.getvalue())
+        self.assertIn("inside publication grace", output.getvalue())
 
     def test_non_404_tag_ref_error_is_explicit(self) -> None:
         with mock.patch.object(health.subprocess, "run") as run:
