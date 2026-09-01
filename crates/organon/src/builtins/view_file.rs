@@ -97,29 +97,40 @@ fn read_file_bounded(file: &mut File, max_bytes: u64) -> std::io::Result<Vec<u8>
 
 /// Open the target exactly once, relative to a pinned allowed-root handle.
 ///
-/// Linux `openat2(RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS)` makes containment
-/// and opening one kernel operation. A concurrent replacement can therefore
-/// neither redirect an intermediate component outside the root nor swap in a
-/// symlink between authorization and open. Other platforms fail closed until
-/// they have an equivalent handle-relative primitive.
+/// Linux first resolves the configured root into an `O_PATH` handle with
+/// `openat2(RESOLVE_NO_SYMLINKS)`, then resolves the target beneath that
+/// handle. No checked root pathname is re-opened: a concurrent root or
+/// intermediate-directory substitution cannot redirect the target lookup.
+/// Other platforms fail closed until they have an equivalent handle-relative
+/// primitive.
+#[cfg(target_os = "linux")]
+fn open_allowed_root(root: &Path) -> std::io::Result<rustix::fd::OwnedFd> {
+    use rustix::fs::{ABS, Mode, OFlags, ResolveFlags};
+
+    // Resolve and pin the configured authority in one syscall. `root` is an
+    // absolute, canonical runtime-configured path; do not canonicalize it here
+    // and then re-open the resulting name. That two-step lookup lets a root or
+    // one of its parents be replaced between authorization and acquisition.
+    Ok(rustix::fs::openat2(
+        ABS,
+        root,
+        OFlags::PATH | OFlags::DIRECTORY | OFlags::CLOEXEC,
+        Mode::empty(),
+        ResolveFlags::NO_MAGICLINKS | ResolveFlags::NO_SYMLINKS,
+    )?)
+}
+
 #[cfg(target_os = "linux")]
 fn open_validated_file(path: &Path, ctx: &ToolContext) -> std::io::Result<File> {
     use rustix::fs::{Mode, OFlags, ResolveFlags};
 
     let mut saw_candidate_root = false;
     for root in &ctx.allowed_roots {
-        let Ok(root) = std::fs::canonicalize(root) else {
-            continue;
-        };
-        let Ok(relative) = path.strip_prefix(&root) else {
+        let Ok(relative) = path.strip_prefix(root) else {
             continue;
         };
         saw_candidate_root = true;
-        let root_fd = match rustix::fs::open(
-            &root,
-            OFlags::PATH | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
-            Mode::empty(),
-        ) {
+        let root_fd = match open_allowed_root(root) {
             Ok(fd) => fd,
             Err(_) => continue,
         };
@@ -538,6 +549,26 @@ mod tests {
         assert!(
             err.to_string().contains("outside allowed roots"),
             "expected err.to_string().contains(\"outside allowed roots\") to be true"
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "hermetic race regression controls temporary filesystem identities directly"
+    )]
+    fn allowed_root_handle_refuses_symlinked_authority() {
+        use std::os::unix::fs::symlink;
+
+        let root_parent = tempfile::tempdir().expect("root parent tmpdir");
+        let target = tempfile::tempdir().expect("symlink target tmpdir");
+        let root_link = root_parent.path().join("allowed-root");
+        symlink(target.path(), &root_link).expect("create allowed-root symlink");
+
+        assert!(
+            open_allowed_root(&root_link).is_err(),
+            "the authority acquisition must reject root symlinks rather than pinning their target"
         );
     }
 
