@@ -374,7 +374,7 @@ fn recover_stream_length(input: ParserInput) -> Option<(ParserInput, ParserInput
 }
 
 fn stream<'a>(
-    input: ParserInput<'a>, reader: &Reader, already_seen: &mut HashSet<ObjectId>, recover_length: bool,
+    input: ParserInput<'a>, object_id: ObjectId, reader: &Reader, already_seen: &mut HashSet<ObjectId>, recover_length: bool,
     recovery_bound: Option<usize>,
 ) -> NomResult<'a, Object> {
     let (i, dict) = terminated(dictionary, (space, tag(&b"stream"[..]), space0, eol)).parse(input)?;
@@ -394,7 +394,12 @@ fn stream<'a>(
             return Err(nom::Err::Failure(NomError::from_error_kind(i, ErrorKind::LengthValue)));
         };
         match terminated(take(length), pair(opt(eol), tag(&b"endstream"[..]))).parse(i) {
-            Ok((remaining, data)) => Ok((remaining, Object::Stream(Stream::new(dict, data.to_vec())))),
+            Ok((remaining, data)) => {
+                reader
+                    .reserve_retained_bytes(object_id, crate::load_options::RetainedAllocation::Stream, data.len())
+                    .map_err(|_| nom::Err::Failure(NomError::from_error_kind(i, ErrorKind::TooLarge)))?;
+                Ok((remaining, Object::Stream(Stream::new(dict, data.to_vec()))))
+            }
             Err(_) if recover_length && !reader.strict => {
                 // The scan must not cross into a neighbouring indirect object,
                 // so it stops at the xref-derived bound; parsing itself stays
@@ -409,6 +414,9 @@ fn stream<'a>(
                     "Stream Length is {length}, but the unambiguous object boundary gives {} bytes; using the recovered length.",
                     data.len()
                 );
+                reader
+                    .reserve_retained_bytes(object_id, crate::load_options::RetainedAllocation::Stream, data.len())
+                    .map_err(|_| nom::Err::Failure(NomError::from_error_kind(i, ErrorKind::TooLarge)))?;
                 Ok((remaining, Object::Stream(Stream::new(dict, data.to_vec()))))
             }
             Err(_) => Err(nom::Err::Failure(NomError::from_error_kind(i, ErrorKind::LengthValue))),
@@ -466,12 +474,12 @@ pub fn direct_object(input: ParserInput) -> Option<Object> {
 }
 
 fn object<'a>(
-    input: ParserInput<'a>, reader: &Reader, already_seen: &mut HashSet<ObjectId>, recover_stream_length: bool,
+    input: ParserInput<'a>, object_id: ObjectId, reader: &Reader, already_seen: &mut HashSet<ObjectId>, recover_stream_length: bool,
     recovery_bound: Option<usize>,
 ) -> NomResult<'a, Object> {
     terminated(
         alt((
-            |input| stream(input, reader, already_seen, recover_stream_length, recovery_bound),
+            |input| stream(input, object_id, reader, already_seen, recover_stream_length, recovery_bound),
             _direct_objects(crate::reader::MAX_NESTING_DEPTH),
         )),
         space,
@@ -516,11 +524,11 @@ fn _indirect_object<'a>(
 
     let object_offset = input.len() - i.len();
     let (_, mut object) = terminated(
-        |i: ParserInput<'a>| object(i, reader, already_seen, recover_stream_length, recovery_bound),
+        |i: ParserInput<'a>| object(i, object_id, reader, already_seen, recover_stream_length, recovery_bound),
         (space, opt(tag(&b"endobj"[..])), space),
     )
     .parse(i)
-    .map_err(|_| Error::IndirectObject { offset })?;
+    .map_err(|_| reader.retained_bytes_limit_error().unwrap_or(Error::IndirectObject { offset }))?;
 
     offset_stream(&mut object, object_offset);
 

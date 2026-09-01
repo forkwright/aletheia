@@ -21,7 +21,7 @@ use tokio::pin;
 use crate::common_data_structures;
 use crate::encryption::{self, EncryptionState};
 use crate::error::{ParseError, XrefError};
-use crate::load_options::{DecompressionBudget, FilterFunc, LoadOptions};
+use crate::load_options::{DecompressionBudget, FilterFunc, LoadOptions, RetainedAllocation, RetainedBytesBudget};
 use crate::object_stream::ObjectStream;
 use crate::parser;
 use crate::xref::{Xref, XrefEntry, XrefType};
@@ -87,6 +87,8 @@ impl Document {
             strict: options.strict,
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
+            retained_bytes_budget: options.retained_bytes_budget,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: options.max_objects,
             reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
@@ -110,6 +112,8 @@ impl Document {
             strict: options.strict,
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
+            retained_bytes_budget: options.retained_bytes_budget,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: options.max_objects,
             reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
@@ -164,6 +168,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -183,6 +189,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -205,6 +213,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -252,6 +262,8 @@ impl Document {
             strict: options.strict,
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
+            retained_bytes_budget: options.retained_bytes_budget,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: options.max_objects,
             reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
@@ -275,6 +287,8 @@ impl Document {
             strict: options.strict,
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
+            retained_bytes_budget: options.retained_bytes_budget,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: options.max_objects,
             reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
@@ -325,6 +339,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -344,6 +360,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -368,6 +386,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -389,6 +409,8 @@ impl TryInto<Document> for &[u8] {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -426,6 +448,8 @@ impl IncrementalDocument {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -473,6 +497,8 @@ impl IncrementalDocument {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -501,6 +527,8 @@ impl TryInto<IncrementalDocument> for &[u8] {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            retained_bytes_budget: None,
+            retained_bytes_exceeded: Mutex::new(None),
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -526,6 +554,12 @@ pub struct Reader<'a> {
     /// Aggregate budget shared with a caller that supplied one in
     /// [`LoadOptions`]. Eager xref/object-stream decoders reserve from it.
     pub decompression_budget: Option<DecompressionBudget>,
+    /// Aggregate admission for source-byte copies retained as ordinary streams
+    /// or encrypted-object staging during this load.
+    pub retained_bytes_budget: Option<RetainedBytesBudget>,
+    /// Records the first admission failure that nom's parser error type cannot
+    /// carry directly, so `indirect_object` can preserve the typed refusal.
+    retained_bytes_exceeded: Mutex<Option<usize>>,
     /// Maximum unique indirect-object IDs retained across the merged xref and
     /// all xref-authorized object-stream members.
     pub max_objects: Option<usize>,
@@ -556,6 +590,33 @@ impl Reader<'_> {
             self.reserve_decompression()?;
         }
         Ok(())
+    }
+
+    /// Admit one source slice before copying it into an owned stream or raw
+    /// encrypted-object buffer. The object/allocation key makes a repeated
+    /// lookup idempotent without granting a second xref ID free storage.
+    pub(crate) fn reserve_retained_bytes(
+        &self, object_id: ObjectId, allocation: RetainedAllocation, bytes: usize,
+    ) -> Result<()> {
+        let result = match &self.retained_bytes_budget {
+            Some(budget) => budget.reserve(object_id, allocation, bytes),
+            None => Ok(()),
+        };
+        if let Err(Error::RetainedBytesLimitExceeded { limit }) = &result {
+            if let Ok(mut exceeded) = self.retained_bytes_exceeded.lock() {
+                exceeded.get_or_insert(*limit);
+            }
+        }
+        result
+    }
+
+    /// Recover the typed retained-byte refusal after nom has stopped parsing.
+    pub(crate) fn retained_bytes_limit_error(&self) -> Option<Error> {
+        self.retained_bytes_exceeded
+            .lock()
+            .ok()
+            .and_then(|exceeded| *exceeded)
+            .map(|limit| Error::RetainedBytesLimitExceeded { limit })
     }
 
     /// Refuse an xref before its entries are copied into document-owned maps.
@@ -1262,11 +1323,10 @@ impl Reader<'_> {
 
     fn read_stream_content(&mut self, object_id: ObjectId) -> Result<()> {
         let length = self.get_stream_length(object_id)?;
-        let stream = self
+        let start = self
             .document
-            .get_object_mut(object_id)
-            .and_then(Object::as_stream_mut)?;
-        let start = stream
+            .get_object(object_id)
+            .and_then(Object::as_stream)?
             .start_position
             .ok_or(Error::InvalidStream("missing start position".to_string()))?;
 
@@ -1283,6 +1343,11 @@ impl Reader<'_> {
             return Err(Error::InvalidStream("stream extends after document end.".to_string()));
         }
 
+        self.reserve_retained_bytes(object_id, RetainedAllocation::Stream, length)?;
+        let stream = self
+            .document
+            .get_object_mut(object_id)
+            .and_then(Object::as_stream_mut)?;
         stream.set_content(self.buffer[start..end].to_vec());
         Ok(())
     }
@@ -1505,6 +1570,11 @@ impl Reader<'_> {
         if end_pos > slice.len() {
             return Err(Error::Parse(ParseError::InvalidXref));
         }
+
+        // Admit before copying the object into encrypted-load staging. This
+        // path otherwise has the same overlapping-xref amplification shape as
+        // normal direct streams.
+        self.reserve_retained_bytes((obj_num, obj_gen), RetainedAllocation::RawObject, end_pos)?;
 
         // Extract raw object bytes (including header and trailer)
         let raw_bytes = slice[0..end_pos].to_vec();

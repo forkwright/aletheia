@@ -1,6 +1,7 @@
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use crate::{DecompressError, Object, Result};
+use crate::{DecompressError, Error, Object, ObjectId, Result};
 
 /// Shared, fail-closed decompression budget for one untrusted PDF operation.
 ///
@@ -46,6 +47,71 @@ impl DecompressionBudget {
     }
 
     /// Bytes still available for bounded decoding.
+    #[must_use]
+    pub fn remaining(&self) -> usize {
+        self.0.lock().map_or(0, |state| state.remaining)
+    }
+}
+
+/// Shared, fail-closed admission budget for bytes copied from a PDF into
+/// document-owned storage during one load operation.
+///
+/// This is distinct from [`DecompressionBudget`]: direct, unfiltered streams
+/// still require `Vec` copies while the document loads. Reservations are keyed
+/// by indirect-object ID and allocation class, so a repeated lookup of the
+/// same object does not consume the allowance twice, while distinct xref IDs
+/// pointing into overlapping source bytes cannot multiply retained storage.
+#[derive(Clone, Debug)]
+pub struct RetainedBytesBudget(Arc<Mutex<RetainedBytesState>>);
+
+#[derive(Debug)]
+struct RetainedBytesState {
+    limit: usize,
+    remaining: usize,
+    admitted: HashSet<(ObjectId, RetainedAllocation)>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub(crate) enum RetainedAllocation {
+    RawObject,
+    Stream,
+}
+
+impl RetainedBytesBudget {
+    /// Create a budget shared by all source-byte copies made while loading one
+    /// document.
+    #[must_use]
+    pub fn new(limit: usize) -> Self {
+        Self(Arc::new(Mutex::new(RetainedBytesState {
+            limit,
+            remaining: limit,
+            admitted: HashSet::new(),
+        })))
+    }
+
+    /// Reserve one retained allocation before its `Vec` copy occurs.
+    ///
+    /// A duplicate `(object_id, allocation)` is already accounted for by a
+    /// live or previously retained object and succeeds without a second charge.
+    pub(crate) fn reserve(
+        &self, object_id: ObjectId, allocation: RetainedAllocation, bytes: usize,
+    ) -> Result<()> {
+        let mut state = self
+            .0
+            .lock()
+            .map_err(|_| Error::RetainedBytesLimitExceeded { limit: 0 })?;
+        if state.admitted.contains(&(object_id, allocation)) {
+            return Ok(());
+        }
+        if bytes > state.remaining {
+            return Err(Error::RetainedBytesLimitExceeded { limit: state.limit });
+        }
+        state.remaining -= bytes;
+        state.admitted.insert((object_id, allocation));
+        Ok(())
+    }
+
+    /// Bytes still available for source-byte copies retained by the loader.
     #[must_use]
     pub fn remaining(&self) -> usize {
         self.0.lock().map_or(0, |state| state.remaining)
@@ -111,6 +177,13 @@ pub struct LoadOptions {
     /// also accepts a [`crate::ToUnicodeMappingBudget`] for aggregate CMap
     /// admission.
     pub decompression_budget: Option<DecompressionBudget>,
+    /// Shared aggregate budget for source bytes copied into retained ordinary
+    /// streams and encrypted-object staging during loading.
+    ///
+    /// Unlike [`LoadOptions::decompression_budget`], this covers direct
+    /// `/Length` streams before their raw bytes are copied. Set it when a
+    /// bounded input may contain hostile or overlapping xref offsets.
+    pub retained_bytes_budget: Option<RetainedBytesBudget>,
     /// Maximum unique indirect object IDs admitted across the merged
     /// cross-reference graph and every object-stream member.
     ///
@@ -132,6 +205,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("strict", &self.strict)
             .field("max_decompressed_size", &self.max_decompressed_size)
             .field("decompression_budget", &self.decompression_budget)
+            .field("retained_bytes_budget", &self.retained_bytes_budget)
             .field("max_objects", &self.max_objects)
             .field("reject_encrypted", &self.reject_encrypted)
             .finish()

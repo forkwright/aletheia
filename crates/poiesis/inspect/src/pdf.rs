@@ -9,7 +9,9 @@ use std::cmp::min;
 use std::io::Read;
 use std::path::Path;
 
-use lopdf::{DecompressionBudget, Document, LoadOptions, ToUnicodeMappingBudget};
+use lopdf::{
+    DecompressionBudget, Document, LoadOptions, RetainedBytesBudget, ToUnicodeMappingBudget,
+};
 
 use crate::error::Result;
 use crate::{InspectError, PdfSummary};
@@ -28,6 +30,11 @@ const DEFAULT_MAX_OBJECTS: usize = 16_384;
 const DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES: usize = 256 * 1024;
 const DEFAULT_MAX_DECOMPRESSED_PAGE_BYTES: usize = 256 * 1024;
 const DEFAULT_MAX_DECOMPRESSED_TOTAL_BYTES: usize = DEFAULT_MAX_INPUT_BYTES;
+// Loading keeps the caller-admitted source bytes and may retain one complete
+// encrypted-object staging copy plus direct stream copies. Two input lengths
+// preserve ordinary encrypted PDFs while blocking many xref IDs that overlap
+// a single source payload.
+const RETAINED_LOAD_BYTES_PER_INPUT_BYTE: usize = 2;
 const DEFAULT_MAX_EXTRACTED_TEXT_BYTES: usize = 8 * 1024 * 1024;
 const DEFAULT_MAX_TOUNICODE_MAPPINGS: usize = 65_536;
 // lopdf's bounded ToUnicode admission allows at most four UTF-16 units per
@@ -172,12 +179,20 @@ fn load_document(
     }
 
     let budget = DecompressionBudget::new(limits.max_decompressed_total_bytes);
+    let retained_bytes_limit = limits
+        .max_input_bytes
+        .checked_mul(RETAINED_LOAD_BYTES_PER_INPUT_BYTE)
+        .ok_or(InspectError::PdfLimitExceeded {
+            limit: "retained stream bytes",
+        })?;
+    let retained_bytes_budget = RetainedBytesBudget::new(retained_bytes_limit);
     let document = Document::load_mem_with_options(
         bytes,
         LoadOptions {
             strict: true,
             max_decompressed_size: Some(limits.max_decompressed_stream_bytes),
             decompression_budget: Some(budget.clone()),
+            retained_bytes_budget: Some(retained_bytes_budget),
             max_objects: Some(limits.max_objects),
             // This check happens once the trailer is parsed, before lopdf's
             // empty-password authentication path or any decryption work.
@@ -274,6 +289,9 @@ fn map_lopdf_error(error: &lopdf::Error) -> InspectError {
         lopdf::Error::EncryptedDocument => InspectError::EncryptedPdf,
         lopdf::Error::ObjectLimitExceeded { .. } => InspectError::PdfLimitExceeded {
             limit: "object count",
+        },
+        lopdf::Error::RetainedBytesLimitExceeded { .. } => InspectError::PdfLimitExceeded {
+            limit: "retained stream bytes",
         },
         lopdf::Error::ToUnicodeCMap(_) => InspectError::PdfLimitExceeded {
             limit: "ToUnicode mappings",

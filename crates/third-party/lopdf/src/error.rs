@@ -54,6 +54,10 @@ pub enum Error {
     /// The unique indirect-object admission ceiling was exhausted.
     #[error("PDF object count exceeds the configured limit of {limit}")]
     ObjectLimitExceeded { limit: usize },
+    /// The aggregate source-byte copies retained while loading exceeded the
+    /// caller-provided admission budget.
+    #[error("PDF retained bytes exceed the configured limit of {limit}")]
+    RetainedBytesLimitExceeded { limit: usize },
     /// Byte offset in stream or file is invalid.
     #[error("invalid byte offset")]
     InvalidOffset(usize),

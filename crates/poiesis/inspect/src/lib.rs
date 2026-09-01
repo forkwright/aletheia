@@ -331,6 +331,86 @@ mod tests {
         bytes
     }
 
+    /// One physical stream payload contains several correctly xref-addressed
+    /// object headers. Each nested `/Length` reaches the same final
+    /// `endstream`, so an unbounded loader would retain an overlapping source
+    /// slice for every distinct object ID.
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn overlapping_direct_stream_pdf(nested_streams: u32) -> Vec<u8> {
+        assert!(nested_streams >= 2, "fixture needs overlapping stream IDs");
+
+        let mut payload = Vec::new();
+        let mut lengths = Vec::new();
+        for id in 4..4 + nested_streams {
+            let header = format!("{id} 0 obj\n<< /Length 0000000000 >>\nstream\n");
+            let length_start = payload
+                .len()
+                .checked_add(header.find("0000000000").expect("length placeholder"))
+                .expect("fixture offset");
+            let content_start = payload
+                .len()
+                .checked_add(header.len())
+                .expect("fixture offset");
+            payload.extend_from_slice(header.as_bytes());
+            lengths.push((id, length_start, content_start));
+        }
+        payload.extend(std::iter::repeat_n(b'x', 4096));
+        for (id, length_start, content_start) in lengths {
+            let length = payload
+                .len()
+                .checked_sub(content_start)
+                .expect("fixture length");
+            let encoded = format!("{length:010}");
+            payload[length_start..length_start + encoded.len()].copy_from_slice(encoded.as_bytes());
+            assert!(id > 3, "nested IDs follow the enclosing stream");
+        }
+
+        let mut bytes = b"%PDF-1.5\n".to_vec();
+        let mut offsets = std::collections::BTreeMap::new();
+        for (id, body) in [
+            (1, "<< /Type /Catalog /Pages 2 0 R >>"),
+            (2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        ] {
+            offsets.insert(id, bytes.len());
+            bytes.extend_from_slice(format!("{id} 0 obj\n{body}\nendobj\n").as_bytes());
+        }
+        offsets.insert(3, bytes.len());
+        let outer = format!("3 0 obj\n<< /Length {} >>\nstream\n", payload.len());
+        bytes.extend_from_slice(outer.as_bytes());
+        let payload_start = bytes.len();
+        bytes.extend_from_slice(&payload);
+        bytes.extend_from_slice(b"\nendstream\nendobj\n");
+
+        for id in 4..4 + nested_streams {
+            let marker = format!("{id} 0 obj\n");
+            let relative = payload
+                .windows(marker.len())
+                .position(|window| window == marker.as_bytes())
+                .expect("nested object marker");
+            offsets.insert(
+                id,
+                payload_start.checked_add(relative).expect("fixture offset"),
+            );
+        }
+
+        let max_id = 3 + nested_streams;
+        let xref_offset = bytes.len();
+        bytes.extend_from_slice(format!("xref\n0 {}\n", max_id + 1).as_bytes());
+        bytes.extend_from_slice(b"0000000000 65535 f \n");
+        for id in 1..=max_id {
+            let offset = offsets.get(&id).expect("fixture xref offset");
+            bytes.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        bytes.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+                max_id + 1
+            )
+            .as_bytes(),
+        );
+        bytes
+    }
+
     fn hidden_object_stream_pdf(stream_count: u32) -> Vec<u8> {
         let mut objects = vec![
             (1, "<< /Type /Catalog /Pages 2 0 R >>".to_owned()),
@@ -518,6 +598,25 @@ end"#;
         );
         let extracted = extract_pdf_text(&bytes).expect("extract ordinary PDF");
         assert!(extracted.contains("Hello, bounded PDF!"));
+    }
+
+    #[test]
+    fn raw_stream_budget_rejects_overlapping_xref_streams_before_retention() {
+        let hostile = overlapping_direct_stream_pdf(8);
+        let limits = PdfInspectLimits::for_input_bytes(hostile.len());
+        let error = inspect_pdf_with_limits(&hostile, &limits)
+            .expect_err("overlapping xref streams must exhaust retained-byte admission");
+        assert!(matches!(
+            error,
+            InspectError::PdfLimitExceeded {
+                limit: "retained stream bytes"
+            }
+        ));
+
+        let valid = text_pdf("ordinary direct stream", 1);
+        let valid_limits = PdfInspectLimits::for_input_bytes(valid.len());
+        inspect_pdf_with_limits(&valid, &valid_limits)
+            .expect("ordinary direct-stream PDF remains accepted");
     }
 
     #[test]
