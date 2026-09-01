@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import datetime as dt
 import importlib.util
+import io
 import sys
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
@@ -65,6 +67,21 @@ class HealthTests(unittest.TestCase):
         self.assertEqual(failures, [])
         self.assertIn("no readable published release", ambiguities[0])
         self.assertIn("indistinguishable", ambiguities[0])
+
+    def test_unreadable_release_exits_nonzero_as_evidence_unknown(self) -> None:
+        original_fetch = health.fetch_paged
+        output = io.StringIO()
+        errors = io.StringIO()
+        try:
+            health.fetch_paged = lambda _repo, resource: (
+                rows(self.tag) if resource == "tags" else []
+            )
+            with redirect_stdout(output), redirect_stderr(errors):
+                self.assertEqual(health.main([]), 1)
+        finally:
+            health.fetch_paged = original_fetch
+        self.assertIn("release reconciliation evidence unknown", output.getvalue())
+        self.assertIn("no readable published release", errors.getvalue())
 
     def test_orphaned_release_is_not_called_a_deleted_tag(self) -> None:
         self.assertEqual(health.violations([], [release(self.tag)], NOW, 12), [])

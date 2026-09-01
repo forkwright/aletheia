@@ -4,7 +4,7 @@
 The Releases API response available to this read-only workflow is not proof
 that no draft exists: GitHub may hide drafts from callers without push access.
 Likewise, the Tags API has no tag-creation time. An absent readable release is
-therefore reported as an ambiguity, not a failure or an age/deletion claim.
+therefore an explicit evidence-unknown failure, not an age/deletion claim.
 Grace applies only to release activity timestamps, never target commit dates.
 """
 
@@ -259,8 +259,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"::error title=release reconciliation::{problems[0]}")
         return 1
     checked = sum(in_contract(str(row.get("name", ""))) for row in tag_rows)
-    for ambiguity in ambiguities:
-        print(f"release-health: ambiguous: {ambiguity}")
+    if ambiguities:
+        for ambiguity in ambiguities:
+            print(f"release-health: evidence unknown: {ambiguity}", file=sys.stderr)
+        print(f"::error title=release reconciliation evidence unknown::{ambiguities[0]}")
+        return 1
     print(f"release-health: {checked} in-contract tags have verified readable inventories")
     return 0
 

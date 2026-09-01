@@ -3,7 +3,8 @@
 # zero-asset publication, an incomplete published inventory, or a missing tag
 # ref for an old readable publication red without creating duplicate issues or
 # mutating a release. A read-only token cannot distinguish an unreadable draft
-# from an absent/deleted release, so it reports that state as ambiguous.
+# from an absent/deleted release, so it fails as evidence-unknown instead of
+# inventing an exact cause.
 name: Release health
 
 on:
