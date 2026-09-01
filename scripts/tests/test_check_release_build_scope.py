@@ -122,6 +122,23 @@ class ReleaseBuildValidation(unittest.TestCase):
         candidate = workflow()
         candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["permissions"] = {"contents": "write"}
         self.assert_rejected(candidate)
+        for command in (
+            "true # scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
+            "bash -c 'scripts/check-release-outcome.py --attempts 6 --retry-seconds 10'",
+            "scripts/check-release-outcome.py --retry-seconds 10 --attempts 6",
+            "scripts/check-release-outcome.py --attempts 6",
+            "scripts/check-release-outcome.py --attempts 6 --retry-seconds 10 && true",
+            "python3 scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
+        ):
+            with self.subTest(command=command):
+                candidate = workflow()
+                report = next(
+                    step
+                    for step in candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["steps"]
+                    if step.get("name") == "Report the release outcome"
+                )
+                report["run"] = command
+                self.assert_rejected(candidate)
         candidate = workflow()
         candidate["jobs"]["alternate-artifact-producer"] = {
             "runs-on": "ubuntu-latest",

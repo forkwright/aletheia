@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Read-only reconciliation for tagged releases that did not publish exactly."""
+"""Read-only reconciliation for release tags and readable release snapshots.
+
+The Releases API response available to this read-only workflow is not proof
+that no draft exists: GitHub may hide drafts from callers without push access.
+Likewise, the Tags API has no tag-creation time. An absent readable release is
+therefore a red, explicitly ambiguous state, never an age or deletion claim.
+Grace applies only to a readable release's own API timestamp.
+"""
 
 from __future__ import annotations
 
@@ -52,24 +59,6 @@ def fetch_paged(repo: str, resource: str) -> list[dict]:
     raise HealthError(f"{resource} exceeds the {MAX_PAGES * 100}-row audit bound")
 
 
-def tag_commit_date(repo: str, row: dict) -> str:
-    name = row.get("name")
-    commit = row.get("commit")
-    sha = commit.get("sha") if isinstance(commit, dict) else None
-    if not isinstance(name, str) or not isinstance(sha, str):
-        raise HealthError("tags API returned an invalid tag identity")
-    payload = gh_json(f"repos/{repo}/commits/{sha}")
-    if not isinstance(payload, dict):
-        raise HealthError(f"commit API returned an invalid response for {name}")
-    try:
-        stamp = payload["commit"]["committer"]["date"]
-    except (KeyError, TypeError):
-        raise HealthError(f"commit API returned no date for {name}") from None
-    if not isinstance(stamp, str):
-        raise HealthError(f"commit API returned an invalid date for {name}")
-    return stamp
-
-
 def version(tag: str) -> tuple[int, int, int] | None:
     match = TAG_RE.fullmatch(tag)
     if match is None:
@@ -94,23 +83,39 @@ def older_than(stamp: str | None, now: dt.datetime, grace_hours: int) -> bool:
 
 def tag_violation(
     tag: str,
-    row: dict,
     releases_by_tag: dict[str, dict],
+    duplicate_tags: set[str],
     now: dt.datetime,
     grace_hours: int,
 ) -> str | None:
+    if tag in duplicate_tags:
+        return f"{tag}: multiple readable release objects make the snapshot ambiguous"
     release = releases_by_tag.get(tag)
     if release is None:
-        commit = row.get("commit")
-        stamp = commit.get("date") if isinstance(commit, dict) else None
-        if older_than(stamp, now, grace_hours):
-            return f"{tag}: no release object (never created or deleted) past grace"
-        return None
+        return (
+            f"{tag}: no readable published release; a draft, missing release, "
+            "or visibility restriction is indistinguishable"
+        )
     problem = release_inventory_problem(release, tag)
     stale = older_than(
         release.get("published_at") or release.get("created_at"), now, grace_hours
     )
     return f"{tag}: {problem} past grace" if problem and stale else None
+
+
+def release_snapshot(releases: list[dict]) -> tuple[dict[str, dict], set[str]]:
+    """Index one API snapshot without choosing an order-dependent duplicate."""
+    by_tag: dict[str, dict] = {}
+    duplicate_tags: set[str] = set()
+    for release in releases:
+        tag = release.get("tag_name")
+        if not isinstance(tag, str):
+            continue
+        if tag in by_tag:
+            duplicate_tags.add(tag)
+        else:
+            by_tag[tag] = release
+    return by_tag, duplicate_tags
 
 
 def violations(
@@ -121,22 +126,15 @@ def violations(
         for row in tag_rows
         if isinstance(row.get("name"), str)
     }
-    by_tag = {
-        release.get("tag_name"): release
-        for release in releases
-        if isinstance(release.get("tag_name"), str)
-    }
+    by_tag, duplicate_tags = release_snapshot(releases)
     failures = [
         problem
         for tag, row in sorted(tags.items())
         if in_contract(tag)
-        if (problem := tag_violation(tag, row, by_tag, now, grace_hours)) is not None
+        if (
+            problem := tag_violation(tag, by_tag, duplicate_tags, now, grace_hours)
+        ) is not None
     ]
-    failures.extend(
-        f"{tag}: release object exists but its tag is absent (tag deleted)"
-        for tag in sorted(by_tag)
-        if in_contract(tag) and tag not in tags
-    )
     return failures
 
 
@@ -153,11 +151,6 @@ def main(argv: list[str] | None = None) -> int:
     repo = os.environ.get("GH_REPO", "forkwright/aletheia")
     tag_rows = fetch_paged(repo, "tags")
     releases = fetch_paged(repo, "releases")
-    release_tags = {release.get("tag_name") for release in releases}
-    for row in tag_rows:
-        name = row.get("name")
-        if isinstance(name, str) and in_contract(name) and name not in release_tags:
-            row["commit"] = {"date": tag_commit_date(repo, row)}
     problems = violations(
         tag_rows, releases, dt.datetime.now(dt.timezone.utc), args.grace_hours
     )

@@ -45,7 +45,9 @@ class OutcomeTests(unittest.TestCase):
         self.assertIn("zero assets", outcome.asset_problem(release(), self.tag))
 
     def test_missing_release_is_not_an_api_error_or_draft(self) -> None:
-        self.assertIn("never created or deleted", outcome.asset_problem(None, self.tag))
+        problem = outcome.asset_problem(None, self.tag)
+        self.assertIn("no readable published release", problem)
+        self.assertIn("indistinguishable", problem)
 
     def test_incomplete_inventory_fails_exactly(self) -> None:
         result = outcome.asset_problem(release(names=["one"]), self.tag)
@@ -70,6 +72,19 @@ class OutcomeTests(unittest.TestCase):
         try:
             outcome.gh_json = lambda *args: (_ for _ in ()).throw(outcome.OutcomeError("denied"))
             with self.assertRaisesRegex(outcome.OutcomeError, "denied"):
+                outcome.fetch_release("owner/repo", self.tag)
+        finally:
+            outcome.gh_json = original
+
+    def test_duplicate_readable_releases_are_not_order_selected(self) -> None:
+        original = outcome.gh_json
+        first = release()
+        second = release()
+        first["tag_name"] = self.tag
+        second["tag_name"] = self.tag
+        try:
+            outcome.gh_json = lambda *args: [first, second]
+            with self.assertRaisesRegex(outcome.OutcomeError, "multiple readable release objects"):
                 outcome.fetch_release("owner/repo", self.tag)
         finally:
             outcome.gh_json = original

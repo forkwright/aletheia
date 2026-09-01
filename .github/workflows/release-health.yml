@@ -1,7 +1,9 @@
 # WHY(#6999): a tag can outlive a missed or wholesale-cancelled release run.
-# This bounded, read-only reconciliation makes a stale draft, a missing
-# release, a zero-asset publication, or any incomplete published inventory
-# red without creating duplicate issues or mutating a release.
+# This bounded, read-only reconciliation makes a tag with no readable
+# published release, a stale readable draft, a zero-asset publication, or an
+# incomplete published inventory red without creating duplicate issues or
+# mutating a release. A read-only token cannot distinguish an unreadable
+# draft from an absent release, and the tags API has no creation timestamp.
 name: Release health
 
 on:

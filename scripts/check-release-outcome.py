@@ -48,22 +48,30 @@ def fetch_run_jobs(repo: str, run_id: str) -> list[dict]:
 
 
 def fetch_release(repo: str, tag: str) -> dict | None:
-    """Find a release including drafts; the per-tag endpoint hides drafts."""
+    """Find one readable release; never choose between duplicate identities."""
+    matches: list[dict] = []
     for page in range(1, MAX_PAGES + 1):
         payload = gh_json(f"repos/{repo}/releases?per_page=100&page={page}")
         if not isinstance(payload, list):
             raise OutcomeError("GitHub API returned an invalid releases response")
         for release in payload:
             if isinstance(release, dict) and release.get("tag_name") == tag:
-                return release
+                matches.append(release)
         if len(payload) < 100:
-            return None
+            if len(matches) > 1:
+                raise OutcomeError(
+                    f"{tag} has multiple readable release objects; outcome is ambiguous"
+                )
+            return matches[0] if matches else None
     raise OutcomeError(f"release list exceeds {MAX_PAGES * 100} entries")
 
 
 def asset_problem(release: dict | None, tag: str) -> str | None:
     if release is None:
-        return f"{tag}: no release object (never created or deleted)"
+        return (
+            f"{tag}: no readable published release; a draft, missing release, "
+            "or visibility restriction is indistinguishable"
+        )
     problem = release_inventory_problem(release, tag)
     return f"{tag}: {problem}" if problem else None
 

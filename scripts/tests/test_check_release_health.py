@@ -25,7 +25,7 @@ FRESH = "2026-08-30T23:30:00Z"
 
 
 def rows(tag: str) -> list[dict]:
-    return [{"name": tag, "commit": {"date": OLD}}]
+    return [{"name": tag}]
 
 
 def release(tag: str, *, draft: bool = False, names: list[str] | None = None, when: str = OLD) -> dict:
@@ -43,22 +43,31 @@ class HealthTests(unittest.TestCase):
         self.assertIn("draft", health.violations(rows(self.tag), [release(self.tag, draft=True)], NOW, 12)[0])
         self.assertIn("zero assets", health.violations(rows(self.tag), [release(self.tag)], NOW, 12)[0])
 
-    def test_missing_release_and_deleted_tag_are_distinct(self) -> None:
-        self.assertIn("never created or deleted", health.violations(rows(self.tag), [], NOW, 12)[0])
-        self.assertIn("tag deleted", health.violations([], [release(self.tag)], NOW, 12)[0])
+    def test_unreadable_release_is_explicitly_ambiguous(self) -> None:
+        problem = health.violations(rows(self.tag), [], NOW, 12)[0]
+        self.assertIn("no readable published release", problem)
+        self.assertIn("indistinguishable", problem)
+
+    def test_orphaned_release_is_not_called_a_deleted_tag(self) -> None:
+        self.assertEqual(health.violations([], [release(self.tag)], NOW, 12), [])
 
     def test_fresh_draft_is_inside_grace(self) -> None:
         self.assertEqual(health.violations(rows(self.tag), [release(self.tag, draft=True, when=FRESH)], NOW, 12), [])
 
-    def test_fresh_missing_release_is_inside_grace(self) -> None:
-        fresh_rows = [{"name": self.tag, "commit": {"date": FRESH}}]
-        self.assertEqual(health.violations(fresh_rows, [], NOW, 12), [])
+    def test_old_commit_cannot_make_an_unreadable_release_stale(self) -> None:
+        old_commit = [{"name": self.tag, "commit": {"date": OLD}}]
+        problem = health.violations(old_commit, [], NOW, 12)[0]
+        self.assertNotIn("past grace", problem)
 
     def test_incomplete_inventory_fails_and_rerun_is_idempotent(self) -> None:
         sample = [release(self.tag, names=["one"])]
         first = health.violations(rows(self.tag), sample, NOW, 12)
         self.assertEqual(first, health.violations(rows(self.tag), sample, NOW, 12))
         self.assertIn("not exact", first[0])
+
+    def test_duplicate_releases_are_rejected_deterministically(self) -> None:
+        duplicate = [release(self.tag), release(self.tag, names=["one"])]
+        self.assertIn("multiple readable release objects", health.violations(rows(self.tag), duplicate, NOW, 12)[0])
 
     def test_api_error_is_explicit(self) -> None:
         original = health.gh_json

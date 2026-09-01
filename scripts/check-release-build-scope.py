@@ -171,6 +171,7 @@ TRUSTED_SIBLING_JOB_DIGESTS = {
     "publish-release": "8b83b7d5a7e03d0d6c4eca6f83a139455177aad868eaf156f2a1db6e19fb710f",
 }
 OUTCOME_OBSERVER_JOB_ID = "release-outcome"
+OUTCOME_COMMAND = "scripts/check-release-outcome.py --attempts 6 --retry-seconds 10"
 TRUSTED_RELEASE_JOB_IDS = frozenset(
     (*TRUSTED_SIBLING_JOB_DIGESTS, "build", OUTCOME_OBSERVER_JOB_ID)
 )
@@ -257,9 +258,13 @@ def validate_outcome_observer(jobs: dict[str, Any]) -> None:
     steps = outcome.get("steps")
     if not isinstance(steps, list) or len(steps) != 2:
         raise ScopeCheckError("release outcome observer steps differ from the trusted shape")
-    rendered = json.dumps(outcome, sort_keys=True)
-    if "scripts/check-release-outcome.py --attempts 6 --retry-seconds 10" not in rendered:
+    report = next(
+        (step for step in steps if step.get("name") == "Report the release outcome"),
+        None,
+    )
+    if not isinstance(report, dict) or report.get("run") != OUTCOME_COMMAND:
         raise ScopeCheckError("release outcome observer does not run the outcome checker")
+    rendered = json.dumps(outcome, sort_keys=True)
     prohibited = ("cargo build", "cargo auditable", "cross build", "gh release upload")
     if any(token in rendered for token in prohibited):
         raise ScopeCheckError("release outcome observer may not build or mutate release artifacts")

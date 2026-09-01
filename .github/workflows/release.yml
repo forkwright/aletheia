@@ -744,9 +744,10 @@ jobs:
   release-outcome:
     # WHY(#6999): terminal publication is observable only when a release is
     # public with the exact staged inventory. This job is deliberately after
-    # every producer and `always()`: a failed upstream leaves the draft (or
-    # no release) visible, names the failed job(s), and makes that exact tag
-    # red instead of silently ending the run as an unpublished release.
+    # every producer and `always()`: a failed upstream leaves no readable
+    # published release, names the failed job(s), and makes that exact tag
+    # red instead of silently ending the run as an unpublished release. The
+    # read-only token does not claim whether that state is draft or absent.
     needs:
       [
         release-identity,

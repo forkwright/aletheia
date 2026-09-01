@@ -30,6 +30,7 @@ EXACT_RELEASE_REF = "${{ inputs.release_sha || github.sha }}"
 GITHUB_REPOSITORY = "${{ github.repository }}"
 GH_RELEASE_UPLOAD = "gh release upload"
 GH_RELEASE_EDIT = "gh release edit"
+OUTCOME_COMMAND = "scripts/check-release-outcome.py --attempts 6 --retry-seconds 10"
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -342,14 +343,10 @@ def _check_release(workflow: dict) -> list[str]:
     outcome_permissions = outcome.get("permissions", {})
     if outcome_permissions != {"actions": "read", "contents": "read"}:
         errors.append(f"{RELEASE}: release outcome permissions are not read-only")
-    outcome_text = _step_text(outcome)
-    for required in (
-        "scripts/check-release-outcome.py",
-        "--attempts 6 --retry-seconds 10",
-    ):
-        if required not in outcome_text:
-            errors.append(f"{RELEASE}: release outcome lacks {required}")
     outcome_step = _find_step(outcome, "Report the release outcome")
+    outcome_run = outcome_step.get("run") if isinstance(outcome_step, dict) else None
+    if outcome_run != OUTCOME_COMMAND:
+        errors.append(f"{RELEASE}: release outcome command is not exact")
     outcome_env = outcome_step.get("env", {}) if isinstance(outcome_step, dict) else {}
     if not isinstance(outcome_env, dict) or outcome_env.get("RUN_ID") != "${{ github.run_id }}":
         errors.append(f"{RELEASE}: release outcome run identity is not exact")
