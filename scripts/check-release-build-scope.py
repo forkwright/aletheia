@@ -139,6 +139,12 @@ EXPECTED_WORKFLOW_ENV = {
 EXPECTED_BUILD_ENV = {"RUSTUP_TOOLCHAIN": RUST_TOOLCHAIN_CHANNEL}
 CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
 RUST_TOOLCHAIN_ACTION = "dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7"
+DOWNLOAD_ARTIFACT_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+TRUSTED_PUBLICATION_DOWNLOADS = (
+    ("release-aletheia-linux-x86_64", "release-assets"),
+    ("release-aletheia-macos-aarch64", "release-assets"),
+    ("release-workspace-sboms", "release-assets"),
+)
 EXPECTED_ACTIONS = frozenset(
     {
         CHECKOUT_ACTION,
@@ -162,7 +168,7 @@ TRUSTED_SIBLING_JOB_DIGESTS = {
     "feature-check": "ac4acd4e28b26aafe83ba446d19e7e2a61b3478e905277cfbdb6472eb3e24b2d",
     "no-default-recipes": "0226eaf504e06b429bd759b469d965690fca80e228ad164ba48b16b3bfadef27",
     "sbom": "98e5e93cb024969a21fb84259ef050c53bb4c2c8c0e0afdc1d1a02e07ac60166",
-    "publish-release": "bdcda3dc95c863d58064a00854740e7844417cd69e782f7b5d306ada7f20cf89",
+    "publish-release": "8b83b7d5a7e03d0d6c4eca6f83a139455177aad868eaf156f2a1db6e19fb710f",
 }
 TRUSTED_RELEASE_JOB_IDS = frozenset((*TRUSTED_SIBLING_JOB_DIGESTS, "build"))
 ARTIFACT_FLOW_JOB_IDS = frozenset({"build", "sbom", "publish-release"})
@@ -249,6 +255,26 @@ def validate_release_job_graph(workflow: dict[str, Any]) -> None:
             raise ScopeCheckError(f"release workflow sibling job {name!r} has invalid steps")
         if step_digest(job) != digest:
             raise ScopeCheckError(f"release workflow sibling job {name!r} differs from its trusted graph")
+
+
+def validate_publication_intake(workflow: dict[str, Any]) -> None:
+    """Require publish-release to intake only the three vetted staged artifacts."""
+    publish = workflow["jobs"]["publish-release"]
+    steps = publish.get("steps") if isinstance(publish, dict) else None
+    if not isinstance(steps, list):
+        raise ScopeCheckError("publish-release steps are not a list")
+    downloads = [step for step in steps if step.get("uses") == DOWNLOAD_ARTIFACT_ACTION]
+    actual: list[tuple[str, str]] = []
+    for step in downloads:
+        inputs = step.get("with")
+        if not isinstance(inputs, dict) or set(inputs) != {"name", "path"}:
+            raise ScopeCheckError("publish-release artifact intake must use only explicit name and path")
+        name, path = inputs["name"], inputs["path"]
+        if not isinstance(name, str) or not isinstance(path, str):
+            raise ScopeCheckError("publish-release artifact intake names and paths must be strings")
+        actual.append((name, path))
+    if tuple(actual) != TRUSTED_PUBLICATION_DOWNLOADS:
+        raise ScopeCheckError(f"publish-release artifact intake differs from the trusted set: {actual!r}")
 
 
 def validate_matrix(workflow: dict[str, Any]) -> None:
@@ -567,6 +593,7 @@ def validate_build_step(step: dict[str, Any], index: int, expected: ExpectedBuil
 def validated_release_builds(workflow: dict[str, Any]) -> list[ValidatedBuild]:
     """Validate every jobs.build run step against its intentionally narrow grammar."""
     validate_release_job_graph(workflow)
+    validate_publication_intake(workflow)
     validate_matrix(workflow)
     steps = build_steps(workflow)
     validate_execution_envelope(workflow, steps)

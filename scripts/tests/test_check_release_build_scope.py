@@ -221,6 +221,70 @@ class ReleaseBuildValidation(unittest.TestCase):
                 self.assert_rejected(candidate)
 
 
+class PublicationIntake(unittest.TestCase):
+    def downloads(self, candidate: dict) -> list[dict]:
+        return [
+            step for step in candidate["jobs"]["publish-release"]["steps"]
+            if step.get("uses") == scope.DOWNLOAD_ARTIFACT_ACTION
+        ]
+
+    def assert_intake_rejected(self, candidate: dict) -> None:
+        with self.assertRaises(scope.ScopeCheckError):
+            scope.validate_publication_intake(candidate)
+
+    def test_exact_canonical_artifacts_are_the_only_publication_intake(self) -> None:
+        candidate = workflow()
+        self.assertEqual(
+            [
+                (step["with"]["name"], step["with"]["path"])
+                for step in self.downloads(candidate)
+            ],
+            list(scope.TRUSTED_PUBLICATION_DOWNLOADS),
+        )
+        scope.validate_publication_intake(candidate)
+
+    def test_rejects_patterns_duplicates_omissions_extras_and_merge_inputs(self) -> None:
+        mutations = (
+            lambda candidate: self.downloads(candidate)[0].update(
+                {"with": {"pattern": "release-*", "path": "release-assets", "merge-multiple": True}}
+            ),
+            lambda candidate: self.downloads(candidate)[1]["with"].update(
+                {"name": self.downloads(candidate)[0]["with"]["name"]}
+            ),
+            lambda candidate: candidate["jobs"]["publish-release"]["steps"].remove(
+                self.downloads(candidate)[-1]
+            ),
+            lambda candidate: candidate["jobs"]["publish-release"]["steps"].append(
+                {"uses": scope.DOWNLOAD_ARTIFACT_ACTION, "with": {"name": "release-shaped-diagnostic", "path": "release-assets"}}
+            ),
+            lambda candidate: self.downloads(candidate)[0]["with"].update({"merge-multiple": True}),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                candidate = workflow()
+                mutate(candidate)
+                self.assert_intake_rejected(candidate)
+
+    def test_reusable_callee_upload_cannot_enter_explicit_publication_intake(self) -> None:
+        security = yaml.safe_load((scope.REPO_ROOT / ".github/workflows/security.yml").read_text())
+        security["jobs"]["cargo-deny"]["steps"].append(
+            {
+                "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+                "with": {"name": "release-shaped-diagnostic", "path": "diagnostic.txt"},
+            }
+        )
+        self.assertEqual(
+            security["jobs"]["cargo-deny"]["steps"][-1]["with"]["name"],
+            "release-shaped-diagnostic",
+        )
+        candidate = workflow()
+        self.assertNotIn(
+            "release-shaped-diagnostic",
+            [step["with"]["name"] for step in self.downloads(candidate)],
+        )
+        scope.validate_publication_intake(candidate)
+
+
 class ResolutionParsing(unittest.TestCase):
     def parse(self, output: str, expected: dict[Path, scope.ExpectedLocalPackage] | None = None) -> dict[str, set[str]]:
         return scope.resolved_member_features(output, expected or expected_packages())
