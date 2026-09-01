@@ -241,16 +241,8 @@ def build_steps(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     return steps
 
 
-def validate_release_job_graph(workflow: dict[str, Any]) -> None:
-    """Close artifact production and publishing to the trusted complete job graph."""
-    jobs = workflow.get("jobs")
-    if not isinstance(jobs, dict):
-        raise ScopeCheckError("release workflow jobs is not a mapping")
-    missing_artifact_jobs = sorted(ARTIFACT_FLOW_JOB_IDS - set(jobs))
-    if missing_artifact_jobs:
-        raise ScopeCheckError(f"release workflow is missing artifact-flow jobs: {missing_artifact_jobs}")
-    if set(jobs) != TRUSTED_RELEASE_JOB_IDS:
-        raise ScopeCheckError(f"release workflow job IDs differ from the trusted set: {sorted(jobs)!r}")
+def validate_outcome_observer(jobs: dict[str, Any]) -> None:
+    """Permit one terminal read-only observer without widening artifact flow."""
     outcome = jobs[OUTCOME_OBSERVER_JOB_ID]
     if not isinstance(outcome, dict):
         raise ScopeCheckError("release outcome observer is not a mapping")
@@ -268,8 +260,22 @@ def validate_release_job_graph(workflow: dict[str, Any]) -> None:
     rendered = json.dumps(outcome, sort_keys=True)
     if "scripts/check-release-outcome.py --attempts 6 --retry-seconds 10" not in rendered:
         raise ScopeCheckError("release outcome observer does not run the outcome checker")
-    if any(token in rendered for token in ("cargo build", "cargo auditable", "cross build", "gh release upload")):
+    prohibited = ("cargo build", "cargo auditable", "cross build", "gh release upload")
+    if any(token in rendered for token in prohibited):
         raise ScopeCheckError("release outcome observer may not build or mutate release artifacts")
+
+
+def validate_release_job_graph(workflow: dict[str, Any]) -> None:
+    """Close artifact production and publishing to the trusted complete job graph."""
+    jobs = workflow.get("jobs")
+    if not isinstance(jobs, dict):
+        raise ScopeCheckError("release workflow jobs is not a mapping")
+    missing_artifact_jobs = sorted(ARTIFACT_FLOW_JOB_IDS - set(jobs))
+    if missing_artifact_jobs:
+        raise ScopeCheckError(f"release workflow is missing artifact-flow jobs: {missing_artifact_jobs}")
+    if set(jobs) != TRUSTED_RELEASE_JOB_IDS:
+        raise ScopeCheckError(f"release workflow job IDs differ from the trusted set: {sorted(jobs)!r}")
+    validate_outcome_observer(jobs)
     for name, digest in TRUSTED_SIBLING_JOB_DIGESTS.items():
         job = jobs[name]
         steps = job.get("steps", []) if isinstance(job, dict) else None

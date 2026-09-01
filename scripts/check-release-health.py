@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import importlib.util
 import json
 import os
 import re
 import subprocess
 import sys
 from pathlib import Path
+
+from scripts.release_asset_inventory import release_inventory_problem
 
 MAX_PAGES = 20
 DEFAULT_GRACE_HOURS = 12
@@ -24,19 +25,6 @@ CONTRACT_BASELINE = (0, 39, 0)
 
 class HealthError(Exception):
     """The audit could not safely classify a release state."""
-
-
-def _asset_checker() -> object:
-    path = Path(__file__).with_name("check-release-assets.py")
-    spec = importlib.util.spec_from_file_location("check_release_assets", path)
-    if spec is None or spec.loader is None:
-        raise HealthError(f"cannot load exact asset contract from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-ASSETS = _asset_checker()
 
 
 def gh_json(*args: str) -> object:
@@ -71,6 +59,8 @@ def tag_commit_date(repo: str, row: dict) -> str:
     if not isinstance(name, str) or not isinstance(sha, str):
         raise HealthError("tags API returned an invalid tag identity")
     payload = gh_json(f"repos/{repo}/commits/{sha}")
+    if not isinstance(payload, dict):
+        raise HealthError(f"commit API returned an invalid response for {name}")
     try:
         stamp = payload["commit"]["committer"]["date"]
     except (KeyError, TypeError):
@@ -102,43 +92,25 @@ def older_than(stamp: str | None, now: dt.datetime, grace_hours: int) -> bool:
     return now - then > dt.timedelta(hours=grace_hours)
 
 
-def asset_names(assets: list[object]) -> set[str] | None:
-    names: list[str] = []
-    for asset in assets:
-        if not isinstance(asset, dict) or not isinstance(asset.get("name"), str):
-            return None
-        names.append(asset["name"])
-    return set(names) if len(set(names)) == len(names) else None
-
-
-def asset_problem(release: dict, tag: str) -> str | None:
-    assets = release.get("assets")
-    if not isinstance(assets, list):
-        return "release API returned an invalid asset inventory"
-    draft = release.get("draft")
-    if not isinstance(draft, bool):
-        return "release API returned an invalid draft state"
-    if draft:
-        return f"still draft with {len(assets)} asset(s)"
-    names = asset_names(assets)
-    if names is None:
-        return "release API returned an invalid asset inventory"
-    if not names:
-        return "published with zero assets"
-    try:
-        expected = ASSETS.expected_assets(tag)
-    except ValueError as exc:
-        return f"cannot evaluate the exact asset contract ({exc})"
-    missing = sorted(expected - names)
-    unexpected = sorted(names - expected)
-    if missing or unexpected:
-        pieces = []
-        if missing:
-            pieces.append(f"missing {', '.join(missing)}")
-        if unexpected:
-            pieces.append(f"unexpected {', '.join(unexpected)}")
-        return f"published inventory is not exact ({'; '.join(pieces)})"
-    return None
+def tag_violation(
+    tag: str,
+    row: dict,
+    releases_by_tag: dict[str, dict],
+    now: dt.datetime,
+    grace_hours: int,
+) -> str | None:
+    release = releases_by_tag.get(tag)
+    if release is None:
+        commit = row.get("commit")
+        stamp = commit.get("date") if isinstance(commit, dict) else None
+        if older_than(stamp, now, grace_hours):
+            return f"{tag}: no release object (never created or deleted) past grace"
+        return None
+    problem = release_inventory_problem(release, tag)
+    stale = older_than(
+        release.get("published_at") or release.get("created_at"), now, grace_hours
+    )
+    return f"{tag}: {problem} past grace" if problem and stale else None
 
 
 def violations(
@@ -154,27 +126,17 @@ def violations(
         for release in releases
         if isinstance(release.get("tag_name"), str)
     }
-    failures: list[str] = []
-    for tag, row in sorted(tags.items()):
-        if not in_contract(tag):
-            continue
-        release = by_tag.get(tag)
-        if release is None:
-            commit = row.get("commit")
-            stamp = commit.get("date") if isinstance(commit, dict) else None
-            if older_than(stamp, now, grace_hours):
-                failures.append(
-                    f"{tag}: no release object (never created or deleted) past grace"
-                )
-            continue
-        problem = asset_problem(release, tag)
-        if problem and older_than(
-            release.get("published_at") or release.get("created_at"), now, grace_hours
-        ):
-            failures.append(f"{tag}: {problem} past grace")
-    for tag in sorted(by_tag):
-        if in_contract(tag) and tag not in tags:
-            failures.append(f"{tag}: release object exists but its tag is absent (tag deleted)")
+    failures = [
+        problem
+        for tag, row in sorted(tags.items())
+        if in_contract(tag)
+        if (problem := tag_violation(tag, row, by_tag, now, grace_hours)) is not None
+    ]
+    failures.extend(
+        f"{tag}: release object exists but its tag is absent (tag deleted)"
+        for tag in sorted(by_tag)
+        if in_contract(tag) and tag not in tags
+    )
     return failures
 
 

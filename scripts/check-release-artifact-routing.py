@@ -27,6 +27,9 @@ CONSUMER_DOCS = (
     Path("docs/RELEASING.md"),
 )
 EXACT_RELEASE_REF = "${{ inputs.release_sha || github.sha }}"
+GITHUB_REPOSITORY = "${{ github.repository }}"
+GH_RELEASE_UPLOAD = "gh release upload"
+GH_RELEASE_EDIT = "gh release edit"
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -164,7 +167,7 @@ def _check_release_please(workflow: dict) -> list[str]:
             errors.append(f"{RELEASE_PLEASE}: artifact dispatch is not gated by release_created")
         dispatch_env = dispatch.get("env", {})
         expected_env = {
-            "GH_REPO": "${{ github.repository }}",
+            "GH_REPO": GITHUB_REPOSITORY,
             "GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
             "RELEASE_TAG": "${{ steps.release.outputs.tag_name }}",
             "RELEASE_SHA": "${{ steps.release.outputs.sha }}",
@@ -212,7 +215,7 @@ def _check_release(workflow: dict) -> list[str]:
             errors.append(f"{RELEASE}: workflow_dispatch input {name} must be required")
 
     env = workflow.get("env", {})
-    if not isinstance(env, dict) or env.get("GH_REPO") != "${{ github.repository }}":
+    if not isinstance(env, dict) or env.get("GH_REPO") != GITHUB_REPOSITORY:
         errors.append(f"{RELEASE}: GitHub CLI calls lack an explicit repository owner")
 
     jobs = workflow.get("jobs", {})
@@ -293,7 +296,7 @@ def _check_release(workflow: dict) -> list[str]:
 
     upload_step = _find_step(publish, "Upload the complete set to the draft")
     upload_text = _step_text({"steps": [upload_step]}) if upload_step else ""
-    upload_at = upload_text.find("gh release upload")
+    upload_at = upload_text.find(GH_RELEASE_UPLOAD)
     for guard in (
         "jq -r '.isDraft'",
         "git ls-remote --tags origin",
@@ -314,16 +317,16 @@ def _check_release(workflow: dict) -> list[str]:
         "git ls-remote --tags origin",
         '"refs/tags/${RELEASE_TAG}^{}"',
         '"$live_tag_commit" != "$RELEASE_SHA"',
-        "gh release edit",
+        GH_RELEASE_EDIT,
     ):
         if required not in publish_text:
             errors.append(f"{RELEASE}: final publication barrier lacks {required}")
     for job_name, job in jobs.items():
         if job_name == "publish-release" or not isinstance(job, dict):
             continue
-        if "gh release upload" in _step_text(job):
+        if GH_RELEASE_UPLOAD in _step_text(job):
             errors.append(f"{RELEASE}: {job_name} mutates release assets before barrier")
-    if publish_text.count("gh release edit") != 1:
+    if publish_text.count(GH_RELEASE_EDIT) != 1:
         errors.append(f"{RELEASE}: release publication must have exactly one owner")
 
     outcome = jobs.get("release-outcome", {})
@@ -402,15 +405,29 @@ def _check_release(workflow: dict) -> list[str]:
     return errors
 
 
+def _has_daily_release_health_schedule(workflow: dict) -> bool:
+    schedule = _triggers(workflow).get("schedule")
+    return isinstance(schedule, list) and any(
+        isinstance(entry, dict) and entry.get("cron") == "43 6 * * *"
+        for entry in schedule
+    )
+
+
+def _audit_environment_is_exact(audit: dict) -> bool:
+    audit_step = _find_step(audit, "Reconcile tags against releases")
+    audit_env = audit_step.get("env", {}) if isinstance(audit_step, dict) else {}
+    expected_env = {
+        "GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
+        "GH_REPO": GITHUB_REPOSITORY,
+    }
+    return isinstance(audit_env, dict) and audit_env == expected_env
+
+
 def _check_release_health(workflow: dict) -> list[str]:
     errors: list[str] = []
-    triggers = _triggers(workflow)
-    schedule = triggers.get("schedule")
-    if not isinstance(schedule, list) or not any(
-        isinstance(entry, dict) and entry.get("cron") == "43 6 * * *" for entry in schedule
-    ):
+    if not _has_daily_release_health_schedule(workflow):
         errors.append(f"{RELEASE_HEALTH}: daily scheduled reconciliation is missing")
-    if "workflow_dispatch" not in triggers:
+    if "workflow_dispatch" not in _triggers(workflow):
         errors.append(f"{RELEASE_HEALTH}: manual reconciliation is missing")
     if workflow.get("permissions") != {"contents": "read"}:
         errors.append(f"{RELEASE_HEALTH}: audit permissions are not minimal read-only")
@@ -424,12 +441,9 @@ def _check_release_health(workflow: dict) -> list[str]:
     ):
         if required not in audit_text:
             errors.append(f"{RELEASE_HEALTH}: audit lacks {required}")
-    audit_step = _find_step(audit, "Reconcile tags against releases")
-    audit_env = audit_step.get("env", {}) if isinstance(audit_step, dict) else {}
-    expected_env = {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "GH_REPO": "${{ github.repository }}"}
-    if not isinstance(audit_env, dict) or audit_env != expected_env:
+    if not _audit_environment_is_exact(audit):
         errors.append(f"{RELEASE_HEALTH}: audit identity environment is not exact")
-    for forbidden in ("gh release create", "gh release edit", "gh release upload", "gh issue create"):
+    for forbidden in ("gh release create", GH_RELEASE_EDIT, GH_RELEASE_UPLOAD, "gh issue create"):
         if forbidden in audit_text:
             errors.append(f"{RELEASE_HEALTH}: read-only audit contains {forbidden}")
     return errors

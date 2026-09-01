@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import os
 import subprocess
@@ -12,25 +11,14 @@ import sys
 import time
 from pathlib import Path
 
+from scripts.release_asset_inventory import expected_assets, release_inventory_problem
+
 MAX_PAGES = 20
 PASSING_CONCLUSIONS = frozenset({"success", "skipped"})
 
 
 class OutcomeError(Exception):
     """The reporter could not obtain evidence for an outcome."""
-
-
-def _asset_checker() -> object:
-    path = Path(__file__).with_name("check-release-assets.py")
-    spec = importlib.util.spec_from_file_location("check_release_assets", path)
-    if spec is None or spec.loader is None:
-        raise OutcomeError(f"cannot load exact asset contract from {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-ASSETS = _asset_checker()
 
 
 def gh_json(*args: str) -> object:
@@ -73,48 +61,11 @@ def fetch_release(repo: str, tag: str) -> dict | None:
     raise OutcomeError(f"release list exceeds {MAX_PAGES * 100} entries")
 
 
-def asset_names(assets: list[object]) -> set[str] | None:
-    names: list[str] = []
-    for asset in assets:
-        if not isinstance(asset, dict) or not isinstance(asset.get("name"), str):
-            return None
-        names.append(asset["name"])
-    return set(names) if len(set(names)) == len(names) else None
-
-
 def asset_problem(release: dict | None, tag: str) -> str | None:
     if release is None:
         return f"{tag}: no release object (never created or deleted)"
-    assets = release.get("assets")
-    if not isinstance(assets, list):
-        return f"{tag}: release API returned an invalid asset inventory"
-    draft = release.get("draft")
-    if not isinstance(draft, bool):
-        return f"{tag}: release API returned an invalid draft state"
-    if draft:
-        return f"{tag}: release remains draft with {len(assets)} asset(s)"
-    names = asset_names(assets)
-    if names is None:
-        return f"{tag}: release API returned an invalid asset inventory"
-    if not names:
-        return f"{tag}: published release has zero assets"
-    try:
-        expected = ASSETS.expected_assets(tag)
-    except ValueError as exc:
-        return f"{tag}: cannot evaluate the exact asset contract ({exc})"
-    missing = sorted(expected - names)
-    unexpected = sorted(names - expected)
-    if missing or unexpected:
-        details = []
-        if missing:
-            details.append(f"missing {', '.join(missing)}")
-        if unexpected:
-            details.append(f"unexpected {', '.join(unexpected)}")
-        return (
-            f"{tag}: published release inventory is not exact "
-            f"({'; '.join(details)})"
-        )
-    return None
+    problem = release_inventory_problem(release, tag)
+    return f"{tag}: {problem}" if problem else None
 
 
 def problem_jobs(jobs: list[dict]) -> list[str]:

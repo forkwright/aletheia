@@ -27,7 +27,7 @@ class OutcomeTests(unittest.TestCase):
     tag = "v1.2.3"
 
     def test_complete_release_passes(self) -> None:
-        names = sorted(outcome.ASSETS.expected_assets(self.tag))
+        names = sorted(outcome.expected_assets(self.tag))
         self.assertEqual(outcome.evaluate([], release(names=names), self.tag), [])
 
     def test_draft_names_tag_and_cause(self) -> None:
@@ -53,7 +53,7 @@ class OutcomeTests(unittest.TestCase):
     def test_eventual_consistency_retry_can_recover(self) -> None:
         original_fetch = outcome.fetch_release
         original_sleep = outcome.time.sleep
-        complete = release(names=sorted(outcome.ASSETS.expected_assets(self.tag)))
+        complete = release(names=sorted(outcome.expected_assets(self.tag)))
         responses = iter([release(draft=True), complete])
         try:
             outcome.fetch_release = lambda repo, tag: next(responses)
