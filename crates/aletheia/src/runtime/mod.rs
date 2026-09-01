@@ -779,7 +779,7 @@ impl RuntimeBuilder {
             lazy
         } else {
             Arc::new(DegradedEmbeddingProvider::new(
-                self.config.embedding.dimension,
+                self.config.embedding.effective_dimension(),
             ))
         };
 

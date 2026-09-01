@@ -621,7 +621,7 @@ Embedding provider configuration for the recall pipeline.
 |-------|------|---------|-------------|
 | `provider` | string | "candle" | Provider type: "candle", "openai-compat", "voyage". |
 | `model` | string | unset | Provider-specific model name. |
-| `dimension` | integer | 384 | Output vector dimension (must match knowledge store HNSW index). |
+| `dimension` | integer | unset | Output vector dimension (must match knowledge store HNSW index). Unset resolves to the provider's default model dimension: candle 384, openai-compat 1024, voyage 1024. |
 | `baseUrl` | string | unset | OpenAI-compatible embedding endpoint base URL. Aliases: `baseurl`. |
 | `apiKeyEnv` | string | unset | Environment variable that stores the embedding provider API key. Aliases: `apikeyenv`. |
 
