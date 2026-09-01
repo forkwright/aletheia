@@ -281,16 +281,28 @@ jobs:
             cross: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
+    env:
+      # Select the pinned rustup toolchain before Cargo reads any repository
+      # selector. Cross receives the same host selection and mounts it at /rust.
+      RUSTUP_TOOLCHAIN: "1.97.1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           ref: ${{ inputs.release_sha || github.sha }}
+          submodules: false
 
       - name: Configure git credentials for fleet deps
-        uses: ./.github/actions/fleet-git-credentials
-        with:
-          token: ${{ secrets.FLEET_REPO_TOKEN }}
+        env:
+          FLEET_REPO_TOKEN: ${{ secrets.FLEET_REPO_TOKEN }}
+        run: |
+          if [ -z "${FLEET_REPO_TOKEN}" ]; then
+            echo "FLEET_REPO_TOKEN not set; skipping credential setup (public fleet deps fetch anonymously)."
+            exit 0
+          fi
+          git config --global credential.helper store
+          printf 'https://forkwright:%s@github.com\n' "${FLEET_REPO_TOKEN}" > ~/.git-credentials
+          chmod 0600 ~/.git-credentials
 
       - name: Extract version from tag
         id: version
@@ -298,6 +310,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7 # stable
         with:
+          toolchain: 1.97.1
           targets: ${{ matrix.target }}
 
       - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
@@ -323,15 +336,27 @@ jobs:
         if: ${{ !matrix.cross }}
         run: cargo install cargo-auditable --locked --version 0.7.4
 
+      # WHY(#6999) `-p aletheia --bin aletheia`: the previous virtual-root
+      # invocation built every workspace member and unified their features
+      # into the shipped binary. `integration-tests`' normal dependencies
+      # enable test-support/test-utils/crash-injection code that the release
+      # feature line never declares.
+      #
+      # This build attests only package `aletheia`, bin `aletheia`, and
+      # `recall,embed-candle` plus that package's defaults. It does not attest
+      # other workspace members, bins, or feature combinations; those are
+      # checked but not shipped. check-release-build-scope.py replays this
+      # resolution in PR CI and fails if this scope or its clean feature graph
+      # drifts.
       - name: Build (native)
         if: ${{ !matrix.cross }}
-        run: cargo auditable build --locked --release --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cargo auditable build --locked --release -p aletheia --bin aletheia --target "$BUILD_TARGET" --features recall,embed-candle
         env:
           BUILD_TARGET: ${{ matrix.target }}
 
       - name: Build (cross)
         if: ${{ matrix.cross }}
-        run: cross build --locked --release --target "$BUILD_TARGET" --features recall,embed-candle
+        run: cross build --locked --release -p aletheia --bin aletheia --target "$BUILD_TARGET" --features recall,embed-candle
         env:
           BUILD_TARGET: ${{ matrix.target }}
 
@@ -606,12 +631,23 @@ jobs:
           persist-credentials: false
           ref: ${{ inputs.release_sha || github.sha }}
 
-      - name: Download every staged release asset
+      - name: Download staged Linux release asset
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: release-*
+          name: release-aletheia-linux-x86_64
           path: release-assets
-          merge-multiple: true
+
+      - name: Download staged macOS release asset
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-aletheia-macos-aarch64
+          path: release-assets
+
+      - name: Download staged workspace SBOMs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-workspace-sboms
+          path: release-assets
 
       - name: Validate the complete staged contract
         run: |
