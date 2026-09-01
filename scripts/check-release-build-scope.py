@@ -164,6 +164,8 @@ TRUSTED_SIBLING_JOB_DIGESTS = {
     "sbom": "98e5e93cb024969a21fb84259ef050c53bb4c2c8c0e0afdc1d1a02e07ac60166",
     "publish-release": "bdcda3dc95c863d58064a00854740e7844417cd69e782f7b5d306ada7f20cf89",
 }
+TRUSTED_RELEASE_JOB_IDS = frozenset((*TRUSTED_SIBLING_JOB_DIGESTS, "build"))
+ARTIFACT_FLOW_JOB_IDS = frozenset({"build", "sbom", "publish-release"})
 TRUSTED_BUILD_STEP_DIGESTS = {
     "Build (native)": "d93be08a02ad6d7580059f7cd104cb9568dfdd1e876d7c0980c735645265986d",
     "Build (cross)": "b082568fcb69bca5c417cea6bec6862b84333e1a06b948251e10dec2c8173e55",
@@ -230,13 +232,16 @@ def build_steps(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     return steps
 
 
-def validate_sibling_release_jobs(workflow: dict[str, Any]) -> None:
-    """Close the release workflow to its exact non-artifact job execution graphs."""
+def validate_release_job_graph(workflow: dict[str, Any]) -> None:
+    """Close artifact production and publishing to the trusted complete job graph."""
     jobs = workflow.get("jobs")
-    expected = set(TRUSTED_SIBLING_JOB_DIGESTS) | {"build"}
-    if not isinstance(jobs, dict) or set(jobs) != expected:
-        actual = sorted(jobs) if isinstance(jobs, dict) else jobs
-        raise ScopeCheckError(f"release workflow job IDs differ from the trusted set: {actual!r}")
+    if not isinstance(jobs, dict):
+        raise ScopeCheckError("release workflow jobs is not a mapping")
+    missing_artifact_jobs = sorted(ARTIFACT_FLOW_JOB_IDS - set(jobs))
+    if missing_artifact_jobs:
+        raise ScopeCheckError(f"release workflow is missing artifact-flow jobs: {missing_artifact_jobs}")
+    if set(jobs) != TRUSTED_RELEASE_JOB_IDS:
+        raise ScopeCheckError(f"release workflow job IDs differ from the trusted set: {sorted(jobs)!r}")
     for name, digest in TRUSTED_SIBLING_JOB_DIGESTS.items():
         job = jobs[name]
         steps = job.get("steps", []) if isinstance(job, dict) else None
@@ -561,7 +566,7 @@ def validate_build_step(step: dict[str, Any], index: int, expected: ExpectedBuil
 
 def validated_release_builds(workflow: dict[str, Any]) -> list[ValidatedBuild]:
     """Validate every jobs.build run step against its intentionally narrow grammar."""
-    validate_sibling_release_jobs(workflow)
+    validate_release_job_graph(workflow)
     validate_matrix(workflow)
     steps = build_steps(workflow)
     validate_execution_envelope(workflow, steps)

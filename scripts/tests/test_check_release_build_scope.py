@@ -119,6 +119,18 @@ class ReleaseBuildValidation(unittest.TestCase):
             ],
         }
         self.assert_rejected(candidate)
+        candidate = workflow()
+        candidate["jobs"]["alternate-artifact-producer"] = {
+            "runs-on": "ubuntu-latest",
+            "steps": [
+                {"run": "cargo build --release --workspace --features test-support"},
+                {
+                    "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+                    "with": {"name": "release-aletheia-linux-x86_64", "path": "decoy/"},
+                },
+            ],
+        }
+        self.assert_rejected(candidate)
         mutations = (
             lambda candidate: candidate["jobs"]["test"]["steps"].append(
                 {"run": "bash -c 'cargo build --release --workspace --features test-support'"}
@@ -128,6 +140,12 @@ class ReleaseBuildValidation(unittest.TestCase):
             ),
             lambda candidate: candidate["jobs"]["sbom"]["steps"].append(
                 {"uses": scope.RUST_TOOLCHAIN_ACTION, "with": {"toolchain": "candidate"}}
+            ),
+            lambda candidate: candidate["jobs"]["build"]["steps"][-1]["with"].update(
+                {"name": "release-decoy"}
+            ),
+            lambda candidate: candidate["jobs"]["publish-release"]["steps"][1]["with"].update(
+                {"pattern": "alternate-release-*"}
             ),
         )
         for mutate in mutations:
