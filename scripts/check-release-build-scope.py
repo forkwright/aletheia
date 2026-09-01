@@ -152,6 +152,18 @@ EXPECTED_ACTIONS = frozenset(
     }
 )
 SAFE_BUILD_JOB_DIGEST = "e2912932b31c5fc612194005c91e85dffa6741462110c16b5dbf57c9b8f84139"
+TRUSTED_SIBLING_JOB_DIGESTS = {
+    "release-identity": "0ecff762dd676cafa8ff2b6c4c4ae4bd673b8fbcd19c012f8528bf035336f5f5",
+    "canonical-gate": "78f789ffcde12193716211dd9fd6211be8d5a7c39351206d465a3e7bfe79ad35",
+    "canonical-security": "ffd7b358618de7306658f5e7a942da8e5736a32f8c8597f4c7572111c5e21070",
+    "prepare-release": "33887262e769a288c88c6dfae3b69a73c6bb0eefcc6d487281d21d56adff9fc5",
+    "test": "9b646ba550445385930fe1d89fa274a3b9b22091c072645edd9b7e82906d74ab",
+    "feature-policy": "badb05261d8d49dec38f87d4f7c6b47999b977a236f7cc355053f15204ae25dc",
+    "feature-check": "ac4acd4e28b26aafe83ba446d19e7e2a61b3478e905277cfbdb6472eb3e24b2d",
+    "no-default-recipes": "0226eaf504e06b429bd759b469d965690fca80e228ad164ba48b16b3bfadef27",
+    "sbom": "98e5e93cb024969a21fb84259ef050c53bb4c2c8c0e0afdc1d1a02e07ac60166",
+    "publish-release": "bdcda3dc95c863d58064a00854740e7844417cd69e782f7b5d306ada7f20cf89",
+}
 TRUSTED_BUILD_STEP_DIGESTS = {
     "Build (native)": "d93be08a02ad6d7580059f7cd104cb9568dfdd1e876d7c0980c735645265986d",
     "Build (cross)": "b082568fcb69bca5c417cea6bec6862b84333e1a06b948251e10dec2c8173e55",
@@ -216,6 +228,22 @@ def build_steps(workflow: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(steps, list) or not all(isinstance(step, dict) for step in steps):
         raise ScopeCheckError("jobs.build.steps must be a list of mappings")
     return steps
+
+
+def validate_sibling_release_jobs(workflow: dict[str, Any]) -> None:
+    """Close the release workflow to its exact non-artifact job execution graphs."""
+    jobs = workflow.get("jobs")
+    expected = set(TRUSTED_SIBLING_JOB_DIGESTS) | {"build"}
+    if not isinstance(jobs, dict) or set(jobs) != expected:
+        actual = sorted(jobs) if isinstance(jobs, dict) else jobs
+        raise ScopeCheckError(f"release workflow job IDs differ from the trusted set: {actual!r}")
+    for name, digest in TRUSTED_SIBLING_JOB_DIGESTS.items():
+        job = jobs[name]
+        steps = job.get("steps", []) if isinstance(job, dict) else None
+        if not isinstance(steps, list) or not all(isinstance(step, dict) for step in steps):
+            raise ScopeCheckError(f"release workflow sibling job {name!r} has invalid steps")
+        if step_digest(job) != digest:
+            raise ScopeCheckError(f"release workflow sibling job {name!r} differs from its trusted graph")
 
 
 def validate_matrix(workflow: dict[str, Any]) -> None:
@@ -533,6 +561,7 @@ def validate_build_step(step: dict[str, Any], index: int, expected: ExpectedBuil
 
 def validated_release_builds(workflow: dict[str, Any]) -> list[ValidatedBuild]:
     """Validate every jobs.build run step against its intentionally narrow grammar."""
+    validate_sibling_release_jobs(workflow)
     validate_matrix(workflow)
     steps = build_steps(workflow)
     validate_execution_envelope(workflow, steps)

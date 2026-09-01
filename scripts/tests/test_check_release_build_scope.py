@@ -103,6 +103,39 @@ class ReleaseBuildValidation(unittest.TestCase):
                 candidate["jobs"]["build"]["steps"].append({"name": "Decoy", "run": run})
                 self.assert_rejected(candidate)
 
+    def test_rejects_sibling_release_build_jobs_and_mutated_job_graphs(self) -> None:
+        candidate = workflow()
+        candidate["jobs"]["alternate-release-build"] = {
+            "runs-on": "ubuntu-latest",
+            "steps": [
+                {
+                    "uses": scope.CHECKOUT_ACTION,
+                    "with": {
+                        "persist-credentials": False,
+                        "ref": "${{ inputs.release_sha || github.sha }}",
+                    },
+                },
+                {"run": "cargo build --release --workspace --features test-support"},
+            ],
+        }
+        self.assert_rejected(candidate)
+        mutations = (
+            lambda candidate: candidate["jobs"]["test"]["steps"].append(
+                {"run": "bash -c 'cargo build --release --workspace --features test-support'"}
+            ),
+            lambda candidate: candidate["jobs"]["feature-check"].update(
+                {"strategy": {"matrix": {"feature": ["test-support"]}}}
+            ),
+            lambda candidate: candidate["jobs"]["sbom"]["steps"].append(
+                {"uses": scope.RUST_TOOLCHAIN_ACTION, "with": {"toolchain": "candidate"}}
+            ),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate):
+                candidate = workflow()
+                mutate(candidate)
+                self.assert_rejected(candidate)
+
     def test_rejects_changed_existing_non_build_step_and_bad_matrix_linkage(self) -> None:
         candidate = workflow()
         build_step(candidate, "Package tarball")["run"] += "\nbash -c 'cargo build --release'"
