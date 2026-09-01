@@ -132,12 +132,17 @@ path replacement or append cannot make the parse allocate beyond that boundary.
 Parsing then runs off the async executor on a bounded worker job and uses the
 same single `lopdf` parser as the agent `inspect_report` tool. Its typed policy
 caps pages, xref/object admission, individual streams/pages and filter layers,
-aggregate decompression, and aggregate extracted text before the relevant
-allocation. Password-protected PDFs are rejected at the trailer before any
-password authentication, including an empty-password attempt. Limit and
-malformed-document failures are per-file errors, so directory ingest continues
-safely. Cancelling an ingest can stop waiting for the bounded worker job; it
-does not claim to interrupt dependency parsing mid-call.
+aggregate decompression, aggregate `/ToUnicode` mappings across fonts, and
+aggregate extracted text before the relevant allocation.
+
+Object-stream members
+must be present at their exact container/index in the final bounded xref, so
+compressed objects cannot amplify the retained set. Password-protected PDFs are
+rejected at the trailer before any password authentication, including an
+empty-password attempt. Checked parser failures and the public panic boundary
+are per-file errors, so directory ingest continues safely. Cancelling an ingest
+can stop waiting for the bounded worker job; it does not claim to interrupt
+dependency parsing mid-call.
 
 The default policy permits up to 128 pages. That is deliberately coherent with
 the 32 MiB shared decompression budget and 256 KiB per content decoder: a

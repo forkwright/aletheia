@@ -1,5 +1,5 @@
 use crate::encodings;
-use crate::encodings::cmap::ToUnicodeCMap;
+use crate::encodings::cmap::{ToUnicodeCMap, ToUnicodeMappingBudget, UnicodeCMapError};
 use crate::encodings::{Differences, Encoding, Glyph};
 use crate::error::DecompressError;
 use crate::{Document, Error, Result};
@@ -405,7 +405,7 @@ impl Dictionary {
     }
 
     pub fn get_font_encoding<'a>(&'a self, doc: &'a Document) -> Result<Encoding<'a>> {
-        self.get_font_encoding_inner(doc, None)
+        self.get_font_encoding_inner(doc, None, None)
     }
 
     /// Resolve this font's encoding, bounding any decompression it performs (for
@@ -419,10 +419,20 @@ impl Dictionary {
     pub fn get_font_encoding_with_limit<'a>(
         &'a self, doc: &'a Document, max_decompressed_size: usize,
     ) -> Result<Encoding<'a>> {
-        self.get_font_encoding_inner(doc, Some(max_decompressed_size))
+        self.get_font_encoding_inner(doc, Some(max_decompressed_size), None)
     }
 
-    fn get_font_encoding_inner<'a>(&'a self, doc: &'a Document, limit: Option<usize>) -> Result<Encoding<'a>> {
+    /// Resolve a font encoding with both a decoder ceiling and one shared
+    /// document-wide `/ToUnicode` mapping budget.
+    pub fn get_font_encoding_with_limits<'a>(
+        &'a self, doc: &'a Document, max_decompressed_size: usize, mapping_budget: &ToUnicodeMappingBudget,
+    ) -> Result<Encoding<'a>> {
+        self.get_font_encoding_inner(doc, Some(max_decompressed_size), Some(mapping_budget))
+    }
+
+    fn get_font_encoding_inner<'a>(
+        &'a self, doc: &'a Document, limit: Option<usize>, mapping_budget: Option<&ToUnicodeMappingBudget>,
+    ) -> Result<Encoding<'a>> {
         if !self.has_type(b"Font") {
             return Err(Error::DictType {
                 expected: "Font",
@@ -442,11 +452,11 @@ impl Dictionary {
             // base/CID encoding so Type0 fonts preserve the same precedence
             // as the former extractor.
             if let Ok(stream) = self.get_deref(b"ToUnicode", doc).and_then(Object::as_stream) {
-                return self.get_to_unicode_encoding(stream, limit);
+                return self.get_to_unicode_encoding(stream, limit, mapping_budget);
             }
 
             if let Ok(object) = self.get(b"Encoding") {
-                return self.get_base_encoding(object, doc, limit);
+                return self.get_base_encoding(object, doc, limit, mapping_budget);
             }
 
             Ok(Encoding::OneByteEncoding(&encodings::STANDARD_ENCODING))
@@ -458,6 +468,13 @@ impl Dictionary {
             // fallback encoding — otherwise the bounded caller's guard is silently
             // defeated. Every other encoding error stays lenient, as before.
             Err(err @ Error::Decompress(DecompressError::MemoryLimitExceeded { .. })) => Err(err),
+            Err(
+                err @ Error::ToUnicodeCMap(
+                    UnicodeCMapError::MappingLimitExceeded
+                    | UnicodeCMapError::TargetSequenceLimitExceeded
+                    | UnicodeCMapError::TargetCodeOverflow,
+                ),
+            ) => Err(err),
             Err(err) => {
                 // Font dictionaries are attacker-controlled and can contain
                 // arbitrary large strings. Keep diagnostics bounded and avoid
@@ -471,6 +488,7 @@ impl Dictionary {
     /// Get a simple encoding from the /Encoding entry of a font dictionary.
     fn get_base_encoding<'a>(
         &'a self, mut object: &'a Object, doc: &'a Document, limit: Option<usize>,
+        mapping_budget: Option<&ToUnicodeMappingBudget>,
     ) -> Result<Encoding<'a>> {
         // Set of visited to detect circular references.
         let mut visited = HashSet::new();
@@ -478,7 +496,7 @@ impl Dictionary {
         loop {
             match *object {
                 Object::Name(ref name) => {
-                    return self.base_encoding(doc, name, limit);
+                    return self.base_encoding(doc, name, limit, mapping_budget);
                 }
                 Object::Reference(id) => {
                     if !visited.insert(id) {
@@ -501,7 +519,7 @@ impl Dictionary {
                             if let Ok(base_encoding) = dict.get(b"BaseEncoding")
                                 && let Ok(name) = base_encoding.as_name()
                             {
-                                base = Some(self.base_encoding(doc, name, limit)?);
+                                base = Some(self.base_encoding(doc, name, limit, mapping_budget)?);
                             }
 
                             let base = match base {
@@ -531,7 +549,10 @@ impl Dictionary {
         }
     }
 
-    fn base_encoding<'a>(&'a self, doc: &'a Document, name: &'a [u8], limit: Option<usize>) -> Result<Encoding<'a>> {
+    fn base_encoding<'a>(
+        &'a self, doc: &'a Document, name: &'a [u8], limit: Option<usize>,
+        mapping_budget: Option<&ToUnicodeMappingBudget>,
+    ) -> Result<Encoding<'a>> {
         match name {
             b"StandardEncoding" => Ok(Encoding::OneByteEncoding(&encodings::STANDARD_ENCODING)),
             b"MacRomanEncoding" => Ok(Encoding::OneByteEncoding(&encodings::MAC_ROMAN_ENCODING)),
@@ -543,7 +564,7 @@ impl Dictionary {
             }
             b"Identity-H" | b"Identity-V" => {
                 let stream = self.get_deref(b"ToUnicode", doc)?.as_stream()?;
-                self.get_to_unicode_encoding(stream, limit)
+                self.get_to_unicode_encoding(stream, limit, mapping_budget)
             }
             name => Ok(Encoding::SimpleEncoding(name)),
         }
@@ -590,12 +611,17 @@ impl Dictionary {
         })
     }
 
-    fn get_to_unicode_encoding(&'_ self, stream: &Stream, limit: Option<usize>) -> Result<Encoding<'_>> {
+    fn get_to_unicode_encoding(
+        &'_ self, stream: &Stream, limit: Option<usize>, mapping_budget: Option<&ToUnicodeMappingBudget>,
+    ) -> Result<Encoding<'_>> {
         let content = match limit {
             Some(max) => stream.get_plain_content_with_limit(max)?,
             None => stream.get_plain_content()?,
         };
-        let cmap = ToUnicodeCMap::parse(content)?;
+        let cmap = match mapping_budget {
+            Some(budget) => ToUnicodeCMap::parse_with_budget(content, budget)?,
+            None => ToUnicodeCMap::parse(content)?,
+        };
         Ok(Encoding::UnicodeMapEncoding(cmap))
     }
 

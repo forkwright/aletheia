@@ -92,7 +92,7 @@ pub fn inspect_pdf(bytes: &[u8]) -> Result<PdfSummary> {
 /// boundary, before the PDF bytes are allocated or parsed.
 #[instrument(skip_all, fields(bytes = bytes.len()))]
 pub fn inspect_pdf_with_limits(bytes: &[u8], limits: &PdfInspectLimits) -> Result<PdfSummary> {
-    pdf::inspect_pdf_impl(bytes, limits)
+    contain_pdf_parser(|| pdf::inspect_pdf_impl(bytes, limits))
 }
 
 /// Extract a PDF's full text, uncapped.
@@ -115,7 +115,12 @@ pub fn extract_pdf_text(bytes: &[u8]) -> Result<String> {
 /// Extract PDF text using caller-owned resource limits.
 #[instrument(skip_all, fields(bytes = bytes.len()))]
 pub fn extract_pdf_text_with_limits(bytes: &[u8], limits: &PdfInspectLimits) -> Result<String> {
-    pdf::extract_pdf_text_impl(bytes, limits)
+    contain_pdf_parser(|| pdf::extract_pdf_text_impl(bytes, limits))
+}
+
+fn contain_pdf_parser<T>(operation: impl FnOnce() -> Result<T>) -> Result<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation))
+        .map_err(|_| InspectError::PdfParserPanicked)?
 }
 
 /// Extract text from an XLSX workbook.
@@ -229,6 +234,259 @@ mod tests {
         bytes
     }
 
+    fn classic_xref_offset(bytes: &[u8]) -> usize {
+        bytes
+            .windows(b"\nxref\n".len())
+            .rposition(|window| window == b"\nxref\n")
+            .map(|position| position + 1)
+            .expect("classic xref marker")
+    }
+
+    fn cr_only_classic_xref(mut bytes: Vec<u8>) -> Vec<u8> {
+        let xref = classic_xref_offset(&bytes);
+        for byte in &mut bytes[xref..] {
+            if *byte == b'\n' {
+                *byte = b'\r';
+            }
+        }
+        bytes
+    }
+
+    fn crlf_classic_xref(bytes: Vec<u8>) -> Vec<u8> {
+        let xref = classic_xref_offset(&bytes);
+        let mut converted =
+            Vec::with_capacity(bytes.len() + bytes[xref..].iter().filter(|b| **b == b'\n').count());
+        converted.extend_from_slice(&bytes[..xref]);
+        for byte in &bytes[xref..] {
+            if *byte == b'\n' {
+                if converted.last() == Some(&b' ') {
+                    converted.pop();
+                }
+                converted.extend_from_slice(b"\r\n");
+            } else {
+                converted.push(*byte);
+            }
+        }
+        converted
+    }
+
+    fn classic_xref_with_declared_count_delta(bytes: Vec<u8>, delta: isize) -> Vec<u8> {
+        let xref = classic_xref_offset(&bytes);
+        let header_start = xref + b"xref\n".len();
+        let header_end = bytes[header_start..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map(|relative| header_start + relative)
+            .expect("xref subsection header end");
+        let header =
+            std::str::from_utf8(&bytes[header_start..header_end]).expect("ASCII xref header");
+        let mut fields = header.split_whitespace();
+        let start = fields.next().expect("xref start");
+        let count = fields
+            .next()
+            .expect("xref count")
+            .parse::<usize>()
+            .expect("numeric xref count");
+        let replacement = format!(
+            "{start} {}",
+            count.checked_add_signed(delta).expect("test count")
+        );
+        let mut malformed = Vec::with_capacity(bytes.len() + replacement.len());
+        malformed.extend_from_slice(&bytes[..header_start]);
+        malformed.extend_from_slice(replacement.as_bytes());
+        malformed.extend_from_slice(&bytes[header_end..]);
+        malformed
+    }
+
+    fn raw_classic_pdf(objects: &[(u32, String)]) -> Vec<u8> {
+        let max_id = objects
+            .iter()
+            .map(|(id, _)| *id)
+            .max()
+            .expect("at least one object");
+        let mut bytes = b"%PDF-1.5\n".to_vec();
+        let mut offsets = std::collections::BTreeMap::new();
+        for (id, body) in objects {
+            offsets.insert(*id, bytes.len());
+            bytes.extend_from_slice(format!("{id} 0 obj\n{body}\nendobj\n").as_bytes());
+        }
+        let xref_offset = bytes.len();
+        bytes.extend_from_slice(format!("xref\n0 {}\n", max_id + 1).as_bytes());
+        bytes.extend_from_slice(b"0000000000 65535 f \n");
+        for id in 1..=max_id {
+            match offsets.get(&id) {
+                Some(offset) => {
+                    bytes.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes())
+                }
+                None => bytes.extend_from_slice(b"0000000000 00000 f \n"),
+            }
+        }
+        bytes.extend_from_slice(
+            format!(
+                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+                max_id + 1
+            )
+            .as_bytes(),
+        );
+        bytes
+    }
+
+    fn hidden_object_stream_pdf(stream_count: u32) -> Vec<u8> {
+        let mut objects = vec![
+            (1, "<< /Type /Catalog /Pages 2 0 R >>".to_owned()),
+            (2, "<< /Type /Pages /Kids [] /Count 0 >>".to_owned()),
+        ];
+        for stream_index in 0..stream_count {
+            let member_id = 90_u32.checked_add(stream_index).expect("test member id");
+            let index = format!("{member_id} 0 ");
+            let member = format!("<< /Hidden {stream_index} >>");
+            let content = format!("{index}{member}");
+            objects.push((
+                3 + stream_index,
+                format!(
+                    "<< /Type /ObjStm /N 1 /First {} /Length {} >>\nstream\n{}\nendstream",
+                    index.len(),
+                    content.len(),
+                    content
+                ),
+            ));
+        }
+        raw_classic_pdf(&objects)
+    }
+
+    fn mismatched_object_stream_count_pdf() -> Vec<u8> {
+        let index = "90 0 ";
+        let member = "<< /Hidden true >>";
+        let content = format!("{index}{member}");
+        raw_classic_pdf(&[
+            (1, "<< /Type /Catalog /Pages 2 0 R >>".to_owned()),
+            (2, "<< /Type /Pages /Kids [] /Count 0 >>".to_owned()),
+            (
+                3,
+                format!(
+                    "<< /Type /ObjStm /N 0 /First {} /Length {} >>\nstream\n{}\nendstream",
+                    index.len(),
+                    content.len(),
+                    content
+                ),
+            ),
+        ])
+    }
+
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn pdf_with_page_content(content: &[u8]) -> Vec<u8> {
+        use lopdf::{Document, Object, Stream};
+
+        let mut document = Document::with_version("1.5");
+        let pages_id = document.new_object_id();
+        let content_id = document.add_object(Stream::new(lopdf::dictionary! {}, content.to_vec()));
+        let page_id = document.add_object(lopdf::dictionary! {
+            "Type" => "Page", "Parent" => pages_id, "Contents" => content_id,
+            "Resources" => lopdf::dictionary! {},
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+        });
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(lopdf::dictionary! {
+                "Type" => "Pages", "Kids" => vec![Object::Reference(page_id)], "Count" => 1,
+            }),
+        );
+        let catalog_id = document.add_object(lopdf::dictionary! {
+            "Type" => "Catalog", "Pages" => pages_id,
+        });
+        document.trailer.set("Root", catalog_id);
+        let mut bytes = Vec::new();
+        document.save_to(&mut bytes).expect("save content PDF");
+        bytes
+    }
+
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn pdf_with_cmap_fonts(cmap: &[u8], font_count: usize) -> Vec<u8> {
+        use lopdf::{Document, Object, Stream};
+
+        let mut document = Document::with_version("1.5");
+        let pages_id = document.new_object_id();
+        let cmap_id = document.add_object(Stream::new(lopdf::dictionary! {}, cmap.to_vec()));
+        let mut font_resources = lopdf::Dictionary::new();
+        let mut content = b"BT\n".to_vec();
+        for index in 0..font_count {
+            let name = format!("F{}", index + 1);
+            let font_id = document.add_object(lopdf::dictionary! {
+                "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Courier",
+                "ToUnicode" => cmap_id,
+            });
+            font_resources.set(name.as_bytes(), font_id);
+            content.extend_from_slice(format!("/{name} 12 Tf <41> Tj\n").as_bytes());
+        }
+        content.extend_from_slice(b"ET\n");
+        let content_id = document.add_object(Stream::new(lopdf::dictionary! {}, content));
+        let page_id = document.add_object(lopdf::dictionary! {
+            "Type" => "Page", "Parent" => pages_id, "Contents" => content_id,
+            "Resources" => lopdf::dictionary! { "Font" => font_resources },
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+        });
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(lopdf::dictionary! {
+                "Type" => "Pages", "Kids" => vec![Object::Reference(page_id)], "Count" => 1,
+            }),
+        );
+        let catalog_id = document.add_object(lopdf::dictionary! {
+            "Type" => "Catalog", "Pages" => pages_id,
+        });
+        document.trailer.set("Root", catalog_id);
+        let mut bytes = Vec::new();
+        document.save_to(&mut bytes).expect("save CMap PDF");
+        bytes
+    }
+
+    fn overflowing_xref_stream_pdf() -> Vec<u8> {
+        let mut bytes = b"%PDF-1.5\n".to_vec();
+        let xref_offset = bytes.len();
+        bytes.extend_from_slice(
+            b"1 0 obj\n<< /Type /XRef /Size 1 /W [1 1 1] /Index [4294967295 2] /Length 6 >>\nstream\n",
+        );
+        bytes.extend_from_slice(&[1, 0, 0, 1, 0, 0]);
+        bytes.extend_from_slice(
+            format!("\nendstream\nendobj\nstartxref\n{xref_offset}\n%%EOF\n").as_bytes(),
+        );
+        bytes
+    }
+
+    const ONE_MAPPING_CMAP: &[u8] = br#"/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Aletheia-Test def
+/CMapType 2 def
+1 begincodespacerange
+<00> <FF>
+endcodespacerange
+1 beginbfchar
+<41> <0041>
+endbfchar
+endcmap
+CMapName currentdict /CMap defineresource pop
+end
+end"#;
+
+    const OVERFLOWING_TARGET_CMAP: &[u8] = br#"/CIDInit /ProcSet findresource begin
+12 dict begin
+begincmap
+/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def
+/CMapName /Aletheia-Overflow-Test def
+/CMapType 2 def
+1 begincodespacerange
+<00> <FF>
+endcodespacerange
+1 beginbfrange
+<00> <01> <FFFF>
+endbfrange
+endcmap
+CMapName currentdict /CMap defineresource pop
+end
+end"#;
+
     const NAMED_ENTITY_TEXT: &str = r"A &amp; B &lt; C &gt; D &apos;Q&apos; &quot;R&quot; &#x2019;";
     const DECODED_ENTITY_TEXT: &str = "A & B < C > D 'Q' \"R\" \u{2019}";
 
@@ -237,6 +495,13 @@ mod tests {
         let malformed = b"not a pdf";
         let result = inspect_pdf(malformed);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn hostile_pdf_panic_boundary_returns_a_typed_refusal() {
+        let error = contain_pdf_parser::<()>(|| panic!("synthetic parser panic"))
+            .expect_err("a parser panic must become a document error");
+        assert!(matches!(error, InspectError::PdfParserPanicked));
     }
 
     #[test]
@@ -332,6 +597,133 @@ mod tests {
                 limit: "object count"
             }
         ));
+    }
+
+    #[test]
+    fn classic_xref_all_supported_line_endings_share_parser_admission() {
+        let lf = text_pdf("xref endings", 1);
+        for (name, bytes) in [
+            ("LF", lf.clone()),
+            ("CR", cr_only_classic_xref(lf.clone())),
+            ("CRLF", crlf_classic_xref(lf)),
+        ] {
+            let summary = inspect_pdf(&bytes).unwrap_or_else(|error| {
+                panic!("{name} xref must parse before its budget is lowered: {error}")
+            });
+            assert_eq!(summary.pages, 1, "{name} xref must reach page inspection");
+            let mut limits = PdfInspectLimits::for_input_bytes(bytes.len());
+            limits.max_objects = 1;
+            let outcome = std::panic::catch_unwind(|| inspect_pdf_with_limits(&bytes, &limits));
+            let error = outcome
+                .unwrap_or_else(|_| panic!("{name} xref must not panic"))
+                .expect_err("xref object ceiling must refuse the document");
+            assert!(
+                matches!(
+                    error,
+                    InspectError::PdfLimitExceeded {
+                        limit: "object count"
+                    }
+                ),
+                "{name} xref rows must obey the same object ceiling: {error}"
+            );
+        }
+    }
+
+    #[test]
+    fn classic_xref_declared_count_mismatch_fails_closed() {
+        let valid = text_pdf("count mismatch", 1);
+        for delta in [-1, 1] {
+            let bytes = classic_xref_with_declared_count_delta(valid.clone(), delta);
+            let outcome = std::panic::catch_unwind(|| inspect_pdf(&bytes));
+            let error = outcome
+                .expect("count mismatch must not panic")
+                .expect_err("the parser must consume exactly the declared number of xref rows");
+            assert!(matches!(error, InspectError::PdfExtractionError { .. }));
+        }
+    }
+
+    #[test]
+    fn hidden_object_stream_members_are_rejected() {
+        let bytes = hidden_object_stream_pdf(1);
+        let outcome = std::panic::catch_unwind(|| inspect_pdf(&bytes));
+        let error = outcome
+            .expect("hidden member must not panic")
+            .expect_err("an ObjStm member absent from the final xref must not enter the document");
+        assert!(matches!(error, InspectError::PdfExtractionError { .. }));
+    }
+
+    #[test]
+    fn multiple_object_streams_cannot_amplify_the_retained_object_set() {
+        let bytes = hidden_object_stream_pdf(2);
+        let outcome = std::panic::catch_unwind(|| inspect_pdf(&bytes));
+        let error = outcome
+            .expect("object-stream amplification must not panic")
+            .expect_err(
+                "members across ObjStm containers must remain a subset of the bounded final xref",
+            );
+        assert!(matches!(error, InspectError::PdfExtractionError { .. }));
+    }
+
+    #[test]
+    fn object_stream_n_mismatch_is_rejected_before_member_allocation() {
+        let bytes = mismatched_object_stream_count_pdf();
+        let outcome = std::panic::catch_unwind(|| inspect_pdf(&bytes));
+        let error = outcome
+            .expect("object-stream /N mismatch must not panic")
+            .expect_err("an index member beyond /N must be rejected");
+        assert!(matches!(error, InspectError::PdfExtractionError { .. }));
+    }
+
+    #[test]
+    fn aggregate_tounicode_budget_is_shared_across_reused_cmaps() {
+        let bytes = pdf_with_cmap_fonts(ONE_MAPPING_CMAP, 2);
+        let mut limits = PdfInspectLimits::for_input_bytes(bytes.len());
+        limits.max_tounicode_mappings = 1;
+        let error = extract_pdf_text_with_limits(&bytes, &limits)
+            .expect_err("the second font must charge the shared CMap budget");
+        assert!(matches!(
+            error,
+            InspectError::PdfLimitExceeded {
+                limit: "ToUnicode mappings"
+            }
+        ));
+    }
+
+    #[test]
+    fn overflowing_tounicode_target_is_a_typed_refusal_not_a_panic() {
+        let bytes = pdf_with_cmap_fonts(OVERFLOWING_TARGET_CMAP, 1);
+        let outcome = std::panic::catch_unwind(|| extract_pdf_text(&bytes));
+        let error = outcome
+            .expect("overflowing ToUnicode target must not panic")
+            .expect_err("overflowing ToUnicode target must be rejected");
+        assert!(matches!(
+            error,
+            InspectError::PdfLimitExceeded {
+                limit: "ToUnicode mappings"
+            }
+        ));
+    }
+
+    #[test]
+    fn overflowing_inline_image_dimensions_are_rejected_without_panicking() {
+        let bytes = pdf_with_page_content(
+            b"BI /W 9223372036854775807 /H 9223372036854775807 /CS /RGB /BPC 64 ID x EI\n",
+        );
+        let outcome = std::panic::catch_unwind(|| inspect_pdf(&bytes));
+        let error = outcome
+            .expect("inline-image arithmetic must not panic")
+            .expect_err("overflowing inline-image dimensions must refuse the content stream");
+        assert!(matches!(error, InspectError::PdfExtractionError { .. }));
+    }
+
+    #[test]
+    fn overflowing_xref_stream_object_number_is_rejected_without_panicking() {
+        let bytes = overflowing_xref_stream_pdf();
+        let outcome = std::panic::catch_unwind(|| inspect_pdf(&bytes));
+        let error = outcome
+            .expect("xref-stream arithmetic must not panic")
+            .expect_err("start + index outside u32 must be rejected before xref insertion");
+        assert!(matches!(error, InspectError::PdfExtractionError { .. }));
     }
 
     #[test]

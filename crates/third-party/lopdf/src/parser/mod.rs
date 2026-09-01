@@ -14,7 +14,7 @@ use nom::character::complete::{space0, space1};
 use nom::combinator::cut;
 use nom::combinator::{map, map_opt, map_res, opt, verify};
 use nom::error::{ErrorKind, ParseError};
-use nom::multi::{fold_many0, fold_many1, many0, many0_count};
+use nom::multi::{fold_many0, many0, many0_count};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated};
 use nom::{AsBytes, AsChar, IResult, Input, Parser};
 
@@ -566,7 +566,9 @@ pub fn binary_mark(input: ParserInput) -> Option<Vec<u8>> {
 }
 
 /// Decode CrossReferenceTable
-fn xref(input: ParserInput, strict: bool) -> NomResult<Xref> {
+fn xref<'a>(
+    input: ParserInput<'a>, strict: bool, max_objects: Option<usize>,
+) -> crate::Result<(ParserInput<'a>, Xref)> {
     // ISO 32000-1 s7.5.4 requires every entry to be exactly 20 bytes, ending in one of the
     // 2-byte terminators SP CR, SP LF or CR LF. Many generators instead emit 19-byte entries
     // ending in a bare LF, which qpdf, pikepdf, PDFium and PDF.js all accept. Accept those
@@ -580,48 +582,79 @@ fn xref(input: ParserInput, strict: bool) -> NomResult<Xref> {
             map(alt((conforming, tag(&b"\n"[..]), tag(&b"\r"[..]))), |_| ()).parse(i)
         }
     };
-    let xref_entry = pair(
+    let mut xref_entry = pair(
         separated_pair(unsigned_int, tag(&b" "[..]), unsigned_int::<u32>),
         delimited(tag(&b" "[..]), map(one_of("nf"), |k| k == 'n'), xref_eol),
     );
 
-    let xref_section = pair(
+    let mut xref_section_header = terminated(
         separated_pair(unsigned_int::<usize>, tag(&b" "[..]), unsigned_int::<u32>),
-        preceded(pair(opt(tag(&b" "[..])), eol), many0(xref_entry)),
+        pair(opt(tag(&b" "[..])), eol),
     );
 
-    delimited(
-        pair(tag(&b"xref"[..]), preceded(opt(tag(&b" "[..])), eol)),
-        fold_many1(
-            xref_section,
-            || -> Xref { Xref::new(0, XrefType::CrossReferenceTable) },
-            |mut xref, ((start, _count), entries)| {
-                let mut skipped = 0usize;
-                for (index, ((offset, generation), is_normal)) in entries.into_iter().enumerate() {
-                    if is_normal && let Ok(generation) = generation.try_into() {
-                        // `start` is read from the subsection header, so it is untrusted:
-                        // `start + index` can overflow, and object numbers are u32, so a
-                        // `start` above u32::MAX would truncate into a valid-looking number
-                        // that silently displaces a legitimate entry. Skip whatever cannot
-                        // be represented, as an out-of-range generation is skipped above.
-                        match start.checked_add(index).and_then(|id| u32::try_from(id).ok()) {
-                            Some(id) => xref.insert(id, XrefEntry::Normal { offset, generation }),
-                            None => skipped += 1,
-                        }
-                    }
-                }
-                if skipped > 0 {
-                    log::warn!(
-                        "cross-reference subsection starting at {start} has {skipped} entr{} with an object number beyond u32; skipping",
-                        if skipped == 1 { "y" } else { "ies" }
-                    );
-                }
-                xref
-            },
-        ),
-        space,
-    )
-    .parse(input)
+    let (mut input, _) = pair(tag(&b"xref"[..]), preceded(opt(tag(&b" "[..])), eol))
+        .parse(input)
+        .map_err(|_| error::ParseError::InvalidXref)?;
+    let mut xref = Xref::new(0, XrefType::CrossReferenceTable);
+    let mut parsed_entries = 0_usize;
+    let mut section_count = 0_usize;
+
+    loop {
+        let Ok((after_header, (start, declared_count))) = xref_section_header.parse(input) else {
+            break;
+        };
+        section_count = section_count.checked_add(1).ok_or(error::ParseError::InvalidXref)?;
+        let declared_count = usize::try_from(declared_count).map_err(|_| error::ParseError::InvalidXref)?;
+        let projected_entries = parsed_entries
+            .checked_add(declared_count)
+            .ok_or(error::ParseError::InvalidXref)?;
+        if let Some(max) = max_objects
+            && projected_entries > max
+        {
+            return Err(Error::ObjectLimitExceeded { limit: max });
+        }
+
+        if declared_count > 0
+            && start
+                .checked_add(declared_count - 1)
+                .and_then(|end| u32::try_from(end).ok())
+                .is_none()
+        {
+            return Err(error::ParseError::InvalidXref.into());
+        }
+
+        input = after_header;
+        for index in 0..declared_count {
+            let (rest, ((offset, generation), is_normal)) = xref_entry.parse(input).map_err(|_| {
+                // The subsection count is authoritative syntax. Requiring exactly
+                // that many *parsed* rows prevents a small declaration from hiding
+                // additional CR/LF/CRLF entries and a large declaration from
+                // driving a pre-sized allocation.
+                error::ParseError::InvalidXref
+            })?;
+            parsed_entries = parsed_entries.checked_add(1).ok_or(error::ParseError::InvalidXref)?;
+            if let Some(max) = max_objects
+                && parsed_entries > max
+            {
+                return Err(Error::ObjectLimitExceeded { limit: max });
+            }
+            let id = start
+                .checked_add(index)
+                .and_then(|value| u32::try_from(value).ok())
+                .ok_or(error::ParseError::InvalidXref)?;
+            if is_normal {
+                let generation = u16::try_from(generation).map_err(|_| error::ParseError::InvalidXref)?;
+                xref.insert(id, XrefEntry::Normal { offset, generation });
+            }
+            input = rest;
+        }
+    }
+
+    if section_count == 0 {
+        return Err(error::ParseError::InvalidXref.into());
+    }
+    let (input, _) = space(input).map_err(|_| error::ParseError::InvalidXref)?;
+    Ok((input, xref))
 }
 
 fn trailer(input: ParserInput) -> NomResult<Dictionary> {
@@ -629,39 +662,28 @@ fn trailer(input: ParserInput) -> NomResult<Dictionary> {
 }
 
 pub fn xref_and_trailer(input: ParserInput, reader: &Reader) -> crate::Result<(Xref, Dictionary)> {
-    let xref_trailer = map(pair(|i| xref(i, reader.strict), trailer), |(mut xref, trailer)| {
-        xref.size = trailer
+    if input.starts_with(b"xref") {
+        let (rest, mut xref) = xref(input, reader.strict, reader.max_objects)?;
+        if !rest.starts_with(b"trailer") {
+            return Err(error::ParseError::InvalidXref.into());
+        }
+        let (_, trailer) = trailer(rest).map_err(|_| error::ParseError::InvalidTrailer)?;
+        let size = trailer
             .get(b"Size")
             .and_then(Object::as_i64)
-            .map_err(|_| error::ParseError::InvalidTrailer)? as u32;
-        Ok((xref, trailer))
-    });
-    alt((
-        xref_trailer,
-        (|input| {
-            _indirect_object(input, 0, None, reader, &mut HashSet::new(), false, None)
-                .map(|(_, obj)| {
-                    let res = match obj {
-                        Object::Stream(stream) => reader.reserve_stream_decompression(&stream).and_then(|()| {
-                            decode_xref_stream_with_limit_and_object_limit(
-                                stream,
-                                reader.max_decompressed_size,
-                                reader.max_objects,
-                            )
-                        }),
-                        _ => Err(crate::error::ParseError::InvalidXref.into()),
-                    };
-                    (input, res)
-                })
-                .map_err(|_| {
-                    // artificial error kind is created to allow descriptive nom errors
-                    nom::Err::Error(NomError::from_error_kind(input, ErrorKind::Fail))
-                })
+            .map_err(|_| error::ParseError::InvalidTrailer)?;
+        xref.size = u32::try_from(size).map_err(|_| error::ParseError::InvalidTrailer)?;
+        return Ok((xref, trailer));
+    }
+
+    let (_, object) = _indirect_object(input, 0, None, reader, &mut HashSet::new(), false, None)
+        .map_err(|_| error::ParseError::InvalidXref)?;
+    match object {
+        Object::Stream(stream) => reader.reserve_stream_decompression(&stream).and_then(|()| {
+            decode_xref_stream_with_limit_and_object_limit(stream, reader.max_decompressed_size, reader.max_objects)
         }),
-    ))
-    .parse(input)
-    .map(|(_, o)| o)
-    .map_err(|_| error::ParseError::InvalidTrailer)?
+        _ => Err(error::ParseError::InvalidXref.into()),
+    }
 }
 
 pub fn xref_start(input: ParserInput) -> Option<i64> {
@@ -738,6 +760,13 @@ fn inline_image_impl(input: ParserInput) -> NomResult<(Vec<Object>, String)> {
             let (input, _) = (content_space, tag(&b"EI"[..]), content_space).parse(input)?;
             Ok((input, (vec![Object::Stream(stream)], String::from("BI"))))
         }
+        Err(Error::InvalidInlineImage(message)) => {
+            // Dimension/stride admission failures are security boundaries, not
+            // optional rendering features. Propagate them through the content
+            // parser instead of scanning onward after attacker arithmetic.
+            log::warn!("Rejecting invalid inline image: {message}");
+            Err(nom::Err::Failure(NomError::from_error_kind(input, ErrorKind::Fail)))
+        }
         Err(e) => {
             // Skip to EI marker so the rest of the content stream can still be parsed.
             log::warn!("Skipping unparseable inline image: {e}");
@@ -767,11 +796,17 @@ fn inline_image_impl(input: ParserInput) -> NomResult<(Vec<Object>, String)> {
 
 fn image_data_stream(input: ParserInput, stream_dict: Dictionary) -> crate::Result<(ParserInput, Stream)> {
     let get_abbr = |key_abbr: &[u8], key: &[u8]| stream_dict.get(key_abbr).or_else(|_| stream_dict.get(key));
-    let width = get_abbr(b"W", b"Width")?.as_i64()? as usize;
-    let height = get_abbr(b"H", b"Height")?.as_i64()? as usize;
-    let bpc = get_abbr(b"BPC", b"BitsPerComponent")?.as_i64()? as usize;
+    let parse_dimension = |abbr: &[u8], name: &[u8]| {
+        get_abbr(abbr, name)?
+            .as_i64()?
+            .try_into()
+            .map_err(|_| Error::InvalidInlineImage("negative or unsupported image dimension".into()))
+    };
+    let width: usize = parse_dimension(b"W", b"Width")?;
+    let height: usize = parse_dimension(b"H", b"Height")?;
+    let bpc: usize = parse_dimension(b"BPC", b"BitsPerComponent")?;
     let im = get_abbr(b"IM", b"ImageMask").and_then(|x| x.as_bool());
-    let num_colors = match im {
+    let num_colors: usize = match im {
         // If we have an image mask then we don't have a colorspace
         Ok(true) => 1,
         _ => {
@@ -795,8 +830,17 @@ fn image_data_stream(input: ParserInput, stream_dict: Dictionary) -> crate::Resu
         }
     };
 
-    let stride = (width * (num_colors * bpc)).div_ceil(8);
-    let length = height * stride;
+    let bits_per_row = num_colors
+        .checked_mul(bpc)
+        .and_then(|bits_per_pixel| width.checked_mul(bits_per_pixel))
+        .ok_or_else(|| Error::InvalidInlineImage("inline-image row size overflow".into()))?;
+    let stride = bits_per_row
+        .checked_add(7)
+        .and_then(|rounded| rounded.checked_div(8))
+        .ok_or_else(|| Error::InvalidInlineImage("inline-image stride overflow".into()))?;
+    let length = height
+        .checked_mul(stride)
+        .ok_or_else(|| Error::InvalidInlineImage("inline-image byte length overflow".into()))?;
 
     let (input, content) = match get_abbr(b"F", b"Filter") {
         Err(_) => {
@@ -976,7 +1020,7 @@ startxref
 153804\x20
 %%EOF
 ";
-        match xref(test_span(input), false) {
+        match xref(test_span(input), false, None) {
             Ok((_, re)) => assert_eq!(re.entries.len(), 15),
             Err(err) => panic!("unexpected {:?}", err),
         }
@@ -1104,7 +1148,7 @@ EI";
     fn xref_trailing_space_after_keyword() {
         // Some PDF generators emit "xref \n" with a trailing space.
         let input = b"xref \n0 3\n0000000000 65535 f \n0000000017 00000 n \n0000000081 00000 n \ntrailer\n<</Size 3/Root 1 0 R>>\nstartxref\n175\n%%EOF\n";
-        match xref(test_span(input), false) {
+        match xref(test_span(input), false, None) {
             Ok((_, re)) => assert_eq!(re.entries.len(), 2),
             Err(err) => panic!("xref with trailing space should parse: {:?}", err),
         }
@@ -1126,7 +1170,7 @@ EI";
                 &b"xref\n0 3\n0000000000 65535 f\r0000000017 00000 n\r0000000081 00000 n\rtrailer\n<</Size 3/Root 1 0 R>>\n"[..],
             ),
         ] {
-            match xref(test_span(input), false) {
+            match xref(test_span(input), false, None) {
                 Ok((_, re)) => assert_eq!(re.entries.len(), 2, "{name} should yield both normal entries"),
                 Err(err) => panic!("19-byte entries ({name}) should parse when lenient: {err:?}"),
             }
@@ -1141,7 +1185,7 @@ EI";
         // both halves -- the empty table here, and the document-level failure below.
         let input =
             b"xref\n0 3\n0000000000 65535 f\n0000000017 00000 n\n0000000081 00000 n\ntrailer\n<</Size 3/Root 1 0 R>>\n";
-        if let Ok((_, re)) = xref(test_span(input), true) {
+        if let Ok((_, re)) = xref(test_span(input), true, None) {
             assert_eq!(re.entries.len(), 0, "strict must not accept 19-byte entries");
         }
 
@@ -1206,7 +1250,7 @@ EI";
             ),
         ] {
             for strict in [false, true] {
-                match xref(test_span(input), strict) {
+                match xref(test_span(input), strict, None) {
                     Ok((_, re)) => assert_eq!(re.entries.len(), 2, "{name} (strict={strict}) lost an entry"),
                     Err(err) => panic!("conforming {name} entries should parse (strict={strict}): {err:?}"),
                 }
@@ -1215,21 +1259,17 @@ EI";
     }
 
     #[test]
-    fn xref_subsection_start_near_usize_max_is_skipped() {
+    fn xref_subsection_start_near_usize_max_is_rejected() {
         // A subsection header's start is read straight from the file, so it is untrusted.
         // A start of usize::MAX made `start + index` overflow: a panic wherever overflow
         // checks are on (a denial of service for any consumer parsing untrusted PDFs), and
         // a silent wrap to object 0 where they are not.
         let input = &b"xref\n18446744073709551615 2\n0000000000 65535 f \n0000000009 00000 n \ntrailer\n<</Size 2/Root 1 0 R>>\n"[..];
         for strict in [false, true] {
-            match xref(test_span(input), strict) {
-                Ok((_, re)) => assert!(
-                    re.entries.is_empty(),
-                    "unrepresentable object number was inserted (strict={strict}): {:?}",
-                    re.entries
-                ),
-                Err(err) => panic!("xref should still parse (strict={strict}): {err:?}"),
-            }
+            assert!(
+                xref(test_span(input), strict, None).is_err(),
+                "unrepresentable object numbers must fail closed (strict={strict})"
+            );
         }
     }
 
@@ -1241,28 +1281,10 @@ EI";
         // offset. No overflow occurs here, so a checked add alone would not catch it.
         let input = &b"xref\n0 2\n0000000000 65535 f \n0000000009 00000 n \n4294967297 1\n0000000999 00000 n \ntrailer\n<</Size 2/Root 1 0 R>>\n"[..];
         for strict in [false, true] {
-            match xref(test_span(input), strict) {
-                Ok((_, re)) => {
-                    assert_eq!(
-                        re.entries.len(),
-                        1,
-                        "(strict={strict}) unexpected entries: {:?}",
-                        re.entries
-                    );
-                    assert!(
-                        matches!(
-                            re.get(1),
-                            Some(XrefEntry::Normal {
-                                offset: 9,
-                                generation: 0
-                            })
-                        ),
-                        "entry for object 1 was displaced (strict={strict}): {:?}",
-                        re.get(1)
-                    );
-                }
-                Err(err) => panic!("xref should still parse (strict={strict}): {err:?}"),
-            }
+            assert!(
+                xref(test_span(input), strict, None).is_err(),
+                "out-of-range object numbers must fail closed (strict={strict})"
+            );
         }
     }
 

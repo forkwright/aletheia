@@ -42,6 +42,7 @@ pub use object::{Dictionary, Object, ObjectId, Stream, StringFormat};
 pub use bookmarks::Bookmark;
 pub use common_data_structures::{decode_text_string, text_string};
 pub use destinations::Destination;
+pub use encodings::cmap::ToUnicodeMappingBudget;
 pub use encodings::{Encoding, encode_utf8, encode_utf16_be};
 pub use encryption::{EncryptionState, EncryptionVersion, Permissions};
 pub use error::{DecompressError, Error, ParseError, Result};

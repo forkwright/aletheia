@@ -107,12 +107,17 @@ pub struct LoadOptions {
     /// When supplied, every eager xref/object-stream decoder reserves its
     /// configured per-stream maximum before it runs. Retain a clone and pass it
     /// to [`crate::Document::extract_text_chunks_with_limit_and_budget`] so the
-    /// load and extraction stages share one document-wide budget.
+    /// load and extraction stages share one document-wide budget. That method
+    /// also accepts a [`crate::ToUnicodeMappingBudget`] for aggregate CMap
+    /// admission.
     pub decompression_budget: Option<DecompressionBudget>,
-    /// Maximum cross-reference entries admitted before object loading.
+    /// Maximum unique indirect object IDs admitted across the merged
+    /// cross-reference graph and every object-stream member.
     ///
-    /// `None` preserves lopdf's historical unbounded API. Security-sensitive
-    /// callers must set this before parsing attacker-controlled input.
+    /// Object-stream members must be declared by that bounded xref graph, so
+    /// they cannot amplify the retained object set after admission. `None`
+    /// preserves lopdf's historical unbounded API; security-sensitive callers
+    /// must set this before parsing attacker-controlled input.
     pub max_objects: Option<usize>,
     /// Reject a trailer with `/Encrypt` before password authentication or
     /// decryption. This is for callers that do not support encrypted input.

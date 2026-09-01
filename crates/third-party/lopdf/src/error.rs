@@ -51,6 +51,9 @@ pub enum Error {
     /// Invalid object stream.
     #[error("invalid object stream: {0}")]
     InvalidObjectStream(String),
+    /// The unique indirect-object admission ceiling was exhausted.
+    #[error("PDF object count exceeds the configured limit of {limit}")]
+    ObjectLimitExceeded { limit: usize },
     /// Byte offset in stream or file is invalid.
     #[error("invalid byte offset")]
     InvalidOffset(usize),

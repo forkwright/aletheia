@@ -20,6 +20,14 @@ pub enum InspectError {
         limit: &'static str,
     },
 
+    /// The vendored parser panicked while handling hostile PDF bytes.
+    ///
+    /// This boundary remains in place even though known arithmetic panic paths
+    /// are rejected explicitly, so one malformed document cannot unwind an
+    /// ingestion worker or synchronous tool executor.
+    #[snafu(display("PDF parser aborted while rejecting malformed input"))]
+    PdfParserPanicked,
+
     /// Password-protected PDFs are deliberately unsupported by inspection.
     #[snafu(display("password-protected PDFs are not supported"))]
     EncryptedPdf,

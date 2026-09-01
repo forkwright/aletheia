@@ -1,12 +1,8 @@
 use crate::parser;
 use crate::{Document, Error, Object, ObjectId, Result, Stream};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::TryFromIntError;
 use std::str::FromStr;
-
-use log::warn;
-#[cfg(feature = "rayon")]
-use rayon::prelude::*;
 
 #[derive(Debug)]
 pub struct ObjectStream {
@@ -51,19 +47,46 @@ impl ObjectStream {
     /// decoded content if it would exceed `max_decompressed_size` bytes. `None`
     /// means no limit (the behavior of [`ObjectStream::new`]).
     pub fn new_with_limit(stream: &Stream, max_decompressed_size: Option<usize>) -> Result<ObjectStream> {
-        let content = match max_decompressed_size {
-            // Object streams are decoded while the document is loaded, so
-            // enforcing the limit here bounds the memory a single stream can use.
-            Some(max) => stream.get_plain_content_with_limit(max)?,
-            None => stream.get_plain_content()?,
-        };
+        Self::new_with_admission(stream, max_decompressed_size, None, None)
+    }
 
-        if content.is_empty() {
-            return Ok(ObjectStream {
-                objects: BTreeMap::new(),
-                max_objects: 100,
-                compression_level: 6,
-            });
+    /// Parse an object stream under the loader's document-wide admission
+    /// policy. Every declared member must correspond exactly to the final xref
+    /// entry for its zero-based stream index; hidden or duplicated members are
+    /// rejected before the object map is allocated.
+    pub(crate) fn new_with_xref_admission(
+        stream: &Stream, max_decompressed_size: Option<usize>, max_objects: Option<usize>,
+        expected_members: &BTreeMap<u16, u32>,
+    ) -> Result<ObjectStream> {
+        Self::new_with_admission(stream, max_decompressed_size, max_objects, Some(expected_members))
+    }
+
+    fn new_with_admission(
+        stream: &Stream, max_decompressed_size: Option<usize>, max_objects: Option<usize>,
+        expected_members: Option<&BTreeMap<u16, u32>>,
+    ) -> Result<ObjectStream> {
+        let n = stream
+            .dict
+            .get(b"N")
+            .and_then(Object::as_i64)
+            .and_then(|value| usize::try_from(value).map_err(Error::from))?;
+        if let Some(max) = max_objects
+            && n > max
+        {
+            return Err(Error::ObjectLimitExceeded { limit: max });
+        }
+        let max_indexed_members = usize::from(u16::MAX)
+            .checked_add(1)
+            .ok_or_else(|| Error::InvalidObjectStream("object-stream index overflow".into()))?;
+        if n > max_indexed_members {
+            return Err(Error::InvalidObjectStream(
+                "object stream declares more members than its xref indices can represent".into(),
+            ));
+        }
+        if expected_members.is_some_and(|members| members.len() != n) {
+            return Err(Error::InvalidObjectStream(
+                "object stream member count does not match the final cross-reference table".into(),
+            ));
         }
 
         let first_offset = stream
@@ -72,45 +95,86 @@ impl ObjectStream {
             .and_then(Object::as_i64)?
             .try_into()
             .map_err(|e: TryFromIntError| Error::NumericCast(e.to_string()))?;
+        let content = match max_decompressed_size {
+            // Object streams are decoded while the document is loaded, so
+            // enforcing the limit here bounds the memory a single stream can use.
+            Some(max) => stream.get_plain_content_with_limit(max)?,
+            None => stream.get_plain_content()?,
+        };
         let index_block = content.get(..first_offset).ok_or(Error::InvalidOffset(first_offset))?;
-
         let numbers_str = std::str::from_utf8(index_block).map_err(|e| Error::InvalidObjectStream(e.to_string()))?;
-        let numbers: Vec<_> = numbers_str
-            .split_whitespace()
-            .map(|number| u32::from_str(number).ok())
-            .collect();
-        let len = numbers.len() / 2 * 2; // Ensure only pairs.
-
-        let n = stream.dict.get(b"N").and_then(Object::as_i64)?;
-        if numbers.len().try_into().ok() != n.checked_mul(2) {
-            warn!("object stream: the object stream dictionary specifies a wrong number of objects")
+        // Even the shortest pair needs two one-byte numbers. Refuse an
+        // impossible /N before reserving the index vector from that declaration.
+        if n > index_block.len() / 2 {
+            return Err(Error::InvalidObjectStream(
+                "object stream index is shorter than its declared member count".into(),
+            ));
         }
 
-        let chunks_filter_map = |chunk: &[_]| {
-            let id = chunk[0]?;
-            let offset = first_offset + chunk[1]? as usize;
+        let mut tokens = numbers_str.split_whitespace();
+        let mut seen_ids = BTreeSet::new();
+        let mut indices = Vec::with_capacity(n);
+        let mut previous_offset = None;
+        for member_index in 0..n {
+            let id = tokens
+                .next()
+                .ok_or_else(|| Error::InvalidObjectStream("missing object-stream member id".into()))
+                .and_then(|value| {
+                    u32::from_str(value)
+                        .map_err(|_| Error::InvalidObjectStream("invalid object-stream member id".into()))
+                })?;
+            let relative_offset = tokens
+                .next()
+                .ok_or_else(|| Error::InvalidObjectStream("missing object-stream member offset".into()))
+                .and_then(|value| {
+                    usize::from_str(value)
+                        .map_err(|_| Error::InvalidObjectStream("invalid object-stream member offset".into()))
+                })?;
+            let member_index = u16::try_from(member_index)
+                .map_err(|_| Error::InvalidObjectStream("object-stream index overflow".into()))?;
+            if expected_members.is_some_and(|members| members.get(&member_index) != Some(&id)) {
+                return Err(Error::InvalidObjectStream(
+                    "object stream contains a member absent from its final cross-reference entries".into(),
+                ));
+            }
+            if !seen_ids.insert(id) {
+                return Err(Error::InvalidObjectStream(
+                    "object stream contains a duplicate member id".into(),
+                ));
+            }
+            let offset = first_offset
+                .checked_add(relative_offset)
+                .ok_or_else(|| Error::InvalidObjectStream("object-stream member offset overflow".into()))?;
+            if offset >= content.len() || previous_offset.is_some_and(|previous| offset <= previous) {
+                return Err(Error::InvalidObjectStream(
+                    "object-stream member offsets are out of bounds or not strictly increasing".into(),
+                ));
+            }
+            previous_offset = Some(offset);
+            indices.push((id, offset));
+        }
+        if tokens.next().is_some() {
+            return Err(Error::InvalidObjectStream(
+                "object stream contains more index entries than /N declares".into(),
+            ));
+        }
 
-            if offset >= content.len() {
-                warn!("out-of-bounds offset in object stream");
-                return None;
+        let mut objects = BTreeMap::new();
+        for (id, offset) in indices {
+            // Skip leading whitespace — some PDFs emit newlines before objects in ObjStm.
+            let start = content[offset..]
+                .iter()
+                .position(|byte| !byte.is_ascii_whitespace())
+                .and_then(|relative| offset.checked_add(relative))
+                .ok_or_else(|| Error::InvalidObjectStream("only whitespace after object offset".into()))?;
+            let object = parser::direct_object(&content[start..])
+                .ok_or_else(|| Error::InvalidObjectStream("could not parse declared object-stream member".into()))?;
+            if objects.insert((id, 0), object).is_some() {
+                return Err(Error::InvalidObjectStream(
+                    "object stream contains a duplicate member id".into(),
+                ));
             }
-            // Skip leading whitespace — some PDFs emit newlines before objects in ObjStm
-            let mut start = offset;
-            while start < content.len() && content[start].is_ascii_whitespace() {
-                start += 1;
-            }
-            if start >= content.len() {
-                warn!("only whitespace after offset in object stream");
-                return None;
-            }
-            let object = parser::direct_object(&content[start..])?;
-
-            Some(((id, 0), object))
-        };
-        #[cfg(feature = "rayon")]
-        let objects = numbers[..len].par_chunks(2).filter_map(chunks_filter_map).collect();
-        #[cfg(not(feature = "rayon"))]
-        let objects = numbers[..len].chunks(2).filter_map(chunks_filter_map).collect();
+        }
 
         Ok(ObjectStream {
             objects,

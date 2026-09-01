@@ -97,6 +97,7 @@ impl Document {
     /// valid streams cannot evade the aggregate cap.
     pub fn extract_text_chunks_with_limit_and_budget(
         &self, page_numbers: &[u32], max_decompressed_size: usize, budget: &crate::DecompressionBudget,
+        mapping_budget: &crate::ToUnicodeMappingBudget,
     ) -> Vec<Result<String>> {
         let pages = self.get_pages();
         page_numbers
@@ -118,7 +119,12 @@ impl Document {
                             }
                         }
                     }
-                    self.extract_text_chunks_from_page(&pages, *page_number, Some(max_decompressed_size))
+                    self.extract_text_chunks_from_page(
+                        &pages,
+                        *page_number,
+                        Some(max_decompressed_size),
+                        Some(mapping_budget),
+                    )
                 })();
                 match result {
                     Ok(text_chunks) => text_chunks,
@@ -133,7 +139,7 @@ impl Document {
         page_numbers
             .iter()
             .flat_map(|page_number| {
-                let result = self.extract_text_chunks_from_page(&pages, *page_number, limit);
+                let result = self.extract_text_chunks_from_page(&pages, *page_number, limit, None);
                 match result {
                     Ok(text_chunks) => text_chunks,
                     Err(err) => vec![Err(err)],
@@ -144,6 +150,7 @@ impl Document {
 
     fn extract_text_chunks_from_page(
         &self, pages: &BTreeMap<u32, (u32, u16)>, page_number: u32, limit: Option<usize>,
+        mapping_budget: Option<&crate::ToUnicodeMappingBudget>,
     ) -> Result<Vec<Result<String>>> {
         let mut collected_chunks_and_errs: Vec<std::result::Result<String, Error>> = Vec::new();
 
@@ -152,9 +159,10 @@ impl Document {
         let encodings: BTreeMap<Vec<u8>, Encoding> = fonts
             .into_iter()
             .filter_map(|(name, font)| {
-                let encoding = match limit {
-                    Some(max) => font.get_font_encoding_with_limit(self, max),
-                    None => font.get_font_encoding(self),
+                let encoding = match (limit, mapping_budget) {
+                    (Some(max), Some(mapping_budget)) => font.get_font_encoding_with_limits(self, max, mapping_budget),
+                    (Some(max), None) => font.get_font_encoding_with_limit(self, max),
+                    (None, _) => font.get_font_encoding(self),
                 };
                 match encoding {
                     Ok(it) => Some((name, it)),
@@ -593,12 +601,16 @@ pub fn decode_xref_stream_with_limit_and_object_limit(
         .get(b"Size")
         .and_then(Object::as_i64)
         .map_err(|_| ParseError::InvalidXref)?;
-    let mut xref = Xref::new(size as u32, XrefType::CrossReferenceStream);
+    let size = u32::try_from(size).map_err(|_| ParseError::InvalidXref)?;
+    if size == 0 {
+        return Err(ParseError::InvalidXref.into());
+    }
+    let mut xref = Xref::new(size, XrefType::CrossReferenceStream);
     {
-        let section_indice = dict
-            .get(b"Index")
-            .and_then(parse_integer_array)
-            .unwrap_or_else(|_| vec![0, size]);
+        let section_indice = match dict.get(b"Index") {
+            Ok(index) => parse_integer_array(index).map_err(|_| ParseError::InvalidXref)?,
+            Err(_) => vec![0, i64::from(size)],
+        };
         let field_widths = dict
             .get(b"W")
             .and_then(parse_integer_array)
@@ -608,7 +620,7 @@ pub fn decode_xref_stream_with_limit_and_object_limit(
         // few bytes per field (8 covers the full u64/i64 range); bound them before sizing a Vec from
         // them, or a crafted stream can request an allocation of up to (2^64-1) bytes per field.
         const MAX_XREF_FIELD_WIDTH: i64 = 8;
-        if field_widths.len() < 3
+        if field_widths.len() != 3
             || field_widths[0].is_negative()
             || field_widths[1].is_negative()
             || field_widths[2].is_negative()
@@ -623,11 +635,17 @@ pub fn decode_xref_stream_with_limit_and_object_limit(
         // below would run purely on the attacker-controlled /Index counts and never reach the end of
         // the stream. Such a stream carries no information and can only be malformed, so reject it
         // (this also keeps the body-capacity check below from dividing by zero).
-        let entry_width = (field_widths[0] + field_widths[1] + field_widths[2]) as usize;
+        let entry_width = field_widths.iter().try_fold(0_usize, |total, width| {
+            let width = usize::try_from(*width).map_err(|_| ParseError::InvalidXref)?;
+            total.checked_add(width).ok_or(ParseError::InvalidXref)
+        })?;
         if entry_width == 0 {
             return Err(ParseError::InvalidXref.into());
         }
 
+        if section_indice.is_empty() || !section_indice.len().is_multiple_of(2) {
+            return Err(ParseError::InvalidXref.into());
+        }
         let index_entries = section_indice
             .as_chunks::<2>()
             .0
@@ -636,8 +654,10 @@ pub fn decode_xref_stream_with_limit_and_object_limit(
                 let count = usize::try_from(section[1]).map_err(|_| ParseError::InvalidXref)?;
                 total.checked_add(count).ok_or(ParseError::InvalidXref)
             })?;
-        if max_objects.is_some_and(|max| index_entries > max) {
-            return Err(ParseError::InvalidXref.into());
+        if let Some(max) = max_objects
+            && index_entries > max
+        {
+            return Err(Error::ObjectLimitExceeded { limit: max });
         }
         // An entry can't be read from bytes that aren't there. Validate the total before inserting
         // anything so multiple individually plausible /Index sections cannot overrun the body.
@@ -655,10 +675,13 @@ pub fn decode_xref_stream_with_limit_and_object_limit(
         let mut bytes3 = vec![0_u8; field_widths[2] as usize];
 
         for section in section_indice.as_chunks::<2>().0 {
-            let start = section[0];
-            let count = section[1];
+            let start = u32::try_from(section[0]).map_err(|_| ParseError::InvalidXref)?;
+            let count = usize::try_from(section[1]).map_err(|_| ParseError::InvalidXref)?;
 
             for j in 0..count {
+                let object_number = start
+                    .checked_add(u32::try_from(j).map_err(|_| ParseError::InvalidXref)?)
+                    .ok_or(ParseError::InvalidXref)?;
                 let entry_type = if !bytes1.is_empty() {
                     read_big_endian_integer(&mut reader, bytes1.as_mut_slice())?
                 } else {
@@ -672,21 +695,25 @@ pub fn decode_xref_stream_with_limit_and_object_limit(
                     }
                     1 => {
                         // normal object
-                        let offset = read_big_endian_integer(&mut reader, bytes2.as_mut_slice())?;
+                        let offset = u32::try_from(read_big_endian_integer(&mut reader, bytes2.as_mut_slice())?)
+                            .map_err(|_| ParseError::InvalidXref)?;
                         let generation = if !bytes3.is_empty() {
                             read_big_endian_integer(&mut reader, bytes3.as_mut_slice())?
                         } else {
                             0
-                        } as u16;
-                        xref.insert((start + j) as u32, XrefEntry::Normal { offset, generation });
+                        };
+                        let generation = u16::try_from(generation).map_err(|_| ParseError::InvalidXref)?;
+                        xref.insert(object_number, XrefEntry::Normal { offset, generation });
                     }
                     2 => {
                         // compressed object
-                        let container = read_big_endian_integer(&mut reader, bytes2.as_mut_slice())?;
-                        let index = read_big_endian_integer(&mut reader, bytes3.as_mut_slice())? as u16;
-                        xref.insert((start + j) as u32, XrefEntry::Compressed { container, index });
+                        let container = u32::try_from(read_big_endian_integer(&mut reader, bytes2.as_mut_slice())?)
+                            .map_err(|_| ParseError::InvalidXref)?;
+                        let index = u16::try_from(read_big_endian_integer(&mut reader, bytes3.as_mut_slice())?)
+                            .map_err(|_| ParseError::InvalidXref)?;
+                        xref.insert(object_number, XrefEntry::Compressed { container, index });
                     }
-                    _ => {}
+                    _ => return Err(ParseError::InvalidXref.into()),
                 }
             }
         }
@@ -697,11 +724,14 @@ pub fn decode_xref_stream_with_limit_and_object_limit(
     Ok((xref, dict))
 }
 
-fn read_big_endian_integer(reader: &mut Cursor<Vec<u8>>, buffer: &mut [u8]) -> Result<u32> {
+fn read_big_endian_integer(reader: &mut Cursor<Vec<u8>>, buffer: &mut [u8]) -> Result<u64> {
     reader.read_exact(buffer)?;
-    let mut value = 0;
+    let mut value = 0_u64;
     for &mut byte in buffer {
-        value = (value << 8) + u32::from(byte);
+        value = value
+            .checked_mul(256)
+            .and_then(|value| value.checked_add(u64::from(byte)))
+            .ok_or(ParseError::InvalidXref)?;
     }
     Ok(value)
 }

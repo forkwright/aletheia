@@ -19,10 +19,6 @@ use crate::types::{
 struct InspectReportExecutor;
 
 impl ToolExecutor for InspectReportExecutor {
-    #[expect(
-        clippy::too_many_lines,
-        reason = "one no-side-effect dispatcher keeps all supported report formats auditable"
-    )]
     fn execute<'a>(
         &'a self,
         input: &'a ToolInput,
@@ -54,91 +50,106 @@ impl ToolExecutor for InspectReportExecutor {
                 return Ok(ToolResult::error("inspection cancelled before parsing"));
             }
 
-            let inspect_result = match format.to_lowercase().as_str() {
-                "pdf" => match inspect_pdf_with_limits(&document_bytes, &pdf_limits) {
-                    Ok(summary) => {
-                        let mut text = "PDF Summary:\n".to_string();
-                        let _ = writeln!(text, "  Pages: {}", summary.pages);
-                        text.push_str("  Text snippets:\n");
-                        for snippet in summary.text_snippets.iter().take(20) {
-                            let _ = writeln!(text, "    {snippet}");
-                        }
-                        if summary.text_snippets.len() > 20 {
-                            let _ = writeln!(
-                                text,
-                                "  ... and {} more snippets",
-                                summary.text_snippets.len() - 20
-                            );
-                        }
-                        text
-                    }
-                    Err(e) => return Ok(ToolResult::error(format!("PDF inspection failed: {e}"))),
-                },
-                "xlsx" => match inspect_xlsx(&document_bytes) {
-                    Ok(summary) => {
-                        let mut text = "Workbook Summary:\n".to_string();
-                        for (sheet_name, content) in summary.sheets.iter().take(10) {
-                            let _ = writeln!(text, "  Sheet: {sheet_name}");
-                            let lines: Vec<&str> = content.lines().take(5).collect();
-                            for line in lines {
-                                let _ = writeln!(text, "    {line}");
-                            }
-                        }
-                        if summary.sheets.len() > 10 {
-                            let _ = writeln!(
-                                text,
-                                "  ... and {} more sheets",
-                                summary.sheets.len() - 10
-                            );
-                        }
-                        text
-                    }
-                    Err(e) => return Ok(ToolResult::error(format!("XLSX inspection failed: {e}"))),
-                },
-                "pptx" => match inspect_pptx(&document_bytes) {
-                    Ok(summary) => {
-                        let mut text = "Presentation Summary:\n".to_string();
-                        for (idx, slide_text) in summary.slides.iter().enumerate().take(10) {
-                            let _ = writeln!(text, "  Slide {}:", idx + 1);
-                            let lines: Vec<&str> = slide_text.lines().take(3).collect();
-                            for line in lines {
-                                let _ = writeln!(text, "    {line}");
-                            }
-                        }
-                        if summary.slides.len() > 10 {
-                            let _ = writeln!(
-                                text,
-                                "  ... and {} more slides",
-                                summary.slides.len() - 10
-                            );
-                        }
-                        text
-                    }
-                    Err(e) => return Ok(ToolResult::error(format!("PPTX inspection failed: {e}"))),
-                },
-                "docx" => match inspect_docx(&document_bytes) {
-                    Ok(summary) => {
-                        let mut text = "DOCX Summary:\n".to_string();
-                        for (idx, paragraph) in summary.paragraphs.iter().enumerate().take(20) {
-                            let _ = writeln!(text, "  Paragraph {}: {paragraph}", idx + 1);
-                        }
-                        if summary.paragraphs.len() > 20 {
-                            let _ = writeln!(
-                                text,
-                                "  ... and {} more paragraphs",
-                                summary.paragraphs.len() - 20
-                            );
-                        }
-                        text
-                    }
-                    Err(e) => return Ok(ToolResult::error(format!("DOCX inspection failed: {e}"))),
-                },
-                _ => return Ok(ToolResult::error(format!("unsupported format: {format}"))),
-            };
-
-            Ok(ToolResult::text(inspect_result))
+            let format = format.to_lowercase();
+            let inspect_result = tokio::task::spawn_blocking(move || {
+                inspect_document(&format, &document_bytes, &pdf_limits)
+            })
+            .await;
+            if turn_cancel.is_cancelled() {
+                return Ok(ToolResult::error("inspection cancelled after parsing"));
+            }
+            Ok(match inspect_result {
+                Ok(result) => result,
+                Err(_) => ToolResult::error("document inspection worker aborted"),
+            })
         })
     }
+}
+
+#[expect(
+    clippy::too_many_lines,
+    reason = "one no-side-effect dispatcher keeps all supported report formats auditable"
+)]
+fn inspect_document(
+    format: &str,
+    document_bytes: &[u8],
+    pdf_limits: &PdfInspectLimits,
+) -> ToolResult {
+    let inspect_result = match format {
+        "pdf" => match inspect_pdf_with_limits(document_bytes, pdf_limits) {
+            Ok(summary) => {
+                let mut text = "PDF Summary:\n".to_string();
+                let _ = writeln!(text, "  Pages: {}", summary.pages);
+                text.push_str("  Text snippets:\n");
+                for snippet in summary.text_snippets.iter().take(20) {
+                    let _ = writeln!(text, "    {snippet}");
+                }
+                if summary.text_snippets.len() > 20 {
+                    let _ = writeln!(
+                        text,
+                        "  ... and {} more snippets",
+                        summary.text_snippets.len() - 20
+                    );
+                }
+                text
+            }
+            Err(e) => return ToolResult::error(format!("PDF inspection failed: {e}")),
+        },
+        "xlsx" => match inspect_xlsx(document_bytes) {
+            Ok(summary) => {
+                let mut text = "Workbook Summary:\n".to_string();
+                for (sheet_name, content) in summary.sheets.iter().take(10) {
+                    let _ = writeln!(text, "  Sheet: {sheet_name}");
+                    let lines: Vec<&str> = content.lines().take(5).collect();
+                    for line in lines {
+                        let _ = writeln!(text, "    {line}");
+                    }
+                }
+                if summary.sheets.len() > 10 {
+                    let _ = writeln!(text, "  ... and {} more sheets", summary.sheets.len() - 10);
+                }
+                text
+            }
+            Err(e) => return ToolResult::error(format!("XLSX inspection failed: {e}")),
+        },
+        "pptx" => match inspect_pptx(document_bytes) {
+            Ok(summary) => {
+                let mut text = "Presentation Summary:\n".to_string();
+                for (idx, slide_text) in summary.slides.iter().enumerate().take(10) {
+                    let _ = writeln!(text, "  Slide {}:", idx + 1);
+                    let lines: Vec<&str> = slide_text.lines().take(3).collect();
+                    for line in lines {
+                        let _ = writeln!(text, "    {line}");
+                    }
+                }
+                if summary.slides.len() > 10 {
+                    let _ = writeln!(text, "  ... and {} more slides", summary.slides.len() - 10);
+                }
+                text
+            }
+            Err(e) => return ToolResult::error(format!("PPTX inspection failed: {e}")),
+        },
+        "docx" => match inspect_docx(document_bytes) {
+            Ok(summary) => {
+                let mut text = "DOCX Summary:\n".to_string();
+                for (idx, paragraph) in summary.paragraphs.iter().enumerate().take(20) {
+                    let _ = writeln!(text, "  Paragraph {}: {paragraph}", idx + 1);
+                }
+                if summary.paragraphs.len() > 20 {
+                    let _ = writeln!(
+                        text,
+                        "  ... and {} more paragraphs",
+                        summary.paragraphs.len() - 20
+                    );
+                }
+                text
+            }
+            Err(e) => return ToolResult::error(format!("DOCX inspection failed: {e}")),
+        },
+        _ => return ToolResult::error(format!("unsupported format: {format}")),
+    };
+
+    ToolResult::text(inspect_result)
 }
 
 /// Decode an inspect-report payload only after enforcing its PDF-sized boundary.
@@ -251,6 +262,19 @@ mod tests {
     use super::*;
     use crate::testing::make_test_context;
 
+    fn overflowing_xref_stream_pdf() -> Vec<u8> {
+        let mut bytes = b"%PDF-1.5\n".to_vec();
+        let xref_offset = bytes.len();
+        bytes.extend_from_slice(
+            b"1 0 obj\n<< /Type /XRef /Size 1 /W [1 1 1] /Index [4294967295 2] /Length 6 >>\nstream\n",
+        );
+        bytes.extend_from_slice(&[1, 0, 0, 1, 0, 0]);
+        bytes.extend_from_slice(
+            format!("\nendstream\nendobj\nstartxref\n{xref_offset}\n%%EOF\n").as_bytes(),
+        );
+        bytes
+    }
+
     #[test]
     fn base64_limit_is_checked_before_decode_allocation() {
         assert_eq!(max_base64_length(0), 0);
@@ -306,6 +330,32 @@ mod tests {
             other => panic!("expected error text, got {other:?}"),
         };
         assert!(text.contains("inspection cancelled before decoding"));
+    }
+
+    #[tokio::test]
+    async fn inspect_report_contains_hostile_pdf_parser_failures_off_executor() {
+        let input = ToolInput {
+            name: koina::id::ToolName::from_static("inspect_report"),
+            tool_use_id: "tu_pdf_overflow_00001".to_owned(),
+            arguments: serde_json::json!({
+                "format": "pdf",
+                "document": koina::base64::encode(&overflowing_xref_stream_pdf())
+            }),
+        };
+        let ctx = make_test_context();
+
+        let result = InspectReportExecutor
+            .execute(&input, &ctx)
+            .await
+            .expect("tool execution must stay contained");
+        assert!(result.is_error);
+        assert!(
+            result
+                .content
+                .text_summary()
+                .contains("PDF inspection failed"),
+            "checked parser refusal should return through the tool: {result:?}"
+        );
     }
 
     #[tokio::test]

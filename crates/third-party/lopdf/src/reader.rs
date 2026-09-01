@@ -526,7 +526,8 @@ pub struct Reader<'a> {
     /// Aggregate budget shared with a caller that supplied one in
     /// [`LoadOptions`]. Eager xref/object-stream decoders reserve from it.
     pub decompression_budget: Option<DecompressionBudget>,
-    /// Maximum xref entries admitted before loading objects.
+    /// Maximum unique indirect-object IDs retained across the merged xref and
+    /// all xref-authorized object-stream members.
     pub max_objects: Option<usize>,
     /// Refuse encrypted documents before authentication/decryption.
     pub reject_encrypted: bool,
@@ -559,10 +560,48 @@ impl Reader<'_> {
 
     /// Refuse an xref before its entries are copied into document-owned maps.
     pub(crate) fn admit_xref(&self, xref: &Xref) -> Result<()> {
-        if self.max_objects.is_some_and(|max| xref.entries.len() > max) {
-            return Err(ParseError::InvalidXref.into());
+        if let Some(max) = self.max_objects
+            && xref.entries.len() > max
+        {
+            return Err(Error::ObjectLimitExceeded { limit: max });
         }
         Ok(())
+    }
+
+    /// Merge an incremental/hybrid xref without letting the retained unique-ID
+    /// set grow past the operation-wide object ceiling.
+    fn merge_xref(&self, target: &mut Xref, source: Xref) -> Result<()> {
+        let source_size = source.size;
+        for (id, entry) in source.entries {
+            if !target.entries.contains_key(&id) {
+                if let Some(max) = self.max_objects
+                    && target.entries.len() >= max
+                {
+                    return Err(Error::ObjectLimitExceeded { limit: max });
+                }
+                target.entries.insert(id, entry);
+            }
+        }
+        target.size = target.size.max(source_size);
+        Ok(())
+    }
+
+    /// Return the final xref-authorized membership of one object stream. The
+    /// map is itself bounded by `max_objects`, which was admitted before object
+    /// loading begins.
+    fn compressed_members_for(&self, container_id: u32) -> Result<BTreeMap<u16, u32>> {
+        let mut members = BTreeMap::new();
+        for (&id, entry) in &self.document.reference_table.entries {
+            if let XrefEntry::Compressed { container, index } = entry
+                && *container == container_id
+                && members.insert(*index, id).is_some()
+            {
+                return Err(Error::InvalidObjectStream(
+                    "cross-reference entries reuse an object-stream index".into(),
+                ));
+            }
+        }
+        Ok(members)
     }
 }
 
@@ -834,7 +873,7 @@ impl Reader<'_> {
                     && let Ok(count) = count_obj.as_i64()
                     && count >= 0
                 {
-                    return Ok(count as u32);
+                    return u32::try_from(count).map_err(|error| Error::NumericCast(error.to_string()));
                 }
 
                 let kids = match pages_dict.get(b"Kids").and_then(Object::as_array) {
@@ -845,9 +884,10 @@ impl Reader<'_> {
                 let mut total = 0u32;
                 for kid in kids.iter() {
                     if let Ok(kid_ref) = kid.as_reference()
-                        && let Ok(count) = self.get_pages_tree_count(kid_ref, seen, depth + 1)
+                        && let Some(next_depth) = depth.checked_add(1)
+                        && let Ok(count) = self.get_pages_tree_count(kid_ref, seen, next_depth)
                     {
-                        total += count;
+                        total = total.checked_add(count).ok_or(Error::RecursionLimit)?;
                     }
                 }
                 Ok(total)
@@ -888,7 +928,7 @@ impl Reader<'_> {
 
         self.document.version = version;
         self.admit_xref(&xref)?;
-        self.document.max_id = xref.size - 1;
+        self.document.max_id = xref.size.checked_sub(1).ok_or(ParseError::InvalidXref)?;
         self.document.trailer = trailer;
         self.set_reference_table(xref);
 
@@ -931,9 +971,13 @@ impl Reader<'_> {
 
         for (obj_num, entry) in entries {
             match entry {
-                XrefEntry::Normal { offset, .. } => {
+                XrefEntry::Normal { offset, generation } => {
                     if let Ok((obj_id, raw_bytes)) = self.extract_raw_object(offset as usize) {
-                        self.raw_objects.insert(obj_id, raw_bytes);
+                        if obj_id == (obj_num, generation) {
+                            self.raw_objects.insert(obj_id, raw_bytes);
+                        } else if self.strict {
+                            return Err(Error::ObjectIdMismatch);
+                        }
                     }
                 }
                 XrefEntry::Compressed { container, index } => {
@@ -986,10 +1030,22 @@ impl Reader<'_> {
                 if let Some(container_obj) = self.document.objects.get(&(container_id, 0))
                     && let Ok(stream) = container_obj.as_stream()
                 {
-                    match self
-                        .reserve_stream_decompression(stream)
-                        .and_then(|()| ObjectStream::new_with_limit(stream, self.max_decompressed_size))
-                    {
+                    let mut expected_members = BTreeMap::new();
+                    for &(obj_num, index) in &objects_in_stream {
+                        if expected_members.insert(index, obj_num).is_some() {
+                            return Err(Error::InvalidObjectStream(
+                                "cross-reference entries reuse an object-stream index".into(),
+                            ));
+                        }
+                    }
+                    match self.reserve_stream_decompression(stream).and_then(|()| {
+                        ObjectStream::new_with_xref_admission(
+                            stream,
+                            self.max_decompressed_size,
+                            self.max_objects,
+                            &expected_members,
+                        )
+                    }) {
                         Ok(object_stream) => {
                             for (obj_num, _index) in objects_in_stream {
                                 let obj_id = (obj_num, 0);
@@ -998,7 +1054,8 @@ impl Reader<'_> {
                                 }
                             }
                         }
-                        Err(_e) => {}
+                        Err(error) if self.strict => return Err(error),
+                        Err(_error) => {}
                     }
                 }
             }
@@ -1047,32 +1104,45 @@ impl Reader<'_> {
         let zero_length_streams = Mutex::new(vec![]);
         let object_streams = Mutex::new(vec![]);
 
-        // Build a map of which container each compressed object belongs to
-        // according to the xref. This prevents stale ObjStm copies (e.g., from
-        // linearization first-page sections) from overriding the correct version.
-        let compressed_obj_containers: BTreeMap<u32, u32> = self
-            .document
-            .reference_table
-            .entries
-            .iter()
-            .filter_map(|(&id, entry)| {
-                if let XrefEntry::Compressed { container, .. } = entry {
-                    Some((id, *container))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        // The final merged xref is the sole authority for object-stream
+        // membership. Indexing it by container and stream index lets each
+        // ObjStm validate /N and every member before allocating its object map.
+        // A repeated stream index cannot name two different retained objects.
+        let mut compressed_members: BTreeMap<u32, BTreeMap<u16, u32>> = BTreeMap::new();
+        for (&id, entry) in &self.document.reference_table.entries {
+            if let XrefEntry::Compressed { container, index } = entry
+                && compressed_members
+                    .entry(*container)
+                    .or_default()
+                    .insert(*index, id)
+                    .is_some()
+            {
+                return Err(Error::InvalidObjectStream(
+                    "cross-reference entries reuse an object-stream index".into(),
+                ));
+            }
+        }
+        for &container in compressed_members.keys() {
+            if !matches!(
+                self.document.reference_table.get(container),
+                Some(XrefEntry::Normal { generation: 0, .. })
+            ) {
+                return Err(Error::InvalidObjectStream(
+                    "object-stream container is not a generation-zero normal object".into(),
+                ));
+            }
+        }
+        let no_compressed_members = BTreeMap::new();
         let normal_offsets = &self.normal_offsets;
 
-        let entries_filter_map = |(_, entry): (&_, &_)| -> Result<Option<(ObjectId, Object)>> {
-            if let XrefEntry::Normal { offset, .. } = *entry {
+        let entries_filter_map = |(&xref_id, entry): (&_, &_)| -> Result<Option<(ObjectId, Object)>> {
+            if let XrefEntry::Normal { offset, generation } = *entry {
                 // read_object now handles decryption internally
                 let offset = offset as usize;
                 let next_index = normal_offsets.partition_point(|&next| next <= offset);
                 let next_object = normal_offsets.get(next_index).copied();
                 let end = self.object_end(offset, next_object);
-                let result = self.read_object_to(offset, end, None, &mut HashSet::new());
+                let result = self.read_object_to(offset, end, Some((xref_id, generation)), &mut HashSet::new());
                 let (object_id, mut object) = match result {
                     Ok(obj) => obj,
                     Err(e) => {
@@ -1096,10 +1166,14 @@ impl Reader<'_> {
 
                 if let Ok(stream) = object.as_stream() {
                     if stream.dict.has_type(b"ObjStm") && !is_encrypted {
-                        let obj_stream = match self
-                            .reserve_stream_decompression(stream)
-                            .and_then(|()| ObjectStream::new_with_limit(stream, self.max_decompressed_size))
-                        {
+                        let obj_stream = match self.reserve_stream_decompression(stream).and_then(|()| {
+                            ObjectStream::new_with_xref_admission(
+                                stream,
+                                self.max_decompressed_size,
+                                self.max_objects,
+                                compressed_members.get(&object_id.0).unwrap_or(&no_compressed_members),
+                            )
+                        }) {
                             Ok(obj_stream) => obj_stream,
                             // Not an encryption-related loss, so it obeys the same
                             // strict-mode policy as any other load error.
@@ -1108,29 +1182,23 @@ impl Reader<'_> {
                                 return if self.strict { Err(e) } else { Ok(None) };
                             }
                         };
-                        let container_id = object_id.0;
-                        let mut object_streams = object_streams.lock().unwrap();
+                        let mut object_streams = object_streams
+                            .lock()
+                            .map_err(|_| Error::InvalidObjectStream("object-stream admission lock poisoned".into()))?;
                         if let Some(filter_func) = filter_func {
                             let objects: BTreeMap<(u32, u16), Object> = obj_stream
                                 .objects
                                 .into_iter()
-                                .filter(|((obj_num, _), _)| {
-                                    compressed_obj_containers
-                                        .get(obj_num)
-                                        .is_none_or(|&c| c == container_id)
-                                })
                                 .filter_map(|(object_id, mut object)| filter_func(object_id, &mut object))
                                 .collect();
                             object_streams.extend(objects);
                         } else {
-                            object_streams.extend(obj_stream.objects.into_iter().filter(|((obj_num, _), _)| {
-                                compressed_obj_containers
-                                    .get(obj_num)
-                                    .is_none_or(|&c| c == container_id)
-                            }));
+                            object_streams.extend(obj_stream.objects);
                         }
                     } else if stream.content.is_empty() {
-                        let mut zero_length_streams = zero_length_streams.lock().unwrap();
+                        let mut zero_length_streams = zero_length_streams
+                            .lock()
+                            .map_err(|_| Error::InvalidStream("zero-length stream lock poisoned".into()))?;
                         zero_length_streams.push(object_id);
                     }
                 }
@@ -1165,11 +1233,27 @@ impl Reader<'_> {
         }
 
         // Only add entries, but never replace entries
-        for (id, entry) in object_streams.into_inner().unwrap() {
+        for (id, entry) in object_streams
+            .into_inner()
+            .map_err(|_| Error::InvalidObjectStream("object-stream admission lock poisoned".into()))?
+        {
             self.document.objects.entry(id).or_insert(entry);
         }
 
-        for object_id in zero_length_streams.into_inner().unwrap() {
+        if self.strict && filter_func.is_none() {
+            for id in compressed_members.into_values().flat_map(BTreeMap::into_values) {
+                if !self.document.objects.contains_key(&(id, 0)) {
+                    return Err(Error::InvalidObjectStream(
+                        "a cross-referenced object-stream member was not loaded".into(),
+                    ));
+                }
+            }
+        }
+
+        for object_id in zero_length_streams
+            .into_inner()
+            .map_err(|_| Error::InvalidStream("zero-length stream lock poisoned".into()))?
+        {
             let _ = self.read_stream_content(object_id);
         }
 
@@ -1191,7 +1275,9 @@ impl Reader<'_> {
         }
 
         let length = usize::try_from(length).map_err(|e| Error::NumericCast(e.to_string()))?;
-        let end = start + length;
+        let end = start
+            .checked_add(length)
+            .ok_or_else(|| Error::InvalidStream("stream length overflows its byte offset".to_string()))?;
 
         if end > self.buffer.len() {
             return Err(Error::InvalidStream("stream extends after document end.".to_string()));
@@ -1241,17 +1327,36 @@ impl Reader<'_> {
     fn get_compressed_object(&self, id: ObjectId) -> Result<Object> {
         let entry = self.document.reference_table.get(id.0).ok_or(Error::MissingXrefEntry)?;
 
-        let container_id = match entry {
-            XrefEntry::Compressed { container, .. } => *container,
+        let (container_id, expected_index) = match entry {
+            XrefEntry::Compressed { container, index } => (*container, *index),
             _ => return Err(Error::MissingXrefEntry),
         };
 
+        let expected_members = self.compressed_members_for(container_id)?;
+        if expected_members.get(&expected_index) != Some(&id.0) {
+            return Err(Error::InvalidObjectStream(
+                "compressed object does not match its xref stream index".into(),
+            ));
+        }
+        if !matches!(
+            self.document.reference_table.get(container_id),
+            Some(XrefEntry::Normal { generation: 0, .. })
+        ) {
+            return Err(Error::InvalidObjectStream(
+                "object-stream container is not a generation-zero normal object".into(),
+            ));
+        }
         let container_id = (container_id, 0);
         let mut already_seen = HashSet::new();
         let container_obj = self.get_object(container_id, &mut already_seen)?;
         let container_stream = container_obj.as_stream()?;
         self.reserve_stream_decompression(container_stream)?;
-        let object_stream = ObjectStream::new_with_limit(container_stream, self.max_decompressed_size)?;
+        let object_stream = ObjectStream::new_with_xref_admission(
+            container_stream,
+            self.max_decompressed_size,
+            self.max_objects,
+            &expected_members,
+        )?;
         object_stream.objects.get(&id).cloned().ok_or(Error::MissingXrefEntry)
     }
 
@@ -1442,56 +1547,7 @@ impl Reader<'_> {
     /// the offset if it is slightly miswritten (lenient mode only).
     fn xref_and_trailer_at(&self, offset: usize) -> Result<(Xref, Dictionary)> {
         let offset = self.correct_xref_offset(offset);
-        self.admit_classic_xref(&self.buffer[offset..])?;
         parser::xref_and_trailer(&self.buffer[offset..], self)
-    }
-
-    /// Validate classic-xref subsection counts before nom constructs a vector
-    /// for every entry. The parser remains the authority for syntax; this tiny
-    /// preflight deliberately returns success on unfamiliar syntax so normal
-    /// parser diagnostics and recovery behavior are preserved.
-    fn admit_classic_xref(&self, input: &[u8]) -> Result<()> {
-        let Some(max) = self.max_objects else {
-            return Ok(());
-        };
-        if !input.starts_with(b"xref") {
-            return Ok(());
-        }
-
-        let mut lines = input.split_inclusive(|byte| *byte == b'\n');
-        let Some(header) = lines.next() else {
-            return Ok(());
-        };
-        if header.trim_ascii() != b"xref" {
-            return Ok(());
-        }
-        let mut admitted = 0usize;
-        while let Some(line) = lines.next() {
-            let line = line.trim_ascii();
-            if line.starts_with(b"trailer") {
-                return Ok(());
-            }
-            let mut fields = line.split(|byte| byte.is_ascii_whitespace());
-            let (Some(_start), Some(count), None) = (fields.next(), fields.next(), fields.next()) else {
-                return Ok(());
-            };
-            let Some(count) = std::str::from_utf8(count)
-                .ok()
-                .and_then(|value| value.parse::<usize>().ok())
-            else {
-                return Ok(());
-            };
-            admitted = admitted.checked_add(count).ok_or(ParseError::InvalidXref)?;
-            if admitted > max {
-                return Err(ParseError::InvalidXref.into());
-            }
-            for _ in 0..count {
-                if lines.next().is_none() {
-                    return Ok(());
-                }
-            }
-        }
-        Ok(())
     }
 
     /// Resolve the cross-reference table/stream and trailer, including the
@@ -1514,22 +1570,24 @@ impl Reader<'_> {
                 break;
             }
             already_seen.insert(prev);
-            if prev < 0 || prev as usize > self.buffer.len() {
+            let prev_offset = usize::try_from(prev).map_err(|_| Error::Xref(XrefError::PrevStart))?;
+            if prev_offset > self.buffer.len() {
                 return Err(Error::Xref(XrefError::PrevStart));
             }
 
-            let (prev_xref, prev_trailer) = self.xref_and_trailer_at(prev as usize)?;
-            xref.merge(prev_xref);
+            let (prev_xref, prev_trailer) = self.xref_and_trailer_at(prev_offset)?;
+            self.merge_xref(&mut xref, prev_xref)?;
 
             // Read xref stream in hybrid-reference file
             let prev_xref_stream_start = trailer.remove(b"XRefStm");
             if let Some(prev) = prev_xref_stream_start.and_then(|offset| offset.as_i64().ok()) {
-                if prev < 0 || prev as usize > self.buffer.len() {
+                let prev_offset = usize::try_from(prev).map_err(|_| Error::Xref(XrefError::StreamStart))?;
+                if prev_offset > self.buffer.len() {
                     return Err(Error::Xref(XrefError::StreamStart));
                 }
 
-                let (prev_xref, _) = self.xref_and_trailer_at(prev as usize)?;
-                xref.merge(prev_xref);
+                let (prev_xref, _) = self.xref_and_trailer_at(prev_offset)?;
+                self.merge_xref(&mut xref, prev_xref)?;
             }
 
             prev_xref_start = prev_trailer.get(b"Prev").cloned().ok();
@@ -1796,7 +1854,7 @@ impl Reader<'_> {
         }
 
         let window_start = offset.saturating_sub(RECOVERY_WINDOW);
-        let window_end = cmp::min(self.buffer.len(), offset + RECOVERY_WINDOW);
+        let window_end = cmp::min(self.buffer.len(), offset.saturating_add(RECOVERY_WINDOW));
         let mut corrected: Option<usize> = None;
         for pos in window_start..window_end.saturating_sub(4) {
             if !self.buffer[pos..].starts_with(b"xref") {
@@ -1837,7 +1895,7 @@ impl Reader<'_> {
             .and_then(|xref_pos| {
                 if xref_pos <= buffer.len() {
                     match parser::xref_start(&buffer[xref_pos..]) {
-                        Some(startxref) => Ok(startxref as usize),
+                        Some(startxref) => usize::try_from(startxref).map_err(|_| Error::Xref(XrefError::Start)),
                         None => Err(Error::Xref(XrefError::Start)),
                     }
                 } else {

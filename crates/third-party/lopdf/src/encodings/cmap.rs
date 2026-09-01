@@ -4,7 +4,39 @@ use crate::parser::cmap_parser::parse;
 use log::error;
 use rangemap::RangeInclusiveMap;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use thiserror::Error;
+
+/// Shared aggregate admission budget for expanded `/ToUnicode` mappings.
+///
+/// A bounded extractor passes one clone through every font on every page. A
+/// reservation is never refunded: malformed or repeatedly referenced CMaps
+/// therefore fail conservatively and deterministically instead of reallocating
+/// the same attacker-controlled expansion under fresh per-font limits.
+#[derive(Clone, Debug)]
+pub struct ToUnicodeMappingBudget(Arc<Mutex<MappingBudgetState>>);
+
+#[derive(Debug)]
+struct MappingBudgetState {
+    remaining: usize,
+}
+
+impl ToUnicodeMappingBudget {
+    /// Create a document-wide mapping budget.
+    #[must_use]
+    pub fn new(limit: usize) -> Self {
+        Self(Arc::new(Mutex::new(MappingBudgetState { remaining: limit })))
+    }
+
+    fn reserve(&self, mappings: usize) -> Result<(), UnicodeCMapError> {
+        let mut state = self.0.lock().map_err(|_| UnicodeCMapError::MappingLimitExceeded)?;
+        if mappings > state.remaining {
+            return Err(UnicodeCMapError::MappingLimitExceeded);
+        }
+        state.remaining -= mappings;
+        Ok(())
+    }
+}
 
 /// Unicode Cmap is implemented by 4 maps.
 /// Each map contains a mappings from source codes to unicode values for a different length of codes.
@@ -35,6 +67,8 @@ pub enum UnicodeCMapError {
     MappingLimitExceeded,
     #[error("ToUnicode CMap target sequence is too long")]
     TargetSequenceLimitExceeded,
+    #[error("ToUnicode CMap target sequence overflows UTF-16")]
+    TargetCodeOverflow,
 }
 
 impl From<CMapParseError> for UnicodeCMapError {
@@ -58,7 +92,20 @@ impl ToUnicodeCMap {
         Self::from_sections(cmap_sections)
     }
 
+    pub(crate) fn parse_with_budget(
+        stream_content: Vec<u8>, budget: &ToUnicodeMappingBudget,
+    ) -> Result<ToUnicodeCMap, UnicodeCMapError> {
+        let cmap_sections = parse(&stream_content[..])?;
+        Self::from_sections_with_budget(cmap_sections, Some(budget))
+    }
+
     fn from_sections(cmap_sections: Vec<CMapSection>) -> Result<ToUnicodeCMap, UnicodeCMapError> {
+        Self::from_sections_with_budget(cmap_sections, None)
+    }
+
+    fn from_sections_with_budget(
+        cmap_sections: Vec<CMapSection>, budget: Option<&ToUnicodeMappingBudget>,
+    ) -> Result<ToUnicodeCMap, UnicodeCMapError> {
         // A range may use up to four source bytes. Building the reverse map
         // below used to iterate every value in such a range, so `<00000000>
         // <FFFFFFFF>` could request 2^32 HashMap entries from a tiny CMap.
@@ -84,6 +131,9 @@ impl ToUnicodeCMap {
                             .checked_add(1)
                             .filter(|count| *count <= MAX_REVERSE_MAPPINGS)
                             .ok_or(UnicodeCMapError::MappingLimitExceeded)?;
+                        if let Some(budget) = budget {
+                            budget.reserve(1)?;
+                        }
                         cmap.put_char(code, code_len, dst);
                     }
                 }
@@ -100,8 +150,26 @@ impl ToUnicodeCMap {
                             .checked_add(range_count)
                             .filter(|count| *count <= MAX_REVERSE_MAPPINGS)
                             .ok_or(UnicodeCMapError::MappingLimitExceeded)?;
+                        let range_count =
+                            usize::try_from(range_count).map_err(|_| UnicodeCMapError::MappingLimitExceeded)?;
+                        if let Some(budget) = budget {
+                            budget.reserve(range_count)?;
+                        }
                         if dst_vec.iter().any(|target| target.len() > MAX_TARGET_CODE_UNITS) {
                             return Err(UnicodeCMapError::TargetSequenceLimitExceeded);
+                        }
+                        if let Some(base) = dst_vec.first()
+                            && dst_vec.len() == 1
+                            && range_count > 1
+                        {
+                            let increment =
+                                u16::try_from(range_count - 1).map_err(|_| UnicodeCMapError::TargetCodeOverflow)?;
+                            let last = base.last().ok_or(UnicodeCMapError::InvalidCodeRange)?;
+                            last.checked_add(increment)
+                                .ok_or(UnicodeCMapError::TargetCodeOverflow)?;
+                        }
+                        if dst_vec.len() > 1 && dst_vec.len() != range_count {
+                            return Err(UnicodeCMapError::InvalidCodeRange);
                         }
                         match dst_vec.len() {
                             1 if dst_vec[0].len() == 1 => cmap.put(
@@ -139,13 +207,24 @@ impl ToUnicodeCMap {
                                 Some(hex_str_vec.clone())
                             } else if hex_str_vec.len() == 1 {
                                 // For ranges like <01> <05> <0041>
-                                Some(vec![hex_str_vec[0].wrapping_add((src_code - range.start()) as u16)])
+                                u16::try_from(src_code - range.start())
+                                    .ok()
+                                    .and_then(|increment| hex_str_vec[0].checked_add(increment))
+                                    .map(|value| vec![value])
                             } else if !hex_str_vec.is_empty() {
                                 // For ranges like <01> <05> [<0041> <0042> ...]
                                 let mut current_hex_str = hex_str_vec.clone();
                                 if let Some(last_val) = current_hex_str.last_mut() {
-                                    *last_val = last_val.wrapping_add((src_code - range.start()) as u16);
-                                    Some(current_hex_str)
+                                    let value = u16::try_from(src_code - range.start())
+                                        .ok()
+                                        .and_then(|increment| last_val.checked_add(increment));
+                                    match value {
+                                        Some(value) => {
+                                            *last_val = value;
+                                            Some(current_hex_str)
+                                        }
+                                        None => None,
+                                    }
                                 } else {
                                     None
                                 }
@@ -191,8 +270,17 @@ impl ToUnicodeCMap {
         bf_ranges_map.get_key_value(&code).map(|(range, value)| match value {
             HexString(vec) => {
                 let mut ret_vec = vec.clone();
-                *(ret_vec.last_mut().unwrap()) += (code - range.start()) as u16;
-                ret_vec
+                let increment = u16::try_from(code - range.start()).ok();
+                match (ret_vec.last_mut(), increment) {
+                    (Some(last), Some(increment)) => match last.checked_add(increment) {
+                        Some(value) => {
+                            *last = value;
+                            ret_vec
+                        }
+                        None => vec![ToUnicodeCMap::REPLACEMENT_CHAR],
+                    },
+                    _ => vec![ToUnicodeCMap::REPLACEMENT_CHAR],
+                }
             }
             UTF16CodePoint { offset } => vec![u32::wrapping_add(code, *offset) as u16],
             ArrayOfHexStrings(vec_of_strings) => {

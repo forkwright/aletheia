@@ -9,7 +9,7 @@ use std::cmp::min;
 use std::io::Read;
 use std::path::Path;
 
-use lopdf::{DecompressionBudget, Document, LoadOptions};
+use lopdf::{DecompressionBudget, Document, LoadOptions, ToUnicodeMappingBudget};
 
 use crate::error::Result;
 use crate::{InspectError, PdfSummary};
@@ -29,6 +29,7 @@ const DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES: usize = 256 * 1024;
 const DEFAULT_MAX_DECOMPRESSED_PAGE_BYTES: usize = 256 * 1024;
 const DEFAULT_MAX_DECOMPRESSED_TOTAL_BYTES: usize = DEFAULT_MAX_INPUT_BYTES;
 const DEFAULT_MAX_EXTRACTED_TEXT_BYTES: usize = 8 * 1024 * 1024;
+const DEFAULT_MAX_TOUNICODE_MAPPINGS: usize = 65_536;
 // lopdf's bounded ToUnicode admission allows at most four UTF-16 units per
 // source byte. UTF-8 needs at most three bytes per unit, and content operators
 // can add a separator per source byte; reserve a little extra for separators.
@@ -88,6 +89,8 @@ pub struct PdfInspectLimits {
     pub max_decompressed_total_bytes: usize,
     /// Aggregate UTF-8 text returned by extraction.
     pub max_extracted_text_bytes: usize,
+    /// Aggregate source-code mappings expanded across every `/ToUnicode` CMap.
+    pub max_tounicode_mappings: usize,
 }
 
 impl PdfInspectLimits {
@@ -109,6 +112,7 @@ impl PdfInspectLimits {
                 max_input_bytes,
             ),
             max_extracted_text_bytes: min(DEFAULT_MAX_EXTRACTED_TEXT_BYTES, max_input_bytes),
+            max_tounicode_mappings: DEFAULT_MAX_TOUNICODE_MAPPINGS,
         }
     }
 }
@@ -153,6 +157,11 @@ fn load_document(
     if bytes.len() > limits.max_input_bytes {
         return Err(InspectError::PdfInputTooLarge);
     }
+    if limits.max_tounicode_mappings == 0 {
+        return Err(InspectError::PdfLimitExceeded {
+            limit: "ToUnicode mappings",
+        });
+    }
     if limits.max_decompressed_stream_bytes == 0
         || limits.max_decompressed_page_bytes == 0
         || limits.max_decompressed_total_bytes == 0
@@ -194,6 +203,7 @@ fn extract_text(
     budget: &DecompressionBudget,
 ) -> Result<String> {
     let mut text = String::new();
+    let mapping_budget = ToUnicodeMappingBudget::new(limits.max_tounicode_mappings);
 
     for page_number in pages {
         let remaining_text = limits
@@ -229,8 +239,12 @@ fn extract_text(
         // page content and each ToUnicode stream before decoding either of
         // them. The same budget was already charged by eager xref/object-stream
         // loading, so no document stage can evade the aggregate cap.
-        let chunks =
-            document.extract_text_chunks_with_limit_and_budget(&[*page_number], per_decode, budget);
+        let chunks = document.extract_text_chunks_with_limit_and_budget(
+            &[*page_number],
+            per_decode,
+            budget,
+            &mapping_budget,
+        );
         for chunk in chunks {
             let chunk = chunk.map_err(|error| map_lopdf_error(&error))?;
             let next_len =
@@ -258,6 +272,12 @@ fn map_lopdf_error(error: &lopdf::Error) -> InspectError {
             }
         }
         lopdf::Error::EncryptedDocument => InspectError::EncryptedPdf,
+        lopdf::Error::ObjectLimitExceeded { .. } => InspectError::PdfLimitExceeded {
+            limit: "object count",
+        },
+        lopdf::Error::ToUnicodeCMap(_) => InspectError::PdfLimitExceeded {
+            limit: "ToUnicode mappings",
+        },
         _ => InspectError::PdfExtractionError {
             detail: "PDF parser rejected the document".to_owned(),
         },
