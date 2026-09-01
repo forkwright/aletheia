@@ -20,6 +20,37 @@ pub const DEFAULT_OPENAI_COMPAT_MODEL: &str = "default";
 /// Default model name used by Voyage embeddings.
 pub const DEFAULT_VOYAGE_MODEL: &str = "voyage-3-lite";
 
+/// Default output dimension of the mock provider (kept at the historical
+/// crate-wide default so existing test fixtures stay valid).
+pub const DEFAULT_MOCK_DIMENSION: usize = 384;
+/// Output dimension of [`DEFAULT_CANDLE_MODEL`] (`bge-small-en-v1.5`).
+pub const DEFAULT_CANDLE_DIMENSION: usize = 384;
+/// Output dimension of the model behind the default OpenAI-compatible
+/// endpoint (`http://127.0.0.1:5005/v1`, Qwen3-Embedding-0.6B).
+pub const DEFAULT_OPENAI_COMPAT_DIMENSION: usize = 1024;
+/// Default output dimension for the voyage provider (the crate's
+/// long-standing `create_provider` fallback for voyage configs).
+pub const DEFAULT_VOYAGE_DIMENSION: usize = 1024;
+
+/// Default embedding dimension for a provider when the config leaves
+/// `dimension` unset — the dimension of that provider's default model.
+///
+/// WHY: a single scalar default (384) silently paired the OpenAI-compatible
+/// provider — whose default endpoint serves a 1024-dim model — with candle's
+/// 384, so an `[embedding]` section that set only `provider` opened stores
+/// with a dimension its own embedder could never produce. Unrecognized
+/// providers fall back to the legacy 384: config validation and
+/// [`create_provider`] reject them before the dimension is ever used.
+#[must_use]
+pub fn default_dimension_for_provider(provider: &str) -> usize {
+    match provider {
+        "candle" => DEFAULT_CANDLE_DIMENSION,
+        "openai-compat" => DEFAULT_OPENAI_COMPAT_DIMENSION,
+        "voyage" => DEFAULT_VOYAGE_DIMENSION,
+        _ => DEFAULT_MOCK_DIMENSION,
+    }
+}
+
 /// Non-secret embedding configuration provenance recorded in eval reports.
 ///
 /// WHY: Reports must identify which provider, model, dimension, and endpoint
@@ -511,7 +542,7 @@ impl Default for EmbeddingConfig {
         Self {
             provider: "mock".to_owned(),
             model: None,
-            dimension: Some(384),
+            dimension: Some(DEFAULT_MOCK_DIMENSION),
             api_key: None,
             base_url: None,
         }
@@ -619,7 +650,7 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
     match config.provider.as_str() {
         #[cfg(any(test, feature = "test-support"))]
         "mock" => {
-            let dim = config.dimension.unwrap_or(384);
+            let dim = config.dimension.unwrap_or(DEFAULT_MOCK_DIMENSION);
             Ok(Box::new(MockEmbeddingProvider::new(dim)))
         }
         #[cfg(feature = "embed-candle")]
@@ -638,7 +669,7 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
                 .model
                 .clone()
                 .unwrap_or_else(|| DEFAULT_OPENAI_COMPAT_MODEL.to_owned());
-            let dim = config.dimension.unwrap_or(384);
+            let dim = config.dimension.unwrap_or(DEFAULT_OPENAI_COMPAT_DIMENSION);
             let cfg = OpenAiCompatConfig {
                 base_url,
                 api_key: config.api_key.clone(),
@@ -656,7 +687,7 @@ pub fn create_provider(config: &EmbeddingConfig) -> EmbeddingResult<Box<dyn Embe
                 .model
                 .clone()
                 .unwrap_or_else(|| DEFAULT_VOYAGE_MODEL.to_owned());
-            let dim = config.dimension.unwrap_or(1024);
+            let dim = config.dimension.unwrap_or(DEFAULT_VOYAGE_DIMENSION);
             let api_key = config.api_key.clone().or_else(|| {
                 std::env::var("VOYAGE_API_KEY")
                     .ok()

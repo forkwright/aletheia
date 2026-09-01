@@ -77,7 +77,7 @@ pub(crate) async fn run(
                 Ok(p) => {
                     info!(
                         provider = %config.embedding.provider,
-                        dim = config.embedding.dimension,
+                        dim = config.embedding.effective_dimension(),
                         "embedding provider created"
                     );
                     Arc::from(p)
@@ -88,7 +88,9 @@ pub(crate) async fn run(
                         provider = %config.embedding.provider,
                         "embedding provider failed — embeddings will be skipped"
                     );
-                    Arc::new(DegradedEmbeddingProvider::new(config.embedding.dimension))
+                    Arc::new(DegradedEmbeddingProvider::new(
+                        config.embedding.effective_dimension(),
+                    ))
                 }
             },
             Err(e) => {
@@ -97,12 +99,14 @@ pub(crate) async fn run(
                     provider = %config.embedding.provider,
                     "embedding config invalid — embeddings will be skipped"
                 );
-                Arc::new(DegradedEmbeddingProvider::new(config.embedding.dimension))
+                Arc::new(DegradedEmbeddingProvider::new(
+                    config.embedding.effective_dimension(),
+                ))
             }
         };
 
     let knowledge_config = KnowledgeConfig {
-        dim: config.embedding.dimension,
+        dim: config.embedding.effective_dimension(),
         embedding_model: metadata_embedding_config.effective_model_name(),
         ..Default::default()
     };
