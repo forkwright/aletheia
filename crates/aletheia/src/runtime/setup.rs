@@ -946,7 +946,7 @@ fn degraded_embedding_provider(dimension: usize) -> Arc<dyn EmbeddingProvider> {
 
 impl LazyEmbeddingProvider {
     pub(crate) fn new(settings: EmbeddingSettings) -> Self {
-        let dimension = settings.dimension;
+        let dimension = settings.effective_dimension();
         Self {
             inner: tokio::sync::OnceCell::new(),
             degraded: DegradedEmbeddingProvider::new(dimension),
@@ -972,7 +972,7 @@ impl LazyEmbeddingProvider {
                                 "embedding provider config invalid: degraded mode \
                                  (recall and vector search unavailable)"
                             );
-                            return degraded_embedding_provider(self.settings.dimension);
+                            return degraded_embedding_provider(self.dimension);
                         }
                     };
                 #[expect(
@@ -983,7 +983,7 @@ impl LazyEmbeddingProvider {
                     Ok(p) => {
                         info!(
                             provider = %self.settings.provider,
-                            dim = self.settings.dimension,
+                            dim = self.dimension,
                             "embedding provider initialized (lazy)"
                         );
                         Arc::from(p) as Arc<dyn EmbeddingProvider>
@@ -995,7 +995,7 @@ impl LazyEmbeddingProvider {
                             "embedding provider failed to load: degraded mode \
                              (recall and vector search unavailable)"
                         );
-                        Arc::new(DegradedEmbeddingProvider::new(self.settings.dimension))
+                        Arc::new(DegradedEmbeddingProvider::new(self.dimension))
                             as Arc<dyn EmbeddingProvider>
                     }
                 }
@@ -1098,7 +1098,7 @@ pub(super) fn open_knowledge_stores(
                 }
             };
         mneme::trace_ingest::ensure_ops_schema(&store);
-        info!(cohort = %cohort, path = %kb_path.display(), dim = embedding.dimension, "knowledge store opened (fjall)");
+        info!(cohort = %cohort, path = %kb_path.display(), dim = embedding.effective_dimension(), "knowledge store opened (fjall)");
         stores.insert(cohort, store);
     }
     Ok(stores)
@@ -1133,7 +1133,7 @@ pub(super) fn build_knowledge_config(
     };
     let embedding_config = embedding.to_embedding_config();
     mneme::knowledge_store::KnowledgeConfig {
-        dim: embedding.dimension,
+        dim: embedding.effective_dimension(),
         embedding_model: embedding_config.effective_model_name(),
         allow_assumed_embedding_meta,
         admission_policy: policy,

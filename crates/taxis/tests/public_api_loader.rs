@@ -54,6 +54,32 @@ fn load_config_returns_defaults_when_no_toml_present() {
 }
 
 #[test]
+fn load_config_provider_only_embedding_resolves_provider_default_dimension() {
+    let jail = EnvJail::new();
+    let root = seed_instance(&jail);
+    // WHY: the cascade serializes compiled defaults into the merge tree, so
+    // this guards against a scalar dimension default re-materializing there
+    // and shadowing the provider-aware fallback (candle's 384 silently
+    // applied to a 1024-dim openai-compat endpoint).
+    write_toml(
+        root,
+        "[embedding]\nprovider = \"openai-compat\"\nbaseUrl = \"http://127.0.0.1:5005/v1\"\n",
+    );
+
+    let oikos = Oikos::from_root(root);
+    let config = load_config(&oikos).unwrap();
+    assert_eq!(
+        config.embedding.dimension, None,
+        "cascade must not materialize a dimension the operator never set"
+    );
+    assert_eq!(
+        config.embedding.effective_dimension(),
+        1024,
+        "openai-compat should resolve to its served model's 1024 dimension"
+    );
+}
+
+#[test]
 fn load_config_applies_gateway_port_override_from_toml() {
     let jail = EnvJail::new();
     let root = seed_instance(&jail);
@@ -152,7 +178,7 @@ fn load_config_parses_camel_case_keys() {
     let oikos = Oikos::from_root(root);
     let config = load_config(&oikos).unwrap();
     assert_eq!(config.embedding.provider, "mock");
-    assert_eq!(config.embedding.dimension, 512);
+    assert_eq!(config.embedding.dimension, Some(512));
 }
 
 #[test]
@@ -418,11 +444,11 @@ fn write_then_load_preserves_embedding_dimension_override() {
     let oikos = Oikos::from_root(root);
 
     let mut config = AletheiaConfig::default();
-    config.embedding.dimension = 1024;
+    config.embedding.dimension = Some(1024);
 
     write_config(&oikos, &config).unwrap();
     let loaded = load_config(&oikos).unwrap();
-    assert_eq!(loaded.embedding.dimension, 1024);
+    assert_eq!(loaded.embedding.dimension, Some(1024));
 }
 
 #[test]
