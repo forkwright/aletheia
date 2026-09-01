@@ -119,6 +119,26 @@ with `missing field 'id'`** — there is no lightweight authoring
 schema. To author knowledge by hand, prefer `--format markdown` and
 let the chunker synthesize the surrounding metadata.
 
+### `pdf`
+
+PDF is detected from a `.pdf` extension, then decoded to plain text before the
+normal text chunker runs. It is a container input rather than an `--format`
+value, so an explicit `--format markdown` or `--format text` still selects how
+the extracted text is chunked.
+
+PDF ingestion has a 32 MiB encoded-file boundary, shared with the workspace
+PDF policy. The command checks file metadata before reading the file. It then
+uses the same single `lopdf` parser as the agent `inspect_report` tool, with a
+typed resource policy that caps pages, objects, individual streams/pages,
+aggregate decompression, and aggregate extracted text. Password-protected PDFs
+are rejected without trying an empty password. Limit and malformed-document
+failures are per-file errors, so directory ingest continues safely.
+
+The direct dependency bump to `lopdf` 0.44 was necessary but not sufficient:
+its safe decompression APIs are opt-in, while the former `pdf-extract` path
+kept a second older parser and used unbounded extraction. The shared policy is
+therefore owned in `poiesis-inspect` and passed by both deployed callers.
+
 ### `auto`
 
 Format is detected from the file extension:
@@ -128,6 +148,7 @@ Format is detected from the file extension:
 | `.md` / `.markdown`         | markdown  |
 | `.json`                     | json      |
 | `.jsonl`                    | jsonl     |
+| `.pdf`                      | extracted text |
 | anything else (incl. `.txt`)| text      |
 
 ## Directory ingest

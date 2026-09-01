@@ -453,13 +453,25 @@ fn is_supported_extension(path: &Path) -> bool {
 /// well one crate away.
 async fn read_ingest_text(file: &Path) -> std::result::Result<String, String> {
     if file.extension().and_then(|e| e.to_str()) == Some("pdf") {
+        let max_input_bytes = usize::try_from(organon::builtins::view_file::MAX_PDF_BYTES)
+            .map_err(|_conversion_error| "configured PDF input limit is unsupported".to_owned())?;
+        let metadata = tokio::fs::metadata(file)
+            .await
+            .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
+        if metadata.len() > organon::builtins::view_file::MAX_PDF_BYTES {
+            return Err(format!(
+                "failed to read {}: PDF input exceeds the configured byte limit",
+                file.display()
+            ));
+        }
         let bytes = tokio::fs::read(file)
             .await
             .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
         // WHY `extract_pdf_text` and not `inspect_pdf`: the latter caps its output at
         // 100 lines because it summarises. Ingesting that would record the first
         // hundred lines of a PDF as the whole document.
-        return poiesis_inspect::extract_pdf_text(&bytes)
+        let limits = poiesis_inspect::PdfInspectLimits::for_input_bytes(max_input_bytes);
+        return poiesis_inspect::extract_pdf_text_with_limits(&bytes, &limits)
             .map_err(|e| format!("failed to extract text from {}: {e}", file.display()));
     }
     tokio::fs::read_to_string(file)
@@ -469,6 +481,7 @@ async fn read_ingest_text(file: &Path) -> std::result::Result<String, String> {
 
 #[cfg(test)]
 #[expect(clippy::unwrap_used, reason = "test assertions")]
+#[expect(clippy::expect_used, reason = "test assertions")]
 #[expect(
     clippy::disallowed_methods,
     reason = "test fixture writes one temporary input file before exercising async ingest"
@@ -606,6 +619,23 @@ mod tests {
             validate_inputs(&args_with(input.clone(), fmt, "alice"))
                 .unwrap_or_else(|e| panic!("format {fmt} should be valid: {e}"));
         }
+    }
+
+    #[tokio::test]
+    async fn pdf_ingest_refuses_oversized_metadata_before_reading() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oversized.pdf");
+        let file = std::fs::File::create(&path).unwrap();
+        // A sparse file provides the hostile size signal without committing or
+        // allocating a large fixture. `read_ingest_text` must reject metadata
+        // before it attempts `tokio::fs::read`.
+        file.set_len(organon::builtins::view_file::MAX_PDF_BYTES + 1)
+            .unwrap();
+
+        let error = read_ingest_text(&path)
+            .await
+            .expect_err("oversized PDF metadata must be refused before read");
+        assert!(error.contains("PDF input exceeds the configured byte limit"));
     }
 
     /// Regression for #4164/B: a directory containing one unparseable file

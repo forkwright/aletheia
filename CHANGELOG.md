@@ -13,6 +13,8 @@
 
 ### Bug Fixes
 
+* **poiesis:** use one bounded PDF parser for ingest and report inspection
+
 * **agora,aletheia:** persist Matrix /sync cursors across restarts ([#7114](https://github.com/forkwright/aletheia/issues/7114)) ([cdb734e](https://github.com/forkwright/aletheia/commit/cdb734ef545a3dbaca47f53aaf17a11b2b57c4e7)), closes [#7104](https://github.com/forkwright/aletheia/issues/7104)
 * **agora:** dedupe redelivered inbound messages before dispatch ([#7112](https://github.com/forkwright/aletheia/issues/7112)) ([cc01630](https://github.com/forkwright/aletheia/commit/cc01630dbdf864518e560df1968e334475e6a536)), closes [#7102](https://github.com/forkwright/aletheia/issues/7102)
 * **agora:** filter Matrix events on msgtype before they become turns ([#7122](https://github.com/forkwright/aletheia/issues/7122)) ([3ecf236](https://github.com/forkwright/aletheia/commit/3ecf23625424f9df1e88fc9bda4a0d512ae53570)), closes [#7082](https://github.com/forkwright/aletheia/issues/7082)

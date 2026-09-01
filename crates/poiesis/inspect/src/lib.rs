@@ -10,6 +10,7 @@ mod pptx;
 mod xlsx;
 
 pub use error::{InspectError, Result};
+pub use pdf::PdfInspectLimits;
 
 use tracing::instrument;
 
@@ -82,7 +83,16 @@ pub struct PresentationSummary {
 /// text extraction fails.
 #[instrument(skip_all, fields(bytes = bytes.len()))]
 pub fn inspect_pdf(bytes: &[u8]) -> Result<PdfSummary> {
-    pdf::inspect_pdf_impl(bytes)
+    inspect_pdf_with_limits(bytes, &PdfInspectLimits::default())
+}
+
+/// Inspect a PDF using caller-owned resource limits.
+///
+/// Both ingestion and the agent report tool construct this policy at their
+/// boundary, before the PDF bytes are allocated or parsed.
+#[instrument(skip_all, fields(bytes = bytes.len()))]
+pub fn inspect_pdf_with_limits(bytes: &[u8], limits: &PdfInspectLimits) -> Result<PdfSummary> {
+    pdf::inspect_pdf_impl(bytes, limits)
 }
 
 /// Extract a PDF's full text, uncapped.
@@ -99,7 +109,13 @@ pub fn inspect_pdf(bytes: &[u8]) -> Result<PdfSummary> {
 /// extraction fails.
 #[instrument(skip_all, fields(bytes = bytes.len()))]
 pub fn extract_pdf_text(bytes: &[u8]) -> Result<String> {
-    pdf::extract_pdf_text_impl(bytes)
+    extract_pdf_text_with_limits(bytes, &PdfInspectLimits::default())
+}
+
+/// Extract PDF text using caller-owned resource limits.
+#[instrument(skip_all, fields(bytes = bytes.len()))]
+pub fn extract_pdf_text_with_limits(bytes: &[u8], limits: &PdfInspectLimits) -> Result<String> {
+    pdf::extract_pdf_text_impl(bytes, limits)
 }
 
 /// Extract text from an XLSX workbook.
@@ -123,8 +139,95 @@ pub fn inspect_pptx(bytes: &[u8]) -> Result<PresentationSummary> {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "test fixture construction and assertions"
+)]
+#[expect(
+    clippy::field_reassign_with_default,
+    reason = "tests override one policy limit at a time for readability"
+)]
 mod tests {
     use super::*;
+
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn text_pdf(text: &str, pages: usize) -> Vec<u8> {
+        use lopdf::content::{Content, Operation};
+        use lopdf::{Document, Object, Stream, dictionary};
+
+        let mut document = Document::with_version("1.5");
+        let pages_id = document.new_object_id();
+        let font_id = document.add_object(lopdf::dictionary! {
+            "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Courier"
+        });
+        let resources_id = document.add_object(lopdf::dictionary! {
+            "Font" => lopdf::dictionary! { "F1" => font_id }
+        });
+        let mut page_ids = Vec::with_capacity(pages);
+        for _ in 0..pages {
+            let content = Content {
+                operations: vec![
+                    Operation::new("BT", vec![]),
+                    Operation::new("Tf", vec!["F1".into(), 12.into()]),
+                    Operation::new("Tj", vec![Object::string_literal(text)]),
+                    Operation::new("ET", vec![]),
+                ],
+            };
+            let content_id = document.add_object(Stream::new(
+                lopdf::dictionary! {},
+                content.encode().expect("encode content"),
+            ));
+            page_ids.push(document.add_object(lopdf::dictionary! {
+                "Type" => "Page", "Parent" => pages_id, "Contents" => content_id
+            }));
+        }
+        let page_count = i64::try_from(pages).expect("test page count fits i64");
+        let kids = page_ids
+            .into_iter()
+            .map(Object::Reference)
+            .collect::<Vec<_>>();
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(lopdf::dictionary! {
+                "Type" => "Pages", "Kids" => kids, "Count" => page_count,
+                "Resources" => resources_id, "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+            }),
+        );
+        let catalog_id = document.add_object(lopdf::dictionary! {
+            "Type" => "Catalog", "Pages" => pages_id
+        });
+        document.trailer.set("Root", catalog_id);
+        let mut bytes = Vec::new();
+        document.save_to(&mut bytes).expect("save PDF");
+        bytes
+    }
+
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn object_stream_pdf() -> Vec<u8> {
+        use lopdf::{Document, Object, SaveOptions};
+
+        let mut document =
+            Document::load_mem(&text_pdf("object stream", 1)).expect("load test PDF");
+        for index in 0..8 {
+            document.add_object(lopdf::dictionary! {
+                "TestObject" => Object::string_literal(format!("object-{index}"))
+            });
+        }
+
+        let mut bytes = Vec::new();
+        document
+            .save_with_options(
+                &mut bytes,
+                SaveOptions::builder()
+                    .use_object_streams(true)
+                    .use_xref_streams(true)
+                    .max_objects_per_stream(1)
+                    .compression_level(1)
+                    .build(),
+            )
+            .expect("save object-stream PDF");
+        bytes
+    }
 
     const NAMED_ENTITY_TEXT: &str = r"A &amp; B &lt; C &gt; D &apos;Q&apos; &quot;R&quot; &#x2019;";
     const DECODED_ENTITY_TEXT: &str = "A & B < C > D 'Q' \"R\" \u{2019}";
@@ -134,6 +237,148 @@ mod tests {
         let malformed = b"not a pdf";
         let result = inspect_pdf(malformed);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn bounded_pdf_extraction_preserves_ordinary_text_and_page_count() {
+        let bytes = text_pdf("Hello, bounded PDF!", 2);
+        let summary = inspect_pdf(&bytes).expect("inspect ordinary PDF");
+        assert_eq!(summary.pages, 2);
+        assert!(summary.page_count_reliable);
+        assert!(
+            summary
+                .text_snippets
+                .join("\n")
+                .contains("Hello, bounded PDF!")
+        );
+        let extracted = extract_pdf_text(&bytes).expect("extract ordinary PDF");
+        assert!(extracted.contains("Hello, bounded PDF!"));
+    }
+
+    #[test]
+    fn pdf_input_limit_is_checked_before_parser_work() {
+        let limits = PdfInspectLimits::for_input_bytes(4);
+        let error = inspect_pdf_with_limits(b"%PDF-1.5", &limits).expect_err("input is too large");
+        assert!(matches!(error, InspectError::PdfInputTooLarge));
+    }
+
+    #[test]
+    fn pdf_page_budget_rejects_many_small_pages() {
+        let mut limits = PdfInspectLimits::default();
+        limits.max_pages = 1;
+        let error = inspect_pdf_with_limits(&text_pdf("page", 2), &limits)
+            .expect_err("page budget must be enforced");
+        assert!(matches!(
+            error,
+            InspectError::PdfLimitExceeded {
+                limit: "page count"
+            }
+        ));
+    }
+
+    #[test]
+    fn pdf_aggregate_text_budget_rejects_many_small_pages() {
+        let mut limits = PdfInspectLimits::default();
+        limits.max_extracted_text_bytes = 8;
+        let error = extract_pdf_text_with_limits(&text_pdf("text", 3), &limits)
+            .expect_err("aggregate text budget must be enforced");
+        assert!(matches!(
+            error,
+            InspectError::PdfLimitExceeded {
+                limit: "extracted text"
+            }
+        ));
+    }
+
+    #[test]
+    fn pdf_aggregate_load_budget_rejects_many_small_object_streams() {
+        let bytes = object_stream_pdf();
+        let object_stream_count = bytes
+            .windows(b"/ObjStm".len())
+            .filter(|window| *window == b"/ObjStm")
+            .count();
+        assert!(
+            object_stream_count >= 2,
+            "fixture must contain multiple individually-small object streams"
+        );
+
+        let mut limits = PdfInspectLimits::for_input_bytes(bytes.len());
+        limits.max_decompressed_stream_bytes = 1024;
+        limits.max_decompressed_page_bytes = 1024;
+        // One reservation is consumed by the xref stream and one by the first
+        // object stream. The next otherwise-valid object stream must fail
+        // before it can allocate its decoded body.
+        limits.max_decompressed_total_bytes = 2 * 1024;
+        let error = inspect_pdf_with_limits(&bytes, &limits)
+            .expect_err("aggregate eager-load budget must be enforced");
+        assert!(matches!(
+            error,
+            InspectError::PdfLimitExceeded {
+                limit: "aggregate decompression"
+            }
+        ));
+    }
+
+    #[test]
+    fn pdf_object_budget_rejects_before_page_or_text_work() {
+        let bytes = object_stream_pdf();
+        let mut limits = PdfInspectLimits::default();
+        limits.max_objects = 1;
+        let error = inspect_pdf_with_limits(&bytes, &limits)
+            .expect_err("object budget must be enforced before inspection");
+        assert!(matches!(
+            error,
+            InspectError::PdfLimitExceeded {
+                limit: "object count"
+            }
+        ));
+    }
+
+    #[test]
+    #[expect(clippy::expect_used, reason = "test fixture construction")]
+    fn encrypted_pdf_is_explicitly_unsupported_without_password_probe() {
+        use lopdf::{Document, EncryptionState, EncryptionVersion, Object, Permissions};
+
+        let mut document = Document::load_mem(&text_pdf("secret", 1)).expect("load test PDF");
+        document.trailer.set(
+            "ID",
+            Object::Array(vec![
+                Object::string_literal(vec![1_u8; 16]),
+                Object::string_literal(vec![2_u8; 16]),
+            ]),
+        );
+        let state = EncryptionState::try_from(EncryptionVersion::V2 {
+            document: &document,
+            owner_password: "owner-password",
+            user_password: "user-password",
+            key_length: 128,
+            permissions: Permissions::all(),
+        })
+        .expect("create encryption state");
+        document.encrypt(&state).expect("encrypt test PDF");
+        let mut bytes = Vec::new();
+        document
+            .save_to(&mut bytes)
+            .expect("save encrypted test PDF");
+
+        let error = inspect_pdf(&bytes).expect_err("encrypted PDFs must be unsupported");
+        assert!(matches!(error, InspectError::EncryptedPdf));
+    }
+
+    #[test]
+    fn pdf_aggregate_page_budget_rejects_many_individually_small_pages() {
+        let mut limits = PdfInspectLimits::default();
+        limits.max_decompressed_stream_bytes = 1024;
+        limits.max_decompressed_page_bytes = 1024;
+        limits.max_decompressed_total_bytes = 2 * 1024;
+        let error = extract_pdf_text_with_limits(&text_pdf("page", 3), &limits)
+            .expect_err("aggregate page decode budget must be enforced");
+        assert!(matches!(
+            error,
+            InspectError::PdfLimitExceeded {
+                limit: "aggregate decompression"
+            }
+        ));
     }
 
     #[test]

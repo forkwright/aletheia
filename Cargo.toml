@@ -420,3 +420,12 @@ opt-level = 1
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# SECURITY(#7142): lopdf 0.44 introduced per-stream limits but leaves aggregate
+# xref/object-stream accounting to callers. This small, pinned fork starts from
+# upstream 1e3d646 (which includes the post-0.44 content-parser #535 fix) and
+# adds an explicit shared budget used by load and bounded extraction. It is a
+# temporary workspace-owned security patch until upstream exposes equivalent
+# aggregate accounting in a released crate.
+[patch.crates-io]
+lopdf = { path = "crates/third-party/lopdf" }

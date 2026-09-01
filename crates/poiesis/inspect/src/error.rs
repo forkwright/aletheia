@@ -9,6 +9,21 @@ pub type Result<T> = std::result::Result<T, InspectError>;
 #[derive(Debug, Snafu)]
 #[non_exhaustive]
 pub enum InspectError {
+    /// The supplied PDF is larger than the caller's accepted input budget.
+    #[snafu(display("PDF input exceeds the configured byte limit"))]
+    PdfInputTooLarge,
+
+    /// A PDF exceeded one of the parser or extraction resource budgets.
+    #[snafu(display("PDF inspection exceeded the configured {limit} limit"))]
+    PdfLimitExceeded {
+        /// Stable name of the budget that was exceeded.
+        limit: &'static str,
+    },
+
+    /// Password-protected PDFs are deliberately unsupported by inspection.
+    #[snafu(display("password-protected PDFs are not supported"))]
+    EncryptedPdf,
+
     /// Failed to parse ZIP archive (XLSX/PPTX format).
     #[snafu(display("failed to parse ZIP archive: {source}"))]
     ZipError {
