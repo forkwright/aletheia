@@ -86,31 +86,44 @@ def tag_state(
     duplicate_tags: set[str],
     now: dt.datetime,
     grace_hours: int,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     if tag in duplicate_tags:
-        return (f"{tag}: multiple readable release objects make the snapshot ambiguous", None)
+        return (
+            f"{tag}: multiple readable release objects make the snapshot ambiguous",
+            None,
+            None,
+        )
     release = releases_by_tag.get(tag)
     if release is None:
         return (None,
             f"{tag}: no readable published release; a hidden draft, deleted release, "
-            "or never-released tag is indistinguishable with this read-only token"
+            "or never-released tag is indistinguishable with this read-only token",
+            None,
         )
     problem = release_inventory_problem(release, tag)
     if problem is None:
-        return (None, None)
+        return (None, None, None)
     if release.get("draft") is True:
         updated_at = release.get("updated_at")
         if not isinstance(updated_at, str):
-            return (None, f"{tag}: readable draft has no usable release-update timestamp")
+            return (
+                None,
+                f"{tag}: readable draft has no usable release-update timestamp",
+                None,
+            )
         if older_than(updated_at, now, grace_hours):
-            return (f"{tag}: draft inactive since its last release API update", None)
-        return (None, None)
+            return (f"{tag}: draft inactive since its last release API update", None, None)
+        return (None, None, f"{tag}: readable draft is inside release-update grace")
     published_at = release.get("published_at")
     if not isinstance(published_at, str):
-        return (None, f"{tag}: readable published release has no usable publication timestamp")
+        return (
+            None,
+            f"{tag}: readable published release has no usable publication timestamp",
+            None,
+        )
     if older_than(published_at, now, grace_hours):
-        return (f"{tag}: {problem} past publication grace", None)
-    return (None, None)
+        return (f"{tag}: {problem} past publication grace", None, None)
+    return (None, None, f"{tag}: {problem} inside publication grace")
 
 
 def release_snapshot(releases: list[dict]) -> tuple[dict[str, dict], set[str]]:
@@ -179,13 +192,15 @@ def reconciliation(
     for tag in sorted(tags):
         if not in_contract(tag):
             continue
-        failure, ambiguity = tag_state(
+        failure, ambiguity, warning = tag_state(
             tag, by_tag, duplicate_tags, now, grace_hours
         )
         if failure is not None:
             failures.append(failure)
         if ambiguity is not None:
             evidence_unknown.append(ambiguity)
+        if warning is not None:
+            warnings.append(warning)
     for tag in sorted(duplicate_tags - set(tags)):
         if in_contract(tag):
             failures.append(
@@ -254,20 +269,30 @@ def main(argv: list[str] | None = None) -> int:
     problems, evidence_unknown, warnings = reconciliation(
         tag_rows, releases, tag_refs, dt.datetime.now(dt.timezone.utc), args.grace_hours
     )
-    if problems:
-        for problem in problems:
-            print(f"release-health: {problem}", file=sys.stderr)
-        print(f"::error title=release reconciliation::{problems[0]}")
-        return 1
     checked = sum(in_contract(str(row.get("name", ""))) for row in tag_rows)
+    for problem in problems:
+        print(f"release-health: {problem}", file=sys.stderr)
     if evidence_unknown:
         for ambiguity in evidence_unknown:
             print(f"release-health: evidence unknown: {ambiguity}", file=sys.stderr)
+    if problems:
+        print(f"::error title=release reconciliation::{problems[0]}")
+    if evidence_unknown:
         print(f"::error title=release reconciliation evidence unknown::{evidence_unknown[0]}")
-        return 1
     for warning in warnings:
         print(f"release-health: warning: {warning}")
-    print(f"release-health: {checked} in-contract tags have verified readable inventories")
+    if problems or evidence_unknown:
+        return 1
+    if warnings:
+        print(
+            f"release-health: no stale or evidence-unknown violations across {checked} "
+            f"in-contract tags; {len(warnings)} state(s) remain inside grace"
+        )
+    else:
+        print(
+            f"release-health: no stale or evidence-unknown violations across {checked} "
+            "in-contract tags"
+        )
     return 0
 
 

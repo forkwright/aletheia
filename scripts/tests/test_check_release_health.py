@@ -69,6 +69,33 @@ class HealthTests(unittest.TestCase):
         self.assertIn("no readable published release", ambiguities[0])
         self.assertIn("indistinguishable", ambiguities[0])
 
+    def test_mixed_main_output_keeps_failures_unknowns_and_warnings_visible(self) -> None:
+        verified = "v1.2.3"
+        unknown = "v1.2.4"
+        inside_grace = "v1.2.5"
+        original_fetch = health.fetch_paged
+        output = io.StringIO()
+        errors = io.StringIO()
+        now = dt.datetime.now(dt.timezone.utc)
+        fresh = release(
+            inside_grace, published_at=now.isoformat().replace("+00:00", "Z")
+        )
+        try:
+            health.fetch_paged = lambda _repo, resource: (
+                rows(verified) + rows(unknown) + rows(inside_grace)
+                if resource == "tags"
+                else [release(verified), fresh]
+            )
+            with redirect_stdout(output), redirect_stderr(errors):
+                self.assertEqual(health.main([]), 1)
+        finally:
+            health.fetch_paged = original_fetch
+        self.assertIn(verified, errors.getvalue())
+        self.assertIn(unknown, errors.getvalue())
+        self.assertIn("evidence unknown", errors.getvalue())
+        self.assertIn(inside_grace, output.getvalue())
+        self.assertIn("inside publication grace", output.getvalue())
+
     def test_unreadable_release_exits_nonzero_as_evidence_unknown(self) -> None:
         original_fetch = health.fetch_paged
         output = io.StringIO()
@@ -158,6 +185,7 @@ class HealthTests(unittest.TestCase):
             health.tag_ref_exists = original_ref
         self.assertIn("warning", output.getvalue())
         self.assertIn("inside publication grace", output.getvalue())
+        self.assertNotIn("verified readable inventories", output.getvalue())
 
     def test_non_404_tag_ref_error_is_explicit(self) -> None:
         with mock.patch.object(health.subprocess, "run") as run:
