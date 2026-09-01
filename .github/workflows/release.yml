@@ -740,3 +740,45 @@ jobs:
             exit 1
           fi
           gh release edit "$RELEASE_TAG" --draft=false --verify-tag
+
+  release-outcome:
+    # WHY(#6999): terminal publication is observable only when a release is
+    # public with the exact staged inventory. This job is deliberately after
+    # every producer and `always()`: a failed upstream leaves no readable
+    # published release, names the failed job(s), and makes that exact tag
+    # red instead of silently ending the run as an unpublished release. The
+    # read-only token does not claim whether that state is draft or absent.
+    needs:
+      [
+        release-identity,
+        canonical-gate,
+        canonical-security,
+        prepare-release,
+        test,
+        feature-policy,
+        feature-check,
+        no-default-recipes,
+        build,
+        sbom,
+        publish-release,
+      ]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # WHY(filter): this job runs one Python script that only talks to
+          # the API.
+          filter: blob:none
+          persist-credentials: false
+          ref: ${{ inputs.release_sha || github.sha }}
+
+      - name: Report the release outcome
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: scripts/check-release-outcome.py --attempts 6 --retry-seconds 10

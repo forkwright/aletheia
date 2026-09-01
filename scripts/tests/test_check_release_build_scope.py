@@ -13,6 +13,15 @@ from typing import Callable
 import yaml
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "check-release-build-scope.py"
+CONTRACT_PATH = SCRIPT_PATH.parent / "release_observer_contract.py"
+CONTRACT_SPEC = importlib.util.spec_from_file_location(
+    "release_observer_contract", CONTRACT_PATH
+)
+if CONTRACT_SPEC is None or CONTRACT_SPEC.loader is None:
+    raise RuntimeError(f"cannot load {CONTRACT_PATH}")
+contract = importlib.util.module_from_spec(CONTRACT_SPEC)
+sys.modules[CONTRACT_SPEC.name] = contract
+CONTRACT_SPEC.loader.exec_module(contract)
 SPEC = importlib.util.spec_from_file_location("check_release_build_scope", SCRIPT_PATH)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"cannot load {SCRIPT_PATH}")
@@ -119,6 +128,40 @@ class ReleaseBuildValidation(unittest.TestCase):
             ],
         }
         self.assert_rejected(candidate)
+        candidate = workflow()
+        candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["permissions"] = {"contents": "write"}
+        self.assert_rejected(candidate)
+        for command in (
+            "true # scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
+            "bash -c 'scripts/check-release-outcome.py --attempts 6 --retry-seconds 10'",
+            "scripts/check-release-outcome.py --retry-seconds 10 --attempts 6",
+            "scripts/check-release-outcome.py --attempts 6",
+            "scripts/check-release-outcome.py --attempts 6 --retry-seconds 10 && true",
+            "python3 scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
+        ):
+            with self.subTest(command=command):
+                candidate = workflow()
+                report = next(
+                    step
+                    for step in candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["steps"]
+                    if step.get("name") == "Report the release outcome"
+                )
+                report["run"] = command
+                self.assert_rejected(candidate)
+        for mutate in (
+            lambda candidate: candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["steps"][0].update({"run": "true"}),
+            lambda candidate: candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["steps"].append({"run": "curl https://example.invalid"}),
+            lambda candidate: next(step for step in candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["steps"] if step.get("name") == "Report the release outcome").update({"if": "${{ false }}"}),
+            lambda candidate: next(step for step in candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["steps"] if step.get("name") == "Report the release outcome").update({"continue-on-error": True}),
+            lambda candidate: next(step for step in candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["steps"] if step.get("name") == "Report the release outcome").update({"working-directory": "missing"}),
+            lambda candidate: candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID].update({"container": "evil:latest"}),
+            lambda candidate: candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID].update({"continue-on-error": True}),
+            lambda candidate: candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID].update({"env": {"PATH": "bad"}}),
+        ):
+            with self.subTest(observer_mutation=mutate):
+                candidate = workflow()
+                mutate(candidate)
+                self.assert_rejected(candidate)
         candidate = workflow()
         candidate["jobs"]["alternate-artifact-producer"] = {
             "runs-on": "ubuntu-latest",
