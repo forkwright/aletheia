@@ -4,8 +4,8 @@
 The Releases API response available to this read-only workflow is not proof
 that no draft exists: GitHub may hide drafts from callers without push access.
 Likewise, the Tags API has no tag-creation time. An absent readable release is
-therefore a red, explicitly ambiguous state, never an age or deletion claim.
-Grace applies only to a readable release's own API timestamp.
+therefore reported as an ambiguity, not a failure or an age/deletion claim.
+Grace applies only to release activity timestamps, never target commit dates.
 """
 
 from __future__ import annotations
@@ -17,11 +17,12 @@ import os
 import re
 import subprocess
 import sys
-from pathlib import Path
+from urllib.parse import quote
 
 from release_asset_inventory import release_inventory_problem
 
 MAX_PAGES = 20
+MAX_TAG_REF_CHECKS = 100
 DEFAULT_GRACE_HOURS = 12
 TAG_RE = re.compile(
     r"^v(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)"
@@ -71,36 +72,45 @@ def in_contract(tag: str) -> bool:
     return parsed is not None and parsed >= CONTRACT_BASELINE
 
 
-def older_than(stamp: str | None, now: dt.datetime, grace_hours: int) -> bool:
-    if stamp is None:
-        return True
+def older_than(stamp: str, now: dt.datetime, grace_hours: int) -> bool:
     try:
         then = dt.datetime.fromisoformat(stamp.replace("Z", "+00:00"))
     except ValueError:
-        return True
+        raise HealthError(f"invalid release activity timestamp: {stamp!r}") from None
     return now - then > dt.timedelta(hours=grace_hours)
 
 
-def tag_violation(
+def tag_state(
     tag: str,
     releases_by_tag: dict[str, dict],
     duplicate_tags: set[str],
     now: dt.datetime,
     grace_hours: int,
-) -> str | None:
+) -> tuple[str | None, str | None]:
     if tag in duplicate_tags:
-        return f"{tag}: multiple readable release objects make the snapshot ambiguous"
+        return (f"{tag}: multiple readable release objects make the snapshot ambiguous", None)
     release = releases_by_tag.get(tag)
     if release is None:
-        return (
-            f"{tag}: no readable published release; a draft, missing release, "
-            "or visibility restriction is indistinguishable"
+        return (None,
+            f"{tag}: no readable published release; a hidden draft, deleted release, "
+            "or never-released tag is indistinguishable with this read-only token"
         )
     problem = release_inventory_problem(release, tag)
-    stale = older_than(
-        release.get("published_at") or release.get("created_at"), now, grace_hours
-    )
-    return f"{tag}: {problem} past grace" if problem and stale else None
+    if problem is None:
+        return (None, None)
+    if release.get("draft") is True:
+        updated_at = release.get("updated_at")
+        if not isinstance(updated_at, str):
+            return (None, f"{tag}: readable draft has no usable release-update timestamp")
+        if older_than(updated_at, now, grace_hours):
+            return (f"{tag}: draft inactive since its last release API update", None)
+        return (None, None)
+    published_at = release.get("published_at")
+    if not isinstance(published_at, str):
+        return (None, f"{tag}: readable published release has no usable publication timestamp")
+    if older_than(published_at, now, grace_hours):
+        return (f"{tag}: {problem} past publication grace", None)
+    return (None, None)
 
 
 def release_snapshot(releases: list[dict]) -> tuple[dict[str, dict], set[str]]:
@@ -118,23 +128,105 @@ def release_snapshot(releases: list[dict]) -> tuple[dict[str, dict], set[str]]:
     return by_tag, duplicate_tags
 
 
-def violations(
-    tag_rows: list[dict], releases: list[dict], now: dt.datetime, grace_hours: int
-) -> list[str]:
+def tag_ref_exists(repo: str, tag: str) -> bool:
+    """Read one current tag ref, treating only a verified 404 as absent."""
+    result = subprocess.run(
+        ["gh", "api", f"repos/{repo}/git/ref/tags/{quote(tag, safe='')}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        return True
+    if "HTTP 404" in result.stderr:
+        return False
+    raise HealthError(f"GitHub tag-ref request failed: {result.stderr.strip()}")
+
+
+def orphan_published_tags(tags: set[str], releases: list[dict]) -> list[str]:
+    """Find release rows requiring a second, current tag-ref snapshot."""
+    candidates = {
+        release.get("tag_name")
+        for release in releases
+        if isinstance(release.get("tag_name"), str)
+        and in_contract(release["tag_name"])
+        and release.get("draft") is False
+        and release["tag_name"] not in tags
+    }
+    if len(candidates) > MAX_TAG_REF_CHECKS:
+        raise HealthError(
+            f"published release/tag reconciliation exceeds {MAX_TAG_REF_CHECKS}-ref bound"
+        )
+    return sorted(candidates)
+
+
+def reconciliation(
+    tag_rows: list[dict],
+    releases: list[dict],
+    tag_refs: dict[str, bool],
+    now: dt.datetime,
+    grace_hours: int,
+) -> tuple[list[str], list[str]]:
     tags = {
         row.get("name"): row
         for row in tag_rows
         if isinstance(row.get("name"), str)
     }
     by_tag, duplicate_tags = release_snapshot(releases)
-    failures = [
-        problem
-        for tag, row in sorted(tags.items())
-        if in_contract(tag)
-        if (
-            problem := tag_violation(tag, by_tag, duplicate_tags, now, grace_hours)
-        ) is not None
-    ]
+    failures: list[str] = []
+    ambiguities: list[str] = []
+    for tag in sorted(tags):
+        if not in_contract(tag):
+            continue
+        failure, ambiguity = tag_state(
+            tag, by_tag, duplicate_tags, now, grace_hours
+        )
+        if failure is not None:
+            failures.append(failure)
+        if ambiguity is not None:
+            ambiguities.append(ambiguity)
+    for tag in sorted(duplicate_tags - set(tags)):
+        if in_contract(tag):
+            failures.append(
+                f"{tag}: multiple readable release objects make the snapshot ambiguous"
+            )
+    for tag in orphan_published_tags(set(tags), releases):
+        ref_exists = tag_refs.get(tag)
+        if ref_exists is True:
+            continue  # The tag appeared after the paged snapshot.
+        if ref_exists is None:
+            raise HealthError(f"missing current tag-ref evidence for {tag}")
+        release = by_tag.get(tag)
+        if tag in duplicate_tags or release is None:
+            continue
+        published_at = release.get("published_at")
+        if not isinstance(published_at, str):
+            ambiguities.append(
+                f"{tag}: readable published release has no usable publication timestamp "
+                "for its currently missing tag ref"
+            )
+        elif older_than(published_at, now, grace_hours):
+            failures.append(
+                f"{tag}: readable published release has a currently missing tag ref "
+                "past publication grace"
+            )
+        else:
+            ambiguities.append(
+                f"{tag}: readable published release has a currently missing tag ref "
+                "inside publication grace"
+            )
+    return failures, ambiguities
+
+
+def violations(
+    tag_rows: list[dict], releases: list[dict], now: dt.datetime, grace_hours: int
+) -> list[str]:
+    """Compatibility wrapper for pure failure-only checks."""
+    tags = {
+        row.get("name") for row in tag_rows if isinstance(row.get("name"), str)
+    }
+    tag_refs = {tag: True for tag in orphan_published_tags(tags, releases)}
+    failures, _ = reconciliation(tag_rows, releases, tag_refs, now, grace_hours)
     return failures
 
 
@@ -151,8 +243,15 @@ def main(argv: list[str] | None = None) -> int:
     repo = os.environ.get("GH_REPO", "forkwright/aletheia")
     tag_rows = fetch_paged(repo, "tags")
     releases = fetch_paged(repo, "releases")
-    problems = violations(
-        tag_rows, releases, dt.datetime.now(dt.timezone.utc), args.grace_hours
+    tag_names = {
+        row.get("name") for row in tag_rows if isinstance(row.get("name"), str)
+    }
+    tag_refs = {
+        tag: tag_ref_exists(repo, tag)
+        for tag in orphan_published_tags(tag_names, releases)
+    }
+    problems, ambiguities = reconciliation(
+        tag_rows, releases, tag_refs, dt.datetime.now(dt.timezone.utc), args.grace_hours
     )
     if problems:
         for problem in problems:
@@ -160,7 +259,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"::error title=release reconciliation::{problems[0]}")
         return 1
     checked = sum(in_contract(str(row.get("name", ""))) for row in tag_rows)
-    print(f"release-health: {checked} in-contract tags have exact published inventories")
+    for ambiguity in ambiguities:
+        print(f"release-health: ambiguous: {ambiguity}")
+    print(f"release-health: {checked} in-contract tags have verified readable inventories")
     return 0
 
 

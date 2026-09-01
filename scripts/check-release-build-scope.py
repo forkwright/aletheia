@@ -27,6 +27,8 @@ from typing import Any
 
 import yaml
 
+from release_observer_contract import outcome_observer_error
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = Path(".github/workflows/release.yml")
 MANIFEST_NAME = "Cargo.toml"
@@ -171,7 +173,6 @@ TRUSTED_SIBLING_JOB_DIGESTS = {
     "publish-release": "8b83b7d5a7e03d0d6c4eca6f83a139455177aad868eaf156f2a1db6e19fb710f",
 }
 OUTCOME_OBSERVER_JOB_ID = "release-outcome"
-OUTCOME_COMMAND = "scripts/check-release-outcome.py --attempts 6 --retry-seconds 10"
 TRUSTED_RELEASE_JOB_IDS = frozenset(
     (*TRUSTED_SIBLING_JOB_DIGESTS, "build", OUTCOME_OBSERVER_JOB_ID)
 )
@@ -244,26 +245,10 @@ def build_steps(workflow: dict[str, Any]) -> list[dict[str, Any]]:
 
 def validate_outcome_observer(jobs: dict[str, Any]) -> None:
     """Permit one terminal read-only observer without widening artifact flow."""
+    error = outcome_observer_error(jobs.get(OUTCOME_OBSERVER_JOB_ID))
+    if error is not None:
+        raise ScopeCheckError(error)
     outcome = jobs[OUTCOME_OBSERVER_JOB_ID]
-    if not isinstance(outcome, dict):
-        raise ScopeCheckError("release outcome observer is not a mapping")
-    required_needs = frozenset((*TRUSTED_SIBLING_JOB_DIGESTS, "build"))
-    outcome_needs = outcome.get("needs")
-    if not isinstance(outcome_needs, list) or set(outcome_needs) != required_needs:
-        raise ScopeCheckError("release outcome observer does not wait for the complete graph")
-    if outcome.get("if") != "${{ always() }}":
-        raise ScopeCheckError("release outcome observer is not terminal")
-    if outcome.get("permissions") != {"actions": "read", "contents": "read"}:
-        raise ScopeCheckError("release outcome observer permissions are not read-only")
-    steps = outcome.get("steps")
-    if not isinstance(steps, list) or len(steps) != 2:
-        raise ScopeCheckError("release outcome observer steps differ from the trusted shape")
-    report = next(
-        (step for step in steps if step.get("name") == "Report the release outcome"),
-        None,
-    )
-    if not isinstance(report, dict) or report.get("run") != OUTCOME_COMMAND:
-        raise ScopeCheckError("release outcome observer does not run the outcome checker")
     rendered = json.dumps(outcome, sort_keys=True)
     prohibited = ("cargo build", "cargo auditable", "cross build", "gh release upload")
     if any(token in rendered for token in prohibited):

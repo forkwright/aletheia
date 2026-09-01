@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 import tempfile
+from copy import deepcopy
 from pathlib import Path
 
 SCRIPT_PATH = Path(__file__).parent / "check-release-artifact-routing.py"
@@ -100,63 +101,63 @@ def test_text_mutations_fail() -> None:
             CHECKER.RELEASE,
             "if: ${{ always() }}",
             "if: ${{ success() }}",
-            "release outcome must run on every terminal state",
+            "closed schema",
         ),
         (
             "inert outcome comment",
             CHECKER.RELEASE,
             "run: scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
             "run: true # scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
-            "release outcome command is not exact",
+            "closed schema",
         ),
         (
             "quoted outcome command",
             CHECKER.RELEASE,
             "run: scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
             'run: "\"scripts/check-release-outcome.py\" --attempts 6 --retry-seconds 10"',
-            "release outcome command is not exact",
+            "failed to load",
         ),
         (
             "indirect outcome command",
             CHECKER.RELEASE,
             "run: scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
             "run: bash -c 'scripts/check-release-outcome.py --attempts 6 --retry-seconds 10'",
-            "release outcome command is not exact",
+            "closed schema",
         ),
         (
             "reordered outcome arguments",
             CHECKER.RELEASE,
             "run: scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
             "run: scripts/check-release-outcome.py --retry-seconds 10 --attempts 6",
-            "release outcome command is not exact",
+            "closed schema",
         ),
         (
             "outcome command missing an argument",
             CHECKER.RELEASE,
             "run: scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
             "run: scripts/check-release-outcome.py --attempts 6",
-            "release outcome command is not exact",
+            "closed schema",
         ),
         (
             "outcome command has a second command",
             CHECKER.RELEASE,
             "run: scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
             "run: scripts/check-release-outcome.py --attempts 6 --retry-seconds 10 && true",
-            "release outcome command is not exact",
+            "closed schema",
         ),
         (
             "alternate outcome invocation",
             CHECKER.RELEASE,
             "run: scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
             "run: python3 scripts/check-release-outcome.py --attempts 6 --retry-seconds 10",
-            "release outcome command is not exact",
+            "closed schema",
         ),
         (
             "missing scheduled reconciliation",
             CHECKER.RELEASE_HEALTH,
             '- cron: "43 6 * * *"',
             '- cron: "43 7 * * *"',
-            "daily scheduled reconciliation is missing",
+            "closed schema",
         ),
         (
             "missing tagged dispatch",
@@ -501,11 +502,46 @@ def test_public_release_config_fails() -> None:
     )
 
 
+def test_observer_workflows_have_no_execution_extension_points() -> None:
+    release = CHECKER.yaml.safe_load((REPO_ROOT / CHECKER.RELEASE).read_text())
+    health = CHECKER.yaml.safe_load((REPO_ROOT / CHECKER.RELEASE_HEALTH).read_text())
+    for mutate in (
+        lambda candidate: candidate["jobs"]["release-outcome"]["steps"][0].clear(),
+        lambda candidate: candidate["jobs"]["release-outcome"]["steps"].append({"run": "curl https://example.invalid"}),
+        lambda candidate: next(step for step in candidate["jobs"]["release-outcome"]["steps"] if step.get("name") == "Report the release outcome").update({"if": "${{ false }}"}),
+        lambda candidate: next(step for step in candidate["jobs"]["release-outcome"]["steps"] if step.get("name") == "Report the release outcome").update({"continue-on-error": True}),
+        lambda candidate: next(step for step in candidate["jobs"]["release-outcome"]["steps"] if step.get("name") == "Report the release outcome").update({"working-directory": "missing"}),
+        lambda candidate: candidate["jobs"]["release-outcome"].update({"shell": "bash {0}"}),
+        lambda candidate: candidate["jobs"]["release-outcome"].update({"container": "evil:latest"}),
+        lambda candidate: candidate["jobs"]["release-outcome"].update({"continue-on-error": True}),
+        lambda candidate: candidate["jobs"]["release-outcome"].update({"timeout-minutes": 11}),
+    ):
+        candidate = deepcopy(release)
+        mutate(candidate)
+        errors = CHECKER._check_release(candidate)
+        expect(any("closed schema" in error for error in errors), f"outcome mutation accepted: {errors}")
+    for mutate in (
+        lambda candidate: candidate["jobs"]["audit"]["steps"][0].clear(),
+        lambda candidate: candidate["jobs"]["audit"]["steps"].append({"uses": "evil/action@deadbeef"}),
+        lambda candidate: next(step for step in candidate["jobs"]["audit"]["steps"] if step.get("name") == "Reconcile tags against releases").update({"run": "true # scripts/check-release-health.py --grace-hours 12"}),
+        lambda candidate: next(step for step in candidate["jobs"]["audit"]["steps"] if step.get("name") == "Reconcile tags against releases").update({"if": "${{ false }}"}),
+        lambda candidate: next(step for step in candidate["jobs"]["audit"]["steps"] if step.get("name") == "Reconcile tags against releases").update({"continue-on-error": True}),
+        lambda candidate: next(step for step in candidate["jobs"]["audit"]["steps"] if step.get("name") == "Reconcile tags against releases").update({"working-directory": "missing"}),
+        lambda candidate: candidate["jobs"]["audit"].update({"env": {"PATH": "bad"}}),
+        lambda candidate: candidate["jobs"]["audit"].update({"container": "evil:latest"}),
+    ):
+        candidate = deepcopy(health)
+        mutate(candidate)
+        errors = CHECKER._check_release_health(candidate)
+        expect(any("closed schema" in error for error in errors), f"health mutation accepted: {errors}")
+
+
 def main() -> int:
     for test in (
         test_live_contract_passes,
         test_text_mutations_fail,
         test_public_release_config_fails,
+        test_observer_workflows_have_no_execution_extension_points,
     ):
         test()
 
