@@ -105,7 +105,7 @@ jobs:
         # WHY SHA-pinned: this downloads a binary from the network inside the REQUIRED
         # `cargo audit` job, and a mutable tag can be repointed. Every other action in this
         # repo is SHA-pinned; this was the sole exception.
-        uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2.86.5
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833 # v2.87.1
         with:
           tool: cargo-audit@0.22.2
       - name: cargo audit
@@ -155,7 +155,7 @@ jobs:
       # Excluding one detector this repo has no use for beats renaming a test
       # to dodge a length coincidence, which only defers the next one.
       - name: TruffleHog secret scan
-        uses: trufflesecurity/trufflehog@bcfcf73aaf4759d4dadc2783177c245a02792318 # v3.97.0
+        uses: trufflesecurity/trufflehog@20652fbbdefffcdaa493a5bf57ab2ac6b1db715b # v3.97.1
         with:
           # WHY: A release call must scan the exact release history even when its
           # outer event was a tag push with an empty commits array.
