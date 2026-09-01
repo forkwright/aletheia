@@ -642,9 +642,13 @@ pub fn xref_and_trailer(input: ParserInput, reader: &Reader) -> crate::Result<(X
             _indirect_object(input, 0, None, reader, &mut HashSet::new(), false, None)
                 .map(|(_, obj)| {
                     let res = match obj {
-                        Object::Stream(stream) => reader
-                            .reserve_decompression()
-                            .and_then(|()| decode_xref_stream_with_limit(stream, reader.max_decompressed_size)),
+                        Object::Stream(stream) => reader.reserve_stream_decompression(&stream).and_then(|()| {
+                            decode_xref_stream_with_limit_and_object_limit(
+                                stream,
+                                reader.max_decompressed_size,
+                                reader.max_objects,
+                            )
+                        }),
                         _ => Err(crate::error::ParseError::InvalidXref.into()),
                     };
                     (input, res)

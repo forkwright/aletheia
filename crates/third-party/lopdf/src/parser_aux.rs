@@ -104,13 +104,20 @@ impl Document {
             .flat_map(|page_number| {
                 let result = (|| {
                     let page_id = *pages.get(page_number).ok_or(Error::PageNumberNotFound(*page_number))?;
-                    let font_count = self.get_page_fonts(page_id)?.len();
-                    for _ in 0..font_count {
-                        budget.reserve(max_decompressed_size)?;
+                    for font in self.get_page_fonts(page_id)?.into_values() {
+                        if let Ok(stream) = font.get_deref(b"ToUnicode", self).and_then(Object::as_stream) {
+                            for _ in 0..stream.bounded_filter_layer_count()? {
+                                budget.reserve(max_decompressed_size)?;
+                            }
+                        }
                     }
-                    // `get_page_content_with_limit` accounts for every content
-                    // stream against one page-level cap, so reserve it once.
-                    budget.reserve(max_decompressed_size)?;
+                    for content_id in self.get_page_contents(page_id) {
+                        if let Ok(stream) = self.get_object(content_id).and_then(Object::as_stream) {
+                            for _ in 0..stream.bounded_filter_layer_count()? {
+                                budget.reserve(max_decompressed_size)?;
+                            }
+                        }
+                    }
                     self.extract_text_chunks_from_page(&pages, *page_number, Some(max_decompressed_size))
                 })();
                 match result {
@@ -556,7 +563,7 @@ fn encode_with_fallback(encoding: &Encoding, text: &str, default_char: &str) -> 
 
 /// Decode CrossReferenceStream
 pub fn decode_xref_stream(stream: Stream) -> Result<(Xref, Dictionary)> {
-    decode_xref_stream_with_limit(stream, None)
+    decode_xref_stream_with_limit_and_object_limit(stream, None, None)
 }
 
 /// Decode a cross-reference stream, rejecting it if its decompressed content
@@ -564,7 +571,15 @@ pub fn decode_xref_stream(stream: Stream) -> Result<(Xref, Dictionary)> {
 /// behavior of [`decode_xref_stream`]). Cross-reference streams are decoded
 /// early during loading, so this bounds the memory a `/XRef` stream can use.
 pub fn decode_xref_stream_with_limit(
-    mut stream: Stream, max_decompressed_size: Option<usize>,
+    stream: Stream, max_decompressed_size: Option<usize>,
+) -> Result<(Xref, Dictionary)> {
+    decode_xref_stream_with_limit_and_object_limit(stream, max_decompressed_size, None)
+}
+
+/// Bounded xref-stream decoder used by [`Reader`](crate::Reader). The entry
+/// ceiling is checked from `/Index` before the xref map is allocated.
+pub fn decode_xref_stream_with_limit_and_object_limit(
+    mut stream: Stream, max_decompressed_size: Option<usize>, max_objects: Option<usize>,
 ) -> Result<(Xref, Dictionary)> {
     if stream.is_compressed() {
         match max_decompressed_size {
@@ -621,6 +636,9 @@ pub fn decode_xref_stream_with_limit(
                 let count = usize::try_from(section[1]).map_err(|_| ParseError::InvalidXref)?;
                 total.checked_add(count).ok_or(ParseError::InvalidXref)
             })?;
+        if max_objects.is_some_and(|max| index_entries > max) {
+            return Err(ParseError::InvalidXref.into());
+        }
         // An entry can't be read from bytes that aren't there. Validate the total before inserting
         // anything so multiple individually plausible /Index sections cannot overrun the body.
         //

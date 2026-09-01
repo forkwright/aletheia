@@ -127,12 +127,23 @@ value, so an explicit `--format markdown` or `--format text` still selects how
 the extracted text is chunked.
 
 PDF ingestion has a 32 MiB encoded-file boundary, shared with the workspace
-PDF policy. The command checks file metadata before reading the file. It then
-uses the same single `lopdf` parser as the agent `inspect_report` tool, with a
-typed resource policy that caps pages, objects, individual streams/pages,
-aggregate decompression, and aggregate extracted text. Password-protected PDFs
-are rejected without trying an empty password. Limit and malformed-document
-failures are per-file errors, so directory ingest continues safely.
+PDF policy. It opens and reads one file handle in bounded chunks, so a later
+path replacement or append cannot make the parse allocate beyond that boundary.
+Parsing then runs off the async executor on a bounded worker job and uses the
+same single `lopdf` parser as the agent `inspect_report` tool. Its typed policy
+caps pages, xref/object admission, individual streams/pages and filter layers,
+aggregate decompression, and aggregate extracted text before the relevant
+allocation. Password-protected PDFs are rejected at the trailer before any
+password authentication, including an empty-password attempt. Limit and
+malformed-document failures are per-file errors, so directory ingest continues
+safely. Cancelling an ingest can stop waiting for the bounded worker job; it
+does not claim to interrupt dependency parsing mid-call.
+
+The default policy permits up to 128 pages. That is deliberately coherent with
+the 32 MiB shared decompression budget and 256 KiB per content decoder: a
+document whose pages each reach the decoder cap cannot pass a contradictory
+larger page-count limit. Fonts and multi-filter streams consume the same budget
+and may reduce the practical page count further.
 
 The direct dependency bump to `lopdf` 0.44 was necessary but not sufficient:
 its safe decompression APIs are opt-in, while the former `pdf-extract` path

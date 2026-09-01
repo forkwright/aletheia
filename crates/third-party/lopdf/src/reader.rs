@@ -87,6 +87,8 @@ impl Document {
             strict: options.strict,
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
+            max_objects: options.max_objects,
+            reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
         }
         .read(options.filter)
@@ -108,6 +110,8 @@ impl Document {
             strict: options.strict,
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
+            max_objects: options.max_objects,
+            reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
         }
         .read(options.filter)
@@ -160,6 +164,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read_metadata()
@@ -177,6 +183,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read_metadata()
@@ -197,6 +205,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read_metadata()
@@ -242,6 +252,8 @@ impl Document {
             strict: options.strict,
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
+            max_objects: options.max_objects,
+            reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
         }
         .read(options.filter)
@@ -263,6 +275,8 @@ impl Document {
             strict: options.strict,
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
+            max_objects: options.max_objects,
+            reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
         }
         .read(options.filter)
@@ -311,6 +325,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read_metadata()
@@ -328,6 +344,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read_metadata()
@@ -350,6 +368,8 @@ impl Document {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read_metadata()
@@ -369,6 +389,8 @@ impl TryInto<Document> for &[u8] {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read(None)
@@ -404,6 +426,8 @@ impl IncrementalDocument {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read(None)?;
@@ -449,6 +473,8 @@ impl IncrementalDocument {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read(None)?;
@@ -475,6 +501,8 @@ impl TryInto<IncrementalDocument> for &[u8] {
             strict: false,
             max_decompressed_size: None,
             decompression_budget: None,
+            max_objects: None,
+            reject_encrypted: false,
             normal_offsets: Vec::new(),
         }
         .read(None)?;
@@ -498,6 +526,10 @@ pub struct Reader<'a> {
     /// Aggregate budget shared with a caller that supplied one in
     /// [`LoadOptions`]. Eager xref/object-stream decoders reserve from it.
     pub decompression_budget: Option<DecompressionBudget>,
+    /// Maximum xref entries admitted before loading objects.
+    pub max_objects: Option<usize>,
+    /// Refuse encrypted documents before authentication/decryption.
+    pub reject_encrypted: bool,
     /// Sorted unique byte offsets of every `XrefEntry::Normal` entry in the
     /// final cross-reference table. Built once when the table is complete so
     /// object-boundary lookups can binary-search the successor offset instead
@@ -514,6 +546,23 @@ impl Reader<'_> {
             (Some(_), None) => Err(crate::DecompressError::MemoryLimitExceeded { limit: 0 }.into()),
             (None, _) => Ok(()),
         }
+    }
+
+    /// Charge each decode layer before any of that stream's decoder buffers
+    /// are allocated. A chain has one bounded intermediate per layer.
+    pub(crate) fn reserve_stream_decompression(&self, stream: &Stream) -> Result<()> {
+        for _ in 0..stream.bounded_filter_layer_count()? {
+            self.reserve_decompression()?;
+        }
+        Ok(())
+    }
+
+    /// Refuse an xref before its entries are copied into document-owned maps.
+    pub(crate) fn admit_xref(&self, xref: &Xref) -> Result<()> {
+        if self.max_objects.is_some_and(|max| xref.entries.len() > max) {
+            return Err(ParseError::InvalidXref.into());
+        }
+        Ok(())
     }
 }
 
@@ -838,12 +887,17 @@ impl Reader<'_> {
         };
 
         self.document.version = version;
+        self.admit_xref(&xref)?;
         self.document.max_id = xref.size - 1;
         self.document.trailer = trailer;
         self.set_reference_table(xref);
 
         // Check if encrypted
         let is_encrypted = self.document.trailer.get(b"Encrypt").is_ok();
+
+        if is_encrypted && self.reject_encrypted {
+            return Err(Error::EncryptedDocument);
+        }
 
         if is_encrypted {
             // For encrypted PDFs, use a special loading strategy
@@ -933,7 +987,7 @@ impl Reader<'_> {
                     && let Ok(stream) = container_obj.as_stream()
                 {
                     match self
-                        .reserve_decompression()
+                        .reserve_stream_decompression(stream)
                         .and_then(|()| ObjectStream::new_with_limit(stream, self.max_decompressed_size))
                     {
                         Ok(object_stream) => {
@@ -1043,7 +1097,7 @@ impl Reader<'_> {
                 if let Ok(stream) = object.as_stream() {
                     if stream.dict.has_type(b"ObjStm") && !is_encrypted {
                         let obj_stream = match self
-                            .reserve_decompression()
+                            .reserve_stream_decompression(stream)
                             .and_then(|()| ObjectStream::new_with_limit(stream, self.max_decompressed_size))
                         {
                             Ok(obj_stream) => obj_stream,
@@ -1196,7 +1250,7 @@ impl Reader<'_> {
         let mut already_seen = HashSet::new();
         let container_obj = self.get_object(container_id, &mut already_seen)?;
         let container_stream = container_obj.as_stream()?;
-        self.reserve_decompression()?;
+        self.reserve_stream_decompression(container_stream)?;
         let object_stream = ObjectStream::new_with_limit(container_stream, self.max_decompressed_size)?;
         object_stream.objects.get(&id).cloned().ok_or(Error::MissingXrefEntry)
     }
@@ -1388,7 +1442,56 @@ impl Reader<'_> {
     /// the offset if it is slightly miswritten (lenient mode only).
     fn xref_and_trailer_at(&self, offset: usize) -> Result<(Xref, Dictionary)> {
         let offset = self.correct_xref_offset(offset);
+        self.admit_classic_xref(&self.buffer[offset..])?;
         parser::xref_and_trailer(&self.buffer[offset..], self)
+    }
+
+    /// Validate classic-xref subsection counts before nom constructs a vector
+    /// for every entry. The parser remains the authority for syntax; this tiny
+    /// preflight deliberately returns success on unfamiliar syntax so normal
+    /// parser diagnostics and recovery behavior are preserved.
+    fn admit_classic_xref(&self, input: &[u8]) -> Result<()> {
+        let Some(max) = self.max_objects else {
+            return Ok(());
+        };
+        if !input.starts_with(b"xref") {
+            return Ok(());
+        }
+
+        let mut lines = input.split_inclusive(|byte| *byte == b'\n');
+        let Some(header) = lines.next() else {
+            return Ok(());
+        };
+        if header.trim_ascii() != b"xref" {
+            return Ok(());
+        }
+        let mut admitted = 0usize;
+        while let Some(line) = lines.next() {
+            let line = line.trim_ascii();
+            if line.starts_with(b"trailer") {
+                return Ok(());
+            }
+            let mut fields = line.split(|byte| byte.is_ascii_whitespace());
+            let (Some(_start), Some(count), None) = (fields.next(), fields.next(), fields.next()) else {
+                return Ok(());
+            };
+            let Some(count) = std::str::from_utf8(count)
+                .ok()
+                .and_then(|value| value.parse::<usize>().ok())
+            else {
+                return Ok(());
+            };
+            admitted = admitted.checked_add(count).ok_or(ParseError::InvalidXref)?;
+            if admitted > max {
+                return Err(ParseError::InvalidXref.into());
+            }
+            for _ in 0..count {
+                if lines.next().is_none() {
+                    return Ok(());
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Resolve the cross-reference table/stream and trailer, including the
@@ -1453,7 +1556,7 @@ impl Reader<'_> {
         }
         u32::try_from(self.buffer.len()).ok()?;
 
-        let markers = Self::scan_object_markers(self.buffer);
+        let markers = self.scan_object_markers(self.buffer)?;
         if markers.is_empty() {
             return None;
         }
@@ -1485,7 +1588,7 @@ impl Reader<'_> {
     /// stream payloads are skipped wholesale, and object numbers beyond
     /// [`MAX_RECONSTRUCTED_OBJECTS`] are rejected so a forged header can
     /// neither shadow a genuine entry nor poison the reconstructed size.
-    fn scan_object_markers(buffer: &[u8]) -> Vec<(u32, ObjectId)> {
+    fn scan_object_markers(&self, buffer: &[u8]) -> Option<Vec<(u32, ObjectId)>> {
         const STREAM_KEYWORD: &[u8] = b"stream";
         const END_STREAM_KEYWORD: &[u8] = b"endstream";
 
@@ -1537,6 +1640,9 @@ impl Reader<'_> {
                         oversized_number_warned = true;
                     }
                 } else {
+                    if self.max_objects.is_some_and(|max| markers.len() >= max) {
+                        return None;
+                    }
                     if markers.len() == MAX_RECONSTRUCTED_OBJECTS {
                         warn!(
                             "object marker scan stopped at the {MAX_RECONSTRUCTED_OBJECTS}-marker cap; reconstruction may be incomplete"
@@ -1553,7 +1659,7 @@ impl Reader<'_> {
             }
             pos += 1;
         }
-        markers
+        Some(markers)
     }
 
     /// Resume offset past a stream payload according to a *direct* `/Length`

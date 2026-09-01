@@ -5,7 +5,6 @@ use crate::error::DecompressError;
 use crate::{Document, Error, Result};
 use indexmap::IndexMap;
 use log::warn;
-use std::cmp::max;
 use std::collections::HashSet;
 use std::fmt;
 use std::str;
@@ -438,12 +437,16 @@ impl Dictionary {
         // - Deciding what should be the fallback font if no such encoding is defined in difference encoding (see Table
         //   114 in 9.6.6.1 General under `BaseEncoding`).
         let result = (|| {
-            if let Ok(object) = self.get(b"Encoding") {
-                return self.get_base_encoding(object, doc, limit);
-            }
-
+            // PDF 32000-1 §9.10.2: a ToUnicode CMap is the authoritative
+            // character-code-to-Unicode mapping. Check it before a font's
+            // base/CID encoding so Type0 fonts preserve the same precedence
+            // as the former extractor.
             if let Ok(stream) = self.get_deref(b"ToUnicode", doc).and_then(Object::as_stream) {
                 return self.get_to_unicode_encoding(stream, limit);
+            }
+
+            if let Ok(object) = self.get(b"Encoding") {
+                return self.get_base_encoding(object, doc, limit);
             }
 
             Ok(Encoding::OneByteEncoding(&encodings::STANDARD_ENCODING))
@@ -456,9 +459,10 @@ impl Dictionary {
             // defeated. Every other encoding error stays lenient, as before.
             Err(err @ Error::Decompress(DecompressError::MemoryLimitExceeded { .. })) => Err(err),
             Err(err) => {
-                warn!(
-                    "Could not parse the encoding, error: {err:#?}\nFont: {self:#?}. Using standard encoding as a fallback!"
-                );
+                // Font dictionaries are attacker-controlled and can contain
+                // arbitrary large strings. Keep diagnostics bounded and avoid
+                // emitting document content into logs.
+                warn!("Could not parse font encoding ({err}); using standard encoding fallback");
                 Ok(Encoding::OneByteEncoding(&encodings::STANDARD_ENCODING))
             }
         }
@@ -819,6 +823,18 @@ impl Stream {
         }
     }
 
+    /// Number of allocation/work-producing decode layers. A small fixed cap
+    /// keeps attacker-controlled filter arrays from turning one stream budget
+    /// into arbitrarily many full-size intermediate buffers.
+    pub fn bounded_filter_layer_count(&self) -> Result<usize> {
+        const MAX_FILTER_LAYERS: usize = 8;
+        let layers = self.filters().map_or(1, |filters| filters.len().max(1));
+        if layers > MAX_FILTER_LAYERS {
+            return Err(Error::InvalidStream("too many stream filter layers".to_owned()));
+        }
+        Ok(layers)
+    }
+
     pub fn set_content(&mut self, content: Vec<u8>) {
         self.content = content;
         self.dict.set("Length", self.content.len() as i64);
@@ -918,6 +934,7 @@ impl Stream {
     /// variants. `limit` is `None` to decode without a size limit, or
     /// `Some(max)` to cap the decoded output at `max` bytes per filter layer.
     fn decode_filters(&self, limit: Option<usize>) -> Result<Vec<u8>> {
+        self.bounded_filter_layer_count()?;
         let params = self.dict.get(b"DecodeParms").and_then(Object::as_dict).ok();
         let filters = match self.filters() {
             Ok(f) => f,
@@ -1217,13 +1234,40 @@ impl Stream {
 
         if let Some(params) = params {
             let predictor = params.get(b"Predictor").and_then(Object::as_i64).unwrap_or(1);
+            if data.is_empty() {
+                return Ok(data);
+            }
+            // Predictor dimensions are attacker-controlled. Validate them
+            // before multiplication, row walking, or the TIFF sub-byte
+            // auxiliary `vec![0; colors]` allocation below. The upper bounds
+            // are deliberately far above ordinary PDF image use, while the
+            // row bound ties all predictor work to already-bounded decoded
+            // stream data.
+            const MAX_PREDICTOR_COLUMNS: usize = 1_048_576;
+            const MAX_PREDICTOR_COLORS: usize = 64;
+            fn predictor_dimension(params: &Dictionary, name: &[u8], default: i64, maximum: usize) -> Result<usize> {
+                let value = params.get(name).and_then(Object::as_i64).unwrap_or(default);
+                let value =
+                    usize::try_from(value).map_err(|_| DecompressError::Predictor("invalid predictor parameter"))?;
+                if value == 0 || value > maximum {
+                    return Err(DecompressError::Predictor("predictor parameter exceeds supported limit").into());
+                }
+                Ok(value)
+            }
             if predictor == 2 {
                 // TIFF Predictor 2 (horizontal differencing). Distinct from the PNG
                 // predictors below and previously ignored, so `/Predictor 2` streams
                 // silently decoded to the un-differenced (wrong) bytes.
-                let columns = max(1, params.get(b"Columns").and_then(Object::as_i64).unwrap_or(1)) as usize;
-                let colors = max(1, params.get(b"Colors").and_then(Object::as_i64).unwrap_or(1)) as usize;
-                let bits = max(1, params.get(b"BitsPerComponent").and_then(Object::as_i64).unwrap_or(8)) as usize;
+                let columns = predictor_dimension(params, b"Columns", 1, MAX_PREDICTOR_COLUMNS)?;
+                let colors = predictor_dimension(params, b"Colors", 1, MAX_PREDICTOR_COLORS)?;
+                let bits = predictor_dimension(params, b"BitsPerComponent", 8, 16)?;
+                let row_bits = columns
+                    .checked_mul(colors)
+                    .and_then(|value| value.checked_mul(bits))
+                    .ok_or(DecompressError::Predictor("predictor row is too wide"))?;
+                if row_bits.div_ceil(8) > data.len() {
+                    return Err(DecompressError::Predictor("predictor row exceeds decoded stream").into());
+                }
                 data = Self::reverse_tiff_predictor2(data, columns, colors, bits)?;
             } else if (10..=15).contains(&predictor) {
                 // PNG predictors 10-15. Rows are packed to a byte boundary, so a
@@ -1231,11 +1275,21 @@ impl Stream {
                 // bytes per row; the old max(8, bits) width over-read and failed on
                 // valid 1/2/4-bit images. The filter's left reference is whole bytes,
                 // rounded up to one.
-                let columns = max(1, params.get(b"Columns").and_then(Object::as_i64).unwrap_or(1)) as usize;
-                let colors = max(1, params.get(b"Colors").and_then(Object::as_i64).unwrap_or(1)) as usize;
-                let bits = max(1, params.get(b"BitsPerComponent").and_then(Object::as_i64).unwrap_or(8)) as usize;
-                let bytes_per_row = (columns * colors * bits).div_ceil(8);
-                let bpp = (colors * bits).div_ceil(8);
+                let columns = predictor_dimension(params, b"Columns", 1, MAX_PREDICTOR_COLUMNS)?;
+                let colors = predictor_dimension(params, b"Colors", 1, MAX_PREDICTOR_COLORS)?;
+                let bits = predictor_dimension(params, b"BitsPerComponent", 8, 16)?;
+                let row_bits = columns
+                    .checked_mul(colors)
+                    .and_then(|value| value.checked_mul(bits))
+                    .ok_or(DecompressError::Predictor("predictor row is too wide"))?;
+                let bytes_per_row = row_bits.div_ceil(8);
+                let bpp = colors
+                    .checked_mul(bits)
+                    .ok_or(DecompressError::Predictor("predictor pixel is too wide"))?
+                    .div_ceil(8);
+                if bytes_per_row >= data.len() {
+                    return Err(DecompressError::Predictor("predictor row exceeds decoded stream").into());
+                }
                 data = png::decode_frame(data.as_slice(), bpp, bytes_per_row)?;
             }
             Ok(data)

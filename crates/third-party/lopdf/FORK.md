@@ -9,9 +9,14 @@ This fork is intentionally narrow. Relative to that source it adds:
 
 - `DecompressionBudget`, an explicit shared conservative reservation budget;
 - `LoadOptions::decompression_budget`, charged by eager xref/object-stream
-  decode before allocation; and
+  decode before allocation, once for every bounded filter layer;
+- `LoadOptions::max_objects` and `reject_encrypted`, which admit classic/xref
+  stream tables before their maps are built and reject `/Encrypt` before any
+  password authentication or decryption; and
 - `Document::extract_text_chunks_with_limit_and_budget`, which charges the
-  same budget for each page content and `/ToUnicode` decoder.
+  same budget for every page-content and `/ToUnicode` filter layer.
+- Bounded `/ToUnicode` range expansion/target sequences and predictor
+  dimensions, preventing attacker-controlled iteration and auxiliary vectors.
 
 The upstream development-only assets, examples, integration tests, CI files,
 and auxiliary `pdfutil` package are deliberately absent. They are excluded by
@@ -19,9 +24,12 @@ the upstream crate manifest and are not needed to build this runtime patch;
 Aletheia's deterministic PDF tests cover the maintained behavior instead.
 
 `poiesis-inspect` creates one budget per hostile PDF and passes it through both
-loading and extraction. Reservations charge the bounded decoder maximum, not
-post-hoc observed output: this is deliberately conservative, but makes the
-aggregate refusal invariant safe under lopdf's parallel object loading.
+loading and extraction. Reservations charge the bounded decoder maximum for
+each filter layer, not post-hoc observed output: this is deliberately
+conservative, but makes the aggregate refusal invariant safe under lopdf's
+parallel object loading. Its text policy additionally derives the remaining
+page decode allowance from a finite ToUnicode expansion factor, so the
+aggregate text cap is admitted before per-page strings are built.
 
 Remove this patch when a released upstream `lopdf` exposes equivalent shared
 aggregate accounting, after re-running the PDF adversarial tests.

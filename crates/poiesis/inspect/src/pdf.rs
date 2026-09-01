@@ -6,7 +6,8 @@
 //! meaningless next to a failed extraction.
 
 use std::cmp::min;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::io::Read;
+use std::path::Path;
 
 use lopdf::{DecompressionBudget, Document, LoadOptions};
 
@@ -19,12 +20,52 @@ use crate::{InspectError, PdfSummary};
 /// CLI uses the workspace PDF-file limit and the tool uses its resolved
 /// `ToolLimitsConfig::max_pdf_bytes` value.
 const DEFAULT_MAX_INPUT_BYTES: usize = 32 * 1024 * 1024;
-const DEFAULT_MAX_PAGES: usize = 256;
+// 128 pages × one 256 KiB content decoder exactly fits the 32 MiB shared
+// aggregate budget. Fonts and extra filter layers consume additional budget,
+// so real hostile inputs fail earlier rather than violating the aggregate cap.
+const DEFAULT_MAX_PAGES: usize = 128;
 const DEFAULT_MAX_OBJECTS: usize = 16_384;
 const DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES: usize = 256 * 1024;
 const DEFAULT_MAX_DECOMPRESSED_PAGE_BYTES: usize = 256 * 1024;
 const DEFAULT_MAX_DECOMPRESSED_TOTAL_BYTES: usize = DEFAULT_MAX_INPUT_BYTES;
 const DEFAULT_MAX_EXTRACTED_TEXT_BYTES: usize = 8 * 1024 * 1024;
+// lopdf's bounded ToUnicode admission allows at most four UTF-16 units per
+// source byte. UTF-8 needs at most three bytes per unit, and content operators
+// can add a separator per source byte; reserve a little extra for separators.
+const MAX_TEXT_BYTES_PER_DECODED_CONTENT_BYTE: usize = 16;
+
+/// Open and read an input PDF through one filesystem handle, refusing a
+/// concurrent append before the result vector grows beyond `max_input_bytes`.
+/// Once opened, a later path replacement cannot swap a different file into the
+/// parse operation.
+pub fn read_pdf_file_bounded(path: &Path, max_input_bytes: usize) -> Result<Vec<u8>> {
+    let mut file = std::fs::File::open(path).map_err(|source| InspectError::Io { source })?;
+    let metadata = file
+        .metadata()
+        .map_err(|source| InspectError::Io { source })?;
+    if !metadata.is_file() || metadata.len() > u64::try_from(max_input_bytes).unwrap_or(u64::MAX) {
+        return Err(InspectError::PdfInputTooLarge);
+    }
+
+    let mut bytes = Vec::with_capacity(min(max_input_bytes, 64 * 1024));
+    let mut chunk = [0_u8; 8192];
+    loop {
+        let count = file
+            .read(&mut chunk)
+            .map_err(|source| InspectError::Io { source })?;
+        if count == 0 {
+            return Ok(bytes);
+        }
+        let next = bytes
+            .len()
+            .checked_add(count)
+            .ok_or(InspectError::PdfInputTooLarge)?;
+        if next > max_input_bytes {
+            return Err(InspectError::PdfInputTooLarge);
+        }
+        bytes.extend_from_slice(&chunk[..count]);
+    }
+}
 
 /// Resource policy for one PDF inspection operation.
 ///
@@ -121,36 +162,21 @@ fn load_document(
         });
     }
 
-    // SAFETY: malformed PDFs must be normal errors. lopdf 0.44 has its own
-    // parser nesting guard; this is defense in depth for non-aborting panics in
-    // dependency code and does not attempt to recover a stack-overflow abort.
     let budget = DecompressionBudget::new(limits.max_decompressed_total_bytes);
-    let document = catch_unwind(AssertUnwindSafe(|| {
-        Document::load_mem_with_options(
-            bytes,
-            LoadOptions {
-                strict: true,
-                max_decompressed_size: Some(limits.max_decompressed_stream_bytes),
-                decompression_budget: Some(budget.clone()),
-                ..LoadOptions::default()
-            },
-        )
-    }))
-    .map_err(|_panic_payload| InspectError::PdfExtractionError {
-        detail: "PDF parser rejected the document".to_owned(),
-    })?
+    let document = Document::load_mem_with_options(
+        bytes,
+        LoadOptions {
+            strict: true,
+            max_decompressed_size: Some(limits.max_decompressed_stream_bytes),
+            decompression_budget: Some(budget.clone()),
+            max_objects: Some(limits.max_objects),
+            // This check happens once the trailer is parsed, before lopdf's
+            // empty-password authentication path or any decryption work.
+            reject_encrypted: true,
+            ..LoadOptions::default()
+        },
+    )
     .map_err(|error| map_lopdf_error(&error))?;
-
-    // Never probe an empty password. An encrypted document is an explicit,
-    // stable unsupported case rather than a surprising best-effort decode.
-    if document.was_encrypted() || document.is_encrypted() {
-        return Err(InspectError::EncryptedPdf);
-    }
-    if document.objects.len() > limits.max_objects {
-        return Err(InspectError::PdfLimitExceeded {
-            limit: "object count",
-        });
-    }
 
     let pages: Vec<u32> = document.get_pages().into_keys().collect();
     if pages.len() > limits.max_pages {
@@ -170,12 +196,28 @@ fn extract_text(
     let mut text = String::new();
 
     for page_number in pages {
+        let remaining_text = limits
+            .max_extracted_text_bytes
+            .checked_sub(text.len())
+            .ok_or(InspectError::PdfLimitExceeded {
+                limit: "extracted text",
+            })?;
+        // Limit page-content decode by remaining output *before* lopdf creates
+        // its per-page Strings or UTF-16 intermediates. The conservative
+        // expansion factor is coupled to the ToUnicode target admission in the
+        // fork, so this is a pre-allocation cumulative text boundary.
+        let text_decode_cap = remaining_text / MAX_TEXT_BYTES_PER_DECODED_CONTENT_BYTE;
+        if text_decode_cap == 0 {
+            return Err(InspectError::PdfLimitExceeded {
+                limit: "extracted text",
+            });
+        }
         let per_decode = min(
             min(
                 limits.max_decompressed_stream_bytes,
                 limits.max_decompressed_page_bytes,
             ),
-            budget.remaining(),
+            min(budget.remaining(), text_decode_cap),
         );
         if per_decode == 0 {
             return Err(InspectError::PdfLimitExceeded {
@@ -187,12 +229,8 @@ fn extract_text(
         // page content and each ToUnicode stream before decoding either of
         // them. The same budget was already charged by eager xref/object-stream
         // loading, so no document stage can evade the aggregate cap.
-        let chunks = catch_unwind(AssertUnwindSafe(|| {
-            document.extract_text_chunks_with_limit_and_budget(&[*page_number], per_decode, budget)
-        }))
-        .map_err(|_panic_payload| InspectError::PdfExtractionError {
-            detail: "PDF text extraction rejected the document".to_owned(),
-        })?;
+        let chunks =
+            document.extract_text_chunks_with_limit_and_budget(&[*page_number], per_decode, budget);
         for chunk in chunks {
             let chunk = chunk.map_err(|error| map_lopdf_error(&error))?;
             let next_len =
@@ -219,6 +257,7 @@ fn map_lopdf_error(error: &lopdf::Error) -> InspectError {
                 limit: "aggregate decompression",
             }
         }
+        lopdf::Error::EncryptedDocument => InspectError::EncryptedPdf,
         _ => InspectError::PdfExtractionError {
             detail: "PDF parser rejected the document".to_owned(),
         },

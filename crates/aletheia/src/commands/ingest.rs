@@ -455,24 +455,23 @@ async fn read_ingest_text(file: &Path) -> std::result::Result<String, String> {
     if file.extension().and_then(|e| e.to_str()) == Some("pdf") {
         let max_input_bytes = usize::try_from(organon::builtins::view_file::MAX_PDF_BYTES)
             .map_err(|_conversion_error| "configured PDF input limit is unsupported".to_owned())?;
-        let metadata = tokio::fs::metadata(file)
-            .await
-            .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
-        if metadata.len() > organon::builtins::view_file::MAX_PDF_BYTES {
-            return Err(format!(
-                "failed to read {}: PDF input exceeds the configured byte limit",
-                file.display()
-            ));
-        }
-        let bytes = tokio::fs::read(file)
-            .await
-            .map_err(|e| format!("failed to read {}: {e}", file.display()))?;
-        // WHY `extract_pdf_text` and not `inspect_pdf`: the latter caps its output at
-        // 100 lines because it summarises. Ingesting that would record the first
-        // hundred lines of a PDF as the whole document.
-        let limits = poiesis_inspect::PdfInspectLimits::for_input_bytes(max_input_bytes);
-        return poiesis_inspect::extract_pdf_text_with_limits(&bytes, &limits)
-            .map_err(|e| format!("failed to extract text from {}: {e}", file.display()));
+        let path = file.to_path_buf();
+        // lopdf parsing is synchronous and potentially CPU-heavy. It must not
+        // occupy a Tokio worker. Cancellation can abandon waiting for this
+        // bounded job, but cannot interrupt dependency code mid-parse; all
+        // enforceable limits are therefore checked at file-read/parser entry.
+        return tokio::task::spawn_blocking(move || {
+            let bytes = poiesis_inspect::read_pdf_file_bounded(&path, max_input_bytes)
+                .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+            // WHY `extract_pdf_text` and not `inspect_pdf`: the latter caps its output at
+            // 100 lines because it summarises. Ingesting that would record the first
+            // hundred lines of a PDF as the whole document.
+            let limits = poiesis_inspect::PdfInspectLimits::for_input_bytes(max_input_bytes);
+            poiesis_inspect::extract_pdf_text_with_limits(&bytes, &limits)
+                .map_err(|e| format!("failed to extract text from {}: {e}", path.display()))
+        })
+        .await
+        .map_err(|e| format!("PDF inspection task failed: {e}"))?;
     }
     tokio::fs::read_to_string(file)
         .await
@@ -622,19 +621,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn pdf_ingest_refuses_oversized_metadata_before_reading() {
+    async fn pdf_ingest_refuses_oversized_open_handle_before_reading() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("oversized.pdf");
         let file = std::fs::File::create(&path).unwrap();
         // A sparse file provides the hostile size signal without committing or
-        // allocating a large fixture. `read_ingest_text` must reject metadata
-        // before it attempts `tokio::fs::read`.
+        // allocating a large fixture. `read_ingest_text` must reject the
+        // metadata of its opened handle before parsing or growing a read Vec.
         file.set_len(organon::builtins::view_file::MAX_PDF_BYTES + 1)
             .unwrap();
 
         let error = read_ingest_text(&path)
             .await
-            .expect_err("oversized PDF metadata must be refused before read");
+            .expect_err("oversized PDF handle must be refused before read");
         assert!(error.contains("PDF input exceeds the configured byte limit"));
     }
 

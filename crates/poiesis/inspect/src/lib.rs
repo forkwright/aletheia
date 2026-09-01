@@ -10,7 +10,7 @@ mod pptx;
 mod xlsx;
 
 pub use error::{InspectError, Result};
-pub use pdf::PdfInspectLimits;
+pub use pdf::{PdfInspectLimits, read_pdf_file_bounded};
 
 use tracing::instrument;
 

@@ -113,6 +113,9 @@ pub enum Error {
     /// Could not parse ToUnicodeCMap.
     #[error("failed parsing ToUnicode CMap")]
     ToUnicodeCMap(#[from] UnicodeCMapError),
+    /// The caller refuses encrypted input before authentication or decryption.
+    #[error("encrypted PDF documents are not accepted by this loader")]
+    EncryptedDocument,
     #[error("converting integer")]
     TryFromInt(#[from] std::num::TryFromIntError),
     /// Encountered an unsupported security handler.

@@ -109,6 +109,14 @@ pub struct LoadOptions {
     /// to [`crate::Document::extract_text_chunks_with_limit_and_budget`] so the
     /// load and extraction stages share one document-wide budget.
     pub decompression_budget: Option<DecompressionBudget>,
+    /// Maximum cross-reference entries admitted before object loading.
+    ///
+    /// `None` preserves lopdf's historical unbounded API. Security-sensitive
+    /// callers must set this before parsing attacker-controlled input.
+    pub max_objects: Option<usize>,
+    /// Reject a trailer with `/Encrypt` before password authentication or
+    /// decryption. This is for callers that do not support encrypted input.
+    pub reject_encrypted: bool,
 }
 
 impl std::fmt::Debug for LoadOptions {
@@ -119,6 +127,8 @@ impl std::fmt::Debug for LoadOptions {
             .field("strict", &self.strict)
             .field("max_decompressed_size", &self.max_decompressed_size)
             .field("decompression_budget", &self.decompression_budget)
+            .field("max_objects", &self.max_objects)
+            .field("reject_encrypted", &self.reject_encrypted)
             .finish()
     }
 }

@@ -85,7 +85,7 @@ organon = { path = "../organon", features = ["poiesis"] }
 # WHY(#6751) direct and not through organon: `aletheia ingest` decodes PDFs itself, and
 # reaching a decoder through the tool-registry crate that merely also uses it would be a
 # dependency on the wrong thing. This adds no transitive weight -- the `poiesis` feature
-# above already pulls this crate and `pdf_extract` into the binary.
+# above already pulls this crate into the binary; it is the sole PDF parser.
 poiesis-inspect = { path = "../poiesis/inspect" }
 mneme = { path = "../mneme" }
 nous = { path = "../nous" }

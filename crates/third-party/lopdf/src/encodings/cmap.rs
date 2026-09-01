@@ -31,6 +31,10 @@ pub enum UnicodeCMapError {
     Parse(CMapParseError),
     #[error("invalid code range")]
     InvalidCodeRange,
+    #[error("ToUnicode CMap expands to too many source-code mappings")]
+    MappingLimitExceeded,
+    #[error("ToUnicode CMap target sequence is too long")]
+    TargetSequenceLimitExceeded,
 }
 
 impl From<CMapParseError> for UnicodeCMapError {
@@ -55,12 +59,31 @@ impl ToUnicodeCMap {
     }
 
     fn from_sections(cmap_sections: Vec<CMapSection>) -> Result<ToUnicodeCMap, UnicodeCMapError> {
+        // A range may use up to four source bytes. Building the reverse map
+        // below used to iterate every value in such a range, so `<00000000>
+        // <FFFFFFFF>` could request 2^32 HashMap entries from a tiny CMap.
+        // Keep the forward range representation (used by extraction), but
+        // reject a CMap before any expansion used by editing is allocated.
+        const MAX_REVERSE_MAPPINGS: u64 = 65_536;
+        // Text extraction applies this directly to attacker-controlled page
+        // bytes. Four UTF-16 units can encode a surrogate pair plus two more
+        // ordinary code points, which covers normal ligature mappings while
+        // giving callers a finite byte-to-text expansion factor.
+        const MAX_TARGET_CODE_UNITS: usize = 4;
         let mut cmap = Self::new();
+        let mut mapping_count = 0_u64;
         for section in cmap_sections {
             match section {
                 CMapSection::CsRange(_) => (), // currently no additional validation is implemented for code ranges
                 CMapSection::BfChar(char_mappings) => {
                     for ((code, code_len), dst) in char_mappings {
+                        if dst.len() > MAX_TARGET_CODE_UNITS {
+                            return Err(UnicodeCMapError::TargetSequenceLimitExceeded);
+                        }
+                        mapping_count = mapping_count
+                            .checked_add(1)
+                            .filter(|count| *count <= MAX_REVERSE_MAPPINGS)
+                            .ok_or(UnicodeCMapError::MappingLimitExceeded)?;
                         cmap.put_char(code, code_len, dst);
                     }
                 }
@@ -68,6 +91,17 @@ impl ToUnicodeCMap {
                     for ((start, end, code_len), dst_vec) in range_mappings {
                         if end < start {
                             return Err(UnicodeCMapError::InvalidCodeRange);
+                        }
+                        let range_count = u64::from(end)
+                            .checked_sub(u64::from(start))
+                            .and_then(|count| count.checked_add(1))
+                            .ok_or(UnicodeCMapError::MappingLimitExceeded)?;
+                        mapping_count = mapping_count
+                            .checked_add(range_count)
+                            .filter(|count| *count <= MAX_REVERSE_MAPPINGS)
+                            .ok_or(UnicodeCMapError::MappingLimitExceeded)?;
+                        if dst_vec.iter().any(|target| target.len() > MAX_TARGET_CODE_UNITS) {
+                            return Err(UnicodeCMapError::TargetSequenceLimitExceeded);
                         }
                         match dst_vec.len() {
                             1 if dst_vec[0].len() == 1 => cmap.put(
@@ -221,6 +255,22 @@ pub enum BfRangeTarget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmap_section::CMapSection;
+
+    #[test]
+    fn rejects_four_byte_bfrange_before_reverse_map_expansion() {
+        let error =
+            ToUnicodeCMap::from_sections(vec![CMapSection::BfRange(vec![((0, u32::MAX, 4), vec![vec![0x0041]])])])
+                .expect_err("a 2^32-entry reverse map must be refused before iteration");
+        assert!(matches!(error, UnicodeCMapError::MappingLimitExceeded));
+    }
+
+    #[test]
+    fn rejects_oversized_tounicode_target_before_text_decode() {
+        let error = ToUnicodeCMap::from_sections(vec![CMapSection::BfChar(vec![((1, 1), vec![0x0041; 5])])])
+            .expect_err("unbounded glyph output invalidates the text allocation bound");
+        assert!(matches!(error, UnicodeCMapError::TargetSequenceLimitExceeded));
+    }
 
     #[test]
     fn put_char_can_be_retrieved() {

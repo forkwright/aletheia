@@ -1,6 +1,7 @@
 //! view_file tool: images, PDFs, and text with multimodal support.
 
 use std::future::Future;
+use std::io::Read;
 use std::path::Path;
 use std::pin::Pin;
 
@@ -50,6 +51,47 @@ fn detect_media_kind(path: &Path) -> Option<MediaKind> {
         | "hpp" | "rb" | "lua" | "conf" | "cfg" | "ini" | "env" | "log" | "csv" | "xml" | "jsx"
         | "tsx" | "vue" | "svelte" | "lock" | "makefile" | "dockerfile" => Some(MediaKind::Text),
         _ => None,
+    }
+}
+
+/// Read through one opened handle. A metadata check followed by `fs::read`
+/// lets a concurrent replacement turn an approved small PDF into an unbounded
+/// allocation; this helper observes and caps the same handle instead.
+fn read_file_bounded(path: &Path, max_bytes: u64) -> std::io::Result<Vec<u8>> {
+    let mut file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() || metadata.len() > max_bytes {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "file exceeds configured byte limit",
+        ));
+    }
+    let max = usize::try_from(max_bytes).map_err(|_| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "configured byte limit is unsupported",
+        )
+    })?;
+    let mut bytes = Vec::with_capacity(max.min(64 * 1024));
+    let mut chunk = [0_u8; 8192];
+    loop {
+        let count = file.read(&mut chunk)?;
+        if count == 0 {
+            return Ok(bytes);
+        }
+        let next = bytes.len().checked_add(count).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "file exceeds configured byte limit",
+            )
+        })?;
+        if next > max {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "file exceeds configured byte limit",
+            ));
+        }
+        bytes.extend_from_slice(&chunk[..count]);
     }
 }
 
@@ -183,19 +225,14 @@ fn execute_by_kind(
         }
         MediaKind::Pdf => {
             let max_pdf = tool_config.max_pdf_bytes;
-            if metadata.len() > max_pdf {
-                return ToolResult::error(format!(
-                    "PDF too large: {} bytes (max {} MB)",
-                    metadata.len(),
-                    max_pdf / (1024 * 1024)
-                ));
-            }
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "organon workspace tools directly implement filesystem operations exposed to agents; synchronous access matches the tool executor contract"
-            )]
-            let bytes = match std::fs::read(path) {
+            let bytes = match read_file_bounded(path, max_pdf) {
                 Ok(b) => b,
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {
+                    return ToolResult::error(format!(
+                        "PDF too large: exceeds max {} MB",
+                        max_pdf / (1024 * 1024)
+                    ));
+                }
                 Err(e) => return ToolResult::error(format!("read failed: {e}")),
             };
             let encoded = base64::encode(&bytes);
