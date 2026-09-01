@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-from scripts.release_asset_inventory import expected_assets, release_inventory_problem
+from release_asset_inventory import expected_assets, release_inventory_problem
 
 MAX_PAGES = 20
 PASSING_CONCLUSIONS = frozenset({"success", "skipped"})

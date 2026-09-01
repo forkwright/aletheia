@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.release_asset_inventory import release_inventory_problem
+from release_asset_inventory import release_inventory_problem
 
 MAX_PAGES = 20
 DEFAULT_GRACE_HOURS = 12

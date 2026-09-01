@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -16,6 +17,7 @@ def load(name: str, filename: str) -> object:
     return module
 
 
+inventory = load("release_asset_inventory", "release_asset_inventory.py")
 outcome = load("check_release_outcome", "check-release-outcome.py")
 
 
@@ -71,6 +73,19 @@ class OutcomeTests(unittest.TestCase):
                 outcome.fetch_release("owner/repo", self.tag)
         finally:
             outcome.gh_json = original
+
+    def test_direct_entrypoints_load_their_sibling_module(self) -> None:
+        root = Path(__file__).parents[2]
+        for script in ("check-release-outcome.py", "check-release-health.py"):
+            with self.subTest(script=script):
+                result = subprocess.run(
+                    [f"scripts/{script}", "--help"],
+                    cwd=root,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

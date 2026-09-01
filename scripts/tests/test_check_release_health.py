@@ -6,8 +6,6 @@ import sys
 import unittest
 from pathlib import Path
 
-from scripts.release_asset_inventory import expected_assets
-
 
 def load(name: str, filename: str) -> object:
     spec = importlib.util.spec_from_file_location(name, Path(__file__).parents[1] / filename)
@@ -19,6 +17,7 @@ def load(name: str, filename: str) -> object:
     return module
 
 
+inventory = load("release_asset_inventory", "release_asset_inventory.py")
 health = load("check_release_health", "check-release-health.py")
 NOW = dt.datetime(2026, 8, 31, tzinfo=dt.timezone.utc)
 OLD = "2026-08-29T00:00:00Z"
@@ -37,7 +36,7 @@ class HealthTests(unittest.TestCase):
     tag = "v1.2.3-rc.1"
 
     def test_complete_prerelease_passes(self) -> None:
-        complete = release(self.tag, names=sorted(expected_assets(self.tag)))
+        complete = release(self.tag, names=sorted(inventory.expected_assets(self.tag)))
         self.assertEqual(health.violations(rows(self.tag), [complete], NOW, 12), [])
 
     def test_stale_draft_and_published_zero_assets_fail(self) -> None:
