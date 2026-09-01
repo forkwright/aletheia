@@ -285,7 +285,7 @@ workspace = "{workspace}"
 # --- Embedding (for recall/knowledge search) ---
 # [embedding]
 # provider = "candle"       # candle | openai-compat | voyage
-# dimension = 384
+# dimension = 384           # optional; defaults per provider: candle 384, openai-compat 1024, voyage 1024
 # baseUrl = "http://127.0.0.1:5005/v1"  # required for openai-compat
 # apiKeyEnv = "VOYAGE_API_KEY"          # required for voyage unless using VOYAGE_API_KEY
 

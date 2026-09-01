@@ -11,8 +11,14 @@ from pathlib import Path
 import tomllib
 import yaml
 
+from release_observer_contract import (
+    outcome_observer_error,
+    release_health_error,
+)
+
 RELEASE_PLEASE = Path(".github/workflows/release-please.yml")
 RELEASE = Path(".github/workflows/release.yml")
+RELEASE_HEALTH = Path(".github/workflows/release-health.yml")
 GATE = Path(".github/workflows/gate-attestation.yml")
 SECURITY = Path(".github/workflows/security.yml")
 CONFIG = Path("release-please-config.json")
@@ -26,6 +32,9 @@ CONSUMER_DOCS = (
     Path("docs/RELEASING.md"),
 )
 EXACT_RELEASE_REF = "${{ inputs.release_sha || github.sha }}"
+GITHUB_REPOSITORY = "${{ github.repository }}"
+GH_RELEASE_UPLOAD = "gh release upload"
+GH_RELEASE_EDIT = "gh release edit"
 
 
 class UniqueKeyLoader(yaml.SafeLoader):
@@ -163,7 +172,7 @@ def _check_release_please(workflow: dict) -> list[str]:
             errors.append(f"{RELEASE_PLEASE}: artifact dispatch is not gated by release_created")
         dispatch_env = dispatch.get("env", {})
         expected_env = {
-            "GH_REPO": "${{ github.repository }}",
+            "GH_REPO": GITHUB_REPOSITORY,
             "GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}",
             "RELEASE_TAG": "${{ steps.release.outputs.tag_name }}",
             "RELEASE_SHA": "${{ steps.release.outputs.sha }}",
@@ -211,7 +220,7 @@ def _check_release(workflow: dict) -> list[str]:
             errors.append(f"{RELEASE}: workflow_dispatch input {name} must be required")
 
     env = workflow.get("env", {})
-    if not isinstance(env, dict) or env.get("GH_REPO") != "${{ github.repository }}":
+    if not isinstance(env, dict) or env.get("GH_REPO") != GITHUB_REPOSITORY:
         errors.append(f"{RELEASE}: GitHub CLI calls lack an explicit repository owner")
 
     jobs = workflow.get("jobs", {})
@@ -292,7 +301,7 @@ def _check_release(workflow: dict) -> list[str]:
 
     upload_step = _find_step(publish, "Upload the complete set to the draft")
     upload_text = _step_text({"steps": [upload_step]}) if upload_step else ""
-    upload_at = upload_text.find("gh release upload")
+    upload_at = upload_text.find(GH_RELEASE_UPLOAD)
     for guard in (
         "jq -r '.isDraft'",
         "git ls-remote --tags origin",
@@ -313,17 +322,21 @@ def _check_release(workflow: dict) -> list[str]:
         "git ls-remote --tags origin",
         '"refs/tags/${RELEASE_TAG}^{}"',
         '"$live_tag_commit" != "$RELEASE_SHA"',
-        "gh release edit",
+        GH_RELEASE_EDIT,
     ):
         if required not in publish_text:
             errors.append(f"{RELEASE}: final publication barrier lacks {required}")
     for job_name, job in jobs.items():
         if job_name == "publish-release" or not isinstance(job, dict):
             continue
-        if "gh release upload" in _step_text(job):
+        if GH_RELEASE_UPLOAD in _step_text(job):
             errors.append(f"{RELEASE}: {job_name} mutates release assets before barrier")
-    if publish_text.count("gh release edit") != 1:
+    if publish_text.count(GH_RELEASE_EDIT) != 1:
         errors.append(f"{RELEASE}: release publication must have exactly one owner")
+
+    outcome_error = outcome_observer_error(jobs.get("release-outcome"))
+    if outcome_error is not None:
+        errors.append(f"{RELEASE}: {outcome_error}")
 
     build_text = _step_text(jobs.get("build", {}))
     for required in (
@@ -374,6 +387,11 @@ def _check_release(workflow: dict) -> list[str]:
             f"{RELEASE}: binary SBOM comparison lacks the exact evidence handoff"
         )
     return errors
+
+
+def _check_release_health(workflow: dict) -> list[str]:
+    error = release_health_error(workflow)
+    return [] if error is None else [f"{RELEASE_HEALTH}: {error}"]
 
 
 def _check_supporting_workflows(gate: dict, security: dict) -> list[str]:
@@ -607,7 +625,7 @@ def check_repo(root: Path) -> list[str]:
     errors: list[str] = []
     workflows = {
         path: _load_workflow(root, path, errors)
-        for path in (RELEASE_PLEASE, RELEASE, GATE, SECURITY)
+        for path in (RELEASE_PLEASE, RELEASE, RELEASE_HEALTH, GATE, SECURITY)
     }
     try:
         config = json.loads((root / CONFIG).read_text(encoding="utf-8"))
@@ -621,6 +639,7 @@ def check_repo(root: Path) -> list[str]:
 
     errors.extend(_check_release_please(workflows[RELEASE_PLEASE]))
     errors.extend(_check_release(workflows[RELEASE]))
+    errors.extend(_check_release_health(workflows[RELEASE_HEALTH]))
     errors.extend(_check_supporting_workflows(workflows[GATE], workflows[SECURITY]))
     errors.extend(_check_cross_contract(root))
     errors.extend(_check_consumers(root))
