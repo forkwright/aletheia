@@ -66,7 +66,7 @@ pub fn derive_knowledge_config(
         |config| {
             let embedding = config.embedding.to_embedding_config();
             DerivedKnowledgeConfig {
-                dim: config.embedding.dimension,
+                dim: config.embedding.effective_dimension(),
                 embedding_model: embedding.effective_model_name(),
             }
         },
