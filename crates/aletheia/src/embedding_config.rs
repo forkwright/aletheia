@@ -182,7 +182,7 @@ mod tests {
     fn settings(provider: &str) -> EmbeddingSettings {
         EmbeddingSettings {
             provider: provider.to_owned(),
-            dimension: 384,
+            dimension: Some(384),
             ..EmbeddingSettings::default()
         }
     }
