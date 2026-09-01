@@ -170,7 +170,10 @@ TRUSTED_SIBLING_JOB_DIGESTS = {
     "sbom": "98e5e93cb024969a21fb84259ef050c53bb4c2c8c0e0afdc1d1a02e07ac60166",
     "publish-release": "8b83b7d5a7e03d0d6c4eca6f83a139455177aad868eaf156f2a1db6e19fb710f",
 }
-TRUSTED_RELEASE_JOB_IDS = frozenset((*TRUSTED_SIBLING_JOB_DIGESTS, "build"))
+OUTCOME_OBSERVER_JOB_ID = "release-outcome"
+TRUSTED_RELEASE_JOB_IDS = frozenset(
+    (*TRUSTED_SIBLING_JOB_DIGESTS, "build", OUTCOME_OBSERVER_JOB_ID)
+)
 ARTIFACT_FLOW_JOB_IDS = frozenset({"build", "sbom", "publish-release"})
 TRUSTED_BUILD_STEP_DIGESTS = {
     "Build (native)": "d93be08a02ad6d7580059f7cd104cb9568dfdd1e876d7c0980c735645265986d",
@@ -248,6 +251,25 @@ def validate_release_job_graph(workflow: dict[str, Any]) -> None:
         raise ScopeCheckError(f"release workflow is missing artifact-flow jobs: {missing_artifact_jobs}")
     if set(jobs) != TRUSTED_RELEASE_JOB_IDS:
         raise ScopeCheckError(f"release workflow job IDs differ from the trusted set: {sorted(jobs)!r}")
+    outcome = jobs[OUTCOME_OBSERVER_JOB_ID]
+    if not isinstance(outcome, dict):
+        raise ScopeCheckError("release outcome observer is not a mapping")
+    required_needs = frozenset((*TRUSTED_SIBLING_JOB_DIGESTS, "build"))
+    outcome_needs = outcome.get("needs")
+    if not isinstance(outcome_needs, list) or set(outcome_needs) != required_needs:
+        raise ScopeCheckError("release outcome observer does not wait for the complete graph")
+    if outcome.get("if") != "${{ always() }}":
+        raise ScopeCheckError("release outcome observer is not terminal")
+    if outcome.get("permissions") != {"actions": "read", "contents": "read"}:
+        raise ScopeCheckError("release outcome observer permissions are not read-only")
+    steps = outcome.get("steps")
+    if not isinstance(steps, list) or len(steps) != 2:
+        raise ScopeCheckError("release outcome observer steps differ from the trusted shape")
+    rendered = json.dumps(outcome, sort_keys=True)
+    if "scripts/check-release-outcome.py --attempts 6 --retry-seconds 10" not in rendered:
+        raise ScopeCheckError("release outcome observer does not run the outcome checker")
+    if any(token in rendered for token in ("cargo build", "cargo auditable", "cross build", "gh release upload")):
+        raise ScopeCheckError("release outcome observer may not build or mutate release artifacts")
     for name, digest in TRUSTED_SIBLING_JOB_DIGESTS.items():
         job = jobs[name]
         steps = job.get("steps", []) if isinstance(job, dict) else None

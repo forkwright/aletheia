@@ -13,6 +13,7 @@ import yaml
 
 RELEASE_PLEASE = Path(".github/workflows/release-please.yml")
 RELEASE = Path(".github/workflows/release.yml")
+RELEASE_HEALTH = Path(".github/workflows/release-health.yml")
 GATE = Path(".github/workflows/gate-attestation.yml")
 SECURITY = Path(".github/workflows/security.yml")
 CONFIG = Path("release-please-config.json")
@@ -325,6 +326,31 @@ def _check_release(workflow: dict) -> list[str]:
     if publish_text.count("gh release edit") != 1:
         errors.append(f"{RELEASE}: release publication must have exactly one owner")
 
+    outcome = jobs.get("release-outcome", {})
+    expected_outcome_needs = {
+        "release-identity", "canonical-gate", "canonical-security", "prepare-release",
+        "test", "feature-policy", "feature-check", "no-default-recipes", "build", "sbom",
+        "publish-release",
+    }
+    if not expected_outcome_needs.issubset(_needs(outcome)):
+        errors.append(f"{RELEASE}: release outcome is not terminal")
+    if outcome.get("if") != "${{ always() }}":
+        errors.append(f"{RELEASE}: release outcome must run on every terminal state")
+    outcome_permissions = outcome.get("permissions", {})
+    if outcome_permissions != {"actions": "read", "contents": "read"}:
+        errors.append(f"{RELEASE}: release outcome permissions are not read-only")
+    outcome_text = _step_text(outcome)
+    for required in (
+        "scripts/check-release-outcome.py",
+        "--attempts 6 --retry-seconds 10",
+    ):
+        if required not in outcome_text:
+            errors.append(f"{RELEASE}: release outcome lacks {required}")
+    outcome_step = _find_step(outcome, "Report the release outcome")
+    outcome_env = outcome_step.get("env", {}) if isinstance(outcome_step, dict) else {}
+    if not isinstance(outcome_env, dict) or outcome_env.get("RUN_ID") != "${{ github.run_id }}":
+        errors.append(f"{RELEASE}: release outcome run identity is not exact")
+
     build_text = _step_text(jobs.get("build", {}))
     for required in (
         "cargo auditable build --locked",
@@ -373,6 +399,39 @@ def _check_release(workflow: dict) -> list[str]:
         errors.append(
             f"{RELEASE}: binary SBOM comparison lacks the exact evidence handoff"
         )
+    return errors
+
+
+def _check_release_health(workflow: dict) -> list[str]:
+    errors: list[str] = []
+    triggers = _triggers(workflow)
+    schedule = triggers.get("schedule")
+    if not isinstance(schedule, list) or not any(
+        isinstance(entry, dict) and entry.get("cron") == "43 6 * * *" for entry in schedule
+    ):
+        errors.append(f"{RELEASE_HEALTH}: daily scheduled reconciliation is missing")
+    if "workflow_dispatch" not in triggers:
+        errors.append(f"{RELEASE_HEALTH}: manual reconciliation is missing")
+    if workflow.get("permissions") != {"contents": "read"}:
+        errors.append(f"{RELEASE_HEALTH}: audit permissions are not minimal read-only")
+    jobs = workflow.get("jobs", {})
+    audit = jobs.get("audit", {}) if isinstance(jobs, dict) else {}
+    if audit.get("timeout-minutes") != 10:
+        errors.append(f"{RELEASE_HEALTH}: reconciliation is not bounded")
+    audit_text = _step_text(audit)
+    for required in (
+        "scripts/check-release-health.py --grace-hours 12",
+    ):
+        if required not in audit_text:
+            errors.append(f"{RELEASE_HEALTH}: audit lacks {required}")
+    audit_step = _find_step(audit, "Reconcile tags against releases")
+    audit_env = audit_step.get("env", {}) if isinstance(audit_step, dict) else {}
+    expected_env = {"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}", "GH_REPO": "${{ github.repository }}"}
+    if not isinstance(audit_env, dict) or audit_env != expected_env:
+        errors.append(f"{RELEASE_HEALTH}: audit identity environment is not exact")
+    for forbidden in ("gh release create", "gh release edit", "gh release upload", "gh issue create"):
+        if forbidden in audit_text:
+            errors.append(f"{RELEASE_HEALTH}: read-only audit contains {forbidden}")
     return errors
 
 
@@ -607,7 +666,7 @@ def check_repo(root: Path) -> list[str]:
     errors: list[str] = []
     workflows = {
         path: _load_workflow(root, path, errors)
-        for path in (RELEASE_PLEASE, RELEASE, GATE, SECURITY)
+        for path in (RELEASE_PLEASE, RELEASE, RELEASE_HEALTH, GATE, SECURITY)
     }
     try:
         config = json.loads((root / CONFIG).read_text(encoding="utf-8"))
@@ -621,6 +680,7 @@ def check_repo(root: Path) -> list[str]:
 
     errors.extend(_check_release_please(workflows[RELEASE_PLEASE]))
     errors.extend(_check_release(workflows[RELEASE]))
+    errors.extend(_check_release_health(workflows[RELEASE_HEALTH]))
     errors.extend(_check_supporting_workflows(workflows[GATE], workflows[SECURITY]))
     errors.extend(_check_cross_contract(root))
     errors.extend(_check_consumers(root))

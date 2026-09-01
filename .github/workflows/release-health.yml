@@ -1,0 +1,30 @@
+# WHY(#6999): a tag can outlive a missed or wholesale-cancelled release run.
+# This bounded, read-only reconciliation makes a stale draft, a missing
+# release, a zero-asset publication, or any incomplete published inventory
+# red without creating duplicate issues or mutating a release.
+name: Release health
+
+on:
+  schedule:
+    - cron: "43 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: every release tag has its exact published inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          filter: blob:none
+          persist-credentials: false
+
+      - name: Reconcile tags against releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: scripts/check-release-health.py --grace-hours 12

@@ -56,6 +56,7 @@ def copy_fixture(root: Path) -> None:
     for relative in (
         CHECKER.RELEASE_PLEASE,
         CHECKER.RELEASE,
+        CHECKER.RELEASE_HEALTH,
         CHECKER.GATE,
         CHECKER.SECURITY,
         CHECKER.CONFIG,
@@ -94,6 +95,20 @@ def test_live_contract_passes() -> None:
 
 def test_text_mutations_fail() -> None:
     cases = (
+        (
+            "non-terminal release outcome",
+            CHECKER.RELEASE,
+            "if: ${{ always() }}",
+            "if: ${{ success() }}",
+            "release outcome must run on every terminal state",
+        ),
+        (
+            "missing scheduled reconciliation",
+            CHECKER.RELEASE_HEALTH,
+            '- cron: "43 6 * * *"',
+            '- cron: "43 7 * * *"',
+            "daily scheduled reconciliation is missing",
+        ),
         (
             "missing tagged dispatch",
             CHECKER.RELEASE_PLEASE,

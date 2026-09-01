@@ -120,6 +120,9 @@ class ReleaseBuildValidation(unittest.TestCase):
         }
         self.assert_rejected(candidate)
         candidate = workflow()
+        candidate["jobs"][scope.OUTCOME_OBSERVER_JOB_ID]["permissions"] = {"contents": "write"}
+        self.assert_rejected(candidate)
+        candidate = workflow()
         candidate["jobs"]["alternate-artifact-producer"] = {
             "runs-on": "ubuntu-latest",
             "steps": [
