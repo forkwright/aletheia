@@ -47,7 +47,7 @@ pub use encodings::{Encoding, encode_utf8, encode_utf16_be};
 pub use encryption::{EncryptionState, EncryptionVersion, Permissions};
 pub use error::{DecompressError, Error, ParseError, Result};
 pub use incremental_document::IncrementalDocument;
-pub use load_options::{DecompressionBudget, FilterFunc, LoadOptions, RetainedBytesBudget};
+pub use load_options::{DecompressionBudget, FilterFunc, LoadOptions, RetainedBytesBudget, SourceWorkBudget};
 pub use object_stream::{ObjectStream, ObjectStreamBuilder, ObjectStreamConfig};
 pub use outlines::Outline;
 pub use reader::{PdfMetadata, Reader};

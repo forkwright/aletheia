@@ -17,7 +17,7 @@ This fork is intentionally narrow. Relative to that source it adds:
   is rejected before password authentication or decryption;
 - `RetainedBytesBudget`, passed through `LoadOptions::retained_bytes_budget`,
   which admits direct-stream and encrypted-object source-byte copies before
-  allocation and deduplicates repeated lookups by object ID/allocation class;
+  allocation and charges every owned copy, including reentrant object reads;
 - `Document::extract_text_chunks_with_limit_and_budget`, which charges the
   same decompression budget for every page-content and `/ToUnicode` filter
   layer and one `ToUnicodeMappingBudget` across all retained font encodings;

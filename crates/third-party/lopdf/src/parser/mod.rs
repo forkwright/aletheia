@@ -13,7 +13,7 @@ use nom::character::complete::{digit0, digit1, one_of};
 use nom::character::complete::{space0, space1};
 use nom::combinator::cut;
 use nom::combinator::{map, map_opt, map_res, opt, verify};
-use nom::error::{ErrorKind, ParseError};
+use nom::error::{ErrorKind, FromExternalError, ParseError};
 use nom::multi::{fold_many0, many0, many0_count};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated};
 use nom::{AsBytes, AsChar, IResult, Input, Parser};
@@ -21,9 +21,42 @@ use nom::{AsBytes, AsChar, IResult, Input, Parser};
 pub(crate) mod cmap_parser;
 
 pub(crate) type ParserInput<'a> = &'a [u8];
-// Change this to something else that implements ParseError to get a
-// different error type out of nom.
-pub(crate) type NomError<'a> = nom::error::Error<ParserInput<'a>>;
+/// Parser errors normally retain nom's location/kind data, but source-byte
+/// admission must cross the parser boundary as a typed loader error. Keeping
+/// it in the parser error itself avoids shared mutable side channels under
+/// Rayon or reentrant `/Length` resolution.
+#[derive(Debug)]
+pub(crate) enum NomError<'a> {
+    Nom(nom::error::Error<ParserInput<'a>>),
+    LoadLimit(Error),
+}
+
+impl<'a> ParseError<ParserInput<'a>> for NomError<'a> {
+    fn from_error_kind(input: ParserInput<'a>, kind: ErrorKind) -> Self {
+        Self::Nom(nom::error::Error::from_error_kind(input, kind))
+    }
+
+    fn append(input: ParserInput<'a>, kind: ErrorKind, other: Self) -> Self {
+        match other {
+            Self::Nom(error) => Self::Nom(nom::error::Error::append(input, kind, error)),
+            load_limit @ Self::LoadLimit(_) => load_limit,
+        }
+    }
+
+    fn or(self, other: Self) -> Self {
+        match (self, other) {
+            (load_limit @ Self::LoadLimit(_), _) => load_limit,
+            (_, load_limit @ Self::LoadLimit(_)) => load_limit,
+            (_, other) => other,
+        }
+    }
+}
+
+impl<'a, E> FromExternalError<ParserInput<'a>, E> for NomError<'a> {
+    fn from_external_error(input: ParserInput<'a>, kind: ErrorKind, _error: E) -> Self {
+        Self::from_error_kind(input, kind)
+    }
+}
 
 pub(crate) type NomResult<'a, O, E = NomError<'a>> = IResult<ParserInput<'a>, O, E>;
 
@@ -36,7 +69,7 @@ fn strip_nom<O>(r: NomResult<O>) -> Option<O> {
 fn convert_result<O, E>(result: Result<O, E>, input: ParserInput, error_kind: ErrorKind) -> NomResult<O> {
     result.map(|o| (input, o)).map_err(|_| {
         // this is a unit bind if NomError = ()
-        let err: NomError = nom::error::Error::from_error_kind(input, error_kind);
+        let err = NomError::from_error_kind(input, error_kind);
         nom::Err::Error(err)
     })
 }
@@ -374,18 +407,27 @@ fn recover_stream_length(input: ParserInput) -> Option<(ParserInput, ParserInput
 }
 
 fn stream<'a>(
-    input: ParserInput<'a>, object_id: ObjectId, reader: &Reader, already_seen: &mut HashSet<ObjectId>, recover_length: bool,
+    input: ParserInput<'a>, reader: &Reader, already_seen: &mut HashSet<ObjectId>, recover_length: bool,
     recovery_bound: Option<usize>,
 ) -> NomResult<'a, Object> {
     let (i, dict) = terminated(dictionary, (space, tag(&b"stream"[..]), space0, eol)).parse(input)?;
 
-    if let Ok(length) = dict.get(b"Length").and_then(|value| {
-        if let Ok(id) = value.as_reference() {
-            reader.get_object(id, already_seen).and_then(|value| value.as_i64())
-        } else {
-            value.as_i64()
-        }
-    }) {
+    let length = match dict.get(b"Length") {
+        Ok(value) => match value.as_reference() {
+            Ok(id) => match reader.get_object(id, already_seen) {
+                Ok(value) => value.as_i64().ok(),
+                Err(error) if crate::reader::is_load_limit_error(&error) => {
+                    return Err(nom::Err::Failure(NomError::LoadLimit(error)));
+                }
+                // An unresolved or non-integer indirect length remains a
+                // deferred stream, preserving the historical lenient path.
+                Err(_) => None,
+            },
+            Err(_) => value.as_i64().ok(),
+        },
+        Err(_) => None,
+    };
+    if let Some(length) = length {
         if length < 0 {
             // artificial error kind is created to allow descriptive nom errors
             return Err(nom::Err::Failure(NomError::from_error_kind(i, ErrorKind::LengthValue)));
@@ -395,9 +437,11 @@ fn stream<'a>(
         };
         match terminated(take(length), pair(opt(eol), tag(&b"endstream"[..]))).parse(i) {
             Ok((remaining, data)) => {
+                // This is an actual new owned allocation, distinct from the
+                // borrowed source-work interval that located it.
                 reader
-                    .reserve_retained_bytes(object_id, crate::load_options::RetainedAllocation::Stream, data.len())
-                    .map_err(|_| nom::Err::Failure(NomError::from_error_kind(i, ErrorKind::TooLarge)))?;
+                    .reserve_retained_bytes(data.len())
+                    .map_err(|error| nom::Err::Failure(NomError::LoadLimit(error)))?;
                 Ok((remaining, Object::Stream(Stream::new(dict, data.to_vec()))))
             }
             Err(_) if recover_length && !reader.strict => {
@@ -415,8 +459,8 @@ fn stream<'a>(
                     data.len()
                 );
                 reader
-                    .reserve_retained_bytes(object_id, crate::load_options::RetainedAllocation::Stream, data.len())
-                    .map_err(|_| nom::Err::Failure(NomError::from_error_kind(i, ErrorKind::TooLarge)))?;
+                    .reserve_retained_bytes(data.len())
+                    .map_err(|error| nom::Err::Failure(NomError::LoadLimit(error)))?;
                 Ok((remaining, Object::Stream(Stream::new(dict, data.to_vec()))))
             }
             Err(_) => Err(nom::Err::Failure(NomError::from_error_kind(i, ErrorKind::LengthValue))),
@@ -474,12 +518,12 @@ pub fn direct_object(input: ParserInput) -> Option<Object> {
 }
 
 fn object<'a>(
-    input: ParserInput<'a>, object_id: ObjectId, reader: &Reader, already_seen: &mut HashSet<ObjectId>, recover_stream_length: bool,
+    input: ParserInput<'a>, reader: &Reader, already_seen: &mut HashSet<ObjectId>, recover_stream_length: bool,
     recovery_bound: Option<usize>,
 ) -> NomResult<'a, Object> {
     terminated(
         alt((
-            |input| stream(input, object_id, reader, already_seen, recover_stream_length, recovery_bound),
+            |input| stream(input, reader, already_seen, recover_stream_length, recovery_bound),
             _direct_objects(crate::reader::MAX_NESTING_DEPTH),
         )),
         space,
@@ -524,11 +568,14 @@ fn _indirect_object<'a>(
 
     let object_offset = input.len() - i.len();
     let (_, mut object) = terminated(
-        |i: ParserInput<'a>| object(i, object_id, reader, already_seen, recover_stream_length, recovery_bound),
+        |i: ParserInput<'a>| object(i, reader, already_seen, recover_stream_length, recovery_bound),
         (space, opt(tag(&b"endobj"[..])), space),
     )
     .parse(i)
-    .map_err(|_| reader.retained_bytes_limit_error().unwrap_or(Error::IndirectObject { offset }))?;
+    .map_err(|error| match error {
+        nom::Err::Error(NomError::LoadLimit(error)) | nom::Err::Failure(NomError::LoadLimit(error)) => error,
+        _ => Error::IndirectObject { offset },
+    })?;
 
     offset_stream(&mut object, object_offset);
 
@@ -559,15 +606,15 @@ pub fn header(input: ParserInput, strict: bool) -> Option<String> {
     Some(version)
 }
 
-pub fn binary_mark(input: ParserInput) -> Option<Vec<u8>> {
+pub fn binary_mark(input: ParserInput) -> Option<ParserInput> {
     strip_nom(
-        map_res(
+        map(
             delimited(
                 tag(&b"%"[..]),
                 take_while(|c: u8| !b"\r\n".contains(&c)),
                 pair(eol, many0_count(comment)),
             ),
-            |v: ParserInput| Ok::<Vec<u8>, ()>(v.to_vec()),
+            |v: ParserInput| v,
         )
         .parse(input),
     )
@@ -684,8 +731,13 @@ pub fn xref_and_trailer(input: ParserInput, reader: &Reader) -> crate::Result<(X
         return Ok((xref, trailer));
     }
 
-    let (_, object) = _indirect_object(input, 0, None, reader, &mut HashSet::new(), false, None)
-        .map_err(|_| error::ParseError::InvalidXref)?;
+    let (_, object) = _indirect_object(input, 0, None, reader, &mut HashSet::new(), false, None).map_err(|error| {
+        if crate::reader::is_load_limit_error(&error) {
+            error
+        } else {
+            error::ParseError::InvalidXref.into()
+        }
+    })?;
     match object {
         Object::Stream(stream) => reader.reserve_stream_decompression(&stream).and_then(|()| {
             decode_xref_stream_with_limit_and_object_limit(stream, reader.max_decompressed_size, reader.max_objects)
@@ -789,11 +841,11 @@ fn inline_image_impl(input: ParserInput) -> NomResult<(Vec<Object>, String)> {
                         && (w[3] == b' ' || w[3] == b'\n' || w[3] == b'\r')
                 })
                 .ok_or_else(|| {
-                    let err: NomError = nom::error::Error::from_error_kind(input, ErrorKind::Fail);
+                    let err = NomError::from_error_kind(input, ErrorKind::Fail);
                     nom::Err::Failure(err)
                 })?;
             let (input, _) = take(ei_pos + 3).parse(input).map_err(|_: nom::Err<()>| {
-                let err: NomError = nom::error::Error::from_error_kind(input, ErrorKind::Fail);
+                let err = NomError::from_error_kind(input, ErrorKind::Fail);
                 nom::Err::Failure(err)
             })?;
             let (input, _) = content_space(input)?;

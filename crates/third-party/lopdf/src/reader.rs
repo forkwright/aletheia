@@ -21,11 +21,11 @@ use tokio::pin;
 use crate::common_data_structures;
 use crate::encryption::{self, EncryptionState};
 use crate::error::{ParseError, XrefError};
-use crate::load_options::{DecompressionBudget, FilterFunc, LoadOptions, RetainedAllocation, RetainedBytesBudget};
+use crate::load_options::{DecompressionBudget, FilterFunc, LoadOptions, RetainedBytesBudget, SourceWorkBudget};
 use crate::object_stream::ObjectStream;
 use crate::parser;
 use crate::xref::{Xref, XrefEntry, XrefType};
-use crate::{Dictionary, Document, Error, IncrementalDocument, Object, ObjectId, Result};
+use crate::{Dictionary, Document, Error, IncrementalDocument, Object, ObjectId, Result, Stream};
 
 #[cfg(not(feature = "async"))]
 impl Document {
@@ -88,7 +88,7 @@ impl Document {
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
             retained_bytes_budget: options.retained_bytes_budget,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: options.source_work_budget,
             max_objects: options.max_objects,
             reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
@@ -113,7 +113,7 @@ impl Document {
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
             retained_bytes_budget: options.retained_bytes_budget,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: options.source_work_budget,
             max_objects: options.max_objects,
             reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
@@ -169,7 +169,7 @@ impl Document {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -190,7 +190,7 @@ impl Document {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -214,7 +214,7 @@ impl Document {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -263,7 +263,7 @@ impl Document {
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
             retained_bytes_budget: options.retained_bytes_budget,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: options.source_work_budget,
             max_objects: options.max_objects,
             reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
@@ -288,7 +288,7 @@ impl Document {
             max_decompressed_size: options.max_decompressed_size,
             decompression_budget: options.decompression_budget,
             retained_bytes_budget: options.retained_bytes_budget,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: options.source_work_budget,
             max_objects: options.max_objects,
             reject_encrypted: options.reject_encrypted,
             normal_offsets: Vec::new(),
@@ -340,7 +340,7 @@ impl Document {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -361,7 +361,7 @@ impl Document {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -387,7 +387,7 @@ impl Document {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -410,7 +410,7 @@ impl TryInto<Document> for &[u8] {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -449,7 +449,7 @@ impl IncrementalDocument {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -498,7 +498,7 @@ impl IncrementalDocument {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -528,7 +528,7 @@ impl TryInto<IncrementalDocument> for &[u8] {
             max_decompressed_size: None,
             decompression_budget: None,
             retained_bytes_budget: None,
-            retained_bytes_exceeded: Mutex::new(None),
+            source_work_budget: None,
             max_objects: None,
             reject_encrypted: false,
             normal_offsets: Vec::new(),
@@ -554,12 +554,14 @@ pub struct Reader<'a> {
     /// Aggregate budget shared with a caller that supplied one in
     /// [`LoadOptions`]. Eager xref/object-stream decoders reserve from it.
     pub decompression_budget: Option<DecompressionBudget>,
-    /// Aggregate admission for source-byte copies retained as ordinary streams
-    /// or encrypted-object staging during this load.
+    /// Aggregate admission for every parser-owned byte buffer derived from the
+    /// PDF source during this load: indirect-object syntax, names and strings,
+    /// stream content, object-stream members, and encrypted staging/copies.
     pub retained_bytes_budget: Option<RetainedBytesBudget>,
-    /// Records the first admission failure that nom's parser error type cannot
-    /// carry directly, so `indirect_object` can preserve the typed refusal.
-    retained_bytes_exceeded: Mutex<Option<usize>>,
+    /// Aggregate distinct borrowed input intervals inspected while parsing.
+    /// This bounds structural work separately from allocations retained by the
+    /// document.
+    pub source_work_budget: Option<SourceWorkBudget>,
     /// Maximum unique indirect-object IDs retained across the merged xref and
     /// all xref-authorized object-stream members.
     pub max_objects: Option<usize>,
@@ -593,30 +595,52 @@ impl Reader<'_> {
     }
 
     /// Admit one source slice before copying it into an owned stream or raw
-    /// encrypted-object buffer. The object/allocation key makes a repeated
-    /// lookup idempotent without granting a second xref ID free storage.
-    pub(crate) fn reserve_retained_bytes(
-        &self, object_id: ObjectId, allocation: RetainedAllocation, bytes: usize,
-    ) -> Result<()> {
-        let result = match &self.retained_bytes_budget {
-            Some(budget) => budget.reserve(object_id, allocation, bytes),
+    /// encrypted-object buffer. Each call is an actual allocation and thus
+    /// charges cumulatively even when a parser re-enters one object ID.
+    pub(crate) fn reserve_retained_bytes(&self, bytes: usize) -> Result<()> {
+        match &self.retained_bytes_budget {
+            Some(budget) => budget.reserve(bytes),
             None => Ok(()),
-        };
-        if let Err(Error::RetainedBytesLimitExceeded { limit }) = &result {
-            if let Ok(mut exceeded) = self.retained_bytes_exceeded.lock() {
-                exceeded.get_or_insert(*limit);
-            }
         }
-        result
     }
 
-    /// Recover the typed retained-byte refusal after nom has stopped parsing.
-    pub(crate) fn retained_bytes_limit_error(&self) -> Option<Error> {
-        self.retained_bytes_exceeded
-            .lock()
-            .ok()
-            .and_then(|exceeded| *exceeded)
-            .map(|limit| Error::RetainedBytesLimitExceeded { limit })
+    /// Admit a borrowed source interval before parsing it. Reentrant lookup of
+    /// the same interval is deliberately not a retained-allocation charge.
+    fn reserve_source_work(&self, start: usize, end: usize) -> Result<()> {
+        match &self.source_work_budget {
+            Some(budget) => budget.reserve_interval(start, end),
+            None => Ok(()),
+        }
+    }
+
+    /// Admit the complete source span that one indirect-object parse may turn
+    /// into parser-owned byte buffers. Its elements are disjoint source regions
+    /// (names, strings, and stream data), so this is a conservative single
+    /// reservation made before any of those allocations occur. Re-parsing the
+    /// same span intentionally reserves again because it creates fresh owned
+    /// buffers.
+    fn reserve_object_source_span(&self, offset: usize, end: usize) -> Result<()> {
+        self.reserve_source_work(offset, end)
+    }
+
+    /// Charge a source-derived object before making an explicit clone of it.
+    /// Moves into the document map do not call this helper.
+    fn reserve_object_clone(&self, object: &Object) -> Result<()> {
+        fn bytes(object: &Object) -> usize {
+            match object {
+                Object::Name(value) | Object::String(value, _) => value.len(),
+                Object::Array(values) => values.iter().fold(0, |total, value| total.saturating_add(bytes(value))),
+                Object::Dictionary(dict) => dict.iter().fold(0, |total, (key, value)| {
+                    total.saturating_add(key.len()).saturating_add(bytes(value))
+                }),
+                Object::Stream(stream) => stream.dict.iter().fold(stream.content.len(), |total, (key, value)| {
+                    total.saturating_add(key.len()).saturating_add(bytes(value))
+                }),
+                _ => 0,
+            }
+        }
+
+        self.reserve_retained_bytes(bytes(object))
     }
 
     /// Refuse an xref before its entries are copied into document-owned maps.
@@ -670,6 +694,35 @@ impl Reader<'_> {
 pub const MAX_BRACKET: usize = 100;
 
 pub const MAX_NESTING_DEPTH: usize = 100;
+
+/// A caller-provided admission boundary must never become a leniently skipped
+/// malformed object. Other parse errors retain lopdf's historical lenient
+/// behavior where applicable.
+pub(crate) fn is_load_limit_error(error: &Error) -> bool {
+    matches!(
+        error,
+        Error::RetainedBytesLimitExceeded { .. }
+            | Error::SourceWorkLimitExceeded { .. }
+            | Error::OverlappingObjectSpan
+            | Error::ObjectLimitExceeded { .. }
+            | Error::Decompress(crate::DecompressError::MemoryLimitExceeded { .. })
+    )
+}
+
+/// Canonical priority when several independently parsed objects refuse caller
+/// limits. The rank is intentionally independent of Rayon completion order:
+/// retained source bytes, then overlapping spans, decoder memory, then object
+/// count.
+fn load_limit_precedence(error: &Error) -> Option<u8> {
+    match error {
+        Error::RetainedBytesLimitExceeded { .. } => Some(0),
+        Error::SourceWorkLimitExceeded { .. } => Some(1),
+        Error::OverlappingObjectSpan => Some(2),
+        Error::Decompress(crate::DecompressError::MemoryLimitExceeded { .. }) => Some(3),
+        Error::ObjectLimitExceeded { limit: _ } => Some(4),
+        _ => None,
+    }
+}
 
 /// Cap on reconstructed cross-reference entries, bounding memory on hostile inputs.
 const MAX_RECONSTRUCTED_OBJECTS: usize = 1_000_000;
@@ -773,7 +826,8 @@ impl Reader<'_> {
 
         let (xref, trailer) = match self.resolve_xref_and_trailer() {
             Ok(resolved) => resolved,
-            Err(err) => match self.reconstruct_xref_and_trailer() {
+            Err(err) if is_load_limit_error(&err) => return Err(err),
+            Err(err) => match self.reconstruct_xref_and_trailer()? {
                 Some(reconstructed) => {
                     warn!("cross-reference resolution failed ({err}); recovered by scanning for indirect objects");
                     reconstructed
@@ -840,6 +894,7 @@ impl Reader<'_> {
         let mut already_seen = HashSet::new();
         let info_obj = match self.get_object(info_id, &mut already_seen) {
             Ok(obj) => obj,
+            Err(error) if is_load_limit_error(&error) => return Err(error),
             Err(_) => return Ok(InfoMetadata::empty()),
         };
 
@@ -888,6 +943,7 @@ impl Reader<'_> {
         let mut already_seen = HashSet::new();
         let catalog_obj = match self.get_object(root_ref, &mut already_seen) {
             Ok(obj) => obj,
+            Err(error) if is_load_limit_error(&error) => return Err(error),
             Err(_) => return Ok(0),
         };
 
@@ -901,7 +957,11 @@ impl Reader<'_> {
             Err(_) => return Ok(0),
         };
 
-        self.get_pages_tree_count(pages_ref, &mut HashSet::new(), 0).or(Ok(0))
+        match self.get_pages_tree_count(pages_ref, &mut HashSet::new(), 0) {
+            Ok(count) => Ok(count),
+            Err(error) if is_load_limit_error(&error) => Err(error),
+            Err(_) => Ok(0),
+        }
     }
 
     fn get_pages_tree_count(&self, pages_id: ObjectId, seen: &mut HashSet<ObjectId>, depth: usize) -> Result<u32> {
@@ -919,6 +979,7 @@ impl Reader<'_> {
         let mut already_seen = HashSet::new();
         let pages_obj = match self.get_object(pages_id, &mut already_seen) {
             Ok(obj) => obj,
+            Err(error) if is_load_limit_error(&error) => return Err(error),
             Err(_) => return Ok(0),
         };
 
@@ -946,9 +1007,12 @@ impl Reader<'_> {
                 for kid in kids.iter() {
                     if let Ok(kid_ref) = kid.as_reference()
                         && let Some(next_depth) = depth.checked_add(1)
-                        && let Ok(count) = self.get_pages_tree_count(kid_ref, seen, next_depth)
                     {
-                        total = total.checked_add(count).ok_or(Error::RecursionLimit)?;
+                        match self.get_pages_tree_count(kid_ref, seen, next_depth) {
+                            Ok(count) => total = total.checked_add(count).ok_or(Error::RecursionLimit)?,
+                            Err(error) if is_load_limit_error(&error) => return Err(error),
+                            Err(_) => {}
+                        }
                     }
                 }
                 Ok(total)
@@ -972,13 +1036,15 @@ impl Reader<'_> {
             && let Some(binary_mark) = parser::binary_mark(&self.buffer[pos + 1..])
             && binary_mark.iter().all(|&byte| byte >= 128)
         {
-            self.document.binary_mark = binary_mark;
+            self.reserve_retained_bytes(binary_mark.len())?;
+            self.document.binary_mark = binary_mark.to_vec();
         }
 
         // Fall back to reconstruction only after all standard resolution fails.
         let (xref, trailer) = match self.resolve_xref_and_trailer() {
             Ok(resolved) => resolved,
-            Err(err) => match self.reconstruct_xref_and_trailer() {
+            Err(err) if is_load_limit_error(&err) => return Err(err),
+            Err(err) => match self.reconstruct_xref_and_trailer()? {
                 Some(reconstructed) => {
                     warn!("cross-reference resolution failed ({err}); recovered by scanning for indirect objects");
                     reconstructed
@@ -1032,15 +1098,18 @@ impl Reader<'_> {
 
         for (obj_num, entry) in entries {
             match entry {
-                XrefEntry::Normal { offset, generation } => {
-                    if let Ok((obj_id, raw_bytes)) = self.extract_raw_object(offset as usize) {
+                XrefEntry::Normal { offset, generation } => match self.extract_raw_object(offset as usize) {
+                    Ok((obj_id, raw_bytes)) => {
                         if obj_id == (obj_num, generation) {
                             self.raw_objects.insert(obj_id, raw_bytes);
                         } else if self.strict {
                             return Err(Error::ObjectIdMismatch);
                         }
                     }
-                }
+                    Err(error) if is_load_limit_error(&error) => return Err(error),
+                    Err(error) if self.strict => return Err(error),
+                    Err(_) => {}
+                },
                 XrefEntry::Compressed { container, index } => {
                     // Store compressed object info for later processing
                     object_streams.push((obj_num, container, index));
@@ -1072,9 +1141,14 @@ impl Reader<'_> {
                     continue;
                 }
 
-                if let Ok((id, mut obj)) = self.parse_raw_object(raw_bytes) {
-                    let _ = encryption::decrypt_object(state, *obj_id, &mut obj);
-                    self.document.objects.insert(id, obj);
+                match self.parse_raw_object(raw_bytes) {
+                    Ok((id, mut obj)) => {
+                        encryption::decrypt_object(state, *obj_id, &mut obj).map_err(Error::Decryption)?;
+                        self.document.objects.insert(id, obj);
+                    }
+                    Err(error) if is_load_limit_error(&error) => return Err(error),
+                    Err(error) if self.strict => return Err(error),
+                    Err(_) => {}
                 }
             }
 
@@ -1105,17 +1179,19 @@ impl Reader<'_> {
                             self.max_decompressed_size,
                             self.max_objects,
                             &expected_members,
+                            self,
                         )
                     }) {
                         Ok(object_stream) => {
                             for (obj_num, _index) in objects_in_stream {
                                 let obj_id = (obj_num, 0);
                                 if let Some(obj) = object_stream.objects.get(&obj_id) {
+                                    self.reserve_object_clone(obj)?;
                                     self.document.objects.insert(obj_id, obj.clone());
                                 }
                             }
                         }
-                        Err(error) if self.strict => return Err(error),
+                        Err(error) if self.strict || is_load_limit_error(&error) => return Err(error),
                         Err(_error) => {}
                     }
                 }
@@ -1139,6 +1215,7 @@ impl Reader<'_> {
 
     fn parse_raw_object(&self, raw_bytes: &[u8]) -> Result<(ObjectId, Object)> {
         // Parse the raw bytes as an indirect object
+        self.reserve_retained_bytes(raw_bytes.len())?;
         parser::indirect_object(raw_bytes, 0, None, self, &mut HashSet::new(), None)
     }
 
@@ -1158,6 +1235,38 @@ impl Reader<'_> {
         normal_offsets.dedup();
         self.normal_offsets = normal_offsets;
         self.document.reference_table = xref;
+    }
+
+    /// Merge all indexed load outcomes after parsing completes. A typed caller
+    /// refusal outranks every generic parse error; among typed refusals the
+    /// fixed retained/decompression/object precedence wins, then xref order.
+    fn collect_object_load_results(
+        results: Vec<Result<Option<(ObjectId, Object)>>>,
+    ) -> Result<BTreeMap<ObjectId, Object>> {
+        let mut first_generic = None;
+        let mut preferred_limit = None;
+        for (index, result) in results.iter().enumerate() {
+            let Err(error) = result else {
+                continue;
+            };
+            match load_limit_precedence(error) {
+                Some(rank) if preferred_limit.is_none_or(|(best_rank, _)| rank < best_rank) => {
+                    preferred_limit = Some((rank, index));
+                }
+                Some(_) => {}
+                None if first_generic.is_none() => first_generic = Some(index),
+                None => {}
+            }
+        }
+        if let Some(index) = preferred_limit.map(|(_, index)| index).or(first_generic) {
+            let error = results
+                .into_iter()
+                .enumerate()
+                .find_map(|(candidate, result)| (candidate == index).then_some(result).and_then(Result::err))
+                .ok_or_else(|| Error::InvalidStream("selected object-load error was lost".into()))?;
+            return Err(error);
+        }
+        Ok(results.into_iter().filter_map(Result::ok).flatten().collect())
     }
 
     fn load_objects_raw(&mut self, filter_func: Option<FilterFunc>) -> Result<()> {
@@ -1207,6 +1316,9 @@ impl Reader<'_> {
                 let (object_id, mut object) = match result {
                     Ok(obj) => obj,
                     Err(e) => {
+                        if is_load_limit_error(&e) {
+                            return Err(e);
+                        }
                         if is_encrypted {
                             // Expected for some encrypted objects - but log which
                             // ones. These failures stay non-fatal even in strict
@@ -1215,8 +1327,13 @@ impl Reader<'_> {
                             return Ok(None);
                         }
                         // Lenient loading logs and skips malformed objects; strict loading fails.
+                        // A configured resource ceiling is never a recoverable malformed object.
                         error!("Object load error at offset {}: {e:?}", offset);
-                        return if self.strict { Err(e) } else { Ok(None) };
+                        return if self.strict || is_load_limit_error(&e) {
+                            Err(e)
+                        } else {
+                            Ok(None)
+                        };
                     }
                 };
                 if let Some(filter_func) = filter_func
@@ -1233,14 +1350,20 @@ impl Reader<'_> {
                                 self.max_decompressed_size,
                                 self.max_objects,
                                 compressed_members.get(&object_id.0).unwrap_or(&no_compressed_members),
+                                self,
                             )
                         }) {
                             Ok(obj_stream) => obj_stream,
                             // Not an encryption-related loss, so it obeys the same
-                            // strict-mode policy as any other load error.
+                            // strict-mode policy as any other load error. Admission
+                            // refusals must propagate even for lenient parsing.
                             Err(e) => {
                                 error!("Object stream load error for {object_id:?}: {e:?}");
-                                return if self.strict { Err(e) } else { Ok(None) };
+                                return if self.strict || is_load_limit_error(&e) {
+                                    Err(e)
+                                } else {
+                                    Ok(None)
+                                };
                             }
                         };
                         let mut object_streams = object_streams
@@ -1272,25 +1395,25 @@ impl Reader<'_> {
 
         #[cfg(feature = "rayon")]
         {
-            self.document.objects = self
+            let results = self
                 .document
                 .reference_table
                 .entries
                 .par_iter()
                 .map(entries_filter_map)
-                .filter_map(Result::transpose)
-                .collect::<Result<BTreeMap<_, _>>>()?;
+                .collect::<Vec<_>>();
+            self.document.objects = Self::collect_object_load_results(results)?;
         }
         #[cfg(not(feature = "rayon"))]
         {
-            self.document.objects = self
+            let results = self
                 .document
                 .reference_table
                 .entries
                 .iter()
                 .map(entries_filter_map)
-                .filter_map(Result::transpose)
-                .collect::<Result<BTreeMap<_, _>>>()?;
+                .collect::<Vec<_>>();
+            self.document.objects = Self::collect_object_load_results(results)?;
         }
 
         // Only add entries, but never replace entries
@@ -1315,7 +1438,11 @@ impl Reader<'_> {
             .into_inner()
             .map_err(|_| Error::InvalidStream("zero-length stream lock poisoned".into()))?
         {
-            let _ = self.read_stream_content(object_id);
+            if let Err(error) = self.read_stream_content(object_id)
+                && is_load_limit_error(&error)
+            {
+                return Err(error);
+            }
         }
 
         Ok(())
@@ -1343,7 +1470,10 @@ impl Reader<'_> {
             return Err(Error::InvalidStream("stream extends after document end.".to_string()));
         }
 
-        self.reserve_retained_bytes(object_id, RetainedAllocation::Stream, length)?;
+        // Deferred materialization creates an owned stream buffer now, so it
+        // needs its own allocation admission even though its source interval
+        // was already inspected earlier.
+        self.reserve_retained_bytes(length)?;
         let stream = self
             .document
             .get_object_mut(object_id)
@@ -1421,8 +1551,11 @@ impl Reader<'_> {
             self.max_decompressed_size,
             self.max_objects,
             &expected_members,
+            self,
         )?;
-        object_stream.objects.get(&id).cloned().ok_or(Error::MissingXrefEntry)
+        let object = object_stream.objects.get(&id).ok_or(Error::MissingXrefEntry)?;
+        self.reserve_object_clone(object)?;
+        Ok(object.clone())
     }
 
     pub fn get_object(&self, id: ObjectId, already_seen: &mut HashSet<ObjectId>) -> Result<Object> {
@@ -1459,16 +1592,23 @@ impl Reader<'_> {
     }
 
     fn parse_encryption_dictionary(&mut self) -> Result<()> {
-        if let Ok(encrypt_ref) = self.document.trailer.get(b"Encrypt").and_then(|o| o.as_reference()) {
-            if self.raw_objects.is_empty() {
-                let offset = self.get_offset(encrypt_ref)?;
-                let (_, encrypt_obj) = self.read_object(offset as usize, Some(encrypt_ref), &mut HashSet::new())?;
-                self.document.objects.insert(encrypt_ref, encrypt_obj);
-            } else if let Some(raw_bytes) = self.raw_objects.get(&encrypt_ref)
-                && let Ok((_, obj)) = self.parse_raw_object(raw_bytes)
-            {
-                self.document.objects.insert(encrypt_ref, obj);
+        let Ok(encrypt_object) = self.document.trailer.get(b"Encrypt") else {
+            return Ok(());
+        };
+        let encrypt_ref = encrypt_object.as_reference()?;
+        if self.raw_objects.is_empty() {
+            let offset = self.get_offset(encrypt_ref)?;
+            let (_, encrypt_obj) = self.read_object(offset as usize, Some(encrypt_ref), &mut HashSet::new())?;
+            self.document.objects.insert(encrypt_ref, encrypt_obj);
+        } else if let Some(raw_bytes) = self.raw_objects.get(&encrypt_ref) {
+            match self.parse_raw_object(raw_bytes) {
+                Ok((_, obj)) => {
+                    self.document.objects.insert(encrypt_ref, obj);
+                }
+                Err(error) => return Err(error),
             }
+        } else {
+            return Err(Error::ObjectNotFound(encrypt_ref));
         }
         Ok(())
     }
@@ -1574,7 +1714,7 @@ impl Reader<'_> {
         // Admit before copying the object into encrypted-load staging. This
         // path otherwise has the same overlapping-xref amplification shape as
         // normal direct streams.
-        self.reserve_retained_bytes((obj_num, obj_gen), RetainedAllocation::RawObject, end_pos)?;
+        self.reserve_retained_bytes(end_pos)?;
 
         // Extract raw object bytes (including header and trailer)
         let raw_bytes = slice[0..end_pos].to_vec();
@@ -1607,17 +1747,30 @@ impl Reader<'_> {
             return Err(Error::InvalidOffset(offset));
         }
 
-        // Objects are parsed against the full buffer so a wrong *neighbor*
-        // xref offset cannot truncate a well-formed object; `end` only limits
-        // how far malformed-stream length recovery may scan.
-        parser::indirect_object(self.buffer, offset, expected_id, self, already_seen, Some(end))
+        // The final xref establishes a non-overlapping source span. Parsing
+        // outside it would let headers forged inside an owned string or stream
+        // make several object IDs retain overlapping input bytes.
+        self.reserve_object_source_span(offset, end)?;
+        match parser::indirect_object(&self.buffer[..end], offset, expected_id, self, already_seen, Some(end)) {
+            // `end` is the next xref structural boundary. A normal object
+            // that cannot parse within it must not inspect a suffix to guess
+            // whether a later `endobj` exists: that was both quadratic and
+            // capable of treating bytes owned by a neighbouring object as
+            // this object's source.
+            Err(Error::IndirectObject { .. }) if end < self.buffer.len() => Err(Error::OverlappingObjectSpan),
+            result => result,
+        }
     }
 
     /// Parse the cross-reference section recorded at `offset`, first correcting
     /// the offset if it is slightly miswritten (lenient mode only).
-    fn xref_and_trailer_at(&self, offset: usize) -> Result<(Xref, Dictionary)> {
+    fn xref_and_trailer_at(&self, offset: usize, end: usize) -> Result<(Xref, Dictionary)> {
         let offset = self.correct_xref_offset(offset);
-        parser::xref_and_trailer(&self.buffer[offset..], self)
+        if offset > end || end > self.buffer.len() {
+            return Err(Error::Xref(XrefError::Start));
+        }
+        self.reserve_source_work(offset, end)?;
+        parser::xref_and_trailer(&self.buffer[offset..end], self)
     }
 
     /// Resolve the cross-reference table/stream and trailer, including the
@@ -1630,37 +1783,53 @@ impl Reader<'_> {
         let xref_start = self.correct_xref_offset(xref_start);
         self.document.xref_start = xref_start;
 
-        let (mut xref, mut trailer) = self.xref_and_trailer_at(xref_start)?;
+        let mut current_section_offset = xref_start;
+        let mut current_section_end = self.buffer.len();
+        let (mut xref, trailer) = self.xref_and_trailer_at(current_section_offset, current_section_end)?;
 
-        // Read previous Xrefs of linearized or incremental updated document.
-        let mut already_seen = HashSet::new();
-        let mut prev_xref_start = trailer.remove(b"Prev");
-        while let Some(prev) = prev_xref_start.and_then(|offset| offset.as_i64().ok()) {
-            if already_seen.contains(&prev) {
-                break;
+        // Each trailer in an incremental chain can carry a hybrid `/XRefStm`.
+        // Process that companion before following `/Prev`, including the newest
+        // trailer (which need not have a previous revision). Keep the latest
+        // trailer intact for callers such as incremental writers.
+        let mut current_trailer = trailer.clone();
+        let mut seen_xref_sections = HashSet::from([xref_start]);
+        let mut seen_xref_streams = HashSet::new();
+        loop {
+            if let Ok(xref_stream) = current_trailer.get(b"XRefStm") {
+                let stream_offset = xref_stream
+                    .as_i64()
+                    .ok()
+                    .and_then(|offset| usize::try_from(offset).ok())
+                    .ok_or(Error::Xref(XrefError::StreamStart))?;
+                if stream_offset > self.buffer.len() {
+                    return Err(Error::Xref(XrefError::StreamStart));
+                }
+                if seen_xref_streams.insert(stream_offset) {
+                    let (hybrid_xref, _) = self.xref_and_trailer_at(stream_offset, current_section_end)?;
+                    self.merge_xref(&mut xref, hybrid_xref)?;
+                }
             }
-            already_seen.insert(prev);
+
+            let Some(prev) = current_trailer
+                .get(b"Prev")
+                .ok()
+                .and_then(|offset| offset.as_i64().ok())
+            else {
+                break;
+            };
             let prev_offset = usize::try_from(prev).map_err(|_| Error::Xref(XrefError::PrevStart))?;
             if prev_offset > self.buffer.len() {
                 return Err(Error::Xref(XrefError::PrevStart));
             }
-
-            let (prev_xref, prev_trailer) = self.xref_and_trailer_at(prev_offset)?;
-            self.merge_xref(&mut xref, prev_xref)?;
-
-            // Read xref stream in hybrid-reference file
-            let prev_xref_stream_start = trailer.remove(b"XRefStm");
-            if let Some(prev) = prev_xref_stream_start.and_then(|offset| offset.as_i64().ok()) {
-                let prev_offset = usize::try_from(prev).map_err(|_| Error::Xref(XrefError::StreamStart))?;
-                if prev_offset > self.buffer.len() {
-                    return Err(Error::Xref(XrefError::StreamStart));
-                }
-
-                let (prev_xref, _) = self.xref_and_trailer_at(prev_offset)?;
-                self.merge_xref(&mut xref, prev_xref)?;
+            if !seen_xref_sections.insert(prev_offset) {
+                break;
             }
 
-            prev_xref_start = prev_trailer.get(b"Prev").cloned().ok();
+            let (previous_xref, previous_trailer) = self.xref_and_trailer_at(prev_offset, current_section_offset)?;
+            self.merge_xref(&mut xref, previous_xref)?;
+            current_trailer = previous_trailer;
+            current_section_end = current_section_offset;
+            current_section_offset = prev_offset;
         }
         let xref_entry_count = xref.max_id().checked_add(1).ok_or(ParseError::InvalidXref)?;
         if xref.size != xref_entry_count {
@@ -1676,17 +1845,25 @@ impl Reader<'_> {
 
     /// Last-resort recovery: rebuild the cross-reference table by scanning the
     /// raw bytes for indirect-object headers and locating a trailer with a
-    /// usable `/Root`. Returns `None` (caller keeps the original error) when
+    /// usable `/Root`. Returns `Ok(None)` (caller keeps the original error) when
     /// strict mode forbids recovery or nothing usable was found.
-    fn reconstruct_xref_and_trailer(&mut self) -> Option<(Xref, Dictionary)> {
+    fn reconstruct_xref_and_trailer(&mut self) -> Result<Option<(Xref, Dictionary)>> {
         if self.strict {
-            return None;
+            return Ok(None);
         }
-        u32::try_from(self.buffer.len()).ok()?;
+        if u32::try_from(self.buffer.len()).is_err() {
+            return Ok(None);
+        }
 
-        let markers = self.scan_object_markers(self.buffer)?;
+        // Reconstruction is a whole-file single pass. Account for that
+        // borrowed work once rather than charging every failed xref suffix.
+        self.reserve_source_work(0, self.buffer.len())?;
+
+        let Some(markers) = self.scan_object_markers(self.buffer)? else {
+            return Ok(None);
+        };
         if markers.is_empty() {
-            return None;
+            return Ok(None);
         }
 
         let mut xref = Xref::new(markers.len() as u32, XrefType::CrossReferenceTable);
@@ -1698,7 +1875,9 @@ impl Reader<'_> {
         // up to the highest, not physical copies across incremental updates.
         xref.size = xref.max_id().saturating_add(1);
 
-        let (_trailer_pos, trailer) = self.find_latest_trailer(&xref)?;
+        let Some((_trailer_pos, trailer)) = self.find_latest_trailer(&xref) else {
+            return Ok(None);
+        };
         // deliberate: no on-disk table exists to point at. Zero marks the
         // offset "unknown" so `Document::new_from_prev` omits `/Prev` instead
         // of recording end-of-file; `object_end` clamps to the buffer either way.
@@ -1708,7 +1887,7 @@ impl Reader<'_> {
             "reconstructed cross-reference table with {} objects by scanning for indirect objects",
             xref.entries.len()
         );
-        Some((xref, trailer))
+        Ok(Some((xref, trailer)))
     }
 
     /// Collect `(offset, id)` of every indirect-object header in one pass.
@@ -1716,7 +1895,7 @@ impl Reader<'_> {
     /// stream payloads are skipped wholesale, and object numbers beyond
     /// [`MAX_RECONSTRUCTED_OBJECTS`] are rejected so a forged header can
     /// neither shadow a genuine entry nor poison the reconstructed size.
-    fn scan_object_markers(&self, buffer: &[u8]) -> Option<Vec<(u32, ObjectId)>> {
+    fn scan_object_markers(&self, buffer: &[u8]) -> Result<Option<Vec<(u32, ObjectId)>>> {
         const STREAM_KEYWORD: &[u8] = b"stream";
         const END_STREAM_KEYWORD: &[u8] = b"endstream";
 
@@ -1768,8 +1947,10 @@ impl Reader<'_> {
                         oversized_number_warned = true;
                     }
                 } else {
-                    if self.max_objects.is_some_and(|max| markers.len() >= max) {
-                        return None;
+                    if let Some(max) = self.max_objects
+                        && markers.len() >= max
+                    {
+                        return Err(Error::ObjectLimitExceeded { limit: max });
                     }
                     if markers.len() == MAX_RECONSTRUCTED_OBJECTS {
                         warn!(
@@ -1787,7 +1968,7 @@ impl Reader<'_> {
             }
             pos += 1;
         }
-        Some(markers)
+        Ok(Some(markers))
     }
 
     /// Resume offset past a stream payload according to a *direct* `/Length`
@@ -1983,6 +2164,87 @@ impl Reader<'_> {
     }
 }
 
+#[test]
+fn encryption_dictionary_parse_propagates_retained_byte_refusal() {
+    let raw_object = b"1 0 obj\n<< /Length 1 >>\nstream\nx\nendstream\nendobj\n";
+    let mut reader = Reader {
+        buffer: raw_object,
+        document: Document::new(),
+        encryption_state: None,
+        raw_objects: BTreeMap::from([((1, 0), raw_object.to_vec())]),
+        password: None,
+        strict: false,
+        max_decompressed_size: None,
+        decompression_budget: None,
+        retained_bytes_budget: Some(RetainedBytesBudget::new(0)),
+        source_work_budget: None,
+        max_objects: None,
+        reject_encrypted: false,
+        normal_offsets: Vec::new(),
+    };
+    reader.document.trailer.set("Encrypt", Object::Reference((1, 0)));
+
+    assert!(matches!(
+        reader.parse_encryption_dictionary(),
+        Err(Error::RetainedBytesLimitExceeded { limit: 0 })
+    ));
+}
+
+#[test]
+fn xref_stream_parser_propagates_retained_byte_refusal() {
+    let raw_xref_stream = b"1 0 obj\n<< /Length 1 >>\nstream\nx\nendstream\nendobj\n";
+    let reader = Reader {
+        buffer: raw_xref_stream,
+        document: Document::new(),
+        encryption_state: None,
+        raw_objects: BTreeMap::new(),
+        password: None,
+        strict: false,
+        max_decompressed_size: None,
+        decompression_budget: None,
+        retained_bytes_budget: Some(RetainedBytesBudget::new(0)),
+        source_work_budget: None,
+        max_objects: None,
+        reject_encrypted: false,
+        normal_offsets: Vec::new(),
+    };
+
+    assert!(matches!(
+        parser::xref_and_trailer(raw_xref_stream, &reader),
+        Err(Error::RetainedBytesLimitExceeded { limit: 0 })
+    ));
+}
+
+#[cfg(feature = "rayon")]
+#[test]
+fn parallel_object_errors_choose_typed_limits_by_fixed_precedence() {
+    for threads in [1, 2, 4] {
+        for source_order in [[0, 1, 2, 3], [3, 2, 1, 0]] {
+            let results = rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .unwrap()
+                .install(|| {
+                    source_order
+                        .par_iter()
+                        .map(|kind| match *kind {
+                            0 => Err(Error::IndirectObject { offset: 0 }),
+                            1 => Err(Error::ObjectLimitExceeded { limit: 1 }),
+                            2 => Err(Error::Decompress(crate::DecompressError::MemoryLimitExceeded {
+                                limit: 2,
+                            })),
+                            _ => Err(Error::RetainedBytesLimitExceeded { limit: 3 }),
+                        })
+                        .collect::<Vec<Result<Option<(ObjectId, Object)>>>>()
+                });
+            assert!(matches!(
+                Reader::collect_object_load_results(results),
+                Err(Error::RetainedBytesLimitExceeded { limit: 3 })
+            ));
+        }
+    }
+}
+
 #[cfg(all(test, not(feature = "async")))]
 #[test]
 fn load_document() {
@@ -2005,6 +2267,44 @@ async fn load_document() {
     let temp_dir = tempfile::tempdir().unwrap();
     let file_path = temp_dir.path().join("test_2_load.pdf");
     doc.save(file_path).unwrap();
+}
+
+#[cfg(all(test, feature = "async"))]
+#[tokio::test]
+async fn optioned_async_loader_propagates_retained_byte_refusal() {
+    let objects = [
+        (1, "<< /Type /Catalog /Pages 2 0 R >>"),
+        (2, "<< /Type /Pages /Kids [] /Count 0 >>"),
+        (3, "<< /Length 1 >>\nstream\nx\nendstream"),
+    ];
+    let mut bytes = b"%PDF-1.5\n".to_vec();
+    let mut offsets = BTreeMap::new();
+    for (id, body) in objects {
+        offsets.insert(id, bytes.len());
+        bytes.extend_from_slice(format!("{id} 0 obj\n{body}\nendobj\n").as_bytes());
+    }
+    let xref_offset = bytes.len();
+    bytes.extend_from_slice(b"xref\n0 4\n0000000000 65535 f \n");
+    for id in 1..=3 {
+        bytes.extend_from_slice(format!("{:010} 00000 n \n", offsets[&id]).as_bytes());
+    }
+    bytes
+        .extend_from_slice(format!("trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n").as_bytes());
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("retained-byte-limit.pdf");
+    std::fs::write(&path, bytes).unwrap();
+    let error = Document::load_with_options(
+        &path,
+        LoadOptions {
+            retained_bytes_budget: Some(RetainedBytesBudget::new(0)),
+            source_work_budget: None,
+            ..LoadOptions::default()
+        },
+    )
+    .await
+    .expect_err("async optioned loading must preserve source-byte admission refusal");
+    assert!(matches!(error, Error::RetainedBytesLimitExceeded { limit: 0 }));
 }
 
 #[test]

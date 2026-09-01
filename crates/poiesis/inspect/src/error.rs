@@ -20,6 +20,12 @@ pub enum InspectError {
         limit: &'static str,
     },
 
+    /// Cross-reference offsets would make two indirect objects claim the same
+    /// source region. This is a malformed document, not an exhausted memory
+    /// budget.
+    #[snafu(display("PDF has overlapping indirect-object source spans"))]
+    PdfOverlappingObjectSpans,
+
     /// The vendored parser panicked while handling hostile PDF bytes.
     ///
     /// This boundary remains in place even though known arithmetic panic paths

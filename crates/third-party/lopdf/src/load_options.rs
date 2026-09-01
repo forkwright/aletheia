@@ -1,7 +1,7 @@
-use std::collections::HashSet;
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use crate::{DecompressError, Error, Object, ObjectId, Result};
+use crate::{DecompressError, Error, Object, Result};
 
 /// Shared, fail-closed decompression budget for one untrusted PDF operation.
 ///
@@ -57,10 +57,10 @@ impl DecompressionBudget {
 /// document-owned storage during one load operation.
 ///
 /// This is distinct from [`DecompressionBudget`]: direct, unfiltered streams
-/// still require `Vec` copies while the document loads. Reservations are keyed
-/// by indirect-object ID and allocation class, so a repeated lookup of the
-/// same object does not consume the allowance twice, while distinct xref IDs
-/// pointing into overlapping source bytes cannot multiply retained storage.
+/// still require `Vec` copies while the document loads. Every allocation is
+/// charged: object IDs identify PDF syntax, not ownership of one `Vec`, and a
+/// reentrant or parallel lookup may create a second live copy of the same
+/// object's source bytes.
 #[derive(Clone, Debug)]
 pub struct RetainedBytesBudget(Arc<Mutex<RetainedBytesState>>);
 
@@ -68,13 +68,6 @@ pub struct RetainedBytesBudget(Arc<Mutex<RetainedBytesState>>);
 struct RetainedBytesState {
     limit: usize,
     remaining: usize,
-    admitted: HashSet<(ObjectId, RetainedAllocation)>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(crate) enum RetainedAllocation {
-    RawObject,
-    Stream,
 }
 
 impl RetainedBytesBudget {
@@ -85,29 +78,23 @@ impl RetainedBytesBudget {
         Self(Arc::new(Mutex::new(RetainedBytesState {
             limit,
             remaining: limit,
-            admitted: HashSet::new(),
         })))
     }
 
     /// Reserve one retained allocation before its `Vec` copy occurs.
     ///
-    /// A duplicate `(object_id, allocation)` is already accounted for by a
-    /// live or previously retained object and succeeds without a second charge.
-    pub(crate) fn reserve(
-        &self, object_id: ObjectId, allocation: RetainedAllocation, bytes: usize,
-    ) -> Result<()> {
+    /// This is deliberately cumulative rather than deduplicated: each call
+    /// corresponds to one new owned allocation, including reparses of the
+    /// same indirect object.
+    pub(crate) fn reserve(&self, bytes: usize) -> Result<()> {
         let mut state = self
             .0
             .lock()
             .map_err(|_| Error::RetainedBytesLimitExceeded { limit: 0 })?;
-        if state.admitted.contains(&(object_id, allocation)) {
-            return Ok(());
-        }
         if bytes > state.remaining {
             return Err(Error::RetainedBytesLimitExceeded { limit: state.limit });
         }
         state.remaining -= bytes;
-        state.admitted.insert((object_id, allocation));
         Ok(())
     }
 
@@ -115,6 +102,76 @@ impl RetainedBytesBudget {
     #[must_use]
     pub fn remaining(&self) -> usize {
         self.0.lock().map_or(0, |state| state.remaining)
+    }
+}
+
+/// Shared budget for distinct PDF source intervals inspected by one load.
+///
+/// This limits parser work without pretending that borrowed source bytes are
+/// retained allocations. Re-reading an already admitted interval is free;
+/// overlapping intervals charge only their newly covered bytes.
+#[derive(Clone, Debug)]
+pub struct SourceWorkBudget(Arc<Mutex<SourceWorkState>>);
+
+#[derive(Debug)]
+struct SourceWorkState {
+    limit: usize,
+    charged: usize,
+    intervals: BTreeMap<usize, usize>,
+}
+
+impl SourceWorkBudget {
+    /// Create a source-work budget shared by all parser paths in one load.
+    #[must_use]
+    pub fn new(limit: usize) -> Self {
+        Self(Arc::new(Mutex::new(SourceWorkState {
+            limit,
+            charged: 0,
+            intervals: BTreeMap::new(),
+        })))
+    }
+
+    /// Admit an input interval before parsing it.
+    pub(crate) fn reserve_interval(&self, start: usize, end: usize) -> Result<()> {
+        if start > end {
+            return Err(Error::InvalidOffset(start));
+        }
+        let mut state = self.0.lock().map_err(|_| Error::SourceWorkLimitExceeded { limit: 0 })?;
+        let mut merged_start = start;
+        let mut merged_end = end;
+        let mut replaced = 0usize;
+
+        if let Some((&previous_start, &previous_end)) = state.intervals.range(..=start).next_back()
+            && previous_end >= start
+        {
+            merged_start = previous_start;
+            merged_end = merged_end.max(previous_end);
+            replaced = replaced.saturating_add(previous_end.saturating_sub(previous_start));
+        }
+        let overlaps: Vec<(usize, usize)> = state
+            .intervals
+            .range(start..)
+            .take_while(|(interval_start, _)| **interval_start <= merged_end)
+            .map(|(&interval_start, &interval_end)| (interval_start, interval_end))
+            .collect();
+        for (interval_start, interval_end) in &overlaps {
+            merged_start = merged_start.min(*interval_start);
+            merged_end = merged_end.max(*interval_end);
+            if *interval_start != merged_start {
+                replaced = replaced.saturating_add(interval_end.saturating_sub(*interval_start));
+            }
+        }
+        let merged_len = merged_end.saturating_sub(merged_start);
+        let next_charged = state.charged.saturating_sub(replaced).saturating_add(merged_len);
+        if next_charged > state.limit {
+            return Err(Error::SourceWorkLimitExceeded { limit: state.limit });
+        }
+        for (interval_start, _) in overlaps {
+            state.intervals.remove(&interval_start);
+        }
+        state.intervals.insert(merged_start, merged_end);
+        state.charged = next_charged;
+        Ok(())
     }
 }
 
@@ -177,13 +234,20 @@ pub struct LoadOptions {
     /// also accepts a [`crate::ToUnicodeMappingBudget`] for aggregate CMap
     /// admission.
     pub decompression_budget: Option<DecompressionBudget>,
-    /// Shared aggregate budget for source bytes copied into retained ordinary
-    /// streams and encrypted-object staging during loading.
+    /// Shared aggregate budget for source bytes copied into loader-owned
+    /// stream buffers, object-stream members, encrypted staging, and explicit
+    /// object clones during loading.
     ///
     /// Unlike [`LoadOptions::decompression_budget`], this covers direct
-    /// `/Length` streams before their raw bytes are copied. Set it when a
-    /// bounded input may contain hostile or overlapping xref offsets.
+    /// `/Length` streams reserve immediately before their raw bytes are copied.
+    /// Reparse/clone generations charge cumulatively. Structural parsing of
+    /// borrowed names, strings, dictionaries, and xref spans is bounded by
+    /// [`LoadOptions::source_work_budget`] instead.
     pub retained_bytes_budget: Option<RetainedBytesBudget>,
+    /// Shared aggregate budget for distinct borrowed source intervals the
+    /// loader parses. This bounds structural/parser work separately from
+    /// [`LoadOptions::retained_bytes_budget`].
+    pub source_work_budget: Option<SourceWorkBudget>,
     /// Maximum unique indirect object IDs admitted across the merged
     /// cross-reference graph and every object-stream member.
     ///
@@ -206,6 +270,7 @@ impl std::fmt::Debug for LoadOptions {
             .field("max_decompressed_size", &self.max_decompressed_size)
             .field("decompression_budget", &self.decompression_budget)
             .field("retained_bytes_budget", &self.retained_bytes_budget)
+            .field("source_work_budget", &self.source_work_budget)
             .field("max_objects", &self.max_objects)
             .field("reject_encrypted", &self.reject_encrypted)
             .finish()

@@ -158,9 +158,10 @@ mod tests {
     #[expect(clippy::expect_used, reason = "test fixture construction")]
     fn text_pdf(text: &str, pages: usize) -> Vec<u8> {
         use lopdf::content::{Content, Operation};
-        use lopdf::{Document, Object, Stream, dictionary};
+        use lopdf::{Document, Object, SaveOptions, Stream};
 
         let mut document = Document::with_version("1.5");
+        document.reference_table.cross_reference_type = lopdf::xref::XrefType::CrossReferenceTable;
         let pages_id = document.new_object_id();
         let font_id = document.add_object(lopdf::dictionary! {
             "Type" => "Font", "Subtype" => "Type1", "BaseFont" => "Courier"
@@ -203,7 +204,9 @@ mod tests {
         });
         document.trailer.set("Root", catalog_id);
         let mut bytes = Vec::new();
-        document.save_to(&mut bytes).expect("save PDF");
+        document
+            .save_with_options(&mut bytes, SaveOptions::default())
+            .expect("save classic-xref PDF");
         bytes
     }
 
@@ -299,12 +302,20 @@ mod tests {
     }
 
     fn raw_classic_pdf(objects: &[(u32, String)]) -> Vec<u8> {
+        raw_classic_pdf_with_header(b"%PDF-1.5\n", objects, "")
+    }
+
+    fn raw_classic_pdf_with_header(
+        header: &[u8],
+        objects: &[(u32, String)],
+        trailer_extra: &str,
+    ) -> Vec<u8> {
         let max_id = objects
             .iter()
             .map(|(id, _)| *id)
             .max()
             .expect("at least one object");
-        let mut bytes = b"%PDF-1.5\n".to_vec();
+        let mut bytes = header.to_vec();
         let mut offsets = std::collections::BTreeMap::new();
         for (id, body) in objects {
             offsets.insert(*id, bytes.len());
@@ -323,7 +334,7 @@ mod tests {
         }
         bytes.extend_from_slice(
             format!(
-                "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n",
+                "trailer\n<< /Size {} /Root 1 0 R{trailer_extra} >>\nstartxref\n{xref_offset}\n%%EOF\n",
                 max_id + 1
             )
             .as_bytes(),
@@ -409,6 +420,134 @@ mod tests {
             .as_bytes(),
         );
         bytes
+    }
+
+    fn overlapping_direct_string_object_pdf() -> Vec<u8> {
+        let mut bytes = b"%PDF-1.5\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\n3 0 obj\n(".to_vec();
+        let nested_offset = bytes.len();
+        bytes.extend_from_slice(b"4 0 obj\n(owned string payload)\nendobj\n)\nendobj\n");
+        let xref_offset = bytes.len();
+        bytes.extend_from_slice(b"xref\n0 5\n0000000000 65535 f \n");
+        let root_one = b"%PDF-1.5\n".len();
+        let root_two = bytes
+            .windows(b"2 0 obj".len())
+            .position(|window| window == b"2 0 obj")
+            .expect("pages object");
+        let outer = bytes
+            .windows(b"3 0 obj".len())
+            .position(|window| window == b"3 0 obj")
+            .expect("outer object");
+        for offset in [root_one, root_two, outer, nested_offset] {
+            bytes.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
+        }
+        bytes.extend_from_slice(
+            format!("trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n")
+                .as_bytes(),
+        );
+        bytes
+    }
+
+    /// Object 3 resolves `/Length` through object 4 before object 4's own xref
+    /// entry is loaded. Object 4 is a stream rather than an integer, so the
+    /// first parse is discarded and the second is retained normally; both
+    /// nevertheless allocate an owned stream vector.
+    fn reentrant_length_stream_pdf(stream_bytes: usize, length_ref_first: bool) -> Vec<u8> {
+        let payload = "x".repeat(stream_bytes);
+        let target = (
+            4,
+            format!("<< /Length {stream_bytes} >>\nstream\n{payload}\nendstream"),
+        );
+        let referrer = (3, "<< /Length 4 0 R >>\nstream\nx\nendstream".to_owned());
+        let mut objects = vec![
+            (1, "<< /Type /Catalog /Pages 2 0 R >>".to_owned()),
+            (2, "<< /Type /Pages /Kids [] /Count 0 >>".to_owned()),
+        ];
+        if length_ref_first {
+            objects.extend([referrer, target]);
+        } else {
+            objects.extend([target, referrer]);
+        }
+        raw_classic_pdf(&objects)
+    }
+
+    fn with_broken_startxref(mut bytes: Vec<u8>) -> Vec<u8> {
+        let marker = b"startxref\n";
+        let start = bytes
+            .windows(marker.len())
+            .rposition(|window| window == marker)
+            .expect("startxref marker")
+            + marker.len();
+        let end = bytes[start..]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .expect("startxref line")
+            + start;
+        bytes[start..end].fill(b'9');
+        bytes
+    }
+
+    fn binary_marked_encrypted_staging_pdf() -> Vec<u8> {
+        raw_classic_pdf_with_header(
+            b"%PDF-1.5\n%\x80\x81\x82\x83\n",
+            &[
+                (1, "<< /Type /Catalog /Pages 2 0 R >>".to_owned()),
+                (2, "<< /Type /Pages /Kids [] /Count 0 >>".to_owned()),
+                (3, "<< /Filter /Standard /V 1 >>".to_owned()),
+            ],
+            " /Encrypt 3 0 R",
+        )
+    }
+
+    fn direct_object_source_work_just_below_load(bytes: &[u8]) -> usize {
+        let object_start = bytes
+            .windows(b"1 0 obj".len())
+            .position(|window| window == b"1 0 obj")
+            .expect("first object");
+        let xref_start = bytes
+            .windows(b"xref\n".len())
+            .position(|window| window == b"xref\n")
+            .expect("xref");
+        xref_start
+            .checked_sub(object_start)
+            .and_then(|objects| objects.checked_add(bytes.len() - xref_start))
+            .and_then(|required| required.checked_sub(1))
+            .expect("non-empty fixture")
+    }
+
+    fn assert_direct_object_source_work_is_admitted(body: String) {
+        use lopdf::{Document, LoadOptions, SourceWorkBudget};
+
+        let bytes = raw_classic_pdf(&[(1, body)]);
+        let error = Document::load_mem_with_options(
+            &bytes,
+            LoadOptions {
+                strict: true,
+                source_work_budget: Some(SourceWorkBudget::new(
+                    direct_object_source_work_just_below_load(&bytes),
+                )),
+                ..LoadOptions::default()
+            },
+        )
+        .expect_err("the xref-bounded direct-object work must be admitted before parser ownership");
+        assert!(matches!(
+            error,
+            lopdf::Error::SourceWorkLimitExceeded { .. }
+        ));
+    }
+
+    /// A real-valued integral `/Length` is accepted only by lopdf's delayed
+    /// materialization path, so it exercises the formerly ignored
+    /// `read_stream_content` result.
+    fn delayed_stream_pdf(stream_bytes: usize) -> Vec<u8> {
+        let payload = "x".repeat(stream_bytes);
+        raw_classic_pdf(&[
+            (1, "<< /Type /Catalog /Pages 2 0 R >>".to_owned()),
+            (2, "<< /Type /Pages /Kids [] /Count 0 >>".to_owned()),
+            (
+                3,
+                format!("<< /Length {stream_bytes}. >>\nstream\n{payload}\nendstream"),
+            ),
+        ])
     }
 
     fn hidden_object_stream_pdf(stream_count: u32) -> Vec<u8> {
@@ -601,22 +740,141 @@ end"#;
     }
 
     #[test]
-    fn raw_stream_budget_rejects_overlapping_xref_streams_before_retention() {
+    fn overlapping_xref_streams_are_rejected_as_malformed_before_retention() {
         let hostile = overlapping_direct_stream_pdf(8);
         let limits = PdfInspectLimits::for_input_bytes(hostile.len());
         let error = inspect_pdf_with_limits(&hostile, &limits)
-            .expect_err("overlapping xref streams must exhaust retained-byte admission");
+            .expect_err("overlapping xref streams must be rejected as malformed");
+        assert!(matches!(error, InspectError::PdfOverlappingObjectSpans));
+
+        let valid = text_pdf("ordinary direct stream", 1);
+        lopdf::Document::load_mem_with_options(
+            &valid,
+            lopdf::LoadOptions {
+                retained_bytes_budget: Some(lopdf::RetainedBytesBudget::new(valid.len() * 4)),
+                ..lopdf::LoadOptions::default()
+            },
+        )
+        .expect("ordinary direct-stream PDF remains accepted");
+    }
+
+    #[test]
+    fn direct_string_xref_overlap_is_refused_before_materialization() {
+        let error = inspect_pdf_with_limits(
+            &overlapping_direct_string_object_pdf(),
+            &PdfInspectLimits::default(),
+        )
+        .expect_err(
+            "xref entries inside an owned direct string must not create an overlapping object span",
+        );
+        assert!(matches!(error, InspectError::PdfOverlappingObjectSpans));
+    }
+
+    #[test]
+    fn raw_stream_budget_charges_reentrant_same_object_copies() {
+        for length_ref_first in [true, false] {
+            let bytes = reentrant_length_stream_pdf(4096, length_ref_first);
+            for _ in 0..4 {
+                let mut limits = PdfInspectLimits::for_input_bytes(bytes.len());
+                limits.max_retained_stream_bytes = 6144;
+                let error = inspect_pdf_with_limits(&bytes, &limits)
+                    .expect_err("each reentrant source copy requires its own admission");
+                assert!(matches!(
+                    error,
+                    InspectError::PdfLimitExceeded {
+                        limit: "retained stream bytes"
+                    }
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn direct_name_bytes_are_admitted_before_ownership() {
+        assert_direct_object_source_work_is_admitted(format!("/{}", "n".repeat(4096)));
+    }
+
+    #[test]
+    fn direct_literal_string_bytes_are_admitted_before_ownership() {
+        assert_direct_object_source_work_is_admitted(format!("({})", "s".repeat(4096)));
+    }
+
+    #[test]
+    fn direct_hex_string_bytes_are_admitted_before_ownership() {
+        assert_direct_object_source_work_is_admitted(format!("<{}>", "ab".repeat(4096)));
+    }
+
+    #[test]
+    fn source_work_is_a_distinct_typed_limit() {
+        let bytes = text_pdf("source-work", 1);
+        let mut limits = PdfInspectLimits::for_input_bytes(bytes.len());
+        limits.max_source_work_bytes = 1;
+        let error = inspect_pdf_with_limits(&bytes, &limits)
+            .expect_err("the first parser interval must consume the source-work budget");
+        assert!(matches!(
+            error,
+            InspectError::PdfLimitExceeded {
+                limit: "PDF source work"
+            }
+        ));
+    }
+
+    #[test]
+    fn lenient_xref_reconstruction_preserves_object_limit_refusal() {
+        use lopdf::{Document, LoadOptions};
+
+        let bytes = with_broken_startxref(raw_classic_pdf(&[
+            (1, "<< /Type /Catalog /Pages 2 0 R >>".to_owned()),
+            (2, "<< /Type /Pages /Kids [] /Count 0 >>".to_owned()),
+        ]));
+        let error = Document::load_mem_with_options(
+            &bytes,
+            LoadOptions {
+                strict: false,
+                max_objects: Some(1),
+                ..LoadOptions::default()
+            },
+        )
+        .expect_err("lenient reconstruction must retain the caller object limit");
+        assert!(matches!(
+            error,
+            lopdf::Error::ObjectLimitExceeded { limit: 1 }
+        ));
+    }
+
+    #[test]
+    fn lenient_xref_resolution_preserves_retained_byte_refusal() {
+        use lopdf::{Document, LoadOptions, RetainedBytesBudget};
+
+        let bytes = with_broken_startxref(delayed_stream_pdf(4096));
+        let error = Document::load_mem_with_options(
+            &bytes,
+            LoadOptions {
+                strict: false,
+                retained_bytes_budget: Some(RetainedBytesBudget::new(4095)),
+                ..LoadOptions::default()
+            },
+        )
+        .expect_err("lenient xref recovery must not launder retained-byte refusal");
+        assert!(matches!(
+            error,
+            lopdf::Error::RetainedBytesLimitExceeded { limit: 4095 }
+        ));
+    }
+
+    #[test]
+    fn raw_stream_budget_propagates_delayed_stream_admission_refusal() {
+        let bytes = delayed_stream_pdf(4096);
+        let mut limits = PdfInspectLimits::for_input_bytes(bytes.len());
+        limits.max_retained_stream_bytes = 4095;
+        let error = inspect_pdf_with_limits(&bytes, &limits)
+            .expect_err("late stream materialization must not swallow an admission refusal");
         assert!(matches!(
             error,
             InspectError::PdfLimitExceeded {
                 limit: "retained stream bytes"
             }
         ));
-
-        let valid = text_pdf("ordinary direct stream", 1);
-        let valid_limits = PdfInspectLimits::for_input_bytes(valid.len());
-        inspect_pdf_with_limits(&valid, &valid_limits)
-            .expect("ordinary direct-stream PDF remains accepted");
     }
 
     #[test]
@@ -777,6 +1035,12 @@ end"#;
     fn aggregate_tounicode_budget_is_shared_across_reused_cmaps() {
         let bytes = pdf_with_cmap_fonts(ONE_MAPPING_CMAP, 2);
         let mut limits = PdfInspectLimits::for_input_bytes(bytes.len());
+        // Keep this fixture focused on the mapping admission rather than the
+        // independently bounded decode budget used to reach each CMap.
+        limits.max_decompressed_total_bytes = usize::MAX;
+        limits.max_decompressed_stream_bytes = 1024 * 1024;
+        limits.max_decompressed_page_bytes = 1024 * 1024;
+        limits.max_extracted_text_bytes = 16 * 1024 * 1024;
         limits.max_tounicode_mappings = 1;
         let error = extract_pdf_text_with_limits(&bytes, &limits)
             .expect_err("the second font must charge the shared CMap budget");
@@ -828,7 +1092,10 @@ end"#;
     #[test]
     #[expect(clippy::expect_used, reason = "test fixture construction")]
     fn encrypted_pdf_is_explicitly_unsupported_without_password_probe() {
-        use lopdf::{Document, EncryptionState, EncryptionVersion, Object, Permissions};
+        use lopdf::{
+            Document, EncryptionState, EncryptionVersion, LoadOptions, Object, Permissions,
+            RetainedBytesBudget,
+        };
 
         let mut document = Document::load_mem(&text_pdf("secret", 1)).expect("load test PDF");
         document.trailer.set(
@@ -854,6 +1121,28 @@ end"#;
 
         let error = inspect_pdf(&bytes).expect_err("encrypted PDFs must be unsupported");
         assert!(matches!(error, InspectError::EncryptedPdf));
+
+        let staging_bytes = binary_marked_encrypted_staging_pdf();
+        let retained_bytes_budget = RetainedBytesBudget::new(4);
+        let error = Document::load_mem_with_options(
+            &staging_bytes,
+            LoadOptions {
+                // The four-byte binary mark is admitted first. The fifth byte
+                // is unavailable, so this refusal occurs at raw-object staging.
+                retained_bytes_budget: Some(retained_bytes_budget.clone()),
+                ..LoadOptions::default()
+            },
+        )
+        .expect_err("encrypted raw-object staging must propagate retained-byte exhaustion");
+        assert!(matches!(
+            error,
+            lopdf::Error::RetainedBytesLimitExceeded { .. }
+        ));
+        assert_eq!(
+            retained_bytes_budget.remaining(),
+            0,
+            "the binary mark was retained before staging"
+        );
     }
 
     #[test]

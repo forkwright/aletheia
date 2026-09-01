@@ -58,6 +58,13 @@ pub enum Error {
     /// caller-provided admission budget.
     #[error("PDF retained bytes exceed the configured limit of {limit}")]
     RetainedBytesLimitExceeded { limit: usize },
+    /// The parser examined more unique source-byte intervals than the caller
+    /// admitted for this load operation.
+    #[error("PDF source work exceeds the configured limit of {limit}")]
+    SourceWorkLimitExceeded { limit: usize },
+    /// An xref object boundary falls inside a preceding object's source span.
+    #[error("PDF xref object spans overlap")]
+    OverlappingObjectSpan,
     /// Byte offset in stream or file is invalid.
     #[error("invalid byte offset")]
     InvalidOffset(usize),

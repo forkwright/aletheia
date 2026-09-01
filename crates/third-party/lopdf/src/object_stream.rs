@@ -1,4 +1,5 @@
 use crate::parser;
+use crate::reader::Reader;
 use crate::{Document, Error, Object, ObjectId, Result, Stream};
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::TryFromIntError;
@@ -47,7 +48,7 @@ impl ObjectStream {
     /// decoded content if it would exceed `max_decompressed_size` bytes. `None`
     /// means no limit (the behavior of [`ObjectStream::new`]).
     pub fn new_with_limit(stream: &Stream, max_decompressed_size: Option<usize>) -> Result<ObjectStream> {
-        Self::new_with_admission(stream, max_decompressed_size, None, None)
+        Self::new_with_admission(stream, max_decompressed_size, None, None, None)
     }
 
     /// Parse an object stream under the loader's document-wide admission
@@ -56,14 +57,20 @@ impl ObjectStream {
     /// rejected before the object map is allocated.
     pub(crate) fn new_with_xref_admission(
         stream: &Stream, max_decompressed_size: Option<usize>, max_objects: Option<usize>,
-        expected_members: &BTreeMap<u16, u32>,
+        expected_members: &BTreeMap<u16, u32>, reader: &Reader,
     ) -> Result<ObjectStream> {
-        Self::new_with_admission(stream, max_decompressed_size, max_objects, Some(expected_members))
+        Self::new_with_admission(
+            stream,
+            max_decompressed_size,
+            max_objects,
+            Some(expected_members),
+            Some(reader),
+        )
     }
 
     fn new_with_admission(
         stream: &Stream, max_decompressed_size: Option<usize>, max_objects: Option<usize>,
-        expected_members: Option<&BTreeMap<u16, u32>>,
+        expected_members: Option<&BTreeMap<u16, u32>>, reader: Option<&Reader>,
     ) -> Result<ObjectStream> {
         let n = stream
             .dict
@@ -95,6 +102,12 @@ impl ObjectStream {
             .and_then(Object::as_i64)?
             .try_into()
             .map_err(|e: TryFromIntError| Error::NumericCast(e.to_string()))?;
+        // `get_plain_content*` creates an owned decoded/copy buffer. Admit
+        // the encoded source region before that allocation; individual member
+        // spans are admitted below before their names and strings are owned.
+        if let Some(reader) = reader {
+            reader.reserve_retained_bytes(stream.content.len())?;
+        }
         let content = match max_decompressed_size {
             // Object streams are decoded while the document is loaded, so
             // enforcing the limit here bounds the memory a single stream can use.
@@ -160,16 +173,20 @@ impl ObjectStream {
         }
 
         let mut objects = BTreeMap::new();
-        for (id, offset) in indices {
+        for (member_index, (id, offset)) in indices.iter().enumerate() {
             // Skip leading whitespace — some PDFs emit newlines before objects in ObjStm.
-            let start = content[offset..]
+            let start = content[*offset..]
                 .iter()
                 .position(|byte| !byte.is_ascii_whitespace())
                 .and_then(|relative| offset.checked_add(relative))
                 .ok_or_else(|| Error::InvalidObjectStream("only whitespace after object offset".into()))?;
-            let object = parser::direct_object(&content[start..])
+            let member_end = indices.get(member_index + 1).map_or(content.len(), |(_, next)| *next);
+            if let Some(reader) = reader {
+                reader.reserve_retained_bytes(member_end.saturating_sub(start))?;
+            }
+            let object = parser::direct_object(&content[start..member_end])
                 .ok_or_else(|| Error::InvalidObjectStream("could not parse declared object-stream member".into()))?;
-            if objects.insert((id, 0), object).is_some() {
+            if objects.insert((*id, 0), object).is_some() {
                 return Err(Error::InvalidObjectStream(
                     "object stream contains a duplicate member id".into(),
                 ));

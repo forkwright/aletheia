@@ -133,7 +133,20 @@ Parsing then runs off the async executor on a bounded worker job and uses the
 same single `lopdf` parser as the agent `inspect_report` tool. Its typed policy
 caps pages, xref/object admission, individual streams/pages and filter layers,
 aggregate decompression, aggregate `/ToUnicode` mappings across fonts, and
-aggregate extracted text before the relevant allocation.
+aggregate extracted text before the relevant allocation. It separately caps
+borrowed parser source work (names, strings, dictionaries, xref/trailer
+structure) and cumulative owned stream/object-stream/encrypted-staging copies,
+so repeated parses cannot multiply one encoded payload into many owned buffers.
+An xref boundary that would make one indirect object consume bytes belonging to
+its successor is a separate malformed-PDF error, rather than a misleading
+retained-byte refusal.
+The retained-allocation policy is cumulative per owned allocation generation;
+its default is an explicit 128 MiB operation ceiling, independent of the
+encoded-file boundary. Borrowed parser input is instead charged once to a
+separate interval-union source-work budget equal to the accepted input limit;
+revisiting the same `/Prev` or indirect `/Length` source bytes does not pretend
+to retain another buffer. Stream, encrypted-staging, and clone generations are
+still charged before their actual owned copy occurs.
 
 Object-stream members
 must be present at their exact container/index in the final bounded xref, so

@@ -710,7 +710,7 @@ macro_rules! dictionary {
 		$crate::Dictionary::new()
 	};
 	($( $key: expr => $value: expr ),+ ,) => {
-		dictionary!( $($key => $value),+ )
+		$crate::dictionary!( $($key => $value),+ )
 	};
 	($( $key: expr => $value: expr ),*) => {{
 		let mut dict = $crate::Dictionary::new();

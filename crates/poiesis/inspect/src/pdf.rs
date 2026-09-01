@@ -10,7 +10,8 @@ use std::io::Read;
 use std::path::Path;
 
 use lopdf::{
-    DecompressionBudget, Document, LoadOptions, RetainedBytesBudget, ToUnicodeMappingBudget,
+    DecompressionBudget, Document, LoadOptions, RetainedBytesBudget, SourceWorkBudget,
+    ToUnicodeMappingBudget,
 };
 
 use crate::error::Result;
@@ -30,11 +31,10 @@ const DEFAULT_MAX_OBJECTS: usize = 16_384;
 const DEFAULT_MAX_DECOMPRESSED_STREAM_BYTES: usize = 256 * 1024;
 const DEFAULT_MAX_DECOMPRESSED_PAGE_BYTES: usize = 256 * 1024;
 const DEFAULT_MAX_DECOMPRESSED_TOTAL_BYTES: usize = DEFAULT_MAX_INPUT_BYTES;
-// Loading keeps the caller-admitted source bytes and may retain one complete
-// encrypted-object staging copy plus direct stream copies. Two input lengths
-// preserve ordinary encrypted PDFs while blocking many xref IDs that overlap
-// a single source payload.
-const RETAINED_LOAD_BYTES_PER_INPUT_BYTE: usize = 2;
+// Cumulative document-owned allocation ceiling, separate from accepted input
+// and from source-work intervals. It is an explicit operation cap rather than
+// an input multiplier: repeated reparses consume it generation by generation.
+const DEFAULT_MAX_RETAINED_ALLOCATION_BYTES: usize = 128 * 1024 * 1024;
 const DEFAULT_MAX_EXTRACTED_TEXT_BYTES: usize = 8 * 1024 * 1024;
 const DEFAULT_MAX_TOUNICODE_MAPPINGS: usize = 65_536;
 // lopdf's bounded ToUnicode admission allows at most four UTF-16 units per
@@ -94,6 +94,11 @@ pub struct PdfInspectLimits {
     pub max_decompressed_page_bytes: usize,
     /// Aggregate decoded stream/content budget for this operation.
     pub max_decompressed_total_bytes: usize,
+    /// Aggregate bytes copied into loader-owned stream buffers, object-stream
+    /// members, encrypted staging, and explicit reparse/clone generations.
+    pub max_retained_stream_bytes: usize,
+    /// Maximum distinct input bytes inspected by parser structural work.
+    pub max_source_work_bytes: usize,
     /// Aggregate UTF-8 text returned by extraction.
     pub max_extracted_text_bytes: usize,
     /// Aggregate source-code mappings expanded across every `/ToUnicode` CMap.
@@ -118,6 +123,10 @@ impl PdfInspectLimits {
                 DEFAULT_MAX_DECOMPRESSED_TOTAL_BYTES,
                 max_input_bytes,
             ),
+            max_retained_stream_bytes: DEFAULT_MAX_RETAINED_ALLOCATION_BYTES,
+            // Source work admits interval union, not every reparse; valid
+            // incremental/xref chains therefore fit within the accepted input.
+            max_source_work_bytes: max_input_bytes,
             max_extracted_text_bytes: min(DEFAULT_MAX_EXTRACTED_TEXT_BYTES, max_input_bytes),
             max_tounicode_mappings: DEFAULT_MAX_TOUNICODE_MAPPINGS,
         }
@@ -179,13 +188,18 @@ fn load_document(
     }
 
     let budget = DecompressionBudget::new(limits.max_decompressed_total_bytes);
-    let retained_bytes_limit = limits
-        .max_input_bytes
-        .checked_mul(RETAINED_LOAD_BYTES_PER_INPUT_BYTE)
-        .ok_or(InspectError::PdfLimitExceeded {
+    if limits.max_retained_stream_bytes == 0 {
+        return Err(InspectError::PdfLimitExceeded {
             limit: "retained stream bytes",
-        })?;
-    let retained_bytes_budget = RetainedBytesBudget::new(retained_bytes_limit);
+        });
+    }
+    if limits.max_source_work_bytes == 0 {
+        return Err(InspectError::PdfLimitExceeded {
+            limit: "PDF source work",
+        });
+    }
+    let retained_bytes_budget = RetainedBytesBudget::new(limits.max_retained_stream_bytes);
+    let source_work_budget = SourceWorkBudget::new(limits.max_source_work_bytes);
     let document = Document::load_mem_with_options(
         bytes,
         LoadOptions {
@@ -193,6 +207,7 @@ fn load_document(
             max_decompressed_size: Some(limits.max_decompressed_stream_bytes),
             decompression_budget: Some(budget.clone()),
             retained_bytes_budget: Some(retained_bytes_budget),
+            source_work_budget: Some(source_work_budget),
             max_objects: Some(limits.max_objects),
             // This check happens once the trailer is parsed, before lopdf's
             // empty-password authentication path or any decryption work.
@@ -293,6 +308,10 @@ fn map_lopdf_error(error: &lopdf::Error) -> InspectError {
         lopdf::Error::RetainedBytesLimitExceeded { .. } => InspectError::PdfLimitExceeded {
             limit: "retained stream bytes",
         },
+        lopdf::Error::SourceWorkLimitExceeded { .. } => InspectError::PdfLimitExceeded {
+            limit: "PDF source work",
+        },
+        lopdf::Error::OverlappingObjectSpan => InspectError::PdfOverlappingObjectSpans,
         lopdf::Error::ToUnicodeCMap(_) => InspectError::PdfLimitExceeded {
             limit: "ToUnicode mappings",
         },
