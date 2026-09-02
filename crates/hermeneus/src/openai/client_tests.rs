@@ -226,6 +226,94 @@ async fn fixed_admission_saturates_with_typed_error() {
     running.finish(RequestOutcome::Neutral);
 }
 
+#[tokio::test]
+async fn front_door_refuses_a_sleeping_provider_instead_of_a_retryable_transport_error() {
+    // WHY(#7152): nothing listens on this loopback port in the test
+    // sandbox, so `complete()` hits a real connection-refused transport
+    // error — exactly what an idle-stopped on-demand local model server
+    // looks like before it has been woken. With the front door enabled
+    // this must come back as the typed, non-retryable ProviderNotReady
+    // refusal, not the generic transient ApiRequest classification that
+    // would let nous's fallback chain walk to a cloud model.
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "menos-agent".to_owned(),
+        base_url: "http://127.0.0.1:8199/v1".to_owned(),
+        models: vec!["qwen3.8-27b".to_owned()],
+        front_door_enabled: true,
+        retry_policy: crate::RetryPolicy {
+            max_retries: 0,
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .unwrap();
+
+    assert_eq!(
+        provider.front_door_state(),
+        Some(crate::front_door::FrontDoorState::Sleeping),
+        "a front-door-enabled provider starts Sleeping before its first request"
+    );
+
+    let request = CompletionRequest {
+        model: "qwen3.8-27b".to_owned(),
+        max_tokens: 16,
+        ..Default::default()
+    };
+    let err = provider.complete(&request).await.unwrap_err();
+    assert!(
+        !err.is_retryable(),
+        "front-door refusal must not be retryable: {err}"
+    );
+    match err {
+        crate::error::Error::ProviderNotReady {
+            ref provider,
+            state,
+            retry_after_ms,
+            ..
+        } => {
+            assert_eq!(provider, "menos-agent");
+            assert_eq!(state, crate::front_door::FrontDoorState::Sleeping);
+            assert!(retry_after_ms > 0);
+        }
+        other => panic!("expected ProviderNotReady, got: {other}"),
+    }
+    assert_eq!(
+        provider.front_door_state(),
+        Some(crate::front_door::FrontDoorState::Sleeping)
+    );
+}
+
+#[tokio::test]
+async fn front_door_disabled_keeps_the_generic_transient_transport_error() {
+    // WHY(#7152): a provider built WITHOUT front_door_enabled (the default,
+    // and every cloud entry) must see today's unchanged behavior — the
+    // same connection failure classifies as the generic retryable
+    // ApiRequest, not the new typed refusal.
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "cloud-like".to_owned(),
+        base_url: "http://127.0.0.1:8199/v1".to_owned(),
+        models: vec!["qwen3.8-27b".to_owned()],
+        retry_policy: crate::RetryPolicy {
+            max_retries: 0,
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(provider.front_door_state(), None);
+
+    let request = CompletionRequest {
+        model: "qwen3.8-27b".to_owned(),
+        max_tokens: 16,
+        ..Default::default()
+    };
+    let err = provider.complete(&request).await.unwrap_err();
+    match err {
+        crate::error::Error::ApiRequest { .. } => {}
+        other => panic!("expected the historical ApiRequest classification, got: {other}"),
+    }
+}
+
 #[test]
 fn first_party_openai_accepts_api_key() {
     let config = OpenAiProviderConfig {

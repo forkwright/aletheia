@@ -115,6 +115,25 @@ fn concurrency_for_entry(
     }
 }
 
+/// Whether a declared provider entry gets the stateful front door (#7152):
+/// sleeping/loading/ready/overloaded/failed, with a typed non-retryable
+/// refusal on a transport failure instead of the generic transient
+/// classification that would otherwise let a sleeping/loading local
+/// provider fall through to a cloud fallback route.
+///
+/// Deployment-target-derived, matching [`admission_policy_for_entry`]'s
+/// shape: localhosted and embedded entries get the front door; cloud
+/// entries keep today's behavior unchanged. Unlike admission, there is no
+/// per-entry override table — an on-demand deployment target is exactly
+/// the condition the front door exists for, so there is no operator-facing
+/// knob to design or document for #7152's scope.
+fn front_door_enabled_for_entry(entry: &taxis::config::LlmProviderConfig) -> bool {
+    matches!(
+        entry.deployment_target,
+        taxis::config::DeploymentTarget::LocalHosted | taxis::config::DeploymentTarget::Embedded
+    )
+}
+
 #[cfg(test)]
 mod admission_policy_tests {
     use hermeneus::concurrency::AdmissionPolicy;
@@ -183,6 +202,55 @@ mod admission_policy_tests {
                 max_waiting: 2
             }
         );
+    }
+}
+
+#[cfg(test)]
+mod front_door_enabled_tests {
+    use taxis::config::{DeploymentTarget, LlmProviderConfig, ProviderKind};
+
+    use super::front_door_enabled_for_entry;
+
+    fn entry(target: DeploymentTarget) -> LlmProviderConfig {
+        LlmProviderConfig {
+            name: "menos-agent".to_owned(),
+            kind: ProviderKind::OpenAiCompatible,
+            base_url: Some("http://127.0.0.1:8189/v1".to_owned()),
+            api_key_env: None,
+            api_family: None,
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
+            deployment_target: target,
+            models: vec!["qwen3.8-27b".to_owned()],
+            admission: None,
+        }
+    }
+
+    #[test]
+    fn localhosted_entry_gets_the_front_door() {
+        // WHY(#7152): the launch-contract local provider path is exactly
+        // the case the front door exists for.
+        assert!(front_door_enabled_for_entry(&entry(
+            DeploymentTarget::LocalHosted
+        )));
+    }
+
+    #[test]
+    fn embedded_entry_gets_the_front_door() {
+        assert!(front_door_enabled_for_entry(&entry(
+            DeploymentTarget::Embedded
+        )));
+    }
+
+    #[test]
+    fn cloud_entry_does_not_get_the_front_door() {
+        // WHY: a cloud endpoint is not on-demand — it does not sleep/load,
+        // so front-door state tracking would only misclassify ordinary
+        // transient network errors.
+        assert!(!front_door_enabled_for_entry(&entry(
+            DeploymentTarget::Cloud
+        )));
     }
 }
 
@@ -675,6 +743,9 @@ fn openai_config_for_entry(
         // filter stripped `Internal` / `Confidential` facts
         // from traffic bound for loopback llama.cpp / logismos.
         deployment_target: map_deployment_target(entry.deployment_target),
+        // WHY(#7152): the stateful front door only makes sense for an
+        // on-demand endpoint — see `front_door_enabled_for_entry`.
+        front_door_enabled: front_door_enabled_for_entry(entry),
         ..OpenAiProviderConfig::default()
     })
 }

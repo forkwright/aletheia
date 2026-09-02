@@ -23,6 +23,7 @@ use crate::anthropic::StreamEvent;
 use crate::anthropic::pricing::estimate_cost;
 use crate::concurrency::{AdaptiveConcurrencyLimiter, ConcurrencyConfig, concurrency_outcome};
 use crate::error::{self, Result};
+use crate::front_door::FrontDoorTracker;
 use crate::health::{HealthConfig, ProviderHealthTracker};
 use crate::provider::{DeploymentTarget, LlmProvider, MatchKind, ModelPricing};
 use crate::types::{CompletionRequest, CompletionResponse};
@@ -117,6 +118,20 @@ pub struct OpenAiProviderConfig {
     /// `aletheia.toml` so the recall filter lets `Internal` /
     /// `Confidential` facts through to the non-cloud boundary.
     pub deployment_target: DeploymentTarget,
+    /// Enable the stateful front door (#7152): sleeping/loading/ready/
+    /// overloaded/failed. When `true`, a connect or timeout transport
+    /// failure is returned as the typed, non-retryable
+    /// [`error::Error::ProviderNotReady`] instead of the generic transient
+    /// `ApiRequest` classification — see [`crate::front_door`] for why this
+    /// is what prevents a sleeping/loading local provider from silently
+    /// falling back to a cloud model.
+    ///
+    /// Defaults to `false`, matching the trait default of
+    /// [`DeploymentTarget::Cloud`]: existing configurations without an
+    /// explicit deployment target keep today's behavior unchanged. The
+    /// runtime wiring in `crates/aletheia/src/runtime/setup.rs` enables
+    /// this for every localhosted/embedded declared provider entry.
+    pub front_door_enabled: bool,
     /// Per-model pricing for cost metrics (optional).
     ///
     /// WHY(#4628): local/compatible providers have no built-in pricing
@@ -138,6 +153,7 @@ impl std::fmt::Debug for OpenAiProviderConfig {
             .field("concurrency", &self.concurrency)
             .field("api_family", &self.api_family)
             .field("deployment_target", &self.deployment_target)
+            .field("front_door_enabled", &self.front_door_enabled)
             .field("pricing_models", &self.pricing.len())
             .finish()
     }
@@ -157,6 +173,11 @@ impl Default for OpenAiProviderConfig {
             // WHY(#3736): mirror the trait default so `..Default::default()`
             // does not silently downgrade a caller-specified target.
             deployment_target: DeploymentTarget::Cloud,
+            // WHY(#7152): mirrors the deployment_target default above — a
+            // caller-specified front door must not be silently dropped by
+            // `..Default::default()`; the runtime wiring sets this
+            // explicitly for localhosted/embedded entries.
+            front_door_enabled: false,
             // NOTE: empty by default — unpriced models record 0.0 cost
             pricing: HashMap::new(),
         }
@@ -177,6 +198,9 @@ pub struct OpenAiProvider {
     config: OpenAiProviderConfig,
     health: Arc<ProviderHealthTracker>,
     concurrency: Arc<AdaptiveConcurrencyLimiter>,
+    /// Front-door lifecycle tracker (#7152). `Some` only when
+    /// [`OpenAiProviderConfig::front_door_enabled`] is set.
+    front_door: Option<Arc<FrontDoorTracker>>,
     /// Merged pricing table (config-supplied; empty = unpriced local model).
     pricing: HashMap<String, ModelPricing>,
 }
@@ -227,6 +251,7 @@ impl OpenAiProvider {
 
         let pricing = config.pricing.clone();
         let provider_name = config.name.clone();
+        let front_door_enabled = config.front_door_enabled;
         Ok(Self {
             client,
             concurrency: Arc::new(AdaptiveConcurrencyLimiter::new(
@@ -238,6 +263,7 @@ impl OpenAiProvider {
                 provider_name,
                 HealthConfig::default(),
             )),
+            front_door: front_door_enabled.then(|| Arc::new(FrontDoorTracker::new())),
             pricing,
         })
     }
@@ -259,6 +285,13 @@ impl OpenAiProvider {
             headers.insert(reqwest::header::AUTHORIZATION, value);
         }
         Ok(headers)
+    }
+
+    /// Current front-door state (#7152), or `None` when this provider
+    /// instance was not built with `front_door_enabled`.
+    #[must_use]
+    pub fn front_door_state(&self) -> Option<crate::front_door::FrontDoorState> {
+        self.front_door.as_deref().map(FrontDoorTracker::state)
     }
 
     fn credential_source(&self) -> &'static str {
@@ -289,9 +322,22 @@ impl OpenAiProvider {
         &self,
         request: &CompletionRequest,
     ) -> Result<CompletionResponse> {
-        let permit = self.concurrency.acquire_admitted().await?;
+        let permit = match self.concurrency.acquire_admitted().await {
+            Ok(permit) => permit,
+            Err(e) => {
+                // WHY(#7152): a full admission queue is evidence the
+                // provider is up — reflect it as Overloaded, not a failure.
+                if let Some(front_door) = self.front_door.as_deref() {
+                    front_door.note_saturated();
+                }
+                return Err(e);
+            }
+        };
         let start = Instant::now();
         let result = self.execute_inner(request).await;
+        if let (Some(front_door), Ok(_)) = (self.front_door.as_deref(), &result) {
+            front_door.note_success();
+        }
         permit.finish_with_latency(concurrency_outcome(&result), start.elapsed());
         result
     }
@@ -338,7 +384,7 @@ impl OpenAiProvider {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    let err = map_request_error(&e);
+                    let err = map_request_error(&e, self.front_door.as_deref(), &self.config.name);
                     if !err.is_retryable() {
                         return Err(err);
                     }
@@ -427,9 +473,22 @@ impl OpenAiProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
-        let permit = self.concurrency.acquire_admitted().await?;
+        let permit = match self.concurrency.acquire_admitted().await {
+            Ok(permit) => permit,
+            Err(e) => {
+                // WHY(#7152): mirrors execute_with_concurrency — a full
+                // admission queue means the provider is up, not failing.
+                if let Some(front_door) = self.front_door.as_deref() {
+                    front_door.note_saturated();
+                }
+                return Err(e);
+            }
+        };
         let start = Instant::now();
         let result = self.execute_streaming_inner(request, on_event).await;
+        if let (Some(front_door), Ok(_)) = (self.front_door.as_deref(), &result) {
+            front_door.note_success();
+        }
         permit.finish_with_latency(concurrency_outcome(&result), start.elapsed());
         result
     }
@@ -558,7 +617,7 @@ impl OpenAiProvider {
             .timeout(Duration::from_mins(10))
             .send()
             .await
-            .map_err(|e| map_request_error(&e))
+            .map_err(|e| map_request_error(&e, self.front_door.as_deref(), &self.config.name))
     }
 
     async fn parse_streaming_response(
