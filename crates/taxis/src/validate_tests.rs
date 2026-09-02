@@ -778,6 +778,45 @@ fn accepts_provider_type_and_deployment_aliases() {
 }
 
 #[test]
+fn provider_admission_table_validates() {
+    let section = serde_json::json!([
+        {
+            "name": "menos-agent",
+            "providerType": "openai-compatible",
+            "baseUrl": "http://127.0.0.1:8189/v1",
+            "deploymentTarget": "localhosted",
+            "models": ["qwen3.8-27b"],
+            "admission": { "mode": "fixed", "maxRunning": 1, "maxWaiting": 2 }
+        }
+    ]);
+    assert!(
+        validate_section("providers", &section).is_ok(),
+        "a well-formed admission table should validate"
+    );
+}
+
+#[test]
+fn provider_admission_rejects_bad_mode_and_zero_running() {
+    let section = serde_json::json!([
+        {
+            "name": "menos-agent",
+            "providerType": "openai-compatible",
+            "baseUrl": "http://127.0.0.1:8189/v1",
+            "deploymentTarget": "localhosted",
+            "models": ["qwen3.8-27b"],
+            "admission": { "mode": "elastic", "maxRunning": 0, "maxWaiting": -1 }
+        }
+    ]);
+    let result = validate_section("providers", &section);
+    assert!(result.is_err(), "bad admission values should be rejected");
+    let err = result.unwrap_err();
+    let joined = err.errors().join("\n");
+    assert!(joined.contains("admission.mode"), "{joined}");
+    assert!(joined.contains("admission.maxRunning"), "{joined}");
+    assert!(joined.contains("admission.maxWaiting"), "{joined}");
+}
+
+#[test]
 fn provider_aliases_deserialize_to_typed_config() {
     let json = r#"{
         "providers": [

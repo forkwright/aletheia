@@ -165,6 +165,7 @@ async fn configured_concurrency_threshold_changes_provider_limiter_behavior() {
             decrease_factor: 0.5,
             ewma_alpha: 0.0,
             latency_threshold_secs: 0.1,
+            ..Default::default()
         },
         ..Default::default()
     })
@@ -178,6 +179,51 @@ async fn configured_concurrency_threshold_changes_provider_limiter_behavior() {
         5,
         "latency above configured threshold should reduce the provider limiter"
     );
+}
+
+#[tokio::test]
+async fn fixed_admission_saturates_with_typed_error() {
+    // WHY(#7152): a localhosted provider configured with the hard admission
+    // cap must refuse excess work with a typed saturation error naming the
+    // configured bound, not park it on the adaptive queue.
+    let provider = OpenAiProvider::new(OpenAiProviderConfig {
+        name: "menos-agent".to_owned(),
+        base_url: "http://127.0.0.1:8189/v1".to_owned(),
+        models: vec!["qwen3.8-27b".to_owned()],
+        concurrency: crate::concurrency::ConcurrencyConfig {
+            admission: crate::concurrency::AdmissionPolicy::Fixed {
+                max_running: 1,
+                max_waiting: 0,
+            },
+            ..Default::default()
+        },
+        ..Default::default()
+    })
+    .unwrap();
+
+    // Hold the single running slot so a completion cannot be admitted.
+    let running = provider.concurrency.acquire_admitted().await.unwrap();
+
+    let request = CompletionRequest {
+        model: "qwen3.8-27b".to_owned(),
+        max_tokens: 16,
+        ..Default::default()
+    };
+    let err = provider.complete(&request).await.unwrap_err();
+    match err {
+        crate::error::Error::ProviderSaturated {
+            ref provider,
+            max_running,
+            max_waiting,
+            ..
+        } => {
+            assert_eq!(provider, "menos-agent");
+            assert_eq!(max_running, 1);
+            assert_eq!(max_waiting, 0);
+        }
+        other => panic!("expected ProviderSaturated, got: {other}"),
+    }
+    running.finish(RequestOutcome::Neutral);
 }
 
 #[test]
