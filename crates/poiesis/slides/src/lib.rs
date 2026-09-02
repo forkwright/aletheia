@@ -217,21 +217,19 @@ fn extract_text_runs(xml: &str) -> Result<Vec<String>> {
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e)) if e.name().as_ref() == b"a:t" => {
+            Ok(Event::Start(e)) if e.name().as_ref() == "a:t" => {
                 current.clear();
             }
             Ok(Event::Text(e)) => {
-                if let Ok(decoded) = e.decode()
-                    && let Ok(txt) = unescape(&decoded)
-                {
+                if let Ok(txt) = unescape(&e) {
                     current.push_str(&txt);
                 }
             }
-            Ok(Event::End(e)) if e.name().as_ref() == b"a:t" => {
+            Ok(Event::End(e)) if e.name().as_ref() == "a:t" => {
                 texts.push(current.clone());
                 current.clear();
             }
-            Ok(Event::Empty(e)) if e.name().as_ref() == b"a:t" => {
+            Ok(Event::Empty(e)) if e.name().as_ref() == "a:t" => {
                 texts.push(String::new());
             }
             Ok(Event::Eof) => break,

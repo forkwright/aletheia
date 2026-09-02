@@ -27,7 +27,11 @@ from typing import Any
 
 import yaml
 
-from release_observer_contract import outcome_observer_error
+from release_observer_contract import (
+    normalized_action_pins,
+    outcome_observer_error,
+    pinned_action,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = Path(".github/workflows/release.yml")
@@ -139,9 +143,11 @@ EXPECTED_WORKFLOW_ENV = {
     "RELEASE_TAG": "${{ inputs.tag_name || github.ref_name }}",
 }
 EXPECTED_BUILD_ENV = {"RUSTUP_TOOLCHAIN": RUST_TOOLCHAIN_CHANNEL}
-CHECKOUT_ACTION = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-RUST_TOOLCHAIN_ACTION = "dtolnay/rust-toolchain@631a55b12751854ce901bb631d5902ceb48146f7"
-DOWNLOAD_ARTIFACT_ACTION = "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"
+# NOTE: actions are named by path and must be pinned to a full commit SHA;
+# Dependabot owns which revision the pin points at (see normalized_action_pins).
+CHECKOUT_ACTION = "actions/checkout"
+RUST_TOOLCHAIN_ACTION = "dtolnay/rust-toolchain"
+DOWNLOAD_ARTIFACT_ACTION = "actions/download-artifact"
 TRUSTED_PUBLICATION_DOWNLOADS = (
     ("release-aletheia-linux-x86_64", "release-assets"),
     ("release-aletheia-macos-aarch64", "release-assets"),
@@ -151,26 +157,26 @@ EXPECTED_ACTIONS = frozenset(
     {
         CHECKOUT_ACTION,
         RUST_TOOLCHAIN_ACTION,
-        "taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518",
-        "Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6",
-        "anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610",
-        "actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8",
-        "actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e",
-        "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        "taiki-e/install-action",
+        "Swatinem/rust-cache",
+        "anchore/sbom-action",
+        "actions/attest-build-provenance",
+        "actions/attest-sbom",
+        "actions/upload-artifact",
     }
 )
 SAFE_BUILD_JOB_DIGEST = "e2912932b31c5fc612194005c91e85dffa6741462110c16b5dbf57c9b8f84139"
 TRUSTED_SIBLING_JOB_DIGESTS = {
-    "release-identity": "0ecff762dd676cafa8ff2b6c4c4ae4bd673b8fbcd19c012f8528bf035336f5f5",
+    "release-identity": "e1742573360a9123dc246135966d5b45e560110fab99949bfe1a424951e7e763",
     "canonical-gate": "78f789ffcde12193716211dd9fd6211be8d5a7c39351206d465a3e7bfe79ad35",
     "canonical-security": "ffd7b358618de7306658f5e7a942da8e5736a32f8c8597f4c7572111c5e21070",
     "prepare-release": "33887262e769a288c88c6dfae3b69a73c6bb0eefcc6d487281d21d56adff9fc5",
-    "test": "9b646ba550445385930fe1d89fa274a3b9b22091c072645edd9b7e82906d74ab",
-    "feature-policy": "badb05261d8d49dec38f87d4f7c6b47999b977a236f7cc355053f15204ae25dc",
-    "feature-check": "ac4acd4e28b26aafe83ba446d19e7e2a61b3478e905277cfbdb6472eb3e24b2d",
-    "no-default-recipes": "0226eaf504e06b429bd759b469d965690fca80e228ad164ba48b16b3bfadef27",
-    "sbom": "98e5e93cb024969a21fb84259ef050c53bb4c2c8c0e0afdc1d1a02e07ac60166",
-    "publish-release": "8b83b7d5a7e03d0d6c4eca6f83a139455177aad868eaf156f2a1db6e19fb710f",
+    "test": "3d547d36bf722ba4de47f0239e1d3289c5bb02baf4f86067afad535118131c2a",
+    "feature-policy": "d4a8cff0daa2dec20e730973e287c0c64bbaed59fb2ce056a335d7ee072e6ad6",
+    "feature-check": "b3ccb90378ff2091c7e49b7369b291ec47c69d1b2f90304907e5dbb4e3105383",
+    "no-default-recipes": "446a7f993fe64047f37e95022e18d2185bd5f63a66614acbff45fcdd1681ea1a",
+    "sbom": "44f031f17b4597048080eef73ac0b3d548c42c54fa55b4279594c009206e4f82",
+    "publish-release": "7e7b205ec00d2bb3c7f981b33464fbb67a9557f538978c2cd9b5fef4d57eb1ae",
 }
 OUTCOME_OBSERVER_JOB_ID = "release-outcome"
 TRUSTED_RELEASE_JOB_IDS = frozenset(
@@ -189,13 +195,13 @@ TRUSTED_CROSS_INPUTS = {
 # They bind run text, uses references, `with`, `if`, env, shell, and working
 # directory together. None marks the only two permitted artifact builds.
 SAFE_STEP_DIGESTS = (
-    "d1016ce5746c54a2f8916b6899a6b3d4d8c1aa552dca182364c386d3747018f1",
+    "31288298e225f078066ea178c65a3bc79d7bf0435bbeae39dc59e1ec6469dfa6",
     "f15858d5aa5e3a0cdf7386474998073069eb5afb72d67368aa728ab1eafc37cf",
     "522453cb2d8914f58a3e2731c036e5964b973afe8663297937af774428158912",
-    "c674226898a8f57726378bafbf9668c5419da78533994126472fcbca2297928c",
-    "6d53fd65a3ee6d39a8b3fe0fc2401136bb58817015a0933ecceff56908312275",
+    "6309c59e9b567f338b863c299ea22ae49a9c7675350701f2bf792ffaab6b8f33",
+    "f927992240c2340ccbfd18b4e2dcd33769d33866b741eb278e8066ee03b0222d",
     "51e58b431773670272c7c4786699b87a95129ef96fa0c6c2f2badeaaf729227c",
-    "7737c0fa3076e51a8cb4e6ca1d79d4cb1cc7214aa457862a5fedac5590fedcee",
+    "12cc427c57d7b49593ac5ba4a6fd0612b8fca30c363f8a7700dd637ec42a167d",
     "cc0884b02ed7e3212e5ed1f79e524a5e1ce280126d0e7b4af54c8e9dec9a9286",
     "69f497840a9cd30fc23a3c0ae7b09dcdaf4b17003033f8a82c17273f47fe5426",
     None,
@@ -207,14 +213,14 @@ SAFE_STEP_DIGESTS = (
     "254a9b665907991c0bb9c10b063964b7eef36cc908816269e1382cb9f3137d5e",
     "6935723b4226f6064fd83401fdc0fdd182b412e1ca07a0f4e6f3095e67e70f74",
     "a09cdca7c33c4925993074ba05a72c5907de1750358f96d6806cfa34311ff970",
-    "1a5c42cebbd9a0e9c0b3022a50ed4abd4276ab17f2b79bc2207456cb67a7d383",
-    "1c414e9ac174b740376ad341da317f0b62aef77eafef005d2808712c3a7a13ca",
+    "c96ccfb0274304607bcd53b64d29eb24173171ddcd17ab69dd01bd55ea1df878",
+    "5ba610468d731962005dfd0637749141bb19248fa3f9e41b523df27a47b7010e",
     "b18313c0e9b56d421dae73c41dffa1e8f486b230db71fa41952323f609a3b6ee",
-    "7f58cc4a1cdea155f33a87f4b664c315803e8d1b5bf067155738ab9f192d0407",
-    "89a42cf7cded6d105c03ad3967054b0dc74c22c3f1df051ac9ac0024f148ff38",
-    "249762ab27a23311400abf0a2627b59d45e5756c53e9c888ee75210d70ef604a",
+    "053a56ffe72148ed397562bcc5c88b985b6a9ede1665d40078476e97ba26f332",
+    "f04cc96232c743015aeb59deb26f4cfa68df6e1313cad882ab1dcb1d65f92cd9",
+    "cb601000ac139de40ca95f8c2bdab6b47794634235aed51bd160f407bf91521f",
     "21c3e23ed5c875c4f7ddd410bd80fb67b4de96e4849a8bc919c5c434a633dc9a",
-    "ff9841cfd5b23704c7f095606195dfefe45caf19b33b37c549a1a83879b51a94",
+    "fb8de8e01c4e71cd42f6d538c59426e82d9d2169a9b720e4d27d69aacb24a285",
 )
 
 
@@ -281,7 +287,7 @@ def validate_publication_intake(workflow: dict[str, Any]) -> None:
     steps = publish.get("steps") if isinstance(publish, dict) else None
     if not isinstance(steps, list):
         raise ScopeCheckError("publish-release steps are not a list")
-    downloads = [step for step in steps if step.get("uses") == DOWNLOAD_ARTIFACT_ACTION]
+    downloads = [step for step in steps if pinned_action(step.get("uses")) == DOWNLOAD_ARTIFACT_ACTION]
     actual: list[tuple[str, str]] = []
     for step in downloads:
         inputs = step.get("with")
@@ -314,7 +320,13 @@ def validate_matrix(workflow: dict[str, Any]) -> None:
 
 
 def step_digest(step: dict[str, Any]) -> str:
-    canonical = json.dumps(step, sort_keys=True, separators=(",", ":"))
+    """Bind every key of a step or job except full-SHA action pin revisions.
+
+    Normalizing the revision (never the action path or its pinned-ness) keeps a
+    Dependabot pin bump inside the trusted graph while any structural change --
+    steps, run text, inputs, env, unpinning, or a retargeted action -- leaves it.
+    """
+    canonical = json.dumps(normalized_action_pins(step), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -553,15 +565,13 @@ def validate_step_context(step: dict[str, Any]) -> None:
     if "run" in step and ("shell" in step or "working-directory" in step):
         raise ScopeCheckError(f"jobs.build command step {name!r} changes shell or working directory")
     uses = step.get("uses")
-    if uses is not None and (
-        not isinstance(uses, str) or uses.startswith("./") or uses not in EXPECTED_ACTIONS
-    ):
-        raise ScopeCheckError(f"jobs.build uses untrusted action: {uses!r}")
+    if uses is not None and pinned_action(uses) not in EXPECTED_ACTIONS:
+        raise ScopeCheckError(f"jobs.build uses untrusted or unpinned action: {uses!r}")
 
 
 def validate_checkout(steps: list[dict[str, Any]]) -> None:
     """Require one checkout of the supplied release SHA at the repository root."""
-    checkouts = [step for step in steps if step.get("uses") == CHECKOUT_ACTION]
+    checkouts = [step for step in steps if pinned_action(step.get("uses")) == CHECKOUT_ACTION]
     expected_with = {
         "persist-credentials": False,
         "ref": "${{ inputs.release_sha || github.sha }}",
@@ -573,7 +583,7 @@ def validate_checkout(steps: list[dict[str, Any]]) -> None:
 
 def validate_toolchain_action(steps: list[dict[str, Any]]) -> None:
     """Require the action that installs the same pinned toolchain for both legs."""
-    actions = [step for step in steps if step.get("uses") == RUST_TOOLCHAIN_ACTION]
+    actions = [step for step in steps if pinned_action(step.get("uses")) == RUST_TOOLCHAIN_ACTION]
     expected_with = {
         "toolchain": RUST_TOOLCHAIN_CHANNEL,
         "targets": "${{ matrix.target }}",
