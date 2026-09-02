@@ -578,7 +578,7 @@ impl std::fmt::Debug for KnowledgeConfig {
 impl Default for KnowledgeConfig {
     fn default() -> Self {
         Self {
-            dim: 384,
+            dim: crate::embedding::DEFAULT_CANDLE_DIMENSION,
             embedding_model: crate::embedding::DEFAULT_CANDLE_MODEL.to_owned(),
             allow_assumed_embedding_meta: false,
             admission_policy: Box::new(crate::admission::DefaultAdmissionPolicy),
