@@ -17,10 +17,12 @@ pub use behavior::{
     AcademicSourceConfig, AdmissionPolicyKind, AnthropicConfig, ApiLimitsConfig,
     BookkeepingProviderKind, CapacityConfig, CompactionStrategyKind, CronTaskConfig,
     DaemonBehaviorConfig, DaemonRunnerOutputMode, DeploymentTarget, DispatchConfig,
-    DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig, LlmProviderConfig,
-    MessagingConfig, NousBehaviorConfig, OpenAiApiFamily, OutboundMessagePolicy, PromptCacheMode,
-    ProviderBehaviorConfig, ProviderKind, RawPayloadPolicy, RecallSourcesConfig, RetrySettings,
-    ServerToolVersions, ServerToolsConfig, TimeoutsConfig, ToolLimitsConfig, TuningConfig,
+    DispatchSpecConfig, ExtractionConfig, JwtSettings, KnowledgeConfig,
+    LOCAL_ADMISSION_MAX_RUNNING, LOCAL_ADMISSION_MAX_WAITING, LlmProviderConfig, MessagingConfig,
+    NousBehaviorConfig, OpenAiApiFamily, OutboundMessagePolicy, PromptCacheMode,
+    ProviderAdmissionConfig, ProviderAdmissionMode, ProviderBehaviorConfig, ProviderKind,
+    RawPayloadPolicy, RecallSourcesConfig, RetrySettings, ServerToolVersions, ServerToolsConfig,
+    TimeoutsConfig, ToolLimitsConfig, TuningConfig,
 };
 pub use feature_flags::FeatureFlagConfig;
 pub use gateway::{

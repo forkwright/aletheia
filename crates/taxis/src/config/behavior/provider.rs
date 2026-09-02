@@ -115,6 +115,74 @@ pub enum DeploymentTarget {
     Embedded,
 }
 
+/// Launch-contract hard cap on concurrently running requests for a
+/// localhosted provider (#7152): one running request.
+pub const LOCAL_ADMISSION_MAX_RUNNING: u32 = 1;
+
+/// Launch-contract bound on parked waiters for a localhosted provider
+/// (#7152): at most two bounded waiters; excess work is refused with typed
+/// retry guidance.
+pub const LOCAL_ADMISSION_MAX_WAITING: u32 = 2;
+
+/// How a provider admits concurrent requests (#7152).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum ProviderAdmissionMode {
+    /// Hard cap: at most `maxRunning` running and `maxWaiting` waiting
+    /// requests; excess work is refused with a typed saturation error
+    /// carrying retry guidance.
+    #[default]
+    Fixed,
+    /// Adaptive AIMD limiter (the historical default for cloud endpoints);
+    /// waiters park unboundedly.
+    Adaptive,
+}
+
+/// Per-provider admission bound (#7152).
+///
+/// Declared as `[providers.admission]` on a `[[providers]]` entry. When the
+/// table is omitted entirely, [`LlmProviderConfig::effective_admission`]
+/// derives the default from the deployment target: localhosted and embedded
+/// providers get the hard launch cap (fixed, 1 running / 2 waiting), cloud
+/// providers keep the adaptive limiter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+#[serde(default)]
+pub struct ProviderAdmissionConfig {
+    /// Admission mode. Writing an admission table without a mode expresses
+    /// intent to bound, so the in-table default is `fixed`.
+    pub mode: ProviderAdmissionMode,
+    /// Maximum concurrently running requests in `fixed` mode.
+    pub max_running: u32,
+    /// Maximum parked waiters in `fixed` mode before excess requests are
+    /// refused with typed retry guidance.
+    pub max_waiting: u32,
+}
+
+impl Default for ProviderAdmissionConfig {
+    fn default() -> Self {
+        Self {
+            mode: ProviderAdmissionMode::Fixed,
+            max_running: LOCAL_ADMISSION_MAX_RUNNING,
+            max_waiting: LOCAL_ADMISSION_MAX_WAITING,
+        }
+    }
+}
+
+impl ProviderAdmissionConfig {
+    /// The adaptive policy with the launch-cap fields left at their
+    /// defaults (ignored in adaptive mode).
+    #[must_use]
+    pub fn adaptive() -> Self {
+        Self {
+            mode: ProviderAdmissionMode::Adaptive,
+            ..Self::default()
+        }
+    }
+}
+
 /// Which concrete provider implementation to instantiate at startup.
 ///
 /// Matches on this in `crates/aletheia/src/runtime/setup.rs` to pick between
@@ -211,6 +279,35 @@ pub struct LlmProviderConfig {
     /// claims the requested model wins.
     #[serde(default)]
     pub models: Vec<String>,
+    /// Optional per-provider admission bound (#7152). When omitted,
+    /// [`Self::effective_admission`] derives the default from
+    /// [`deployment_target`](Self::deployment_target).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub admission: Option<ProviderAdmissionConfig>,
+}
+
+impl LlmProviderConfig {
+    /// Effective admission bound for this provider (#7152).
+    ///
+    /// An explicit `[providers.admission]` table wins. Otherwise the
+    /// deployment target decides: localhosted and embedded providers get
+    /// the hard launch cap (fixed, [`LOCAL_ADMISSION_MAX_RUNNING`] running /
+    /// [`LOCAL_ADMISSION_MAX_WAITING`] waiting) so they do not inherit the
+    /// adaptive concurrency defaults; cloud providers keep the adaptive
+    /// limiter.
+    #[must_use]
+    pub fn effective_admission(&self) -> ProviderAdmissionConfig {
+        self.admission
+            .unwrap_or_else(|| match self.deployment_target {
+                DeploymentTarget::LocalHosted | DeploymentTarget::Embedded => {
+                    ProviderAdmissionConfig::default()
+                }
+                // NOTE: `#[non_exhaustive]` does not apply in the defining
+                // crate, so this match is exhaustive here — a future
+                // variant must pick its admission default explicitly.
+                DeploymentTarget::Cloud => ProviderAdmissionConfig::adaptive(),
+            })
+    }
 }
 
 impl std::fmt::Debug for LlmProviderConfig {
@@ -226,6 +323,7 @@ impl std::fmt::Debug for LlmProviderConfig {
             .field("timeout_secs", &self.timeout_secs)
             .field("deployment_target", &self.deployment_target)
             .field("models", &self.models)
+            .field("admission", &self.admission)
             .finish()
     }
 }

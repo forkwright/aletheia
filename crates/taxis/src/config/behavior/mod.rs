@@ -24,8 +24,9 @@ pub use knowledge::{
 pub use messaging::{MessagingConfig, OutboundMessagePolicy, RawPayloadPolicy};
 pub use nous::NousBehaviorConfig;
 pub use provider::{
-    AnthropicConfig, DeploymentTarget, LlmProviderConfig, OpenAiApiFamily, PromptCacheMode,
-    ProviderBehaviorConfig, ProviderKind,
+    AnthropicConfig, DeploymentTarget, LOCAL_ADMISSION_MAX_RUNNING, LOCAL_ADMISSION_MAX_WAITING,
+    LlmProviderConfig, OpenAiApiFamily, PromptCacheMode, ProviderAdmissionConfig,
+    ProviderAdmissionMode, ProviderBehaviorConfig, ProviderKind,
 };
 pub use recall::{AcademicSourceConfig, RecallSourcesConfig};
 pub use timeouts::{CapacityConfig, RetrySettings, TimeoutsConfig};

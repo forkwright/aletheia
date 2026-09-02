@@ -38,6 +38,36 @@ pub const DEFAULT_EWMA_ALPHA: f64 = 0.8;
 /// Default latency threshold in seconds.
 pub const DEFAULT_LATENCY_THRESHOLD_SECS: f64 = 30.0;
 
+/// Fallback saturation retry hint in milliseconds, used before the limiter
+/// has observed any latency sample.
+pub const DEFAULT_SATURATION_RETRY_HINT_MS: u64 = 1_000;
+
+/// How the limiter admits new requests (#7152).
+///
+/// `Adaptive` is the historical behavior: an AIMD-adjusted limit with
+/// unbounded parking for callers above it. `Fixed` is the hard admission
+/// bound required for localhosted model servers: at most `max_running`
+/// requests run, at most `max_waiting` park, and any excess acquisition is
+/// refused immediately with a typed
+/// [`Error::ProviderSaturated`](crate::error::Error::ProviderSaturated)
+/// carrying retry guidance.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Default)]
+#[serde(tag = "mode", rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum AdmissionPolicy {
+    /// AIMD adaptive limit; waiters park until a slot frees up.
+    #[default]
+    Adaptive,
+    /// Hard cap: the limit is pinned to `max_running` (AIMD feedback does
+    /// not move it) and at most `max_waiting` callers may wait for a slot.
+    Fixed {
+        /// Maximum concurrently running requests.
+        max_running: u32,
+        /// Maximum parked waiters before excess work is refused.
+        max_waiting: u32,
+    },
+}
+
 /// Outcome of a request that held a [`ConcurrencyPermit`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -86,6 +116,12 @@ pub struct ConcurrencyConfig {
     /// new successes are treated as overload (triggering multiplicative decrease).
     /// Default: 30.0.
     pub latency_threshold_secs: f64,
+    /// Admission policy (#7152). Default: [`AdmissionPolicy::Adaptive`],
+    /// preserving the historical AIMD behavior. Localhosted model servers
+    /// use [`AdmissionPolicy::Fixed`] so excess work is refused with typed
+    /// retry guidance instead of parking unboundedly.
+    #[serde(default)]
+    pub admission: AdmissionPolicy,
 }
 
 impl Default for ConcurrencyConfig {
@@ -98,6 +134,7 @@ impl Default for ConcurrencyConfig {
             decrease_factor: 0.9,
             ewma_alpha: DEFAULT_EWMA_ALPHA,
             latency_threshold_secs: DEFAULT_LATENCY_THRESHOLD_SECS,
+            admission: AdmissionPolicy::Adaptive,
         }
     }
 }
@@ -105,6 +142,9 @@ impl Default for ConcurrencyConfig {
 struct LimiterInner {
     limit: u32,
     in_flight: u32,
+    /// Parked callers counted by the fixed admission policy. Always 0 under
+    /// the adaptive policy, whose waiters are unbounded and untracked.
+    waiting: u32,
     /// EWMA of response latency in seconds. `None` until the first sample.
     latency_ewma: Option<f64>,
 }
@@ -146,12 +186,18 @@ impl AdaptiveConcurrencyLimiter {
     #[must_use]
     pub fn new(provider_name: impl Into<String>, config: ConcurrencyConfig) -> Self {
         // kanon:ignore RUST/pub-visibility
-        let initial = config.initial_limit;
+        // WHY(#7152): a fixed admission bound pins the limit to max_running;
+        // initial_limit only seeds the adaptive policy.
+        let initial = match config.admission {
+            AdmissionPolicy::Fixed { max_running, .. } => max_running.max(1),
+            _ => config.initial_limit,
+        };
         let name = provider_name.into();
         let limiter = Self {
             inner: Mutex::new(LimiterInner {
                 limit: initial,
                 in_flight: 0,
+                waiting: 0,
                 latency_ewma: None,
             }),
             notify: Notify::new(),
@@ -181,6 +227,21 @@ impl AdaptiveConcurrencyLimiter {
     pub fn in_flight(&self) -> u32 {
         // kanon:ignore RUST/pub-visibility
         self.inner.lock().in_flight
+    }
+
+    /// Current number of parked waiters under the fixed admission policy
+    /// (snapshot). Always 0 under the adaptive policy.
+    #[must_use]
+    pub fn waiting(&self) -> u32 {
+        // kanon:ignore RUST/pub-visibility
+        self.inner.lock().waiting
+    }
+
+    /// The configured admission policy.
+    #[must_use]
+    pub fn admission(&self) -> AdmissionPolicy {
+        // kanon:ignore RUST/pub-visibility
+        self.config.admission
     }
 
     /// Current EWMA latency estimate in seconds, or `None` if no samples yet.
@@ -228,6 +289,93 @@ impl AdaptiveConcurrencyLimiter {
         }
     }
 
+    /// Acquire a permit under the configured [`AdmissionPolicy`].
+    ///
+    /// Under [`AdmissionPolicy::Adaptive`] this behaves exactly like
+    /// [`Self::acquire`] and never fails. Under [`AdmissionPolicy::Fixed`],
+    /// at most `max_running` permits are outstanding and at most
+    /// `max_waiting` callers may park; any further caller is refused
+    /// immediately with [`Error::ProviderSaturated`](crate::error::Error::ProviderSaturated)
+    /// carrying the configured bound and a retry hint derived from the
+    /// latency EWMA (#7152).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ProviderSaturated`](crate::error::Error::ProviderSaturated)
+    /// when the fixed admission queue is full.
+    ///
+    /// # Cancel safety
+    ///
+    /// A parked caller that is dropped releases its bounded waiter slot via
+    /// an internal guard; the slot accounting stays correct across
+    /// cancellation. The permit-slot caveat documented on [`Self::acquire`]
+    /// applies here identically.
+    #[tracing::instrument(skip_all)]
+    pub async fn acquire_admitted(self: &Arc<Self>) -> crate::error::Result<ConcurrencyPermit> {
+        // kanon:ignore RUST/pub-visibility
+        let AdmissionPolicy::Fixed {
+            max_running,
+            max_waiting,
+        } = self.config.admission
+        else {
+            return Ok(self.acquire().await);
+        };
+
+        let mut waiter: Option<WaiterSlot<'_>> = None;
+        loop {
+            // WHY: create the notified future before the limit check so a
+            // wakeup cannot land between the check and the await.
+            let notified = self.notify.notified();
+
+            {
+                let mut inner = self.inner.lock();
+                if inner.in_flight < inner.limit {
+                    if let Some(slot) = waiter.take() {
+                        inner.waiting = inner.waiting.saturating_sub(1);
+                        // WHY: the decrement above already released the
+                        // waiter slot inside this lock; the guard must not
+                        // release it a second time (its Drop also locks).
+                        std::mem::forget(slot);
+                    }
+                    inner.in_flight += 1;
+                    crate::metrics::set_concurrency_in_flight(&self.provider_name, inner.in_flight);
+                    return Ok(ConcurrencyPermit {
+                        limiter: Arc::clone(self),
+                        outcome: AtomicU8::new(OUTCOME_NEUTRAL),
+                        released: AtomicU8::new(0),
+                        start: Instant::now(),
+                    });
+                }
+                if waiter.is_none() {
+                    if inner.waiting >= max_waiting {
+                        let retry_after_ms = saturation_retry_hint_ms(inner.latency_ewma);
+                        drop(inner);
+                        tracing::warn!(
+                            provider = %self.provider_name,
+                            max_running,
+                            max_waiting,
+                            retry_after_ms,
+                            "admission queue full; refusing request with typed retry guidance"
+                        );
+                        return Err(crate::error::ProviderSaturatedSnafu {
+                            provider: self.provider_name.clone(),
+                            max_running,
+                            max_waiting,
+                            retry_after_ms,
+                        }
+                        .build());
+                    }
+                    inner.waiting += 1;
+                    waiter = Some(WaiterSlot {
+                        limiter: self.as_ref(),
+                    });
+                }
+            }
+
+            notified.await;
+        }
+    }
+
     /// Release a permit slot and adjust the limit based on `outcome` and optional latency.
     ///
     /// Called by [`ConcurrencyPermit`] on `finish`/`finish_with_latency` or drop.
@@ -263,12 +411,16 @@ impl AdaptiveConcurrencyLimiter {
                 other => other,
             };
 
+            // WHY(#7152): a fixed admission bound is a hard cap — AIMD
+            // feedback must not grow it past max_running on success or
+            // shrink it below on overload.
+            let adjust_limit = matches!(self.config.admission, AdmissionPolicy::Adaptive);
             match effective_outcome {
-                RequestOutcome::Success => {
+                RequestOutcome::Success if adjust_limit => {
                     inner.limit =
                         (inner.limit + self.config.increase_step).min(self.config.max_limit);
                 }
-                RequestOutcome::Overload => {
+                RequestOutcome::Overload if adjust_limit => {
                     // INVARIANT: f64::from(u32) is lossless; all u32 values fit in
                     // the f64 mantissa.
                     let limit_f64 = f64::from(inner.limit);
@@ -282,7 +434,7 @@ impl AdaptiveConcurrencyLimiter {
                     let decreased = decreased_f64 as u32; // kanon:ignore RUST/as-cast
                     inner.limit = decreased.max(self.config.min_limit);
                 }
-                RequestOutcome::Neutral => {}
+                RequestOutcome::Success | RequestOutcome::Overload | RequestOutcome::Neutral => {}
             }
 
             (inner.limit, inner.in_flight, inner.latency_ewma)
@@ -301,6 +453,45 @@ impl AdaptiveConcurrencyLimiter {
         for _ in 0..available {
             self.notify.notify_one();
         }
+    }
+}
+
+/// Retry hint for a saturation refusal, derived from the latency EWMA.
+///
+/// One in-flight request is expected to take roughly the EWMA latency, so
+/// that is the earliest a freed slot is plausible. Falls back to
+/// [`DEFAULT_SATURATION_RETRY_HINT_MS`] before the first sample, floors at
+/// 100ms, and caps at 10 minutes.
+fn saturation_retry_hint_ms(latency_ewma: Option<f64>) -> u64 {
+    match latency_ewma {
+        Some(secs) if secs.is_finite() && secs > 0.0 => {
+            let ms_f64 = (secs * 1000.0).ceil().min(600_000.0);
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                clippy::as_conversions,
+                reason = "ms_f64 is non-negative and capped at 600_000, well within u64"
+            )]
+            let ms = ms_f64 as u64; // kanon:ignore RUST/as-cast
+            ms.max(100)
+        }
+        _ => DEFAULT_SATURATION_RETRY_HINT_MS,
+    }
+}
+
+/// Guard releasing one bounded waiter slot if a parked
+/// [`AdaptiveConcurrencyLimiter::acquire_admitted`] caller is dropped
+/// before it obtains a permit.
+struct WaiterSlot<'a> {
+    limiter: &'a AdaptiveConcurrencyLimiter,
+}
+
+impl Drop for WaiterSlot<'_> {
+    fn drop(&mut self) {
+        // WHY: without this, a cancelled waiter would permanently consume
+        // one of the max_waiting slots and eventually wedge admission shut.
+        let mut inner = self.limiter.inner.lock();
+        inner.waiting = inner.waiting.saturating_sub(1);
     }
 }
 
@@ -547,8 +738,17 @@ mod tests {
                 decrease_factor: 0.5,
                 ewma_alpha: 0.0, // alpha=0: EWMA = latest sample only (for test determinism)
                 latency_threshold_secs: threshold_secs,
+                ..ConcurrencyConfig::default()
             },
         ))
+    }
+
+    /// Unwrap a rejection without requiring `Debug` on the permit.
+    fn expect_saturated(result: crate::error::Result<ConcurrencyPermit>) -> crate::error::Error {
+        match result {
+            Ok(_) => panic!("expected a ProviderSaturated rejection"),
+            Err(e) => e,
+        }
     }
 
     #[tokio::test]
@@ -807,6 +1007,196 @@ mod tests {
     fn layer_is_clone_send() {
         fn assert_clone_send<T: Clone + Send>() {}
         assert_clone_send::<ConcurrencyLayer>();
+    }
+
+    fn fixed_limiter(max_running: u32, max_waiting: u32) -> Arc<AdaptiveConcurrencyLimiter> {
+        Arc::new(AdaptiveConcurrencyLimiter::new(
+            "fixed-test",
+            ConcurrencyConfig {
+                admission: AdmissionPolicy::Fixed {
+                    max_running,
+                    max_waiting,
+                },
+                ..ConcurrencyConfig::default()
+            },
+        ))
+    }
+
+    #[tokio::test]
+    async fn fixed_admission_caps_running_and_rejects_excess_waiters() {
+        // WHY(#7152): the localhosted launch contract is one running request
+        // and at most two bounded waiters; the third waiter must be rejected
+        // with typed guidance instead of parking unboundedly.
+        let l = fixed_limiter(1, 2);
+        let running = l.acquire_admitted().await.unwrap();
+        assert_eq!(l.in_flight(), 1);
+
+        let w1 = tokio::spawn({
+            let l = Arc::clone(&l);
+            async move { l.acquire_admitted().await }
+        });
+        let w2 = tokio::spawn({
+            let l = Arc::clone(&l);
+            async move { l.acquire_admitted().await }
+        });
+        // WHY: tokio::time::sleep because test-util is not enabled for this crate. // kanon:ignore TESTING/sleep-in-test
+        tokio::time::sleep(Duration::from_millis(20)).await; // kanon:ignore TESTING/sleep-in-test
+        assert!(!w1.is_finished());
+        assert!(!w2.is_finished());
+        assert_eq!(l.waiting(), 2);
+
+        let err = expect_saturated(l.acquire_admitted().await);
+        match err {
+            crate::error::Error::ProviderSaturated {
+                max_running,
+                max_waiting,
+                ..
+            } => {
+                assert_eq!(max_running, 1);
+                assert_eq!(max_waiting, 2);
+            }
+            other => panic!("expected ProviderSaturated, got: {other}"),
+        }
+
+        // Releasing the running permit admits one waiter; the other stays parked.
+        running.finish(RequestOutcome::Success);
+        let p = tokio::select! {
+            r = w1 => r.unwrap().unwrap(),
+            r = w2 => r.unwrap().unwrap(),
+        };
+        assert_eq!(l.in_flight(), 1);
+        assert_eq!(l.waiting(), 1);
+        p.finish(RequestOutcome::Success);
+    }
+
+    #[tokio::test]
+    async fn fixed_admission_limit_never_adapts() {
+        // WHY(#7152): the hard cap must not inherit AIMD growth — success
+        // must not raise the limit above max_running, and overload must not
+        // shrink it below.
+        let l = fixed_limiter(1, 2);
+        let p = l.acquire_admitted().await.unwrap();
+        p.finish(RequestOutcome::Success);
+        assert_eq!(l.limit(), 1, "success must not grow a fixed limit");
+
+        let p = l.acquire_admitted().await.unwrap();
+        p.finish(RequestOutcome::Overload);
+        assert_eq!(l.limit(), 1, "overload must not shrink a fixed limit");
+    }
+
+    #[tokio::test]
+    async fn fixed_admission_zero_waiters_rejects_immediately() {
+        let l = fixed_limiter(1, 0);
+        let running = l.acquire_admitted().await.unwrap();
+        let err = expect_saturated(l.acquire_admitted().await);
+        assert!(
+            matches!(err, crate::error::Error::ProviderSaturated { .. }),
+            "with max_waiting = 0 any concurrent acquire must be rejected"
+        );
+        running.finish(RequestOutcome::Neutral);
+    }
+
+    #[tokio::test]
+    async fn fixed_admission_rejection_carries_retry_hint_from_ewma() {
+        let l = Arc::new(AdaptiveConcurrencyLimiter::new(
+            "fixed-hint",
+            ConcurrencyConfig {
+                admission: AdmissionPolicy::Fixed {
+                    max_running: 1,
+                    max_waiting: 0,
+                },
+                ewma_alpha: 0.0,
+                ..ConcurrencyConfig::default()
+            },
+        ));
+        // Seed the EWMA with a 2s sample.
+        let p = l.acquire_admitted().await.unwrap();
+        p.finish_with_latency(RequestOutcome::Success, Duration::from_secs(2));
+
+        let running = l.acquire_admitted().await.unwrap();
+        let err = expect_saturated(l.acquire_admitted().await);
+        match err {
+            crate::error::Error::ProviderSaturated { retry_after_ms, .. } => {
+                assert_eq!(
+                    retry_after_ms, 2000,
+                    "retry hint should reflect the observed latency EWMA"
+                );
+            }
+            other => panic!("expected ProviderSaturated, got: {other}"),
+        }
+        running.finish(RequestOutcome::Neutral);
+    }
+
+    #[tokio::test]
+    async fn fixed_admission_rejection_hint_defaults_without_samples() {
+        let l = fixed_limiter(1, 0);
+        let running = l.acquire_admitted().await.unwrap();
+        let err = expect_saturated(l.acquire_admitted().await);
+        match err {
+            crate::error::Error::ProviderSaturated { retry_after_ms, .. } => {
+                assert_eq!(
+                    retry_after_ms, DEFAULT_SATURATION_RETRY_HINT_MS,
+                    "without latency samples the hint falls back to the default"
+                );
+            }
+            other => panic!("expected ProviderSaturated, got: {other}"),
+        }
+        running.finish(RequestOutcome::Neutral);
+    }
+
+    #[tokio::test]
+    async fn cancelled_waiter_releases_queue_slot() {
+        // WHY: a caller that gives up while parked must not permanently
+        // consume one of the bounded waiter slots.
+        let l = fixed_limiter(1, 1);
+        let running = l.acquire_admitted().await.unwrap();
+
+        let waiter = tokio::spawn({
+            let l = Arc::clone(&l);
+            async move { l.acquire_admitted().await }
+        });
+        // WHY: tokio::time::sleep because test-util is not enabled for this crate. // kanon:ignore TESTING/sleep-in-test
+        tokio::time::sleep(Duration::from_millis(20)).await; // kanon:ignore TESTING/sleep-in-test
+        assert_eq!(l.waiting(), 1);
+        waiter.abort();
+        let _ = waiter.await;
+        // WHY: abort drops the parked future; the waiter guard must restore the slot. // kanon:ignore TESTING/sleep-in-test
+        tokio::time::sleep(Duration::from_millis(20)).await; // kanon:ignore TESTING/sleep-in-test
+        assert_eq!(l.waiting(), 0, "aborted waiter must release its queue slot");
+
+        // A new waiter can now park instead of being rejected.
+        let w2 = tokio::spawn({
+            let l = Arc::clone(&l);
+            async move { l.acquire_admitted().await }
+        });
+        // WHY: tokio::time::sleep because test-util is not enabled for this crate. // kanon:ignore TESTING/sleep-in-test
+        tokio::time::sleep(Duration::from_millis(20)).await; // kanon:ignore TESTING/sleep-in-test
+        assert_eq!(l.waiting(), 1, "freed slot must be reusable");
+        running.finish(RequestOutcome::Neutral);
+        w2.await.unwrap().unwrap().finish(RequestOutcome::Neutral);
+    }
+
+    #[tokio::test]
+    async fn adaptive_admission_never_rejects() {
+        // The default policy keeps the historical parking behavior.
+        let l = limiter(1, 1, 10);
+        let p1 = l.acquire_admitted().await.unwrap();
+        let waiter = tokio::spawn({
+            let l = Arc::clone(&l);
+            async move { l.acquire_admitted().await }
+        });
+        // WHY: tokio::time::sleep because test-util is not enabled for this crate. // kanon:ignore TESTING/sleep-in-test
+        tokio::time::sleep(Duration::from_millis(20)).await; // kanon:ignore TESTING/sleep-in-test
+        assert!(
+            !waiter.is_finished(),
+            "adaptive mode parks instead of rejecting"
+        );
+        p1.finish(RequestOutcome::Neutral);
+        waiter
+            .await
+            .unwrap()
+            .unwrap()
+            .finish(RequestOutcome::Neutral);
     }
 
     #[test]

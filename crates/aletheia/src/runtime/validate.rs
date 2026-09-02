@@ -225,6 +225,7 @@ mod tests {
             workdir: None,
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
+            admission: None,
             models: Vec::new(),
         }
     }

@@ -84,6 +84,28 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// The provider's bounded admission queue is full (#7152).
+    ///
+    /// Emitted by [`AdmissionPolicy::Fixed`](crate::concurrency::AdmissionPolicy::Fixed):
+    /// at most `max_running` requests run and `max_waiting` wait; an excess
+    /// request is refused immediately with retry guidance instead of
+    /// parking unboundedly. Deliberately NOT retryable — an in-process
+    /// retry or model fallback would re-enter the queue it was just refused
+    /// from and defeat the admission bound; the guidance is for the caller.
+    #[snafu(display(
+        "provider '{provider}' is saturated: at its configured cap of \
+         {max_running} running and {max_waiting} waiting request(s); \
+         retry in ~{retry_after_ms}ms"
+    ))]
+    ProviderSaturated {
+        provider: String,
+        max_running: u32,
+        max_waiting: u32,
+        retry_after_ms: u64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Response parsing failed.
     #[snafu(display("failed to parse response: {source}"))]
     ParseResponse {
@@ -212,10 +234,15 @@ impl koina::error_class::Classifiable for Error {
         match self {
             // Transient: safe to retry — rate limits, server errors (5xx),
             // and provider init failures (CC binary crashed/disappeared).
+            // ProviderSaturated is transient for the CALLER (the queue
+            // clears with time) but deliberately not `is_retryable`:
+            // in-process retry/fallback would re-enter the refused queue
+            // (#7152).
             Error::RateLimited { .. }
             | Error::ProviderInit { .. }
             | Error::ApiErrorBodyRead { .. }
             | Error::StreamIncomplete { .. }
+            | Error::ProviderSaturated { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => ErrorClass::Transient,
@@ -293,6 +320,21 @@ impl koina::error_class::Classifiable for Error {
             Error::ProviderInit { .. } => ErrorAction::Retry {
                 max_attempts: 3,
                 backoff_base_ms: 2_000,
+            },
+            // WHY(#7152): surfacing (not retrying) keeps the admission bound
+            // honest — the typed guidance tells the caller when to come back.
+            Error::ProviderSaturated {
+                provider,
+                max_running,
+                max_waiting,
+                retry_after_ms,
+                ..
+            } => ErrorAction::Surface {
+                user_message: format!(
+                    "Provider '{provider}' is at its configured capacity \
+                     ({max_running} running, {max_waiting} waiting). \
+                     Retry in ~{retry_after_ms}ms."
+                ),
             },
             Error::ParseResponse { .. } | Error::ProviderContract { .. } => ErrorAction::Escalate,
         }
@@ -403,6 +445,43 @@ mod tests {
             ErrorAction::Surface { user_message } => {
                 assert!(user_message.contains("cc"));
                 assert!(user_message.contains("aletheia organon tool-loop"));
+            }
+            other => panic!("expected ErrorAction::Surface, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn provider_saturated_is_not_retryable() {
+        // WHY(#7152): saturation is a deliberate admission refusal with retry
+        // guidance for the CALLER. In-process retry or model fallback would
+        // re-enter the queue it was just bounced from, defeating the bound
+        // and silently routing local-primary work to a fallback provider.
+        let err = ProviderSaturatedSnafu {
+            provider: "menos-agent".to_owned(),
+            max_running: 1_u32,
+            max_waiting: 2_u32,
+            retry_after_ms: 1500_u64,
+        }
+        .build();
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn provider_saturated_classifies_transient_and_surfaces_guidance() {
+        use koina::error_class::{ErrorAction, ErrorClass};
+
+        let err = ProviderSaturatedSnafu {
+            provider: "menos-agent".to_owned(),
+            max_running: 1_u32,
+            max_waiting: 2_u32,
+            retry_after_ms: 1500_u64,
+        }
+        .build();
+        assert_eq!(err.class(), ErrorClass::Transient);
+        match err.action() {
+            ErrorAction::Surface { user_message } => {
+                assert!(user_message.contains("menos-agent"), "{user_message}");
+                assert!(user_message.contains("1500"), "{user_message}");
             }
             other => panic!("expected ErrorAction::Surface, got: {other:?}"),
         }

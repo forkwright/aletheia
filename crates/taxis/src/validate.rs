@@ -1593,6 +1593,7 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
             }
         }
         validate_provider_models(i, entry, errors);
+        validate_provider_admission(i, entry, errors);
         if let Some(target) = entry.get("deploymentTarget").and_then(Value::as_str)
             && !matches!(
                 target,
@@ -1669,6 +1670,38 @@ fn validate_provider_timeout(i: usize, entry: &Value, errors: &mut Vec<String>) 
     if !(5..=3600).contains(&timeout_secs) {
         errors.push(format!(
             "providers[{i}].timeoutSecs must be between 5 and 3600 seconds, got {timeout_secs}"
+        ));
+    }
+}
+
+/// Validate an optional `[providers.admission]` table (#7152).
+fn validate_provider_admission(i: usize, entry: &Value, errors: &mut Vec<String>) {
+    let Some(admission) = entry.get("admission") else {
+        return;
+    };
+    let Some(table) = admission.as_object() else {
+        errors.push(format!("providers[{i}].admission must be a table"));
+        return;
+    };
+    if let Some(mode) = table.get("mode").and_then(Value::as_str)
+        && !matches!(mode, "fixed" | "adaptive")
+    {
+        errors.push(format!(
+            "providers[{i}].admission.mode '{mode}' is not recognized (expected one of: fixed, adaptive)"
+        ));
+    }
+    if let Some(val) = table.get("maxRunning")
+        && val.as_u64().is_none_or(|n| n == 0)
+    {
+        errors.push(format!(
+            "providers[{i}].admission.maxRunning must be a positive integer"
+        ));
+    }
+    if let Some(val) = table.get("maxWaiting")
+        && val.as_u64().is_none()
+    {
+        errors.push(format!(
+            "providers[{i}].admission.maxWaiting must be a non-negative integer"
         ));
     }
 }

@@ -395,7 +395,7 @@ impl AnthropicProvider {
         request: &CompletionRequest,
         on_event: &mut (dyn FnMut(StreamEvent) + Send),
     ) -> Result<CompletionResponse> {
-        let permit = self.concurrency.acquire().await;
+        let permit = self.concurrency.acquire_admitted().await?;
         let start = Instant::now();
         let result = self.complete_streaming_inner(request, on_event).await;
         permit.finish_with_latency(concurrency_outcome(&result), start.elapsed());
@@ -895,7 +895,7 @@ impl AnthropicProvider {
         &self,
         request: &CompletionRequest,
     ) -> Result<CompletionResponse> {
-        let permit = self.concurrency.acquire().await;
+        let permit = self.concurrency.acquire_admitted().await?;
         let start = Instant::now();
         let result = self.execute_with_retry_inner(request).await;
         permit.finish_with_latency(concurrency_outcome(&result), start.elapsed());

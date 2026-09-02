@@ -1287,6 +1287,18 @@ LLM provider definitions (#3424, #3414). Ordered list of backends — the provid
 | `deploymentTarget` | "cloud" \| "localhosted" (alias: "local_hosted", "local-hosted") \| "embedded" | "cloud" | Where this provider's traffic terminates. Drives the factsensitivity filter (#3414) and air-gapped mode. |
 | `models` | string[] | [] | Model identifiers this provider advertises support for. Used by the provider registry for routing: the first provider in list order that claims the requested model wins. |
 
+### providers.admission
+
+*(optional table)*
+
+Optional per-provider admission bound (#7152). When omitted, [`Self::effective_admission`] derives the default from [`deployment_target`](Self::deployment_target).
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mode` | "fixed" \| "adaptive" | "fixed" | Admission mode. Writing an admission table without a mode expresses intent to bound, so the in-table default is `fixed`. |
+| `maxRunning` | integer | 1 | Maximum concurrently running requests in `fixed` mode. |
+| `maxWaiting` | integer | 2 | Maximum parked waiters in `fixed` mode before excess requests are refused with typed retry guidance. |
+
 ## promptAudit
 
 Prompt audit log: operator visibility into outbound LLM requests (#3411). WHY configurable: operators can disable the log or tune retention and filtered-ID inclusion. Default is on with 90-day retention because the log is a sovereignty feature — operators should be able to see what the system sent out without opting in.

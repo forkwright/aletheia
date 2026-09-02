@@ -169,6 +169,7 @@ fn concurrency_acquire_release(c: &mut Criterion) {
             decrease_factor: 0.9,
             ewma_alpha: 0.8,
             latency_threshold_secs: 30.0,
+            ..ConcurrencyConfig::default()
         },
     ));
 

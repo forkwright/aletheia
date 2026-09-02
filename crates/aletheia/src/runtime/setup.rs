@@ -20,7 +20,7 @@ use agora::semeion::client::SignalClient;
 use agora::types::ChannelProvider;
 use hermeneus::RetryPolicy;
 use hermeneus::anthropic::{AnthropicProvider, ProviderBehavior};
-use hermeneus::concurrency::ConcurrencyConfig;
+use hermeneus::concurrency::{AdmissionPolicy, ConcurrencyConfig};
 use hermeneus::openai::{
     OpenAiApiFamily as HermeneusOpenAiApiFamily, OpenAiProvider, OpenAiProviderConfig,
 };
@@ -75,6 +75,114 @@ fn concurrency_config_from_provider_behavior(
         ewma_alpha: behavior.concurrency_ewma_alpha,
         latency_threshold_secs: behavior.concurrency_latency_threshold_secs,
         ..ConcurrencyConfig::default()
+    }
+}
+
+/// Map a declared provider entry's effective admission bound to the
+/// hermeneus admission policy (#7152).
+///
+/// Localhosted and embedded entries without an explicit
+/// `[providers.admission]` table derive the hard launch cap (fixed,
+/// 1 running / 2 waiting) via
+/// [`taxis::config::LlmProviderConfig::effective_admission`]; cloud entries
+/// keep the adaptive limiter.
+fn admission_policy_for_entry(entry: &taxis::config::LlmProviderConfig) -> AdmissionPolicy {
+    use taxis::config::ProviderAdmissionMode;
+
+    let admission = entry.effective_admission();
+    match admission.mode {
+        ProviderAdmissionMode::Fixed => AdmissionPolicy::Fixed {
+            // WHY: a zero max_running would deadlock admission outright;
+            // clamp to the launch floor of one running request.
+            max_running: admission.max_running.max(1),
+            max_waiting: admission.max_waiting,
+        },
+        // WHY: `ProviderAdmissionMode` is #[non_exhaustive]; unknown future
+        // modes keep the historical adaptive limiter.
+        ProviderAdmissionMode::Adaptive | _ => AdmissionPolicy::Adaptive,
+    }
+}
+
+/// Per-entry concurrency settings: global `providerBehavior` tuning plus
+/// the entry's derived admission bound (#7152).
+fn concurrency_for_entry(
+    base: &ConcurrencyConfig,
+    entry: &taxis::config::LlmProviderConfig,
+) -> ConcurrencyConfig {
+    ConcurrencyConfig {
+        admission: admission_policy_for_entry(entry),
+        ..base.clone()
+    }
+}
+
+#[cfg(test)]
+mod admission_policy_tests {
+    use hermeneus::concurrency::AdmissionPolicy;
+    use taxis::config::{
+        DeploymentTarget, LlmProviderConfig, ProviderAdmissionConfig, ProviderAdmissionMode,
+        ProviderKind,
+    };
+
+    use super::admission_policy_for_entry;
+
+    fn entry(target: DeploymentTarget) -> LlmProviderConfig {
+        LlmProviderConfig {
+            name: "menos-agent".to_owned(),
+            kind: ProviderKind::OpenAiCompatible,
+            base_url: Some("http://127.0.0.1:8189/v1".to_owned()),
+            api_key_env: None,
+            api_family: None,
+            binary: None,
+            workdir: None,
+            timeout_secs: None,
+            deployment_target: target,
+            models: vec!["qwen3.8-27b".to_owned()],
+            admission: None,
+        }
+    }
+
+    #[test]
+    fn localhosted_entry_maps_to_fixed_launch_cap() {
+        // WHY(#7152): a localhosted provider must not inherit the adaptive
+        // 10→200 defaults — it gets the 1 running / 2 waiting hard cap.
+        let policy = admission_policy_for_entry(&entry(DeploymentTarget::LocalHosted));
+        assert_eq!(
+            policy,
+            AdmissionPolicy::Fixed {
+                max_running: 1,
+                max_waiting: 2
+            }
+        );
+    }
+
+    #[test]
+    fn cloud_entry_maps_to_adaptive() {
+        let policy = admission_policy_for_entry(&entry(DeploymentTarget::Cloud));
+        assert_eq!(policy, AdmissionPolicy::Adaptive);
+    }
+
+    #[test]
+    fn explicit_admission_overrides_target_default() {
+        let mut e = entry(DeploymentTarget::LocalHosted);
+        e.admission = Some(ProviderAdmissionConfig::adaptive());
+        assert_eq!(admission_policy_for_entry(&e), AdmissionPolicy::Adaptive);
+    }
+
+    #[test]
+    fn zero_max_running_is_clamped_to_one() {
+        let mut e = entry(DeploymentTarget::LocalHosted);
+        e.admission = Some(ProviderAdmissionConfig {
+            mode: ProviderAdmissionMode::Fixed,
+            max_running: 0,
+            max_waiting: 2,
+        });
+        assert_eq!(
+            admission_policy_for_entry(&e),
+            AdmissionPolicy::Fixed {
+                max_running: 1,
+                max_waiting: 2
+            }
+        );
     }
 }
 
@@ -558,7 +666,7 @@ fn openai_config_for_entry(
         api_family,
         request_timeout: behavior.non_streaming_timeout,
         retry_policy: provider_config.retry_policy,
-        concurrency: provider_config.concurrency.clone(),
+        concurrency: concurrency_for_entry(&provider_config.concurrency, entry),
         // WHY (#3736): the operator-declared deployment target
         // was previously logged below but never threaded to the
         // provider, so every OpenAI-compat provider silently
@@ -668,6 +776,7 @@ fn anthropic_config_for_entry(
         name: Some(entry.name.clone()),
         models: entry.models.clone(),
         deployment_target: map_deployment_target(entry.deployment_target),
+        concurrency: concurrency_for_entry(&base.concurrency, entry),
         ..base.clone()
     }
 }
@@ -1701,6 +1810,7 @@ mod tests {
             workdir: None,
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
+            admission: None,
             models: vec!["gpt-5".to_owned()],
         };
         assert_eq!(
@@ -1729,6 +1839,7 @@ mod tests {
             workdir: None,
             timeout_secs: None,
             deployment_target: DeploymentTarget::Embedded,
+            admission: None,
             models: vec![model.to_owned()],
         }
     }
@@ -1749,6 +1860,7 @@ mod tests {
             workdir: None,
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
+            admission: None,
             models: vec![model.to_owned()],
         }
     }
@@ -1766,6 +1878,7 @@ mod tests {
             workdir: None,
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
+            admission: None,
             models: vec![model.to_owned()],
         }
     }
@@ -1789,6 +1902,7 @@ mod tests {
             workdir: Some(workdir),
             timeout_secs: Some(30),
             deployment_target: DeploymentTarget::Cloud,
+            admission: None,
             models: vec![model.to_owned()],
         }
     }
@@ -2160,6 +2274,7 @@ mod tests {
             workdir: None,
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
+            admission: None,
             models: vec!["kimi-for-coding".to_owned()],
         });
         let registry = build_test_provider_registry(&config);
@@ -2192,6 +2307,7 @@ mod tests {
             workdir: None,
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
+            admission: None,
             models: Vec::new(),
         });
         let registry = build_test_provider_registry(&config);
