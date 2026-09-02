@@ -106,6 +106,33 @@ pub enum Error {
         location: snafu::Location,
     },
 
+    /// A front-door-tracked localhosted/embedded provider refused a
+    /// transport failure with typed lifecycle guidance instead of the
+    /// generic transient `ApiRequest` classification (#7152).
+    ///
+    /// Emitted by `map_request_error` in
+    /// `crates/hermeneus/src/openai/error.rs` when a connection or timeout
+    /// failure reaches [`crate::front_door::FrontDoorTracker`]. `state` is
+    /// one of [`FrontDoorState::Sleeping`](crate::front_door::FrontDoorState::Sleeping),
+    /// [`FrontDoorState::Loading`](crate::front_door::FrontDoorState::Loading),
+    /// or [`FrontDoorState::Failed`](crate::front_door::FrontDoorState::Failed) —
+    /// see [`crate::front_door`] for why [`FrontDoorState::Overloaded`](crate::front_door::FrontDoorState::Overloaded)
+    /// surfaces as [`Error::ProviderSaturated`] instead.
+    ///
+    /// Deliberately NOT retryable, for the same reason as
+    /// [`Error::ProviderSaturated`]: an in-process retry or cross-model
+    /// fallback would silently route local-primary work to a fallback
+    /// provider (potentially cloud) instead of surfacing the typed refusal
+    /// the launch contract requires.
+    #[snafu(display("{}", state.refusal_message(provider)))]
+    ProviderNotReady {
+        provider: String,
+        state: crate::front_door::FrontDoorState,
+        retry_after_ms: u64,
+        #[snafu(implicit)]
+        location: snafu::Location,
+    },
+
     /// Response parsing failed.
     #[snafu(display("failed to parse response: {source}"))]
     ParseResponse {
@@ -238,11 +265,16 @@ impl koina::error_class::Classifiable for Error {
             // clears with time) but deliberately not `is_retryable`:
             // in-process retry/fallback would re-enter the refused queue
             // (#7152).
+            // ProviderNotReady is transient for the same reason as
+            // ProviderSaturated above: the front-door state clears with
+            // time (the backend wakes / finishes loading / gets fixed),
+            // but is deliberately not `is_retryable` (#7152).
             Error::RateLimited { .. }
             | Error::ProviderInit { .. }
             | Error::ApiErrorBodyRead { .. }
             | Error::StreamIncomplete { .. }
             | Error::ProviderSaturated { .. }
+            | Error::ProviderNotReady { .. }
             | Error::ApiError {
                 status: 500..=599, ..
             } => ErrorClass::Transient,
@@ -334,6 +366,20 @@ impl koina::error_class::Classifiable for Error {
                     "Provider '{provider}' is at its configured capacity \
                      ({max_running} running, {max_waiting} waiting). \
                      Retry in ~{retry_after_ms}ms."
+                ),
+            },
+            // WHY(#7152): surfacing (not retrying) is what keeps a
+            // front-door refusal from silently walking the fallback chain
+            // to a cloud model — see the module docs on `front_door`.
+            Error::ProviderNotReady {
+                provider,
+                state,
+                retry_after_ms,
+                ..
+            } => ErrorAction::Surface {
+                user_message: format!(
+                    "{} Retry in ~{retry_after_ms}ms.",
+                    state.refusal_message(provider)
                 ),
             },
             Error::ParseResponse { .. } | Error::ProviderContract { .. } => ErrorAction::Escalate,
@@ -482,6 +528,40 @@ mod tests {
             ErrorAction::Surface { user_message } => {
                 assert!(user_message.contains("menos-agent"), "{user_message}");
                 assert!(user_message.contains("1500"), "{user_message}");
+            }
+            other => panic!("expected ErrorAction::Surface, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn provider_not_ready_is_not_retryable() {
+        // WHY(#7152): same reasoning as ProviderSaturated — an in-process
+        // retry or model fallback would silently route local-primary work
+        // to a fallback provider instead of surfacing the front-door state.
+        let err = ProviderNotReadySnafu {
+            provider: "menos-agent".to_owned(),
+            state: crate::front_door::FrontDoorState::Sleeping,
+            retry_after_ms: 5_000_u64,
+        }
+        .build();
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn provider_not_ready_classifies_transient_and_surfaces_guidance() {
+        use koina::error_class::{ErrorAction, ErrorClass};
+
+        let err = ProviderNotReadySnafu {
+            provider: "menos-agent".to_owned(),
+            state: crate::front_door::FrontDoorState::Loading,
+            retry_after_ms: 3_000_u64,
+        }
+        .build();
+        assert_eq!(err.class(), ErrorClass::Transient);
+        match err.action() {
+            ErrorAction::Surface { user_message } => {
+                assert!(user_message.contains("menos-agent"), "{user_message}");
+                assert!(user_message.contains("3000"), "{user_message}");
             }
             other => panic!("expected ErrorAction::Surface, got: {other:?}"),
         }

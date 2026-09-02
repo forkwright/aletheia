@@ -9,6 +9,7 @@ use reqwest::Response;
 use serde::Deserialize;
 
 use crate::error::{self, ApiErrorContext};
+use crate::front_door::{FrontDoorTracker, TransportFailureKind};
 use crate::retry::extract_retry_after;
 
 /// Maximum bytes of a provider error body preserved in logs and error
@@ -132,7 +133,41 @@ pub(crate) async fn map_error_response(
 }
 
 /// Map a reqwest transport error to a hermeneus error.
-pub(crate) fn map_request_error(err: &reqwest::Error) -> error::Error {
+///
+/// `front_door` is `Some` only for localhosted/embedded provider instances
+/// (#7152, see `crates/aletheia/src/runtime/setup.rs::front_door_enabled_for_entry`).
+/// When present, a connect or timeout failure is classified as a
+/// [`TransportFailureKind`], recorded on the tracker, and returned as the
+/// typed, non-retryable [`error::Error::ProviderNotReady`] instead of the
+/// generic transient `ApiRequest` — see the `front_door` module docs for
+/// why this matters for the launch contract's no-silent-cloud-fallback
+/// requirement. Every other transport failure kind, and every failure when
+/// `front_door` is `None` (cloud providers, the historical behavior),
+/// keeps the original message-classified `ApiRequest` shape unchanged.
+pub(crate) fn map_request_error(
+    err: &reqwest::Error,
+    front_door: Option<&FrontDoorTracker>,
+    provider: &str,
+) -> error::Error {
+    if let Some(front_door) = front_door {
+        let kind = if err.is_timeout() {
+            Some(TransportFailureKind::Timeout)
+        } else if err.is_connect() {
+            Some(TransportFailureKind::ConnectRefused)
+        } else {
+            None
+        };
+        if let Some(kind) = kind {
+            let state = front_door.note_transport_failure(kind);
+            return error::ProviderNotReadySnafu {
+                provider: provider.to_owned(),
+                state,
+                retry_after_ms: state.retry_hint_ms(),
+            }
+            .build();
+        }
+    }
+
     let prefix = if err.is_timeout() {
         "timeout"
     } else if err.is_connect() {

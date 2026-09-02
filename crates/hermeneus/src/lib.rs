@@ -29,6 +29,10 @@ pub mod concurrency;
 pub mod error;
 /// Model fallback chain: retries alternative models on transient failures.
 pub mod fallback;
+/// Stateful front door (sleeping/loading/ready/overloaded/failed) for
+/// on-demand localhosted/embedded providers, with typed non-retryable
+/// refusal instead of silent fallback (#7152).
+pub mod front_door;
 /// Provider health state machine (Up / Degraded / Down) with automatic recovery.
 pub mod health;
 /// Kimi subprocess provider: delegates LLM calls to the `kimi` CLI.
