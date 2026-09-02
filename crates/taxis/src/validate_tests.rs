@@ -817,6 +817,51 @@ fn provider_admission_rejects_bad_mode_and_zero_running() {
 }
 
 #[test]
+fn provider_budgets_table_validates() {
+    // WHY(#7152): pins the exact launch-contract local-provider budgets
+    // (32768 / 4096 / 8192) as a valid `[providers.budgets]` table.
+    let section = serde_json::json!([
+        {
+            "name": "menos-agent",
+            "providerType": "openai-compatible",
+            "baseUrl": "http://127.0.0.1:8189/v1",
+            "deploymentTarget": "localhosted",
+            "models": ["qwen3.8-27b"],
+            "budgets": {
+                "contextTokens": 32768,
+                "maxOutputTokens": 4096,
+                "bootstrapMaxTokens": 8192
+            }
+        }
+    ]);
+    assert!(
+        validate_section("providers", &section).is_ok(),
+        "a well-formed budgets table should validate"
+    );
+}
+
+#[test]
+fn provider_budgets_rejects_zero_values() {
+    let section = serde_json::json!([
+        {
+            "name": "menos-agent",
+            "providerType": "openai-compatible",
+            "baseUrl": "http://127.0.0.1:8189/v1",
+            "deploymentTarget": "localhosted",
+            "models": ["qwen3.8-27b"],
+            "budgets": { "contextTokens": 0, "maxOutputTokens": 0, "bootstrapMaxTokens": 0 }
+        }
+    ]);
+    let result = validate_section("providers", &section);
+    assert!(result.is_err(), "zero budget values should be rejected");
+    let err = result.unwrap_err();
+    let joined = err.errors().join("\n");
+    assert!(joined.contains("budgets.contextTokens"), "{joined}");
+    assert!(joined.contains("budgets.maxOutputTokens"), "{joined}");
+    assert!(joined.contains("budgets.bootstrapMaxTokens"), "{joined}");
+}
+
+#[test]
 fn provider_aliases_deserialize_to_typed_config() {
     let json = r#"{
         "providers": [

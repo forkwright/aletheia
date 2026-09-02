@@ -138,6 +138,7 @@ mod admission_policy_tests {
             deployment_target: target,
             models: vec!["qwen3.8-27b".to_owned()],
             admission: None,
+            budgets: None,
         }
     }
 
@@ -1811,6 +1812,7 @@ mod tests {
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             admission: None,
+            budgets: None,
             models: vec!["gpt-5".to_owned()],
         };
         assert_eq!(
@@ -1840,6 +1842,7 @@ mod tests {
             timeout_secs: None,
             deployment_target: DeploymentTarget::Embedded,
             admission: None,
+            budgets: None,
             models: vec![model.to_owned()],
         }
     }
@@ -1861,6 +1864,7 @@ mod tests {
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             admission: None,
+            budgets: None,
             models: vec![model.to_owned()],
         }
     }
@@ -1879,6 +1883,7 @@ mod tests {
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             admission: None,
+            budgets: None,
             models: vec![model.to_owned()],
         }
     }
@@ -1903,6 +1908,7 @@ mod tests {
             timeout_secs: Some(30),
             deployment_target: DeploymentTarget::Cloud,
             admission: None,
+            budgets: None,
             models: vec![model.to_owned()],
         }
     }
@@ -2275,6 +2281,7 @@ mod tests {
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             admission: None,
+            budgets: None,
             models: vec!["kimi-for-coding".to_owned()],
         });
         let registry = build_test_provider_registry(&config);
@@ -2308,6 +2315,7 @@ mod tests {
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             admission: None,
+            budgets: None,
             models: Vec::new(),
         });
         let registry = build_test_provider_registry(&config);

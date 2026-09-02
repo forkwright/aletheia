@@ -183,6 +183,48 @@ impl ProviderAdmissionConfig {
     }
 }
 
+/// Launch-contract token budget for the local provider path (#7152):
+/// 32,768 context tokens.
+pub const LOCAL_BUDGET_CONTEXT_TOKENS: u32 = 32_768;
+
+/// Launch-contract token budget for the local provider path (#7152):
+/// 4,096 output tokens.
+pub const LOCAL_BUDGET_MAX_OUTPUT_TOKENS: u32 = 4_096;
+
+/// Launch-contract token budget for the local provider path (#7152):
+/// 8,192 bootstrap tokens.
+pub const LOCAL_BUDGET_BOOTSTRAP_MAX_TOKENS: u32 = 8_192;
+
+/// Per-provider token-budget clamp (#7152).
+///
+/// Declared as `[providers.budgets]` on a `[[providers]]` entry. Each field
+/// is independently optional: an unset field leaves the agent-resolved
+/// limit for that dimension unclamped. [`resolved::resolve_nous`](super::super::resolved::resolve_nous)
+/// applies the clamp as `min(agent_limit, provider_budget)` against the
+/// provider that ends up serving the agent's primary model — a declared
+/// budget can only lower a resolved limit, never raise it above what the
+/// agent itself was configured for.
+///
+/// Unlike [`ProviderAdmissionConfig`], budgets have no deployment-target-derived
+/// default: an operator wiring the launch-contract local path sets
+/// `[providers.budgets]` explicitly with `contextTokens = 32768`,
+/// `maxOutputTokens = 4096`, `bootstrapMaxTokens = 8192` (the
+/// [`LOCAL_BUDGET_CONTEXT_TOKENS`] / [`LOCAL_BUDGET_MAX_OUTPUT_TOKENS`] /
+/// [`LOCAL_BUDGET_BOOTSTRAP_MAX_TOKENS`] constants); omitting the table
+/// entirely leaves every agent limit unclamped for that provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
+#[serde(default)]
+pub struct ProviderBudgetsConfig {
+    /// Clamp on the resolved input context window, in tokens.
+    pub context_tokens: Option<u32>,
+    /// Clamp on the resolved maximum output tokens per response.
+    pub max_output_tokens: Option<u32>,
+    /// Clamp on the resolved bootstrap content token budget.
+    pub bootstrap_max_tokens: Option<u32>,
+}
+
 /// Which concrete provider implementation to instantiate at startup.
 ///
 /// Matches on this in `crates/aletheia/src/runtime/setup.rs` to pick between
@@ -284,6 +326,10 @@ pub struct LlmProviderConfig {
     /// [`deployment_target`](Self::deployment_target).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub admission: Option<ProviderAdmissionConfig>,
+    /// Optional per-provider token-budget clamp (#7152). When omitted, this
+    /// provider never clamps an agent's resolved token limits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub budgets: Option<ProviderBudgetsConfig>,
 }
 
 impl LlmProviderConfig {
@@ -324,6 +370,7 @@ impl std::fmt::Debug for LlmProviderConfig {
             .field("deployment_target", &self.deployment_target)
             .field("models", &self.models)
             .field("admission", &self.admission)
+            .field("budgets", &self.budgets)
             .finish()
     }
 }

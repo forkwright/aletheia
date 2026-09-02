@@ -403,6 +403,7 @@ mod tests {
             deployment_target: taxis::config::DeploymentTarget::Cloud,
             models: Vec::new(),
             admission: None,
+            budgets: None,
         };
         assert_eq!(credential_source_class(&with_env), "env");
 
