@@ -189,30 +189,27 @@ pub fn inspect_docx(bytes: &[u8]) -> Result<DocxSummary> {
                 let name = e.name();
                 let local_name = name.local_name();
                 let local = local_name.as_ref();
-                if local == b"p" {
+                if local == "p" {
                     in_paragraph = true;
                     current_text.clear();
-                } else if local == b"t" {
+                } else if local == "t" {
                     in_text = true;
                 }
             }
             Ok(quick_xml::events::Event::Text(e)) if in_text => {
-                let txt = e
-                    .decode()
-                    .map_err(|e| Error::ParseXml { source: e.into() })?;
-                current_text.push_str(&txt);
+                current_text.push_str(&e);
             }
             Ok(quick_xml::events::Event::End(e)) => {
                 let name = e.name();
                 let local_name = name.local_name();
                 let local = local_name.as_ref();
-                if local == b"p" {
+                if local == "p" {
                     if in_paragraph {
                         paragraphs.push(current_text.clone());
                     }
                     in_paragraph = false;
                     current_text.clear();
-                } else if local == b"t" {
+                } else if local == "t" {
                     in_text = false;
                 }
             }

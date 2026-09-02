@@ -12,9 +12,8 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use chacha20poly1305::aead::generic_array::GenericArray;
-use chacha20poly1305::aead::{Aead, AeadCore, OsRng};
-use chacha20poly1305::{ChaCha20Poly1305, KeyInit};
+use chacha20poly1305::aead::{Aead, Generate};
+use chacha20poly1305::{ChaCha20Poly1305, KeyInit, Nonce};
 use koina::base64;
 use snafu::ResultExt;
 use tracing::warn;
@@ -196,8 +195,9 @@ pub(crate) fn is_encrypted(value: &str) -> bool {
     reason = "kanon lint requires explicit #[must_use] on pub fns returning Result"
 )]
 pub(crate) fn encrypt_value(plaintext: &str, primary_key: &[u8; KEY_LEN]) -> Result<String> {
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(primary_key));
-    let nonce = ChaCha20Poly1305::generate_nonce(&mut OsRng);
+    let cipher = ChaCha20Poly1305::new_from_slice(primary_key)
+        .map_err(|_key_error| build_encrypt_error())?;
+    let nonce = Nonce::try_generate().map_err(|_rng_error| build_encrypt_error())?;
 
     let ciphertext_with_tag = cipher
         .encrypt(&nonce, plaintext.as_bytes())
@@ -236,10 +236,12 @@ pub(crate) fn decrypt_value(encrypted: &str, primary_key: &[u8; KEY_LEN]) -> Res
 
     let (nonce_bytes, ciphertext) = payload.split_at(NONCE_LEN);
 
-    let cipher = ChaCha20Poly1305::new(GenericArray::from_slice(primary_key));
-    let nonce = GenericArray::from_slice(nonce_bytes);
+    let cipher = ChaCha20Poly1305::new_from_slice(primary_key)
+        .map_err(|_key_error| build_decrypt_error("invalid primary key"))?;
+    let nonce = Nonce::try_from(nonce_bytes)
+        .map_err(|_nonce_error| build_decrypt_error("invalid nonce length"))?;
 
-    let plaintext = cipher.decrypt(nonce, ciphertext).map_err(|_aead_err| {
+    let plaintext = cipher.decrypt(&nonce, ciphertext).map_err(|_aead_err| {
         build_decrypt_error("decryption failed (wrong key or corrupted data)")
     })?;
 
@@ -497,7 +499,7 @@ mod tests {
     }
 
     #[test]
-    fn encrypt_decrypt_roundtrip() {
+    fn encrypt_decrypt_known_roundtrip() {
         let key = fixture_key();
         let plaintext = "sk-ant-api-secret-key-12345";
         let encrypted = encrypt_value(plaintext, &key).unwrap();
@@ -903,6 +905,34 @@ mod tests {
             decrypt_value(&enc2, &key).unwrap(),
             plaintext,
             "second encryption should decrypt correctly"
+        );
+    }
+
+    #[test]
+    fn encrypted_payload_starts_with_a_unique_96_bit_nonce() {
+        let key = fixture_key();
+        let plaintext = "wire-format-fixture";
+        let first = encrypt_value(plaintext, &key).unwrap();
+        let second = encrypt_value(plaintext, &key).unwrap();
+
+        let first_payload = base64::decode(first.strip_prefix(ENCRYPTED_PREFIX).unwrap()).unwrap();
+        let second_payload =
+            base64::decode(second.strip_prefix(ENCRYPTED_PREFIX).unwrap()).unwrap();
+
+        assert_eq!(
+            first_payload.len(),
+            NONCE_LEN + plaintext.len() + TAG_LEN,
+            "wire payload must be nonce || ciphertext || tag"
+        );
+        assert_eq!(
+            second_payload.len(),
+            NONCE_LEN + plaintext.len() + TAG_LEN,
+            "wire payload must be nonce || ciphertext || tag"
+        );
+        assert_ne!(
+            &first_payload[..NONCE_LEN],
+            &second_payload[..NONCE_LEN],
+            "each encryption must use a unique 96-bit nonce"
         );
     }
 }
