@@ -133,7 +133,7 @@ tokio-util = { workspace = true }
 tracing = { workspace = true }
 which = "8"
 zip = { version = "=8.6.0", default-features = false, features = ["deflate"] }
-z3 = { version = "0.20", optional = true, features = ["bundled"] }
+z3 = { version = "0.21", optional = true, features = ["bundled"] }
 # WHY optional, not the existing dev-only tempfile: render_deck_report needs
 # a real filesystem directory to extract poiesis-core's embedded component
 # packs into at runtime (see poiesis_core::embedded) -- a test-only
