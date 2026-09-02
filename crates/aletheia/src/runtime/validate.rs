@@ -226,6 +226,7 @@ mod tests {
             timeout_secs: None,
             deployment_target: DeploymentTarget::Cloud,
             admission: None,
+            budgets: None,
             models: Vec::new(),
         }
     }

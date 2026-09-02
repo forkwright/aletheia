@@ -1299,6 +1299,18 @@ Optional per-provider admission bound (#7152). When omitted, [`Self::effective_a
 | `maxRunning` | integer | 1 | Maximum concurrently running requests in `fixed` mode. |
 | `maxWaiting` | integer | 2 | Maximum parked waiters in `fixed` mode before excess requests are refused with typed retry guidance. |
 
+### providers.budgets
+
+*(optional table)*
+
+Optional per-provider token-budget clamp (#7152). When omitted, this provider never clamps an agent's resolved token limits.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `contextTokens` | integer | unset | Clamp on the resolved input context window, in tokens. |
+| `maxOutputTokens` | integer | unset | Clamp on the resolved maximum output tokens per response. |
+| `bootstrapMaxTokens` | integer | unset | Clamp on the resolved bootstrap content token budget. |
+
 ## promptAudit
 
 Prompt audit log: operator visibility into outbound LLM requests (#3411). WHY configurable: operators can disable the log or tune retention and filtered-ID inclusion. Default is on with 90-day retention because the log is a sovereignty feature — operators should be able to see what the system sent out without opting in.

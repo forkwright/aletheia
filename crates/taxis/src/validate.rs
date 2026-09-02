@@ -1594,6 +1594,7 @@ fn validate_providers(value: &Value, errors: &mut Vec<String>) {
         }
         validate_provider_models(i, entry, errors);
         validate_provider_admission(i, entry, errors);
+        validate_provider_budgets(i, entry, errors);
         if let Some(target) = entry.get("deploymentTarget").and_then(Value::as_str)
             && !matches!(
                 target,
@@ -1703,6 +1704,26 @@ fn validate_provider_admission(i: usize, entry: &Value, errors: &mut Vec<String>
         errors.push(format!(
             "providers[{i}].admission.maxWaiting must be a non-negative integer"
         ));
+    }
+}
+
+/// Validate an optional `[providers.budgets]` table (#7152).
+fn validate_provider_budgets(i: usize, entry: &Value, errors: &mut Vec<String>) {
+    let Some(budgets) = entry.get("budgets") else {
+        return;
+    };
+    let Some(table) = budgets.as_object() else {
+        errors.push(format!("providers[{i}].budgets must be a table"));
+        return;
+    };
+    for field in ["contextTokens", "maxOutputTokens", "bootstrapMaxTokens"] {
+        if let Some(val) = table.get(field)
+            && val.as_u64().is_none_or(|n| n == 0)
+        {
+            errors.push(format!(
+                "providers[{i}].budgets.{field} must be a positive integer"
+            ));
+        }
     }
 }
 

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use super::{
     AgencyLevel, AgentBehaviorDefaults, AgentToolGroupPolicy, AletheiaConfig, ExtractionConfig,
-    RecallProfile, RecallSettings,
+    ProviderBudgetsConfig, RecallProfile, RecallSettings,
 };
 
 /// Resolved model selection for an agent.
@@ -103,6 +103,38 @@ pub struct ResolvedNousConfig {
     pub prosoche_model: Arc<str>,
     /// Resolved per-agent behavioral parameters (safety, hooks, distillation, etc.).
     pub behavior: AgentBehaviorDefaults,
+}
+
+/// Find the declared budgets, if any, for the provider that will serve
+/// `model` for this agent (#7152).
+///
+/// An explicit per-route provider (`provider` from the agent's model spec)
+/// wins. Otherwise this mirrors the provider registry's own routing rule
+/// (`crates/hermeneus/src/provider.rs`): the first provider in
+/// [`AletheiaConfig::providers`] list order that claims `model` supplies the
+/// clamp. Returns `None` when no matching provider declares
+/// `[providers.budgets]` — the common case, where limits are unclamped.
+fn provider_budgets_for(
+    config: &AletheiaConfig,
+    provider: Option<&str>,
+    model: &str,
+) -> Option<ProviderBudgetsConfig> {
+    let entry = match provider {
+        Some(name) => config.providers.iter().find(|p| p.name == name),
+        None => config
+            .providers
+            .iter()
+            .find(|p| p.models.iter().any(|m| m == model)),
+    }?;
+    entry.budgets
+}
+
+/// Clamp a resolved token limit to a provider-declared budget (#7152).
+///
+/// The clamp is `min()`, never a raise: an unset budget field or a budget
+/// looser than the agent's own configured limit leaves `value` unchanged.
+fn clamp_to_budget(value: u32, budget: Option<u32>) -> u32 {
+    budget.map_or(value, |b| value.min(b))
 }
 
 /// Resolve effective configuration for a specific nous agent.
@@ -232,6 +264,24 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         }
     };
 
+    // WHY(#7152): the launch-contract local provider path clamps an agent's
+    // resolved token limits to the serving provider's declared budgets —
+    // wired through this existing cascade, not a parallel budget system.
+    // `min()` only: a budget can lower a limit, never raise it.
+    let provider_budgets = provider_budgets_for(config, model_provider.as_deref(), &model);
+    let max_output_tokens = clamp_to_budget(
+        defaults.model_defaults.max_output_tokens,
+        provider_budgets.and_then(|b| b.max_output_tokens),
+    );
+    let bootstrap_max_tokens = clamp_to_budget(
+        defaults.model_defaults.bootstrap_max_tokens,
+        provider_budgets.and_then(|b| b.bootstrap_max_tokens),
+    );
+    let context_tokens = clamp_to_budget(
+        context_tokens,
+        provider_budgets.and_then(|b| b.context_tokens),
+    );
+
     ResolvedNousConfig {
         id: Arc::from(nous_id),
         name,
@@ -244,8 +294,8 @@ pub fn resolve_nous(config: &AletheiaConfig, nous_id: &str) -> ResolvedNousConfi
         },
         limits: TokenLimits {
             context_tokens,
-            max_output_tokens: defaults.model_defaults.max_output_tokens,
-            bootstrap_max_tokens: defaults.model_defaults.bootstrap_max_tokens,
+            max_output_tokens,
+            bootstrap_max_tokens,
             thinking_budget: defaults.model_defaults.thinking_budget,
             chars_per_token: defaults.model_defaults.chars_per_token,
             history_budget_ratio: defaults.history_budget_ratio,
